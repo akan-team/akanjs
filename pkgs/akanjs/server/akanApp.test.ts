@@ -1651,6 +1651,55 @@ describe("AkanApp", () => {
     });
   }, 15_000);
 
+  test("answers ready 503 while a replica's RSC worker restarts, and 200 again once its pong says it is back", async () => {
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ready-rsc-");
+    let port = 0;
+    const workerPath = path.join(root, "worker.txt");
+    await Bun.write(workerPath, "starting");
+    await Bun.write(
+      serverPath,
+      `
+        export const server = {
+          async start() {
+            Bun.serve({ unix: process.env.AKAN_CHILD_SOCKET, fetch: () => new Response("ok") });
+            const worker = () => Bun.file(${JSON.stringify(workerPath)}).text();
+            process.on("message", async (message) => {
+              if (!message || typeof message !== "object") return;
+              if (message.type === "health.ping")
+                process.send?.({ type: "health.pong", nonce: message.nonce, sentAt: message.sentAt, pid: process.pid, rscWorker: await worker() });
+              if (message.type === "shutdown") process.exit(0);
+            });
+            process.send?.({ type: "ready", pid: process.pid, replicaIdx: 0, role: "all", upstream: { type: "unix", socketPath: process.env.AKAN_CHILD_SOCKET }, rscWorker: await worker() });
+          },
+        };
+      `,
+    );
+    const readyAnswering = (code: number) =>
+      waitFor(async () => {
+        const res = await fetch(`http://127.0.0.1:${port}/_akan/app/ready`, { headers: statusAuth }).catch(() => null);
+        return res?.status === code ? res : null;
+      }, 8_000);
+
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (bound) => {
+      port = bound;
+      await waitForReady(port);
+      expect(await (await readyAnswering(503)).json()).toMatchObject({
+        ready: false,
+        children: [{ ready: true, rscWorker: "starting" }],
+      });
+      await Bun.write(workerPath, "ready");
+      expect(await (await readyAnswering(200)).json()).toMatchObject({
+        ready: true,
+        children: [{ rscWorker: "ready" }],
+      });
+      await Bun.write(workerPath, "restarting");
+      expect(await (await readyAnswering(503)).json()).toMatchObject({ children: [{ rscWorker: "restarting" }] });
+      expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toBe("ok");
+      await Bun.write(workerPath, "ready");
+      await readyAnswering(200);
+    });
+  }, 30_000);
+
   test("compresses a replica's JSON for the client, and relays one past 4 MiB as it came", async () => {
     const { serverPath, runtimeDir } = await makeRoot("akan-app-json-");
 

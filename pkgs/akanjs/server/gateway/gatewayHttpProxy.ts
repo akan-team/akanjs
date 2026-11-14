@@ -154,13 +154,13 @@ export class GatewayHttpProxy {
 
   // Waits rather than 503s at once: a restarting replica is back within seconds, but a browser stays on a 503 page.
   async #pickReadyFederationChild(req: Request): Promise<ChildState | null> {
-    const ready = this.#children.pickFederationChild();
+    const ready = this.#children.pickRenderingChild();
     if (ready?.upstream) return ready;
     const deadline = performance.now() + this.#config.upstreamWaitMs;
     while (performance.now() < deadline) {
       if (this.#children.stopping || req.signal.aborted || this.#supervisor.crashLoopDetail()) return null;
       await Bun.sleep(50);
-      const child = this.#children.pickFederationChild();
+      const child = this.#children.pickRenderingChild();
       if (child?.upstream) return child;
     }
     return null;

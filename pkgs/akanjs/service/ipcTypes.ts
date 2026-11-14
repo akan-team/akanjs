@@ -5,6 +5,9 @@ export type AkanChildRole = "all" | "federation" | "batch";
 
 export type AkanChildStatus = "starting" | "ready" | "healthy" | "draining" | "unhealthy" | "exited" | "crashed";
 
+/** A replica's RSC worker; `null` on a replica that renders no pages. */
+export type AkanRscWorkerStatus = "starting" | "ready" | "restarting" | "stopped" | null;
+
 export type AkanUpstream = { type: "unix"; socketPath: string } | { type: "tcp"; host: string; port: number };
 
 export interface AkanJobOptions {
@@ -146,6 +149,7 @@ export type AkanIpcMessage =
       wsUpstream?: Extract<AkanUpstream, { type: "tcp" }>;
       healthPath?: string;
       crossSite?: { allowedOrigins: string[]; enabled: boolean };
+      rscWorker?: AkanRscWorkerStatus;
     }
   | { type: "pubsub.publish"; roomId: string; data: object | object[]; origin?: string }
   | { type: "pubsub.deliver"; roomId: string; data: object | object[]; origin?: string }
@@ -161,7 +165,7 @@ export type AkanIpcMessage =
   | { type: "queue.enqueued"; queue: string; name: string; jobId: string }
   | { type: "queue.wake"; queue?: string; name?: string }
   | { type: "health.ping"; nonce: string; sentAt: number }
-  | { type: "health.pong"; nonce: string; sentAt: number; pid?: number }
+  | { type: "health.pong"; nonce: string; sentAt: number; pid?: number; rscWorker?: AkanRscWorkerStatus }
   | { type: "ws.opened"; socketId: string; roomId?: string; pid?: number }
   | { type: "ws.closed"; socketId: string; roomId?: string; pid?: number }
   | { type: "metrics.report"; metrics: AkanMetricsReport; pid?: number }

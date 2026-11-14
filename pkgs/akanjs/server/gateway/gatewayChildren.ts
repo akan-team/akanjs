@@ -1,5 +1,12 @@
 import type { Logger } from "akanjs/common";
-import type { AkanChildRole, AkanChildStatus, AkanIpcMessage, AkanMetricsReport, AkanUpstream } from "akanjs/service";
+import type {
+  AkanChildRole,
+  AkanChildStatus,
+  AkanIpcMessage,
+  AkanMetricsReport,
+  AkanRscWorkerStatus,
+  AkanUpstream,
+} from "akanjs/service";
 import type { RestartSchedule } from "../../common/restartSchedule";
 import type { BuilderMessage } from "../artifact";
 
@@ -13,6 +20,8 @@ export interface ChildState {
   upstream?: AkanUpstream;
   wsUpstream?: Extract<AkanUpstream, { type: "tcp" }>;
   healthPath?: string;
+  //? `undefined` is a replica of an earlier release, which reports no worker; it counts as rendering, as it did then.
+  rscWorker?: AkanRscWorkerStatus;
   metrics: AkanMetricsReport;
   /** Monotonic (`performance.now()`) so sleep/wake wall-clock jumps cannot fake a health timeout. */
   lastPongAtMono?: number;
@@ -30,6 +39,7 @@ export class GatewayChildren {
   readonly #children = new Map<number, ChildState>();
   #rrIdx = 0;
   #federationChildCache: ChildState[] | null = null;
+  #renderingChildCache: ChildState[] | null = null;
   #stopping = false;
 
   constructor(logger: Logger) {
@@ -66,6 +76,7 @@ export class GatewayChildren {
 
   invalidateFederation() {
     this.#federationChildCache = null;
+    this.#renderingChildCache = null;
   }
 
   isUnavailable(child: ChildState): boolean {
@@ -83,8 +94,25 @@ export class GatewayChildren {
     return this.#federationChildCache;
   }
 
+  renderingCandidates() {
+    this.#renderingChildCache ??= this.federationCandidates().filter(
+      (child) => (child.rscWorker ?? "ready") === "ready",
+    );
+    return this.#renderingChildCache;
+  }
+
+  //? Websockets never use the worker and stay pinned to the replica they upgrade on, so they keep plain round-robin.
   pickFederationChild() {
-    const candidates = this.federationCandidates();
+    return this.#roundRobin(this.federationCandidates());
+  }
+
+  //? Falls back rather than refusing: API traffic needs no worker, and a queued page waits for its respawn.
+  pickRenderingChild() {
+    const rendering = this.renderingCandidates();
+    return this.#roundRobin(rendering.length > 0 ? rendering : this.federationCandidates());
+  }
+
+  #roundRobin(candidates: ChildState[]) {
     if (candidates.length === 0) return null;
     const child = candidates[this.#rrIdx % candidates.length];
     this.#rrIdx++;

@@ -66,6 +66,7 @@ export class ParentChannel {
         nonce: message.nonce,
         sentAt: message.sentAt,
         pid: process.pid,
+        rscWorker: this.#webRouter()?.rscWorkerStatus ?? null,
       } satisfies AkanIpcMessage);
     else if (message.type === "log.level") {
       this.#logging.setMinSev(message.minSev);
