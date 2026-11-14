@@ -32,6 +32,7 @@ export type AgentLoopApproval = "allow" | "defer" | {
 export type AgentLoopApprove = (call: AgentWireToolCall, state: {
     tainted: boolean;
     tool: AgentTool;
+    remote?: string;
 }) => PromiseOrObject<AgentLoopApproval>;
 
 export interface AgentLoopBudget {
@@ -45,6 +46,7 @@ export type AgentLoopEvent = {
     call: AgentWireToolCall;
     client?: true;
     question?: true;
+    connect?: string;
 } | {
     type: "compacted";
     replaced: number;
@@ -69,6 +71,7 @@ export type AgentLoopEvent = {
     type: "toolResult";
     result: AgentWireToolResult;
     round: number;
+    view?: AgentLoopView;
 } | {
     type: "usage";
     usage: LlmUsage;
@@ -86,6 +89,7 @@ export interface AgentLoopOptions {
     maxRounds?: number;
     budget?: AgentLoopBudget;
     toolkits?: Record<string, AgentLoopToolkit>;
+    remotes?: readonly AgentLoopRemote[];
     clientTools?: AgentTool[];
     ask?: boolean;
     compact?: {
@@ -97,6 +101,17 @@ export interface AgentLoopOptions {
     meta?: Record<string, string>;
     signal?: AbortSignal;
     onMessage?: (message: AgentWireMessage) => PromiseOrObject<void>;
+}
+
+export interface AgentLoopRemote {
+    name: string;
+    description: string;
+    list(): Promise<AgentTool[] | null>;
+    call(tool: string, args: Record<string, unknown>): Promise<AgentLoopRemoteResult>;
+}
+
+export interface AgentLoopRemoteResult extends Omit<AgentWireToolResult, "id" | "name"> {
+    view?: Omit<AgentLoopView, "args" | "remote" | "tool">;
 }
 
 export type AgentLoopRequest = AgentLoopOptions & ({
@@ -112,6 +127,15 @@ export type AgentLoopStop = "aborted" | "awaiting" | "budget" | "end" | "length"
 export interface AgentLoopToolkit {
     description: string;
     tools: readonly string[];
+}
+
+export interface AgentLoopView {
+    remote: string;
+    tool: string;
+    args: Record<string, unknown>;
+    href?: string;
+    static?: boolean;
+    resourceUri?: string;
 }
 
 export declare class AgentMeter {
