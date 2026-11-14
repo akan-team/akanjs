@@ -9,6 +9,7 @@ import {
   registerLogContextReader,
   round,
 } from "akanjs/common";
+import { markFailureLogged } from "../common/loggedFailure";
 import { SignalFailure } from "./SignalFailure";
 
 let traceEnabledCache: boolean | null = null;
@@ -106,6 +107,14 @@ const requestLineName = "Signal";
 
 export const isRequestLine = (record: LogRecord): boolean =>
   record.name === requestLineName && typeof record.attrs?.status === "number";
+
+//? A page's `redirect()` and `notFound()` arrive as throws, but the host answers them with a 3xx and a 404.
+const routeControlStatus = (error: unknown): number | null => {
+  const { digest, status } = (error ?? {}) as { digest?: unknown; status?: unknown };
+  if (digest === "AKAN_NOT_FOUND") return 404;
+  if (typeof digest !== "string" || !digest.startsWith("AKAN_REDIRECT")) return null;
+  return typeof status === "number" ? status : 307;
+};
 
 interface FlightEntry {
   record: LogRecord;
@@ -236,9 +245,9 @@ export class SignalTrace {
   }
 
   fail(error: unknown): void {
-    this.outcome = "error";
     this.error = error;
-    this.status = SignalFailure.statusOf(error);
+    this.status = (this.origin === "page" ? routeControlStatus(error) : null) ?? SignalFailure.statusOf(error);
+    this.outcome = this.status < 400 ? "ok" : "error";
   }
 
   finalize(): void {
@@ -291,7 +300,10 @@ export class SignalTrace {
     }
     const crashed = failed && (this.status ?? 200) >= 500;
     if (failed) attrs.err = SignalTrace.#describeError(this.error);
-    if (crashed) Object.assign(attrs, SignalFailure.logAttrs(this.error));
+    if (crashed) {
+      Object.assign(attrs, SignalFailure.logAttrs(this.error));
+      markFailureLogged(this.error);
+    }
     Logger.emit({
       level: crashed ? "error" : failed ? "warn" : "info",
       name: requestLineName,

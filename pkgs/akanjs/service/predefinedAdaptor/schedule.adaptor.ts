@@ -1,5 +1,6 @@
 import { hostname } from "node:os";
 import { dayjs } from "akanjs/base";
+import { wasFailureLogged } from "../../common/loggedFailure";
 import { adapt } from "../adapt";
 import { CacheAdaptorRole } from "./role.adaptor";
 
@@ -82,7 +83,7 @@ export class Scheduler
         if (!ran) this.logger.warn(`Schedule ${key} is still running on another instance, skipped`);
         else this.logger.debug(`Schedule ${key} finished ${Date.now() - now}ms`);
       } catch (e) {
-        this.logger.error(`Schedule ${key} error: ${e}`);
+        if (!wasFailureLogged(e)) this.logger.error(`Schedule ${key} error: ${e}`);
       } finally {
         this.lockMap.delete(key);
       }
@@ -117,7 +118,7 @@ export class Scheduler
         const ran = await this.#holding(`interval:${key}`, scheduleTime, { release: false, renew: lock }, callback);
         if (ran) this.logger.debug(`Schedule interval ${key} finished ${Date.now() - now}ms`);
       } catch (e) {
-        this.logger.error(`Schedule interval ${key} error: ${e}`);
+        if (!wasFailureLogged(e)) this.logger.error(`Schedule interval ${key} error: ${e}`);
       } finally {
         this.lockMap.delete(key);
       }
@@ -142,7 +143,7 @@ export class Scheduler
         await callback();
         this.logger.debug(`Schedule timeout ${key} finished ${Date.now() - now}ms`);
       } catch (e) {
-        this.logger.error(`Schedule timeout ${key} error: ${e}`);
+        if (!wasFailureLogged(e)) this.logger.error(`Schedule timeout ${key} error: ${e}`);
       }
     }, scheduleTime);
     this.timeoutMap.set(key, timeout);
@@ -166,7 +167,7 @@ export class Scheduler
         else await callback();
         this.logger.debug(`Schedule init ${key} finished ${Date.now() - now}ms`);
       } catch (e) {
-        this.logger.error(`Schedule init ${key} error: ${e}`);
+        if (!wasFailureLogged(e)) this.logger.error(`Schedule init ${key} error: ${e}`);
       }
     });
   }
@@ -187,7 +188,7 @@ export class Scheduler
         await callback();
         this.logger.debug(`Schedule destroy ${key} finished ${Date.now() - now}ms`);
       } catch (e) {
-        this.logger.error(`Schedule destroy ${key} error: ${e}`);
+        if (!wasFailureLogged(e)) this.logger.error(`Schedule destroy ${key} error: ${e}`);
       }
     });
   }

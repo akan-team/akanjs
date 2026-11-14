@@ -1,12 +1,31 @@
 import { describe, expect, test } from "bun:test";
+import { markFailureLogged } from "../../common/loggedFailure";
 import { Scheduler } from "./schedule.adaptor";
 
 const createScheduler = () => {
   const warnings: string[] = [];
+  const errors: string[] = [];
   const scheduler = new Scheduler();
-  Object.assign(scheduler, { logger: { warn: (m: string) => warnings.push(m), debug: () => {}, error: () => {} } });
-  return { scheduler, warnings };
+  Object.assign(scheduler, {
+    logger: { warn: (m: string) => warnings.push(m), debug: () => {}, error: (m: string) => errors.push(m) },
+  });
+  return { scheduler, warnings, errors };
 };
+
+describe("Scheduler failures", () => {
+  test("writes its own error line only for a failure no request line has logged", async () => {
+    const { scheduler, errors } = createScheduler();
+    const logged = new Error("told by the request line");
+    markFailureLogged(logged);
+    scheduler.registerInit("told", async () => Promise.reject(logged));
+    scheduler.registerInit("untold", async () => Promise.reject(new Error("nobody said")));
+    scheduler.registerDestroy("toldOnDestroy", async () => Promise.reject(logged));
+    await scheduler._runInit();
+    await scheduler._runDestroy();
+
+    expect(errors).toEqual(["Schedule init untold error: Error: nobody said"]);
+  });
+});
 
 describe("Scheduler cron", () => {
   test("registers a job, exposes it by key, and reports its expression", () => {
