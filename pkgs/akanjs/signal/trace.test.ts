@@ -69,17 +69,14 @@ describe("SignalTrace.create", () => {
     expect(SignalTrace.create("userList", "query", "http")).toBeNull();
   });
 
-  test("keeps one traceId for its life, stamped with the time it started rather than first read", () => {
-    const before = Date.now();
+  test("keeps one traceId for its life: 32 hex digits, as W3C Trace Context spells one", () => {
     const trace = new SignalTrace("lazyId", "query", { mode: "context" });
-    const after = Date.now();
     const id = trace.traceId;
 
     expect(trace.traceId).toBe(id);
-    expect(id).toMatch(/^[0-9a-z]+-[0-9a-z]{1,6}$/);
-    const startedAt = Number.parseInt(id.split("-")[0] ?? "", 36);
-    expect(startedAt).toBeGreaterThanOrEqual(before);
-    expect(startedAt).toBeLessThanOrEqual(after);
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(trace.spanId).toMatch(/^[0-9a-f]{16}$/);
+    expect(trace.traceparent).toBe(`00-${id}-${trace.spanId}-00`);
     expect(new SignalTrace("lazyId", "query").traceId).not.toBe(id);
   });
 

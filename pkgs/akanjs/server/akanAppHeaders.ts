@@ -1,4 +1,6 @@
 import { clientPortFromHeaders, TrustedProxy } from "akanjs/common";
+import { TraceContext } from "../common/TraceContext";
+import { RequestTrace } from "../signal/requestTrace";
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
@@ -20,7 +22,18 @@ export interface ProxyClientPeer {
   family: string;
 }
 
-export function makeAkanChildProxyHeaders(req: Request, childIdx: number, peer?: ProxyClientPeer | null): Headers {
+const isTrustedPeer = (peer: ProxyClientPeer | null | undefined) =>
+  peer === null || TrustedProxy.isTrusted(peer?.address);
+
+export const adoptProxyTrace = (req: Request, peer?: ProxyClientPeer | null): RequestTrace =>
+  RequestTrace.adopt(req.headers, () => isTrustedPeer(peer));
+
+export function makeAkanChildProxyHeaders(
+  req: Request,
+  childIdx: number,
+  peer?: ProxyClientPeer | null,
+  trace: RequestTrace = adoptProxyTrace(req, peer),
+): Headers {
   const headers = new Headers(req.headers);
   for (const key of HOP_BY_HOP_HEADERS) headers.delete(key);
   // Only this hop still sees the caller; forwarded headers count only from a trusted proxy peer, else any client
@@ -42,16 +55,17 @@ export function makeAkanChildProxyHeaders(req: Request, childIdx: number, peer?:
   else headers.delete("x-forwarded-port");
   // Security: a replica trusts this hop's host and scheme too, so an untrusted caller's claim of either stops here.
   // Judged by the peer, not by `client.forwarded`: a tunnel agent on loopback names the host but may know no address.
-  const relayed = (name: string) =>
-    peerAddress === null || TrustedProxy.isTrusted(peerAddress) ? headers.get(name) : null;
+  const relayed = (name: string) => (isTrustedPeer(peer) ? headers.get(name) : null);
   headers.set("x-forwarded-host", relayed("x-forwarded-host") ?? host ?? new URL(req.url).host);
   headers.set("x-forwarded-proto", relayed("x-forwarded-proto") ?? (req.url.startsWith("https:") ? "https" : "http"));
   headers.set("x-akan-child-idx", String(childIdx));
   //? The child encodes for the caller and the gateway relays its bytes. Set when absent, or `fetch` supplies its own.
   if (!headers.get("accept-encoding")) headers.set("accept-encoding", "identity");
-  if (!headers.has("x-request-id") && process.env.AKAN_BENCH_SKIP_REQUEST_ID !== "1") {
-    headers.set("x-request-id", crypto.randomUUID());
-  }
+  // Security: the child takes this hop's id as its own, so it gets the one settled here and never the caller's headers.
+  headers.set(TraceContext.traceparentHeader, trace.traceparent);
+  headers.set(TraceContext.requestIdHeader, trace.traceId);
+  if (trace.link) headers.set(TraceContext.linkHeader, trace.link);
+  else headers.delete(TraceContext.linkHeader);
   headers.set("host", AKAN_CHILD_HOST);
   return headers;
 }

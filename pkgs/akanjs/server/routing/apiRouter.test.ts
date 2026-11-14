@@ -4,6 +4,7 @@ import { Logger, type LogRecord, SessionCookies } from "akanjs/common";
 import { getDefaultInjectRegistry, LiveRoomLimitError } from "akanjs/service";
 import { SignalContext } from "akanjs/signal";
 import { websocketRoomContract } from "../../common/websocketContract";
+import { RequestTrace } from "../../signal/requestTrace";
 import { AkanResponse, WebProxyRunner } from "../proxy";
 import type { HttpRoutes, WebsocketRoutes } from "../types";
 import type { ApiRouter as ApiRouterType } from "./apiRouter";
@@ -219,6 +220,69 @@ describe("ApiRouter.buildRoutes", () => {
     expect(plain?.headers.get("connection")).toBe("Upgrade");
     expect((await open({ upgrade: "h2c" }))?.status).toBe(426);
     expect((await open({ upgrade: "WebSocket", connection: "Upgrade" }))?.status).toBe(500);
+  });
+
+  test("gives every request an id on its answer, and takes a caller's own only from a trusted hop", async () => {
+    const inbound = "0af7651916cd43dd8448eb211c80319c";
+    const traceparent = `00-${inbound}-b7ad6b7169203331-01`;
+    const { HostAllowlist } = await import("./hostAllowlist");
+    const seen: (string | undefined)[] = [];
+    const page = () => {
+      seen.push(RequestTrace.current()?.traceId);
+      return new Response("page");
+    };
+    const routes = await buildRoutes({
+      routes: { "/ping": () => new Response("api") } as HttpRoutes,
+      builtinRoutes: { "/mcp": { POST: () => new Response("mcp") } } as unknown as HttpRoutes,
+      renderEnvRoutes: { "/*": page } as HttpRoutes,
+      hostAllowlist: new HostAllowlist(["app.example.com"]),
+    });
+    const idOf = async (headers: Record<string, string>) =>
+      (
+        await (routes["/*"] as RouteFn)(
+          new Request("http://app.example.com/", { headers: { host: "app.example.com", ...headers } }),
+        )
+      ).headers.get("x-request-id");
+
+    try {
+      const minted = await idOf({});
+      SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
+      const forgedTraceparent = await idOf({ traceparent });
+      const forgedRequestId = await idOf({ "x-request-id": inbound });
+      SignalContext.setHttpPeerResolver(() => null);
+      const fromGateway = await idOf({ traceparent, "x-request-id": "f".repeat(32) });
+      const malformed = await idOf({ "x-request-id": "0af7651916cd43dd8448eb211c80319c0" });
+      const refused = await (routes["/*"] as RouteFn)(
+        new Request("http://evil.example/", { headers: { traceparent } }),
+      );
+      const api = await (routes["/api/ping"] as RouteFn)(
+        new Request("http://app.example.com/api/ping", { headers: { host: "app.example.com" } }),
+      );
+      const mcp = await (routes["/mcp"] as { POST: RouteFn }).POST(
+        new Request("http://app.example.com/mcp", { method: "POST", headers: { host: "app.example.com" } }),
+      );
+
+      for (const id of [minted, forgedTraceparent, forgedRequestId, malformed]) {
+        expect(id).toMatch(/^[0-9a-f]{32}$/);
+        expect(id).not.toBe(inbound);
+      }
+      expect(new Set([minted, forgedTraceparent, forgedRequestId, malformed]).size).toBe(4);
+      expect(fromGateway).toBe(inbound);
+      expect(seen).toEqual([minted, forgedTraceparent, forgedRequestId, inbound, malformed] as string[]);
+      expect(refused.status).toBe(403);
+      expect(refused.headers.get("x-request-id")).toBe(inbound);
+      expect([await api.text(), api.headers.get("x-request-id")]).toEqual([
+        "api",
+        expect.stringMatching(/^[0-9a-f]{32}$/),
+      ]);
+      expect([await mcp.text(), mcp.headers.get("x-request-id")]).toEqual([
+        "mcp",
+        expect.stringMatching(/^[0-9a-f]{32}$/),
+      ]);
+      expect(RequestTrace.current()).toBeUndefined();
+    } finally {
+      SignalContext.setHttpPeerResolver(null);
+    }
   });
 });
 

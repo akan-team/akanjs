@@ -10,6 +10,8 @@ import {
   round,
 } from "akanjs/common";
 import { markFailureLogged } from "../common/loggedFailure";
+import { TraceContext } from "../common/TraceContext";
+import { RequestTrace, type TraceParentRef } from "./requestTrace";
 import { SignalFailure } from "./SignalFailure";
 
 let traceEnabledCache: boolean | null = null;
@@ -148,36 +150,66 @@ export class SignalTrace {
   #flightRing: FlightEntry[] | null = null;
   #flightEvicted = 0;
   #finalized = false;
-  readonly #startedAtEpoch: number;
+  /** An id this call was handed but did not take: an untrusted caller's, or the trace that enqueued a job. */
+  link: string | null;
+  readonly #parent: TraceParentRef | null;
   #traceId: string | null = null;
+  #spanId: string | null = null;
 
   constructor(
     endpointKey: string,
     endpointType: string,
-    { mode = "full", origin = "http" }: { mode?: TraceMode; origin?: TraceOrigin } = {},
+    {
+      mode = "full",
+      origin = "http",
+      parent = null,
+    }: { mode?: TraceMode; origin?: TraceOrigin; parent?: TraceParentRef | null } = {},
   ) {
     this.endpointKey = endpointKey;
     this.endpointType = endpointType;
     this.mode = mode;
     this.origin = origin;
     this.startedAt = performance.now();
-    this.#startedAtEpoch = Date.now();
+    this.#parent = parent;
+    this.link = parent?.link ?? null;
   }
 
-  // Spelled on first read: most calls log nothing, and the two base-36 conversions cost a tenth of a bare call.
   get traceId(): string {
-    this.#traceId ??= `${this.#startedAtEpoch.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+    this.#traceId ??= this.#parent?.traceId ?? TraceContext.mintTraceId();
     return this.#traceId;
   }
 
+  get spanId(): string {
+    this.#spanId ??= TraceContext.mintSpanId();
+    return this.#spanId;
+  }
+
+  get parentSpanId(): string | null {
+    return this.#parent?.spanId ?? null;
+  }
+
+  get sampled(): boolean {
+    return this.#parent?.sampled ?? false;
+  }
+
+  get traceparent(): string {
+    return TraceContext.traceparentOf(this.traceId, this.spanId, this.sampled);
+  }
+
   /** `null` when both modes are off. */
-  static create(endpointKey: string, endpointType: string, origin: TraceOrigin): SignalTrace | null {
-    const trace = isTraceEnabled()
-      ? new SignalTrace(endpointKey, endpointType, { mode: "full", origin })
-      : isLogContextEnabled()
-        ? new SignalTrace(endpointKey, endpointType, { mode: "context", origin })
-        : null;
-    if (trace && isFlightRecorderEnabled()) trace.startFlightRecorder();
+  //? A job or a schedule takes no ambient parent: its timer may have been started while a request was being answered.
+  static create(
+    endpointKey: string,
+    endpointType: string,
+    origin: TraceOrigin,
+    parent?: TraceParentRef | null,
+  ): SignalTrace | null {
+    const mode = isTraceEnabled() ? "full" : isLogContextEnabled() ? "context" : null;
+    if (!mode) return null;
+    const opener =
+      parent !== undefined ? parent : origin === "internal" ? null : (als.getStore() ?? RequestTrace.current() ?? null);
+    const trace = new SignalTrace(endpointKey, endpointType, { mode, origin, parent: opener });
+    if (isFlightRecorderEnabled()) trace.startFlightRecorder();
     return trace;
   }
 
@@ -298,6 +330,7 @@ export class SignalTrace {
       const lookups = this.cacheHits + this.cacheMisses;
       if (lookups) attrs.cacheHit = Math.round((this.cacheHits / lookups) * 100) / 100;
     }
+    if (this.link) attrs.link = this.link;
     const crashed = failed && (this.status ?? 200) >= 500;
     if (failed) attrs.err = SignalTrace.#describeError(this.error);
     if (crashed) {
@@ -369,7 +402,7 @@ export const runTraced = async <T>(trace: SignalTrace | null, fn: () => Promise<
 
 registerLogContextReader(() => {
   const trace = als.getStore();
-  if (!trace) return undefined;
+  if (!trace) return RequestTrace.current()?.logContext;
   return {
     traceId: trace.traceId,
     endpoint: trace.endpoint,
@@ -379,6 +412,7 @@ registerLogContextReader(() => {
   };
 });
 refreshLoggerContextGate();
+TraceContext.registerOutboundReader(() => (als.getStore() ?? RequestTrace.current())?.traceparent);
 
 export const traceSpan = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
   const trace = getCurrentTrace();

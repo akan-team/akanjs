@@ -1,7 +1,8 @@
 import path from "node:path";
 import type { Logger } from "akanjs/common";
+import { RequestTrace } from "../../signal/requestTrace";
 import { isTraceEnabled } from "../../signal/trace";
-import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "../akanAppHeaders";
+import { AKAN_CHILD_HOST, adoptProxyTrace, makeAkanChildProxyHeaders, type ProxyClientPeer } from "../akanAppHeaders";
 import { type AssetHeaderOptions, assetHeaders, missingAssetResponse } from "../assetHeaders";
 import { compressResponse, compressStreamResponse, encodedFileResponse } from "../contentEncoding";
 import { ServerLimits } from "../routing/serverLimits";
@@ -68,13 +69,19 @@ export class GatewayHttpProxy {
   }
 
   async proxyHttp(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response> {
+    const peer = server.requestIP(req) ?? undefined;
+    const trace = adoptProxyTrace(req, peer);
+    return RequestTrace.echo(await RequestTrace.run(trace, () => this.#proxyHttp(req, peer, trace)), trace);
+  }
+
+  async #proxyHttp(req: Request, peer: ProxyClientPeer | undefined, trace: RequestTrace): Promise<Response> {
     const child = await this.#pickReadyFederationChild(req);
     if (child?.upstream?.type !== "unix") return this.#respondWithUnavailable(req);
     // Read once: a concurrent request's failure can clear `child.upstream` while this one awaits the child.
     const { socketPath } = child.upstream;
     const url = new URL(req.url);
     const upstreamUrl = `http://akan-child${url.pathname}${url.search}`;
-    const headers = makeAkanChildProxyHeaders(req, child.idx, server.requestIP(req) ?? undefined);
+    const headers = makeAkanChildProxyHeaders(req, child.idx, peer, trace);
     child.metrics.activeRequests = (child.metrics.activeRequests ?? 0) + 1;
     child.metrics.totalRequests = (child.metrics.totalRequests ?? 0) + 1;
     const traced = isTraceEnabled();

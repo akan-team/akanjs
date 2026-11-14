@@ -36,6 +36,7 @@ import type { InternalCls } from "./internal";
 import type { InternalInfo } from "./internalInfo";
 import type { MiddlewareCls } from "./middleware";
 import { MiddlewareChain } from "./middlewareChain";
+import { RequestTrace, type TraceParentRef } from "./requestTrace";
 import { ResolveFieldContext } from "./resolveFieldContext";
 import { RoomKey } from "./roomKey";
 import { SignalFailure } from "./SignalFailure";
@@ -432,8 +433,9 @@ export class SignalContext<
     key: string,
     origin: TraceOrigin,
     fn: () => Promise<T>,
+    parent?: TraceParentRef | null,
   ): Promise<T> {
-    const trace = SignalTrace.create(key, endpointInfo.type, origin);
+    const trace = SignalTrace.create(key, endpointInfo.type, origin, parent);
     return await runTraced(trace, async () => {
       try {
         return await fn();
@@ -455,21 +457,12 @@ export class SignalContext<
     key: string,
     fn: () => Promise<Response | undefined>,
   ): Promise<Response | undefined> {
+    const request = RequestTrace.current() ?? RequestTrace.fresh();
     try {
-      return await SignalContext.run(endpoint, endpointInfo, key, "http", fn);
+      return await SignalContext.run(endpoint, endpointInfo, key, "http", fn, request);
     } catch (error) {
       if (endpointInfo.type === "message" || endpointInfo.type === "pubsub") throw error;
-      if (isExceptionLike(error)) {
-        return new Response(
-          JSON.stringify({
-            ...error.toJSON(),
-            path: endpointInfo.getPath(key),
-            timestamp: new Date().toISOString(),
-          }),
-          { status: error.statusCode, headers: SignalFailure.headersOf(error, error.statusCode) },
-        );
-      }
-      return SignalFailure.response(error, { path: endpointInfo.getPath(key) });
+      return SignalFailure.answer(error, { path: endpointInfo.getPath(key), traceId: request.traceId });
     }
   }
   static async resolveReturn(

@@ -9,6 +9,7 @@ import {
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
 import { CrossSiteGuard, isExceptionLike, SignalContext, SignalFailure, type WebsocketReqData } from "akanjs/signal";
 import { websocketRoomContract } from "../../common/websocketContract";
+import { RequestTrace } from "../../signal/requestTrace";
 import { compressResponse, compressStreamResponse } from "../contentEncoding";
 import type { HmrWsData, HmrWsHub } from "../hmr/wsHub";
 import { copyBunRequestFields, type WebProxyRunner } from "../proxy";
@@ -122,10 +123,28 @@ export class ApiRouter {
       new Set([...endpointEntries.map(([path]) => path), ...Object.keys(renderEnvRoutes ?? {})]),
     );
     const limited = bodyLimits ? ApiRouter.#limitBodies(swept, bodyLimits, countChunkedBodies) : swept;
-    const routed = ApiRouter.#dropForgedForwarding(
-      hostAllowlist ? ApiRouter.#guardHosts(limited, hostAllowlist) : limited,
+    const routed = ApiRouter.#identifyRequests(
+      ApiRouter.#dropForgedForwarding(hostAllowlist ? ApiRouter.#guardHosts(limited, hostAllowlist) : limited),
     );
     return idleTimeout ? ApiRouter.#holdOpen(routed, idleTimeout) : routed;
+  }
+
+  //? Security: by the hop trust the forwarded headers get. Outermost, so a wrapper's own refusal names the request too.
+  static #identifyRequests(routes: NonNullHttpRoutes): NonNullHttpRoutes {
+    return Object.fromEntries(
+      Object.entries(routes).map(([path, route]) => [
+        path,
+        route instanceof Response
+          ? route
+          : ApiRouter.#mapRoute(route, (handler) => (req) => {
+              const trace = RequestTrace.adopt(req.headers, () => SignalContext.isTrustedHop(req));
+              const answer = RequestTrace.run(trace, () => handler(req));
+              return answer instanceof Promise
+                ? answer.then((response) => RequestTrace.echo(response, trace))
+                : RequestTrace.echo(answer, trace);
+            }),
+      ]),
+    ) as NonNullHttpRoutes;
   }
 
   static buildWebsocketHandlers({
