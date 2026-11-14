@@ -18,6 +18,7 @@ import { RscRenderHandler } from "./rscRenderHandler";
 import { RscRenderStats } from "./rscRenderStats";
 import { RscResultCaches } from "./rscResultCaches";
 import { RscRouteDocument } from "./rscRouteDocument";
+import { RscStaticApp } from "./rscStaticApp";
 import { invalidateCachedRscResults } from "./rscWorkerCache";
 
 export { isAkanNotFoundError, isAkanRedirectError } from "./rscRenderControl";
@@ -75,6 +76,13 @@ interface PagePromptRunMsg {
   requestId: string;
   input: PagePromptRunInput;
 }
+interface PagePromptDrawMsg {
+  type: "page-prompt.draw";
+  requestId: string;
+  input: PagePromptRunInput;
+  clientManifest?: ClientManifest;
+  deadlineMs: number;
+}
 interface PagePromptsVisibleMsg {
   type: "page-prompts.visible";
   requestId: string;
@@ -95,6 +103,7 @@ type InMsg =
   | LogLevelMsg
   | PagePromptsMsg
   | PagePromptRunMsg
+  | PagePromptDrawMsg
   | PagePromptsVisibleMsg
   | WebManifestMsg;
 
@@ -114,6 +123,7 @@ export class RscRenderer {
   readonly #stats = new RscRenderStats();
   readonly #caches = new RscResultCaches(this.#logger);
   readonly #flights = new RscFlightRenderer(this.#logger, (message) => this.#send(message));
+  readonly #staticApps = new RscStaticApp(this.#logger, this.#flights);
   readonly #send: (message: unknown) => void;
   readonly #pagePrompts = new RscPagePrompts({
     routes: () => this.#pathRoutes,
@@ -221,6 +231,9 @@ export class RscRenderer {
       case "page-prompt.run":
         void this.#answer(msg.requestId, "page-prompt.result", () => this.#pagePrompts.run(msg.input));
         return;
+      case "page-prompt.draw":
+        void this.#answer(msg.requestId, "page-prompt.draw.result", () => this.#drawPagePrompt(msg));
+        return;
       case "page-prompts.visible":
         void this.#answer(msg.requestId, "page-prompts.visible.result", () => this.#pagePrompts.visible(msg.input));
         return;
@@ -235,6 +248,26 @@ export class RscRenderer {
     const rootLayouts = RouteTreeBuilder.matchFallback(pathname, this.#fallbackRoutes)?.fallbackRoute.renderRootLayouts;
     const manifest = await RscDocumentHead.firstRootValue(rootLayouts ?? [], (render) => render.getLayoutManifest?.());
     return manifest ? toManifestJson(manifest) : null;
+  }
+
+  //? A load that never settles cannot be stopped, only no longer waited on; the render it would feed is aborted.
+  async #drawPagePrompt({ input, clientManifest = this.#clientManifest, deadlineMs }: PagePromptDrawMsg) {
+    const passed = () => new AkanError("rscWorkerFailed", `static app "${input.name}" passed its deadline`);
+    //? Queued behind a restart, the host has already answered this call: its guards and load must not start.
+    if (deadlineMs <= 0) throw passed();
+    const deadline = new AbortController();
+    const timer = setTimeout(() => deadline.abort(), deadlineMs);
+    const expired = new Promise<never>((_, reject) =>
+      deadline.signal.addEventListener("abort", () => reject(passed())),
+    );
+    try {
+      return await Promise.race([
+        this.#pagePrompts.draw(input, (drawing) => this.#staticApps.draw(drawing, clientManifest, deadline.signal)),
+        expired,
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   async #answer(requestId: string, type: string, fn: () => Promise<unknown>): Promise<void> {

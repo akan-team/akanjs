@@ -406,8 +406,8 @@ export default page()
       {
         name: 'getPhoto(src = "prompt")',
         desc: l.trans({
-          en: 'Takes or picks one photo as `{ dataUrl }`, an upright JPEG. `"prompt"` shows a camera-or-library sheet in the native app; cancel returns `undefined`.',
-          ko: '사진 한 장을 찍거나 골라 똑바로 선 JPEG `{ dataUrl }`로 돌려줍니다. `"prompt"`는 네이티브 앱에서 카메라·앨범 선택 시트를 띄우고, 취소하면 `undefined`입니다.',
+          en: 'Takes or picks one photo as `{ dataUrl }`, an upright JPEG. `"prompt"` shows a camera-or-library sheet in the native app; cancel or a denied permission returns `undefined`.',
+          ko: '사진 한 장을 찍거나 골라 똑바로 선 JPEG `{ dataUrl }`로 돌려줍니다. `"prompt"`는 네이티브 앱에서 카메라·앨범 선택 시트를 띄우고, 취소하거나 권한이 거부되면 `undefined`입니다.',
         }),
       },
       {
@@ -427,8 +427,8 @@ export default page()
       {
         name: "checkPermission()",
         desc: l.trans({
-          en: "Asks for the camera, and opens the app settings when it is denied.",
-          ko: "카메라 권한을 요청하고, 거부됐으면 앱 설정을 엽니다.",
+          en: "Asks for the camera and returns the state.",
+          ko: "카메라 권한을 요청하고 그 상태를 돌려줍니다.",
         }),
       },
     ];
@@ -449,8 +449,8 @@ export default page()
       {
         name: "getPosition({ enableHighAccuracy })",
         desc: l.trans({
-          en: "Returns a `Position`. When the permission is denied, opens the settings and returns `undefined`.",
-          ko: "`Position`을 돌려줍니다. 권한이 거부되면 앱 설정을 열고 `undefined`를 돌려줍니다.",
+          en: "Returns a `Position`, or `undefined` when the permission is denied.",
+          ko: "`Position`을 돌려줍니다. 권한이 거부되면 `undefined`입니다.",
         }),
       },
       {
@@ -1301,8 +1301,8 @@ export default StorageUsage;`}
           <Docs.Description>
             <div>
               {l.trans({
-                en: "`useCamera` takes a photo or picks one from the library through the native runtime's camera plugin. In the native app it asks for the camera first and opens the app settings when the user has denied it; in a browser it picks from files.",
-                ko: "`useCamera`는 네이티브 런타임의 camera 플러그인으로 사진을 찍거나 앨범에서 고릅니다. 네이티브 앱에서는 먼저 카메라 권한을 요청하고, 거부된 상태면 앱 설정 화면을 엽니다. 브라우저에서는 파일에서 고릅니다.",
+                en: "`useCamera` takes a photo or picks one from the library through the native runtime's camera plugin; in a browser it picks from files. A denial returns `undefined` without opening the settings, as App Store review requires; only a camera denied before the tap gets a notice whose button opens them.",
+                ko: "`useCamera`는 네이티브 런타임의 camera 플러그인으로 사진을 찍거나 앨범에서 고릅니다. 브라우저에서는 파일에서 고릅니다. 권한이 거부되면 App Store 심사 기준에 따라 설정을 열지 않고 `undefined`를 돌려줍니다. 탭하기 전부터 거부된 카메라일 때만 설정을 여는 버튼이 있는 안내를 띄웁니다.",
               })}
             </div>
             <code className={chip}>
@@ -1425,8 +1425,8 @@ export const TakePhoto = ({ className }: TakePhotoProps) => {
           <Docs.Description>
             <div>
               {l.trans({
-                en: "`useGeoLocation` reads the current position through the native runtime's geolocation plugin, and through `navigator.geolocation` in a browser. It sends the user to the app settings when the permission is denied.",
-                ko: "`useGeoLocation`은 네이티브 런타임의 geolocation 플러그인으로, 브라우저에서는 `navigator.geolocation`으로 현재 위치를 읽습니다. 권한이 거부되면 사용자를 앱 설정으로 보냅니다.",
+                en: "`useGeoLocation` reads the current position through the native runtime's geolocation plugin, and through `navigator.geolocation` in a browser. A denied permission returns `undefined` and leaves the user where they are.",
+                ko: "`useGeoLocation`은 네이티브 런타임의 geolocation 플러그인으로, 브라우저에서는 `navigator.geolocation`으로 현재 위치를 읽습니다. 권한이 거부되면 `undefined`를 돌려주고, 사용자를 다른 화면으로 보내지 않습니다.",
               })}
             </div>
             <code className={chip}>useGeoLocation()</code>
