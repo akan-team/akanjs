@@ -24,6 +24,7 @@ interface DataLoaderOptions<Key, Value, CacheKey> {
   batchScheduleFn?: (callback: () => void) => void;
   /** What a load belongs to, such as its open transaction: a scope's loads batch apart and never touch the cache. */
   scopeFn?: () => object | undefined;
+  /** How many distinct keys one call of the batch function takes (500 by default); a larger queue goes out as several. */
   maxBatchSize?: number;
   name?: string;
 }
@@ -44,6 +45,8 @@ interface Batch<Key, Value, CacheKey> {
 export class DataLoader<Key, Value, CacheKey = Key> {
   static readonly #minSweepSize = 1024;
   static readonly #defaultMaxCacheSize = 10_000;
+  // SQLite refuses a query of about 1,000 OR-ed composite keys (expression depth 1000); a list page holds 500 rows.
+  static readonly #defaultMaxBatchSize = 500;
   readonly name?: string;
   readonly #batchLoadFn: BatchLoadFn<Key, Value>;
   readonly #ttl: number;
@@ -70,7 +73,7 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     this.#cacheKeyFn = options.cacheKeyFn ?? ((key) => key as unknown as CacheKey);
     this.#batch = options.batch !== false;
     this.#batchScheduleFn = options.batchScheduleFn ?? ((callback) => queueMicrotask(callback));
-    this.#maxBatchSize = Math.max(1, Math.floor(options.maxBatchSize ?? Number.POSITIVE_INFINITY));
+    this.#maxBatchSize = Math.max(1, Math.floor(options.maxBatchSize ?? DataLoader.#defaultMaxBatchSize));
     this.#copy = options.copy ?? null;
     this.#scopeFn = options.scopeFn ?? null;
     this.name = options.name;

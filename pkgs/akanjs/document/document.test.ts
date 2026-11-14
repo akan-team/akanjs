@@ -1128,6 +1128,42 @@ describe("data loaders", () => {
     expect(second).not.toBe(first);
   });
 
+  test("DataLoader sends 500 distinct keys a batch unless told otherwise, and answers each caller its own key", async () => {
+    const sizes: number[] = [];
+    const answer = async (keys: readonly string[]) => {
+      sizes.push(keys.length);
+      if (keys.includes("fails")) throw new Error("store down");
+      return keys.map((key) => ({ key }));
+    };
+    const keys = Array.from({ length: 1201 }, (_, index) => `k${index}`);
+    const asked = keys.flatMap((key, index) =>
+      index % 4 ? [key] : [key, keys[(index * 7 + 650) % keys.length] ?? key],
+    );
+
+    const loaded = (await new DataLoader(answer).loadMany(asked)) as { key: string }[];
+
+    expect(sizes).toEqual([500, 500, 201]);
+    expect(loaded.map(({ key }) => key)).toEqual(asked);
+    expect(new Set(loaded).size).toBe(keys.length);
+
+    sizes.length = 0;
+    const split = await new DataLoader(answer, { maxBatchSize: 2 }).loadMany(["a", "b", "a", "fails", "c", "d", "b"]);
+    expect(sizes).toEqual([2, 2, 1]);
+    expect(split.map((value) => (value instanceof Error ? value.message : value.key))).toEqual([
+      "a",
+      "b",
+      "a",
+      "store down",
+      "store down",
+      "d",
+      "b",
+    ]);
+
+    sizes.length = 0;
+    await new DataLoader(answer, { maxBatchSize: Number.POSITIVE_INFINITY }).loadMany(keys);
+    expect(sizes).toEqual([keys.length]);
+  });
+
   test("DataLoader remembers nothing past its own batch unless a cache is declared", async () => {
     let calls = 0;
     const loader = new DataLoader<string, string>(async (keys) => {
