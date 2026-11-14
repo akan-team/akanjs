@@ -1,19 +1,23 @@
-import type { ContextBlock, SurfaceView } from "use-agentic";
+import type { ContextBlock, PublishedResource, PublishedScope, SurfaceView } from "use-agentic";
 import type { StoreInstance } from "../storeInstance";
 import { StoreRegistry } from "../storeRegistry";
 import { AgentBridge } from "./AgentBridge";
+import { AgentInline } from "./AgentInline";
 import { ensureStoreSurface } from "./StoreSurfaceSource";
 
 /** A turn's default context: route, on-screen scopes, and live keys (one-token values inline, the rest by name). */
 export class AgentContext {
-  //? Security: an id or an enum member is one short token. A longer string, or one with a space in it, is free text
-  //? that whoever wrote the record or the link chose, and the model reads that through `readState`, as page content.
-  static readonly #token = /^[A-Za-z0-9._-]{0,40}$/;
-  static readonly #elided = "…";
   static readonly withheldNote = "Free text is left out. Call readState(key) with a key of `withheld` to read it.";
+  static readonly screenNote =
+    "Labels left out are text on the page. Call readScreen with `section` set to a scope's path to read them.";
 
   static of(): AgentContext {
     return new AgentContext(StoreRegistry.instance, ensureStoreSurface().bridge);
+  }
+
+  /** A pathname as the route block carries it: a segment of free text, or one past the twelfth, reads `…`. */
+  static routePath(pathname: string): string {
+    return AgentInline.path(pathname);
   }
 
   readonly #instance: StoreInstance;
@@ -26,23 +30,16 @@ export class AgentContext {
 
   blocks(surface: SurfaceView, view: string[] = []): ContextBlock[] {
     const { scopes, resources } = surface.snapshot();
-    return [
-      this.#routeBlock(),
-      ...(scopes.length || resources.length ? [{ kind: "screen", scopes, resources }] : []),
-      ...this.#liveBlock(view.join(".")),
-    ];
+    return [this.#routeBlock(), ...AgentContext.#screenBlock(scopes, resources), ...this.#liveBlock(view.join("."))];
   }
 
   #routeBlock(): ContextBlock {
     const state = this.#instance.get();
     const [pathKey, paramsKey, searchKey] = AgentBridge.routeKeys;
     const pathname = String(state[pathKey] ?? "");
-    const path = pathname
-      .split("/")
-      .map((segment) => (AgentContext.#token.test(segment) ? segment : AgentContext.#elided))
-      .join("/");
-    const params = AgentContext.#tokensOf(state[paramsKey]);
-    const searchParams = AgentContext.#tokensOf(state[searchKey]);
+    const path = AgentInline.path(pathname);
+    const params = AgentInline.record(state[paramsKey]);
+    const searchParams = AgentInline.record(state[searchKey]);
     const withheld = [
       ...(path === pathname ? [] : [pathKey]),
       ...(params.whole ? [] : [paramsKey]),
@@ -57,16 +54,42 @@ export class AgentContext {
     };
   }
 
-  static #tokensOf(record: unknown): { inline: { [key: string]: string | string[] }; whole: boolean } {
-    const entries = record && typeof record === "object" ? Object.entries(record) : [];
-    const kept = entries.filter(
-      (entry): entry is [string, string | string[]] =>
-        AgentContext.#token.test(entry[0]) &&
-        (Array.isArray(entry[1]) ? entry[1] : [entry[1]]).every(
-          (item) => typeof item === "string" && AgentContext.#token.test(item),
-        ),
-    );
-    return { inline: Object.fromEntries(kept), whole: kept.length === entries.length };
+  //? A `Load` scope's label is its record's title and its `items` are its rows' titles, both drawn inside the scope,
+  //? so `readScreen` returns what is left out here. A zone's label is a prop the app wrote and no read returns it,
+  //? and neither does one return a value published with `st.expose` or `st.useState`: those ride as they are.
+  static #screenBlock(scopes: PublishedScope[], resources: PublishedResource[]): ContextBlock[] {
+    if (!scopes.length && !resources.length) return [];
+    const lists = new Set(scopes.map((scope) => `${scope.path}.items`));
+    let whole = true;
+    const shown = scopes.map(({ path, label, kind }) => {
+      const kept = label !== undefined && (kind === "zone" || AgentInline.isToken(label));
+      if (label !== undefined && !kept) whole = false;
+      return { path, ...(kept ? { label } : {}), ...(kind ? { kind } : {}) };
+    });
+    const listed = resources.map((resource) => {
+      const rows = lists.has(resource.name) ? AgentContext.#rowsOf(resource.value) : null;
+      if (!rows) return resource;
+      if (!rows.whole) whole = false;
+      return { ...resource, value: rows.value };
+    });
+    return [{ kind: "screen", scopes: shown, resources: listed, ...(whole ? {} : { note: AgentContext.screenNote }) }];
+  }
+
+  static #rowsOf(value: unknown): { value: unknown; whole: boolean } | null {
+    const items = value && typeof value === "object" && "items" in value ? value.items : null;
+    if (!Array.isArray(items)) return null;
+    let whole = true;
+    const rows = items.flatMap((item: { id?: unknown; label?: unknown } | null) => {
+      if (!AgentInline.isToken(item?.id)) {
+        whole = false;
+        return [];
+      }
+      const labelled = item?.label !== undefined;
+      const kept = labelled && AgentInline.isToken(item.label);
+      if (labelled && !kept) whole = false;
+      return [{ id: item.id, ...(kept ? { label: item.label } : {}) }];
+    });
+    return { value: { ...value, items: rows }, whole };
   }
 
   #liveBlock(viewKey: string): ContextBlock[] {
@@ -89,7 +112,7 @@ export class AgentContext {
     if (value === null) return null;
     switch (typeof value) {
       case "string":
-        return AgentContext.#token.test(value) ? value : undefined;
+        return AgentInline.isToken(value) ? value : undefined;
       case "number":
       case "boolean":
         return value;
