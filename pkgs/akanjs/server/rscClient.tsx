@@ -5,7 +5,12 @@ import { AkanError } from "../base/akanError";
 import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
-import { type FlightLineRowHandler, type FlightRowPass, flightRowPassOf } from "./flightRowReader";
+import {
+  type FlightLineRowHandler,
+  type FlightRowPass,
+  flightRowPassOf,
+  flightRowsEndWatcher,
+} from "./flightRowReader";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanRouterStateV1,
@@ -37,8 +42,11 @@ import {
   createAkanSegmentCacheTree,
   createRscNavigationCacheNode,
   deleteRscCacheEntryIfCurrent,
+  mountsNewRouteLevels,
+  NEW_ROUTE_LEVEL_WAIT_MS,
   observeRscNavigationNode,
   type RscNavigationCacheNode,
+  settledOrAfter,
 } from "./rscNavigationState";
 import { RscParkedRedirect } from "./rscParkedRedirect";
 import { RscScrollRestoration } from "./rscScrollRestoration";
@@ -283,11 +291,18 @@ async function fetchRsc(
     if (!applies && node && pendingRequest) parkedRedirect.park({ node, location, replace });
     else navigateAfterRscRedirect(location, replace);
   };
-  const thenable = thenableOf(flightRowPassOf(stream, rscRedirectRowGuard({ onRedirect: handleRedirect })));
+  let endStream = () => {};
+  const streamed = new Promise<void>((resolve) => {
+    endStream = resolve;
+  });
+  const thenable = thenableOf(
+    flightRowPassOf(stream, rscRedirectRowGuard({ onRedirect: handleRedirect }), flightRowsEndWatcher(endStream)),
+  );
   const node = createRscNavigationCacheNode({
     href,
     thenable,
     routerState: responseResult.notFound ? null : readAkanRouterStateResponseHeader(res.headers),
+    streamed,
   });
   nodeRef.current = node;
   await dictionaryReady;
@@ -615,6 +630,8 @@ function installNavigate(
       });
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await nextNode.thenable;
+      if (!notFound && mountsNewRouteLevels(currentRouterState, nextNode.routerState))
+        await settledOrAfter(nextNode.streamed, NEW_ROUTE_LEVEL_WAIT_MS);
       //? A replay stays keyed by its own href alone, where a redirect or a failure deletes it, never by the fragment it serves.
       const committed = commitLatestRscNavigation({
         cache: notFound || replayed ? undefined : caches.pages,

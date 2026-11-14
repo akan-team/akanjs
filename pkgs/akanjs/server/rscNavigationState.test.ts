@@ -10,12 +10,14 @@ import {
   createRscPatchNavigationCacheNode,
   deleteRscCacheEntryIfCurrent,
   forgetRscPatchesOfLostBases,
+  mountsNewRouteLevels,
   observeRscNavigation,
   observeRscNavigationNode,
   type RscNavigationCacheNode,
   rememberRscCacheEntry,
   rememberRscCacheNode,
   resolveCachedRscPatchNavigation,
+  settledOrAfter,
 } from "./rscNavigationState";
 
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -768,5 +770,69 @@ describe("RSC navigation state helpers", () => {
         partialCommitEnabled: false,
       }),
     ).toEqual({ status: "rejected", reason: "guard-disabled" });
+  });
+});
+
+describe("newly mounted route levels", () => {
+  const stateOf = (layouts: string[], page: string, root = "/"): AkanRouterStateV1 => ({
+    version: 1,
+    href: `https://example.test${page}`,
+    routeId: page,
+    segments: [
+      { kind: "root-layout", path: root, key: `root:${root}:0` },
+      ...layouts.map((layout, index) => ({
+        kind: "layout" as const,
+        path: layout,
+        key: `layout:${layout}:${index + 1}`,
+      })),
+      { kind: "page", path: page, key: `page:${page}:${layouts.length + 1}` },
+    ],
+  });
+
+  test("a page change under the same layouts mounts no level", () => {
+    expect(mountsNewRouteLevels(stateOf(["/docs"], "/docs/a"), stateOf(["/docs"], "/docs/b"))).toBe(false);
+    expect(mountsNewRouteLevels(stateOf(["/docs"], "/docs/a"), stateOf(["/docs"], "/docs/a"))).toBe(false);
+  });
+
+  test("a changed layout or root layout mounts the levels below it", () => {
+    expect(mountsNewRouteLevels(stateOf(["/(app)"], "/home"), stateOf(["/(auth)"], "/signin"))).toBe(true);
+    expect(mountsNewRouteLevels(stateOf([], "/a"), stateOf(["/docs"], "/docs/a"))).toBe(true);
+    expect(mountsNewRouteLevels(stateOf([], "/a"), stateOf([], "/admin", "/admin"))).toBe(true);
+  });
+
+  test("a page with nothing on screen to keep mounts every level below its root", () => {
+    expect(mountsNewRouteLevels(null, stateOf(["/docs"], "/docs/a"))).toBe(true);
+    expect(mountsNewRouteLevels(stateOf(["/docs"], "/docs/a"), null)).toBe(false);
+  });
+
+  test("settledOrAfter resolves with the promise, at the cap, or on a rejection", async () => {
+    const started = performance.now();
+    await settledOrAfter(new Promise((resolve) => setTimeout(resolve, 5)), 5_000);
+    expect(performance.now() - started).toBeLessThan(1_000);
+
+    let settled = false;
+    const capped = settledOrAfter(new Promise(() => {}), 20).then(() => {
+      settled = true;
+    });
+    await tick();
+    expect(settled).toBe(false);
+    await capped;
+    expect(settled).toBe(true);
+
+    await settledOrAfter(Promise.reject(new Error("dropped")), 5_000);
+    await settledOrAfter(undefined, 5_000);
+  });
+
+  test("a node keeps the promise of its response's end", () => {
+    const streamed = Promise.resolve();
+    const node = createRscNavigationCacheNode({
+      href: "/a",
+      thenable: Promise.resolve("a"),
+      routerState: null,
+      streamed,
+    });
+
+    expect(node.streamed).toBe(streamed);
+    expect("streamed" in createRscNavigationCacheNode({ href: "/a", thenable: 1, routerState: null })).toBe(false);
   });
 });
