@@ -20,19 +20,14 @@ interface TunnelOption {
   port?: number;
 }
 
-const tunnelAuth = (
-  app: AppExecutor,
-  repoName: string,
-): Pick<ConnectConfig, "privateKey" | "passphrase" | "password"> => {
+const tunnelAuth = (purpose: string): Pick<ConnectConfig, "privateKey" | "passphrase" | "password"> => {
   const keyPath = tunnelEnv.get("SSH_TUNNEL_PRIVATE_KEY_PATH");
   const passphrase = tunnelEnv.get("SSH_TUNNEL_PASSPHRASE");
   if (keyPath) return { privateKey: readFileSync(keyPath), ...(passphrase ? { passphrase } : {}) };
   if (process.env.SSH_TUNNEL_PASSWORD) return { password: process.env.SSH_TUNNEL_PASSWORD };
-  app.logger.warn(
-    "The SSH tunnel uses the default shared credential. " +
-      "Set SSH_TUNNEL_PRIVATE_KEY_PATH to a key (or SSH_TUNNEL_PASSWORD) once the cluster's tunnel endpoint accepts it.",
+  throw new Error(
+    `${purpose} needs an SSH credential: export SSH_TUNNEL_PRIVATE_KEY_PATH (with SSH_TUNNEL_PASSPHRASE if the key has one) in the shell, or set SSH_TUNNEL_PASSWORD.`,
   );
-  return { password: repoName };
 };
 
 const tunnelHostVerifier = (app: AppExecutor, hostId: string, onRefusal: (reason: string) => void) => {
@@ -75,7 +70,8 @@ export const createTunnel = async (
   const baseDevEnv = WorkspaceExecutor.getBaseDevEnv();
   WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, `The ${service} tunnel`);
   for (const line of tunnelEnv.ignored()) app.logger.warn(line);
-  const { serveDomain, repoName } = baseDevEnv;
+  const auth = tunnelAuth(`The ${service} tunnel for ${app.name}-${environment}`);
+  const { serveDomain } = baseDevEnv;
   const host = `${app.name}-${environment}.${serveDomain}`;
   //? RFC 6761 makes *.localhost loopback, but only macOS resolves it; glibc without systemd-resolved and Windows answer ENOTFOUND
   const sshHost = host.endsWith(".localhost") ? "localhost" : host;
@@ -101,7 +97,7 @@ export const createTunnel = async (
         host: sshHost,
         port: sshPort,
         username: process.env.SSH_TUNNEL_USERNAME ?? "root",
-        ...tunnelAuth(app, repoName),
+        ...auth,
         hostVerifier: tunnelHostVerifier(app, `${sshHost}:${sshPort}`, (reason) => {
           refusal = reason;
         }),
