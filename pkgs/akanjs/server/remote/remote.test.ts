@@ -303,6 +303,7 @@ const tools = [
     annotations: { readOnlyHint: true },
     _meta: { ui: { resourceUri: "ui://shop/apps/showOrder" }, "akanjs/static": true },
   },
+  { name: "cancelOrder", annotations: { readOnlyHint: false }, _meta: { "akanjs/static": true } },
 ];
 const serverOf = (valid: () => string, call: (name: string, meta: unknown) => unknown = () => ({ content: [] })) =>
   fetcherOf((seen) => {
@@ -445,7 +446,7 @@ describe("RemoteSource", () => {
       },
     };
     const source = sourceOf(fetcher, access);
-    expect((await source.list())?.length).toBe(3);
+    expect((await source.list())?.length).toBe(4);
     expect(renewals).toBe(1);
     valid = "third";
     expect(await source.call("orderList", {})).toEqual({
@@ -459,7 +460,8 @@ describe("RemoteSource", () => {
       showOrder: {
         content: [{ type: "text", text: "Order o1\nOpen the full screen: https://shop.example.com/order/o1" }],
       },
-      orderList: { content: [{ type: "text", text: "Open the full screen: https://evil.example.net/x" }] },
+      orderList: { content: [{ type: "text", text: "Open the full screen: https://shop.example.com/x" }] },
+      cancelOrder: { content: [], structuredContent: { href: "https://mail.example.org/order/o1" } },
       refundOrder: {
         content: [{ type: "text", text: "Not allowed." }],
         isError: true,
@@ -478,6 +480,14 @@ describe("RemoteSource", () => {
       resourceUri: "ui://shop/apps/showOrder",
     });
     expect((await source.call("orderList", {})).view).toBeUndefined();
+    expect((await source.call("cancelOrder", {})).view).toEqual({ static: true });
+    answers.cancelOrder = { content: [], structuredContent: { href: "https://ann:pw@shop.example.com/order/o1" } };
+    expect((await source.call("cancelOrder", {})).view).toEqual({ static: true });
+    answers.cancelOrder = { content: [], structuredContent: { href: "/order/o2" } };
+    expect((await source.call("cancelOrder", {})).view).toEqual({
+      static: true,
+      href: "https://shop.example.com/order/o2",
+    });
     expect(await source.call("refundOrder", {})).toEqual({ error: "Not allowed.", code: "forbidden" });
   });
 
@@ -506,6 +516,7 @@ describe("RemoteSource", () => {
     expect(metas).toEqual([{ "akanjs/render": "html" }]);
     expect(await source.screen("refundOrder", { id: "o1" })).toBeNull();
     expect(await source.screen("orderList", {})).toBeNull();
+    expect(await source.screen("cancelOrder", { id: "o1" })).toBeNull();
     expect(metas).toHaveLength(1);
   });
 

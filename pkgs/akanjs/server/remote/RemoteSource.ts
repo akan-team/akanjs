@@ -169,7 +169,7 @@ export class RemoteSource implements AgentLoopRemote {
     if (!candidate) return undefined;
     const origin = new URL(this.#props.url).origin;
     const url = URL.parse(candidate, origin);
-    return url && url.origin === origin ? url.href : undefined;
+    return url && url.origin === origin && !url.username && !url.password ? url.href : undefined;
   }
 
   async #with<T>(run: (mcp: RemoteMcp) => Promise<T>): Promise<T | null> {
