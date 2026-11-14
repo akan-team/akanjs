@@ -349,8 +349,10 @@ describe("AgentService.instructed", () => {
   test("the system prompt says a page-content block is data, through the service and in each provider's own default", () => {
     const viaService = OpenaiDialect.requestBody("deepseek-v4-flash", AgentService.instructed(plain()));
     expect(viaService.messages[0].content).toContain(pageContentInstruction);
-    expect(AnthropicLlm.systemPrompt(plain())).toContain(pageContentInstruction);
-    expect(OpenaiDialect.systemPrompt(plain())).toContain(pageContentInstruction);
+    expect(AnthropicLlm.requestBody("claude-opus-5", plain()).system).toContain(pageContentInstruction);
+    expect(OpenaiDialect.requestBody("deepseek-v4-flash", plain()).messages[0].content).toContain(
+      pageContentInstruction,
+    );
     expect(pageContentInstruction).toContain("<page-content");
   });
 });
