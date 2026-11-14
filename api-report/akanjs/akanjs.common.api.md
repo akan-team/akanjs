@@ -682,6 +682,7 @@ export interface FetchPolicy<_Returns = unknown> {
     timeout?: false | number;
     signal?: AbortSignal;
     onResync?: () => void;
+    onRefused?: (error: unknown) => void;
     retry?: RetryPolicy | false;
     idempotencyKey?: string;
     duringRender?: boolean;
@@ -1479,6 +1480,8 @@ export interface WebsocketHeartbeatRequest {
     data: [
     ];
 }
+
+export declare const addressBlockOf: (address: string) => string;
 
 export declare const akanLocalePrefixes: readonly [
     "always",

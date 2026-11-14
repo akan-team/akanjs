@@ -491,11 +491,15 @@ export type EndpointInfoParts<E> = E extends EndpointInfo<infer ReqType, infer S
 } : EndpointInfoEmptyParts;
 
 export declare class EndpointRateLimit {
+    static readonly defaultSubscribePerSocket: WindowBudget;
+    static readonly defaultSubscribePerCaller: WindowBudget;
     static configure(setting: RateLimitSetting | false): void;
     static applyEnv(value: string | undefined, environment: string): void;
     static reset(): void;
+    static subscribeBudgetOf(per: keyof SubscribeRateSetting): WindowBudget | null;
     static budgetOf(key: string, endpointInfo: EndpointInfo): ResolvedBudget | null;
     static admit(context: SignalContext, phase: "account" | "ip"): Promise<void> | undefined;
+    static callerOf(context: SignalContext): null | string;
 }
 
 export type EndpointType = "message" | "mutation" | "pubsub" | "query";
@@ -1265,6 +1269,7 @@ export interface RateLimitSetting {
         [key: string]: Partial<RateLimitBudget> | false;
     };
     accountKey?: (account: unknown) => null | string | undefined;
+    subscribe?: SubscribeRateSetting | false;
 }
 
 export declare class Req implements InternalArg {
@@ -1790,6 +1795,11 @@ export interface StatusException {
     is(error: unknown, ...codes: string[]): error is Exception;
 }
 
+export interface SubscribeRateSetting {
+    perSocket?: Omit<RateLimitBudget, "by"> | false;
+    perCaller?: Omit<RateLimitBudget, "by"> | false;
+}
+
 export declare class Timeout extends Timeout_base {
     use(): Promise<(context: SignalContext, next: () => Promise<unknown>) => Promise<unknown>>;
 }
@@ -1843,6 +1853,7 @@ export type WebsocketReqData = {
     data: unknown[];
     subscribe?: boolean;
     since?: WebsocketRoomCursor;
+    token?: number;
 };
 
 export type WebsocketResData = WebsocketAuthAck | WebsocketMessageData | WebsocketPublishData | WebsocketResyncData | WebsocketSubscribeAck;
@@ -2831,4 +2842,6 @@ interface WebSocketRequest {
     data: unknown[];
     eventType: WebSocketEventType;
 }
+
+type WindowBudget = Omit<ResolvedBudget, "by">;
 ```

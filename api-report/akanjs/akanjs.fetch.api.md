@@ -1132,6 +1132,7 @@ interface RoomSubscription {
     data: unknown[];
     handleEvent: (data: unknown) => void;
     handleResync?: () => void;
+    handleRefused?: (error: unknown) => void;
 }
 
 type ServerInitShape<RefName extends string, QueryArgs, CapRefName extends string, LightObj, InsightObj, Sort> = SliceMeta & {

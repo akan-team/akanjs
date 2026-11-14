@@ -1,7 +1,15 @@
 import type { AkanWebConfig, AkanWebOption } from "akanjs";
 import { AkanError, type BackendEnv, type BaseEnv, getApiPrefix, getEnv, getWsPrefix } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import type { Adaptor, AdaptorCls, DatabaseConfig, Service, ServiceCls, SolidConfig } from "akanjs/service";
+import {
+  type Adaptor,
+  type AdaptorCls,
+  type DatabaseConfig,
+  LiveRoomLimit,
+  type Service,
+  type ServiceCls,
+  type SolidConfig,
+} from "akanjs/service";
 import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { EndpointRateLimit } from "../signal/endpointRateLimit";
@@ -167,6 +175,7 @@ export class AkanServer {
     this.openapi = options?.openapi ?? this.openapi;
     // Each lib's `option.ts` in mount order, the app's last, and an option passed here over all of them.
     EndpointRateLimit.reset();
+    LiveRoomLimit.reset();
     SessionRefresh.use(null);
     libs.forEach((lib) => {
       const mcp = lib.option.getMcp(this.env);
@@ -176,10 +185,13 @@ export class AkanServer {
       if (crossSite !== undefined) CrossSiteGuard.configure(crossSite);
       const rateLimit = lib.option.getRateLimit(this.env);
       if (rateLimit !== undefined) EndpointRateLimit.configure(rateLimit);
+      const liveRoomLimit = lib.option.getLiveRoomLimit();
+      if (liveRoomLimit) LiveRoomLimit.configure(liveRoomLimit);
       const sessionRefresh = lib.option.getSessionRefresh();
       if (sessionRefresh !== undefined) SessionRefresh.use(sessionRefresh);
     });
     EndpointRateLimit.applyEnv(process.env.AKAN_RATE_LIMIT, getEnv().environment);
+    LiveRoomLimit.applyEnv();
     this.setMcp(options?.mcp ?? this.mcp);
     this.serverMode = serverMode;
     // `AKAN_MODULES` is how a gateway hands its own `modules` option to the child that mounts the container.

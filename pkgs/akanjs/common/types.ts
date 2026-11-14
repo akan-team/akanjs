@@ -29,6 +29,11 @@ export interface FetchPolicy<_Returns = unknown> {
    */
   onResync?: () => void;
   /**
+   * `pubsub` only: called once when the server refused the room for a limit (429), with the error it sent; the room is
+   * dropped, so a reconnect does not send it again, and subscribing anew tries again.
+   */
+  onRefused?: (error: unknown) => void;
+  /**
    * Tries again when the server is unreachable, restarting (502/503), too slow (504) or limiting (429, after its
    * Retry-After). A mutation retries under one `Idempotency-Key`, which the server runs once; `false` turns a client's
    * default off.

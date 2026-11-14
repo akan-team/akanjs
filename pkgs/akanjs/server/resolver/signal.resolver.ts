@@ -24,7 +24,7 @@ import {
   serialize,
 } from "akanjs/constant";
 import { DictionaryRegistry } from "akanjs/dictionary";
-import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey, type QueryFieldMap } from "akanjs/document";
+import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey } from "akanjs/document";
 import type {
   AkanJob,
   AkanJobOptions,
@@ -59,6 +59,7 @@ import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "..
 import { invalidSignal as invalid } from "./invalidSignal";
 import { LivePause } from "./livePause";
 import { PendingSubscribes } from "./PendingSubscribes";
+import { RoomAdmission } from "./roomAdmission";
 import { SliceCrud } from "./sliceCrud";
 import { websocketOf } from "./websocketOf";
 
@@ -526,12 +527,6 @@ export class SignalResolver {
       }
     }
   }
-  // Routing reads it only for array paths: a bare value on an array field means membership, not equality.
-  static #queryFieldsOf(live: LiveRegistry, refName: string): QueryFieldMap {
-    const sliceCls = live.sliceCls.get(refName);
-    const doc = sliceCls?.srv.db?.doc as { [FIELD_META]?: QueryFieldMap } | undefined;
-    return doc?.[FIELD_META] ?? {};
-  }
   //? A call still running when its socket closes finishes after `handleWsClose`, which ran every cleanup it knew of.
   static #closedWs = new WeakSet<Bun.ServerWebSocket<unknown>>();
   static #pendingSubscribes = new PendingSubscribes();
@@ -676,21 +671,12 @@ export class SignalResolver {
                   }
                   const roomId = liveOption ? context.getLiveRoomId(key, query) : baseRoomId;
                   const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
-                  if (liveOption && !roomCtxMap.has(roomId))
-                    live.syncHub.join({
-                      refName: liveOption.refName,
-                      roomId,
-                      query: query as never,
-                      fallback: liveOption.fallback,
-                      payload: liveOption.payload,
-                      fields: SignalResolver.#queryFieldsOf(live, liveOption.refName),
-                    });
-                  roomCtxMap.set(roomId, context);
+                  RoomAdmission.admit(ws, roomCtxMap, roomId, context, live, query);
                   SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
                   //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
                   const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
                   const replay = isBinaryRoom ? null : SignalResolver.#roomReplay;
-                  const joined = await SignalResolver.#awaitJoin(ws, roomId, context, websocket, replay);
+                  const joined = await SignalResolver.#awaitJoin(ws, roomId, context, websocket, replay, live);
                   if (!joined) return unsubscribed;
                   ws.subscribe(roomId);
                   //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
@@ -822,12 +808,16 @@ export class SignalResolver {
     context: SignalContext,
     websocket: WebsocketAdaptor,
     replay: RoomReplay | null,
+    live: LiveRegistry,
   ) {
     replay?.watch(roomId);
     const cursor = replay?.cursor(roomId);
     SignalResolver.#unacked.add(context);
     try {
       await websocket.joinRoom(ws, roomId, { live: context.endpointInfo.signalOption.live?.refName });
+    } catch (error) {
+      SignalResolver.#leaveWsRoom(ws, roomId, context as SignalContext<WebSocketExecutionContext>, websocket, live);
+      throw error;
     } finally {
       SignalResolver.#unacked.delete(context);
     }
@@ -865,6 +855,7 @@ export class SignalResolver {
     const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws);
     if (!roomCtxMap || roomCtxMap.get(roomId) !== roomCtx) return false;
     roomCtxMap.delete(roomId);
+    RoomAdmission.release(ws, [roomId]);
     if (roomCtxMap.size === 0) SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
     ws.unsubscribe(roomId);
     SignalResolver.#leaveRoom(roomId, live);
@@ -882,6 +873,7 @@ export class SignalResolver {
     const contexts = [...(roomCtxMap?.values() ?? []), ...(SignalResolver.#liveWsMessageCtx.get(ws) ?? [])];
     //? Before the cleanup is awaited, so an unsubscribe or an auth recheck still running finds no room left to leave.
     SignalResolver.#liveWsPubsubRoomCtx.delete(ws);
+    RoomAdmission.release(ws, roomCtxMap?.keys() ?? []);
     SignalResolver.#liveWsMessageCtx.delete(ws);
     await SignalResolver.#runLifecycleHandlers(contexts, ["unsubscribe", "disconnect"]);
     // The routing table must hear about a close too: a room nobody is in still costs an evaluation on every write.
