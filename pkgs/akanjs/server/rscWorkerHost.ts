@@ -14,6 +14,7 @@ import { MetricAggregate } from "./metrics/metricAggregate";
 import { type RscAdoptedBundle, RscHostReloads, type RscWorkerReloadInput } from "./rscHostReloads";
 import type { RscRedirectMethod, RscRedirectStatus, RscRenderResult } from "./rscHostRenderStream";
 import { RscHostRequests } from "./rscHostRequests";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import type { RscPagePromptDrawn } from "./rscStaticApp";
 import { type RscProcess, RscWorkerProcess, type RscWorkerStatus } from "./rscWorkerProcess";
 import { RscWorkerRecycler } from "./rscWorkerRecycler";
@@ -136,6 +137,8 @@ type RscInMsg =
       type: "error";
       requestId: string;
       message: string;
+      /** Set when the worker refused a render before starting it; the codes are `RscRenderRefusal`'s. */
+      code?: string;
       buildId?: number;
       reloadId?: number;
       running?: RscAdoptedBundle;
@@ -403,7 +406,9 @@ export class RscWorker {
         )
           return;
         if (message.manifestRevision !== undefined) this.#requests.forgetManifest();
-        this.#requests.resolvePending(message.requestId, (p) => p.onError(String(message.message)));
+        this.#requests.resolvePending(message.requestId, (p) =>
+          p.onError(String(message.message), RscRenderRefusal.isCode(message.code) ? message.code : undefined),
+        );
         return;
     }
   }
