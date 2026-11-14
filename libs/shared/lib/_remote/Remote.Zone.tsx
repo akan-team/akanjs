@@ -73,7 +73,7 @@ export const Screen = ({ className, url, tool, args, href, drawn = true, height 
         <iframe
           className="block w-full bg-background"
           title={`${host} ${tool}`}
-          sandbox="allow-popups allow-popups-to-escape-sandbox"
+          sandbox="allow-popups"
           referrerPolicy="no-referrer"
           height={height}
           srcDoc={html}

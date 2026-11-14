@@ -14,6 +14,8 @@ export class RemoteHandshake {
     if (!opened) return null;
     return {
       go: (url) => {
+        //? Security: the other server's page gets no handle on this one; the callback answers over the channel instead.
+        opened.opener = null;
         opened.location.href = url;
       },
       close: () => opened.close(),
