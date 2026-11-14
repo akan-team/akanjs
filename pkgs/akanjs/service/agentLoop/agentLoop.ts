@@ -453,10 +453,9 @@ export class AgentLoop {
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
     //? Security: a call's arguments leave for the remote, and "read-only" is the remote's own word for its tool.
     if (this.#tainted && remote) return { deny: AgentLoop.taintedRemote };
-    const declared = !!this.#request.untrusted || LoopContext.marked(this.#request);
-    if (this.#tainted && !tool.readOnly && !declared) return this.#writeAfterRead(call);
-    if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
-    return "allow";
+    if (!this.#tainted || tool.readOnly) return "allow";
+    if (LoopContext.carried(this.#request, this.#messages)) return LoopContext.held(this.#request, call.name);
+    return this.#request.untrusted ? { deny: AgentLoop.taintedWrite } : this.#writeAfterRead(call);
   }
 
   #writeAfterRead({ name }: AgentWireToolCall): Verdict {
