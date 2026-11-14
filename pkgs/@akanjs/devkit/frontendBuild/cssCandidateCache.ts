@@ -1,4 +1,6 @@
 import { stat } from "node:fs/promises";
+import { FileSys } from "../util/fileSys";
+import { type BuildCacheStamp, buildCacheStamp, isBuildCacheStamp } from "./buildCacheStamp";
 
 // The leading `[` alternation keeps arbitrary variants (`[&_td]:px-3`) whole, and a bracket may hold one nested
 // bracket (`[&_[data-slot=x]]:p-2`, `has-[[aria-expanded=true]]:x`), or the candidate is cut at the inner `]` and the
@@ -14,7 +16,7 @@ interface CachedFile {
   candidates: string[];
 }
 
-interface CacheFile {
+interface CacheFile extends BuildCacheStamp {
   version: number;
   files: Record<string, CachedFile>;
 }
@@ -22,15 +24,17 @@ interface CacheFile {
 /** Tailwind candidates per source file, on disk: the batch worker that compiles CSS exits before the next save. */
 export class CssCandidateCache {
   // Bump when the token regex or the entry shape changes, so stale extractions are not reused.
-  static readonly #version = 5;
+  static readonly #version = 6;
   readonly #path: string;
+  readonly #stamp: BuildCacheStamp;
   readonly #entries = new Map<string, CachedFile>();
   #dirty = false;
   #reused = 0;
   #rescanned = 0;
 
-  constructor(cachePath: string) {
+  constructor(cachePath: string, stamp = buildCacheStamp()) {
     this.#path = cachePath;
+    this.#stamp = stamp;
   }
 
   get reused(): number {
@@ -44,8 +48,8 @@ export class CssCandidateCache {
   async load(): Promise<this> {
     const raw = (await Bun.file(this.#path)
       .json()
-      .catch(() => null)) as CacheFile | null;
-    if (!raw || raw.version !== CssCandidateCache.#version || typeof raw.files !== "object") return this;
+      .catch(() => null)) as Partial<CacheFile> | null;
+    if (raw?.version !== CssCandidateCache.#version || !isBuildCacheStamp(raw, this.#stamp) || !raw.files) return this;
     for (const [file, entry] of Object.entries(raw.files)) {
       if (typeof entry?.mtimeMs !== "number" || !Array.isArray(entry.candidates)) continue;
       this.#entries.set(file, entry);
@@ -82,9 +86,9 @@ export class CssCandidateCache {
     const files: Record<string, CachedFile> = {};
     for (const [file, entry] of this.#entries) files[file] = entry;
     // An unwritable cache is a slow build, not a failed one: a read-only checkout must still compile.
-    await Bun.write(
+    await FileSys.writeTextAtomic(
       this.#path,
-      JSON.stringify({ version: CssCandidateCache.#version, files } satisfies CacheFile),
+      JSON.stringify({ version: CssCandidateCache.#version, ...this.#stamp, files } satisfies CacheFile),
     ).catch(() => undefined);
   }
 }

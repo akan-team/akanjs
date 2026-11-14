@@ -612,7 +612,7 @@ describe("Workspace and app executor environment contracts", () => {
     expect(app.getCommandEnv().AKAN_PUBLIC_SERVE_DOMAIN).toBe("example.com");
   });
 
-  test("akan start clears the dev output and keeps the bin downloads and a native folder from before dist/native", async () => {
+  test("akan start clears the dev output and keeps the caches and a native folder from before dist/native", async () => {
     const root = await makeTempRoot();
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";
     process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
@@ -626,11 +626,14 @@ describe("Workspace and app executor environment contracts", () => {
       "native/desktop/updates/macos-arm64/main.json",
       "native/desktop/build/macos/App.app",
       "cache/bin/ffmpeg",
+      "cache/cssCandidates.json",
+      "cache/fontCache.json",
+      "cache/fonts/Assistant-400-normal-abc.woff2",
     ];
     const removed = [
       "artifact/client/app.js",
+      "artifact/fontCache.json",
       "generated/dict/index.ts",
-      "cache/cssCandidates.json",
       "desktop/server/main.js",
       "mobile/desktop/native/macos/App.app",
     ];

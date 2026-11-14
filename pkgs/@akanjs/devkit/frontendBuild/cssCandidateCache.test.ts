@@ -56,3 +56,42 @@ describe("CssCandidateCache token extraction", () => {
     expect(candidates.filter((candidate) => candidate.startsWith("["))).toEqual([]);
   });
 });
+
+describe("CssCandidateCache persistence", () => {
+  const writeCache = async (stamp: { akanjs: string; bun: string }) => {
+    const dir = await mkdtemp(path.join(tmpdir(), "css-candidate-"));
+    const file = path.join(dir, "probe.tsx");
+    const cachePath = path.join(dir, "cache.json");
+    await writeFile(file, `const c = "w-full";`);
+    const cache = await new CssCandidateCache(cachePath, stamp).load();
+    await cache.candidatesFor(file);
+    await cache.save(new Set([file]));
+    return { file, cachePath };
+  };
+
+  test("reuses an entry the same akanjs and Bun wrote", async () => {
+    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a" });
+    const cache = await new CssCandidateCache(cachePath, { akanjs: "1.0.0", bun: "1.0.0+a" }).load();
+    expect(await cache.candidatesFor(file)).toContain("w-full");
+    expect([cache.reused, cache.rescanned]).toEqual([1, 0]);
+  });
+
+  test.each([
+    ["akanjs", { akanjs: "1.0.1", bun: "1.0.0+a" }],
+    ["Bun", { akanjs: "1.0.0", bun: "1.0.0+b" }],
+  ])("rescans an entry another %s version wrote", async (_, stamp) => {
+    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a" });
+    const cache = await new CssCandidateCache(cachePath, stamp).load();
+    expect(await cache.candidatesFor(file)).toContain("w-full");
+    expect([cache.reused, cache.rescanned]).toEqual([0, 1]);
+  });
+
+  test("rescans when the cache file was cut short", async () => {
+    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a" });
+    const text = await Bun.file(cachePath).text();
+    await writeFile(cachePath, text.slice(0, text.length / 2));
+    const cache = await new CssCandidateCache(cachePath, { akanjs: "1.0.0", bun: "1.0.0+a" }).load();
+    expect(await cache.candidatesFor(file)).toContain("w-full");
+    expect([cache.reused, cache.rescanned]).toEqual([0, 1]);
+  });
+});

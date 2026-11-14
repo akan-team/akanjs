@@ -44,8 +44,8 @@ export class AppExecutor extends SysExecutor {
   static from(executor: SysExecutor | WorkspaceExecutor, name: string) {
     return new AppExecutor({ workspace: executor instanceof WorkspaceExecutor ? executor : executor.workspace, name });
   }
-  //* Not dev output: the downloaded `bin` sources.
-  static readonly #keptOnStart = [path.join(".akan", "cache", "bin")];
+  //* Not dev output: the downloaded `bin` sources, and caches whose entries name the akanjs and Bun that wrote them.
+  static readonly #keptOnStart = [path.join(".akan", "cache")];
   //* Native builds moved to dist/native/<app>; the old folder may hold a signed release nobody uploaded yet.
   static readonly #legacyNative = path.join(".akan", "native");
   async #removeDevOutput(dir = ".akan") {

@@ -1,4 +1,4 @@
-import { mkdir, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import type {
   ReactFont,
@@ -11,6 +11,8 @@ import type {
 import type { FontCategory } from "fontaine";
 import ts from "typescript";
 import type { App } from "../commandDecorators";
+import { FileSys } from "../util/fileSys";
+import { type BuildCacheStamp, buildCacheStamp, isBuildCacheStamp } from "./buildCacheStamp";
 
 const FONT_URL_PREFIX = "/_akan/fonts";
 const DEFAULT_FONT_SUBSETS: ReactFontSubset[] = ["latin"];
@@ -21,11 +23,17 @@ export interface OptimizeAppFontsResult {
   files: string[];
 }
 
-interface FontOptimizerCache {
+interface FontCacheFile {
+  path: string;
+  size: number;
+  sha256: string;
+}
+
+interface FontOptimizerCache extends BuildCacheStamp {
   version: number;
   key: string;
   css: string;
-  files: string[];
+  files: FontCacheFile[];
 }
 
 export type FontOptimizerCommand = "build" | "start";
@@ -34,17 +42,20 @@ export class FontOptimizer {
   #app: App;
   #command: FontOptimizerCommand;
   #artifactRoot: string;
+  #cacheRoot: string;
   #files: string[] = [];
   #cssParts: string[] = [];
   #woff2Ready: Promise<void> | null = null;
 
   static #ksX1001Text: string | null = null;
-  static readonly #cacheVersion = 3;
+  static readonly #cacheVersion = 4;
 
   constructor(app: App, command: FontOptimizerCommand = "start") {
     this.#app = app;
     this.#command = command;
     this.#artifactRoot = path.join(command === "build" ? app.dist.cwdPath : app.cwdPath, ".akan/artifact");
+    //? A build reads fonts from fresh `dist/public` copies, whose stamps never match, so it caches beside its output.
+    this.#cacheRoot = command === "build" ? this.#artifactRoot : path.join(app.cwdPath, ".akan/cache");
   }
 
   async optimize(): Promise<OptimizeAppFontsResult> {
@@ -67,7 +78,7 @@ export class FontOptimizer {
   }
 
   get #cachePath() {
-    return path.join(this.#artifactRoot, "fontCache.json");
+    return path.join(this.#cacheRoot, "fontCache.json");
   }
 
   // null skips the cache: an unstat-able source's staleness is undetectable, and the uncached path warns about it.
@@ -79,7 +90,7 @@ export class FontOptimizer {
         const sourcePath = await this.#resolveFontSourcePath(face.src);
         const stamp = sourcePath ? await this.#fileStamp(sourcePath) : null;
         if (!stamp) return null;
-        sources.push({ optimizedSrc: face.optimizedSrc, ...stamp });
+        sources.push({ optimizedSrc: face.optimizedSrc, sourcePath, ...stamp });
       }
       for (const filePath of font.subsetFiles ?? []) {
         const abs = path.isAbsolute(filePath) ? filePath : path.join(this.#app.cwdPath, filePath);
@@ -90,7 +101,31 @@ export class FontOptimizer {
       if (this.#getFontSubsets(font).includes("auto"))
         sources.push({ autoSubsetText: this.#cacheDigest(await this.#collectAutoSubsetText()) });
     }
-    return this.#cacheDigest({ version: FontOptimizer.#cacheVersion, fonts, sources });
+    const lockfile = await this.#lockfileDigest();
+    return this.#cacheDigest({
+      version: FontOptimizer.#cacheVersion,
+      command: this.#command,
+      lockfile,
+      fonts,
+      sources,
+    });
+  }
+
+  //? Only the lockfile moves when the subsetter, the woff2 encoder or fontaine's metrics change version.
+  async #lockfileDigest() {
+    const root = this.#app.workspace.workspaceRoot;
+    const lockfiles = await Promise.all(
+      ["bun.lock", "bun.lockb"].map((name) =>
+        Bun.file(path.join(root, name))
+          .bytes()
+          .catch(() => null),
+      ),
+    );
+    return lockfiles.map((bytes) => (bytes ? this.#sha256(bytes) : null));
+  }
+
+  #sha256(bytes: Uint8Array) {
+    return new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
   }
 
   // sha256, not #hashFontConfig's 32-bit FNV: a key collision would serve a stale subset as current.
@@ -110,23 +145,63 @@ export class FontOptimizer {
   async #readCache(key: string): Promise<{ css: string; files: string[] } | null> {
     const cache = (await Bun.file(this.#cachePath)
       .json()
-      .catch(() => null)) as FontOptimizerCache | null;
-    if (cache?.version !== FontOptimizer.#cacheVersion || cache.key !== key) return null;
-    const files = cache.files.map((relativePath) => path.join(this.#artifactRoot, relativePath));
-    for (const filePath of files) {
-      if (!(await Bun.file(filePath).exists())) return null;
+      .catch(() => null)) as Partial<FontOptimizerCache> | null;
+    if (cache?.version !== FontOptimizer.#cacheVersion || cache.key !== key || typeof cache.css !== "string")
+      return null;
+    if (!isBuildCacheStamp(cache, buildCacheStamp()) || !Array.isArray(cache.files)) return null;
+    const files: string[] = [];
+    for (const file of cache.files) {
+      const bytes = await this.#readIntact(this.#cacheRoot, file);
+      if (!bytes) return null;
+      if (this.#cacheRoot !== this.#artifactRoot && !(await this.#readIntact(this.#artifactRoot, file)))
+        await Bun.write(path.join(this.#artifactRoot, file.path), bytes);
+      files.push(path.join(this.#artifactRoot, file.path));
     }
     return { css: cache.css, files };
   }
 
+  // A start killed mid-write leaves a short or stale file under the name the entry lists, so the bytes must match.
+  async #readIntact(root: string, file: Partial<FontCacheFile> | null): Promise<Uint8Array | null> {
+    if (typeof file?.path !== "string" || typeof file.size !== "number") return null;
+    const bytes = await Bun.file(path.join(root, file.path))
+      .bytes()
+      .catch(() => null);
+    if (!bytes || bytes.byteLength !== file.size || this.#sha256(bytes) !== file.sha256) return null;
+    return bytes;
+  }
+
+  // The entry is written last, so a start killed before it keeps the previous entry, which its checksums then refuse.
   async #writeCache(key: string, result: OptimizeAppFontsResult): Promise<void> {
+    const files: FontCacheFile[] = [];
+    for (const filePath of result.files) {
+      const bytes = await Bun.file(filePath).bytes();
+      const relativePath = path.relative(this.#artifactRoot, filePath);
+      const cachedPath = path.join(this.#cacheRoot, relativePath);
+      if (cachedPath !== filePath) await FileSys.writeTextAtomic(cachedPath, bytes);
+      files.push({ path: relativePath, size: bytes.byteLength, sha256: this.#sha256(bytes) });
+    }
     const cache: FontOptimizerCache = {
       version: FontOptimizer.#cacheVersion,
+      ...buildCacheStamp(),
       key,
       css: result.css,
-      files: result.files.map((filePath) => path.relative(this.#artifactRoot, filePath)),
+      files,
     };
-    await Bun.write(this.#cachePath, JSON.stringify(cache));
+    await FileSys.writeTextAtomic(this.#cachePath, JSON.stringify(cache));
+    await this.#pruneCachedFonts(files);
+  }
+
+  async #pruneCachedFonts(kept: FontCacheFile[]) {
+    if (this.#cacheRoot === this.#artifactRoot) return;
+    const dir = path.join(this.#cacheRoot, FONT_URL_PREFIX.replace(/^\/_akan\//, ""));
+    const keep = new Set(kept.map((file) => path.join(this.#cacheRoot, file.path)));
+    const names = await readdir(dir).catch(() => [] as string[]);
+    await Promise.all(
+      names
+        .map((name) => path.join(dir, name))
+        .filter((filePath) => !keep.has(filePath))
+        .map((filePath) => rm(filePath, { force: true })),
+    );
   }
 
   async discoverFonts(): Promise<ReactFont[]> {

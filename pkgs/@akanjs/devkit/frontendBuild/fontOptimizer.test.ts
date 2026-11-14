@@ -17,15 +17,17 @@ const makeApp = async (layoutSource: string) => {
   await writeFile(path.join(cwdPath, "page/_layout.tsx"), layoutSource);
   await Bun.write(path.join(cwdPath, "public/fonts/Assistant-Regular.woff2"), Bun.file(SOURCE_FONT));
   const warnings: string[] = [];
+  const verboses: string[] = [];
   const app = {
     cwdPath,
     dist: { cwdPath: path.join(root, "dist/apps/demo") },
     workspace: { workspaceRoot: root },
     getPageKeys: async () => ["./_layout.tsx"],
-    verbose: () => undefined,
+    verbose: (message: string) => verboses.push(message),
     logger: { warn: (message: string) => warnings.push(message) },
   } as unknown as App;
-  return { app, cwdPath, warnings };
+  const reusedCount = () => verboses.filter((message) => message.startsWith("[font] reused")).length;
+  return { app, cwdPath, root, warnings, reusedCount };
 };
 
 const layoutWith = (extra = "") => `
@@ -123,6 +125,101 @@ describe("FontOptimizer cache", () => {
     const second = await optimize(app);
     expect(second.files).toEqual(first.files);
     expect(await Bun.file(second.files[0]).exists()).toBe(true);
+  });
+
+  test("reuses the subset on the next akan start, which wipes the artifact folder", async () => {
+    const { app, cwdPath, reusedCount } = await makeApp(layoutWith());
+    const first = await optimize(app);
+    const firstBytes = await Bun.file(first.files[0]).bytes();
+    await rm(path.join(cwdPath, ".akan/artifact"), { recursive: true, force: true });
+
+    const second = await optimize(app);
+    expect(reusedCount()).toBe(1);
+    expect(second.files).toEqual(first.files);
+    expect(second.css).toBe(first.css);
+    expect(await Bun.file(second.files[0]).bytes()).toEqual(firstBytes);
+  });
+
+  test.each(["akanjs", "bun"])("resubsets when the cache was written by another %s version", async (field) => {
+    const { app, cwdPath, reusedCount } = await makeApp(layoutWith());
+    await optimize(app);
+    const indexPath = path.join(cwdPath, ".akan/cache/fontCache.json");
+    const index = await Bun.file(indexPath).json();
+    await Bun.write(indexPath, JSON.stringify({ ...index, [field]: "0.0.1-other" }));
+
+    await optimize(app);
+    expect(reusedCount()).toBe(0);
+    expect((await Bun.file(indexPath).json())[field]).toBe(index[field]);
+  });
+
+  test("resubsets when the lockfile changes, since a font tool version may have moved", async () => {
+    const { app, root, reusedCount } = await makeApp(layoutWith());
+    await writeFile(path.join(root, "bun.lock"), '{ "lockfileVersion": 1 }\n');
+    await optimize(app);
+    await optimize(app);
+    expect(reusedCount()).toBe(1);
+
+    await writeFile(path.join(root, "bun.lock"), '{ "lockfileVersion": 1, "packages": {} }\n');
+    await optimize(app);
+    expect(reusedCount()).toBe(1);
+  });
+
+  test("rebuilds a cached font file that was cut short", async () => {
+    const { app, cwdPath, reusedCount } = await makeApp(layoutWith());
+    const first = await optimize(app);
+    const firstBytes = await Bun.file(first.files[0]).bytes();
+    const cachedPath = path.join(
+      cwdPath,
+      ".akan/cache",
+      path.relative(path.join(cwdPath, ".akan/artifact"), first.files[0]),
+    );
+    await Bun.write(cachedPath, firstBytes.subarray(0, firstBytes.byteLength / 2));
+    await rm(path.join(cwdPath, ".akan/artifact"), { recursive: true, force: true });
+
+    const second = await optimize(app);
+    expect(reusedCount()).toBe(0);
+    expect(await Bun.file(second.files[0]).bytes()).toEqual(firstBytes);
+    expect(await Bun.file(cachedPath).bytes()).toEqual(firstBytes);
+  });
+
+  test("replaces an artifact copy that was cut short with the cached font", async () => {
+    const { app, reusedCount } = await makeApp(layoutWith());
+    const first = await optimize(app);
+    const firstBytes = await Bun.file(first.files[0]).bytes();
+    await Bun.write(first.files[0], firstBytes.subarray(0, 16));
+
+    const second = await optimize(app);
+    expect(reusedCount()).toBe(1);
+    expect(await Bun.file(second.files[0]).bytes()).toEqual(firstBytes);
+  });
+
+  test("rebuilds when the cache index was cut short", async () => {
+    const { app, cwdPath, reusedCount } = await makeApp(layoutWith());
+    const first = await optimize(app);
+    const indexPath = path.join(cwdPath, ".akan/cache/fontCache.json");
+    const index = await Bun.file(indexPath).text();
+    await Bun.write(indexPath, index.slice(0, index.length / 2));
+
+    const second = await optimize(app);
+    expect(reusedCount()).toBe(0);
+    expect(second.css).toBe(first.css);
+    expect(await Bun.file(indexPath).text()).toBe(index);
+  });
+
+  test("drops cached font files the current entry no longer lists", async () => {
+    const { app, cwdPath } = await makeApp(layoutWith());
+    const first = await optimize(app);
+    const stalePath = path.join(cwdPath, ".akan/cache/fonts/Assistant-400-normal-stale.woff2");
+    await Bun.write(stalePath, "stale");
+
+    await writeFile(path.join(cwdPath, "page/_layout.tsx"), layoutWith(`\n    className: "font-brand",`));
+    await optimize(app);
+    expect(await Bun.file(stalePath).exists()).toBe(false);
+    expect(
+      await Bun.file(
+        path.join(cwdPath, ".akan/cache", path.relative(path.join(cwdPath, ".akan/artifact"), first.files[0])),
+      ).exists(),
+    ).toBe(true);
   });
 
   test("skips route files that never mention fonts", async () => {
