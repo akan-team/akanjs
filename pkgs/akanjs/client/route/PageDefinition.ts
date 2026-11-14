@@ -22,6 +22,7 @@ interface PageApp {
   name: string;
   description: string;
   load: (args: never) => PromiseOrObject<ReactNode>;
+  static: boolean;
 }
 
 /** `never` for a name the page's render already receives, so a clash fails to compile as well as at definition. */
@@ -71,12 +72,14 @@ export class PageDefinition<
   /**
    * Publishes one component of this screen as an MCP App: a read-only tool whose arguments are the page's `.param()`
    * and `.search()`, and whose result a host draws with `load`'s element. `load` may only query. On the web the
-   * element arrives as the render argument `name`. English description.
+   * element arrives as the render argument `name`. English description. `static: true` lets a host that runs no
+   * script ask the call for the element as HTML, drawn once on the server.
    */
   app<Name extends string>(
     name: Name & FreeName<Name, Args & Apps>,
     description: string,
     load: (args: RouteBaseArgs & Args) => PromiseOrObject<ReactNode>,
+    option: { static?: boolean } = {},
   ) {
     PageDefinition.#assertEntry("app", name, description);
     if (name === "lang")
@@ -87,7 +90,7 @@ export class PageDefinition<
       );
     if (this.#prompt?.name === name)
       throw new Error(`[route-convention] page() names "${name}" as both an app and its prompt; MCP lists both`);
-    this.#apps.push({ name, description, load: load as PageApp["load"] });
+    this.#apps.push({ name, description, load: load as PageApp["load"], static: option.static === true });
     return this as unknown as PageDefinition<Args, Apps & { [Key in Name]: ReactNode }>;
   }
 
@@ -101,7 +104,12 @@ export class PageDefinition<
   }
 
   get appMetas(): RoutePromptMeta[] {
-    return this.#apps.map(({ name, description }) => ({ name, description, arguments: this.#entryArguments() }));
+    return this.#apps.map((app) => ({
+      name: app.name,
+      description: app.description,
+      arguments: this.#entryArguments(),
+      ...(app.static ? { static: true } : {}),
+    }));
   }
 
   /** One app's element for these args, alone: what an MCP call runs after the route guards, and its view draws. */

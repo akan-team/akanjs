@@ -7,11 +7,14 @@ export class LoopToolkits {
   static readonly toolName = "openToolkit";
 
   readonly #kits: ReadonlyMap<string, AgentLoopToolkit>;
+  //? A remote: its tools are known only once it is opened, so the run lists and opens it itself.
+  readonly #external: ReadonlyMap<string, string>;
   readonly #open = new Set<string>();
   #visible: AgentTool[] = [];
 
-  constructor(kits: Record<string, AgentLoopToolkit> | undefined) {
+  constructor(kits: Record<string, AgentLoopToolkit> | undefined, external: ReadonlyMap<string, string> = new Map()) {
     this.#kits = new Map(Object.entries(kits ?? {}));
+    this.#external = external;
   }
 
   get opened(): string[] {
@@ -19,12 +22,16 @@ export class LoopToolkits {
   }
 
   isMeta(name: string): boolean {
-    return this.#kits.size > 0 && name === LoopToolkits.toolName;
+    return this.#any && name === LoopToolkits.toolName;
+  }
+
+  get #any(): boolean {
+    return this.#kits.size > 0 || this.#external.size > 0;
   }
 
   listed(visible: AgentTool[]): AgentTool[] {
     this.#visible = visible;
-    if (!this.#kits.size) return visible;
+    if (!this.#any) return visible;
     const shown = visible.filter((tool) => this.#isOn(tool.name));
     const closed = this.#closed();
     return closed.length ? [...shown, this.#metaTool(closed)] : shown;
@@ -32,6 +39,9 @@ export class LoopToolkits {
 
   //? Only for a tool this account may see, so it names nothing `allow` or the guards keep from the run.
   refusalOf(name: string): string | null {
+    const remote = [...this.#external.keys()].find((kit) => !this.#open.has(kit) && name.startsWith(`${kit}.`));
+    if (remote)
+      return `Not run: ${name} is in the "${remote}" toolkit, which is not open. Open it with ${LoopToolkits.toolName}, then call a tool it lists.`;
     if (!this.#kits.size || !this.#visible.some((tool) => tool.name === name)) return null;
     const kit = [...this.#kits].find(([kitName, { tools }]) => !this.#open.has(kitName) && tools.includes(name))?.[0];
     if (!kit) return null;
@@ -54,6 +64,21 @@ export class LoopToolkits {
     return { id, name, result: { opened: kit, tools } };
   }
 
+  externalOf({ name, args }: AgentWireToolCall): string | null {
+    return name === LoopToolkits.toolName && typeof args.name === "string" && this.#external.has(args.name)
+      ? args.name
+      : null;
+  }
+
+  openExternal({ id, name }: AgentWireToolCall, kit: string, tools: string[], omitted = 0): AgentWireToolResult {
+    this.#open.add(kit);
+    return { id, name, result: { opened: kit, tools, ...(omitted ? { omitted } : {}) } };
+  }
+
+  close(kit: string) {
+    this.#open.delete(kit);
+  }
+
   #isOn(name: string): boolean {
     let inKit = false;
     for (const [kitName, { tools }] of this.#kits) {
@@ -70,11 +95,16 @@ export class LoopToolkits {
   }
 
   #closed(): string[] {
-    return [...this.#kits.keys()].filter((kit) => !this.#open.has(kit) && this.#toolsOf(kit).length);
+    return [
+      ...[...this.#kits.keys()].filter((kit) => !this.#open.has(kit) && this.#toolsOf(kit).length),
+      ...[...this.#external.keys()].filter((kit) => !this.#open.has(kit)),
+    ];
   }
 
   #metaTool(closed: string[]): AgentTool {
-    const lines = closed.map((kit) => `- ${kit}: ${this.#kits.get(kit)?.description ?? ""}`.trimEnd());
+    const lines = closed.map((kit) =>
+      `- ${kit}: ${this.#kits.get(kit)?.description ?? this.#external.get(kit) ?? ""}`.trimEnd(),
+    );
     return {
       name: LoopToolkits.toolName,
       description: [
@@ -93,17 +123,22 @@ export class LoopToolkits {
   }
 
   //? A summary carries what the calls it replaced opened; a call opened its toolkit only if its result is no error.
-  restore(messages: readonly AgentWireMessage[]) {
-    if (!this.#kits.size) return;
+  restore(messages: readonly AgentWireMessage[]): boolean {
+    if (!this.#any) return false;
     const answered = new Map(LoopTranscript.results(messages).map((result) => [result.id, result]));
     for (const message of messages) {
-      for (const kit of message.summary ? (message.toolkits ?? []) : []) if (this.#kits.has(kit)) this.#open.add(kit);
+      for (const kit of message.summary ? (message.toolkits ?? []) : []) if (this.#has(kit)) this.#open.add(kit);
       for (const call of message.toolCalls ?? []) {
         if (call.name !== LoopToolkits.toolName) continue;
         const result = answered.get(call.id);
         const kit = call.args.name;
-        if (result && !result.error && typeof kit === "string" && this.#kits.has(kit)) this.#open.add(kit);
+        if (result && !result.error && typeof kit === "string" && this.#has(kit)) this.#open.add(kit);
       }
     }
+    return this.opened.some((kit) => this.#external.has(kit));
+  }
+
+  #has(kit: string): boolean {
+    return this.#kits.has(kit) || this.#external.has(kit);
   }
 }

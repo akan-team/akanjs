@@ -114,7 +114,9 @@ export class McpRouter {
     this.#dispatcher = new McpDispatcher({ ...props, legacyTextBlock, language: props.language ?? defaultLanguage });
     this.#auth = new McpAuth({ ...props.auth, path: props.path ?? "/mcp" });
     this.#apps =
-      props.apps && props.pagePrompts ? new McpApps(props.appShell ?? null, { readOnly: props.readOnly }) : null;
+      props.apps && props.pagePrompts
+        ? new McpApps(props.appShell ?? null, { readOnly: props.readOnly, staticHtml: !!props.pagePrompts.render })
+        : null;
     const cache = props.registry.adaptor.get(CacheAdaptorRole) as (McpSharedCounter & McpUiSessionStore) | undefined;
     this.#pages = new McpPages({
       source: props.pagePrompts,
