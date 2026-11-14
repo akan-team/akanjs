@@ -1,3 +1,5 @@
+import type { AgentWireTool } from "./llm.adaptor";
+
 export const eachSseData = async (body: ReadableStream<Uint8Array>, onData: (payload: string) => void) => {
   let buffer = "";
   const decoder = new TextDecoder();
@@ -34,6 +36,22 @@ export const parseToolArgs = (raw: string | undefined): Record<string, unknown> 
   }
 };
 
+const takesNoArguments = (tools: AgentWireTool[], name: string | undefined): boolean => {
+  const tool = tools.find((candidate) => candidate.name === name);
+  if (!tool) return false;
+  const properties = tool.parameters?.properties;
+  return !properties || (typeof properties === "object" && !Object.keys(properties).length);
+};
+
 //? Security: a call that lost its arguments would otherwise run with `{}`, which every optional-argument write accepts.
-export const isStreamCut = (calls: Iterable<{ args: string }>, ended: boolean): boolean =>
-  !ended || [...calls].some(({ args }) => parseToolArgs(args) === null);
+//? A gateway that loses the provider mid-call still closes with its own end marker, so with no finish reason behind
+//? it, empty arguments are a finished call only for a tool that takes none.
+export const isStreamCut = (
+  calls: Iterable<{ name?: string; args: string }>,
+  { ended, finished }: { ended: boolean; finished: boolean },
+  tools: AgentWireTool[],
+): boolean =>
+  !ended ||
+  [...calls].some(
+    ({ name, args }) => parseToolArgs(args) === null || (!finished && !args && !takesNoArguments(tools, name)),
+  );

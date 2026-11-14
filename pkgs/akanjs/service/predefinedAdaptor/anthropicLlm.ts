@@ -3,6 +3,7 @@ import { adapt } from "../adapt";
 import {
   type AgentWireAttachment,
   type AgentWireMessage,
+  type AgentWireTool,
   type AgentWireToolResult,
   type LlmAccepts,
   type LlmAdaptor,
@@ -109,7 +110,7 @@ export class AnthropicLlm
         AnthropicLlm.requestBody(model, request, { accepts, stream: true, maxTokens }),
         signal,
       );
-      return { ...this.#reported(await AnthropicLlm.consumeStream(body, onDelta, this.#host)), model };
+      return { ...this.#reported(await AnthropicLlm.consumeStream(body, onDelta, this.#host, request.tools)), model };
     } catch (error) {
       if (!signal?.aborted)
         this.logger.error(`Anthropic turn failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -359,6 +360,7 @@ export class AnthropicLlm
     body: ReadableStream<Uint8Array>,
     onDelta: (delta: string) => void,
     host = "The model provider",
+    tools: AgentWireTool[] = [],
   ): Promise<LlmTurnAnswer> {
     const calls = new Map<number, { id?: string; name?: string; args: string }>();
     let text = "";
@@ -414,7 +416,7 @@ export class AnthropicLlm
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: isStreamCut(calls.values(), stopReason !== null || stopped)
+      stop: isStreamCut(calls.values(), { ended: stopReason !== null || stopped, finished: stopReason !== null }, tools)
         ? "length"
         : AnthropicLlm.stopOf(stopReason, toolCalls.length),
       ...(Object.keys(usage).length ? { usage: AnthropicLlm.usageOf(usage) } : {}),

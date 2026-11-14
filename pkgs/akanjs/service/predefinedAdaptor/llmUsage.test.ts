@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Err } from "akanjs/dictionary";
 import { AnthropicLlm } from "./anthropicLlm";
+import type { AgentWireTool } from "./llm.adaptor";
 import { LlmSpend } from "./llmSpend";
 import { OpenaiDialect } from "./openaiDialect";
 
@@ -24,8 +25,38 @@ const stopped = `data: ${JSON.stringify({ type: "message_delta", delta: { stop_r
 const none = () => undefined;
 
 describe("a stream that did not finish", () => {
-  const openai = (lines: string[]) => OpenaiDialect.consumeStream(streamOf(lines), none, "https://llm.test");
-  const anthropic = (lines: string[]) => AnthropicLlm.consumeStream(streamOf(lines), none, "https://llm.test");
+  const openai = (lines: string[], tools?: AgentWireTool[]) =>
+    OpenaiDialect.consumeStream(streamOf(lines), none, "https://llm.test", tools);
+  const anthropic = (lines: string[], tools?: AgentWireTool[]) =>
+    AnthropicLlm.consumeStream(streamOf(lines), none, "https://llm.test", tools);
+  const writing: AgentWireTool[] = [
+    { name: "write", parameters: { type: "object", properties: { body: { type: "string" } } } },
+  ];
+
+  test("a gateway's bare [DONE] after a call whose arguments never came is cut, unless the tool takes none", async () => {
+    const opened = (fn: object) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { role: "assistant", tool_calls: [{ index: 0, id: "c1", type: "function", function: fn }] } }] })}`;
+    for (const call of [opened({ name: "write", arguments: "" }), opened({ name: "write" })]) {
+      expect((await openai([call, "data: [DONE]"], writing)).stop).toBe("length");
+      expect((await openai([call, "data: [DONE]"])).stop).toBe("length");
+      expect(await openai([call, "data: [DONE]"], [{ name: "write" }])).toEqual({
+        toolCalls: [{ id: "c1", name: "write", args: {} }],
+        stop: "toolUse",
+      });
+      expect((await openai([call, finished, "data: [DONE]"], writing)).stop).toBe("toolUse");
+    }
+    const empty = [{ name: "write", parameters: { type: "object", properties: {} } }];
+    expect((await openai([opened({ name: "write", arguments: "" }), "data: [DONE]"], empty)).stop).toBe("toolUse");
+  });
+
+  test("an Anthropic message_stop with no stop reason after an argument-less call is cut, unless the tool takes none", async () => {
+    const start = `data: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "c1", name: "write", input: {} } })}`;
+    const blockStop = `data: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`;
+    const messageStop = `data: ${JSON.stringify({ type: "message_stop" })}`;
+    expect((await anthropic([start, blockStop, messageStop], writing)).stop).toBe("length");
+    expect((await anthropic([start, blockStop, messageStop], [{ name: "write" }])).stop).toBe("toolUse");
+    expect((await anthropic([start, blockStop, stopped, messageStop], writing)).stop).toBe("toolUse");
+  });
 
   test("an OpenAI call with no finish reason or [DONE], or arguments that do not parse, is cut", async () => {
     expect((await openai(toolFrame('{"a":1}'))).stop).toBe("length");

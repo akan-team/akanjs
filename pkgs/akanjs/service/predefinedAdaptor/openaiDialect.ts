@@ -2,6 +2,7 @@ import { FailureCode } from "akanjs/common";
 import {
   type AgentWireAttachment,
   type AgentWireMessage,
+  type AgentWireTool,
   type LlmAccepts,
   type LlmTurnAnswer,
   type LlmTurnRequest,
@@ -198,6 +199,7 @@ export class OpenaiDialect {
     body: ReadableStream<Uint8Array>,
     onDelta: (delta: string) => void,
     host = "The model provider",
+    tools: AgentWireTool[] = [],
   ): Promise<LlmTurnAnswer> {
     const open = new Map<number, OpenaiStreamedCall>();
     const calls: OpenaiStreamedCall[] = [];
@@ -251,7 +253,9 @@ export class OpenaiDialect {
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: isStreamCut(calls, finish !== null || done) ? "length" : OpenaiDialect.stopOf(finish, toolCalls.length),
+      stop: isStreamCut(calls, { ended: finish !== null || done, finished: finish !== null }, tools)
+        ? "length"
+        : OpenaiDialect.stopOf(finish, toolCalls.length),
       ...(usage ? { usage } : {}),
     };
   }

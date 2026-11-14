@@ -193,3 +193,23 @@ describe("OpenaiLlm turn model", () => {
     expect(seen.map(({ aborted }) => aborted)).toEqual([true, true]);
   });
 });
+
+describe("OpenaiLlm stream", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("hands the turn's tools to the stream, so a no-argument call behind a bare [DONE] still runs", async () => {
+    const opened = { choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "refresh" } }] } }] };
+    globalThis.fetch = (async () =>
+      new Response(`data: ${JSON.stringify(opened)}\n\ndata: [DONE]\n\n`)) as unknown as typeof fetch;
+    const llm = Object.assign(new OpenaiLlm(), { llmOption: { apiKey: "k", model: "m" } });
+    const turn: LlmTurnRequest = {
+      context: [],
+      tools: [{ name: "refresh" }],
+      messages: [{ role: "user", text: "go" }],
+    };
+    expect((await llm.chat(turn, () => undefined))?.stop).toBe("toolUse");
+  });
+});
