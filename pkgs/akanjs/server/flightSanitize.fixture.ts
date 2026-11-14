@@ -6,6 +6,8 @@ const MAX_SPLIT_OFFSETS = 2048;
 const FIXED_CHUNK_SIZES = [3, 17, 256];
 const ERRORED_CHUNK_SIZE = 16;
 const MAX_ERRORED_RUNS = 6;
+const RUN_DIGEST_LENGTH = 4;
+const MAX_NAMED_RUNS = 3;
 
 const batchLimitRows = [0, 1].flatMap((round) => {
   const idOf = (index: number) => (round * 256 + index + 16).toString(16);
@@ -127,8 +129,13 @@ export interface FlightSanitizeRecord {
   client: Shown[];
   inlineScripts: Shown[];
   seenBySsr: Array<[tag: string, row: Shown]>;
-  runs: number;
-  sha256OfRuns: string;
+  runDigests: string;
+}
+
+export interface FlightSanitizeRun {
+  label: string;
+  digest: string;
+  shape: string;
 }
 
 const sha256 = (bytes: Uint8Array): string => new Bun.CryptoHasher("sha256").update(bytes).digest("hex");
@@ -144,8 +151,8 @@ const sourceOf = (chunks: Uint8Array[], errorAfter: number | null): ReadableStre
   return new ReadableStream<Uint8Array>({
     async pull(controller) {
       if (index === errorAfter) {
-        //? An erroring stream drops what its tee branches have not read yet; a macrotask later they have read it all.
-        await new Promise((resolve) => setTimeout(resolve, 1));
+        //? An event-loop turn, not a duration: by then each earlier row is read, however far tee and the pipes read ahead.
+        await new Promise((resolve) => setImmediate(resolve));
         controller.error(new Error("the flight source failed"));
       } else if (index === chunks.length) controller.close();
       else controller.enqueue(chunks[index++]);
@@ -211,26 +218,44 @@ export const recordFlightSanitize = async (
   branches: FlightBranches,
   input: Uint8Array,
   inlineScriptOf: (chunk: Uint8Array) => string,
-): Promise<FlightSanitizeRecord> => {
+): Promise<{ record: FlightSanitizeRecord; runs: FlightSanitizeRun[] }> => {
   const whole = await runBranches(branches, input.byteLength > 0 ? [input] : [], null);
-  const chunkings = chunkingsOf(input);
-  const hasher = new Bun.CryptoHasher("sha256");
-  for (const { label, chunks, errorAfter } of chunkings) {
+  const runs: FlightSanitizeRun[] = [];
+  for (const { label, chunks, errorAfter } of chunkingsOf(input)) {
     const run = await runBranches(branches, chunks, errorAfter);
-    const outputs = [run.ssr, run.client].map(
+    const [ssr, client] = [run.ssr, run.client].map(
       (output) => `${output.end} [${output.chunks.map((chunk) => chunk.byteLength).join(",")}]`,
     );
     const seen = run.seen.map(([tag, row]) => `${tag}${row.byteLength}`).join(",");
-    hasher.update(`\n${label}: ssr ${outputs[0]} client ${outputs[1]} seen [${seen}]\n`);
+    const shape = `ssr ${ssr}, client ${client}, seen [${seen}]`;
+    const hasher = new Bun.CryptoHasher("sha256").update(shape);
     for (const chunk of [...run.ssr.chunks, ...run.client.chunks, ...run.seen.map(([, row]) => row)])
       hasher.update(chunk);
+    runs.push({ label, digest: hasher.digest("base64url").slice(0, RUN_DIGEST_LENGTH), shape });
   }
-  return {
+  const record = {
     ssr: whole.ssr.chunks.map(shown),
     client: whole.client.chunks.map(shown),
     inlineScripts: whole.client.chunks.map((chunk) => shown(Buffer.from(inlineScriptOf(chunk)))),
-    seenBySsr: whole.seen.map(([tag, row]) => [tag, shown(row)]),
-    runs: chunkings.length,
-    sha256OfRuns: hasher.digest("hex"),
+    seenBySsr: whole.seen.map(([tag, row]): [string, Shown] => [tag, shown(row)]),
+    runDigests: runs.map((run) => run.digest).join(""),
   };
+  return { record, runs };
+};
+
+export const wholeStreamOf = ({
+  runDigests,
+  ...whole
+}: FlightSanitizeRecord): Omit<FlightSanitizeRecord, "runDigests"> => whole;
+
+export const runsThatDiffer = (name: string, runs: FlightSanitizeRun[], recordedDigests: string): string[] => {
+  if (recordedDigests.length !== runs.length * RUN_DIGEST_LENGTH)
+    return [`${name}: ${recordedDigests.length / RUN_DIGEST_LENGTH} runs recorded, ${runs.length} run now`];
+  const differing = runs.filter(
+    (run, index) => recordedDigests.slice(index * RUN_DIGEST_LENGTH, (index + 1) * RUN_DIGEST_LENGTH) !== run.digest,
+  );
+  const named = differing.slice(0, MAX_NAMED_RUNS).map(({ label, shape }) => `${name}, ${label}: now ${shape}`);
+  return differing.length > named.length
+    ? [...named, `${name}: ${differing.length - named.length} more of its ${runs.length} runs differ`]
+    : named;
 };
