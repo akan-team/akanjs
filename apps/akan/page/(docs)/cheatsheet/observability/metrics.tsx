@@ -60,6 +60,23 @@ export default page()
         }),
       },
       {
+        name: "GET /_akan/app/statements",
+        desc: l.trans({
+          en: (
+            <span>
+              <strong>Which query is slow?</strong> The SQL statements that took the most time, with the model call and
+              the endpoint that sent each.
+            </span>
+          ),
+          ko: (
+            <span>
+              <strong>어느 쿼리가 느린가요?</strong> 시간을 가장 많이 쓴 SQL 문을, 각 문을 보낸 model 호출과 endpoint와
+              함께 보여 줍니다.
+            </span>
+          ),
+        }),
+      },
+      {
         name: "akan logs <app>",
         desc: l.trans({
           en: (
@@ -413,6 +430,26 @@ export default page()
         }),
       },
       {
+        name: [
+          "akan_db_statements_total",
+          "akan_db_statement_seconds_total",
+          "akan_db_statement_wait_seconds_total",
+          "akan_db_statement_rows_total",
+          "akan_db_statement_duration_seconds",
+        ],
+        desc: l.trans({
+          en: "Each SQL statement's runs, run time, wait for the write turn or a pool connection, rows returned or changed, and latency (16 buckets, 0.1 ms to 10 s), labelled `fingerprint`, `model` and `op`; see Find Slow Statements below.",
+          ko: "SQL 문마다 실행 수, 실행 시간, write 차례나 pool 연결을 기다린 시간, 돌려주거나 바꾼 행 수, 지연 시간(bucket 16개, 0.1ms~10s)입니다. `fingerprint`, `model`, `op` label이 붙고, 아래 느린 SQL 문 찾기에서 자세히 다룹니다.",
+        }),
+      },
+      {
+        name: ["akan_room_replay_bytes", "akan_pubsub_buffered_messages"],
+        desc: l.trans({
+          en: "Frame bytes kept to send a reconnecting socket what it missed (at most 64 MiB a process), and publishes waiting for the Redis link (at most 10,000); one total each, next to `rooms`.",
+          ko: "다시 연결한 소켓에 놓친 frame을 보내려고 들고 있는 바이트(프로세스당 최대 64MiB)와, Redis 연결을 기다리는 publish 수(최대 10,000)입니다. `rooms`와 나란히 프로세스마다 합계 하나씩입니다.",
+        }),
+      },
+      {
         name: ["akan_build_info", "process_start_time_seconds"],
         desc: l.trans({
           en: "The akanjs release and app name as labels, and when the answering process started; a new start time means its counters began again.",
@@ -500,6 +537,27 @@ export default page()
         desc: l.trans({
           en: "Forces a full GC before each sample so heap numbers show live memory, and adds `gcDurationMs`.",
           ko: "샘플마다 먼저 전체 GC를 돌려 heap 수치가 살아 있는 메모리만 보이게 하고, `gcDurationMs`를 더합니다.",
+        }),
+      },
+    ];
+
+    const statementEnvItems = [
+      {
+        key: "AKAN_LOG_SLOW_STATEMENT_MS",
+        type: "number (ms) | off",
+        default: "200",
+        desc: l.trans({
+          en: "A statement whose wait and run add up to this writes one `SlowStatement` warning; `off` or `0` turns the log off.",
+          ko: "기다린 시간과 실행 시간을 더해 이 값에 닿은 문은 `SlowStatement` 경고 한 줄을 씁니다. `off`나 `0`이면 끕니다.",
+        }),
+      },
+      {
+        key: "AKAN_QUERY_PLAN_IGNORE",
+        type: "fingerprint,… | all",
+        default: l.trans({ en: "unset", ko: "미설정" }),
+        desc: l.trans({
+          en: "Fingerprints whose full scan or sort is deliberate, which the local query-plan check leaves alone; `all` turns the check off.",
+          ko: "전체 스캔이나 정렬이 의도된 문의 fingerprint로, local 쿼리 플랜 검사가 건너뜁니다. `all`이면 검사를 끕니다.",
         }),
       },
     ];
@@ -905,16 +963,17 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                   en: (
                     <span>
                       <strong>Labels stay bounded.</strong> A series is labelled only by endpoint, route id, status
-                      class and the process <code>role</code>, never a URL, user, account or query. A label takes at
-                      most 2,000 values and counts the rest as <code>other</code>. Latency has 12 buckets from 1 ms to
-                      10 s.
+                      class, a statement's fingerprint, model and op, and the process <code>role</code>, never a URL,
+                      user, account, query or value. A label takes at most 2,000 values and counts the rest as{" "}
+                      <code>other</code>. Request latency has 12 buckets from 1 ms to 10 s.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>label 수는 묶여 있습니다.</strong> label은 endpoint, route id, status class, 프로세스{" "}
-                      <code>role</code>뿐이고 URL, 사용자, 계정, 쿼리는 들어가지 않습니다. label 하나는 값을 2,000개까지
-                      받고 나머지는 <code>other</code>로 셉니다. 지연 시간 bucket은 1ms부터 10s까지 12개입니다.
+                      <strong>label 수는 묶여 있습니다.</strong> label은 endpoint, route id, status class, SQL 문의
+                      fingerprint, model, op, 프로세스 <code>role</code>뿐이고 URL, 사용자, 계정, 쿼리, 값은 들어가지
+                      않습니다. label 하나는 값을 2,000개까지 받고 나머지는 <code>other</code>로 셉니다. 요청 지연 시간
+                      bucket은 1ms부터 10s까지 12개입니다.
                     </span>
                   ),
                 })}
@@ -958,6 +1017,245 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 })}
               </li>
             </ul>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="statements" title={l.trans({ en: "Find Slow Statements", ko: "느린 SQL 문 찾기" })}>
+          <Docs.Title>{l.trans({ en: "Find Slow Statements", ko: "느린 SQL 문 찾기" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    Every SQL statement the SQLite or Postgres driver sends is timed where it is sent, the one place the{" "}
+                    <code>db:</code> spans, these counts and the slow-statement log all read. Each is known by its{" "}
+                    <strong>fingerprint</strong>, 12 hex characters hashed from its normalized text: every literal is{" "}
+                    <code>?</code>, and a placeholder list, an <code>IN (…)</code> list or repeated <code>VALUES</code>{" "}
+                    rows collapse to one, so <code>LIMIT 10</code> and <code>LIMIT 20</code>, or three ids and thirty,
+                    are one statement. Only the name is normalized; the text sent is unchanged.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    SQLite나 Postgres 드라이버가 보내는 SQL 문은 모두 보내는 자리에서 시간을 잽니다. <code>db:</code>{" "}
+                    span, 이 수치, 느린 문 로그가 모두 이 한 곳을 읽습니다. 문마다 정규화한 텍스트를 해시한 16진수
+                    12자리 <strong>fingerprint</strong>가 붙습니다. 리터럴은 모두 <code>?</code>가 되고, placeholder
+                    목록, <code>IN (…)</code> 목록, 반복되는 <code>VALUES</code> 행은 하나로 접히므로{" "}
+                    <code>LIMIT 10</code>과 <code>LIMIT 20</code>, id 3개와 30개는 같은 문입니다. 정규화는 이름에만
+                    쓰이고, 실제로 보내는 텍스트는 바뀌지 않습니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    <code>/_akan/app/statements</code> answers behind the metrics token with the 20 statements that took
+                    the most time in all and the 20 slowest at p95, each with its text, the model call that sent it, its
+                    wait and rows, and the endpoints that sent it most:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>/_akan/app/statements</code>는 metrics와 같은 토큰 뒤에서, 총 시간을 가장 많이 쓴 문 20개와
+                    p95가 가장 느린 문 20개를 돌려줍니다. 문마다 텍스트, 그 문을 보낸 model 호출, 기다린 시간과 행 수,
+                    가장 많이 보낸 endpoint가 붙습니다:
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="bash"
+            title="Terminal"
+            code={`curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/statements
+{
+  "byTotalTime": [
+    {
+      "fingerprint": "b37549d5817e",
+      "text": "SELECT count(*) as count FROM \\"memo\\" WHERE ((\\"removedAt\\" IS NULL) AND (json_extract(\\"_doc\\", '$.ownerId') = ?))",
+      "model": "memo",
+      "op": "count",
+      "count": 1240,
+      "totalMs": 3120.4,
+      "meanMs": 2.516,
+      "p95Ms": 8.75,
+      "waitMs": 0,
+      "rows": 1240,
+      "sentBy": [{ "endpoint": "query:memoListByOwner", "count": 1240, "totalMs": 3120.4 }]
+    }
+  ],
+  "byP95": [ … ]
+}`}
+          />
+          <Docs.Description>
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Model and op name the call.</strong> A statement a model call sends is named after it (
+                      <code>memo.count</code>, <code>memo.updateMany</code>); one sent elsewhere, such as a{" "}
+                      <code>find</code> chain or a raw query, by its table and verb (<code>memo.select</code>).{" "}
+                      <code>sentBy</code> lists up to 3 endpoints, slices or jobs by time, and <code>none</code> outside
+                      a request.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>model과 op가 호출을 가리킵니다.</strong> model 호출이 보낸 문은 그 호출 이름(
+                      <code>memo.count</code>, <code>memo.updateMany</code>)을 받고, <code>find</code> 체인이나 raw
+                      쿼리처럼 다른 곳에서 보낸 문은 테이블과 동사(<code>memo.select</code>)로 불립니다.{" "}
+                      <code>sentBy</code>는 시간을 많이 쓴 endpoint, slice, job을 3개까지 보여 주고, 요청 밖에서 보낸
+                      문은 <code>none</code>입니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Wait is counted apart from run time.</strong> <code>waitMs</code> is the time spent
+                      waiting for the SQLite write turn or a Postgres pool connection; a transaction's wait shows on its{" "}
+                      <code>BEGIN</code>. A high wait with a short run means writes queue behind each other, not a slow
+                      query. SQLite's own busy wait inside one statement counts as run time.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>기다린 시간은 실행 시간과 따로 셉니다.</strong> <code>waitMs</code>는 SQLite의 write
+                      차례나 Postgres pool 연결을 기다린 시간이고, 트랜잭션이 기다린 시간은 그 <code>BEGIN</code>에
+                      잡힙니다. 기다림은 길고 실행은 짧다면 쿼리가 느린 것이 아니라 쓰기가 서로 줄을 서고 있는 것입니다.
+                      문 하나 안에서 SQLite가 스스로 기다린 busy 시간은 실행 시간에 들어갑니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The table stays bounded.</strong> A process keeps 500 statements, letting the cheapest go
+                      first, and 16 senders each. Behind a gateway each replica sends its costliest 50 with every
+                      report, every <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>, and the gateway adds them up by
+                      fingerprint; a restarted replica starts its counts over.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>표의 크기는 묶여 있습니다.</strong> 프로세스는 문 500개와 문마다 보낸 곳 16개까지만 들고,
+                      넘치면 가장 싼 문부터 버립니다. gateway가 있으면 replica가{" "}
+                      <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>마다 보고할 때 가장 비싼 문 50개를 보내고, gateway가
+                      fingerprint별로 더합니다. 재시작한 replica는 처음부터 다시 셉니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>No value leaves the driver.</strong> The series, the report and both logs carry the
+                      normalized text and the fingerprint, model and op, never a bound value, id or user data.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>값은 드라이버 밖으로 나가지 않습니다.</strong> series, 보고서, 두 로그 모두 정규화한
+                      텍스트와 fingerprint, model, op만 싣고, 바인딩한 값, id, 사용자 데이터는 싣지 않습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+            <Docs.SubSubTitle>{l.trans({ en: "Slow-statement log", ko: "느린 문 로그" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    A statement whose wait and run reach <code>AKAN_LOG_SLOW_STATEMENT_MS</code> writes one{" "}
+                    <code>SlowStatement</code> warning, at most once a minute per fingerprint; the next one carries{" "}
+                    <code>suppressed</code>, the lines held back meanwhile. Its attrs are <code>fingerprint</code>,{" "}
+                    <code>model</code>, <code>op</code>, <code>ms</code>, <code>waitMs</code>, <code>rows</code>,{" "}
+                    <code>sentBy</code> and the request's <code>traceId</code>:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    기다린 시간과 실행 시간을 더해 <code>AKAN_LOG_SLOW_STATEMENT_MS</code>에 닿은 문은{" "}
+                    <code>SlowStatement</code> 경고 한 줄을 씁니다. fingerprint마다 1분에 한 번까지만 쓰고, 그다음 줄의{" "}
+                    <code>suppressed</code>가 그사이 건너뛴 줄 수입니다. attrs는 <code>fingerprint</code>,{" "}
+                    <code>model</code>, <code>op</code>, <code>ms</code>, <code>waitMs</code>, <code>rows</code>,{" "}
+                    <code>sentBy</code>, 요청의 <code>traceId</code>입니다:
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="bash"
+            title="Terminal"
+            showLineNumbers={false}
+            code={`akan logs <app> --grep SlowStatement
+# memo.count statement b37549d5817e took 412.3ms (waited 0ms, 1 rows), sent by query:memoListByOwner: SELECT count(*) as count FROM "memo" WHERE (("removedAt" IS NULL) AND (json_extract("_doc", '$.ownerId') = ?))`}
+          />
+          <Docs.Description>
+            <Docs.OptionTable items={statementEnvItems} />
+            <Docs.SubSubTitle>{l.trans({ en: "Query-plan check", ko: "쿼리 플랜 검사" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    In the local dev runtime only, the first time a fingerprint runs and again after an index or table
+                    changes, the server asks the database how it ran the statement (<code>EXPLAIN QUERY PLAN</code> on
+                    SQLite, <code>EXPLAIN</code> on Postgres) once it has answered, and warns once as{" "}
+                    <code>QueryPlan</code> when it reads every row of the table or sorts in a temporary table:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    local 개발 런타임에서만, fingerprint가 처음 실행될 때와 index나 테이블이 바뀐 뒤에 서버가 문이
+                    응답한 다음 데이터베이스에 실행 계획을 묻고(SQLite는 <code>EXPLAIN QUERY PLAN</code>, Postgres는{" "}
+                    <code>EXPLAIN</code>), 테이블의 모든 행을 읽거나 임시 테이블에서 정렬하면 <code>QueryPlan</code>{" "}
+                    경고를 한 번 씁니다:
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="bash"
+            title="Terminal"
+            showLineNumbers={false}
+            code={`# memo.count statement b37549d5817e, sent by query:memoListByOwner, reads every row of "memo": SELECT count(*) as count FROM "memo" WHERE … [plan: SCAN memo]. Add an index the filter and sort can use, or list b37549d5817e in AKAN_QUERY_PLAN_IGNORE to accept it.`}
+          />
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    It leaves alone a table under 1,000 rows (asked again as the statement keeps running), an insert, a{" "}
+                    <code>count</code> with no filter, a migration, a table no model owns, the full-text search tables
+                    and an in-memory SQLite database. To accept a deliberate scan, list its fingerprint in{" "}
+                    <code>AKAN_QUERY_PLAN_IGNORE</code>; <code>all</code> turns the check off.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    1,000행보다 작은 테이블(문이 계속 실행되면 다시 묻습니다), insert, 필터 없는 <code>count</code>,
+                    migration, model이 아닌 테이블, 전문 검색 테이블, 메모리 SQLite 데이터베이스는 건너뜁니다. 의도한
+                    스캔은 fingerprint를 <code>AKAN_QUERY_PLAN_IGNORE</code>에 적어 받아들이고, <code>all</code>이면
+                    검사를 끕니다.
+                  </span>
+                ),
+              })}
+            </div>
           </Docs.Description>
         </Scroll.Slide>
         <Divider />
@@ -1325,6 +1623,24 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
                       <strong>metrics를 봅니다.</strong> <code>activeRequests</code>, <code>activeWebSockets</code>,{" "}
                       <code>rooms</code>, 메모리, <code>eventLoopLagP99Ms</code>를 확인하고,{" "}
                       <code>akan_endpoint_*</code> series에서 어느 endpoint가 <code>5xx</code>를 내거나 느린지 봅니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>If an endpoint is slow, open statements.</strong> The top of{" "}
+                      <code>/_akan/app/statements</code> names the statement, its model call and the endpoint that sent
+                      it; a high <code>waitMs</code> means writes queue behind each other.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>endpoint가 느리면 statements를 봅니다.</strong> <code>/_akan/app/statements</code>의 맨
+                      위가 그 SQL 문과 model 호출, 그 문을 보낸 endpoint를 알려 줍니다. <code>waitMs</code>가 높으면
+                      쓰기가 서로 줄을 서고 있습니다.
                     </span>
                   ),
                 })}
