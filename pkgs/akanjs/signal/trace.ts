@@ -82,7 +82,7 @@ export const isLocalDevRuntime = ({
 const isDebugHeaderAllowed = (): boolean => isLocalDevRuntime() || !!process.env.AKAN_LOG_DEBUG_HEADER;
 
 //? Digests have one length, so neither a length check nor a multi-byte header value can make the comparison throw.
-const sameSecret = (presented: string, secret: string): boolean =>
+export const sameSecret = (presented: string, secret: string): boolean =>
   timingSafeEqual(createHash("sha256").update(presented).digest(), createHash("sha256").update(secret).digest());
 
 const refreshLoggerContextGate = () => {

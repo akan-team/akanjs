@@ -6,6 +6,8 @@ type Env = Record<string, string | undefined>;
 // A page on a name that re-resolves to 127.0.0.1 (DNS rebinding) is same-origin with a loopback server, and
 // CrossSiteGuard reads Origin == Host as same-site; the Host header still names the attacker's domain.
 export class HostAllowlist {
+  //? A dev surface answers only these names, even on a deployed server that lets the rest answer every Host.
+  static readonly devSurfaces = new HostAllowlist([], { devDefault: true });
   readonly #hosts: Set<string>;
   readonly devDefault: boolean;
 
