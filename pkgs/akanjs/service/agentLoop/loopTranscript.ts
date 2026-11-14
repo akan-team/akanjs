@@ -90,8 +90,8 @@ export class LoopTranscript {
     return unanswered;
   }
 
-  //? Only a resume splits a batch over two tool messages, and OpenAI's dialect puts a message's pictures straight after
-  //? its answers, which between two of them leaves a call unanswered when the next non-tool message arrives.
+  //? A batch is stored one tool message a call, and OpenAI's dialect puts a message's pictures straight after its
+  //? answers, which between two of them leaves a call unanswered when the next non-tool message arrives.
   static #answer(kept: AgentWireMessage[], message: AgentWireMessage) {
     const last = kept.at(-1);
     if (last?.role !== "tool") kept.push(message);
@@ -115,6 +115,13 @@ export class LoopTranscript {
     if (last?.role !== "assistant" || !last.toolCalls?.length) return [];
     const answered = new Set(messages.slice(at + 1).flatMap((message) => (message.toolResults ?? []).map((r) => r.id)));
     return last.toolCalls.filter((call) => !answered.has(call.id));
+  }
+
+  //? Security: where the pending batch's own stored results begin. A resumed run judges that batch on the messages
+  //? before them, as the run that died did: the model wrote every call of it before any of its results was read.
+  static pendingAnswersAt(messages: readonly AgentWireMessage[]): number {
+    if (!LoopTranscript.pending(messages).length) return messages.length;
+    return messages.findLastIndex((message) => message.role !== "tool") + 1;
   }
 
   //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that

@@ -245,6 +245,23 @@ describe("LoopCompaction", () => {
     expect(LoopCompaction.cutAt([user("a")], 4)).toBe(-1);
   });
 
+  test("keeps a batch stored one tool message a call as the one message a batch used to be", () => {
+    const batch = (...ids: string[]): AgentWireMessage => ({
+      role: "assistant",
+      toolCalls: ids.map((id) => ({ id, name: "bump", args: {} })),
+    });
+    const whole: AgentWireMessage = {
+      role: "tool",
+      toolResults: [answer("c3"), answer("c4"), answer("c5")].flatMap((m) => m.toolResults ?? []),
+    };
+    const perBatch = [user("go"), call("c1"), answer("c1"), call("c2"), answer("c2"), batch("c3", "c4", "c5"), whole];
+    const perCall = [...perBatch.slice(0, 6), answer("c3"), answer("c4"), answer("c5")];
+    expect(LoopCompaction.cutAt(perBatch, 4)).toBe(3);
+    expect(LoopCompaction.cutAt(perCall, 4)).toBe(3);
+    expect(LoopCompaction.cutAt(perCall, 1)).toBe(5);
+    expect(LoopCompaction.cutAt(perCall, 7)).toBe(-1);
+  });
+
   test("estimates four characters a token, and an inlined picture at its billed rate", () => {
     expect(LoopCompaction.tokensOf([user("x".repeat(4000))])).toBeGreaterThan(1000);
     const shot = { name: "s.png", mimeType: "image/png", data: "A".repeat(400_000) };
