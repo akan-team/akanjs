@@ -1,5 +1,5 @@
-//? `rewritten-query`: the request's query was reordered or carried a tracking parameter, so its canonical key differs.
-const lookupReasons = ["canonical-query", "rewritten-query"] as const;
+//? `rewritten-query`: the route's key took the query sorted and without tracking parameters, not as it was asked.
+const lookupReasons = ["requested-query", "rewritten-query"] as const;
 const bypassReasons = [
   "env-opt-out",
   "dev-default-off",

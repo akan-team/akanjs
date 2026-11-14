@@ -15,7 +15,7 @@ import {
 } from "./cachePolicy";
 import { type EncodedBody, encodeBody } from "./contentEncoding";
 import { canonicalRouteCacheUrl, type RouteCacheQueryForm } from "./routeCacheQuery";
-import { RouteCacheTally } from "./routeCacheTally";
+import { type RouteCacheLookupReason, RouteCacheTally } from "./routeCacheTally";
 import type { SsrLateControl } from "./ssrTypes";
 import { WebRouteContext } from "./webRouteContext";
 
@@ -174,17 +174,17 @@ export class HtmlResultCache {
 
   get(entry: HtmlCacheEntry): EncodedBody | null {
     const cached = this.#lookup(entry);
-    RouteCacheTally.lookup(
-      "html",
-      cached !== null,
-      entry.key === entry.exactKey ? "canonical-query" : "rewritten-query",
-    );
     if (!cached) {
       this.#misses += 1;
       return null;
     }
     this.#hits += 1;
+    RouteCacheTally.lookup("html", true, HtmlResultCache.#lookupReason(entry, cached.queryForm));
     return cached.body;
+  }
+
+  static #lookupReason({ key, exactKey }: HtmlCacheEntry, queryForm: RouteCacheQueryForm): RouteCacheLookupReason {
+    return queryForm === "canonical" && key !== exactKey ? "rewritten-query" : "requested-query";
   }
 
   //? An exact route's render of the canonical URL sits under the canonical key too, and answers only that URL.
@@ -200,6 +200,9 @@ export class HtmlResultCache {
     let htmlStoreKey = entry.exactKey;
     let htmlCacheMetadata: Omit<CachedHtmlResult, "body"> = { pathname, queryForm: "exact" };
     const shouldCacheHtml = Promise.all([input.lateControl, input.cacheState]).then(([control, cacheState]) => {
+      const queryForm = cacheState.queryForm ?? "exact";
+      //? The host learns how a route is keyed only from its render, so a miss is counted here rather than at lookup.
+      RouteCacheTally.lookup("html", false, HtmlResultCache.#lookupReason(entry, queryForm));
       const storeTtl = resolveHtmlRouteCacheStoreTtl({
         baseTtl: entry.ttl,
         workerCacheState: cacheState,
@@ -207,7 +210,6 @@ export class HtmlResultCache {
         lateControl: control,
       });
       if (storeTtl === null) return false;
-      const queryForm = cacheState.queryForm ?? "exact";
       htmlStoreTtl = storeTtl;
       htmlStoreKey = queryForm === "canonical" ? entry.key : entry.exactKey;
       htmlCacheMetadata = {

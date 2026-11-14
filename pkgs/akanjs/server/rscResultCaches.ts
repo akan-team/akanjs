@@ -75,7 +75,8 @@ export class RscResultCaches {
     const cached = cache.get(cacheKey);
     if (cached) this.resultCacheHits += 1;
     else this.resultCacheMisses += 1;
-    RouteCacheTally.lookup("rsc", cached !== null, reason);
+    //? A patch entry found can still be refused for the target's router state, so only full lookups are an outcome.
+    if (cache === this.resultCache) RouteCacheTally.lookup("rsc", cached !== null, reason);
     return cached;
   }
 

@@ -275,8 +275,7 @@ export class RscRenderHandler {
     }
     const admitted = verdict === "admitted";
     const queryForm = match ? await RouteElementComposer.routeCacheQueryForm(match.pathRoute) : "exact";
-    const canonicalUrl = canonicalRouteCacheUrl(urlObj);
-    const renderUrl = queryForm === "canonical" ? canonicalUrl : urlObj;
+    const renderUrl = queryForm === "canonical" ? canonicalRouteCacheUrl(urlObj) : urlObj;
     if (queryForm === "canonical") setRequestRenderSearch(renderUrl.search);
     const cacheDecision = match ? this.#caches.getResultCacheEntry(request, renderUrl) : this.#caches.unmatchedEntry();
     const cacheEntry = cacheDecision.entry;
@@ -305,7 +304,7 @@ export class RscRenderHandler {
       searchParams,
       renderUrl,
       queryForm,
-      lookupReason: canonicalUrl === urlObj ? "canonical-query" : "rewritten-query",
+      lookupReason: renderUrl === urlObj ? "requested-query" : "rewritten-query",
       notFoundFallback,
       admitted,
       cacheEntry,

@@ -133,6 +133,37 @@ describe("route cache query", () => {
     });
   }, 15_000);
 
+  test("counts a lookup as rewritten only when the route's key took the sorted query", async () => {
+    await withCacheWorker(async (rsc) => {
+      const tally = async () => {
+        const request = new Request("http://localhost/en/tally", {
+          headers: { "x-locale": "en", "x-path": "/tally", cookie: "jwt=1" },
+        });
+        const shown = /tally=(\d+),(\d+),(\d+),(\d+)/.exec((await renderOf(rsc, request)).body);
+        if (!shown) throw new Error("the tally page showed no counts");
+        const [requestedHit, requestedMiss, rewrittenHit, rewrittenMiss] = shown.slice(1).map(Number);
+        return { requestedHit, requestedMiss, rewrittenHit, rewrittenMiss };
+      };
+      const before = await tally();
+      for (const href of [
+        "/en/exact?b=2&a=1",
+        "/en/exact?b=2&a=1",
+        "/en/plain?b=2&a=1",
+        "/en/plain?a=1&b=2",
+        "/en/plain?utm_source=news&a=1&b=2",
+      ])
+        await renderOf(rsc, proxiedRequest(href, "en"));
+      const after = await tally();
+
+      expect({
+        requestedHit: after.requestedHit - before.requestedHit,
+        requestedMiss: after.requestedMiss - before.requestedMiss,
+        rewrittenHit: after.rewrittenHit - before.rewrittenHit,
+        rewrittenMiss: after.rewrittenMiss - before.rewrittenMiss,
+      }).toEqual({ requestedHit: 2, requestedMiss: 1, rewrittenHit: 1, rewrittenMiss: 1 });
+    });
+  }, 15_000);
+
   test("a page without a declared search receives every parameter and is keyed on the query as requested", async () => {
     await withCacheWorker(async (rsc) => {
       const news = await renderOf(rsc, proxiedRequest("/en/legacy?utm_source=news", "en"));

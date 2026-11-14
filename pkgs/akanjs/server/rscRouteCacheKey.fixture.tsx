@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { layout, page } from "../client/route/routeBuilders";
 import { headers } from "../fetch";
+import { RouteCacheTally } from "./routeCacheTally";
 import type { PagesContext } from "./routeTreeBuilder";
 
 export const pages: PagesContext = {
@@ -29,6 +30,14 @@ export const pages: PagesContext = {
     default: page()
       .search("utm_source", String)
       .render(({ utm_source }) => <p>{`source=${utm_source ?? "-"}`}</p>),
+  }),
+  "./tally.tsx": async () => ({
+    default: page().render(() => {
+      const { hit, miss } = RouteCacheTally.snapshot().rsc;
+      return (
+        <p>{`tally=${hit["requested-query"]},${miss["requested-query"]},${hit["rewritten-query"]},${miss["rewritten-query"]}`}</p>
+      );
+    }),
   }),
   "./legacy.tsx": async () => ({
     default: (({ searchParams }: { searchParams: Record<string, string> }) => (

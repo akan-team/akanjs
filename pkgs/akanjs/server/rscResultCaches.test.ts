@@ -73,7 +73,7 @@ describe("RscResultCaches", () => {
     }
   });
 
-  test("tallies its lookups by the request's query and its bypasses by why the request skipped the cache", () => {
+  test("tallies its full lookups by how the route keyed the query, and its bypasses by why the request skipped the cache", () => {
     const caches = cachesWith({});
     const saved = { enabled: process.env.AKAN_RSC_RESULT_CACHE, paths: process.env.AKAN_RSC_RESULT_CACHE_PATHS };
     process.env.AKAN_RSC_RESULT_CACHE = "1";
@@ -84,16 +84,21 @@ describe("RscResultCaches", () => {
       const before = RouteCacheTally.snapshot().rsc;
       const { entry } = entryOf("http://localhost/en/list?a=1");
       if (!entry) throw new Error("expected a cache entry");
-      caches.getCached(caches.resultCache, entry.key, "canonical-query");
+      caches.getCached(caches.resultCache, entry.key, "requested-query");
       caches.store("full", caches.resultCache, entry.key, resultOf("/en/list", [new Uint8Array(1)]), 30);
       caches.getCached(caches.resultCache, entry.key, "rewritten-query");
+      caches.getCached(caches.patchResultCache, entry.key, "requested-query");
+      caches.store("patch", caches.patchResultCache, entry.key, resultOf("/en/list", [new Uint8Array(1)]), 30);
+      caches.getCached(caches.patchResultCache, entry.key, "rewritten-query");
       entryOf("http://localhost/en/list?a=1", { cookie: "jwt=1" });
       entryOf("http://localhost/docs");
       caches.unmatchedEntry();
       const after = RouteCacheTally.snapshot().rsc;
 
-      expect(after.miss["canonical-query"] - before.miss["canonical-query"]).toBe(1);
+      expect(after.miss["requested-query"] - before.miss["requested-query"]).toBe(1);
       expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(1);
+      expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(0);
+      expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(0);
       expect(after.bypass["request-not-public"] - before.bypass["request-not-public"]).toBe(1);
       expect(after.bypass["path-excluded"] - before.bypass["path-excluded"]).toBe(1);
       expect(after.bypass["no-route"] - before.bypass["no-route"]).toBe(1);

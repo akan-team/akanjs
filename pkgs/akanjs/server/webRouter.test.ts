@@ -2116,7 +2116,7 @@ describe("WebRouter full SSR cache orchestration", () => {
     );
   });
 
-  test("tallies the HTML cache's hits and misses by the request's query and its bypasses by reason", async () => {
+  test("tallies the HTML cache's hits and misses by how the route keyed the query and its bypasses by reason", async () => {
     const worker = createFakeRscWorker(() => ({
       cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
     }));
@@ -2133,9 +2133,27 @@ describe("WebRouter full SSR cache orchestration", () => {
         const after = RouteCacheTally.snapshot().html;
 
         expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(1);
-        expect(after.hit["canonical-query"] - before.hit["canonical-query"]).toBe(1);
+        expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(1);
         expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(1);
         expect(after.bypass["request-not-public"] - before.bypass["request-not-public"]).toBe(1);
+      },
+      { worker },
+    );
+  });
+
+  test("tallies a route keyed on its exact query under the query as requested, whatever order it was asked in", async () => {
+    const worker = createFakeRscWorker(() => ({ cacheState: { cacheable: true, revalidate: 5, queryForm: "exact" } }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const before = RouteCacheTally.snapshot().html;
+        for (const href of ["/docs?b=2&a=1", "/docs?a=1&b=2", "/docs?b=2&a=1"])
+          await (await fullSsr(new Request(`https://example.test${href}`))).text();
+        const after = RouteCacheTally.snapshot().html;
+
+        expect(after.miss["requested-query"] - before.miss["requested-query"]).toBe(2);
+        expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(1);
+        expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(0);
+        expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(0);
       },
       { worker },
     );
