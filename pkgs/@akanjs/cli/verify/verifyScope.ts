@@ -1,4 +1,6 @@
-import { CliError } from "@akanjs/devkit/commandDecorators";
+import path from "node:path";
+import { CliError, type Workspace } from "@akanjs/devkit/commandDecorators";
+import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
 
 export type VerifyTargetType = "app" | "lib" | "pkg";
 
@@ -8,6 +10,8 @@ export interface VerifyTarget {
   dir: string;
   /** Changed files under `dir`, relative to the workspace root; empty means the whole target. */
   files: string[];
+  /** Unchanged, but uses a changed lib: typechecked, not linted or built. */
+  dependent?: boolean;
 }
 
 export interface VerifyChange {
@@ -30,6 +34,49 @@ export class VerifyScope {
 
   get changedFiles() {
     return new Set(this.targets.flatMap((target) => target.files));
+  }
+
+  get changedLibs() {
+    return this.targets.filter((target) => target.type === "lib" && target.files.length).map((target) => target.name);
+  }
+
+  withDependents(names: VerifyNames, libDeps: Map<string, string[]>): VerifyScope {
+    const affected = new Set(this.changedLibs);
+    if (!affected.size) return this;
+    const known = VerifyScope.#knownTargets(names).filter((target) => target.type !== "pkg");
+    const pulled = new Set<VerifyTarget>();
+    for (let grew = true; grew; ) {
+      grew = false;
+      for (const target of known) {
+        if (pulled.has(target) || !(libDeps.get(target.dir) ?? []).some((lib) => affected.has(lib))) continue;
+        pulled.add(target);
+        if (target.type === "lib") affected.add(target.name);
+        grew = true;
+      }
+    }
+    const inScope = new Set(this.targets.map((target) => target.dir));
+    const dependents = known
+      .filter((target) => pulled.has(target) && !inScope.has(target.dir))
+      .map((target) => ({ ...target, dependent: true }));
+    return new VerifyScope([...this.targets, ...dependents]);
+  }
+
+  //? The synced manifest first: a scan transpiles every source file of the target.
+  static async libDepsIn(workspace: Workspace, { apps, libs }: VerifyNames): Promise<Map<string, string[]>> {
+    const depsOf = async (type: "app" | "lib", name: string): Promise<[string, string[]]> => {
+      const dir = `${type}s/${name}`;
+      const manifest = (await Bun.file(path.join(workspace.workspaceRoot, dir, `akan.${type}.json`))
+        .json()
+        .catch(() => null)) as { libDeps?: unknown } | null;
+      if (Array.isArray(manifest?.libDeps))
+        return [dir, manifest.libDeps.filter((lib): lib is string => typeof lib === "string")];
+      const exec = type === "app" ? AppExecutor.from(workspace, name) : LibExecutor.from(workspace, name);
+      const scanned = await exec.scan({ refresh: true, write: false }).catch(() => null);
+      return [dir, scanned?.getScanResult().libDeps ?? []];
+    };
+    return new Map(
+      await Promise.all([...apps.map((name) => depsOf("app", name)), ...libs.map((name) => depsOf("lib", name))]),
+    );
   }
 
   //* `-z` keeps a path with spaces or non-ASCII bytes unquoted; porcelain paths are relative to the git top level.

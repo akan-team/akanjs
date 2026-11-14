@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { rm, symlink } from "node:fs/promises";
+import { mkdir, rm, symlink } from "node:fs/promises";
 import path from "node:path";
 import { RouteJsBudget } from "@akanjs/devkit/app/routeJsBudget";
 import { createTempApp, createTempPackage, writeJson, writeText } from "@akanjs/devkit/test/testHelpers";
+import { TypecheckFailure } from "@akanjs/devkit/typecheck/typecheckFailure";
 import { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
 import { VerifyPipeline } from "./verifyPipeline";
@@ -124,6 +125,65 @@ describe("VerifyPipeline", () => {
     expect(VerifyReport.text(result).split("\n").slice(1)).toEqual([
       "apps/demo/akan.budget.json warning akan.budget /:lang loads 128,000 bytes brotli, over its limit of 126,976; akan build --check-budget fails on it fix: shrink what the route loads, or raise its entry with akan build demo --raise-budget",
       "apps/demo/akan.budget.json warning akan.budget /:lang/new has no entry; akan build --check-budget fails on it fix: record it with akan build demo --update-budget",
+    ]);
+  }, 60_000);
+
+  test("fails a lib change through an unchanged app that uses the lib, typechecking that app without a build", async () => {
+    const { root, workspace } = await createTempApp("demo");
+    roots.push(root);
+    await symlink(path.join(repoRoot, "node_modules"), path.join(root, "node_modules"));
+    await writeText(
+      path.join(root, "apps/demo/main.ts"),
+      'import { port } from "@libs/util";\nexport const at: number = port;\n',
+    );
+    await writeJson(path.join(root, "libs/util/package.json"), { name: "util", version: "1.0.0", dependencies: {} });
+    await writeJson(path.join(root, "libs/util/tsconfig.json"), {});
+    await writeText(path.join(root, "libs/util/akan.config.ts"), "export default {};\n");
+    await mkdir(path.join(root, "libs/util/lib/__scalar"), { recursive: true });
+    const changed = "libs/util/index.ts";
+    await writeText(path.join(root, changed), 'export const port = "8282";\n');
+    const typechecked: string[] = [];
+    const builds: unknown[] = [];
+    let running = 0;
+    let overlapped = 0;
+    const typecheck = async (name: string) => {
+      typechecked.push(name);
+      running += 1;
+      overlapped = Math.max(overlapped, running);
+      await Bun.sleep(50);
+      running -= 1;
+    };
+    const applicationRunner = {
+      typecheck: async (app: { name: string }) => {
+        await typecheck(app.name);
+        throw new TypecheckFailure([
+          {
+            file: "apps/demo/main.ts",
+            line: 2,
+            col: 14,
+            code: "TS2322",
+            severity: "error",
+            message: "Type 'string' is not assignable to type 'number'.",
+          },
+        ]);
+      },
+      typecheckLibrary: async (lib: { name: string }) => await typecheck(lib.name),
+      build: async (_app: unknown, options: unknown) => {
+        builds.push(options);
+        return {};
+      },
+    } as unknown as ApplicationRunner;
+    const scope = VerifyScope.resolve([{ code: "??", file: changed }], { apps: ["demo"], libs: ["util"], pkgs: [] });
+
+    const result = await new VerifyPipeline(workspace, new WorkspaceRunner(), applicationRunner).run(scope);
+
+    expect(result.targets).toEqual(["util", "demo"]);
+    expect(new Set(typechecked)).toEqual(new Set(["demo", "util"]));
+    expect(overlapped).toBe(2);
+    expect(builds).toEqual([]);
+    expect(result.ok).toBe(false);
+    expect(VerifyReport.text(result).split("\n").slice(1)).toEqual([
+      "apps/demo/main.ts:2:14 TS2322 Type 'string' is not assignable to type 'number'.",
     ]);
   }, 60_000);
 });

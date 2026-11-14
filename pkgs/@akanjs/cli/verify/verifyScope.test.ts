@@ -47,6 +47,34 @@ describe("VerifyScope", () => {
     expect(scope.touchesTsx).toBe(false);
   });
 
+  test("adds the apps and libs that use a changed lib, through other libs too, as dependents", () => {
+    const workspace = { apps: ["minimal", "akan", "solo"], libs: ["util", "shared", "other"], pkgs: [] };
+    const libDeps = new Map([
+      ["apps/minimal", ["shared"]],
+      ["apps/akan", ["util"]],
+      ["apps/solo", ["other"]],
+      ["libs/shared", ["util"]],
+    ]);
+    const scope = VerifyScope.resolve([{ code: " M", file: "libs/util/common/value.ts" }], workspace).withDependents(
+      workspace,
+      libDeps,
+    );
+    expect(scope.targets.map((target) => [target.name, target.files, target.dependent ?? false])).toEqual([
+      ["util", ["libs/util/common/value.ts"], false],
+      ["minimal", [], true],
+      ["akan", [], true],
+      ["shared", [], true],
+    ]);
+  });
+
+  test("a changed app or an unchanged requested lib pulls in no dependent", () => {
+    const libDeps = new Map([["apps/minimal", ["shared"]]]);
+    const changedApp = VerifyScope.resolve([{ code: " M", file: "apps/minimal/main.ts" }], names);
+    expect(changedApp.withDependents(names, libDeps).targets.map((target) => target.name)).toEqual(["minimal"]);
+    const requested = VerifyScope.resolve([], names, ["shared"]);
+    expect(requested.withDependents(names, libDeps).targets.map((target) => target.name)).toEqual(["shared"]);
+  });
+
   test("an unknown requested target is a usage error", () => {
     expect(() => VerifyScope.resolve([], names, ["nope"])).toThrow("nope is not an app, library or package");
   });
