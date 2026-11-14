@@ -150,7 +150,7 @@ Move the global `akan` CLI and this workspace's Akan.js packages to the newest v
 
 - --registry (String, default npm, npm | local): `local` is `AKAN_NPM_REGISTRY`, or `http://127.0.0.1:4873` when it is unset.
 
-- package.json: In a workspace, pins root `akanjs` and `@akanjs/devkit` to that version and runs `bun install`.
+- package.json: In a workspace, pins root `akanjs`, `@akanjs/devkit` and `@akanjs/cli` to that version, moves `react`, `react-dom` and `react-server-dom-webpack` to the versions that release of `akanjs` declares as peers, and runs `bun install`.
 
 - global install: Installs `@akanjs/cli@<tag>` globally with `bun add -g`, and prints `akan --version` at the end.
 

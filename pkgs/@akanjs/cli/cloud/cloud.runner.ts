@@ -27,7 +27,12 @@ import { SubspaceConfig } from "@akanjs/devkit/subspace/subspaceConfig";
 import { confirm, input, select } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
-import { getLatestPackageVersion, getNpmRegistryUrl, getPublishedVersions } from "../npmRegistry";
+import {
+  getLatestPackageVersion,
+  getNpmRegistryUrl,
+  getPublishedPeerDependencies,
+  getPublishedVersions,
+} from "../npmRegistry";
 import { EnvArchive } from "./envArchive";
 import { RemoteLogin } from "./remoteLogin";
 
@@ -493,11 +498,19 @@ export class CloudRunner extends runner("cloud") {
   }
   async #updateAkanPkgs(workspace: Workspace, tag: string = "latest", registryUrl?: string) {
     const latestPublishedVersion = await getLatestPackageVersion("akanjs", tag, registryUrl);
+    const releasePeers = await getPublishedPeerDependencies("akanjs", latestPublishedVersion, registryUrl);
     const rootPackageJson = await workspace.getPackageJson();
     if (!rootPackageJson.dependencies) throw new Error("No dependencies found in package.json");
-    for (const name of ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"]) {
-      if (rootPackageJson.dependencies[name]) rootPackageJson.dependencies[name] = latestPublishedVersion;
-      if (rootPackageJson.devDependencies?.[name]) rootPackageJson.devDependencies[name] = latestPublishedVersion;
+    const pins: Record<string, string> = Object.fromEntries(
+      ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"].map((name) => [name, latestPublishedVersion]),
+    );
+    for (const peer of ["react", "react-dom", "react-server-dom-webpack"]) {
+      const version = releasePeers[peer];
+      if (version) pins[peer] = version;
+    }
+    for (const [name, version] of Object.entries(pins)) {
+      if (rootPackageJson.dependencies[name]) rootPackageJson.dependencies[name] = version;
+      if (rootPackageJson.devDependencies?.[name]) rootPackageJson.devDependencies[name] = version;
     }
     await workspace.setPackageJson(rootPackageJson);
     await workspace.spawn("bun", ["install", ...this.#getRegistryArgs(registryUrl)], {

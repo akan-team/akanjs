@@ -244,9 +244,24 @@ describe("CloudScript platform tests", () => {
 });
 
 describe("CloudRunner", () => {
-  test("update moves a workspace's @akanjs/cli with akanjs and @akanjs/devkit, and leaves other pins alone", async () => {
+  test("update moves a workspace's @akanjs/cli and React peers with akanjs, and leaves other pins alone", async () => {
     const originalFetch = globalThis.fetch;
-    globalThis.fetch = mock(async () => new Response(JSON.stringify({ "dist-tags": { rc: "9.9.9-rc.0" } }))) as never;
+    const release = {
+      "dist-tags": { rc: "9.9.9-rc.0" },
+      peerDependencies: {
+        react: "19.9.0",
+        "react-dom": "19.9.0",
+        "react-server-dom-webpack": "19.9.0",
+        typescript: "^7",
+      },
+    };
+    const fetched: string[] = [];
+    globalThis.fetch = mock(async (url: string) => {
+      fetched.push(url);
+      return new Response(
+        JSON.stringify(url.endsWith("/akanjs/9.9.9-rc.0") ? release : { "dist-tags": release["dist-tags"] }),
+      );
+    }) as never;
     const written: PackageJson[] = [];
     const workspace = createFakeExecutor("workspace", {
       exists: async () => true,
@@ -254,7 +269,13 @@ describe("CloudRunner", () => {
         name: "repo",
         version: "0.0.1",
         description: "repo",
-        dependencies: { akanjs: "1.0.0", react: "19.0.0" },
+        dependencies: {
+          akanjs: "1.0.0",
+          react: "19.0.0",
+          "react-dom": "19.0.0",
+          "react-server-dom-webpack": "19.0.0",
+          chance: "1.0.0",
+        },
         devDependencies: { "@akanjs/devkit": "1.0.0", "@akanjs/cli": "1.0.0", typescript: "5.9.0" },
       }),
       setPackageJson: async (packageJson: PackageJson) => {
@@ -267,8 +288,15 @@ describe("CloudRunner", () => {
       globalThis.fetch = originalFetch;
     }
 
+    expect(fetched).toContain("https://registry.npmjs.org/akanjs/9.9.9-rc.0");
     expect(written).toHaveLength(1);
-    expect(written[0]?.dependencies).toEqual({ akanjs: "9.9.9-rc.0", react: "19.0.0" });
+    expect(written[0]?.dependencies).toEqual({
+      akanjs: "9.9.9-rc.0",
+      react: "19.9.0",
+      "react-dom": "19.9.0",
+      "react-server-dom-webpack": "19.9.0",
+      chance: "1.0.0",
+    });
     expect(written[0]?.devDependencies).toEqual({
       "@akanjs/devkit": "9.9.9-rc.0",
       "@akanjs/cli": "9.9.9-rc.0",

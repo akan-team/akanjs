@@ -400,8 +400,8 @@ akan logout --host https://cloud.example.com`,
           {
             name: "package.json",
             desc: l.trans({
-              en: "In a workspace, pins root `akanjs` and `@akanjs/devkit` to that version and runs `bun install`.",
-              ko: "워크스페이스 안이면 루트 `package.json`의 `akanjs`와 `@akanjs/devkit`을 그 버전으로 바꾸고 `bun install`을 실행합니다.",
+              en: "In a workspace, pins root `akanjs`, `@akanjs/devkit` and `@akanjs/cli` to that version, moves `react`, `react-dom` and `react-server-dom-webpack` to the versions that release of `akanjs` declares as peers, and runs `bun install`.",
+              ko: "워크스페이스 안이면 루트 `package.json`의 `akanjs`, `@akanjs/devkit`, `@akanjs/cli`를 그 버전으로 바꾸고, `react`, `react-dom`, `react-server-dom-webpack`을 그 릴리스의 `akanjs`가 peer로 선언한 버전으로 맞춘 뒤 `bun install`을 실행합니다.",
             }),
           },
           {
