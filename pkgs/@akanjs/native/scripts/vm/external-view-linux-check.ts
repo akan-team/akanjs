@@ -18,7 +18,8 @@
 //    active again, takes sendKey's keydown and keyup with their codes whether it, the page or another window has the
 //    focus, while it is hidden and while an app dialog is open, the page and the dialog seeing none, leaves the keyboard
 //    focus where it is when a sent Tab leaves its page (a real Tab still moves it), types sendKey's text into a field,
-//    answers UNSUPPORTED while its window is hidden, captures its own content as a PNG, and mutes,
+//    sends Unidentified and NumpadEnter (on the numpad) and refuses Dead, answers UNSUPPORTED while its window is
+//    hidden, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
 // 7. keeps storage of its own, which clearData clears,
 // 8. loads again when its web process ends, counting restarts, with its init script, and an evaluate the end cut off
@@ -64,8 +65,8 @@ const BOARD = `<!doctype html><title>board</title><body style="margin:0;backgrou
 <script>
 window.__keys = []; window.__clicks = 0;
 addEventListener("keydown", (e) => window.__keys.push(e.key + ":" + e.isTrusted));
-window.__sent = []; window.__untrusted = 0;
-for (const type of ["keydown", "keyup"]) addEventListener(type, (e) => { window.__sent.push(type + "," + e.key + "," + e.code); if (!e.isTrusted) window.__untrusted++; });
+window.__sent = []; window.__located = []; window.__untrusted = 0;
+for (const type of ["keydown", "keyup"]) addEventListener(type, (e) => { window.__sent.push(type + "," + e.key + "," + e.code); window.__located.push(type + "," + e.key + "," + e.code + "," + e.location); if (!e.isTrusted) window.__untrusted++; });
 addEventListener("click", () => window.__clicks++);
 addEventListener("message", (e) => { if (typeof e.data?.alive === "string") window.__frame = e.data; });
 const frame = document.createElement("iframe");
@@ -329,6 +330,21 @@ async function main() {
   let field = "";
   for (const t = Date.now(); Date.now() - t < 5000 && field !== "a7 b"; await sleep(250)) field = await inView("window.__field.value");
   if (field !== "a7 b") throw new Error("sendKey typed " + JSON.stringify(field) + " into a field, focused " + (await inView("document.activeElement === window.__field")));
+  const NAMED = [["Unidentified", "KeyA", "keydown,Unidentified,KeyA,0|keyup,Unidentified,KeyA,0"], ["Enter", "NumpadEnter", "keydown,Enter,NumpadEnter,3|keyup,Enter,NumpadEnter,3"]];
+  const misnamed = [];
+  for (const [key, at, expected] of NAMED) {
+    await inView("window.__field.value = ''; window.__located = []; 0");
+    const answered = await code(externalView.sendKey({ id: "board", key, code: at }));
+    let seen = "";
+    for (const t = Date.now(); Date.now() - t < 3000 && seen !== expected; await sleep(250)) seen = await inView("window.__located.join('|')");
+    const typedText = await inView("window.__field.value");
+    log("sendKey " + key + " at " + at + " answered " + answered + ", the view saw " + seen + ", the field reads " + JSON.stringify(typedText));
+    if (answered !== "ok" || seen !== expected || typedText !== "") misnamed.push(key + " at " + at);
+  }
+  const dead = await code(externalView.sendKey({ id: "board", key: "Dead", code: "Quote" }));
+  log("sendKey Dead answered " + dead);
+  if (dead !== "INVALID_ARGS") misnamed.push("Dead, which answered " + dead);
+  if (misnamed.length) throw new Error("sendKey did not send " + misnamed.join(", "));
   await inView("window.__field.remove(); 0");
   const shot = await externalView.capture({ id: "board" });
   log("capture " + JSON.stringify(shot));

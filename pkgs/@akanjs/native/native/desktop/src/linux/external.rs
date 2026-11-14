@@ -453,12 +453,16 @@ pub(crate) fn evdev(code: &str) -> Option<u16> {
   })
 }
 
-/// The keysym the page reads `key` off: `code`'s own when it types the same text (a numpad digit), else `key`'s.
+/// The keysym the page reads `key` off: `code`'s own when it types the same text (a numpad digit) or is the same key on
+/// the keypad (NumpadEnter), else `key`'s.
 fn keyval(key: &str, code: &str) -> Option<u32> {
   let named = |name: &str| keysym(name).map(|sym| gdk::keys::Key::from_name(&sym));
   let mut chars = key.chars();
   let sym = match (chars.next(), chars.next()) {
     (Some(c), None) => named(code).filter(|sym| sym.to_unicode() == Some(c)).unwrap_or_else(|| gdk::keys::Key::from_unicode(c)),
+    _ if code.strip_prefix("Numpad") == Some(key) => named(code)?,
+    //? WebKitGTK names a keysym it has no name or text for "Unidentified".
+    _ if key == "Unidentified" => gdk::keys::constants::VoidSymbol,
     _ => named(key)?,
   };
   Some(*sym)
@@ -478,6 +482,11 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<Option<FocusHold>, St
     other => return Err(format!("INVALID_ARGS: no key event of type {other}")),
   };
   let (key, code) = (field("key"), field("code"));
+  //? GTK's input method takes a dead keysym as the start of a compose: the page sees a composition keydown, not
+  //? "Dead", and the next key typed as one character with it.
+  if key == "Dead" {
+    return Err("INVALID_ARGS: key Dead is not one sendKey sends on Linux, whose input method composes it with the next key".into());
+  }
   let keyval = keyval(key, code).ok_or_else(|| format!("INVALID_ARGS: key {key} is not one sendKey sends on Linux"))?;
   let keycode = evdev(code).ok_or_else(|| format!("INVALID_ARGS: code {code} is not a key sendKey knows"))? + 8;
   //? GTK's key bindings read a key off its keycode and state: a numpad digit without NumLock (Mod2) is Home, End, ….
@@ -638,9 +647,12 @@ mod tests {
     assert_eq!(keyval("7", "Numpad7"), Some(*k::KP_7));
     assert_eq!(keyval("7", "Digit7"), Some(*k::_7));
     assert_eq!(keyval("ArrowLeft", "Numpad4"), Some(*k::Left));
-    assert_eq!(keyval("Enter", "NumpadEnter"), Some(*k::Return));
+    assert_eq!(keyval("Enter", "NumpadEnter"), Some(*k::KP_Enter));
+    assert_eq!(keyval("Enter", "Enter"), Some(*k::Return));
     assert_eq!(keyval("F5", "F5"), Some(*k::F5));
-    assert_eq!(keyval("Unidentified", "KeyA"), None);
+    assert_eq!(keyval("Unidentified", "KeyA"), Some(*k::VoidSymbol));
+    assert_eq!(keyval("Process", "KeyA"), None);
+    assert_eq!(keyval("Dead", "Quote"), None);
   }
 
   #[test]

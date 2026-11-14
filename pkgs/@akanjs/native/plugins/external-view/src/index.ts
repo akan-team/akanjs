@@ -75,7 +75,8 @@ export interface ExternalViewApi {
   /**
    * A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Not on macOS; on Linux
    * UNSUPPORTED while the view's window is hidden. On Linux a Tab past the page's last element takes the page's focus
-   * out of it, as in a browser, but the keyboard stays with the view or the app's page, whichever had it.
+   * out of it, as in a browser, but the keyboard stays with the view or the app's page, whichever had it; `Dead` is
+   * INVALID_ARGS there, since GTK's input method would compose it with the next key into one character.
    */
   sendKey(args: { id: string; key: string; code: string }): Promise<void>;
   /** The view's own sound only; the system volume is the volume plugin's. Not on macOS. */
