@@ -636,8 +636,12 @@ describe("ApplicationScript", () => {
 
     await script.test(pkg, { write: false, parallel: 2 });
     await script.test(pkg, { write: false, parallel: 1 });
-    await expect(script.test(pkg, { write: false, parallel: 0 })).rejects.toThrow("--parallel takes a whole number");
-    await expect(script.test(pkg, { write: false, parallel: 1.5 })).rejects.toThrow("--parallel takes a whole number");
+    for (const parallel of [0, 1.5, Number.NaN])
+      await expect(script.test(pkg, { write: false, parallel })).rejects.toMatchObject({
+        code: "usage",
+        exitCode: 2,
+        message: expect.stringContaining("--parallel takes a whole number"),
+      });
 
     expect(flagsOf).toEqual([
       [
@@ -647,6 +651,36 @@ describe("ApplicationScript", () => {
       ],
       [],
     ]);
+  });
+
+  test("with --parallel, drops a timings file bun would refuse, so the run records it again instead of failing", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { root, pkg } = track(await createTempPackage());
+    pkg.scan = (async () => undefined) as never;
+    script.applicationRunner.resolveTestPaths = () => [];
+    script.applicationRunner.test = async () => undefined;
+    const timings = path.join(root, "local", "test-timings", "pkgs", "@sample", "tool", "timings.json");
+    await mkdir(path.dirname(timings), { recursive: true });
+    const kept = ["", '{"version":1,"files":{"./a.test.ts":120}}'];
+    const dropped = [
+      "{bad",
+      " ",
+      "[]",
+      '{"version":2,"files":{}}',
+      '{"version":1,"files":[]}',
+      '{"version":1,"files":{"a":"x"}}',
+    ];
+
+    for (const text of kept) {
+      await Bun.write(timings, text);
+      await script.test(pkg, { write: false, parallel: 2 });
+      expect(await Bun.file(timings).text()).toBe(text);
+    }
+    for (const text of dropped) {
+      await Bun.write(timings, text);
+      await script.test(pkg, { write: false, parallel: 2 });
+      expect(existsSync(timings)).toBe(false);
+    }
   });
 
   test("with --junit, has bun write the report to that path from the caller's folder, creating its folder", async () => {

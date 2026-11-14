@@ -1,4 +1,4 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
@@ -274,11 +274,11 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     }: { write?: boolean; files?: string[]; coverage?: boolean; parallel?: number; junit?: string | null } = {},
   ) {
     if (!Number.isInteger(parallel) || parallel < 1)
-      throw new Error(`--parallel takes a whole number of bun processes, 1 or more; got ${parallel}`);
+      throw new CliError("usage", `--parallel takes a whole number of bun processes, 1 or more; got ${parallel}`);
     const testPaths = this.applicationRunner.resolveTestPaths(exec, files);
     const flags = [
       ...(coverage ? ApplicationScript.#coverageFlagsOf(exec) : []),
-      ...(parallel > 1 ? ApplicationScript.#parallelFlagsOf(exec, parallel) : []),
+      ...(parallel > 1 ? await ApplicationScript.#parallelFlagsOf(exec, parallel) : []),
       ...(junit ? await ApplicationScript.#junitFlagsOf(junit) : []),
     ];
     if (exec instanceof LibExecutor) {
@@ -312,9 +312,34 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   }
 
   //? Bun balances the files over its processes by the durations it recorded here on the last parallel run.
-  static #parallelFlagsOf(exec: Exec, parallel: number) {
+  static async #parallelFlagsOf(exec: Exec, parallel: number) {
     const timings = path.join(ApplicationScript.#localDirOf(exec, "test-timings"), "timings.json");
+    if (!(await ApplicationScript.#readsAsTimings(timings))) {
+      await rm(timings, { force: true });
+      Logger.warn(`${timings} was not a timings file bun reads, so it was dropped; this run records it again`);
+    }
     return [`--parallel=${parallel}`, `--timings=${timings}`, "--update-timings"];
+  }
+
+  //? Bun 1.4.4 runs no test when the file is neither empty nor `version` 1 with a string-free `files` object.
+  static async #readsAsTimings(timings: string) {
+    const file = Bun.file(timings);
+    if (!(await file.exists())) return true;
+    const text = await file.text();
+    if (text === "") return true;
+    try {
+      const parsed = JSON.parse(text) as { version?: unknown; files?: unknown } | null;
+      const files = parsed?.files;
+      return (
+        parsed?.version === 1 &&
+        typeof files === "object" &&
+        files !== null &&
+        !Array.isArray(files) &&
+        Object.values(files).every((ms) => typeof ms !== "string")
+      );
+    } catch {
+      return false;
+    }
   }
 
   //? Resolved here because bun runs in the target's folder; bun fails the report rather than create its folder.
