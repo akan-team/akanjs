@@ -22,6 +22,22 @@ describe("LogStdoutWriter", () => {
     expect(hub.floor).toBeNull();
     hub.close();
   });
+
+  test("writes every record past repeat suppression, so 101 request lines are 101 lines out", () => {
+    const hub = new LogHub({ suppressPerSecond: 20, now: () => 10_000 });
+    const lines: string[] = [];
+    const writer = new LogStdoutWriter(hub, { minSev: logSeverity.info, write: (line) => lines.push(line) });
+    for (let idx = 0; idx < 101; idx += 1)
+      hub.ingest(record("ok query:userList", { name: "Signal", attrs: { ms: idx, status: 200 } }));
+    for (let idx = 0; idx < 50; idx += 1) hub.ingest(record("loop warn", { level: "warn", sev: logSeverity.warn }));
+    hub.close();
+    const parsed = lines.map((line) => JSON.parse(line) as { seq: number; message: string });
+    expect(parsed.filter((line) => line.message === "ok query:userList").length).toBe(101);
+    expect(parsed.filter((line) => line.message === "loop warn").length).toBe(50);
+    expect(parsed.some((line) => line.message.includes("suppressed"))).toBe(false);
+    expect(parsed.map((line) => line.seq)).toEqual(Array.from({ length: 151 }, (_, idx) => idx + 1));
+    writer.close();
+  });
 });
 
 describe("HubFileSink", () => {

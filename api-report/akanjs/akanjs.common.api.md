@@ -648,7 +648,7 @@ export interface ErrRestoreOption {
 
 export declare class EventStream {
     static readonly defaultKeepAliveMs = 15000;
-    constructor(onCancel: () => void, { keepAliveMs, keepAliveChunk }?: EventStreamOptions);
+    constructor(onCancel: () => void, { keepAliveMs, keepAliveChunk, maxQueuedBytes, maxDropped, }?: EventStreamOptions);
     get open(): boolean;
     response(headers?: {
         [key: string]: string;
@@ -662,6 +662,8 @@ export declare class EventStream {
 export interface EventStreamOptions {
     keepAliveMs?: number;
     keepAliveChunk?: string;
+    maxQueuedBytes?: number;
+    maxDropped?: number;
 }
 
 export declare class FailureCode {

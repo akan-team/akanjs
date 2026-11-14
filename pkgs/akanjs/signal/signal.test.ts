@@ -13,7 +13,7 @@ import {
   SLICE_META,
   Upload,
 } from "akanjs/base";
-import { Logger, type LoggerSinkEntry } from "akanjs/common";
+import { Logger, type LoggerSinkEntry, type LogRecord } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls, NoDocumentError } from "akanjs/document";
 import {
@@ -48,6 +48,18 @@ import { SignalDeclarationError } from "./signalDeclarationError";
 import { SignalRegistry } from "./signalRegistry";
 import { slice } from "./slice";
 import { buildSlice } from "./sliceInfo";
+import { setCanonicalLineMode } from "./trace";
+
+const recordsNamed = (...names: string[]) => {
+  const records: LogRecord[] = [];
+  const remove = Logger.addSink(
+    (entry) => {
+      if (names.includes(entry.record.name)) records.push(entry.record);
+    },
+    { minLevel: "warn" },
+  );
+  return { records, remove };
+};
 
 const SignalTestNested = via((f) => ({
   label: f(String),
@@ -1802,25 +1814,60 @@ describe("SignalContext execution", () => {
     expect(errors).not.toHaveBeenCalled();
   });
 
-  test("logs a coded failure as a crash only from 500 up", async () => {
+  test("logs a coded failure as a crash only from 500 up, as one record with its type and stack", async () => {
     const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => "unused");
     const adaptor = new (adapt("signalTestCodedFailureAdaptor"))();
-    const errors = spyOn(adaptor.logger, "error");
+    const sink = recordsNamed("signalTestCodedFailureAdaptor");
     const run = async (statusCode: number) =>
       await SignalContext.run(adaptor, info, "coded", "http", async () => {
-        throw new AkanError("taken", "held by tenant-7", { statusCode });
+        throw new AkanError("taken", "held by tenant-7\nsecond line", { statusCode });
       }).catch((error) => error);
 
-    expect(SignalContext.wasReported(await run(409))).toBe(false);
-    expect(errors).not.toHaveBeenCalled();
+    try {
+      expect(SignalContext.wasReported(await run(409))).toBe(false);
+      expect(sink.records).toEqual([]);
 
-    expect(SignalContext.wasReported(await run(503))).toBe(true);
-    expect(errors).toHaveBeenCalledTimes(1);
+      expect(SignalContext.wasReported(await run(503))).toBe(true);
+      expect(sink.records.length).toBe(1);
+      expect(sink.records[0]).toMatchObject({ level: "error", message: "Error query-coded: held by tenant-7" });
+      expect(sink.records[0]?.attrs).toMatchObject({ status: 503, type: "AkanError", code: "taken" });
+      expect(String(sink.records[0]?.attrs?.stack)).toContain("held by tenant-7\nsecond line\n    at ");
+    } finally {
+      sink.remove();
+    }
   });
 
-  test("logs an error the endpoint declared under 500 at debug, and an undeclared or 5xx one as an error", async () => {
+  test("a 5xx under the canonical line is that one error record, with no second line from the endpoint", async () => {
+    const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => {
+      throw new TypeError("driver broke");
+    });
+    const adaptor = new (adapt("signalTestCanonicalCrashAdaptor"))();
+    const sink = recordsNamed("signalTestCanonicalCrashAdaptor", "Signal");
+    setCanonicalLineMode("all");
+    try {
+      const response = await SignalContext.try(adaptor, info, "crash", async () => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          adaptor,
+          middlewareMap: new Map([["logging", Logging]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+      expect(response?.status).toBe(500);
+      expect(sink.records.map((record) => [record.name, record.level])).toEqual([["Signal", "error"]]);
+      expect(sink.records[0]?.attrs).toMatchObject({ status: 500, type: "TypeError", err: "driver broke" });
+      expect(String(sink.records[0]?.attrs?.stack)).toContain("TypeError: driver broke");
+    } finally {
+      setCanonicalLineMode("off");
+      sink.remove();
+    }
+  });
+
+  test("logs an error the endpoint declared under 500 at debug, an undeclared one at warn, and a 5xx as an error", async () => {
     const adaptor = new (adapt("signalTestDeclaredErrorAdaptor"))();
-    const errors = spyOn(adaptor.logger, "error");
+    const sink = recordsNamed("signalTestDeclaredErrorAdaptor");
+    const failureLines = () => sink.records.filter((record) => record.message.startsWith("Error "));
     const debugs = spyOn(adaptor.logger, "debug");
     const debugOn = spyOn(Logger, "shouldLog").mockReturnValue(true);
     const statusOf = async (statusCode: number, errorKey: string) => {
@@ -1843,21 +1890,24 @@ describe("SignalContext execution", () => {
 
     try {
       expect(await statusOf(404, "item.error.notFound")).toBe(404);
-      expect(errors).not.toHaveBeenCalled();
+      expect(failureLines()).toEqual([]);
       expect(debugs.mock.calls.some(([line]) => String(line).includes("item.error.notFound"))).toBe(true);
 
       await statusOf(404, "item.error.gone");
       await statusOf(400, "item.error.notFound");
       await statusOf(503, "item.error.down");
-      expect(errors).toHaveBeenCalledTimes(3);
+      expect(failureLines().map((record) => record.level)).toEqual(["warn", "warn", "error"]);
+      expect(failureLines()[2]?.attrs).toMatchObject({ status: 503, type: "Exception" });
     } finally {
+      sink.remove();
       debugOn.mockRestore();
     }
   });
 
-  test("logs a by-id read missing its own id at debug, and a document its guard or handler loads besides as an error", async () => {
+  test("logs a by-id read missing its own id at debug, and a document its guard or handler loads besides at warn", async () => {
     const adaptor = new (adapt("signalTestByIdReadAdaptor"))();
     const errors = spyOn(adaptor.logger, "error");
+    const warns = spyOn(adaptor.logger, "warn");
     const debugs = spyOn(adaptor.logger, "debug");
     const debugOn = spyOn(Logger, "shouldLog").mockReturnValue(true);
     const missing = (refName: string, id: string) =>
@@ -1883,6 +1933,7 @@ describe("SignalContext execution", () => {
       );
     const loggedAs = async (endpointInfo: EndpointInfo) => {
       errors.mockClear();
+      warns.mockClear();
       debugs.mockClear();
       const response = await SignalContext.try(adaptor, endpointInfo, "item", async () => {
         const context = makeSignalContext({
@@ -1895,23 +1946,25 @@ describe("SignalContext execution", () => {
       });
       expect(response?.status).toBe(404);
       if (errors.mock.calls.length) return "error";
+      if (warns.mock.calls.some(([line]) => String(line).startsWith("Error "))) return "warn";
       return debugs.mock.calls.some(([line]) => String(line).startsWith("Error ")) ? "debug" : "unlogged";
     };
 
     try {
       expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("debug");
-      expect(await loggedAs(readThrowing(missing("user", "u1")))).toBe("error");
-      expect(await loggedAs(readThrowing(missing("item", "456")))).toBe("error");
+      expect(await loggedAs(readThrowing(missing("user", "u1")))).toBe("warn");
+      expect(await loggedAs(readThrowing(missing("item", "456")))).toBe("warn");
       ownerGone = true;
-      expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("error");
+      expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("warn");
     } finally {
       debugOn.mockRestore();
     }
   });
 
-  test("writes no error line for a refused 429, forwarded or not, and names a logged failure's cause", async () => {
+  test("writes no line above debug for a refused 429, forwarded or not, and names a logged failure's cause", async () => {
     const adaptor = new (adapt("signalTestRefusedFloodAdaptor"))();
     const errors = spyOn(adaptor.logger, "error");
+    const warns = spyOn(adaptor.logger, "warn");
     const respond = async (thrown: Error) => {
       const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => {
         throw thrown;
@@ -1935,10 +1988,12 @@ describe("SignalContext execution", () => {
     const forwarded = await respond(new Exception(429, "base.error.tooManyRequests", undefined, { seconds: 2 }));
     expect(forwarded?.headers.get("retry-after")).toBe("2");
     expect(errors).not.toHaveBeenCalled();
+    expect(warns).not.toHaveBeenCalled();
 
     await respond(new AkanError("taken", "held", { statusCode: 409, cause: new Error("driver said x") }));
-    expect(errors).toHaveBeenCalledTimes(1);
-    expect(String(errors.mock.calls[0]?.[0])).toContain("(cause: Error: driver said x)");
+    expect(errors).not.toHaveBeenCalled();
+    expect(warns).toHaveBeenCalledTimes(1);
+    expect(String(warns.mock.calls[0]?.[0])).toContain("(cause: Error: driver said x)");
   });
 
   test("reports guard and internal argument failures through HTTP responses", async () => {

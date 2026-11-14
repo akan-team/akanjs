@@ -144,10 +144,17 @@ describe("RscWorker collaborator wiring", () => {
 
   test("a render in flight when the worker exits, and one sent once it is killed, fail as rscWorkerStopped", async () => {
     const { rsc } = await startWorker();
+    const hostLines: LogRecord[] = [];
+    const removeSink = Logger.addSink((entry) => {
+      if (entry.record.name === "RscWorker") hostLines.push(entry.record);
+    });
+    cleanups.push(async () => removeSink());
 
     const exited = await rsc.renderWithMeta(new Request("http://localhost/exit")).catch((error: unknown) => error);
     expect(AkanError.is(exited, "rscWorkerStopped")).toBe(true);
     expect(exited).toMatchObject({ statusCode: 500, message: "rsc worker exited with code 7" });
+    await until(() => hostLines.some((record) => record.message.includes("worker crashed")), "the crash line");
+    expect(hostLines.find((record) => record.message.includes("worker crashed"))?.level).toBe("warn");
 
     rsc.kill();
     const stopped = await rsc.renderWithMeta(new Request("http://localhost/x")).catch((error: unknown) => error);

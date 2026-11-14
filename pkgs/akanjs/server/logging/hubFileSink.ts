@@ -14,6 +14,7 @@ export class HubFileSink {
   #subscription: { unsubscribe(): void } | null;
 
   constructor(hub: LogHub, writer: RotatingLogWriter, { minSev, json }: HubFileSinkOptions) {
+    //? The folded view, not every record: one appendFile per line cannot drain a hot loop, and folding caps it.
     this.#subscription = hub.subscribe({ minSev }, (entry) => {
       writer.write(
         HubFileSink.processKey(entry),
