@@ -385,6 +385,18 @@ describe("AgentLoop interruption", () => {
     expect(requests[1]?.messages[2]?.toolResults?.map((result) => result.id)).toEqual(["c1", "c2"]);
   });
 
+  test("two calls a model gave one id are both answered on the wire, and a resume runs only the one left", async () => {
+    const batch = calling(callOf("c1", "renameTitle", { title: "a" }), callOf("c1", "renameTitle", { title: "b" }));
+    const { port, requests } = harness([batch, saying("Done.")]);
+    const stored: AgentWireMessage[] = [{ role: "user", text: "go" }];
+    await drain(port, ask("go", { onMessage: (message) => void stored.push(message) }));
+    expect(requests[1]?.messages.at(-1)?.toolResults?.map((result) => result.id)).toEqual(["c1", "c1"]);
+
+    const resumed = harness([saying("Done.")]);
+    await drain(resumed.port, { ...ask("unused"), messages: stored.slice(0, 3) });
+    expect(resumed.called.map(({ call }) => call.args)).toEqual([{ title: "b" }]);
+  });
+
   test("a later call that throws keeps the results before it, and reports the failure", async () => {
     const { port } = harness([twoWrites()], (_account, call) => {
       if (call.id === "c2") throw new Error("the adaptor broke");

@@ -82,6 +82,30 @@ describe("LoopTranscript.sanitize", () => {
     ]);
   });
 
+  test("two calls sharing an id in one batch keep a result each, stored a message a call", () => {
+    const twice: AgentWireMessage = {
+      role: "assistant",
+      toolCalls: [
+        { id: "c1", name: "first", args: {} },
+        { id: "c1", name: "second", args: {} },
+      ],
+    };
+    const one: AgentWireMessage = { role: "tool", toolResults: [{ id: "c1", name: "first", result: "one" }] };
+    const two: AgentWireMessage = { role: "tool", toolResults: [{ id: "c1", name: "second", result: "two" }] };
+    const whole = LoopTranscript.sanitize([twice, one, two]);
+    expect(whole.map((message) => message.role)).toEqual(["assistant", "tool"]);
+    expect(whole[1]?.toolResults?.map((result) => result.result)).toEqual(["one", "two"]);
+    expect(LoopTranscript.pending([twice, one, two])).toEqual([]);
+
+    expect(LoopTranscript.pending([twice, one])).toEqual([{ id: "c1", name: "second", args: {} }]);
+    const half = LoopTranscript.sanitize([twice, one]);
+    expect(half[1]?.toolResults).toEqual([
+      { id: "c1", name: "second", error: LoopTranscript.unanswered },
+      { id: "c1", name: "first", result: "one" },
+    ]);
+    expect(LoopTranscript.sanitize([twice, one, two, two])[1]?.toolResults).toHaveLength(2);
+  });
+
   test("a result stored ahead of its call answers nothing", () => {
     const repaired = LoopTranscript.sanitize([answer("c1"), call("c1")]);
     expect(repaired.map((message) => message.role)).toEqual(["assistant", "tool"]);

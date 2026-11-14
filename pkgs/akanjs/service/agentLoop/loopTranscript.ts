@@ -46,24 +46,20 @@ export class LoopTranscript {
   //? Every provider refuses a call without its result or a result without its call, on this turn and every later one.
   static sanitize(messages: readonly AgentWireMessage[]): AgentWireMessage[] {
     const unanswered = LoopTranscript.#unanswered(messages);
-    const called = new Set<string>();
-    const paired = new Set<string>();
+    const owed = new Map<string, number>();
     const kept: AgentWireMessage[] = [];
     for (const [at, message] of messages.entries()) {
       if (message.role === "tool") {
         //? A retried run may store one tool message twice, and a provider refuses two results for one call.
-        const results = (message.toolResults ?? []).filter((result) => called.has(result.id) && !paired.has(result.id));
-        for (const result of results) paired.add(result.id);
+        const results = (message.toolResults ?? []).filter((result) => LoopTranscript.#take(owed, result.id));
         if (results.length) LoopTranscript.#answer(kept, { ...message, toolResults: results });
         continue;
       }
       if (message.role === "assistant" && !LoopTranscript.carries(message)) continue;
       kept.push(message);
       const calls = message.toolCalls ?? [];
-      for (const call of calls) {
-        called.add(call.id);
-        paired.delete(call.id);
-      }
+      for (const call of calls) owed.delete(call.id);
+      for (const call of calls) owed.set(call.id, (owed.get(call.id) ?? 0) + 1);
       const stopped = unanswered.get(at) ?? [];
       // A model told the call was stopped asks again; one shown no call at all answers as if it had the result.
       if (stopped.length)
@@ -78,16 +74,23 @@ export class LoopTranscript {
   //? Read from the end, as a result answers the nearest call before it: some models reuse an id across turns, and by id
   //? alone the earlier turn's result would make a later call nothing answered look answered.
   static #unanswered(messages: readonly AgentWireMessage[]): Map<number, AgentWireToolCall[]> {
-    const waiting = new Set<string>();
+    const waiting = new Map<string, number>();
     const unanswered = new Map<number, AgentWireToolCall[]>();
     for (let at = messages.length - 1; at >= 0; at -= 1) {
       const { toolCalls = [], toolResults = [] } = messages[at] ?? {};
-      for (const result of toolResults) waiting.add(result.id);
-      const stopped = toolCalls.filter((call) => !waiting.has(call.id));
+      for (const result of toolResults) waiting.set(result.id, (waiting.get(result.id) ?? 0) + 1);
+      const stopped = toolCalls.filter((call) => !LoopTranscript.#take(waiting, call.id));
       if (stopped.length) unanswered.set(at, stopped);
       for (const call of toolCalls) waiting.delete(call.id);
     }
     return unanswered;
+  }
+
+  //? Counted, not a set of ids: a model may give two calls of one batch the same id, and each is owed its own result.
+  static #take(counts: Map<string, number>, id: string): boolean {
+    const left = counts.get(id) ?? 0;
+    if (left > 0) counts.set(id, left - 1);
+    return left > 0;
   }
 
   //? A batch is stored one tool message a call, and OpenAI's dialect puts a message's pictures straight after its
@@ -113,8 +116,9 @@ export class LoopTranscript {
     const at = messages.findLastIndex((message) => message.role !== "tool");
     const last = messages[at];
     if (last?.role !== "assistant" || !last.toolCalls?.length) return [];
-    const answered = new Set(messages.slice(at + 1).flatMap((message) => (message.toolResults ?? []).map((r) => r.id)));
-    return last.toolCalls.filter((call) => !answered.has(call.id));
+    const answers = new Map<string, number>();
+    for (const { id } of LoopTranscript.results(messages.slice(at + 1))) answers.set(id, (answers.get(id) ?? 0) + 1);
+    return last.toolCalls.filter((call) => !LoopTranscript.#take(answers, call.id));
   }
 
   //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that
