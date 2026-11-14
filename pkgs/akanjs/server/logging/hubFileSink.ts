@@ -14,16 +14,13 @@ export class HubFileSink {
   #subscription: { unsubscribe(): void } | null;
 
   constructor(hub: LogHub, writer: RotatingLogWriter, { minSev, json }: HubFileSinkOptions) {
-    this.#subscription = hub.subscribe(
-      { minSev },
-      (entry) => {
-        writer.write(
-          HubFileSink.processKey(entry),
-          json ? LogStdoutWriter.line(entry) : Logger.stripAnsi(Logger.render(entry.record)),
-        );
-      },
-      { exact: true },
-    );
+    //? The folded view, not every record: one appendFile per line cannot drain a hot loop, and folding caps it.
+    this.#subscription = hub.subscribe({ minSev }, (entry) => {
+      writer.write(
+        HubFileSink.processKey(entry),
+        json ? LogStdoutWriter.line(entry) : Logger.stripAnsi(Logger.render(entry.record)),
+      );
+    });
   }
 
   static attach(writer: RotatingLogWriter, hub: LogHub | null, label: string): () => void {

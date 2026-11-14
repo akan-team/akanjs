@@ -202,8 +202,8 @@ normalized to `info` with one warning.
 - **The hub lives with whoever owns the surface**: the gateway when there is one, the replica itself under solo
   (`AKAN_REPLICA=0,0,1`), the same rule as the rotating log file and `/_akan/app/*`. It keeps a ring
   (`AKAN_LOG_BUFFER` records / `AKAN_LOG_BUFFER_MB`, default 2000 / 4), suppresses a line repeating more than 20
-  times a second into one counted line there and in live tails (never a request line; the ndjson stdout and the log
-  file get every record), and serves `<runtimeDir>/akan-control.sock` (`0600`, NDJSON). A child
+  times a second into one counted line there, in live tails and in the log file (never a request line; the ndjson
+  stdout gets every record), and serves `<runtimeDir>/akan-control.sock` (`0600`, NDJSON). A child
   forwards records only while a subscriber wants that level (`log.level` IPC), so an unwatched process sends
   nothing; `AKAN_LOG_STREAM=1` keeps it on. The RSC worker forwards to its replica the same way.
 - **`akan logs <app>`** is the client: `--level --grep --endpoint --trace --child --role --origin --since`
