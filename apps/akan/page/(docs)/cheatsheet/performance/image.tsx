@@ -536,8 +536,8 @@ export default page()
       {
         input: "SVG",
         result: l.trans({
-          en: "A 400 unless `dangerouslyAllowSVG` is on; then it is served as-is.",
-          ko: "`dangerouslyAllowSVG`를 켜지 않으면 400이고, 켜면 그대로 보냅니다.",
+          en: "A 400 unless `dangerouslyAllowSVG` is on; then it is served as-is, and its sandboxing policy keeps any script in it from running.",
+          ko: "`dangerouslyAllowSVG`를 켜지 않으면 400이고, 켜면 그대로 보내되 sandbox 정책 때문에 안의 스크립트는 실행되지 않습니다.",
         }),
       },
     ];
@@ -588,6 +588,25 @@ export default page()
           <>
             <strong>인코딩이 실패해도 응답은 나갑니다.</strong> 원본 바이트를 보내고 캐시하지 않으므로, 다음 요청에서
             다시 시도합니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>Opened by its URL, an image downloads.</strong> Every image the optimizer sends carries{" "}
+            <code>Content-Disposition: attachment</code> named after the source file,{" "}
+            <code>X-Content-Type-Options: nosniff</code> and{" "}
+            <code>{"script-src 'none'; frame-src 'none'; sandbox;"}</code> as its <code>Content-Security-Policy</code>.
+            An <code>&lt;img&gt;</code> shows it as before.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>이미지 URL을 직접 열면 내려받습니다.</strong> optimizer가 보내는 이미지는 모두 원본 파일 이름을 담은{" "}
+            <code>Content-Disposition: attachment</code>, <code>X-Content-Type-Options: nosniff</code>,{" "}
+            <code>Content-Security-Policy</code>로 <code>{"script-src 'none'; frame-src 'none'; sandbox;"}</code>를 함께
+            보냅니다. <code>&lt;img&gt;</code>로는 전처럼 보입니다.
           </>
         ),
       }),
