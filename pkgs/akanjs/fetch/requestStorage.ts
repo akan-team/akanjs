@@ -33,6 +33,7 @@ export interface AkanRequestStore {
   policy: AkanRequestPolicy;
   dynamicUsage: AkanDynamicUsage;
   needsBrowser?: boolean;
+  renderSearch?: string;
 }
 
 export interface RequestStorage {
@@ -94,6 +95,15 @@ export function setRequestTheme(theme: AkanTheme | undefined): void {
 
 export function getRequestTheme(): AkanTheme | undefined {
   return getRequestStore()?.theme;
+}
+
+export function setRequestRenderSearch(search: string): void {
+  const store = getRequestStore();
+  if (store) store.renderSearch = search;
+}
+
+export function getRequestRenderSearch(): string | undefined {
+  return getRequestStore()?.renderSearch;
 }
 
 export function setRequestFrameState(frameState: unknown): void {

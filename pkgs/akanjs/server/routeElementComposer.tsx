@@ -24,6 +24,7 @@ import { RouteGuards } from "../client/route/RouteGuards";
 import { RouteHead } from "../client/route/RouteHead";
 import type { FallbackHead } from "./fallbackHead";
 import { resolveHeadResult } from "./head";
+import { isRouteCacheTrackingParam, type RouteCacheQueryForm, routeCacheTrackingParams } from "./routeCacheQuery";
 import { RouteShellGate } from "./routeShellGate";
 import {
   type AkanRouteSegmentState,
@@ -184,6 +185,19 @@ export class RouteElementComposer {
       throw error;
     }
     return mergePageConfigs(configChain).prefetch === false ? "refused" : "admitted";
+  }
+
+  //? Only a level that declares what it reads may share a key across queries: a legacy page receives every value.
+  static async routeCacheQueryForm(pathRoute: PathRoute): Promise<RouteCacheQueryForm> {
+    const configChain = await RouteElementComposer.#resolvePageConfigChain(pathRoute);
+    if (mergePageConfigs(configChain).canonicalQuery === false) return "exact";
+    const tracking = routeCacheTrackingParams();
+    const reads = await Promise.all(
+      RouteElementComposer.#getRenderStack(pathRoute).map((routeRender) => routeRender.getSearchNames?.()),
+    );
+    const mayReadTracking = (names: string[] | undefined) =>
+      !names || names.some((name) => isRouteCacheTrackingParam(name, tracking));
+    return reads.some(mayReadTracking) ? "exact" : "canonical";
   }
 
   static async #layoutsRefusePrefetch(route: PathRoute | LayoutFallbackRoute): Promise<boolean> {

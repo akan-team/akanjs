@@ -302,6 +302,54 @@ keys() · entries() · forEach(fn)`,
       },
     ];
 
+    const pageCacheEnvColumns = [
+      { key: "name", label: l.trans({ en: "Variable", ko: "변수" }), code: true },
+      { key: "desc", label: l.trans({ en: "Effect", ko: "효과" }) },
+    ];
+    const pageCacheEnvRows = [
+      {
+        name: "AKAN_RSC_RESULT_CACHE · AKAN_HTML_RESULT_CACHE",
+        desc: l.trans({
+          en: "`1` turns the cache on outside production, `0` turns it off. On by default in production.",
+          ko: "`1`이면 production 밖에서도 켜고, `0`이면 끕니다. production에서는 기본으로 켜져 있습니다.",
+        }),
+      },
+      {
+        name: "…_TTL",
+        desc: l.trans({
+          en: "Seconds an entry is kept, 30 by default. A page's own `revalidate` can only shorten it.",
+          ko: "항목을 보관하는 초이며 기본 30초입니다. 페이지의 `revalidate`는 이를 줄이기만 합니다.",
+        }),
+      },
+      {
+        name: "…_PATHS · …_EXCLUDE_PATHS",
+        desc: l.trans({
+          en: "Comma-separated path prefixes the cache takes, and the ones it leaves out.",
+          ko: "캐시할 경로 접두사와 뺄 경로 접두사를 쉼표로 나열합니다.",
+        }),
+      },
+      {
+        name: "AKAN_ROUTE_CACHE_TRACKING_PARAMS",
+        desc: l.trans({
+          en: "Query parameters left out of the key: comma-separated names, a trailing `*` for a prefix, `default` for the built-in list, `off` for none.",
+          ko: "key에서 뺄 쿼리 파라미터입니다. 이름을 쉼표로 나열하고, 끝의 `*`는 접두사, `default`는 기본 목록, `off`는 없음을 뜻합니다.",
+        }),
+      },
+    ];
+
+    const queryFormColumns = [
+      { key: "a", label: l.trans({ en: "Request", ko: "요청" }), code: true },
+      { key: "b", label: l.trans({ en: "Shares an entry with", ko: "같은 항목을 쓰는 요청" }), code: true },
+    ];
+    const queryFormRows = [
+      { a: "?b=2&a=1", b: "?a=1&b=2" },
+      { a: "?a=1&utm_source=news&gclid=x", b: "?a=1" },
+      { a: "?a", b: "?a=" },
+      { a: "?q=a+b", b: "?q=a%20b" },
+      { a: "?p=%2f", b: "?p=/" },
+      { a: "?a=1&&b=2&", b: "?a=1&b=2" },
+    ];
+
     const moreLinks = [
       {
         href: "/conventions/module/service#injection-types",
@@ -645,6 +693,80 @@ keys() · entries() · forEach(fn)`,
                     <span>
                       <strong>로컬 메모리는 프로세스마다 따로입니다.</strong> 레플리카마다 자기{" "}
                       <code>localHitCount</code>를 가지며, 재시작하면 처음부터 다시 셉니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="page-cache" title={l.trans({ en: "Page Cache", ko: "페이지 캐시" })}>
+          <Docs.Title>{l.trans({ en: "Page Cache", ko: "페이지 캐시" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: "In production the server keeps a rendered page for a few seconds and answers the next anonymous request for it from memory: the render worker keeps its RSC payload, the web server its HTML. A response says which in `X-Akan-Cache` (HIT, MISS or BYPASS, with `X-Akan-Cache-Reason`).",
+                ko: "production에서 서버는 렌더한 페이지를 몇 초 동안 들고 있다가, 같은 페이지의 다음 익명 요청에 메모리에서 답합니다. 렌더 워커는 RSC payload를, 웹 서버는 HTML을 보관합니다. 응답의 `X-Akan-Cache`(HIT, MISS, BYPASS와 `X-Akan-Cache-Reason`)가 어느 쪽인지 알려 줍니다.",
+              })}
+            </div>
+            <Docs.Table columns={pageCacheEnvColumns} rows={pageCacheEnvRows} stacked />
+            <Docs.SubSubTitle>{l.trans({ en: "What the key holds", ko: "key에 들어가는 것" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: "The origin, the base path, the locale the URL resolved to, the path, the query and the theme cookie, plus a crawler flag for HTML. The browser's `Accept-Language` is not in it: visitors asking for one locale's page share its entry. A page that reads a request header or cookie with `headers()` or `cookies()` is rendered for each request and never stored.",
+                ko: "origin, base path, URL이 가리키는 locale, 경로, 쿼리, theme 쿠키이고, HTML에는 크롤러 여부가 더해집니다. 브라우저의 `Accept-Language`는 들어가지 않으므로 같은 locale 페이지를 요청한 방문자는 한 항목을 함께 씁니다. `headers()`나 `cookies()`로 요청 헤더나 쿠키를 읽는 페이지는 요청마다 렌더하고 저장하지 않습니다.",
+              })}
+            </div>
+            <Docs.SubSubTitle>{l.trans({ en: "The query in the key", ko: "key 속의 쿼리" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: "The key takes the query sorted by name, without the tracking parameters (`utm_*`, `gclid`, `fbclid`, `msclkid` and the like), as the URL standard parses it. A name given twice keeps its values in their order, and names are case-sensitive. These pairs share an entry:",
+                ko: "key는 쿼리를 이름순으로 정렬하고 추적 파라미터(`utm_*`, `gclid`, `fbclid`, `msclkid` 등)를 뺀 뒤, URL 표준이 해석한 그대로 씁니다. 두 번 나온 이름은 값의 순서를 지키고, 이름은 대소문자를 구분합니다. 다음 쌍은 같은 항목을 씁니다:",
+              })}
+            </div>
+            <Docs.Table columns={queryFormColumns} rows={queryFormRows} stacked />
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The page still reads the full query.</strong> Its <code>.search()</code> values come from
+                      the URL as requested, and <code>window.location</code> keeps every parameter. Only the URL the
+                      server renders the page with is the sorted one, so a server render never sees a tracking parameter
+                      it did not declare. A guard's <code>request.path</code>, <code>usePathCtx().location</code> and{" "}
+                      <code>usePageLocation()</code> carry that URL too, the hooks until the first navigation, so the
+                      browser hydrates what the server rendered.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>페이지는 여전히 쿼리 전체를 읽습니다.</strong> <code>.search()</code> 값은 요청된 URL에서
+                      오고, <code>window.location</code>에는 모든 파라미터가 남습니다. 서버가 페이지를 렌더할 때 쓰는
+                      URL만 정렬된 것이라, 서버 렌더는 선언하지 않은 추적 파라미터를 보지 못합니다. guard의{" "}
+                      <code>request.path</code>, <code>usePathCtx().location</code>, <code>usePageLocation()</code>도 그
+                      URL을 따르고, 두 hook은 첫 이동 전까지 그대로라 브라우저가 서버가 렌더한 값으로 hydrate합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Some pages keep the query as requested.</strong> A page or layout with{" "}
+                      <code>.config({"{ canonicalQuery: false }"})</code>, one that declares a tracking parameter with{" "}
+                      <code>.search("utm_source", String)</code>, and a legacy default-function page, which receives
+                      every value, each keep one entry per query exactly as it was asked.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>요청 그대로의 쿼리를 쓰는 페이지도 있습니다.</strong>{" "}
+                      <code>.config({"{ canonicalQuery: false }"})</code>를 둔 페이지나 layout,{" "}
+                      <code>.search("utm_source", String)</code>처럼 추적 파라미터를 선언한 페이지, 모든 값을 받는 예전
+                      default 함수 페이지는 요청된 쿼리마다 항목을 따로 둡니다.
                     </span>
                   ),
                 })}

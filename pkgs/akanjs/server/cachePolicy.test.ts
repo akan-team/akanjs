@@ -49,7 +49,7 @@ describe("route cache policy helpers", () => {
     const key = createRouteCacheKey({ request, url, theme: "dark" });
 
     expect(getClientFacingOrigin(request, url)).toBe("https://akanjs.com");
-    expect(key.split("\n")).toEqual(["https://akanjs.com", "akanjs", "", "", "/en/docs", "?x=1", "ko", "dark"]);
+    expect(key.split("\n")).toEqual(["https://akanjs.com", "akanjs", "", "", "/en/docs", "?x=1", "dark"]);
     expect(createRouteCacheEntry({ request, url, theme: "dark", ttl: 45 })).toEqual({
       key,
       ttl: 45,
@@ -97,11 +97,24 @@ describe("route cache policy helpers", () => {
       theme: "dark",
     });
 
-    expect(baseKey.split("\n")).toEqual(["https://example.test", "", "ko", "/docs", "/en/docs", "?x=1", "ko", "dark"]);
+    expect(baseKey.split("\n")).toEqual(["https://example.test", "", "ko", "/docs", "/en/docs", "?x=1", "dark"]);
     expect(enLocaleKey).not.toBe(baseKey);
     expect(rewrittenPathKey).not.toBe(baseKey);
-    expect(noHeaderKey.split("\n")).toEqual(["https://example.test", "", "", "", "/en/docs", "?x=1", "ko", "dark"]);
+    expect(noHeaderKey.split("\n")).toEqual(["https://example.test", "", "", "", "/en/docs", "?x=1", "dark"]);
     expect(createRouteCacheEntry({ request: baseRequest, url, theme: "dark", ttl: 60 }).key).toBe(baseKey);
+  });
+
+  test("keys a page on the locale it resolved to, not on the Accept-Language that asked for it", () => {
+    const keyOf = (pathname: string, locale: string, acceptLanguage: string) => {
+      const request = new Request(`https://example.test${pathname}`, {
+        headers: { "accept-language": acceptLanguage, "x-locale": locale, "x-path": "/docs" },
+      });
+      return createRouteCacheKey({ request, url: new URL(request.url) });
+    };
+
+    expect(keyOf("/ko/docs", "ko", "ko-KR,ko;q=0.9")).toBe(keyOf("/ko/docs", "ko", "en-US,en;q=0.8"));
+    expect(keyOf("/ko/docs", "ko", "ko")).not.toBe(keyOf("/en/docs", "en", "ko"));
+    expect(keyOf("/docs", "ko", "en")).not.toBe(keyOf("/docs", "en", "en"));
   });
 
   test("classifies public cacheable requests and route path filters", () => {
