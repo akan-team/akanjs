@@ -101,10 +101,18 @@ export class GatewayChildren {
     return this.#renderingChildCache;
   }
 
-  //? Falls back rather than refusing: API and websocket traffic need no worker, and a queued page waits for its respawn.
+  //? Websockets never use the worker and stay pinned to the replica they upgrade on, so they keep plain round-robin.
   pickFederationChild() {
+    return this.#roundRobin(this.federationCandidates());
+  }
+
+  //? Falls back rather than refusing: API traffic needs no worker, and a queued page waits for its respawn.
+  pickRenderingChild() {
     const rendering = this.renderingCandidates();
-    const candidates = rendering.length > 0 ? rendering : this.federationCandidates();
+    return this.#roundRobin(rendering.length > 0 ? rendering : this.federationCandidates());
+  }
+
+  #roundRobin(candidates: ChildState[]) {
     if (candidates.length === 0) return null;
     const child = candidates[this.#rrIdx % candidates.length];
     this.#rrIdx++;

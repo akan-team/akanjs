@@ -10,6 +10,7 @@ import { GatewayConfig } from "./gatewayConfig";
 import type { GatewayLogging } from "./gatewayLogging";
 import type { GatewayRooms } from "./gatewayRooms";
 import { GatewayStatus } from "./gatewayStatus";
+import { GatewayWebSocketRelay, type GatewayWsData } from "./gatewayWebSocketRelay";
 
 const logger = { warn: () => undefined, error: () => undefined, verbose: () => undefined } as unknown as Logger;
 
@@ -46,6 +47,7 @@ const gatewayOf = (replicas: number) => {
       replicaIdx: idx,
       role: "all",
       upstream: { type: "unix", socketPath: `/tmp/replica-${idx}.sock` },
+      wsUpstream: { type: "tcp", host: "127.0.0.1", port: 9 },
       ...(rscWorker === undefined ? {} : { rscWorker }),
     });
   const pong = (idx: number, rscWorker?: AkanRscWorkerStatus) =>
@@ -55,7 +57,7 @@ const gatewayOf = (replicas: number) => {
       sentAt: 0,
       ...(rscWorker === undefined ? {} : { rscWorker }),
     } satisfies AkanIpcMessage);
-  return { children, supervisor, status, ready, pong };
+  return { config, children, supervisor, status, ready, pong };
 };
 
 describe("GatewayStatus readiness", () => {
@@ -92,14 +94,38 @@ describe("GatewayStatus readiness", () => {
     pong(1, "restarting");
 
     expect(status.readyStatus().ready).toBe(true);
-    expect([0, 1, 2, 3].map(() => children.pickFederationChild()?.idx)).toEqual([0, 0, 0, 0]);
+    expect([0, 1, 2, 3].map(() => children.pickRenderingChild()?.idx)).toEqual([0, 0, 0, 0]);
 
     pong(0, "restarting");
     expect(status.readyStatus().ready).toBe(false);
-    expect(new Set([0, 1, 2, 3].map(() => children.pickFederationChild()?.idx))).toEqual(new Set([0, 1]));
+    expect(new Set([0, 1, 2, 3].map(() => children.pickRenderingChild()?.idx))).toEqual(new Set([0, 1]));
 
     pong(1, "ready");
     expect(status.readyStatus().ready).toBe(true);
-    expect([0, 1].map(() => children.pickFederationChild()?.idx)).toEqual([1, 1]);
+    expect([0, 1].map(() => children.pickRenderingChild()?.idx)).toEqual([1, 1]);
+  });
+
+  test("spreads websocket upgrades over every replica while one replica's worker restarts", () => {
+    const { config, children, ready, pong } = gatewayOf(2);
+    ready(0, "ready");
+    ready(1, "ready");
+    pong(1, "restarting");
+    const relay = new GatewayWebSocketRelay(config, children);
+    const upstreams: WebSocket[] = [];
+    const server = {
+      requestIP: () => null,
+      upgrade: (_req: Request, { data }: { data: GatewayWsData }) => {
+        upstreams.push(data.upstream);
+        return true;
+      },
+    } as unknown as Bun.Server<GatewayWsData>;
+
+    try {
+      for (let n = 0; n < 4; n++)
+        relay.upgrade(new Request("http://localhost/ws", { headers: { upgrade: "websocket" } }), server);
+      expect([children.get(0)?.metrics.activeWebSockets, children.get(1)?.metrics.activeWebSockets]).toEqual([2, 2]);
+    } finally {
+      for (const upstream of upstreams) upstream.close();
+    }
   });
 });
