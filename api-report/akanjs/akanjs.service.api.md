@@ -32,6 +32,7 @@ export type AgentLoopApproval = "allow" | "defer" | {
 export type AgentLoopApprove = (call: AgentWireToolCall, state: {
     tainted: boolean;
     tool: AgentTool;
+    client?: true;
     remote?: string;
 }) => PromiseOrObject<AgentLoopApproval>;
 
@@ -40,6 +41,8 @@ export interface AgentLoopBudget {
     toolCalls?: number;
     wallMs?: number;
 }
+
+export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
 
 export type AgentLoopEvent = {
     type: "awaiting";
@@ -92,6 +95,7 @@ export interface AgentLoopOptions {
     remotes?: readonly AgentLoopRemote[];
     clientTools?: AgentTool[];
     ask?: boolean;
+    answer?: AgentLoopCallAnswer;
     compact?: {
         at: number;
         keep?: number;
@@ -237,6 +241,8 @@ export interface AgentTurnContext {
     loop?: {
         id: string;
         round: number;
+        client?: true;
+        remote?: true;
     };
     meta?: Record<string, string>;
 }

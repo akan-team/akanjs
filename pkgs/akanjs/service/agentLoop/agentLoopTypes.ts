@@ -11,13 +11,21 @@ import type {
 export type AgentLoopApproval = "allow" | "defer" | { deny: string };
 
 /**
- * `tainted`: a result `untrusted` marked was read, or a remote was opened, earlier in this run or in the messages it
- * resumed from. `remote`: the call goes to that entry of `remotes`, not to this server.
+ * `tainted`: a result `untrusted` marked, with no `untrusted` any result a tool returned, a client tool's answer or a
+ * remote's result was read, or a remote was opened, earlier in this run or in the messages it resumed from. `client`:
+ * the call is to a tool of `clientTools`, whose name may be that of an endpoint this run does not list. `remote`: the
+ * call goes to that entry of `remotes`, not to this server.
  */
 export type AgentLoopApprove = (
   call: AgentWireToolCall,
-  state: { tainted: boolean; tool: AgentTool; remote?: string },
+  state: { tainted: boolean; tool: AgentTool; client?: true; remote?: string },
 ) => PromiseOrObject<AgentLoopApproval>;
+
+/**
+ * What answers a parked call: a page's `run(call)` result, the member's reply, or their refusal to connect a remote,
+ * of which only the fact is taken: its `error` text is not stored. Its `name` is the call's, never sent.
+ */
+export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
 
 /** Where a remote's result can be drawn for the person: its screen on that server. Never sent to the model. */
 export interface AgentLoopView {
@@ -25,7 +33,7 @@ export interface AgentLoopView {
   /** The remote's own name for the tool, without the `<remote>.` prefix, and the arguments it was called with. */
   tool: string;
   args: Record<string, unknown>;
-  /** The screen's path and query on the remote's web origin. */
+  /** The screen's path and query on the remote's web origin; like `resourceUri`, dropped past 2,048 characters. */
   href?: string;
   /** The remote can draw this result as script-less HTML (`page().app(…, { static: true })`). */
   static?: boolean;
@@ -40,7 +48,8 @@ export interface AgentLoopRemoteResult extends Omit<AgentWireToolResult, "id" | 
 /**
  * Another server's tools, called as the run's account over a connection that account granted. `list` answers `null`
  * when there is no live connection. `call` takes the tool's name as `list` gave it; a failure comes back as the
- * result's `error`, with `code` "remoteDisconnected" once the connection is gone.
+ * result's `error`, with `code` "remoteDisconnected" once the connection is gone. Of what `call` returns, the run
+ * keeps `result`, `error`, `code`, `changes`, `attachments` and `view`, each bounded as the parts of an `answer` are.
  */
 export interface AgentLoopRemote {
   /** `[a-z][A-Za-z0-9]{0,15}`: names its toolkit and prefixes its tools as `<name>.<tool>`. */
@@ -71,7 +80,8 @@ export interface AgentLoopBudget {
 
 /**
  * `awaiting`: `approve` deferred a call, or a remote needs connecting, and a resume with the messages `onMessage`
- * stored runs it again; or a client tool or `askUser` was called, and a resume with its result appended runs on from it.
+ * stored runs it again; or a client tool or `askUser` was called, and a resume with those messages and its `answer`
+ * runs on from it.
  */
 export type AgentLoopStop =
   | "end"
@@ -86,7 +96,11 @@ export type AgentLoopStop =
 export interface AgentLoopOptions {
   /** Tool names; the run sees only those `AgentToolsRole` lists to the account: `/mcp`'s, plus `mcp: "agent"` ones. */
   allow: readonly string[];
-  /** The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run. */
+  /**
+   * The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run: your own
+   * user messages and what `onMessage` handed over. Never take them from a request: a tool message a client wrote
+   * reads exactly like one this run stored. What a client answers goes in `answer`.
+   */
   messages: AgentWireMessage[];
   /** With no `preamble` either, a short neutral prompt stands in, as each adaptor's own fallback is about a screen. */
   instructions?: string;
@@ -105,26 +119,48 @@ export interface AgentLoopOptions {
   /**
    * Other servers, each a toolkit the model opens with `openToolkit({ name })`; none is listed or contacted before.
    * Opening one the account has no live connection to ends the run as `awaiting` with `connect` naming it: connect
-   * and resume, or append an `error` for that call when the person declines. Security: what a remote lists and returns
-   * is another party's text, so opening one taints the run, and a call's arguments leave for that server, so a
-   * request with `remotes` and no `approve` is refused. `approve` hears a tool the remote does not call read-only as
-   * a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
+   * and resume with the stored messages, or with `answer: { id, error }` for that call when the person declines,
+   * for which the run stores a sentence of its own, not the `error` sent.
+   * Security: what a remote lists and returns is another party's text, so opening one taints the run, and a call's
+   * arguments leave for that server, so a request with `remotes` and no `approve` is refused. `approve` hears a tool
+   * the remote does not call read-only as a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
+   * A run keeps at most four remotes open, answering the open of a fifth with an error, and its rounds meet the
+   * relay's size caps (`AgentRelayPolicy.defaultLimits`), as with `clientTools`.
    */
   remotes?: readonly AgentLoopRemote[];
   /**
    * The tools of a screen a connected browser has open (`AgentClientTools.list()` in `akanjs/ui`): client input,
-   * listed beside the endpoint tools and never run here. `approve` is still asked. An allowed call ends the run as
-   * `awaiting` with `client: true`; append the browser's result, or an error when no page answers, and resume. A name
-   * an endpoint tool or `openToolkit` holds is dropped.
+   * listed beside the endpoint tools and never run here. `approve` is still asked, and sees each as a write whatever
+   * `readOnly` it was sent with. An allowed call ends the run as `awaiting` with `client: true`; resume with the
+   * browser's result as `answer`, or `{ id, error }` when no page answers. A name an endpoint tool or `openToolkit`
+   * holds is dropped. Past 128 tools, 200,000 characters of definitions or 64 levels of nesting the run ends with
+   * `agent.error.clientToolsRefused`, and its rounds meet the relay's size caps (`AgentRelayPolicy.defaultLimits`).
    */
   clientTools?: AgentTool[];
   /**
    * Lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool. A call ends the run as `awaiting`
-   * with `question: true`; append the person's `{ id, name: "askUser", result }`, or an `error` when they dismiss it,
-   * and resume. It never reaches `approve`, counts as no tool call, and `untrusted` never sees its answer. A call with
+   * with `question: true`; resume with the person's reply as `answer: { id, result }`, or `{ id, error }` when they
+   * dismiss it. It never reaches `approve`, counts as no tool call, and `untrusted` never sees its answer. A call with
    * no question is answered with an error instead. A `clientTools` entry by that name is dropped.
    */
   ask?: boolean;
+  /**
+   * Answers the call the last run parked on with `client` or `question`: the first call of the last batch that
+   * nothing answered, and only when it is a client tool's or `askUser`'s. The run names the result after that call,
+   * hands it to `onMessage` and runs on. An endpoint tool's call is answered only by running it, so an `answer` that
+   * names any other call ends the run with `agent.error.answerRefused` before anything runs; resume without it. Its
+   * `result`, `error` and `changes` as one value are clipped as a tool's result is, `code` is kept only when it is a
+   * failure code, and of its `attachments` the first four carrying `data` or `text` are kept, never a `url`. Pass it
+   * only after an `awaiting` event with `client` or `question` named that call: `approve` is not asked about an
+   * answered call, as nothing runs here, so one given for a call `approve` deferred, or for one a run died before
+   * parking on, is stored as it stands. A call parked with `connect` takes only the person's refusal, `{ id, error }`:
+   * the run stores a sentence of its own naming the remote, coded `remoteDeclined`, and none of the `error` text, so
+   * it taints neither that run nor a later resume. With a `result`, or for an `openToolkit` call that names no
+   * remote, it is refused the same way, as a connected remote is opened by resuming without `answer`. The stored
+   * messages do not say why a run stopped at an open, so a refusal is taken for any first unanswered `openToolkit`
+   * call naming a remote, one in a batch `approve` deferred included: all it does is keep that open from running.
+   */
+  answer?: AgentLoopCallAnswer;
   /**
    * Summarizes all but the last `keep` messages (6), a batch's results counting as one, once the transcript is
    * estimated at `at` tokens, and also when a round's call fails as `agent.error.contextOverflow`, which is then asked
@@ -138,8 +174,18 @@ export interface AgentLoopOptions {
    */
   approve?: AgentLoopApprove;
   /**
-   * Sees a result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results and also
-   * reads the `tainted` mark on stored messages, so store each message `onMessage` hands over whole.
+   * Says which endpoint results carry text someone else wrote. Left out, every result of a call that ran taints the
+   * run, an error included, so with no `approve` only the batch written before any result may write; `() => false`
+   * trusts them all. A client tool's answer always taints and is never shown to it, as a page may name a tool after
+   * an endpoint, and so do the open of a remote and any call into one, refused or not. `askUser`'s answer, the open
+   * of a toolkit of `toolkits` and any other call the run refused never taint. Sees a result whole, before the
+   * 20,000-character clip. A resume re-applies it to stored, clipped results, or with none counts every stored
+   * result, a refusal included, and also reads the `tainted` mark on stored messages, so store each message
+   * `onMessage` hands over whole. A stored result whose call names no endpoint the resumed run lists, a page's tool,
+   * a remote's, the open of a remote or a tool the run no longer has, taints without it; the run's own
+   * `Unknown tool: <name>.`, and its own sentence for a connection the person refused, taint nothing. Keep `ask`,
+   * `toolkits` and `remotes` the same for the life of a transcript: a stored `askUser` or `openToolkit` answer is the
+   * run's own only under the options it was given with, and one whose name the page lends taints.
    */
   untrusted?: (result: AgentWireToolResult) => boolean;
   meta?: Record<string, string>;

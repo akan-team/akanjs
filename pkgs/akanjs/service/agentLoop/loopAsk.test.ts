@@ -120,6 +120,7 @@ describe("AgentLoop askUser", () => {
     expect(stored.at(-1)).toEqual({
       role: "tool",
       toolResults: [{ id: "c1", name: "readPage", result: "readPage:ok" }],
+      tainted: true,
     });
   });
 
@@ -135,7 +136,7 @@ describe("AgentLoop askUser", () => {
     expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 2 });
   });
 
-  test("runs on from the answer a caller appended, never reading it as untrusted, and parks again with none", async () => {
+  test("runs on from the answer a caller resumes with, never reading it as untrusted, and parks again with none", async () => {
     const parked: AgentWireMessage[] = [
       { role: "user", text: "Check my calendar." },
       { role: "assistant", toolCalls: [callOf("q1", "askUser", question), callOf("c2", "eventList")] },
@@ -144,15 +145,12 @@ describe("AgentLoop askUser", () => {
     expect(awaited(reparked)).toEqual([{ type: "awaiting", call: callOf("q1", "askUser", question), question: true }]);
 
     const seen: string[] = [];
-    const answered: AgentWireMessage[] = [
-      ...parked,
-      { role: "tool", toolResults: [{ id: "q1", name: "askUser", result: "Team" }] },
-    ];
     const { port, called, requests } = harness([saying("Team calendar checked.")]);
     const { events, stored } = await drain(
       port,
       ask({
-        messages: answered,
+        messages: parked,
+        answer: { id: "q1", result: "Team" },
         untrusted: (result) => {
           seen.push(result.name);
           return result.name === "askUser";

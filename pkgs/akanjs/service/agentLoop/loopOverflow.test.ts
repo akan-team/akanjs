@@ -81,10 +81,9 @@ describe("AgentLoop refusal for length", () => {
     const events = await drain(port, { messages: long, compact: { at: 1_000_000, keep: 1 } });
     expect(refused).toHaveLength(1);
     expect(requests.map(summarizing)).toEqual([false, true, false]);
-    expect(requests[2]?.messages).toEqual([LoopCompaction.message("notes so far"), { role: "user", text: "and now?" }]);
-    expect(compactions(events)).toEqual([
-      { type: "compacted", replaced: 4, summary: LoopCompaction.message("notes so far") },
-    ]);
+    const summary = LoopCompaction.message("notes so far", false);
+    expect(requests[2]?.messages).toEqual([summary, { role: "user", text: "and now?" }]);
+    expect(compactions(events)).toEqual([{ type: "compacted", replaced: 4, summary }]);
     expect(events.filter((event) => event.type === "usage")).toHaveLength(2);
     expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 1 });
     await Bun.sleep(0);
