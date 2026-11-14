@@ -94,7 +94,7 @@ export class VerifyPipeline {
     if (!scope.changedLibs.length) return scope;
     const [apps, libs, pkgs] = await this.#workspace.getExecs();
     const names = { apps, libs, pkgs };
-    return scope.withDependents(names, await VerifyScope.libDepsIn(this.#workspace, names));
+    return scope.withDependents(names, await VerifyScope.libDepsIn(this.#root, names));
   }
 
   //? Sync and build stay one at a time: a sync rewrites the barrels of the libs it uses, and two Bun.build at once

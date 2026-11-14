@@ -135,7 +135,7 @@ describe("VerifyPipeline", () => {
     ]);
   }, 60_000);
 
-  test("fails a lib change through an unchanged app that uses the lib, typechecking that app without a build", async () => {
+  test("fails a lib change through an unchanged app that uses the lib, even when its synced manifest is stale, typechecking that app without a build", async () => {
     const { root, workspace } = await createTempApp("demo");
     roots.push(root);
     await symlink(path.join(repoRoot, "node_modules"), path.join(root, "node_modules"));
@@ -143,6 +143,7 @@ describe("VerifyPipeline", () => {
       path.join(root, "apps/demo/main.ts"),
       'import { port } from "@libs/util";\nexport const at: number = port;\n',
     );
+    await writeJson(path.join(root, "apps/demo/akan.app.json"), { libDeps: [] });
     await writeJson(path.join(root, "libs/util/package.json"), { name: "util", version: "1.0.0", dependencies: {} });
     await writeJson(path.join(root, "libs/util/tsconfig.json"), {});
     await writeText(path.join(root, "libs/util/akan.config.ts"), "export default {};\n");

@@ -1,6 +1,6 @@
 import path from "node:path";
-import { CliError, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, LibExecutor } from "@akanjs/devkit/executors";
+import { CliError } from "@akanjs/devkit/commandDecorators";
+import ts from "typescript";
 
 export type VerifyTargetType = "app" | "lib" | "pkg";
 
@@ -61,22 +61,28 @@ export class VerifyScope {
     return new VerifyScope([...this.targets, ...dependents]);
   }
 
-  //? The synced manifest first: a scan transpiles every source file of the target.
-  static async libDepsIn(workspace: Workspace, { apps, libs }: VerifyNames): Promise<Map<string, string[]>> {
-    const depsOf = async (type: "app" | "lib", name: string): Promise<[string, string[]]> => {
-      const dir = `${type}s/${name}`;
-      const manifest = (await Bun.file(path.join(workspace.workspaceRoot, dir, `akan.${type}.json`))
-        .json()
-        .catch(() => null)) as { libDeps?: unknown } | null;
-      if (Array.isArray(manifest?.libDeps))
-        return [dir, manifest.libDeps.filter((lib): lib is string => typeof lib === "string")];
-      const exec = type === "app" ? AppExecutor.from(workspace, name) : LibExecutor.from(workspace, name);
-      const scanned = await exec.scan({ refresh: true, write: false }).catch(() => null);
-      return [dir, scanned?.getScanResult().libDeps ?? []];
-    };
+  //? Read from the sources, not the git-ignored synced manifest: a pull can add an import no sync has recorded yet,
+  //? and a type-only import, which the manifest leaves out, still breaks the typecheck.
+  static async libDepsIn(workspaceRoot: string, { apps, libs }: VerifyNames): Promise<Map<string, string[]>> {
+    const dirs = [...apps.map((name) => `apps/${name}`), ...libs.map((name) => `libs/${name}`)];
     return new Map(
-      await Promise.all([...apps.map((name) => depsOf("app", name)), ...libs.map((name) => depsOf("lib", name))]),
+      await Promise.all(dirs.map(async (dir) => [dir, await VerifyScope.#libImportsIn(workspaceRoot, dir)] as const)),
     );
+  }
+
+  static async #libImportsIn(workspaceRoot: string, dir: string) {
+    const libs = new Set<string>();
+    const cwd = path.join(workspaceRoot, dir);
+    for await (const file of new Bun.Glob("**/*.{ts,tsx}").scan({ cwd })) {
+      if (/(^|\/)(node_modules|dist)\//.test(file)) continue;
+      const text = await Bun.file(path.join(cwd, file)).text();
+      if (!text.includes("@libs/")) continue;
+      for (const { fileName } of ts.preProcessFile(text, true, true).importedFiles) {
+        const lib = fileName.startsWith("@libs/") ? fileName.split("/")[1] : undefined;
+        if (lib && `libs/${lib}` !== dir) libs.add(lib);
+      }
+    }
+    return [...libs];
   }
 
   //* `-z` keeps a path with spaces or non-ASCII bytes unquoted; porcelain paths are relative to the git top level.
