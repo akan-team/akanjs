@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import ts from "typescript";
 import { AnthropicLlm } from "./anthropicLlm";
 import type { AgentWireContext, LlmTurnRequest } from "./llm.adaptor";
 import {
@@ -15,7 +16,7 @@ import {
 import { OpenaiDialect } from "./openaiDialect";
 
 // Every dialect runs the one set of checks below, with no model call: add a dialect to `dialects` and nothing else.
-// A file here that exports a class with a static `requestBody` is a dialect, and the last test fails until it is listed.
+// A class under `service/` with a member named `requestBody` is a dialect, and a test below fails until it is listed.
 
 const accepts = { image: true, document: true };
 
@@ -309,18 +310,68 @@ describe("the dialect checks", () => {
     expect(found).toContain(rules.system);
   });
 
-  test("cover every dialect in this folder", async () => {
-    const files = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)].filter(
-      (file) => !/\.(test|fixture|instance)\.ts$/.test(file),
-    );
-    const found: string[] = [];
-    for (const file of files) {
-      const source = await Bun.file(path.join(import.meta.dir, file)).text();
-      const at = source.indexOf("static requestBody(");
-      if (at < 0) continue;
-      found.push([...source.slice(0, at).matchAll(/export class (\w+)/g)].at(-1)?.[1] ?? file);
+  // A request builder is a class member named `requestBody`, whatever its modifiers; an adaptor is a class that
+  // implements `LlmAdaptor`, and is covered when it is a builder or calls one.
+  const dialectsIn = (sources: { file: string; text: string }[]) => {
+    const builders: string[] = [];
+    const adaptors: { name: string; calls: string[] }[] = [];
+    for (const { file, text } of sources) {
+      const visit = (node: ts.Node) => {
+        if (ts.isClassLike(node)) {
+          const name = node.name?.text ?? file;
+          const builds = node.members.some((member) => member.name?.getText().replace(/^#/, "") === "requestBody");
+          if (builds) builders.push(name);
+          const adapts = node.heritageClauses?.some(
+            (clause) =>
+              clause.token === ts.SyntaxKind.ImplementsKeyword &&
+              clause.types.some((type) => type.expression.getText() === "LlmAdaptor"),
+          );
+          const calls = [...node.getText().matchAll(/\b(\w+)\.#?requestBody\(/g)].map(([, owner = ""]) => owner);
+          if (adapts) adaptors.push({ name, calls: builds ? [name, ...calls] : calls });
+        }
+        ts.forEachChild(node, visit);
+      };
+      visit(ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true));
     }
-    const byName = (a: string, b: string) => a.localeCompare(b);
-    expect(found.sort(byName)).toEqual(dialects.map((dialect) => dialect.name).sort(byName));
+    const unbuilt = adaptors.filter(({ calls }) => !calls.some((owner) => builders.includes(owner)));
+    return { builders, unbuilt: unbuilt.map(({ name }) => name) };
+  };
+  const byName = (a: string, b: string) => a.localeCompare(b);
+
+  test("cover every class under service/ that builds a model request, and every adaptor through one", async () => {
+    const service = path.resolve(import.meta.dir, "..");
+    const files = [...new Bun.Glob("**/*.ts").scanSync({ cwd: service })].filter(
+      (file) => !/\.(test|spec|fixture|instance)\.ts$/.test(file),
+    );
+    const sources = await Promise.all(
+      files.map(async (file) => ({ file, text: await Bun.file(path.join(service, file)).text() })),
+    );
+    const { builders, unbuilt } = dialectsIn(sources);
+    expect(builders.sort(byName)).toEqual(dialects.map((dialect) => dialect.name).sort(byName));
+    expect(unbuilt).toEqual([]);
+  });
+
+  test("find a builder in a subfolder under any modifier, and an adaptor that builds its request unseen", () => {
+    const { builders, unbuilt } = dialectsIn([
+      {
+        file: "vendor/deep/streamedDialect.ts",
+        text: "export class StreamedDialect { private static async requestBody(model: string) { return { model }; } }",
+      },
+      {
+        file: "vendor/arrowDialect.ts",
+        text: "export class ArrowDialect { static readonly requestBody = () => ({}); }",
+      },
+      { file: "vendor/hiddenDialect.ts", text: "export class HiddenDialect { static #requestBody() { return {}; } }" },
+      {
+        file: "vendor/streamedLlm.ts",
+        text: "export class StreamedLlm implements LlmAdaptor { run() { return StreamedDialect.requestBody('m'); } }",
+      },
+      {
+        file: "vendor/inlineLlm.ts",
+        text: "export class InlineLlm extends Base implements Other, LlmAdaptor { run() { return { messages: [] }; } }",
+      },
+    ]);
+    expect(builders.sort(byName)).toEqual(["ArrowDialect", "HiddenDialect", "StreamedDialect"]);
+    expect(unbuilt).toEqual(["InlineLlm"]);
   });
 });
