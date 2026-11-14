@@ -31,7 +31,7 @@ describe("LiveSyncHub room ceiling", () => {
     expect(LiveRoomLimit.roomsPerModel).toBe(50_000);
   });
 
-  test("refuses a new room past a model's ceiling with 429 liveRoomLimit, warning once a minute", () => {
+  test("refuses a room every write evaluates past a model's ceiling with 429 liveRoomLimit, warning once a minute, and never counts an indexed one", () => {
     LiveRoomLimit.configure({ roomsPerModel: 2 });
     const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
     try {
@@ -39,14 +39,17 @@ describe("LiveSyncHub room ceiling", () => {
       const hub = hubWith([
         { roomId: "inOrg-o1", query: { org: "o1" } },
         { roomId: "inOrg-o2", query: { org: "o2" } },
+        { roomId: "inOrg-o3", query: { org: "o3" } },
+        { roomId: "all-1" },
+        { roomId: "bySearch-x", query: q.search("x"), fallback: "invalidate" },
       ]);
-      const join = (roomId: string, refName = "task") =>
-        hub.join({ refName, roomId, query: { org: roomId }, fallback: null, fields });
+      const scan = (roomId: string, refName = "task") =>
+        hub.join({ refName, roomId, query: undefined, fallback: null, fields });
 
-      expect(() => join("inOrg-o3")).toThrow(LiveRoomLimitError);
+      expect(() => scan("all-2")).toThrow(LiveRoomLimitError);
       let refused: unknown;
       try {
-        join("inOrg-o4");
+        hub.join({ refName: "task", roomId: "bySearch-y", query: q.search("y"), fallback: "invalidate", fields });
       } catch (error) {
         refused = error;
       }
@@ -58,17 +61,20 @@ describe("LiveSyncHub room ceiling", () => {
       });
       expect(warn).toHaveBeenCalledTimes(1);
       setSystemTime(new Date(1_060_000));
-      expect(() => join("inOrg-o5")).toThrow(LiveRoomLimitError);
+      expect(() => scan("all-3")).toThrow(LiveRoomLimitError);
       expect(warn).toHaveBeenCalledTimes(2);
 
-      hub.join({ refName: "task", roomId: "inOrg-o1", query: { org: "o1" }, fallback: null, fields });
-      join("note-o1", "note");
-      expect(hub.route("task", doc({ org: "o2" }))).toEqual([
-        { roomId: "inOrg-o2", op: "enter", invalidate: false, payload: "light" },
+      hub.join({ refName: "task", roomId: "inOrg-o4", query: { org: "o4" }, fallback: null, fields });
+      hub.join({ refName: "task", roomId: "all-1", query: undefined, fallback: null, fields });
+      scan("note-all", "note");
+      expect(hub.route("task", doc({ org: "o2" })).map((target) => target.roomId)).toEqual([
+        "inOrg-o2",
+        "all-1",
+        "bySearch-x",
       ]);
-      hub.leave("inOrg-o2");
-      join("inOrg-o6");
-      expect(hub.roomCountOf("task")).toBe(2);
+      hub.leave("bySearch-x");
+      scan("all-4");
+      expect(hub.roomCountOf("task")).toBe(6);
     } finally {
       setSystemTime();
       warn.mockRestore();

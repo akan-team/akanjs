@@ -3,7 +3,10 @@ import { Logger } from "akanjs/common";
 export interface LiveRoomLimitSetting {
   /** Live rooms one websocket may hold at once, past which a subscribe is refused; `false` lifts it. */
   roomsPerSocket?: number | false;
-  /** Live rooms on one model in this server, across every socket, past which a new one is refused; `false` lifts it. */
+  /**
+   * Live rooms on one model in this server that every write evaluates (those no equality index files, and invalidating
+   * ones), past which a new one is refused; indexed rooms never count. `false` lifts it.
+   */
   roomsPerModel?: number | false;
 }
 

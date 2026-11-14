@@ -240,7 +240,8 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   with 429 `base.error.liveRoomLimit`, `data: { limit, per: "socket" }`; the rooms already held keep their events,
   subscribing a held room again does not count twice, and leaving a room or closing the socket frees its place.
 - **Live rooms per model are capped at 50,000 per server process** (`roomsPerModel` in the same setting,
-  `AKAN_LIVE_ROOMS_PER_MODEL`), since every write to a model is matched against its rooms. A new room past it is
+  `AKAN_LIVE_ROOMS_PER_MODEL`), counting only the rooms every write evaluates: those no equality index files and the
+  invalidating ones. An indexed room is reached through its key and never counts. A new counted room past it is
   refused the same way with `per: "model"`, existing rooms keep working, and the refusal is warned at most once a
   minute per model.
 - **A subscribe refused with 429 names its room** (`requestRoomId` on the error frame). The client drops that room,

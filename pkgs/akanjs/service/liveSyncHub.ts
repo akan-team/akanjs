@@ -109,16 +109,18 @@ export class LiveSyncHub {
         );
     }
     const known = this.#models.get(refName);
-    const ceiling = LiveRoomLimit.roomsPerModel;
-    if (ceiling !== null && (known?.rooms.size ?? 0) >= ceiling) this.#refuseOverCeiling(refName, ceiling);
     const model = known ?? {
       rooms: new Set<LiveRoom>(),
       invalidating: new Set<LiveRoom>(),
       scanned: new Set<LiveRoom>(),
       index: new Map<string, Map<string, Set<LiveRoom>>>(),
     };
-    this.#models.set(refName, model);
     const evaluator = new DocumentQueryEvaluator(fields ?? {});
+    const filed = invalidate ? null : LiveSyncHub.#leastCrowded(model, evaluator.equalityConjuncts(query));
+    const ceiling = LiveRoomLimit.roomsPerModel;
+    if (!filed && ceiling !== null && model.scanned.size + model.invalidating.size >= ceiling)
+      this.#refuseOverCeiling(refName, ceiling);
+    this.#models.set(refName, model);
     const room: LiveRoom = {
       refName,
       roomId,
@@ -129,7 +131,7 @@ export class LiveSyncHub {
       payload,
       subscribers: 1,
       joinedAt: this.#joins++,
-      filed: invalidate ? null : LiveSyncHub.#leastCrowded(model, evaluator.equalityConjuncts(query)),
+      filed,
     };
     this.#rooms.set(roomId, room);
     model.rooms.add(room);
@@ -150,7 +152,7 @@ export class LiveSyncHub {
     if (warnedAt === undefined || now - warnedAt >= LiveSyncHub.#ceilingWarnEveryMs) {
       this.#ceilingWarnedAt.set(refName, now);
       LiveSyncHub.#logger.warn(
-        `"${refName}" holds ${ceiling} live rooms on this server, its ceiling, so new ones are refused (logged once a minute). Raise it with option.setLiveRoomLimit({ roomsPerModel }) or AKAN_LIVE_ROOMS_PER_MODEL.`,
+        `"${refName}" holds ${ceiling} live rooms on this server that every write evaluates, its ceiling, so new ones are refused (logged once a minute). Raise it with option.setLiveRoomLimit({ roomsPerModel }) or AKAN_LIVE_ROOMS_PER_MODEL.`,
       );
     }
     throw new LiveRoomLimitError("model", ceiling);
