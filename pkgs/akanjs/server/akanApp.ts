@@ -285,7 +285,7 @@ export class AkanApp {
         if (message.dropped) this.logger.warn(`Child ${idx} dropped ${message.dropped} log records (ipc backpressure)`);
         return;
       case "health.pong":
-        this.#supervisor.markHealthy(idx);
+        this.#supervisor.markHealthy(idx, message);
         return;
       case "queue.enqueued":
         this.#children.fanoutToBatch({ type: "queue.wake", queue: message.queue, name: message.name });

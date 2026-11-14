@@ -324,6 +324,7 @@ export type AkanIpcMessage = {
     nonce: string;
     sentAt: number;
     pid?: number;
+    rscWorker?: AkanRscWorkerStatus;
 } | {
     type: "live.change";
     change: LiveChange;
@@ -398,6 +399,7 @@ export type AkanIpcMessage = {
         allowedOrigins: string[];
         enabled: boolean;
     };
+    rscWorker?: AkanRscWorkerStatus;
 } | {
     type: "secret.answer";
     id: string;
@@ -556,6 +558,8 @@ export interface AkanMetricsReport {
     gcDurationMs?: number;
     trace?: unknown;
 }
+
+export type AkanRscWorkerStatus = "ready" | "restarting" | "starting" | "stopped" | null;
 
 export interface AkanSqlClient {
     execute(sql: string, params?: Record<string, unknown> | unknown[]): Promise<unknown>;
