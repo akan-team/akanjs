@@ -90,6 +90,7 @@ export class GatewayStatus {
         lastRestartAt: child.lastRestartAt,
         lastRestartReason: child.lastRestartReason,
       })),
+      metricFamilies: this.#children.metricAggregate.families(),
     };
   }
 

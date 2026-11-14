@@ -12,6 +12,7 @@ import { getClientFacingOrigin, resolveHtmlCacheControl } from "./cachePolicy";
 import { encodedFileResponse, isCompressibleContentType, matchesIfNoneMatch, varyOnEncoding } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { HmrWsHub } from "./hmr/wsHub";
+import type { PageCall } from "./metrics/requestMetrics";
 import { normalizeHost } from "./proxy/hostBasePathWebProxy";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
@@ -76,11 +77,11 @@ export class WebRouteContext {
     return null;
   }
 
-  async ensureRoute(url: URL) {
+  async ensureRoute(url: URL, page?: PageCall) {
     const started = Date.now();
-    const matched =
-      RouteSeedIndexStore.match(url.pathname, this.seedIndex.entries) ??
-      RouteSeedIndexStore.matchPrefix(url.pathname, this.seedIndex.entries);
+    const exact = RouteSeedIndexStore.match(url.pathname, this.seedIndex.entries);
+    const matched = exact ?? RouteSeedIndexStore.matchPrefix(url.pathname, this.seedIndex.entries);
+    if (page && exact) page.route = exact.entry.routeId;
     if (matched) await this.routeCache.ensure(matched.entry.routeId, matched.entry.seeds);
     this.logger.verbose(
       `[route-cache] ensure pathname=${url.pathname} routeId=${matched?.entry.routeId ?? "(none)"} in ${Date.now() - started}ms`,

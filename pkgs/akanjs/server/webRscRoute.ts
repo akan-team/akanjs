@@ -3,6 +3,7 @@ import { SignalContext } from "../signal/signalContext";
 import { type RouteSeedIndex, RouteSeedIndexStore } from "./artifact";
 import { applySecurityHeaders } from "./assetHeaders";
 import { getClientFacingOrigin } from "./cachePolicy";
+import { PageCall } from "./metrics/requestMetrics";
 import { AKAN_RSC_DICTIONARY_HEADER, AKAN_RSC_IMPORT_MAP_HEADER, AKAN_RSC_PREFETCH_HEADER } from "./routeState";
 import {
   createRscNavigationStreamResponse,
@@ -72,10 +73,11 @@ export class WebRscRoute {
       "/__rsc": SessionRefresh.answering(async (req) => {
         const prefetch = req.headers.get(AKAN_RSC_PREFETCH_HEADER) === "1";
         context.stats[prefetch ? "rscPrefetch" : "rscNavigation"] += 1;
+        const page = new PageCall();
         try {
-          return await this.#navigate(req, prefetch);
+          return page.finish(await this.#navigate(req, prefetch, page));
         } catch (err) {
-          return context.rscErrorResponse("__rsc", err);
+          return page.finish(context.rscErrorResponse("__rsc", err));
         }
       }),
       ...(!context.prodMode || process.env.AKAN_EXPOSE_RSC_MANIFEST === "1"
@@ -91,7 +93,7 @@ export class WebRscRoute {
     };
   }
 
-  async #navigate(req: Request, prefetch: boolean): Promise<Response> {
+  async #navigate(req: Request, prefetch: boolean, page: PageCall): Promise<Response> {
     const context = this.#context;
     //? A tab imports through its document's import map, whose narrowed vendors lack names another build imports;
     //? the client loads a target it cannot fetch as a document, which brings this build's import map.
@@ -120,7 +122,7 @@ export class WebRscRoute {
     const targetUrl = normalizedTarget.url;
     if (!WebRscRoute.#isTrustedRscTarget(clientOrigin, targetUrl)) return new Response("Bad Request", { status: 400 });
     await SessionRefresh.apply(req);
-    const manifest = await context.ensureRoute(targetUrl);
+    const manifest = await context.ensureRoute(targetUrl, page);
     const rscHeaders = new Headers(req.headers);
     if (normalizedTarget.basePath) rscHeaders.set("x-base-path", normalizedTarget.basePath);
     // No WebProxy runs on /__rsc: these are the headers LocaleWebProxy gives a page load of this URL.

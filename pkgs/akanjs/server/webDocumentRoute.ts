@@ -7,6 +7,7 @@ import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { CsrDevShell } from "./hmr/csrDevShell";
 import { SsrDevShim } from "./hmr/ssrDevShim";
 import type { HtmlResultCache } from "./htmlResultCache";
+import { PageCall } from "./metrics/requestMetrics";
 import type { RscRedirectStatus, RscRenderResult, RscWorker } from "./rscWorkerHost";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
@@ -65,20 +66,21 @@ export class WebDocumentRoute {
   }
 
   async render(req: Request, url: URL): Promise<Response> {
+    const page = new PageCall();
     let answer: Response | "not-found";
     try {
-      answer = await this.#render(req, url);
+      answer = await this.#render(req, url, page);
     } catch (err) {
-      return this.#context.errorPageResponse(req, url.pathname, err);
+      return page.finish(await this.#context.errorPageResponse(req, url.pathname, err));
     }
-    return answer === "not-found" ? this.#context.notFoundPageResponse(req, url) : answer;
+    return page.finish(answer === "not-found" ? await this.#context.notFoundPageResponse(req, url) : answer);
   }
 
-  async #render(req: Request, url: URL): Promise<Response | "not-found"> {
+  async #render(req: Request, url: URL, page: PageCall): Promise<Response | "not-found"> {
     const context = this.#context;
     context.stats.fullSsr += 1;
     await SessionRefresh.apply(req);
-    const manifest = await context.ensureRoute(url);
+    const manifest = await context.ensureRoute(url, page);
     const isCrawler = isCrawlerUserAgent(req.headers.get("user-agent"));
     const htmlCacheDecision = this.#htmlCache.entryFor(req, url, isCrawler);
     const htmlCacheEntry = htmlCacheDecision.entry;

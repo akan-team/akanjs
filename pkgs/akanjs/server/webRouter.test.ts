@@ -21,6 +21,7 @@ import {
   DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
   resolveHtmlRouteCacheStoreTtl,
 } from "./htmlResultCache";
+import { metricRegistry } from "./metrics/metricRegistry";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_IMPORT_MAP_HEADER,
@@ -1263,6 +1264,49 @@ describe("WebRouter RSC request counts", () => {
     expect(optedOut.status).toBe(204);
     expect(optedOut.headers.get("Cache-Control")).toBe("no-store");
     expect(await optedOut.text()).toBe("");
+  });
+});
+
+describe("WebRouter page request metrics", () => {
+  const pageSamples = (name: string) => metricRegistry.snapshot().find((family) => family.name === name)?.samples ?? [];
+  const countOf = (route: string) =>
+    pageSamples("akan_page_requests_total")
+      .filter((sample) => sample.labels.route === route && sample.labels.status_class === "2xx")
+      .reduce((total, sample) => total + ("value" in sample ? sample.value : 0), 0);
+  const timedOf = (route: string) => {
+    const sample = pageSamples("akan_page_request_duration_seconds").find(({ labels }) => labels.route === route);
+    return sample && "count" in sample ? sample.count : 0;
+  };
+  const routesSeen = () => new Set(pageSamples("akan_page_requests_total").map((sample) => sample.labels.route));
+
+  test("counts a page and its RSC payload under the route id, and every path no route matches under one series", async () => {
+    const [docsBefore, unmatchedBefore, timedBefore] = [countOf("/docs"), countOf("unmatched"), timedOf("/docs")];
+    const seen = await withFullSsrCacheHarness(
+      async ({ fullSsr, renderEnvRoutes }) => {
+        expect((await fullSsr(new Request("https://example.test/docs"))).status).toBe(200);
+        expect((await renderEnvRoutes["/__rsc"](new Request("https://example.test/__rsc?url=%2Fdocs"))).status).toBe(
+          200,
+        );
+        const known = routesSeen();
+        for (const path of ["/a", "/b/c", "/users/42?token=x", "/docs/missing"])
+          await fullSsr(new Request(`https://example.test${path}`));
+        return { known, after: routesSeen() };
+      },
+      {
+        seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] },
+        prebuilt: {
+          routeIds: ["/docs"],
+          clientManifest: {},
+          ssrManifest: { moduleLoading: null, moduleMap: {} },
+          knownEntries: [],
+        },
+      },
+    );
+
+    expect(countOf("/docs") - docsBefore).toBe(2);
+    expect(countOf("unmatched") - unmatchedBefore).toBe(4);
+    expect(timedOf("/docs") - timedBefore).toBe(2);
+    expect(seen.after).toEqual(new Set([...seen.known, "unmatched"]));
   });
 });
 

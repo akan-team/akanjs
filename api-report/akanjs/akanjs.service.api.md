@@ -335,6 +335,13 @@ export interface AkanCronJob {
     stop(): void;
 }
 
+export interface AkanHistogramSample {
+    labels: Record<string, string>;
+    counts: number[];
+    sum: number;
+    count: number;
+}
+
 export type AkanIpcMessage = {
     type: "error";
     message: string;
@@ -483,10 +490,30 @@ export interface AkanJobOptions {
     removeOnFail?: boolean | number;
 }
 
+export type AkanMetricFamily = {
+    name: string;
+    help: string;
+    type: "counter" | "gauge";
+    samples: AkanMetricSample[];
+} | {
+    name: string;
+    help: string;
+    type: "histogram";
+    buckets: number[];
+    samples: AkanHistogramSample[];
+};
+
+export interface AkanMetricSample {
+    labels: Record<string, string>;
+    value: number;
+}
+
 export interface AkanMetricsReport {
     role?: string;
     pid?: number;
     reportedAt?: number;
+    startedAt?: number;
+    metricFamilies?: AkanMetricFamily[];
     activeRequests?: number;
     totalRequests?: number;
     activeWebSockets?: number;

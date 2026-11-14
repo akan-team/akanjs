@@ -1,4 +1,4 @@
-import type { AkanChildRole, AkanMetricsReport } from "akanjs/service";
+import type { AkanChildRole, AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import { SignalContext } from "akanjs/signal";
 import { AppInfo } from "../ops/appInfo";
 import type { OpsRoute } from "../ops/opsRoute";
@@ -14,6 +14,7 @@ export interface SoloAppStatus {
   /** `null` for a process that renders no pages. */
   rscWorker: RscWorkerStatus | null;
   metrics: AkanMetricsReport;
+  families?: () => AkanMetricFamily[];
 }
 
 // Answers in the gateway's `/_akan/app/*` shape (one-entry `children`) so probes and tooling read one contract.
@@ -62,6 +63,7 @@ export const createSoloAppRoutes = (
             gateway: null,
             proxyHop: null,
             children: [{ ...child(), metrics: read().metrics }],
+            metricFamilies: read().families?.() ?? [],
           }),
           SignalContext.clientIpOf(req),
         ),
