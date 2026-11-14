@@ -254,18 +254,22 @@ export class SqlDocumentStore {
   async bulkWrite(
     operations: { updateOne: { filter: DocumentQuery; update: DocumentUpdateInput; upsert?: boolean } }[],
   ) {
-    let matchedCount = 0;
-    let modifiedCount = 0;
-    let upsertedId: string | null = null;
-    for (const operation of operations) {
-      const result = await this.updateOneByQuery(operation.updateOne.filter, operation.updateOne.update, {
-        upsert: operation.updateOne.upsert,
-      });
-      matchedCount += result.matchedCount;
-      modifiedCount += result.modifiedCount;
-      upsertedId ??= result.upsertedId ?? null;
-    }
-    return { acknowledged: true, matchedCount, modifiedCount, upsertedId };
+    // All or none, unlike MongoDB's ordered bulkWrite, which keeps the writes before the one that failed.
+    const write = async () => {
+      let matchedCount = 0;
+      let modifiedCount = 0;
+      let upsertedId: string | null = null;
+      for (const operation of operations) {
+        const result = await this.updateOneByQuery(operation.updateOne.filter, operation.updateOne.update, {
+          upsert: operation.updateOne.upsert,
+        });
+        matchedCount += result.matchedCount;
+        modifiedCount += result.modifiedCount;
+        upsertedId ??= result.upsertedId ?? null;
+      }
+      return { acknowledged: true, matchedCount, modifiedCount, upsertedId };
+    };
+    return this.owner.transaction ? await this.owner.transaction(write) : await write();
   }
 
   async find(query?: DocumentQuery, options: FindManyOptions = {}) {
