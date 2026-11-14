@@ -1,11 +1,11 @@
 import path from "node:path";
-import type { App } from "@akanjs/devkit/commandDecorators";
-import type { ClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientBuildTypes";
-import { GraphClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientEntryDiscovery";
-import { HmrWatcher } from "@akanjs/devkit/frontendBuild/hmrWatcher";
-import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
 import type { Logger } from "akanjs/common";
 import type { BaseBuildArtifact } from "akanjs/server";
+import type { App } from "../commandDecorators";
+import type { ClientEntryDiscovery } from "../frontendBuild/clientBuildTypes";
+import { GraphClientEntryDiscovery } from "../frontendBuild/clientEntryDiscovery";
+import { HmrWatcher } from "../frontendBuild/hmrWatcher";
+import { WatchRootResolver } from "../frontendBuild/watchRootResolver";
 import type { OptimizedFonts } from "./buildBatchProtocol";
 import type { BuildBatchRunner } from "./buildBatchRunner";
 import { BuilderChannel } from "./builderChannel";
