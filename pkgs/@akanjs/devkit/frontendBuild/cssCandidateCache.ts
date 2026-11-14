@@ -75,12 +75,15 @@ export class CssCandidateCache {
     return candidates;
   }
 
+  // Each base path scans its own files into the same cache, so only an entry whose file is gone is dropped.
   async save(present: Set<string>): Promise<void> {
-    for (const file of [...this.#entries.keys()]) {
-      if (present.has(file)) continue;
+    const absent = [...this.#entries.keys()].filter((file) => !present.has(file));
+    const exists = await Promise.all(absent.map((file) => Bun.file(file).exists()));
+    absent.forEach((file, index) => {
+      if (exists[index]) return;
       this.#entries.delete(file);
       this.#dirty = true;
-    }
+    });
     if (!this.#dirty) return;
     this.#dirty = false;
     const files: Record<string, CachedFile> = {};

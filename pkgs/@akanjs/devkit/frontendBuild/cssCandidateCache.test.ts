@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { BuildCacheStamp } from "./buildCacheStamp";
@@ -86,6 +86,34 @@ describe("CssCandidateCache persistence", () => {
     const cache = await new CssCandidateCache(cachePath, stamp).load();
     expect(await cache.candidatesFor(file)).toContain("w-full");
     expect([cache.reused, cache.rescanned]).toEqual([0, 1]);
+  });
+
+  test("keeps another base path's entries, so each base path reuses its scan on the next start", async () => {
+    const stamp = { akanjs: "1.0.0", bun: "1.0.0+a", code: "1:1" };
+    const dir = await mkdtemp(path.join(tmpdir(), "css-candidate-"));
+    const cachePath = path.join(dir, "cache.json");
+    const [rootFile, adminFile] = [path.join(dir, "root.tsx"), path.join(dir, "admin.tsx")];
+    await writeFile(rootFile, `const c = "w-full";`);
+    await writeFile(adminFile, `const c = "h-full";`);
+    const scanBasePath = async (file: string) => {
+      const cache = await new CssCandidateCache(cachePath, stamp).load();
+      await cache.candidatesFor(file);
+      await cache.save(new Set([file]));
+      return cache;
+    };
+    await scanBasePath(rootFile);
+    await scanBasePath(adminFile);
+
+    const [root, admin] = [await scanBasePath(rootFile), await scanBasePath(adminFile)];
+    expect([root.reused, admin.reused]).toEqual([1, 1]);
+  });
+
+  test("drops the entry of a source file that was deleted", async () => {
+    const stamp = { akanjs: "1.0.0", bun: "1.0.0+a", code: "1:1" };
+    const { file, cachePath } = await writeCache(stamp);
+    await rm(file);
+    await new CssCandidateCache(cachePath, stamp).load().then((cache) => cache.save(new Set()));
+    expect(Object.keys((await Bun.file(cachePath).json()).files)).toEqual([]);
   });
 
   test("rescans when the cache file was cut short", async () => {
