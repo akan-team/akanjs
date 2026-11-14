@@ -23,6 +23,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `badRequest` | 400 | `Exception.BadRequest` | yes | no | `signal/exception.ts` |
 | `badRequest` | 400 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
 | `baseMismatch` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
+| `browserError` | 500 | `BrowserError` | no | yes | `signal/browserError.ts` |
 | `buildFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `builderUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `bytesThroughAny` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |

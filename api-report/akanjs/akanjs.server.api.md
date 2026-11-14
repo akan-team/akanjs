@@ -110,6 +110,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     setLiveRoomLimit(setting: LiveRoomLimitSetting): this;
     setSessionRefresh(hook: SessionRefreshHook | null): this;
     setErrorReporter(reporter: ErrorReporter | null): this;
+    setClientReport(setting?: ClientReportSetting | boolean): this;
     setLlm<Option extends LlmOption>(llmOrFn: ((env: Env) => Option) | Option): this;
     transformEnv(fn: (env: Env) => Env): this;
     resolveEnv(env: Env): Env;
@@ -131,6 +132,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     getLiveRoomLimit(): LiveRoomLimitSetting | undefined;
     getSessionRefresh(): SessionRefreshHook | null | undefined;
     getErrorReporter(): ErrorReporter | null | undefined;
+    getClientReport(): ClientReportSetting | boolean | undefined;
     getLlm(env: Env): LlmOption;
 }
 
@@ -465,6 +467,12 @@ export interface ClientManifestEntry {
     chunks: string[];
     name: string;
     async?: boolean;
+}
+
+export interface ClientReportSetting {
+    sampleRate?: number;
+    perAddress?: number;
+    perServer?: number;
 }
 
 export interface ConstantData {

@@ -2,11 +2,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 
-export type ErrorReportSource = "server" | "render" | "process";
+export type ErrorReportSource = "server" | "render" | "client" | "process";
 
 export interface ErrorReportContext {
   source: ErrorReportSource;
-  /** The request id `x-request-id` names. */
+  /** The request id `x-request-id` names; for a browser report, the id of the page view it came from. */
   traceId: string | null;
   /** `<type>:<key>` of the endpoint that answered 5xx. */
   endpoint: string | null;

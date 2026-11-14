@@ -3,6 +3,7 @@ import { DEFAULT_AKAN_I18N, Logger } from "akanjs/common";
 import { getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
 import { resetEnvCache } from "../../base/baseEnv";
 import { AkanApp } from "../akanApp";
+import { ClientErrorReport } from "../clientErrorReport";
 import type { DiLifecycle } from "../di/diLifecycle";
 import { OpsRoute } from "../ops/opsRoute";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "../types";
@@ -253,7 +254,7 @@ describe("the route table a server registers", () => {
       for (const key of [...gateway, ...production])
         expect([key, DevSurfaces.isProductionRoute(key)]).toEqual([key, true]);
       expect(development.filter((key) => !DevSurfaces.isProductionRoute(key) && !DevSurfaces.find(key))).toEqual([]);
-      const named = new Set([...gateway, ...production, `${OpsRoute.prefix}*`]);
+      const named = new Set([...gateway, ...production, `${OpsRoute.prefix}*`, ClientErrorReport.path]);
       expect(DevSurfaces.productionRoutes.filter((key) => !named.has(key))).toEqual([]);
     } finally {
       claim.mockRestore();

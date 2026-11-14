@@ -16,6 +16,7 @@ import { EndpointRateLimit } from "../signal/endpointRateLimit";
 import { ErrorReporting } from "../signal/errorReporting";
 import { AgentHooks } from "./agentHooks";
 import type { AkanLib, AkanLibProps } from "./akanLib";
+import { ClientErrorReport } from "./clientErrorReport";
 import { DiLifecycle } from "./di/diLifecycle";
 import { DevBaseArtifact } from "./hmr/devBaseArtifact";
 import { ParentChannel } from "./lifecycle/parentChannel";
@@ -180,6 +181,7 @@ export class AkanServer {
     LiveRoomLimit.reset();
     SessionRefresh.use(null);
     ErrorReporting.use(null);
+    ClientErrorReport.configure(false);
     libs.forEach((lib) => {
       const mcp = lib.option.getMcp(this.env);
       if (mcp !== undefined) this.setMcp(mcp);
@@ -194,6 +196,8 @@ export class AkanServer {
       if (sessionRefresh !== undefined) SessionRefresh.use(sessionRefresh);
       const errorReporter = lib.option.getErrorReporter();
       if (errorReporter !== undefined) ErrorReporting.use(errorReporter);
+      const clientReport = lib.option.getClientReport();
+      if (clientReport !== undefined) ClientErrorReport.configure(clientReport);
     });
     EndpointRateLimit.applyEnv(process.env.AKAN_RATE_LIMIT, getEnv().environment);
     LiveRoomLimit.applyEnv();

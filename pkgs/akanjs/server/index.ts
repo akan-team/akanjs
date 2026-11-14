@@ -58,6 +58,7 @@ export {
   RoutesManifestStore,
   type SsrUpdatedPayload,
 } from "./artifact";
+export type { ClientReportSetting } from "./clientErrorReport";
 export {
   type AkanConsoleContext,
   type AkanConsoleOptions,

@@ -25,6 +25,7 @@ export { Agent, AgentEndpoint, AgentInternal, agent } from "./agent.signal";
 export { AgentStop, AgentTurn, AgentTurnDocument, agentTurnConstant, agentTurnDocument } from "./agentTurn";
 export { AgentTurnStream } from "./agentTurnStream";
 export { Base, BaseEndpoint, BaseInternal, base, fetch, getSerializedSignal } from "./base.signal";
+export { BrowserError, type BrowserErrorData, type BrowserErrorKind } from "./browserError";
 export { CrossSiteGuard, type CrossSiteOption } from "./CrossSiteGuard";
 export {
   type Endpoint,

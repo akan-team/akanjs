@@ -194,6 +194,24 @@ export declare class BaseEndpoint extends BaseEndpoint_base {
 export declare class BaseInternal extends BaseInternal_base {
 }
 
+export declare class BrowserError extends AkanError<"browserError", BrowserErrorData> {
+    readonly data: BrowserErrorData;
+    constructor(data: BrowserErrorData);
+}
+
+export interface BrowserErrorData {
+    kind: BrowserErrorKind;
+    name: string;
+    message: string;
+    stack: null | string;
+    routeId: null | string;
+    digest: null | string;
+    buildId: null | string;
+    userAgent: null | string;
+}
+
+export type BrowserErrorKind = "caught" | "error" | "recoverable" | "rejection" | "uncaught";
+
 export type BuildEndpoint<SrvModule extends ServiceModel = ServiceModel> = {
     query: <Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullable extends boolean = false>(returnRef: Returns, signalOption?: SignalOption<Returns, Nullable>) => EndpointInfo<"query", SrvMap<SrvModule>, [
     ], [
@@ -516,7 +534,7 @@ export interface ErrorReportContext {
     digest: null | string;
 }
 
-export type ErrorReportSource = "process" | "render" | "server";
+export type ErrorReportSource = "client" | "process" | "render" | "server";
 
 export type ErrorReporter = (error: Error, context: ErrorReportContext) => Promise<void> | void;
 

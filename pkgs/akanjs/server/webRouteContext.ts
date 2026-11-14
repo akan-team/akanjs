@@ -9,6 +9,7 @@ import {
   strictTransportSecurity,
 } from "./assetHeaders";
 import { getClientFacingOrigin, resolveHtmlCacheControl } from "./cachePolicy";
+import { ClientErrorReport } from "./clientErrorReport";
 import { encodedFileResponse, isCompressibleContentType, matchesIfNoneMatch, varyOnEncoding } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { HmrWsHub } from "./hmr/wsHub";
@@ -125,6 +126,8 @@ export class WebRouteContext {
       const cacheControl = resolveHtmlCacheControl(req);
       if (cacheControl) headers.set("Cache-Control", cacheControl);
     }
+    const reportTiming = ClientErrorReport.timingEntry(headers.get("Cache-Control"));
+    if (reportTiming) headers.append("Server-Timing", reportTiming);
     const hsts = this.prodMode ? strictTransportSecurity() : null;
     if (hsts && getClientFacingOrigin(req).startsWith("https:")) headers.set("Strict-Transport-Security", hsts);
     return applySecurityHeaders(headers, { html: true });

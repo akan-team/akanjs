@@ -31,6 +31,7 @@ import {
   noteChunkLoadFailure,
   reportingRootErrors,
 } from "./rscClientChunks";
+import { pageErrorReporter } from "./rscClientErrors";
 import { fetchRscNavigationResponse } from "./rscClientFetch";
 import { commitRscPatch, type RscPatchedResult, validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import { getAkanHeadSnapshotPatchFailureReason } from "./rscHeadPatch";
@@ -690,7 +691,8 @@ window.addEventListener("popstate", (event) => {
 });
 
 window.addEventListener("unhandledrejection", (event) => loadDocumentForLazyChunkFailure(event.reason));
-const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure) : undefined;
+const reportPageError = pageErrorReporter(() => currentRouterState?.routeId ?? null);
+const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure, reportPageError) : undefined;
 const hydrate = () => {
   hydrateRoot(document, createElement(Root), rootOptions);
   scrollRestoration.restoreDocumentLoad();
