@@ -51,11 +51,13 @@ export class AgentEndpoint extends endpoint(srv.agent, ({ mutation }) => ({
           }),
         ) as unknown as AgentTurn;
       try {
-        return await AgentMeter.run(account, () => this.agentService.runTurn(turn, { signal: http.signal }), {
-          turn: scope,
-          request: turn,
-          signal: http.signal,
-        });
+        return AgentTurnStream.relayable(
+          await AgentMeter.run(account, () => this.agentService.runTurn(turn, { signal: http.signal }), {
+            turn: scope,
+            request: turn,
+            signal: http.signal,
+          }),
+        );
       } catch (error) {
         //? The client left, so nobody reads this answer; rethrown, its abort would be logged as a server error.
         if (http.signal.aborted)
