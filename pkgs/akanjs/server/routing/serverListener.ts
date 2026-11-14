@@ -1,5 +1,6 @@
 import { AkanError } from "akanjs/base";
 import type { Logger } from "akanjs/common";
+import type { WebsocketAdaptor } from "akanjs/service";
 import { SignalContext } from "../../signal/signalContext";
 import { AKAN_CHILD_HOST } from "../akanAppHeaders";
 import type { AkanServer } from "../akanServer";
@@ -41,6 +42,8 @@ export class ServerListener {
   #server: AppServer | null = null;
   #wsServer: AppServer | null = null;
   #localPublish: LocalPublish | null = null;
+  #roomReplay: RoomReplay | null = null;
+  #websocket: WebsocketAdaptor | null = null;
 
   constructor(owner: ListenerOwner, di: DiLifecycle, solo: boolean) {
     this.#owner = owner;
@@ -59,6 +62,14 @@ export class ServerListener {
 
   get coalescedCount() {
     return this.#binaryPubsub.coalescedCount;
+  }
+
+  get replayBytes() {
+    return this.#roomReplay?.bytes ?? 0;
+  }
+
+  get pubsubBufferedCount() {
+    return this.#websocket?.bufferedCount;
   }
 
   //? Bun throws when `upgrade()` runs on a server that did not receive the request, and behind the gateway an HMR
@@ -194,5 +205,7 @@ export class ServerListener {
     });
     SignalResolver.setLocalPublish(rooms.publish, websocket, this.#di.live, roomReplay, rooms.resync);
     this.#localPublish = rooms.publish;
+    this.#roomReplay = roomReplay;
+    this.#websocket = websocket;
   }
 }

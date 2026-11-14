@@ -520,6 +520,8 @@ export interface AkanMetricsReport {
     totalRequests?: number;
     activeWebSockets?: number;
     roomCount?: number;
+    replayBytes?: number;
+    pubsubBufferedCount?: number;
     statements?: AkanStatementStat[];
     queueWakeCount?: number;
     pubsubDeliverCount?: number;
@@ -2264,6 +2266,7 @@ export interface UpsertByIdOptions extends DocumentScopeOptions {
 }
 
 export declare class WebSocketRedisAdaptor extends WebSocketRedisAdaptor_base implements WebsocketAdaptor {
+    get bufferedCount(): number;
     onInit(): Promise<void>;
     onDestroy(): Promise<void>;
     publish(roomId: string, data: unknown, { coalesce }?: WebsocketPublishOption): void;
@@ -2292,6 +2295,7 @@ export interface WebsocketAdaptor {
     leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
     registerSocket(ws: Bun.ServerWebSocket<unknown>, meta?: Record<string, string>): Promise<void>;
     unregisterSocket(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
+    readonly bufferedCount?: number;
 }
 
 export declare const WebsocketAdaptorRole: AdaptorCls<WebsocketAdaptor>;

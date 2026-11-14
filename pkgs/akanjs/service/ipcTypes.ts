@@ -84,6 +84,8 @@ export interface AkanMetricsReport {
   totalRequests?: number;
   activeWebSockets?: number;
   roomCount?: number;
+  replayBytes?: number;
+  pubsubBufferedCount?: number;
   statements?: AkanStatementStat[];
   queueWakeCount?: number;
   pubsubDeliverCount?: number;

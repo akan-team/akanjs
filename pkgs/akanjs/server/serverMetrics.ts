@@ -3,6 +3,7 @@ import type { AkanIpcMessage, AkanMetricFamily, AkanMetricsReport, AkanStatement
 import type { AkanServer } from "./akanServer";
 import { MetricMerge } from "./metrics/metricMerge";
 import { metricRegistry } from "./metrics/metricRegistry";
+import { setPubsubGauges } from "./metrics/pubsubGauges";
 import { RuntimeFamilies } from "./metrics/runtimeFamilies";
 import { statementMetrics } from "./metrics/statementMetrics";
 import { AppInfo } from "./ops/appInfo";
@@ -46,6 +47,7 @@ export class ServerMetrics {
   families(): AkanMetricFamily[] {
     const role = this.#owner.serverMode;
     const webRouter = this.#webRouter();
+    setPubsubGauges({ replayBytes: this.#listener.replayBytes, bufferedCount: this.#listener.pubsubBufferedCount });
     return [
       ...new MetricMerge()
         .add(metricRegistry.snapshot({ role }))
@@ -63,6 +65,8 @@ export class ServerMetrics {
     const metrics = await ProcessMetricsCollector.collect({
       role: this.#owner.serverMode,
       pubsubCoalesceCount: this.#listener.coalescedCount,
+      replayBytes: this.#listener.replayBytes,
+      pubsubBufferedCount: this.#listener.pubsubBufferedCount,
       ...(this.#webRouter()?.getMetrics() ?? {}),
     });
     //? Only a replica sends a report; a solo server reads its families live when it is scraped.

@@ -50,6 +50,8 @@ export interface WebsocketAdaptor {
   leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
   registerSocket(ws: Bun.ServerWebSocket<unknown>, meta?: Record<string, string>): Promise<void>;
   unregisterSocket(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
+  /** Publishes waiting for the cross-server link to take them; absent for an adaptor that holds none back. */
+  readonly bufferedCount?: number;
 }
 
 interface BufferedMessage {
@@ -117,6 +119,10 @@ export class WebSocketRedisAdaptor
   #destroyed = false;
   readonly #lossWaiters = new Set<() => void>();
   readonly #lastLogged = new Map<string, number>();
+
+  get bufferedCount() {
+    return this.#buffer.length;
+  }
 
   #roomChannel(roomId: string) {
     return `${this.channelPrefix}ws:room:${Bun.hash.crc32(roomId) % WebSocketRedisAdaptor.#shards}`;
