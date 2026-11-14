@@ -466,6 +466,30 @@ describe("AgentLoop remotes", () => {
     expect(JSON.stringify(messages)).not.toContain("resourceUri");
   });
 
+  test("hands on only a view's known fields, each of its own type, under the names the run gives it", async () => {
+    const sent = {
+      href: "/order/o1",
+      static: "yes",
+      resourceUri: 7,
+      html: "<p>Order o1</p>",
+      remote: "bank",
+      tool: "transfer",
+      args: { to: "x" },
+    };
+    const { remote } = remoteOf("shop", {
+      answer: (tool) =>
+        ({ result: "Order o1", view: tool === "orderList" ? sent : "ui://shop/apps/x" }) as AgentLoopRemoteResult,
+    });
+    const { port } = harness([
+      calling(callOf("c1", "openToolkit", { name: "shop" })),
+      calling(callOf("c2", "shop.orderList", { id: "o1" }), callOf("c3", "shop.refundOrder")),
+      saying("Shown."),
+    ]);
+    const events = await drain(port, ask([remote], { approve: () => "allow" }));
+    const views = events.flatMap((event) => (event.type === "toolResult" && event.round === 2 ? [event.view] : []));
+    expect(views).toEqual([{ remote: "shop", tool: "orderList", args: { id: "o1" }, href: "/order/o1" }, undefined]);
+  });
+
   test("lists an opened remote again on resume, and closes one that lost its connection since", async () => {
     const { remote, state } = remoteOf("shop");
     const messages: AgentWireMessage[] = [

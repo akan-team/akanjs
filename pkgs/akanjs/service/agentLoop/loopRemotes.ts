@@ -93,7 +93,8 @@ export class LoopRemotes {
     if (!owner || !remote || !entry) return { id, name, error: `Unknown tool: ${name}.`, code: "unknownTool" };
     try {
       const { view, ...answer } = await remote.call(entry.real, args);
-      if (view) this.#views.set(id, { ...view, remote: owner, tool: entry.real, args });
+      const shown = LoopRemotes.#viewOf(view);
+      if (shown) this.#views.set(id, { ...shown, remote: owner, tool: entry.real, args });
       return { ...answer, id, name };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -105,6 +106,17 @@ export class LoopRemotes {
     const view = this.#views.get(id);
     this.#views.delete(id);
     return view;
+  }
+
+  //? Security: the remote wrote this object and a page draws from it, so only the declared fields pass, each by type.
+  static #viewOf(view: unknown): Omit<AgentLoopView, "remote" | "tool" | "args"> | null {
+    if (!view || typeof view !== "object") return null;
+    const { href, static: drawn, resourceUri } = view as Record<string, unknown>;
+    return {
+      ...(typeof href === "string" ? { href } : {}),
+      ...(typeof drawn === "boolean" ? { static: drawn } : {}),
+      ...(typeof resourceUri === "string" ? { resourceUri } : {}),
+    };
   }
 
   //? Security: a remote's annotations are its own claim, so only a tool it calls read-only runs without a person.
