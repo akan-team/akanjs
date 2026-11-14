@@ -5,6 +5,21 @@ import type { SignalContext } from "./signalContext";
 import { TaggedJson } from "./TaggedJson";
 import { traceCache } from "./trace";
 
+interface EndpointFlight {
+  startedAt: number;
+  stale: boolean;
+  run: Promise<EndpointOutcome>;
+}
+interface EndpointOutcome {
+  serialized: string | undefined;
+  result: unknown;
+}
+
+const flightStore = process as unknown as { __akanEndpointCacheFlights?: Map<string, EndpointFlight> };
+flightStore.__akanEndpointCacheFlights ??= new Map();
+const inflight = flightStore.__akanEndpointCacheFlights;
+const FLIGHT_CAP_MS = 60_000;
+
 // Not a middleware: it runs after the guards (which a lib's account middleware feeds), so a hit reaches only an
 // admitted caller, inside the `timeout` deadline. The entry is shared, hence no internal arguments.
 export class EndpointCache {
@@ -28,9 +43,43 @@ export class EndpointCache {
       return cached;
     }
     traceCache(false);
-    const result = await run();
-    await EndpointCache.#write(context, cache, key, result, ttl);
-    return result;
+    const joined = inflight.get(key);
+    const outcome =
+      joined && EndpointCache.#joinable(context, joined)
+        ? await joined.run
+        : await EndpointCache.#lead(context, cache, key, ttl, run);
+    return EndpointCache.#own(context, outcome);
+  }
+  //? A run the Timeout middleware abandoned never settles, so one older than the deadline is no longer joined.
+  static #joinable(context: SignalContext, flight: EndpointFlight) {
+    return (
+      !flight.stale && Date.now() - flight.startedAt <= (context.endpointInfo.signalOption.timeout || FLIGHT_CAP_MS)
+    );
+  }
+  static #lead(context: SignalContext, cache: CacheAdaptor, key: string, ttl: number, run: () => Promise<unknown>) {
+    const flight = { startedAt: Date.now(), stale: false } as EndpointFlight;
+    flight.run = (async () => {
+      const result = await run();
+      const serialized = EndpointCache.#serialize(context, result);
+      if (serialized !== undefined && !flight.stale && inflight.get(key) === flight)
+        await EndpointCache.#write(context, cache, key, serialized, ttl);
+      return { serialized, result };
+    })().finally(() => {
+      if (inflight.get(key) === flight) inflight.delete(key);
+    });
+    inflight.set(key, flight);
+    return flight.run;
+  }
+  // Each caller parses its own copy, as a hit does: a middleware or resolveField that edits it reaches no other caller.
+  static #own(context: SignalContext, { serialized, result }: EndpointOutcome) {
+    if (serialized === undefined) return result;
+    try {
+      const { returnRef, arrDepth } = context.endpointInfo.returns;
+      return TaggedJson.parse(serialized, { ref: returnRef, arrDepth });
+    } catch (error) {
+      context.adaptor.logger.warn(`Cache read failed for ${context.key}: ${String(error)}`);
+      return result;
+    }
   }
   static #cacheable(context: SignalContext) {
     if (context.endpointInfo.type === "query" && context.endpointInfo.internalArgs.length === 0) return true;
@@ -64,11 +113,17 @@ export class EndpointCache {
       return undefined;
     }
   }
-  static async #write(context: SignalContext, cache: CacheAdaptor, key: string, result: unknown, ttl: number) {
+  static #serialize(context: SignalContext, result: unknown) {
     try {
-      const serialized = TaggedJson.stringify(result);
       // `undefined` has no JSON spelling, and an entry holding the string "undefined" would parse back as garbage.
-      if (serialized === undefined) return;
+      return TaggedJson.stringify(result);
+    } catch (error) {
+      context.adaptor.logger.warn(`Cache write failed for ${context.key}: ${String(error)}`);
+      return undefined;
+    }
+  }
+  static async #write(context: SignalContext, cache: CacheAdaptor, key: string, serialized: string, ttl: number) {
+    try {
       // Capped at the generation's life: an entry outliving its token is stored but no read can reach it.
       const lifeMs = Math.min(ttl, EndpointCacheKeys.generationTtlMs);
       await cache.set(EndpointCacheKeys.topic, key, serialized, { expireAt: dayjs().add(lifeMs, "millisecond") });
