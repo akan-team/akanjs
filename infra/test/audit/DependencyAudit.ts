@@ -59,6 +59,15 @@ const failingSeverities: ReadonlySet<Severity> = new Set(["high", "critical"]);
 const severityOrder: Severity[] = ["critical", "high", "moderate", "low"];
 
 export class DependencyAudit {
+  static readonly publishedWorkspaces = [
+    "pkgs/akanjs",
+    "pkgs/@akanjs/cli",
+    "pkgs/@akanjs/devkit",
+    "pkgs/@akanjs/language",
+    "pkgs/create-akan-workspace",
+  ];
+  // Never published on their own: PackageRunner bundles them into the akanjs and @akanjs/cli dists.
+  static readonly bundledWorkspaces = ["pkgs/@akanjs/native", "pkgs/use-agentic"];
   readonly #lock: Lockfile;
   readonly #runtime = new Map<string, string[]>();
 

@@ -13,15 +13,6 @@ import { type AllowlistEntry, type AuditReport, DependencyAudit } from "./audit/
  * entry fails the run again.
  */
 const root = path.resolve(import.meta.dir, "../..");
-const publishedWorkspaces = [
-  "pkgs/akanjs",
-  "pkgs/@akanjs/cli",
-  "pkgs/@akanjs/devkit",
-  "pkgs/@akanjs/native",
-  "pkgs/@akanjs/language",
-  "pkgs/create-akan-workspace",
-  "pkgs/use-agentic",
-];
 
 const readReport = async (args: string[]): Promise<AuditReport> => {
   const saved = args.find((arg) => arg.startsWith("--report="))?.slice("--report=".length);
@@ -43,7 +34,10 @@ const readReport = async (args: string[]): Promise<AuditReport> => {
   return report;
 };
 
-const audit = new DependencyAudit(await Bun.file(path.join(root, "bun.lock")).text(), publishedWorkspaces);
+const audit = new DependencyAudit(await Bun.file(path.join(root, "bun.lock")).text(), [
+  ...DependencyAudit.publishedWorkspaces,
+  ...DependencyAudit.bundledWorkspaces,
+]);
 const allowlist = (await Bun.file(path.join(import.meta.dir, "audit", "allowlist.json")).json()) as {
   advisories: AllowlistEntry[];
 };

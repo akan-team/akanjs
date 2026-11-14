@@ -1,4 +1,5 @@
 import { describe, expect, it } from "bun:test";
+import path from "node:path";
 import { type AllowlistEntry, type AuditAdvisory, type AuditReport, DependencyAudit } from "./DependencyAudit";
 
 const lock = `{
@@ -148,5 +149,23 @@ describe("DependencyAudit", () => {
     const lines = DependencyAudit.format(verdict);
     expect(lines[0]).toContain("[audit] FAIL     high     shared@1.0.0 GHSA-x");
     expect(lines.at(-1)).toBe("[audit] runtime: 1 failing, 0 allowed, 0 below high; dev: 0 printed, not failed");
+  });
+});
+
+describe("the workspaces the audit walks", () => {
+  const root = path.resolve(import.meta.dir, "../../..");
+  const nameOf = async (dir: string) =>
+    (await Bun.file(path.join(root, dir, "package.json")).json()) as { name: string; private?: boolean };
+
+  it("are the packages PackageRunner publishes", async () => {
+    const { PackageRunner } = await import("../../../pkgs/@akanjs/cli/package/package.runner");
+    const names = await Promise.all(DependencyAudit.publishedWorkspaces.map(async (dir) => (await nameOf(dir)).name));
+    expect(names.sort((a, b) => a.localeCompare(b))).toEqual(
+      [...PackageRunner.publishableAkanPackages].sort((a, b) => a.localeCompare(b)),
+    );
+  });
+
+  it("add only private packages a published one bundles into its dist", async () => {
+    for (const dir of DependencyAudit.bundledWorkspaces) expect((await nameOf(dir)).private).toBe(true);
   });
 });
