@@ -50,26 +50,21 @@ export class ProjectTypecheck {
     return tsconfigPath;
   }
 
-  //? The project's own tsconfig keeps its include and exclude: an extended config resolves them from its own folder.
+  //? The project's own tsconfig, not one extending it from the cache folder: there the default `include` would
+  //? resolve from that folder, which holds no source.
   async checkIncremental(tsconfigPath: string, cacheDir: string, report: "pretty" | "records" = "pretty") {
     await mkdir(cacheDir, { recursive: true });
-    const tsconfig = {
-      extends: path.relative(cacheDir, tsconfigPath).split(path.sep).join("/"),
-      compilerOptions: { noEmit: true, incremental: true, tsBuildInfoFile: "./tsconfig.tsbuildinfo" },
-    };
-    const cachedPath = path.join(cacheDir, "tsconfig.json");
-    await Bun.write(cachedPath, `${JSON.stringify(tsconfig, null, 2)}\n`);
-    await this.check(cachedPath, report);
-    return cachedPath;
+    await this.check(tsconfigPath, report, path.join(cacheDir, "tsconfig.tsbuildinfo"));
   }
 
-  async check(tsconfigPath: string, report: "pretty" | "records" = "pretty") {
+  async check(tsconfigPath: string, report: "pretty" | "records" = "pretty", tsBuildInfoFile?: string) {
     const proc = Bun.spawn([process.execPath, await ProjectTypecheck.workerEntry(this.workspaceRoot)], {
       cwd: this.workspaceRoot,
       env: {
         ...this.env,
         AKAN_COMMAND_TYPE: "typecheck",
         AKAN_TYPECHECK_TSCONFIG: tsconfigPath,
+        ...(tsBuildInfoFile ? { AKAN_TYPECHECK_BUILDINFO: tsBuildInfoFile } : {}),
         ...(report === "records" ? { AKAN_TYPECHECK_FORMAT: "json", AKAN_TYPECHECK_ROOT: this.workspaceRoot } : {}),
       },
       stdout: "pipe",
