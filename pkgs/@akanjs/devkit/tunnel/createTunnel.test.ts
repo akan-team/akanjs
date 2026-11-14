@@ -90,7 +90,7 @@ describe("createTunnel", () => {
     const listener = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
     const port = listener.port;
     listener.stop(true);
-    process.env.SSH_TUNNEL_PORT = String(port);
+    Object.assign(process.env, { SSH_TUNNEL_PORT: String(port), SSH_TUNNEL_PASSWORD: "test-password" });
 
     let originalError: Error | undefined;
     const connect = Client.prototype.connect;
@@ -193,7 +193,7 @@ describe("createTunnel", () => {
     expect(ssh.methods.filter((method) => method !== "none")).toEqual(["password"]);
   });
 
-  test("warns when it signs in with the default shared credential", async () => {
+  test("a tunnel needs a configured credential and names the settings that provide one", async () => {
     const { root, app } = track(await createTempApp("demo"));
     const ssh = await startSshServer();
     Object.assign(process.env, {
@@ -203,13 +203,34 @@ describe("createTunnel", () => {
     //? `akan test` runs from the workspace root, whose dotenv may name a password; this case is the one with none.
     delete process.env.SSH_TUNNEL_PASSWORD;
     delete process.env.SSH_TUNNEL_PRIVATE_KEY_PATH;
-    const warn = spyOn(app.logger, "warn");
+    const connect = spyOn(Client.prototype, "connect");
+    try {
+      await expect(createTunnel("redis", { app, environment: "testing", port: freePort() })).rejects.toThrow(
+        "The redis tunnel for demo-testing needs an SSH credential: export SSH_TUNNEL_PRIVATE_KEY_PATH",
+      );
+      await expect(createTunnel("postgres", { app, environment: "testing", port: freePort() })).rejects.toThrow(
+        "or set SSH_TUNNEL_PASSWORD",
+      );
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+    }
+    expect(ssh.methods).toEqual([]);
+  });
 
-    await createTunnel("redis", { app, environment: "testing", port: freePort() });
-
-    expect(warn.mock.calls.map(([message]) => String(message)).join("\n")).toContain(
-      "uses the default shared credential",
-    );
+  test("a key file the tunnel cannot read fails naming the tunnel, the setting and the path", async () => {
+    const { root, app } = track(await createTempApp("demo"));
+    const keyPath = path.join(root, "missing_key");
+    process.env.SSH_TUNNEL_PRIVATE_KEY_PATH = keyPath;
+    const connect = spyOn(Client.prototype, "connect");
+    try {
+      await expect(createTunnel("redis", { app, environment: "testing", port: freePort() })).rejects.toThrow(
+        `The redis tunnel for demo-testing could not read the key SSH_TUNNEL_PRIVATE_KEY_PATH names, ${keyPath} (ENOENT)`,
+      );
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+    }
   });
 
   test("listens where SSH_TUNNEL_BIND_HOST says and warns when that is not loopback", async () => {
