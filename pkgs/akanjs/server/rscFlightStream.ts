@@ -10,7 +10,11 @@ import { RouteElementComposer } from "./routeElementComposer";
 import type { RouteShellGate } from "./routeShellGate";
 import { concatBytes, encodeAkanRedirectDigest } from "./rscHttp";
 import { isAkanNotFoundError, isAkanRedirectError } from "./rscRenderControl";
+import { joinRscChunks } from "./rscWorkerCache";
 import type { RscTraceMetadata } from "./ssrTypes";
+
+//? Flight packs short rows into 4 KB chunks and writes a burst in one task; the host's stream stages cost per message.
+const COALESCED_CHUNK_BYTES = 32 * 1024;
 
 //? Declared beside its `type` checks: on a tie with `RscInMsg`, the framework map's channel reader keeps a local union.
 export type RenderControl =
@@ -65,6 +69,8 @@ export class RscFlightStream {
   //? Held until the levels above the first `.loading()` settle, so an error they throw still gets its `.error()`.
   #holding: RouteShellGate | null = null;
   #held: Uint8Array | null = null;
+  #batch: Uint8Array[] = [];
+  #batchBytes = 0;
   #reportedTheme: AkanTheme | undefined;
 
   constructor(props: RscFlightStreamProps, options: FlightRenderOptions) {
@@ -95,6 +101,8 @@ export class RscFlightStream {
           this.#releaseHeld();
           continue;
         }
+        //? Only chunks Flight has already written are merged: a read still pending may be waiting on the page's data.
+        if (this.#batch.length > 0 && !(await RscFlightStream.#isSettled(pendingRead))) this.#flush();
         const { value, done } = await pendingRead;
         pendingRead = null;
         if (options.requestId && this.#props.isCancelled(options.requestId))
@@ -134,6 +142,7 @@ export class RscFlightStream {
     if (this.#holding && this.#controlRef.current?.type !== "error") this.#releaseHeld();
     if (this.#controlRef.current && this.#sentChunk) this.#sendLateControl();
     if (this.#controlRef.current && !this.#sentChunk) return this.#resultOf(this.#controlRef.current, false);
+    this.#flush();
     if (options.requestId) {
       this.#sendMeta();
       const cacheState = (await options.onComplete?.({
@@ -223,9 +232,33 @@ export class RscFlightStream {
     if (options.collectChunks) this.#chunks.push(chunk);
     if (!options.requestId) return;
     this.#sendMeta();
-    this.#sendLateTheme();
-    this.#props.send({ type: "chunk", requestId: options.requestId, data: chunk });
+    if (this.#batchBytes + chunk.byteLength > COALESCED_CHUNK_BYTES) this.#flush();
+    this.#batch.push(chunk);
+    this.#batchBytes += chunk.byteLength;
     this.#sentChunk = true;
+    if (this.#batchBytes >= COALESCED_CHUNK_BYTES) this.#flush();
+  }
+
+  #flush(): void {
+    const options = this.#options;
+    const [first] = this.#batch;
+    if (!options.requestId || !first) return;
+    const data = this.#batch.length === 1 ? first : joinRscChunks(this.#batch);
+    this.#batch = [];
+    this.#batchBytes = 0;
+    this.#sendLateTheme();
+    this.#props.send({ type: "chunk", requestId: options.requestId, data });
+  }
+
+  //? A read of a chunk already queued is fulfilled when it returns, so it wins this race against one microtask.
+  static #isSettled(read: Promise<unknown>): Promise<boolean> {
+    return Promise.race([
+      read.then(
+        () => true,
+        () => false,
+      ),
+      Promise.resolve().then(() => false),
+    ]);
   }
 
   #releaseHeld(): void {
@@ -246,6 +279,7 @@ export class RscFlightStream {
     const control = this.#controlRef.current;
     if (!options.requestId || this.#lateControlSent || !control || control.type === "error") return;
     this.#lateControlSent = true;
+    this.#flush();
     if (control.type === "redirect") {
       this.#props.send({
         type: "late-redirect",
