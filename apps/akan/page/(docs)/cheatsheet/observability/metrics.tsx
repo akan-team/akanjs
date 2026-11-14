@@ -414,14 +414,67 @@ export default page()
       },
     ];
 
+    const alertColumns = [
+      { key: "alert", label: l.trans({ en: "Alert", ko: "알림" }), code: true },
+      { key: "when", label: l.trans({ en: "Fires when", ko: "울리는 조건" }) },
+      { key: "check", label: l.trans({ en: "Look at", ko: "확인할 곳" }) },
+    ];
+
+    const alertRows = [
+      {
+        alert: "AkanEndpointErrorRatioHigh",
+        when: l.trans({
+          en: "More than 5% of an endpoint's calls answer 5xx for 15 minutes, at six calls a minute or more.",
+          ko: "endpoint 호출의 5% 넘게 15분 동안 5xx로 답할 때입니다. 분당 6회 이상 호출될 때만 봅니다.",
+        }),
+        check: l.trans({
+          en: "`akan logs` for that endpoint; a 4xx is the caller's and never counts.",
+          ko: "그 endpoint의 `akan logs`를 봅니다. 4xx는 호출한 쪽 문제라 세지 않습니다.",
+        }),
+      },
+      {
+        alert: "AkanPageErrorRatioHigh",
+        when: l.trans({
+          en: "The same, for a route's documents and RSC payloads.",
+          ko: "같은 조건을 route의 문서와 RSC payload에 적용합니다.",
+        }),
+        check: l.trans({
+          en: "The render path in the logs, and the RSC worker panels.",
+          ko: "로그의 렌더링 경로와 RSC worker 패널을 봅니다.",
+        }),
+      },
+      {
+        alert: "AkanEndpointLatencyHigh · AkanPageLatencyHigh",
+        when: l.trans({
+          en: "The 95th percentile stays above 2.5 s for 15 minutes, at six calls a minute or more.",
+          ko: "95번째 percentile이 15분 동안 2.5초를 넘을 때입니다. 분당 6회 이상일 때만 봅니다.",
+        }),
+        check: l.trans({
+          en: "`eventLoopLagP99Ms` and the render queue first, then `AKAN_TRACE=1` for that endpoint's steps.",
+          ko: "먼저 `eventLoopLagP99Ms`와 렌더링 대기열을 보고, 그다음 `AKAN_TRACE=1`로 그 endpoint의 단계를 봅니다.",
+        }),
+      },
+      {
+        alert: "AkanRscWorkerUnavailable",
+        when: l.trans({
+          en: "warning: a process runs more RSC workers than are ready for 10 minutes; critical: none is ready for 3.",
+          ko: "warning은 준비된 RSC worker가 띄운 수보다 적은 상태가 10분 갈 때, critical은 하나도 준비되지 않은 상태가 3분 갈 때입니다.",
+        }),
+        check: l.trans({
+          en: "`rscWorkerStatus` and the restarts in health; frequent recycles point at render memory.",
+          ko: "health의 `rscWorkerStatus`와 재시작 횟수를 봅니다. 교체가 잦다면 렌더링 메모리를 의심하세요.",
+        }),
+      },
+    ];
+
     const memoryEnvItems = [
       {
         key: "AKAN_MEMORY_LOG",
         type: '"1"',
         default: off,
         desc: l.trans({
-          en: "Logs one `memory role=…` line per process on every sample.",
-          ko: "샘플마다 프로세스당 `memory role=…` 줄 하나를 로그로 남깁니다.",
+          en: "Logs one `memory role=…` line per process on every sample, and adds the JSC heap walk (`jscHeapSizeBytes`, `jscObjectCount`, …) to each.",
+          ko: "샘플마다 프로세스당 `memory role=…` 줄 하나를 로그로 남기고, 샘플에 JSC heap 전체를 훑은 값(`jscHeapSizeBytes`, `jscObjectCount` 등)을 더합니다.",
         }),
       },
       {
@@ -898,6 +951,143 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 })}
               </li>
             </ul>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="dashboard" title={l.trans({ en: "Dashboard And Alerts", ko: "대시보드와 알림" })}>
+          <Docs.Title>{l.trans({ en: "Dashboard And Alerts", ko: "대시보드와 알림" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The chart in <code>infra/app</code> marks the pod for scraping once a branch asks for it. It is off
+                    by default, because a built server answers the route 401 until the scraper holds the token. Keep the
+                    token in a Secret under the key <code>AKAN_STATUS_TOKEN</code>, and name only the Secret in the
+                    values file:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>infra/app</code> chart는 branch가 원할 때 pod에 scrape 표시를 붙입니다. 빌드된 서버는
+                    scraper가 토큰을 갖기 전까지 이 경로에 401로 답하므로 기본값은 꺼짐입니다. 토큰은 Secret의{" "}
+                    <code>AKAN_STATUS_TOKEN</code> 키에 두고, values 파일에는 Secret 이름만 적습니다:
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="yaml"
+            title="infra/app/values/<appName>-values.yaml"
+            showLineNumbers={false}
+            code={`# kubectl -n <appName>-main create secret generic <appName>-status --from-literal=AKAN_STATUS_TOKEN="$(openssl rand -hex 32)"
+main:
+  metrics:
+    scrape: true
+    tokenSecret: <appName>-status`}
+          />
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The pod then carries <code>prometheus.io/scrape</code>, <code>/path</code> and <code>/port</code>,
+                    and reads <code>AKAN_STATUS_TOKEN</code> from that Secret. The annotations do nothing on their own:
+                    a Prometheus pod job keeps annotated pods and sends the same token as a bearer from a file, here a
+                    copy of the Secret mounted into Prometheus's own namespace. With the Prometheus Operator, a{" "}
+                    <code>PodMonitor</code> in the app's namespace names the Secret in{" "}
+                    <code>authorization.credentials</code> instead.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    그러면 pod에 <code>prometheus.io/scrape</code>, <code>/path</code>, <code>/port</code>가 붙고, 앱은
+                    그 Secret에서 <code>AKAN_STATUS_TOKEN</code>을 읽습니다. annotation만으로는 아무 일도 일어나지
+                    않습니다. Prometheus의 pod job이 annotation이 붙은 pod만 남기고, 같은 토큰을 파일에서 읽어 bearer로
+                    보내야 합니다. 이 파일은 Prometheus namespace에 복사해 mount한 Secret입니다. Prometheus Operator를
+                    쓴다면 앱 namespace의 <code>PodMonitor</code>가 <code>authorization.credentials</code>에 그 Secret을
+                    가리킵니다.
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="yaml"
+            title="prometheus.yml"
+            showLineNumbers={false}
+            code={`scrape_configs:
+  - job_name: <appName>
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [<appName>-main]
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/<appName>-status/AKAN_STATUS_TOKEN
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        target_label: __metrics_path__
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: ([^:]+)(?::\\d+)?;(\\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+rule_files:
+  - akan-rules.yaml`}
+          />
+          <Docs.Description>
+            <Docs.SubSubTitle>{l.trans({ en: "Dashboard", ko: "대시보드" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    Import <code>infra/monitoring/akan-dashboard.json</code> into Grafana and pick a Prometheus data
+                    source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, p50/p95/p99
+                    over every endpoint, the RSC workers running and ready, their queue, memory, restarts and recycles,
+                    and the build each process runs. The job, endpoint and route pickers narrow every panel.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    Grafana에 <code>infra/monitoring/akan-dashboard.json</code>을 import하고 Prometheus data source를
+                    고르세요. endpoint와 route별 요청률, 5xx 비율, p95 지연 시간, 전체 endpoint의 p50/p95/p99, 실행
+                    중이고 준비된 RSC worker 수와 대기열, 메모리, 재시작과 교체 횟수, 프로세스마다 돌고 있는 빌드를 보여
+                    줍니다. job, endpoint, route 선택으로 모든 패널을 좁힐 수 있습니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.SubSubTitle>{l.trans({ en: "Alerts", ko: "알림" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    <code>infra/monitoring/akan-rules.yaml</code> is a Prometheus rules file; wrap its{" "}
+                    <code>groups</code> in a <code>PrometheusRule</code> for the Operator. The thresholds are
+                    conservative, so tighten them once you know your traffic:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>infra/monitoring/akan-rules.yaml</code>은 Prometheus rules 파일입니다. Operator를 쓴다면{" "}
+                    <code>groups</code>를 <code>PrometheusRule</code>로 감싸세요. 기준값은 보수적으로 잡았으니 트래픽을
+                    파악한 뒤 조이세요:
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.Table columns={alertColumns} rows={alertRows} stacked />
           </Docs.Description>
         </Scroll.Slide>
         <Divider />

@@ -5,6 +5,7 @@
 {{- $mode := default "single" $database.mode }}
 {{- $cluster := eq $mode "cluster" }}
 {{- $storage := default dict $config.storage }}
+{{- $metrics := default dict $config.metrics }}
 {{- if eq $mode "multiple" }}
 {{- fail "multiple mode opens one SQLite file from every container on one host; run it with docker compose, not this chart" }}
 {{- end }}
@@ -29,6 +30,13 @@ spec:
     metadata:
       labels:
         app: app
+      {{- if $metrics.scrape }}
+      # Only a scrape job that relabels on these reads them, and it must send AKAN_STATUS_TOKEN as a bearer or get 401.
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: /_akan/app/metrics
+        prometheus.io/port: "8282"
+      {{- end }}
     spec:
       # `AkanServer` gives itself 30s to drain (`AKAN_SHUTDOWN_TIMEOUT_MS`); k8s defaults to exactly that, so
       # SIGKILL would land the instant its own budget expired. Leave it room to finish.
@@ -66,6 +74,14 @@ spec:
             {{- if hasKey $config.app "solo" }}
             - name: AKAN_SOLO
               value: {{ $config.app.solo | quote }}
+            {{- end }}
+            {{- with $metrics.tokenSecret }}
+            # The scrape's bearer, read from a Secret so no values file holds it.
+            - name: AKAN_STATUS_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: AKAN_STATUS_TOKEN
             {{- end }}
           # With one replica nothing supervises the server but the kubelet, so these are what restarts a wedged
           # pod. `startupProbe` carries the boot: an SSR replica loads its route artifacts before it listens.
