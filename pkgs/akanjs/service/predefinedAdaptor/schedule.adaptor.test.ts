@@ -13,17 +13,19 @@ const createScheduler = () => {
 };
 
 describe("Scheduler failures", () => {
-  test("writes its own error line only for a failure no request line has logged", async () => {
+  test("logs a job's failure even when an earlier request line already logged the same error object", async () => {
     const { scheduler, errors } = createScheduler();
-    const logged = new Error("told by the request line");
-    markFailureLogged(logged);
-    scheduler.registerInit("told", async () => Promise.reject(logged));
-    scheduler.registerInit("untold", async () => Promise.reject(new Error("nobody said")));
-    scheduler.registerDestroy("toldOnDestroy", async () => Promise.reject(logged));
+    const memoized = new Error("connect refused");
+    markFailureLogged(memoized);
+    scheduler.registerInit("warmup", async () => Promise.reject(memoized));
+    scheduler.registerDestroy("flush", async () => Promise.reject(memoized));
     await scheduler._runInit();
     await scheduler._runDestroy();
 
-    expect(errors).toEqual(["Schedule init untold error: Error: nobody said"]);
+    expect(errors).toEqual([
+      "Schedule init warmup error: Error: connect refused",
+      "Schedule destroy flush error: Error: connect refused",
+    ]);
   });
 });
 
