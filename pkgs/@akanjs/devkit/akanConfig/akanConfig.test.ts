@@ -314,7 +314,7 @@ describe("AkanAppConfig", () => {
   });
 
   test("pins the default image to the Bun release the repo runs, by the digest kept beside that version", () => {
-    expect(BUN_IMAGE_PIN.version).toBe(rootPackageJson.engines.bun);
+    expect(rootPackageJson.engines.bun).toBe(BUN_IMAGE_PIN.version);
     expect(setupActionBunVersion).toBe(rootPackageJson.engines.bun);
     expect(BUN_IMAGE_PIN.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(DEFAULT_DOCKER_IMAGE).toBe(`oven/bun:${BUN_IMAGE_PIN.version}-slim@${BUN_IMAGE_PIN.digest}`);
