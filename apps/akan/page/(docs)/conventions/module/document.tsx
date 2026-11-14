@@ -2066,18 +2066,19 @@ export class UserModel extends into(
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A kept key can serve a stale document.</strong> A create, a <code>save()</code>, an update
-                      or a remove through the model drops that document's keys once it commits. A query write such as{" "}
-                      <code>updateMany</code> runs no hook, and another instance keeps its own keys, so there a changed
-                      document is still answered in its old shape until the key expires.
+                      <strong>A write through the model drops kept keys.</strong> A create, a <code>save()</code>, an
+                      update or a remove drops that document's keys, and a write by query such as{" "}
+                      <code>updateMany</code> drops every kept key of the model, once it commits. Another instance keeps
+                      its own keys, so there a changed document is still answered in its old shape until the key
+                      expires.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>기억해 둔 키는 오래된 document를 돌려줄 수 있습니다.</strong> model을 거친 create,{" "}
-                      <code>save()</code>, update, remove는 commit되면 그 document의 키를 지웁니다.{" "}
-                      <code>updateMany</code> 같은 쿼리 쓰기는 hook을 실행하지 않고, 다른 인스턴스는 자기 키를 따로
-                      기억합니다. 이런 경우에는 바뀐 document도 키가 만료될 때까지 예전 모습으로 답합니다.
+                      <strong>model을 거친 쓰기는 기억해 둔 키를 지웁니다.</strong> create, <code>save()</code>, update,
+                      remove는 그 document의 키를, <code>updateMany</code> 같은 쿼리 쓰기는 그 model의 키를 모두
+                      commit될 때 지웁니다. 다른 인스턴스는 자기 키를 따로 기억하므로, 거기서는 바뀐 document도 키가
+                      만료될 때까지 예전 모습으로 답합니다.
                     </span>
                   ),
                 })}

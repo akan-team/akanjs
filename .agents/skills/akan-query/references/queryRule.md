@@ -131,7 +131,9 @@ this is the full contract behind them.
   server has one database, so it covers every model, hooks and query-level writes included; a nested call joins the
   outer one, with no savepoint. Cache, `memory` and outside calls are not in it — hand them to
   `this.afterCommit(fn)`, run once the commit lands, never after a rollback, at once outside one; one that throws is
-  logged, never thrown, and the rest still run. On SQLite it holds the only write turn: keep it short.
+  logged, never thrown, and the rest still run. On SQLite it holds the only write turn: another request's write
+  waits until it ends, its read does not and sees the last commit. Keep it short, and never await inside it a write
+  started outside it.
   `@Transaction()` is deprecated.
 
 ## Text Search In A Filter — `q.search()`

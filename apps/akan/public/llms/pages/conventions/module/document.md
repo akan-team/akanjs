@@ -321,7 +321,7 @@ For that many milliseconds.
 
 For as long as the process runs, up to the 10,000 keys used most recently.
 
-**A kept key can serve a stale document.** A create, a `save()`, an update or a remove through the model drops that document's keys once it commits. A query write such as `updateMany` runs no hook, and another instance keeps its own keys, so there a changed document is still answered in its old shape until the key expires.
+**A write through the model drops kept keys.** A create, a `save()`, an update or a remove drops that document's keys, and a write by query such as `updateMany` drops every kept key of the model, once it commits. Another instance keeps its own keys, so there a changed document is still answered in its old shape until the key expires.
 
 **A transaction reads past the cache.** A load inside `this.transaction()` always asks the database, so it sees its own writes, and what it reads is not kept, since it may be rolled back.
 
