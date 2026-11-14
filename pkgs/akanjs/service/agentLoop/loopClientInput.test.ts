@@ -194,6 +194,47 @@ describe("AgentLoop client input", () => {
     expect(called).toEqual([]);
   });
 
+  test("bounds every part of an answer: its changes as one value, its code, and its files' count and labels", async () => {
+    const big = "x".repeat(3_000_000);
+    const messages: AgentWireMessage[] = [
+      { role: "user", text: "Which title?" },
+      { role: "assistant", toolCalls: [callOf("q1", "askUser", { question: "Which title?" })] },
+    ];
+    const picture = { name: "shot.png", mimeType: "image/png", data: "AAAA" };
+    const answer: AgentLoopCallAnswer = {
+      id: "q1",
+      error: "Dismissed.",
+      code: big,
+      changes: [{ path: big, value: 1 }],
+      attachments: [
+        { ...picture, mimeType: big },
+        { ...picture, name: big },
+        ...Array.from({ length: 10 }, () => picture),
+      ],
+    };
+    const { port, requests } = harness([saying("Ok.")]);
+    const { stored } = await drain(port, ask({ messages, answer, clientTools: undefined, ask: true }));
+    const [kept] = stored[0]?.toolResults ?? [];
+    expect(kept?.code).toBeUndefined();
+    expect(kept?.changes).toHaveLength(1);
+    expect(String(kept?.changes?.[0])).toStartWith("[Truncated:");
+    expect(kept?.attachments).toEqual([picture, picture, picture, picture]);
+    expect(JSON.stringify(stored[0]).length).toBeLessThan(2 * LoopToolOutput.limit);
+    expect(JSON.stringify(requests[0]).length).toBeLessThan(3 * LoopToolOutput.limit);
+
+    const plain = {
+      id: "q1",
+      error: "Dismissed.",
+      code: "base.error.notFound",
+      changes: [{ path: "title", value: 1 }],
+    };
+    const { stored: whole } = await drain(
+      harness([saying("Ok.")]).port,
+      ask({ messages, answer: plain, clientTools: undefined, ask: true }),
+    );
+    expect(whole[0]?.toolResults).toEqual([{ ...plain, name: "askUser" }]);
+  });
+
   test("meets the relay's size caps on a round that lists client tools, and marks the turn `client`", async () => {
     const reports: AgentUsageReport[] = [];
     AgentMeter.use({ usage: (report) => void reports.push(report) });

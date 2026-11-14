@@ -1,5 +1,5 @@
 ---
-"akanjs": patch
+"akanjs": minor
 "@akanjs/cli": patch
 "@akanjs/devkit": patch
 ---

@@ -35,11 +35,13 @@ at every event.
   own user messages and what `onMessage` handed over: never append a client's result to them. A run parks on one
   call, the first of its last batch that nothing answered, so `answer` is accepted for that call alone and only when
   it is a client tool's or `askUser`'s. The run names the result after the call, whatever name was sent, hands it to
-  `onMessage`, emits it as a `toolResult` and runs the calls the batch has left. It is clipped at 20,000 characters
-  like a tool's result, and of its `attachments` only `data` and `text` are kept. An endpoint tool's call is answered
-  only by running it: an `answer` naming one, a call the run has not reached, or a call already answered ends the
-  run with `agent.error.answerRefused` before anything runs, and a resume without it carries on. Only `askUser`'s
-  answer is the member's own word; a client tool's always taints the run, by the rule below.
+  `onMessage`, emits it as a `toolResult` and runs the calls the batch has left. Every part of it is bounded:
+  `result`, `error` and `changes` as one value are clipped at 20,000 characters like a tool's result, `code` is kept
+  only when it is a failure code, and of its `attachments` the first four carrying `data` or `text` are kept, never
+  a `url`. An endpoint tool's call is answered only by running it: an `answer` naming one, a call the run has not
+  reached, or a call already answered ends the run with `agent.error.answerRefused` before anything runs, and a
+  resume without it carries on. Only `askUser`'s answer is the member's own word; a client tool's always taints the
+  run, by the rule below.
 - **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
   result of a call that ran — an endpoint tool's or a client tool's, an error included — and every later call
   reaches `approve(call, { tainted, tool, client })` with `tainted` set, and `client: true` when the call is to a

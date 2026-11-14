@@ -97,8 +97,9 @@ export interface AgentLoopOptions {
    * Answers the call the last run parked on with `client` or `question`: the first call of the last batch that
    * nothing answered, and only when it is a client tool's or `askUser`'s. The run names the result after that call,
    * hands it to `onMessage` and runs on. An endpoint tool's call is answered only by running it, so an `answer` that
-   * names any other call ends the run with `agent.error.answerRefused` before anything runs; resume without it. It is
-   * clipped as a tool's result is, and of its `attachments` only `data` and `text` are kept, never a `url`.
+   * names any other call ends the run with `agent.error.answerRefused` before anything runs; resume without it. Its
+   * `result`, `error` and `changes` as one value are clipped as a tool's result is, `code` is kept only when it is a
+   * failure code, and of its `attachments` the first four carrying `data` or `text` are kept, never a `url`.
    */
   answer?: AgentLoopCallAnswer;
   /**

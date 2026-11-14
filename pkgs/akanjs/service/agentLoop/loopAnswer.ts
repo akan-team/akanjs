@@ -1,3 +1,4 @@
+import { FailureCode } from "akanjs/common";
 import { Err } from "akanjs/dictionary";
 import type {
   AgentWireAttachment,
@@ -6,9 +7,14 @@ import type {
   AgentWireToolResult,
 } from "../predefinedAdaptor/llm.adaptor";
 import type { AgentLoopCallAnswer } from "./agentLoopTypes";
+import { LoopToolOutput } from "./loopToolOutput";
 import { LoopTranscript } from "./loopTranscript";
 
 export class LoopAnswer {
+  //? A screen tool returns one picture; a file's name and type are labels, bounded as a file system bounds a name.
+  static readonly maxFiles = 4;
+  static readonly maxLabelChars = 255;
+
   //? Security: client input. A run parks on the first call of its last batch nothing answered, so only that call takes
   //? an answer from outside, and the result is named by the call, never by what was sent.
   static resultOf(
@@ -25,20 +31,31 @@ export class LoopAnswer {
       id: parked.id,
       name: parked.name,
       ...(result !== undefined ? { result } : {}),
-      ...(Array.isArray(changes) ? { changes } : {}),
+      ...(Array.isArray(changes) ? { changes: LoopAnswer.#changes(changes) } : {}),
       ...(typeof error === "string" && error ? { error } : {}),
-      ...(typeof code === "string" ? { code } : {}),
+      ...(FailureCode.is(code) ? { code } : {}),
       ...(Array.isArray(attachments) ? { attachments: LoopAnswer.#files(attachments) } : {}),
     };
   }
 
+  //? How many changes and how long each `path` is are the sender's to choose, so the list is bounded as one value.
+  static #changes(changes: unknown[]): unknown[] {
+    const whole = LoopToolOutput.within(changes);
+    return whole === changes ? changes : [whole];
+  }
+
   //? Security: a file arrives as its bytes or its text. A `url` is fetched by the provider, from an address a client chose.
   static #files(attachments: unknown[]): AgentWireAttachment[] {
-    return attachments.flatMap((attachment): AgentWireAttachment[] => {
+    const files = attachments.flatMap((attachment): AgentWireAttachment[] => {
       const { name, mimeType, data, text } = (attachment ?? {}) as Partial<AgentWireAttachment>;
-      if (typeof name !== "string" || typeof mimeType !== "string") return [];
+      if (!LoopAnswer.#isLabel(name) || !LoopAnswer.#isLabel(mimeType)) return [];
       if (typeof data === "string" && data) return [{ name, mimeType, data }];
       return typeof text === "string" && text ? [{ name, mimeType, text }] : [];
     });
+    return files.slice(0, LoopAnswer.maxFiles);
+  }
+
+  static #isLabel(value: unknown): value is string {
+    return typeof value === "string" && value.length <= LoopAnswer.maxLabelChars;
   }
 }
