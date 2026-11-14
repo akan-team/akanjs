@@ -84,24 +84,33 @@ describe("appSample", () => {
       Object.fromEntries(
         Object.entries(ThemeValidator.parseThemeTokens(css)).map(([scope, tokens]) => [scope, Object.keys(tokens)]),
       );
+    const fontFilesOf = (layout: string) =>
+      [...layout.matchAll(/src: "\/(fonts\/[\w-]+\.woff2)"/g)].map(([, src]) => `public/${src}`);
+    const typographyOf = (css: string) => css.slice(css.indexOf("/* Typography:"));
 
-    test("is left out entirely: the app gets a plain home, a layout without fonts, and the theme tokens alone", async () => {
+    test("is left out entirely: the app gets a plain home, Pretendard with the typography, and the theme tokens alone", async () => {
       const { files, read } = await scaffold({ sample: false });
       const css = await read("page/styles.css");
       const frameworkCss = await readFile(Bun.resolveSync("akanjs/ui/styles.css", import.meta.dir), "utf8");
+      const fontFiles = fontFilesOf(await read("page/_layout.tsx"));
 
-      expect(files.filter((file) => /^(page|public|ui)\//.test(file))).toEqual([
-        "page/_index.tsx",
-        "page/_layout.tsx",
-        "page/styles.css",
-        "public/apple-touch-icon.png",
-        "public/favicon.ico",
-      ]);
-      expect(await read("page/_layout.tsx")).not.toContain(".fonts(");
+      expect(fontFiles).toHaveLength(4);
+      expect(files.filter((file) => /^(page|public|ui)\//.test(file))).toEqual(
+        [
+          "page/_index.tsx",
+          "page/_layout.tsx",
+          "page/styles.css",
+          "public/apple-touch-icon.png",
+          "public/favicon.ico",
+          ...fontFiles,
+        ].sort(),
+      );
       expect(await read("page/_index.tsx")).not.toContain("@apps/myapp/ui");
       expect(tokenNamesOf(css)).toEqual(tokenNamesOf(frameworkCss));
       expect(new ThemeValidator().validate(css)).toEqual([]);
-      expect(css).not.toMatch(/@(utility|keyframes|theme)\b/);
+      expect(css).not.toMatch(/@(utility|keyframes)\b/);
+      expect(typographyOf(css)).toContain("--text-xs--letter-spacing: -0.03em;");
+      expect(typographyOf(css)).toContain("--text-9xl--line-height: 1.5;");
     });
 
     test("is left out of the workspace scripts too: none names a module the app lacks, or runs a scaffold or workflow", async () => {
@@ -133,9 +142,7 @@ describe("appSample", () => {
 
     test("brings the demo home, its jelly theme and button, and every font face its layout declares", async () => {
       const { files, read } = await scaffold({ sample: true });
-      const fontFiles = [...(await read("page/_layout.tsx")).matchAll(/src: "\/(fonts\/[\w-]+\.woff2)"/g)].map(
-        ([, src]) => `public/${src}`,
-      );
+      const fontFiles = fontFilesOf(await read("page/_layout.tsx"));
 
       expect(fontFiles).toHaveLength(9);
       expect(files).toEqual(
@@ -151,6 +158,13 @@ describe("appSample", () => {
       );
       expect(await read("page/_index.tsx")).toContain('href="/task"');
       expect(await read("page/styles.css")).toContain("@utility jelly {");
+    });
+
+    test("keeps the plain app's typography in the sample's styles.css, which replaces it", async () => {
+      const plain = await (await scaffold({ sample: false })).read("page/styles.css");
+      const sample = await (await scaffold({ sample: true })).read("page/styles.css");
+
+      expect(sample).toContain(typographyOf(plain).trimEnd());
     });
 
     test("gives doctor no missing label for a field its constants suggest only in a comment, and one for a real field whose label is commented out", async () => {

@@ -8,7 +8,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { a
 /** Sugared gummy button with the same variants as akanjs's \`buttonRecipe\`; \`page/_overrides.tsx\` binds it to every akanjs/ui Button. ghost/outline/link stay surfaceless. */
 export const jellyButtonRecipe = recipe(
   tv({
-    base: "squish inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-full font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
+    base: "squish inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-full font-bold leading-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50",
     variants: {
       variant: {
         default: "text-foreground",
