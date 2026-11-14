@@ -88,6 +88,26 @@ describe("a stream that did not finish", () => {
     expect((await openai([...toolFrame('{"body": "half'), ceiling, "data: [DONE]"])).stop).toBe("length");
   });
 
+  test("malformed arguments are handed back only behind a finish the model gives when it finished the call", async () => {
+    const finish = (reason: string) => `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: reason }] })}`;
+    const half = toolFrame('{"body": "half');
+    for (const reason of ["content_filter", "length", "a_reason_no_api_documents"])
+      expect((await openai([...half, finish(reason), "data: [DONE]"])).stop).toBe("length");
+    for (const reason of ["tool_calls", "stop"]) {
+      const answer = await openai([...half, finish(reason), "data: [DONE]"]);
+      expect([answer.stop, !!answer.toolCalls?.[0]?.argsError]).toEqual(["toolUse", true]);
+    }
+
+    const stop = (reason: string) =>
+      `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: reason } })}`;
+    for (const reason of ["max_tokens", "refusal", "pause_turn", "stop_sequence"])
+      expect((await anthropic([...anthropicToolFrames('{"a":'), stop(reason)])).stop).toBe("length");
+    for (const reason of ["tool_use", "end_turn"]) {
+      const answer = await anthropic([...anthropicToolFrames('{"a":'), stop(reason)]);
+      expect([answer.stop, !!answer.toolCalls?.[0]?.argsError]).toEqual(["toolUse", true]);
+    }
+  });
+
   test("an Anthropic stream that stopped on tool_use hands malformed input back the same way", async () => {
     const answer = await anthropic([
       `data: ${JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 40, output_tokens: 1 } } })}`,

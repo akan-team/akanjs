@@ -93,13 +93,15 @@ const takesNoArguments = (tools: AgentWireTool[], name: string | undefined): boo
 
 //? Security: a call that lost its arguments would otherwise run with `{}`, which every optional-argument write accepts.
 //? A gateway that loses the provider mid-call still closes with its own end marker, so with no finish reason behind
-//? it, empty arguments are a finished call only for a tool that takes none. Behind a finish reason, arguments that do
-//? not parse are the model's, and `toolCallOf` hands them back to it.
+//? it, empty arguments are a finished call only for a tool that takes none. Arguments that do not parse are the model's
+//? own, for `toolCallOf` to hand back, only when `byModel`: behind a ceiling, a filter or a reason no API documents they
+//? were cut mid-argument, and a caller that does not read `argsError` would run the call with `{}`.
 export const isStreamCut = (
   calls: Iterable<{ name?: string; args: string }>,
-  { ended, finished }: { ended: boolean; finished: boolean },
+  { ended, finished, byModel }: { ended: boolean; finished: boolean; byModel: boolean },
   tools: AgentWireTool[],
 ): boolean =>
   !ended ||
-  (!finished &&
-    [...calls].some(({ name, args }) => parseToolArgs(args) === null || (!args && !takesNoArguments(tools, name))));
+  [...calls].some(({ name, args }) =>
+    parseToolArgs(args) === null ? !byModel : !finished && !args && !takesNoArguments(tools, name),
+  );

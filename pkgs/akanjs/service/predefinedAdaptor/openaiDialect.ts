@@ -261,7 +261,11 @@ export class OpenaiDialect {
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: isStreamCut(calls, { ended: finish !== null || done, finished: finish !== null }, tools)
+      stop: isStreamCut(
+        calls,
+        { ended: finish !== null || done, finished: finish !== null, byModel: OpenaiDialect.#finishedByModel(finish) },
+        tools,
+      )
         ? "length"
         : OpenaiDialect.stopOf(finish, toolCalls.length),
       ...(usage ? { usage } : {}),
@@ -292,16 +296,23 @@ export class OpenaiDialect {
     return finish === "tool_calls" || calls ? "toolUse" : "end";
   }
 
+  //? The reasons a model gives when it finished its calls; `length` and `content_filter` end an answer mid-argument.
+  static #finishedByModel(finish: string | null | undefined): boolean {
+    return finish === "tool_calls" || finish === "stop";
+  }
+
   static turnAnswer(answer: OpenaiAnswer): LlmTurnAnswer {
     const choice = answer.choices?.[0];
     const toolCalls = (choice?.message?.tool_calls ?? []).flatMap((call) => {
       if (!call.id || !call.function?.name) return [];
       return [toolCallOf(call.id, call.function.name, call.function.arguments)];
     });
+    const cut =
+      !OpenaiDialect.#finishedByModel(choice?.finish_reason) && toolCalls.some((call) => call.argsError !== undefined);
     return {
       ...(choice?.message?.content ? { text: choice.message.content } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: OpenaiDialect.stopOf(choice?.finish_reason, toolCalls.length),
+      stop: cut ? "length" : OpenaiDialect.stopOf(choice?.finish_reason, toolCalls.length),
       ...(answer.usage ? { usage: OpenaiDialect.usageOf(answer.usage) } : {}),
     };
   }

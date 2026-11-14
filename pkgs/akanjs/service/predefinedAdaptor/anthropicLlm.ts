@@ -418,7 +418,15 @@ export class AnthropicLlm
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: isStreamCut(calls.values(), { ended: stopReason !== null || stopped, finished: stopReason !== null }, tools)
+      stop: isStreamCut(
+        calls.values(),
+        {
+          ended: stopReason !== null || stopped,
+          finished: stopReason !== null,
+          byModel: stopReason === "tool_use" || stopReason === "end_turn",
+        },
+        tools,
+      )
         ? "length"
         : AnthropicLlm.stopOf(stopReason, toolCalls.length),
       ...(Object.keys(usage).length ? { usage: AnthropicLlm.usageOf(usage) } : {}),
