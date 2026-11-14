@@ -1,7 +1,7 @@
 import type { PromiseOrObject } from "akanjs/base";
 import { Err } from "akanjs/dictionary";
 import { AgentMeter } from "./agentMeter";
-import type { LlmTurnRequest } from "./predefinedAdaptor/llm.adaptor";
+import type { AgentWireToolResult, LlmTurnRequest } from "./predefinedAdaptor/llm.adaptor";
 
 /** One relayed turn, the same object from the request policy through the quota to the usage report. */
 export interface AgentTurnContext {
@@ -38,7 +38,7 @@ export interface AgentRequestLimits {
   context: number;
   /** Text of every message, tool and context entry and the instructions, attachments aside. */
   chars: number;
-  /** Attachment content as it travels: base64 `data` and `text`, summed over the whole history. */
+  /** Attachment content as it travels: base64 `data` and `text`, a tool result's files too, over the whole history. */
   attachmentChars: number;
 }
 
@@ -91,16 +91,25 @@ export class AgentRelayPolicy {
 
   static #attachmentCharsOf({ messages }: LlmTurnRequest) {
     let chars = 0;
-    for (const message of messages)
-      for (const attachment of message.attachments ?? [])
+    for (const { attachments = [], toolResults = [] } of messages)
+      for (const attachment of [...attachments, ...toolResults.flatMap((result) => result.attachments ?? [])])
         chars += (attachment.data?.length ?? 0) + (attachment.text?.length ?? 0);
     return chars;
+  }
+
+  //? A file a tool returned is attachment content like a user's: under `chars`, two pictures would end a run for good.
+  static #unfiled(results: AgentWireToolResult[] | undefined) {
+    return results?.map(({ attachments, ...result }) => ({
+      ...result,
+      attachments: attachments?.map(({ data: _data, text: _text, ...label }) => label),
+    }));
   }
 
   static #charsOf({ messages, tools, context, instructions }: LlmTurnRequest) {
     const textOf = (value: unknown) => JSON.stringify(value)?.length ?? 0;
     let chars = instructions?.length ?? 0;
-    for (const { attachments: _attachments, ...message } of messages) chars += textOf(message);
+    for (const { attachments: _attachments, toolResults, ...message } of messages)
+      chars += textOf(message) + textOf(AgentRelayPolicy.#unfiled(toolResults));
     return chars + textOf(tools) + textOf(context);
   }
 }

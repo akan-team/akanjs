@@ -97,6 +97,28 @@ describe("AgentRelayPolicy", () => {
     for (const sent of oversized) expect(await AgentRelayPolicy.apply(sent, anonymous())).toBe(sent);
   });
 
+  test("counts a file a tool returned as attachment content, and the rest of its result as text", () => {
+    const picture = (chars: number) => ({ name: "shot.png", mimeType: "image/png", data: "A".repeat(chars) });
+    const returning = (result: Record<string, unknown>): LlmTurnRequest => ({
+      ...request(),
+      messages: [
+        { role: "assistant", toolCalls: [{ id: "c1", name: "viewImage", args: {} }] },
+        { role: "tool", toolResults: [{ id: "c1", name: "viewImage", ...result }] },
+      ],
+    });
+    const pictures = returning({ attachments: [picture(600), picture(600)] });
+    expect(AgentRelayPolicy.capped(pictures, { chars: 1_000 })).toBe(pictures);
+    const refused = [
+      () => AgentRelayPolicy.capped(pictures, { attachmentChars: 1_000 }),
+      () => AgentRelayPolicy.capped(returning({ result: "x".repeat(1_000) }), { chars: 1_000 }),
+      () =>
+        AgentRelayPolicy.capped(returning({ attachments: [{ ...picture(1), name: "x".repeat(1_000) }] }), {
+          chars: 1_000,
+        }),
+    ];
+    for (const capping of refused) expect(capping).toThrow("agent.error.requestRefused");
+  });
+
   test("keeps the caps under a policy of the app's own that asks for them, at its own limits", async () => {
     AgentRelayPolicy.use((sent) => AgentRelayPolicy.capped({ ...sent, instructions: "Server scope." }, { tools: 2 }));
     const refusal = await AgentRelayPolicy.apply(request(), anonymous()).catch((error: unknown) => error);
