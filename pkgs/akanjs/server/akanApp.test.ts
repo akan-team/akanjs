@@ -1551,15 +1551,16 @@ describe("AkanApp", () => {
     }
   }, 20_000);
 
-  test("under akan start admits the hosts of an artifact written after it began listening, once a replica is ready", async () => {
+  test("under akan start answers a Host it cannot place yet as starting, then admits the hosts of the artifact a replica came up on and refuses the rest", async () => {
     const { root, serverPath, runtimeDir } = await makeRoot("akan-app-late-hosts-");
     const artifactPath = path.join(root, ".akan", "artifact", "base-artifact.json");
+    const goPath = path.join(root, "go");
     await writeOkChild(serverPath, "page");
     await Bun.write(
       serverPath,
       (await Bun.file(serverPath).text()).replace(
         "async start() {",
-        `async start() { await Bun.write(${JSON.stringify(artifactPath)}, JSON.stringify({ domains: ["late.example.com"] }));`,
+        `async start() { while (!(await Bun.file(${JSON.stringify(goPath)}).exists())) await Bun.sleep(20); await Bun.write(${JSON.stringify(artifactPath)}, JSON.stringify({ domains: ["late.example.com"] }));`,
       ),
     );
     const identity = {
@@ -1573,14 +1574,28 @@ describe("AkanApp", () => {
       { AKAN_COMMAND_TYPE: "start" },
       () => new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 }),
     );
+    process.env.AKAN_DEV_AWAIT_ARTIFACT = "1";
     const running = app.start();
     try {
       const port = await portOf(app);
-      await waitForReady(port);
-      const answer = await fetch(`http://127.0.0.1:${port}/`, { headers: { host: `late.example.com:${port}` } });
+      const at = (host: string) => fetch(`http://127.0.0.1:${port}/`, { headers: { host: `${host}:${port}` } });
+      for (const host of ["late.example.com", "evil.test"]) {
+        const early = await at(host);
+        expect([host, early.status]).toEqual([host, 503]);
+        expect(await early.text()).not.toContain("AKAN_ALLOWED_HOSTS");
+      }
 
-      expect([answer.status, await answer.text()]).toEqual([200, "page"]);
+      await Bun.write(goPath, "");
+      await waitForReady(port);
+
+      const own = await at("late.example.com");
+      expect([own.status, await own.text()]).toEqual([200, "page"]);
+      const other = await at("evil.test");
+      expect(other.status).toBe(403);
+      expect(await other.text()).toContain("AKAN_ALLOWED_HOSTS");
+      expect(process.env.AKAN_DEV_AWAIT_ARTIFACT).toBeUndefined();
     } finally {
+      delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
       await app.stop();
       await Promise.race([running, wait(1_000)]);
       for (const [key, value] of Object.entries(saved)) {

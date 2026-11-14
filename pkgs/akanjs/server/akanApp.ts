@@ -50,6 +50,8 @@ export class AkanApp {
   #metricsTimer: Timer | null = null;
   #ops: OpsRoute | null = null;
   #hostAllowlist = HostAllowlist.fromEnv();
+  //? Under `akan start` the first base build has not written the route hosts yet: a Host refused now may be the app's.
+  #routeHostsPending = false;
   readonly #limits = new ServerLimits();
   readonly #statusAccess = StatusAccess.fromEnv();
   #resolveStopped: (() => void) | null = null;
@@ -199,7 +201,10 @@ export class AkanApp {
 
   #listen() {
     //? Replicas declare the route hosts in their own processes, and here, ahead of them, is where Host is checked.
-    if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#config.artifactDir);
+    if (this.#hostAllowlist?.devDefault) {
+      this.#routeHostsPending = !RouteHosts.written(this.#config.artifactDir);
+      RouteHosts.declare(this.#config.artifactDir);
+    }
     this.#server = Bun.serve({
       idleTimeout: this.#limits.idleTimeout,
       maxRequestBodySize: this.#limits.uploadBodyBytes,
@@ -223,7 +228,8 @@ export class AkanApp {
   }
 
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {
-    if (this.#hostAllowlist && !this.#hostAllowlist.allows(req)) return this.#hostAllowlist.refuse();
+    if (this.#hostAllowlist && !this.#hostAllowlist.allows(req))
+      return this.#routeHostsPending ? this.#proxy.respondWithUnavailable(req) : this.#hostAllowlist.refuse();
     const oversized = this.#limits.refuseDeclared(req);
     if (oversized) return oversized;
     const url = new URL(req.url);
@@ -261,6 +267,9 @@ export class AkanApp {
       case "ready":
         //? Again: under `akan start` this gateway listens before the first base build has written the hosts.
         if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#config.artifactDir);
+        this.#routeHostsPending = false;
+        //? A replica respawned from here on must not wait for an artifact that is already there, or never coming.
+        delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
         this.#supervisor.markReady(idx, message);
         return;
       case "pubsub.publish":
