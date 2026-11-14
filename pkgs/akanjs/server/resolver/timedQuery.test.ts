@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { DocumentStore } from "akanjs/service";
 import { runTraced, SignalTrace } from "../../signal/trace";
+import { statementMetrics } from "../metrics/statementMetrics";
 import { openStatementModel, type StatementModel } from "../metrics/statementModel.fixture";
 import { modelFacadeOf } from "./modelFacade";
 import { timedQuery } from "./timedQuery";
@@ -50,6 +51,7 @@ describe("timedQuery on a SQLite store", () => {
   let model: StatementModel;
 
   beforeAll(async () => {
+    statementMetrics.slowLog.thresholdMs = Number.POSITIVE_INFINITY;
     model = await openStatementModel("sqlite", 20);
   });
   afterAll(async () => {

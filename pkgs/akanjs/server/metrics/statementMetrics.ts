@@ -3,6 +3,7 @@ import { StatementProbe } from "akanjs/service";
 import { getCurrentTrace, type SignalTrace } from "akanjs/signal";
 import type { CounterSeries, HistogramSeries } from "./metricRegistry";
 import { metricRegistry, OVERFLOW_LABEL_VALUE } from "./metricRegistry";
+import { SlowStatementLog } from "./slowStatementLog";
 import { STATEMENT_BUCKETS_SECONDS, StatementReport } from "./statementReport";
 
 const LABELS = ["fingerprint", "model", "op"] as const;
@@ -87,6 +88,8 @@ export class StatementStat {
   waitMs = 0;
   rows = 0;
   readonly buckets = new Float64Array(STATEMENT_BUCKETS_SECONDS.length + 1);
+  slowLoggedAt = Number.NEGATIVE_INFINITY;
+  slowSuppressed = 0;
   readonly #sites = new Map<StatementSite, SiteSeries>();
   #outside: SiteSeries | null = null;
   readonly #senders = new Map<string, Map<string, Sender>>();
@@ -175,6 +178,7 @@ export class StatementStat {
 export class StatementMetrics implements StatementSink {
   static readonly maxStatements = 500;
   readonly #stats = new Map<string, StatementStat>();
+  readonly slowLog = new SlowStatementLog();
 
   sent(
     statement: SentStatement,
@@ -191,6 +195,7 @@ export class StatementMetrics implements StatementSink {
     const trace = getCurrentTrace();
     stat.sentBy(trace, elapsedMs);
     if (trace?.mode === "full") trace.recordDbQuery(series.model, series.op, elapsedMs);
+    if (elapsedMs >= this.slowLog.thresholdMs) this.slowLog.log(stat, series, { durationMs, waitMs, rows, trace });
   }
 
   top(limit: number): AkanStatementStat[] {

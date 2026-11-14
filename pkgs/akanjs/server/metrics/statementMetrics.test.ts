@@ -19,6 +19,7 @@ describe("statement metrics", () => {
   let model: StatementModel;
 
   beforeAll(async () => {
+    statementMetrics.slowLog.thresholdMs = Number.POSITIVE_INFINITY;
     model = await openStatementModel("sqlite", 400);
   });
   afterAll(async () => {
