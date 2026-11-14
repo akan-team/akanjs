@@ -578,8 +578,13 @@ describe("CodeTui", () => {
     await harness.ready();
     await harness.press("first");
     await harness.press("\r");
+    const promptRow = () => {
+      const caret = caretOf(harness.stdout);
+      return caret?.lines[caret.row];
+    };
+    await eventually(() => expect(promptRow()).toContain("ask for something"));
     await harness.press(`${esc}[A`);
-    await harness.drawn("› first");
+    await eventually(() => expect(promptRow()).toBe("› first"));
     await harness.press("\r");
     await eventually(() => expect(harness.agent.calls).toEqual(["prompt:first", "prompt:first"]));
   });
@@ -639,6 +644,7 @@ describe("CodeTui", () => {
       expect(frame).toContain("› /model");
       expect(frame).not.toContain("switch model");
     });
+    await quiet();
     expect(harness.agent.calls).toEqual([]);
   });
 
@@ -698,10 +704,15 @@ describe("CodeTui", () => {
     await harness.press("one");
     await harness.press(String.fromCharCode(10));
     await harness.press("two");
+    const promptRow = () => {
+      const caret = caretOf(harness.stdout);
+      return caret?.lines[caret.row];
+    };
+    await eventually(() => expect(promptRow()).toContain("two"));
     await harness.press(`${esc}[A`);
-    await harness.drawn("one");
+    await eventually(() => expect(promptRow()).toBe("› one"));
     await harness.press(`${esc}[A`);
-    await harness.drawn("› sent");
+    await eventually(() => expect(promptRow()).toBe("› sent"));
   });
 
   test("the terminal cursor lands on the prompt row, after what has been typed", async () => {
@@ -909,6 +920,7 @@ describe("CodeTui", () => {
     await harness.ready();
     await harness.press(`${esc}[200~/help\r${esc}[201~`);
     await harness.drawn("/help");
+    await quiet();
     const frame = harness.stdout.lastFrame;
     expect(frame).not.toContain("list these commands");
     expect(frame).not.toContain("200~");
@@ -971,6 +983,7 @@ describe("CodeTui", () => {
     await harness.drawn("Akan — write one line, deploy every stack");
     await harness.press("remember this");
     await harness.press("\r");
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:remember this"]));
     await harness.drawn("› remember this");
     await harness.press("/clear");
     await harness.press("\r");
