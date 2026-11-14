@@ -88,12 +88,15 @@ export class SolidCache
   }
 
   async get<T extends CacheValue = CacheValue>(topic: string, key: string): Promise<T | undefined> {
+    const now = Date.now();
     const row = this.#db
       .query(`SELECT "value", "valueType", "expiresAt" FROM "_akan_solid_cache" WHERE "topic" = ? AND "key" = ?`)
       .get(topic, key) as CacheRow | null;
     if (!row) return undefined;
-    if (row.expiresAt !== null && row.expiresAt <= Date.now()) {
-      await this.delete(topic, key);
+    if (row.expiresAt !== null && row.expiresAt <= now) {
+      this.#db
+        .query(`DELETE FROM "_akan_solid_cache" WHERE "topic" = ? AND "key" = ? AND "expiresAt" <= ?`)
+        .run(topic, key, now);
       return undefined;
     }
     return decodeSolidValue<T>(row.valueType, row.value);
@@ -201,14 +204,19 @@ export class SolidCache
   }
 
   async hget<T extends CacheValue = CacheValue>(topic: string, key: string, subKey: string): Promise<T | undefined> {
+    const now = Date.now();
     const row = this.#db
       .query(
         `SELECT "value", "valueType", "expiresAt" FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ? AND "subKey" = ?`,
       )
       .get(topic, key, subKey) as CacheRow | null;
     if (!row) return undefined;
-    if (row.expiresAt !== null && row.expiresAt <= Date.now()) {
-      await this.hdelete(topic, key, subKey);
+    if (row.expiresAt !== null && row.expiresAt <= now) {
+      this.#db
+        .query(
+          `DELETE FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ? AND "subKey" = ? AND "expiresAt" <= ?`,
+        )
+        .run(topic, key, subKey, now);
       return undefined;
     }
     return decodeSolidValue<T>(row.valueType, row.value);

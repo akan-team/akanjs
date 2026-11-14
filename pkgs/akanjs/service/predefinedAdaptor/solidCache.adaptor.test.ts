@@ -129,6 +129,51 @@ describe("SolidCache adaptor (sqlite)", () => {
   });
 });
 
+describe("SolidCache on one file shared by two processes (sqlite)", () => {
+  let alpha: SolidCache;
+  let beta: SolidCache;
+  let filePath: string;
+
+  beforeEach(async () => {
+    ({ cache: alpha, filePath } = await createCache());
+    ({ cache: beta } = await createCache(filePath));
+  });
+
+  afterEach(async () => {
+    await alpha.onDestroy();
+    await beta.onDestroy();
+    cleanup(filePath);
+  });
+
+  const writeBeforeFirstDelete = (write: () => Promise<void>) => {
+    const query = Database.prototype.query;
+    let written = false;
+    return spyOn(Database.prototype, "query").mockImplementation(function (this: Database, sql: string) {
+      if (!written && sql.startsWith("DELETE FROM")) {
+        written = true;
+        void write();
+      }
+      return query.call(this, sql);
+    } as unknown as typeof query);
+  };
+
+  test("a value written while another reader drops the key's expired entry is kept", async () => {
+    await alpha.set("session", "user-1", "stale", { expireAt: dayjs().subtract(1, "second") });
+    const spy = writeBeforeFirstDelete(async () => await beta.set("session", "user-1", "fresh"));
+    expect(await alpha.get<string>("session", "user-1")).toBeUndefined();
+    spy.mockRestore();
+    expect(await beta.get<string>("session", "user-1")).toBe("fresh");
+  });
+
+  test("a hash field written while another reader drops the field's expired entry is kept", async () => {
+    await alpha.hset("session", "user-1", "field", "stale", { expireAt: dayjs().subtract(1, "second") });
+    const spy = writeBeforeFirstDelete(async () => await beta.hset("session", "user-1", "field", "fresh"));
+    expect(await alpha.hget<string>("session", "user-1", "field")).toBeUndefined();
+    spy.mockRestore();
+    expect(await beta.hget<string>("session", "user-1", "field")).toBe("fresh");
+  });
+});
+
 describe("SolidCache expiry sweep (sqlite)", () => {
   const backlog = 2500;
   const tables = ["_akan_solid_cache", "_akan_solid_cache_hash"];
