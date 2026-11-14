@@ -405,6 +405,7 @@ export interface ConstantSchemaOptions {
 
 export interface ContextBlock {
     kind: string;
+    untrusted?: boolean;
     [key: string]: unknown;
 }
 
