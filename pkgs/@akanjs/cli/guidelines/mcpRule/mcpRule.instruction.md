@@ -595,7 +595,8 @@ at every event.
   remote is the exception on each count: opening one taints the run, and so does any call into one, refused or not,
   whatever `untrusted` returns and with none given. Text the request itself carries from another party taints the
   run before any tool has run: a `context` block marked `untrusted: true`, and a user message's `references`, the
-  records it points at. With no `approve`, a write in such a run is refused as a write after an untrusted result is.
+  records it points at. With no `approve`, a write in such a run is answered with the code `writeAfterPageText`
+  for the rest of the conversation, as the stored messages keep the reference: only `approve` decides it.
   `context` reaches the model as data in a user turn, never in the system prompt, and a marked block is fenced as
   page content. The run stores `tainted: true` on each assistant message it writes while tainted, so a resume and
   the next ask in that conversation keep the taint without the block being passed again. A batch is judged before it runs, since the model wrote it

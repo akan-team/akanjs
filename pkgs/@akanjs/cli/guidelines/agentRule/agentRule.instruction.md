@@ -248,7 +248,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `AgentService.referenced` folds the whole lot into the message text in one place, so every provider carries a
   reference without either adaptor knowing the word. **A reference is the record's own text, not the user's**: its
   pointer, label, value and note reach the model together in one `<page-content …>` block under a heading, the
-  token in the user's words is sent as `@[pointer](mention:pointer)` so the title is in that block only, and a
+  token in the user's words is sent as `@[pointer](mention:pointer)` so the title is in that block only — or as
+  `@[ref-1a2b3c4d](mention:ref-1a2b3c4d)`, with the pointer spelled in the block, when the id or path is not a
+  token, as a slug is not — and a
   message that carries one counts as a page read, so the first change after a mention asks the user first, as after
   `readScreen`. **The value is masked on the way in and nowhere else**: masking
   needs the model class, which no wire carries, so the model a host names when it stages the reference is the whole
@@ -572,17 +574,23 @@ pages declaring one name never clash, and a registry kept outside the surface re
   the state context block by name and pulled with `readState(key)`, masked by the model that key declares — while
   a key the screen does not read stays unreadable even when a sibling key of the same store is live. **The block
   carries a value only when it is an id, an enum member, a number or a boolean**: a string rides inline when it is
-  one token of up to 40 letters, digits, `.`, `_` or `-` — with more than two separators only when every part is
-  hex or digits, as in a UUID, since four words joined by dashes are a sentence — and any other string is listed by
-  key and type alone, because free text is whatever the record's author wrote and the model reads that through
-  `readState`, where it arrives as page content. The route block follows the same rule for each path segment, path
-  param and search param, key and value alike, and keeps at most twelve of each: what does not pass is left out,
-  the block names `pathname`, `params` or `searchParams` in `withheld`, and `readState` answers those three whether
-  or not a component subscribes them. The screen block applies it to a `Load` scope's label, which is its record's
-  title, and to the labels of a list scope's `items`, and then says to read the scope with `readScreen`. So
-  instructions never say "the query is in the route context"; they say to read `searchParams`. **Two things still
-  ride whole, because no read returns them**: an `Agent.Zone`'s `label` and a value published with `st.expose` or
-  `st.useState`. Publish an id, a count or an enum member there, never text a user wrote. **There is no
+  one token of up to 40 letters, digits, `.`, `_` or `-`, of at most three words — a word ends at a separator or
+  at a lower-to-upper case change, so `created-at-desc` and `createdAtDesc` pass and four joined words are a
+  sentence; more parts pass only as an id's, each hex with a digit or eight characters long, as in a UUID; a run of
+  over sixteen letters with no digit never passes — and any other string is listed by key and type alone, because
+  free text is whatever the record's author wrote and the model reads that through `readState`, where it arrives as
+  page content. The route block follows the same rule for each path segment and path param, up to twelve words of
+  each. **A search param rides inline when a store declares its key with `search("key", …)`** and its value is a
+  token; of the others at most four ride, key and value both tokens, and the rest are left out, key and value, with
+  their count in `searchParamsWithheld`. A page's own typed `search` is read on the server and does not count, so
+  declare the params an agent should see in a store. What is left out is named in `withheld` as `pathname`,
+  `params` or `searchParams`, and `readState` answers those three whether or not a component subscribes them. The
+  screen block applies the rule to a `Load` scope's label, which is its record's title, and to the ids and labels
+  of a list scope's `items` — a row whose id is not a token, a slug or a mixed-case random id, is left out — and
+  then says to read the scope with `readScreen`. So instructions never say "the query is in the route context";
+  they say to read `searchParams`. **Three things still ride whole, because no read returns them**: an
+  `Agent.Zone`'s `label` and a value published with `st.expose`, `st.useState` or `useAgentResource`. Publish an
+  id, a count or an enum member there, never text a user wrote. **There is no
   store-level exposure declaration**: a store class says nothing about agents, and `st.use.x({ agent: false })` is
   how the component that subscribes a value keeps it off the surface. Base-store plumbing does the same at the
   call site — `st.use.path({ agent: false })`, `st.use.tryJwt({ agent: false })` — so routing and the caller's

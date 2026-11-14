@@ -86,7 +86,9 @@
   `AgentService.referenced` folds the whole lot into the message text in one place, so every provider carries a
   reference without either adaptor knowing the word. **A reference is the record's own text, not the user's**: its
   pointer, label, value and note reach the model together in one `<page-content …>` block under a heading, the
-  token in the user's words is sent as `@[pointer](mention:pointer)` so the title is in that block only, and a
+  token in the user's words is sent as `@[pointer](mention:pointer)` so the title is in that block only — or as
+  `@[ref-1a2b3c4d](mention:ref-1a2b3c4d)`, with the pointer spelled in the block, when the id or path is not a
+  token, as a slug is not — and a
   message that carries one counts as a page read, so the first change after a mention asks the user first, as after
   `readScreen`. **The value is masked on the way in and nowhere else**: masking
   needs the model class, which no wire carries, so the model a host names when it stages the reference is the whole
