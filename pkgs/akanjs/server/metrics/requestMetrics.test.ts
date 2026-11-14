@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { type AkanMetricFamily, getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
+import { SignalContext } from "akanjs/signal";
 import { endpoint } from "../../signal/endpoint";
 import { Public } from "../../signal/guards";
 import { StatusAccess } from "../ops/statusAccess";
@@ -92,6 +93,59 @@ describe("endpoint request metrics", () => {
     const answered = timed.find(({ labels }) => labels.endpoint === "query:meteredAnswer");
     expect(answered?.count).toBe(3);
     expect(answered?.counts.reduce((total, count) => total + count, 0)).toBe(3);
+  });
+
+  test("counts a call carrying an inbound request id once, whether the server takes the id over or gives its own", async () => {
+    const inbound = "0af7651916cd43dd8448eb211c80319c";
+    process.env.AKAN_PUBLIC_APP_NAME ??= "test";
+    process.env.AKAN_PUBLIC_OPERATION_MODE ??= "cloud";
+    process.env.AKAN_PUBLIC_REPO_NAME ??= "akanjs";
+    process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "example.com";
+    const { ApiRouter } = await import("../routing/apiRouter");
+    const served = ApiRouter.buildRoutes({
+      prefix: "/api",
+      websocketPrefix: "/ws",
+      routes: resolved().routes ?? {},
+      renderEnvRoutes: {},
+      upgradeAppWs: () => false,
+    });
+    const path = Object.keys(served).find((route) => route.endsWith("/meteredAnswer")) ?? "";
+    const send = async (headers: Record<string, string>) => {
+      const req = Object.assign(new Request(`http://localhost${path}`, { headers }), { params: {} });
+      return await (served[path] as unknown as { GET: (req: Request) => Promise<Response> }).GET(req);
+    };
+    const answered = () => {
+      const families = metricRegistry.snapshot();
+      const latency = families.find(({ name }) => name === "akan_endpoint_request_duration_seconds");
+      const timed = latency?.type === "histogram" ? latency.samples : [];
+      return {
+        calls: callsOf(families, "query:meteredAnswer"),
+        timed: timed.find(({ labels }) => labels.endpoint === "query:meteredAnswer")?.count ?? 0,
+      };
+    };
+    const tally = (count: number) => ({
+      calls: [{ endpoint: "query:meteredAnswer", status_class: "2xx", value: count }],
+      timed: count,
+    });
+    const before = answered().timed;
+
+    try {
+      SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
+      const givenOwn = await send({ "x-request-id": inbound });
+      const afterGivenOwn = answered();
+      SignalContext.setHttpPeerResolver(() => null);
+      const takenOver = await send({ "x-request-id": inbound });
+      const afterTakenOver = answered();
+
+      expect([givenOwn.status, takenOver.status]).toEqual([200, 200]);
+      expect(givenOwn.headers.get("x-request-id")).toMatch(/^[0-9a-f]{32}$/);
+      expect(givenOwn.headers.get("x-request-id")).not.toBe(inbound);
+      expect(takenOver.headers.get("x-request-id")).toBe(inbound);
+      expect(afterGivenOwn).toEqual(tally(before + 1));
+      expect(afterTakenOver).toEqual(tally(before + 2));
+    } finally {
+      SignalContext.setHttpPeerResolver(null);
+    }
   });
 
   test("counts a websocket message its route answers by the status its failure answers with, and passes the failure on", async () => {
