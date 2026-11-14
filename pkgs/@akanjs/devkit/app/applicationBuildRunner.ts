@@ -45,11 +45,15 @@ export type BuildPhaseId =
   | "budget"
   | "metadata";
 
+type RouteJsMeasure = RouteJsBudgetStatus & { sizes: RouteJsSize[] };
+
 export type BuildPhaseResult = ApplicationBuildPhaseResult & { id: BuildPhaseId };
 export type BuildResult = ApplicationBuildResult;
 export type BuildProgressReporter = ApplicationBuildProgressReporter;
 export interface ApplicationBuildRunnerOptions {
   fast?: boolean;
+  /** `akan verify`'s build stops after the SSR route compile and the route JS budget, so its `dist/` is not deployable. */
+  verify?: boolean;
   reporter?: BuildProgressReporter;
   /** The backend env the build is for, when it is not the workspace's own (a mobile or desktop build's `--env`). */
   environment?: string;
@@ -101,6 +105,7 @@ export const AKAN_OPTIONAL_BACKEND_EXTERNALS = ["bullmq", "ioredis", "postgres",
 export class ApplicationBuildRunner {
   #app: App;
   #fast: boolean;
+  #verify: boolean;
   #reporter?: BuildProgressReporter;
   #environment?: string;
   #profile?: string;
@@ -112,10 +117,18 @@ export class ApplicationBuildRunner {
 
   constructor(
     app: App,
-    { fast = false, reporter, environment, profile, budget = "report" }: ApplicationBuildRunnerOptions = {},
+    {
+      fast = false,
+      verify = false,
+      reporter,
+      environment,
+      profile,
+      budget = "report",
+    }: ApplicationBuildRunnerOptions = {},
   ) {
     this.#app = app;
-    this.#fast = fast;
+    this.#fast = fast || verify;
+    this.#verify = verify;
     this.#reporter = reporter;
     this.#environment = environment;
     this.#profile = profile;
@@ -177,6 +190,7 @@ export class ApplicationBuildRunner {
             ? "skipped"
             : "disabled by akan.config.ts web.ssr",
     );
+    if (this.#verify) return this.#resultOf(environment, await this.#runBudgetPhase(environment));
     await this.#runPhase(
       "csr",
       "Building CSR assets",
@@ -201,13 +215,21 @@ export class ApplicationBuildRunner {
           ? `${result.files} files, ${ApplicationBuildRunner.formatBytes(result.inputBytes)} -> gzip ${ApplicationBuildRunner.formatBytes(result.outputBytes)} / br ${ApplicationBuildRunner.formatBytes(result.brotliBytes)}`
           : "no files",
     );
-    const routeJs = await this.#runPhase(
+    const routeJs = await this.#runBudgetPhase(environment);
+    await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
+    return this.#resultOf(environment, routeJs);
+  }
+
+  #runBudgetPhase(environment: string) {
+    return this.#runPhase(
       "budget",
       "Measuring route JS",
       () => this.#measureRouteJs(environment),
       (result) => result?.summary ?? (this.#budget === "off" ? "off for this build" : "no server pages"),
     );
-    await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
+  }
+
+  #resultOf(environment: string, routeJs: RouteJsMeasure | null): BuildResult {
     return {
       phases: this.#phases,
       ...(routeJs ? { routeJs: routeJs.sizes } : {}),
@@ -450,12 +472,14 @@ void run().catch((error) => {
     return { base, allRoutes };
   }
 
-  //? After `compress`: a route is measured by the brotli bytes it is served as, read from the `.br` sidecars.
-  async #measureRouteJs(environment: string): Promise<(RouteJsBudgetStatus & { sizes: RouteJsSize[] }) | null> {
+  //? After `compress`: a route is measured by the brotli bytes it is served as, read from the `.br` sidecars, which a
+  //? verify build skips writing and measures in memory instead.
+  async #measureRouteJs(environment: string): Promise<RouteJsMeasure | null> {
     if (this.#budget === "off" || !this.#modulesByRoute) return null;
     const sizes = await RouteJsBudget.measure(
       path.join(this.#app.dist.cwdPath, ".akan/artifact"),
       this.#modulesByRoute,
+      { precompressed: !this.#verify },
     );
     const budgetPath = path.join(this.#app.cwdPath, RouteJsBudget.fileName);
     const { summary: status, warnings } = await RouteJsBudget.check(sizes, {

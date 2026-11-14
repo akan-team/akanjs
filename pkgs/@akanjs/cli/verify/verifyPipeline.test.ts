@@ -126,7 +126,7 @@ describe("VerifyPipeline", () => {
 
     const result = await new VerifyPipeline(workspace, new WorkspaceRunner(), applicationRunner).run(scope);
 
-    expect(builds).toEqual([{ fast: true }]);
+    expect(builds).toEqual([{ verify: true }]);
     expect(result.ok).toBe(true);
     expect(result.steps.find((step) => step.name === "build")?.status).toBe("pass");
     expect(VerifyReport.text(result).split("\n").slice(1)).toEqual([

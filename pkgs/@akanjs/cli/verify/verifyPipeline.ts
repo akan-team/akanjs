@@ -243,10 +243,9 @@ export class VerifyPipeline {
   }
 
   async #build(target: VerifyTarget): Promise<StepOutcome> {
-    //? `fast` drops the build's own typecheck phase; the typecheck step above has already run it.
     const { routeJsWarnings = [] } = await this.#applicationRunner.build(
       AppExecutor.from(this.#workspace, target.name),
-      { fast: true },
+      { verify: true },
     );
     return { diagnostics: routeJsWarnings.map((warning) => VerifyDiagnostics.fromRouteJsBudget(warning)) };
   }

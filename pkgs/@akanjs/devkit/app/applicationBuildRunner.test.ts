@@ -389,4 +389,28 @@ console.info(new SampleService().name);
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test("a verify build stops after the backend and SSR route compile but still measures the route JS budget", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    await Promise.all(["main.ts", "server.ts"].map((file) => writeFile(path.join(root, "apps", "portal", file), "")));
+    const app = AppExecutor.from(workspace, "portal");
+    app.prepareCommand = async () => ({ env: {} });
+    const bundle = spyOn(Bun, "build").mockImplementation(
+      async () => ({ success: true, outputs: [], logs: [] }) as unknown as Bun.BuildOutput,
+    );
+    try {
+      const { phases } = await new ApplicationBuildRunner(app, { verify: true }).build();
+      expect(phases.map((phase) => phase.id)).toEqual(["prepare", "backend", "ssr", "budget"]);
+      expect(await Bun.file(path.join(app.dist.cwdPath, "package.json")).exists()).toBe(false);
+    } finally {
+      bundle.mockRestore();
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
