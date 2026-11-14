@@ -1,5 +1,34 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
+import { existsSync } from "node:fs";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type { BaseBuildArtifact } from "akanjs/server";
 import { SsrBaseArtifactBuilder } from "./ssrBaseArtifactBuilder";
+
+describe("SsrBaseArtifactBuilder.writeArtifact", () => {
+  test("writes beside the final path and renames into it, so a reader never finds a half-written artifact", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "akan-base-artifact-"));
+    const finalPath = path.join(dir, "base-artifact.json");
+    const artifact = { domains: ["a.example.com"], pagesBundlePath: "/app/pages.js" } as unknown as BaseBuildArtifact;
+    const write = Bun.write;
+    const seen: { target: string; finalExisted: boolean }[] = [];
+    const written = spyOn(Bun, "write").mockImplementation(((target: string, data: string) => {
+      seen.push({ target: String(target), finalExisted: existsSync(finalPath) });
+      return write(target, data);
+    }) as typeof Bun.write);
+    try {
+      await SsrBaseArtifactBuilder.writeArtifact(dir, artifact);
+    } finally {
+      written.mockRestore();
+    }
+
+    expect(seen).toEqual([{ target: `${finalPath}.tmp`, finalExisted: false }]);
+    expect(await Bun.file(finalPath).json()).toEqual(artifact);
+    expect(await readdir(dir)).toEqual(["base-artifact.json"]);
+    await rm(dir, { recursive: true, force: true });
+  });
+});
 
 describe("SsrBaseArtifactBuilder.outletModuleMap", () => {
   const outlet = "pkgs/akanjs/server/rscSegmentOutlet.tsx";

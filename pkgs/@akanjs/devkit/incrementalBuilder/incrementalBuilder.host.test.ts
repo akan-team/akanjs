@@ -43,6 +43,22 @@ const startRecordingHost = () => {
 };
 
 describe("IncrementalBuilderHost", () => {
+  test("tells its starter the boot artifact is built, ahead of ready, and relays nothing for it", () => {
+    const spawns = mockSpawns();
+    const messages: unknown[] = [];
+    const onBaseBuilt = mock();
+    const host = createHost((message) => messages.push(message));
+
+    host.start({ onBaseBuilt });
+    spawns[0]?.options.ipc?.({ type: "base-built", phaseMs: { pages: 5, total: 9 } });
+
+    expect(onBaseBuilt).toHaveBeenCalledWith({ pages: 5, total: 9 });
+    expect(host.status).toBe("starting");
+    expect(messages).toEqual([]);
+
+    host.stop();
+  });
+
   test("restarts after a ready builder exits", async () => {
     const spawns = mockSpawns();
 

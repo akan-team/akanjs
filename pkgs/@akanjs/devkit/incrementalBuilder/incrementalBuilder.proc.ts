@@ -381,6 +381,7 @@ class IncrementalBuilder {
     const initialGeneration = BuilderBoot.initialGeneration();
     try {
       const deps = await BuilderBoot.buildBootDeps(app, bootRunner);
+      BuilderChannel.emit({ type: "base-built", phaseMs: deps.basePhaseMs });
       builder = new IncrementalBuilder({ app, watch, initialGeneration, ...deps });
     } catch (err) {
       if (!watch) throw err;
