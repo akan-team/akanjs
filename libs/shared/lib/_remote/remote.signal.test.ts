@@ -52,6 +52,7 @@ describe("Remote Signal", () => {
   const sourceOf = (as: SerAccount = account) =>
     service.sources(as, [{ name: "self", url: base, description: "This server." }])[0];
   const keyOf = () => `${owner.user.id} ${base}/mcp`;
+  const sealedAt = (field: string) => [owner.user.id, `${base}/mcp`, field];
 
   beforeAll(async () => {
     await getOrSetupSignalTestFetch();
@@ -130,7 +131,9 @@ describe("Remote Signal", () => {
     expect(await other.fetch.listRemoteConnections()).toEqual([]);
     const stored = await service.grants.get(keyOf());
     expect(stored?.access).not.toContain("eyJ");
-    expect(service.remoteOption.vault.open(stored?.access ?? "")).toContain("eyJ");
+    expect(service.remoteOption.vault.open(stored?.access ?? "", sealedAt("access"))).toContain("eyJ");
+    expect(service.remoteOption.vault.open(stored?.access ?? "", [other.user.id, `${base}/mcp`, "access"])).toBe("");
+    expect(service.remoteOption.vault.open(stored?.access ?? "", sealedAt("refresh"))).toBe("");
     expect(
       (await grantedApps(owner.accessToken.jwt)).some((app) => app.clientName === service.remoteOption.clientName),
     ).toBe(true);
@@ -158,7 +161,7 @@ describe("Remote Signal", () => {
 
   it("keeps an agent's own token from connecting or disconnecting a server", async () => {
     const stored = await service.grants.get(keyOf());
-    const agentToken = service.remoteOption.vault.open(stored?.access ?? "");
+    const agentToken = service.remoteOption.vault.open(stored?.access ?? "", sealedAt("access"));
     const asAgent = async (endpoint: string) =>
       await fetch(`${base}${getApiPrefix()}/${endpoint}`, {
         method: "POST",
@@ -174,14 +177,14 @@ describe("Remote Signal", () => {
   it("renews a lapsed access token, one renewal for callers that ask together", async () => {
     const stored = await service.grants.get(keyOf());
     if (!stored) throw new Error("the connection is missing");
-    const before = service.remoteOption.vault.open(stored.access);
+    const before = service.remoteOption.vault.open(stored.access, sealedAt("access"));
     stored.accessExpiresAt = dayjs().subtract(1, "minute");
     await service.grants.set(keyOf(), stored);
     const [first, second] = await Promise.all([sourceOf().list(), sourceOf().list()]);
     expect(first?.length).toBeGreaterThan(0);
     expect(second?.length).toBe(first?.length);
     const after = await service.grants.get(keyOf());
-    expect(service.remoteOption.vault.open(after?.access ?? "")).not.toBe(before);
+    expect(service.remoteOption.vault.open(after?.access ?? "", sealedAt("access"))).not.toBe(before);
     expect(after?.refresh).not.toBe(stored.refresh);
   });
 
@@ -205,13 +208,13 @@ describe("Remote Signal", () => {
       Object.assign(service.remoteOption, { fetcher });
     }
     const after = await service.grants.get(keyOf());
-    expect(service.remoteOption.vault.open(after?.refresh ?? "")).toBe("refresh-2");
+    expect(service.remoteOption.vault.open(after?.refresh ?? "", sealedAt("refresh"))).toBe("refresh-2");
   });
 
   it("closes the connection when the other server refuses to renew it", async () => {
     const stored = await service.grants.get(keyOf());
     if (!stored) throw new Error("the connection is missing");
-    stored.refresh = service.remoteOption.vault.seal("not-a-refresh-token");
+    stored.refresh = service.remoteOption.vault.seal("not-a-refresh-token", sealedAt("refresh"));
     stored.accessExpiresAt = dayjs().subtract(1, "minute");
     await service.grants.set(keyOf(), stored);
     expect(await sourceOf().list()).toBeNull();

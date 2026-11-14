@@ -64,7 +64,7 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
       revocationEndpoint: server.revocationEndpoint ?? "",
       resource: server.resource,
       clientId: client.clientId,
-      clientSecret: vault.seal(client.clientSecret ?? ""),
+      clientSecret: vault.seal(client.clientSecret ?? "", RemoteService.registrationOf(server.issuer, redirectUri)),
     });
     await this.authorizations.set(state, authorization, {
       expireAt: dayjs().add(this.authorizationMinutes, "minute"),
@@ -92,7 +92,10 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
       throw new Err("remote.error.issuerMismatch", undefined, { statusCode: 400 });
     if (!code) throw new Err("remote.error.authorizationRefused", undefined, { statusCode: 400 });
     const { fetcher, vault } = this.remoteOption;
-    const client = this.client(authorization, vault);
+    const client = this.client(
+      authorization,
+      RemoteService.registrationOf(authorization.issuer, authorization.redirectUri),
+    );
     const tokens = await this.reached(() =>
       RemoteOAuth.exchange(fetcher, authorization, {
         code,
@@ -108,8 +111,11 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
       revocationEndpoint: authorization.revocationEndpoint,
       resource: authorization.resource,
       clientId: authorization.clientId,
-      clientSecret: authorization.clientSecret,
-      ...this.sealed(tokens, ""),
+      clientSecret: vault.seal(
+        client.clientSecret ?? "",
+        RemoteService.sealedAt({ subjectId, url: authorization.url }, "clientSecret"),
+      ),
+      ...this.sealed({ subjectId, url: authorization.url }, tokens, ""),
       connectedAt: dayjs(),
     });
     await this.store(grant);
@@ -123,9 +129,16 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     const grant = await this.grants.getDel(key);
     if (!grant) return false;
     const { fetcher, vault } = this.remoteOption;
-    const token = vault.open(grant.refresh) || vault.open(grant.access);
+    const token =
+      vault.open(grant.refresh, RemoteService.sealedAt(grant, "refresh")) ||
+      vault.open(grant.access, RemoteService.sealedAt(grant, "access"));
     if (grant.revocationEndpoint && token)
-      await RemoteOAuth.revoke(fetcher, grant.revocationEndpoint, token, this.client(grant, vault));
+      await RemoteOAuth.revoke(
+        fetcher,
+        grant.revocationEndpoint,
+        token,
+        this.client(grant, RemoteService.sealedAt(grant, "clientSecret")),
+      );
     return true;
   }
 
@@ -199,7 +212,7 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     const grant = await this.grants.get(key);
     if (!grant) return null;
     if (!grant.tokenEndpoint) return "";
-    const access = this.remoteOption.vault.open(grant.access);
+    const access = this.remoteOption.vault.open(grant.access, RemoteService.sealedAt(grant, "access"));
     const fresh = dayjs(grant.accessExpiresAt).isAfter(dayjs().add(this.renewAheadSeconds, "second"));
     return access && fresh ? access : await this.renew(key);
   }
@@ -218,12 +231,13 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     const { fetcher, vault } = this.remoteOption;
     const grant = await this.grants.get(key);
     if (!grant?.tokenEndpoint) return grant ? "" : null;
-    const refreshToken = vault.open(grant.refresh);
+    const refreshToken = vault.open(grant.refresh, RemoteService.sealedAt(grant, "refresh"));
     if (!refreshToken) return await this.drop(key, grant, "it holds no refresh token");
     const { access, refresh } = grant;
     try {
-      const tokens = await RemoteOAuth.refresh(fetcher, grant, { refreshToken, client: this.client(grant, vault) });
-      Object.assign(grant, this.sealed(tokens, grant.refresh));
+      const client = this.client(grant, RemoteService.sealedAt(grant, "clientSecret"));
+      const tokens = await RemoteOAuth.refresh(fetcher, grant, { refreshToken, client });
+      Object.assign(grant, this.sealed(grant, tokens, grant.refresh));
       await this.store(grant);
       return tokens.accessToken;
     } catch (error) {
@@ -233,7 +247,7 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
       //? instance's stored renewal stands.
       const current = await this.grants.get(key);
       const renewed = current && (current.refresh !== refresh || current.access !== access) ? current.access : "";
-      const renewedAccess = vault.open(renewed);
+      const renewedAccess = vault.open(renewed, RemoteService.sealedAt(grant, "access"));
       if (renewedAccess) return renewedAccess;
       return await this.drop(key, grant, error.message);
     }
@@ -245,12 +259,16 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     return null;
   }
 
-  private sealed({ accessToken, refreshToken, expiresAt }: RemoteTokens, keptRefresh: string) {
+  private sealed(
+    at: Pick<cnst.RemoteGrant, "subjectId" | "url">,
+    { accessToken, refreshToken, expiresAt }: RemoteTokens,
+    keptRefresh: string,
+  ) {
     const { vault } = this.remoteOption;
     return {
-      access: vault.seal(accessToken),
+      access: vault.seal(accessToken, RemoteService.sealedAt(at, "access")),
       //? A server that rotates sends the next refresh token; one that does not leaves the stored one standing.
-      refresh: refreshToken ? vault.seal(refreshToken) : keptRefresh,
+      refresh: refreshToken ? vault.seal(refreshToken, RemoteService.sealedAt(at, "refresh")) : keptRefresh,
       accessExpiresAt: expiresAt ? dayjs(expiresAt) : dayjs().add(this.defaultAccessSeconds, "second"),
     };
   }
@@ -278,16 +296,18 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
   private async clientOf(server: RemoteAuthServer): Promise<RemoteClient> {
     const { fetcher, redirectUri, clientName, vault } = this.remoteOption;
     const key = `${server.issuer} ${redirectUri}`;
-    const known = RemoteService.parseClient(await this.clients.get(key), vault);
+    const registration = RemoteService.registrationOf(server.issuer, redirectUri);
+    const known = RemoteService.parseClient(await this.clients.get(key), vault, registration);
     if (known) return known;
     const client = await this.reached(() => RemoteOAuth.register(fetcher, server, { redirectUri, clientName }));
-    const stored = JSON.stringify({ clientId: client.clientId, clientSecret: vault.seal(client.clientSecret ?? "") });
+    const clientSecret = vault.seal(client.clientSecret ?? "", registration);
+    const stored = JSON.stringify({ clientId: client.clientId, clientSecret });
     await this.clients.set(key, stored, { expireAt: dayjs().add(this.clientDays, "day") });
     return client;
   }
 
-  private client(record: { clientId: string; clientSecret: string }, vault: RemoteVault): RemoteClient {
-    const clientSecret = vault.open(record.clientSecret);
+  private client(record: { clientId: string; clientSecret: string }, context: readonly string[]): RemoteClient {
+    const clientSecret = this.remoteOption.vault.open(record.clientSecret, context);
     return { clientId: record.clientId, ...(clientSecret ? { clientSecret } : {}) };
   }
 
@@ -305,12 +325,16 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     return subject.id;
   }
 
-  private static parseClient(stored: string | undefined, vault: RemoteVault): RemoteClient | null {
+  private static parseClient(
+    stored: string | undefined,
+    vault: RemoteVault,
+    context: readonly string[],
+  ): RemoteClient | null {
     if (!stored) return null;
     try {
       const { clientId, clientSecret } = JSON.parse(stored) as { clientId?: string; clientSecret?: string };
       if (!clientId) return null;
-      const secret = vault.open(clientSecret ?? "");
+      const secret = vault.open(clientSecret ?? "", context);
       return { clientId, ...(secret ? { clientSecret: secret } : {}) };
     } catch {
       return null;
@@ -336,6 +360,17 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
       throw new Err("remote.error.badArguments", undefined, { statusCode: 400 });
     return parsed as Record<string, unknown>;
+  }
+
+  private static sealedAt(
+    { subjectId, url }: Pick<cnst.RemoteGrant, "subjectId" | "url">,
+    field: "access" | "refresh" | "clientSecret",
+  ): string[] {
+    return [subjectId, url, field];
+  }
+
+  private static registrationOf(issuer: string, redirectUri: string): string[] {
+    return [issuer, redirectUri, "clientSecret"];
   }
 
   private static keyOf(subjectId: string, url: string): string {

@@ -13,8 +13,9 @@ here calls another server's MCP tools as that user.
   session connects nothing.
 - A sign-in lives ten minutes, is bound to the user who started it, and its `state` is answered once. The answer's
   `iss` must be the authorization server that was asked.
-- Tokens and the client secret are stored sealed (`RemoteVault`) and never returned: `listRemoteConnections` shows
-  the address and the time alone, and a browser only ever carries `state` and the code.
+- Tokens and the client secret are stored sealed (`RemoteVault`), each opening only in the record and field it was
+  sealed for, and never returned: `listRemoteConnections` shows the address and the time alone, and a browser only
+  ever carries `state` and the code.
 - This app registers once per authorization server (RFC 7591), as a confidential client where that server issues
   secrets, and every user's connection there shares the registration.
 - An access token is renewed a minute before it lapses and after a 401, one renewal at a time per connection in a
