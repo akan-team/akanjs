@@ -112,9 +112,10 @@ export class LogHub {
   }
 
   ingest(record: LogRecord): LogHubEntry | null {
+    const kept = record.level === null || isRequestLine(record) || this.#admit(record);
     const entry: LogHubEntry = { seq: ++this.#seq, record };
     this.#deliver(entry, true);
-    if (record.level !== null && !isRequestLine(record) && !this.#admit(record)) return null;
+    if (!kept) return null;
     this.#keep(entry);
     return entry;
   }

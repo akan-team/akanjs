@@ -104,14 +104,21 @@ describe("LogHub suppression", () => {
     hub.close();
   });
 
-  test("a resume across suppressed records reports no gap while the ring still holds the cursor", () => {
-    const hub = new LogHub({ suppressPerSecond: 1, now: () => 10_000 });
+  test("keeps the ring in seq order when a new window writes the fold line, so a resume repeats nothing", () => {
+    let now = 10_000;
+    const hub = new LogHub({ suppressPerSecond: 1, now: () => now });
     hub.ingest(record("first"));
     for (let idx = 0; idx < 3; idx += 1) hub.ingest(record("loop warn"));
-    hub.ingest(record("after"));
-    const { entries, gap } = hub.since(2);
-    expect(gap).toBeNull();
-    expect(entries.map((entry) => entry.record.message)).toEqual(["after"]);
+    now += 1_001;
+    hub.ingest(record("loop warn"));
+    const seqs = hub.since(0).entries.map((entry) => entry.seq);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+    expect(new Set(seqs).size).toBe(seqs.length);
+    expect(hub.coverage().newestSeq).toBe(hub.seq);
+    const delivered = hub.since(0).entries;
+    const resumeFrom = delivered[delivered.length - 2]?.seq ?? 0;
+    expect(hub.since(resumeFrom).entries.map((entry) => entry.record.message)).toEqual(["loop warn"]);
+    expect(hub.since(resumeFrom).gap).toBeNull();
     hub.close();
   });
 
