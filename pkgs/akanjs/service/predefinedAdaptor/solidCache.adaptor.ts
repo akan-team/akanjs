@@ -15,6 +15,9 @@ import {
 type CacheRow = { value: string | Buffer | null; valueType: SolidValueType; expiresAt: number | null };
 type CacheEntryRow = CacheRow & { subKey: string };
 
+const CACHE_TABLES = ["_akan_solid_cache", "_akan_solid_cache_hash"] as const;
+const SWEEP_BATCH = 1000;
+
 export class SolidCache
   extends adapt("solidCache", ({ env }) => ({
     config: env((env: SolidEnv) => getSolidConfig(env)),
@@ -23,6 +26,8 @@ export class SolidCache
 {
   #db!: Database;
   #cleanupTimer: Timer | null = null;
+  #sweeping: boolean = false;
+  #closed: boolean = false;
 
   override async onInit() {
     this.#db = await openSolidDatabase(this.config as Required<SolidConfig>);
@@ -51,11 +56,16 @@ export class SolidCache
         PRIMARY KEY ("topic", "key", "subKey")
       )`,
     );
-    this.#cleanupTimer = setInterval(() => this.#cleanup(), this.config.cleanupIntervalMs);
-    this.#cleanup();
+    for (const table of CACHE_TABLES)
+      this.#db.run(
+        `CREATE INDEX IF NOT EXISTS "${table}_expiry_idx" ON "${table}" ("expiresAt") WHERE "expiresAt" IS NOT NULL`,
+      );
+    this.#cleanupTimer = setInterval(() => this.#startCleanup(), this.config.cleanupIntervalMs);
+    this.#startCleanup();
   }
 
   override async onDestroy() {
+    this.#closed = true;
     if (this.#cleanupTimer) clearInterval(this.#cleanupTimer);
     this.#db?.run("PRAGMA wal_checkpoint(TRUNCATE)");
     this.#db?.close();
@@ -211,20 +221,22 @@ export class SolidCache
   }
 
   async hkeys(topic: string, key: string): Promise<string[]> {
-    this.#cleanup();
     const rows = this.#db
-      .query(`SELECT "subKey" FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ? ORDER BY "subKey" ASC`)
-      .all(topic, key) as { subKey: string }[];
+      .query(
+        `SELECT "subKey" FROM "_akan_solid_cache_hash"
+         WHERE "topic" = ? AND "key" = ? AND ("expiresAt" IS NULL OR "expiresAt" > ?) ORDER BY "subKey" ASC`,
+      )
+      .all(topic, key, Date.now()) as { subKey: string }[];
     return rows.map((row) => row.subKey);
   }
 
   async hentries<T extends CacheValue = CacheValue>(topic: string, key: string): Promise<[string, T][]> {
-    this.#cleanup();
     const rows = this.#db
       .query(
-        `SELECT "subKey", "value", "valueType", "expiresAt" FROM "_akan_solid_cache_hash" WHERE "topic" = ? AND "key" = ? ORDER BY "subKey" ASC`,
+        `SELECT "subKey", "value", "valueType", "expiresAt" FROM "_akan_solid_cache_hash"
+         WHERE "topic" = ? AND "key" = ? AND ("expiresAt" IS NULL OR "expiresAt" > ?) ORDER BY "subKey" ASC`,
       )
-      .all(topic, key) as CacheEntryRow[];
+      .all(topic, key, Date.now()) as CacheEntryRow[];
     return rows.map((row) => [row.subKey, decodeSolidValue<T>(row.valueType, row.value) as T]);
   }
 
@@ -280,9 +292,32 @@ export class SolidCache
     return Number(row?.value);
   }
 
-  #cleanup() {
+  #startCleanup() {
+    if (this.#sweeping) return;
+    this.#sweeping = true;
+    void this.#cleanup()
+      .catch((error: unknown) => {
+        this.logger.warn(`Solid cache cleanup failed: ${error instanceof Error ? error.message : String(error)}`);
+      })
+      .finally(() => {
+        this.#sweeping = false;
+      });
+  }
+
+  //* Batched and yielding: SQLite has one writer, and bun:sqlite runs each DELETE synchronously on the event loop.
+  async #cleanup() {
     const now = Date.now();
-    this.#db.query(`DELETE FROM "_akan_solid_cache" WHERE "expiresAt" IS NOT NULL AND "expiresAt" <= ?`).run(now);
-    this.#db.query(`DELETE FROM "_akan_solid_cache_hash" WHERE "expiresAt" IS NOT NULL AND "expiresAt" <= ?`).run(now);
+    for (const table of CACHE_TABLES)
+      while (!this.#closed) {
+        const { changes } = this.#db
+          .query(
+            `DELETE FROM "${table}" WHERE rowid IN (
+               SELECT rowid FROM "${table}" WHERE "expiresAt" IS NOT NULL AND "expiresAt" <= ? LIMIT ${SWEEP_BATCH}
+             )`,
+          )
+          .run(now);
+        if (changes < SWEEP_BATCH) break;
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
   }
 }
