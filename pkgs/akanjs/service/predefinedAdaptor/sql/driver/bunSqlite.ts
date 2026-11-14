@@ -4,8 +4,8 @@ import type { AkanSqlClient, AkanSqlStatement } from "../types";
 /** Resolves once a write from the calling context may run; `null` when it may run now. */
 export type SqliteWriteTurn = () => Promise<void> | null;
 
-/** The connection a read from the calling context runs on; `null` for the one the statement was prepared on. */
-export type SqliteReader = () => Database | null;
+/** Where a read from the calling context runs: another connection, its own after a wait, or (`null`) its own now. */
+export type SqliteReader = () => Database | Promise<void> | null;
 
 const openTurn: SqliteWriteTurn = () => null;
 
@@ -35,14 +35,18 @@ class BunSqliteStatement implements AkanSqlStatement {
 
   // Checked in the step that runs the write: a transaction begun after an earlier check would take the write in.
   async #execute<T>(use: (statement: Statement) => T) {
-    if (this.#reads) return use(this.#readStatement());
+    if (this.#reads) {
+      for (let reader = this.readerOf(); reader; reader = this.readerOf()) {
+        if (!(reader instanceof Promise)) return use(this.#readStatement(reader));
+        await reader;
+      }
+      return use(this.statement);
+    }
     for (let turn = this.writeTurn(); turn; turn = this.writeTurn()) await turn;
     return use(this.statement);
   }
 
-  #readStatement() {
-    const reader = this.readerOf();
-    if (!reader) return this.statement;
+  #readStatement(reader: Database) {
     this.#onReader ??= reader.query(this.sql);
     return this.#onReader;
   }

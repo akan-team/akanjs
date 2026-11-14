@@ -185,6 +185,7 @@ type SampleOf<Model> = DocumentModel<{
 interface SqlDriverOptions {
     insight?: boolean;
     memory?: boolean;
+    sqlite?: SqliteDatabaseConfig;
     search?: SearchConfig;
 }
 

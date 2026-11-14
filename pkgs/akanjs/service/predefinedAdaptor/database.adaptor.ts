@@ -116,8 +116,8 @@ export class SqliteDatabase
   #ensures = new PendingStoreEnsures();
   #searchIndex!: SearchIndex;
   // A second writer would wait on the lock synchronously and park the event loop the holder needs to commit, so other
-  // contexts' writes queue behind `#open`. Their reads use `#reader` instead: queued reads would deadlock mixed load.
-  #open: { context: TransactionContext; done: Promise<void> } | null = null;
+  // contexts' writes queue behind `#open`. Their reads use `#reader`, or queue too: an in-memory database has none.
+  #open: TransactionContext | null = null;
   #queue: Promise<void> = Promise.resolve();
 
   override async onInit() {
@@ -159,10 +159,12 @@ export class SqliteDatabase
     await this.#client?.close();
   }
 
-  // Only WAL lets a second connection read the last commit without waiting on the writer; `:memory:` is never WAL.
+  // Under a rollback journal a second connection reads while the writer holds only RESERVED, which spilling its dirty
+  // pages mid-transaction would raise to EXCLUSIVE. A private in-memory database cannot be opened a second time.
   #openReader() {
     const file = this.#mainFile();
-    if (!file || this.#db.query("PRAGMA journal_mode").values().at(0)?.at(0) !== "wal") return null;
+    if (!file) return null;
+    if (this.#db.query("PRAGMA journal_mode").values().at(0)?.at(0) !== "wal") this.#db.run("PRAGMA cache_spill = OFF");
     const reader = new Database(file, { readonly: true, strict: true });
     reader.run(`PRAGMA busy_timeout = ${this.config.busyTimeoutMs ?? 5000}`);
     if (this.config.cacheSize) reader.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
@@ -187,7 +189,9 @@ export class SqliteDatabase
 
   async openInsight(): Promise<InsightSession> {
     const file = this.#mainFile();
-    return file ? SqliteInsightSession.open(file) : await SqliteInsightSession.openSnapshot(this.#db.serialize());
+    if (file) return SqliteInsightSession.open(file);
+    for (let turn = this.#writeTurn(); turn; turn = this.#writeTurn()) await turn;
+    return await SqliteInsightSession.openSnapshot(this.#db.serialize());
   }
 
   stores() {
@@ -203,9 +207,11 @@ export class SqliteDatabase
     return store;
   }
 
-  getMeta(key: string) {
-    const row = (this.#readerOf() ?? this.#db).query(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`).get(key);
-    return (row as { value: string } | null)?.value;
+  async getMeta(key: string) {
+    const row = await this.#client
+      .prepare(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`)
+      .get<{ value: string }>(key);
+    return row?.value;
   }
 
   async setMeta(key: string, value: string) {
@@ -216,10 +222,10 @@ export class SqliteDatabase
       .run(key, value, Date.now());
   }
 
-  listMeta(prefix: string) {
-    return (this.#readerOf() ?? this.#db)
-      .query(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, ?) = ?`)
-      .all(prefix.length, prefix) as { key: string; value: string }[];
+  async listMeta(prefix: string) {
+    return await this.#client
+      .prepare(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, ?) = ?`)
+      .all<{ key: string; value: string }>(prefix.length, prefix);
   }
 
   async deleteMeta(key: string) {
@@ -236,7 +242,7 @@ export class SqliteDatabase
     this.#queue = done;
     await previous;
     const context: TransactionContext = { afterCommit: [] };
-    this.#open = { context, done };
+    this.#open = context;
     let result: T;
     try {
       result = await this.#transaction.run(context, async () => {
@@ -259,14 +265,15 @@ export class SqliteDatabase
     return result;
   }
 
+  // The last transaction in line, not the open one: a waiter then runs before any transaction asked for after it.
   #writeTurn() {
-    const open = this.#open;
-    if (!open || this.#transaction.getStore() === open.context) return null;
-    return open.done;
+    if (!this.#open || this.#transaction.getStore() === this.#open) return null;
+    return this.#queue;
   }
 
   #readerOf() {
-    return this.#writeTurn() ? this.#reader : null;
+    const turn = this.#writeTurn();
+    return turn && (this.#reader ?? turn);
   }
 
   async afterCommit(fn: () => PromiseOrObject<void>) {

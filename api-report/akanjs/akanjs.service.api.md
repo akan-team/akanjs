@@ -1948,12 +1948,12 @@ export declare class SqliteDatabase extends SqliteDatabase_base implements Datab
     openInsight(): Promise<InsightSession>;
     stores(): SqlDocumentStore[];
     getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf): SqlDocumentStore;
-    getMeta(key: string): string | undefined;
+    getMeta(key: string): Promise<string | undefined>;
     setMeta(key: string, value: string): Promise<void>;
-    listMeta(prefix: string): {
+    listMeta(prefix: string): Promise<{
         key: string;
         value: string;
-    }[];
+    }[]>;
     deleteMeta(key: string): Promise<void>;
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
     afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
@@ -2684,7 +2684,7 @@ interface SqliteEnv {
     database?: DatabaseConfig;
 }
 
-type SqliteReader = () => Database | null;
+type SqliteReader = () => Database | Promise<void> | null;
 
 type SqliteWriteTurn = () => Promise<void> | null;
 

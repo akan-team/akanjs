@@ -12,6 +12,7 @@ import {
   SolidCache,
   type SqlDialect,
   SqliteDatabase,
+  type SqliteDatabaseConfig,
   SqliteDialect,
 } from "akanjs/service";
 
@@ -24,6 +25,7 @@ export type SqlDriverKind = "sqlite" | "postgres";
 export interface SqlDriverOptions {
   insight?: boolean;
   memory?: boolean;
+  sqlite?: SqliteDatabaseConfig;
   search?: SearchConfig;
 }
 
@@ -209,7 +211,7 @@ export class ConformanceEnv {
 
   static async #sqlStorage(
     kind: SqlDriverKind,
-    { insight = false, memory = false, search: searchConfig }: SqlDriverOptions,
+    { insight = false, memory = false, sqlite, search: searchConfig }: SqlDriverOptions,
   ): Promise<{ config: object; remove: () => Promise<void> }> {
     const search = { enabled: true, tokenizer: DEFAULT_TOKENIZER, ...searchConfig };
     if (kind === "postgres") {
@@ -224,7 +226,15 @@ export class ConformanceEnv {
     const { dir, remove } = await ConformanceEnv.tempDir(`akan-${kind}`);
     const filePath = path.join(dir, "conformance.db");
     return {
-      config: { filePath, journalMode: "WAL", busyTimeoutMs: 5000, synchronous: "NORMAL", foreignKeys: true, search },
+      config: {
+        filePath,
+        journalMode: "WAL",
+        busyTimeoutMs: 5000,
+        synchronous: "NORMAL",
+        foreignKeys: true,
+        ...sqlite,
+        search,
+      },
       remove,
     };
   }
