@@ -73,7 +73,9 @@ export const Screen = ({ className, url, tool, args, href, drawn = true, height 
         <iframe
           className="block w-full bg-background"
           title={`${host} ${tool}`}
-          sandbox="allow-popups"
+          //? Security: the screen runs no script and opens a tab only on a click, without a referrer; a tab that kept
+          //? this sandbox would break nearly every page it lands on.
+          sandbox="allow-popups allow-popups-to-escape-sandbox"
           referrerPolicy="no-referrer"
           height={height}
           srcDoc={html}
