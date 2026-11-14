@@ -44,6 +44,7 @@ const makeContext = (environment: string, di: DiLifecycle = emptyDi()): Devtools
 
 afterEach(() => {
   process.env.AKAN_DEVTOOLS = undefined;
+  delete process.env.AKAN_LOG_DEBUG_HEADER;
 });
 
 describe("DevtoolsRouter gating", () => {
@@ -63,6 +64,8 @@ describe("DevtoolsRouter gating", () => {
       expect(DevtoolsRouter.isEnabled(makeEnv("local"))).toBe(true);
       expect(DevtoolsRouter.isEnabled({ ...makeEnv("local"), operationMode: "cloud" })).toBe(false);
       process.env.AKAN_DEVTOOLS = "true";
+      expect(DevtoolsRouter.isEnabled({ ...makeEnv("local"), operationMode: "cloud" })).toBe(false);
+      process.env.AKAN_LOG_DEBUG_HEADER = "s3cret-value-of-at-least-32-characters";
       expect(DevtoolsRouter.isEnabled({ ...makeEnv("local"), operationMode: "cloud" })).toBe(true);
     } finally {
       if (saved.nodeEnv === undefined) delete process.env.NODE_ENV;
@@ -72,8 +75,12 @@ describe("DevtoolsRouter gating", () => {
     }
   });
 
-  test("AKAN_DEVTOOLS forces the gate open or shut", () => {
+  test("AKAN_DEVTOOLS opens the gate outside local only with the debug-header secret, and shuts it anywhere", () => {
     process.env.AKAN_DEVTOOLS = "true";
+    expect(DevtoolsRouter.isEnabled(makeEnv("debug"))).toBe(false);
+    process.env.AKAN_LOG_DEBUG_HEADER = "s3cret";
+    expect(DevtoolsRouter.isEnabled(makeEnv("debug"))).toBe(false);
+    process.env.AKAN_LOG_DEBUG_HEADER = "s3cret-value-of-at-least-32-characters";
     expect(DevtoolsRouter.isEnabled(makeEnv("debug"))).toBe(true);
     process.env.AKAN_DEVTOOLS = "1";
     expect(DevtoolsRouter.isEnabled(makeEnv("debug"))).toBe(true);

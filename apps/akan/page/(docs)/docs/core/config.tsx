@@ -90,7 +90,7 @@ const configKeys = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1.4.4-slim",
+    default: "oven/bun:1.4.4-slim@sha256:…",
     en: "A whole Dockerfile as a string, or the parts akan build assembles one from.",
     ko: "Dockerfile 전체 문자열이거나, akan build가 Dockerfile을 조립할 재료입니다.",
   },
@@ -552,7 +552,7 @@ const buildFields = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1.4.4-slim",
+    default: "oven/bun:1.4.4-slim@sha256:…",
     en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.",
     ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, command입니다.",
   },
@@ -1607,6 +1607,30 @@ const config: AppConfig = {
                     <strong>이미지 하나로 여러 배포를 합니다.</strong> <code>{'["single", "cluster"]'}</code>로 선언하면
                     같은 이미지가 엣지 사이트와 클라우드 클러스터를 모두 실행하고, 배포마다{" "}
                     <code>AKAN_DATABASE_MODE</code>로 모드를 정합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The server runs as the image's bun user, uid 1000, and owns only what it writes.</strong>{" "}
+                    apt-get, preRuns, bun install and postRuns still run as root, and the app files,{" "}
+                    <code>node_modules</code> included, stay root's and read-only to the server. bun owns{" "}
+                    <code>/workspace/sqlite</code>, <code>/workspace/local</code>, <code>/workspace/runtime</code>,{" "}
+                    <code>/workspace/data</code> and <code>/workspace/.akan/artifact/image-cache</code>. A directory a
+                    postRuns step makes for the server to write needs <code>chown 1000:1000</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>서버는 이미지의 bun 사용자(uid 1000)로 실행되며, 자기가 쓰는 곳만 소유합니다.</strong>{" "}
+                    apt-get, preRuns, bun install, postRuns는 그대로 root로 실행되고, <code>node_modules</code>를 포함한
+                    앱 파일은 root 소유로 남아 서버는 읽기만 합니다. bun은 <code>/workspace/sqlite</code>,{" "}
+                    <code>/workspace/local</code>, <code>/workspace/runtime</code>, <code>/workspace/data</code>,{" "}
+                    <code>/workspace/.akan/artifact/image-cache</code>를 소유합니다. postRuns 단계가 서버가 쓸
+                    디렉터리를 만든다면 <code>chown 1000:1000</code>을 붙입니다.
                   </span>
                 ),
               })}

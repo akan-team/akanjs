@@ -226,6 +226,13 @@ normalized to `info` with one warning.
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
   `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — under the local dev runtime, or
   with the `AKAN_LOG_DEBUG_HEADER` secret.
+- **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,
+  the ssr-dev and csr-dev module registries, `/__rsc/manifest` — and is mounted through `DevRoutes.mount`, which
+  refuses a path the list lacks. Each answers only localhost, an IP address, the app's own hosts and
+  `AKAN_ALLOWED_HOSTS` names, even on a server that answers every Host; `--share` serves only the two module
+  registries. Devtools opens in the local dev runtime; elsewhere `AKAN_DEVTOOLS=true` opens it only with
+  `AKAN_LOG_DEBUG_HEADER` set to at least 32 characters, to `x-akan-debug: <secret>` or a browser that posted the
+  secret to the form it is shown (a 15-minute cookie); without one that long it stays closed and the log says why.
 - **Structured values go in `LogRecord.attrs` via `Logger.emit(...)`**; a key naming a secret is `[redacted]`
   before the record exists.
 - **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,
@@ -247,6 +254,16 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
   before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
   and before the app files are copied.
+- **The server runs as `USER 1000:1000`, oven/bun's `bun` user, and owns only the directories it writes.** The
+  build steps (`apt-get`, `preRuns`, `bun install`, `postRuns`) run as root and the app files stay root's, so
+  `main.js`, `server.js`, `public/` and `node_modules` are read-only to the server. After the copy, uid 1000 gets
+  `/workspace/sqlite`, `/workspace/local`, `/workspace/runtime` (the control socket), `/workspace/data` and
+  `/workspace/.akan/artifact/image-cache`; `/tmp` and `/home/bun` are writable too. A directory a `postRuns` step
+  makes for the server to write needs `chown 1000:1000`. An empty named volume takes the owner of the directory it
+  mounts over; one a root image already wrote is owned by root, so the server stops at boot with
+  `directoryNotWritable`, naming the directory and the `chown -R 1000:1000` that fixes it.
+- **The base image is pinned by digest**, `oven/bun:<bun>-slim@sha256:…`, the multi-arch index's, so amd64 and
+  arm64 build from the same release; a test holds the tag to the Bun version the workspace's `package.json` pins.
 - **The image installs the versions the workspace locked.** `akan build` writes a `bun.lock` beside the image's
   `package.json`, cut down from the workspace's to what the server needs, and the image installs it
   `--frozen-lockfile`. A workspace without a root `bun.lock` gets a warning and an unlocked install; a Dockerfile

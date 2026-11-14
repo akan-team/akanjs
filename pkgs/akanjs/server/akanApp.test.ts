@@ -1551,6 +1551,132 @@ describe("AkanApp", () => {
     }
   }, 20_000);
 
+  test("under akan start answers a Host it cannot place yet as starting, then admits the hosts of the artifact a replica came up on and refuses the rest", async () => {
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-late-hosts-");
+    const artifactPath = path.join(root, ".akan", "artifact", "base-artifact.json");
+    const goPath = path.join(root, "go");
+    await writeOkChild(serverPath, "page");
+    await Bun.write(
+      serverPath,
+      (await Bun.file(serverPath).text()).replace(
+        "async start() {",
+        `async start() { while (!(await Bun.file(${JSON.stringify(goPath)}).exists())) await Bun.sleep(20); await Bun.write(${JSON.stringify(artifactPath)}, JSON.stringify({ domains: ["late.example.com"] }));`,
+      ),
+    );
+    const identity = {
+      AKAN_PUBLIC_APP_NAME: "alpha",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+    };
+    const saved = Object.fromEntries(Object.keys(identity).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, identity);
+    const app = withEnvSet(
+      { AKAN_COMMAND_TYPE: "start" },
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 }),
+    );
+    process.env.AKAN_DEV_AWAIT_ARTIFACT = "1";
+    const running = app.start();
+    try {
+      const port = await portOf(app);
+      const at = (host: string) => fetch(`http://127.0.0.1:${port}/`, { headers: { host: `${host}:${port}` } });
+      for (const host of ["late.example.com", "evil.test"]) {
+        const early = await at(host);
+        expect([host, early.status]).toEqual([host, 503]);
+        expect(await early.text()).not.toContain("AKAN_ALLOWED_HOSTS");
+      }
+
+      await Bun.write(goPath, "");
+      await waitForReady(port);
+
+      const own = await at("late.example.com");
+      expect([own.status, await own.text()]).toEqual([200, "page"]);
+      const other = await at("evil.test");
+      expect(other.status).toBe(403);
+      expect(await other.text()).toContain("AKAN_ALLOWED_HOSTS");
+      expect(process.env.AKAN_DEV_AWAIT_ARTIFACT).toBeUndefined();
+    } finally {
+      delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }, 20_000);
+
+  const onDeployedGateway = async (
+    name: string,
+    env: Record<string, string | undefined>,
+    run: (at: (pathname: string, host: string) => Promise<Response>, port: number) => Promise<void>,
+  ) => {
+    const { root, serverPath, runtimeDir } = await makeRoot(name);
+    await writeOkChild(serverPath, "page");
+    await Bun.write(
+      path.join(root, ".akan", "artifact", "base-artifact.json"),
+      JSON.stringify({ domains: ["shop.example.com"] }),
+    );
+    const identity: Record<string, string | undefined> = {
+      AKAN_PUBLIC_APP_NAME: "alpha",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+      AKAN_PUBLIC_ENV: "debug",
+      NODE_ENV: "production",
+      AKAN_COMMAND_TYPE: undefined,
+      AKAN_ALLOWED_HOSTS: undefined,
+      AKAN_DEVTOOLS: undefined,
+      AKAN_LOG_DEBUG_HEADER: undefined,
+      AKAN_EXPOSE_RSC_MANIFEST: undefined,
+      ...env,
+    };
+    const saved = Object.fromEntries(Object.keys(identity).map((key) => [key, process.env[key]]));
+    const restore = (values: Record<string, string | undefined>) => {
+      for (const [key, value] of Object.entries(values)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    };
+    restore(identity);
+    resetEnvCache();
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
+    const running = app.start();
+    try {
+      const port = await portOf(app);
+      await waitForReady(port);
+      await run((pathname, host) => fetch(`http://127.0.0.1:${port}${pathname}`, { headers: { host } }), port);
+    } finally {
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+      restore(saved);
+      resetEnvCache();
+    }
+  };
+
+  test("on a deployed server answers a dev route only for the app's own hosts, and any Host for the rest", async () => {
+    const devtools = { AKAN_DEVTOOLS: "true", AKAN_LOG_DEBUG_HEADER: "a-debug-secret-of-at-least-32-characters" };
+    await onDeployedGateway("akan-app-deployed-dev-hosts-", devtools, async (at, port) => {
+      for (const pathname of ["/_akan/studio", "/_akan//devtools", "/__rsc/manifest", "/_akan/ssr-dev/page.js"]) {
+        const refused = await at(pathname, `evil.test:${port}`);
+        expect([pathname, refused.status]).toEqual([pathname, 403]);
+      }
+      expect(await upgradeStatusOf(port, "/_akan/hmr", `evil.test:${port}`)).toBe(403);
+      expect(await (await at("/en/tasks", `evil.test:${port}`)).text()).toBe("page");
+      for (const host of ["localhost", "127.0.0.1", "alpha-debug.akanjs.com", "shop.example.com"])
+        expect([host, await (await at("/_akan/studio", `${host}:${port}`)).text()]).toEqual([host, "page"]);
+    });
+  }, 20_000);
+
+  test("on a deployed server with every dev surface closed, relays a dev path like any path the app does not know", async () => {
+    await onDeployedGateway("akan-app-deployed-closed-", {}, async (at, port) => {
+      for (const pathname of ["/_akan/studio", "/_akan/devtools", "/__rsc/manifest", "/_akan/ssr-dev/page.js"])
+        expect([pathname, await (await at(pathname, `evil.test:${port}`)).text()]).toEqual([pathname, "page"]);
+    });
+    await onDeployedGateway("akan-app-deployed-manifest-", { AKAN_EXPOSE_RSC_MANIFEST: "1" }, async (at, port) => {
+      expect((await at("/__rsc/manifest", `evil.test:${port}`)).status).toBe(403);
+      expect(await (await at("/__rsc/manifest", `localhost:${port}`)).text()).toBe("page");
+    });
+  }, 30_000);
+
   test("answers ready 503 until a replica is ready and again once the last one dies, while health stays 200", async () => {
     const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ready-");
     const goPath = path.join(root, "go");

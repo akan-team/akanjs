@@ -4,6 +4,7 @@ import { type RouteSeedIndex, RouteSeedIndexStore } from "./artifact";
 import { applySecurityHeaders } from "./assetHeaders";
 import { getClientFacingOrigin } from "./cachePolicy";
 import { AKAN_RSC_DICTIONARY_HEADER, AKAN_RSC_IMPORT_MAP_HEADER, AKAN_RSC_PREFETCH_HEADER } from "./routeState";
+import { DevRoutes } from "./routing/devRoutes";
 import {
   createRscNavigationStreamResponse,
   createRscNotFoundFallbackResponse,
@@ -78,16 +79,14 @@ export class WebRscRoute {
           return context.rscErrorResponse("__rsc", err);
         }
       }),
-      ...(!context.prodMode || process.env.AKAN_EXPOSE_RSC_MANIFEST === "1"
-        ? {
-            "/__rsc/manifest": () =>
-              new Response(JSON.stringify(context.routeCache.merged.clientManifest, null, 2), {
-                headers: applySecurityHeaders(
-                  new Headers({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }),
-                ),
-              }),
-          }
-        : {}),
+      ...DevRoutes.mount({
+        "/__rsc/manifest": () =>
+          new Response(JSON.stringify(context.routeCache.merged.clientManifest, null, 2), {
+            headers: applySecurityHeaders(
+              new Headers({ "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" }),
+            ),
+          }),
+      }),
     };
   }
 

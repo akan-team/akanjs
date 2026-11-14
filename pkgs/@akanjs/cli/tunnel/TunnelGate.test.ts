@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { DevSurfaces } from "akanjs/server/routing/devSurfaces";
 import { TunnelGate } from "./TunnelGate";
 import { TunnelShare } from "./TunnelShare";
 
@@ -65,6 +66,8 @@ describe("TunnelGate", () => {
       "/_akan/%64evtools",
       "/_AKAN/DEVTOOLS",
       "/_akan/csr-dev/page.js.map",
+      "/__csr",
+      "/__CSR/",
       "/%E0%A4%A",
     ])
       expect(TunnelGate.isDevRoute(pathname)).toBe(true);
@@ -78,9 +81,18 @@ describe("TunnelGate", () => {
       "/_akan/styles/app.css",
       "/_akan/image",
       "/_akan/devtoolsx",
+      "/__rsc",
       "/api/task",
     ])
       expect(TunnelGate.isDevRoute(pathname)).toBe(false);
+  });
+
+  test("refuses every dev surface the server registers, except the dev assets a shared page loads", () => {
+    expect(DevSurfaces.all.length).toBeGreaterThan(0);
+    for (const { path, tunnel } of DevSurfaces.all)
+      for (const pathname of [path, `${path}/page.js`])
+        expect([pathname, TunnelGate.isDevRoute(pathname)]).toEqual([pathname, tunnel === "refuse"]);
+    expect(TunnelGate.isDevRoute("/__rsc/manifest")).toBe(true);
   });
 
   test("answers dev-only routes itself and relays the rest unchanged", async () => {
@@ -99,6 +111,17 @@ describe("TunnelGate", () => {
     const before = app.seen.length;
     for (const blocked of ["/_akan/devtools", "/_akan/app/logs", "/_akan/client/chunk.js.map"])
       expect((await fetch(`${gate.origin}${blocked}`)).status).toBe(404);
+    expect(app.seen.length).toBe(before);
+  });
+
+  test("renders a shared client-rendered page on the server, so a share never starts a dev CSR build", async () => {
+    const app = startApp();
+    const gate = openGate(app.origin);
+
+    expect(await (await fetch(`${gate.origin}/en/tasks?csr=true&page=2`)).text()).toBe("page /en/tasks?page=2");
+    expect(await (await fetch(`${gate.origin}/explore?csr=true`)).text()).toBe("page /explore");
+    const before = app.seen.length;
+    expect((await fetch(`${gate.origin}/__csr?path=/explore`)).status).toBe(404);
     expect(app.seen.length).toBe(before);
   });
 

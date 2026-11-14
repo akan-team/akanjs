@@ -15,15 +15,27 @@ visualization for each.
 | --- | --- |
 | **Base path** | `/_akan` (never under `/api`) |
 | **Method** | `GET` only |
-| **Auth** | none — the gate is the environment, not a credential |
-| **Enabled when** | `AKAN_PUBLIC_ENV=local`, or `AKAN_DEVTOOLS=true` / `AKAN_DEVTOOLS=1` |
-| **Disabled when** | any other environment, or `AKAN_DEVTOOLS=false` / `AKAN_DEVTOOLS=0` |
+| **Enabled when** | a local dev runtime (`AKAN_PUBLIC_ENV=local`, local operation mode, a dev build or `akan start`), or `AKAN_DEVTOOLS=true` / `AKAN_DEVTOOLS=1` with `AKAN_LOG_DEBUG_HEADER` set to at least 32 characters |
+| **Disabled when** | any other runtime, `AKAN_DEVTOOLS=true` without `AKAN_LOG_DEBUG_HEADER` or with a shorter one (the server log says which), or `AKAN_DEVTOOLS=false` / `AKAN_DEVTOOLS=0` |
+| **Auth** | none in a local dev runtime; elsewhere the `AKAN_LOG_DEBUG_HEADER` secret (below) |
+| **Host** | `localhost`, an IP address, `<app>-<env>.<serveDomain>`, a route domain or an `AKAN_ALLOWED_HOSTS` name; any other `Host` gets `403` |
 | **Response headers** | `Content-Type: application/json; charset=utf-8`, `Cache-Control: no-store` |
 
 **When disabled, the routes are not registered at all.** They are not 403s — the request falls through to
 the app's SSR catch-all, which typically answers `307` (locale/base-path redirect) or `404`. Feature-detect
 by requesting `/_akan/devtools` and treating **any non-200, or any 200 whose body is not JSON with
 `version: 1`,** as "devtools unavailable". Do not branch on the status code alone.
+
+**Outside a local dev runtime** every devtools route answers `401` until the caller presents the
+`AKAN_LOG_DEBUG_HEADER` secret. A script sends it as `x-akan-debug: <secret>`. A browser gets a form that posts
+the secret to `/_akan/devtools/unlock` (never in a URL); the right secret sets an HttpOnly, Secure,
+SameSite=Strict cookie on each devtools path for 15 minutes and returns to the page asked for; after ten wrong
+secrets in a minute from one address, the form answers `429` until that minute is over. A browser keeps a
+Secure cookie only over HTTPS or `localhost` (a port-forward works). An unlock holds only for the app and
+environment that granted it, and changing the secret ends every unlock.
+
+The routes are listed with every other dev route in `server/routing/devSurfaces.ts`; `akan start --share`
+never serves them.
 
 ```bash
 bun run akan start <appName>        # dev server, default port 8282

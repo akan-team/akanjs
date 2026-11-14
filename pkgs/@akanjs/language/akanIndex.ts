@@ -1,4 +1,4 @@
-import type { AkanGraph } from "akanjs/common/akanGraph.ts";
+import type { AkanGraph } from "akanjs/common";
 import type * as TS from "typescript";
 import { GraphBuilder } from "./akanGraph";
 import { type AkanAst, createAst, type Ts } from "./ast";

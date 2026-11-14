@@ -1,11 +1,11 @@
 import path from "node:path";
-import type { App } from "@akanjs/devkit/commandDecorators";
-import type { ClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientBuildTypes";
-import { GraphClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientEntryDiscovery";
-import { HmrWatcher } from "@akanjs/devkit/frontendBuild/hmrWatcher";
-import { WatchRootResolver } from "@akanjs/devkit/frontendBuild/watchRootResolver";
 import type { Logger } from "akanjs/common";
 import type { BaseBuildArtifact } from "akanjs/server";
+import type { App } from "../commandDecorators";
+import type { ClientEntryDiscovery } from "../frontendBuild/clientBuildTypes";
+import { GraphClientEntryDiscovery } from "../frontendBuild/clientEntryDiscovery";
+import { HmrWatcher } from "../frontendBuild/hmrWatcher";
+import { WatchRootResolver } from "../frontendBuild/watchRootResolver";
 import type { OptimizedFonts } from "./buildBatchProtocol";
 import type { BuildBatchRunner } from "./buildBatchRunner";
 import { BuilderChannel } from "./builderChannel";
@@ -19,7 +19,9 @@ export interface IncrementalBuilderOptions {
   initialGeneration?: number;
 }
 
-type IncrementalBuilderBootDeps = Pick<IncrementalBuilderOptions, "artifact" | "optimizedFonts" | "discovery">;
+type IncrementalBuilderBootDeps = Pick<IncrementalBuilderOptions, "artifact" | "optimizedFonts" | "discovery"> & {
+  basePhaseMs: Record<string, number>;
+};
 
 export class BuilderBoot {
   // Discovery stays in-process because route builds need it live; it is free at boot, building its graph lazily.
@@ -41,7 +43,12 @@ export class BuilderBoot {
     if (!result.artifact || !result.optimizedFonts)
       throw new Error("boot build reported success without an artifact; the build worker likely died");
     const discovery = await GraphClientEntryDiscovery.create(app);
-    return { artifact: result.artifact, optimizedFonts: result.optimizedFonts, discovery };
+    return {
+      artifact: result.artifact,
+      optimizedFonts: result.optimizedFonts,
+      discovery,
+      basePhaseMs: result.basePhaseMs ?? {},
+    };
   }
 
   // A boot compile error must not kill the builder, the dev server's only file watcher: report it, emit builder-ready

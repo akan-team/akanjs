@@ -263,6 +263,68 @@ describe("AkanServer out-of-order calls", () => {
   });
 });
 
+describe("AkanServer booted beside the first base build", () => {
+  const beside = async () => {
+    const { AkanServer, createLib } = await loadRuntime();
+    const { AppHosts } = await import("akanjs/common");
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-beside-"));
+    const cwd = spyOn(process, "cwd").mockReturnValue(tmp);
+    process.env.AKAN_DEV_AWAIT_ARTIFACT = "1";
+    const server = new AkanServer("serverGet", createEnv(tmp), "all", createLib());
+    const outcome = { inited: false };
+    const initing = server.init().then(() => void Object.assign(outcome, { inited: true }));
+    const cleanup = async () => {
+      delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
+      cwd.mockRestore();
+      AppHosts.reset();
+      await rm(tmp, { recursive: true, force: true });
+    };
+    return { server, AppHosts, outcome, initing, cleanup, artifactDir: join(tmp, "apps/serverGet/.akan/artifact") };
+  };
+
+  test("holds its hosts and web surface for the artifact, and finishes its init once the file is on disk", async () => {
+    const { server, AppHosts, outcome, initing, cleanup, artifactDir } = await beside();
+    try {
+      await Bun.sleep(200);
+      expect(outcome.inited).toBe(false);
+      expect(server.status).toBe("initializing");
+      expect(AppHosts.allows("beside.example.org")).toBe(false);
+
+      await mkdir(artifactDir, { recursive: true });
+      await Bun.write(
+        join(artifactDir, "base-artifact.json"),
+        JSON.stringify({
+          web: { ssr: false, csr: false },
+          domains: ["beside.example.org"],
+          pagesBundlePath: "server/pages.js",
+        }),
+      );
+      await initing;
+
+      expect(server.status).toBe("initialized");
+      expect(AppHosts.allows("beside.example.org")).toBe(true);
+    } finally {
+      await server.stop();
+      await cleanup();
+    }
+  });
+
+  test("a stop while it waits for the artifact ends the wait and tears the server down", async () => {
+    const { server, outcome, initing, cleanup } = await beside();
+    try {
+      await Bun.sleep(100);
+      expect(outcome.inited).toBe(false);
+
+      await server.stop();
+      await initing;
+
+      expect(server.status).toBe("stopped");
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
 describe("AkanServer OpenAPI config", () => {
   test("serves OpenAPI only when explicitly enabled", async () => {
     const { AkanServer, createLib } = await loadRuntime();

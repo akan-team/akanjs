@@ -2,7 +2,7 @@ import type { Logger } from "akanjs/common";
 import type { ConstantModel } from "akanjs/constant";
 import type { DatabaseModel, DocumentIndexDescriptor, DocumentQuery, DocumentSchema } from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
-import type { QueryCompiler } from "./QueryCompiler";
+import { compileIndexPredicate, type QueryCompiler } from "./QueryCompiler";
 import {
   type CreateIndexProps,
   type DocumentDatabaseOwner,
@@ -319,7 +319,7 @@ export class SqlTableSchema {
   }
 
   #indexPredicate(where: DocumentQuery, name: string) {
-    const { where: sql, params, joins, memberTests } = this.#compiler.compile(where);
+    const { where: sql, params, joins, memberTests } = compileIndexPredicate(this.#compiler, where);
     if (joins.length)
       throw new DocumentStoreError(
         "invalidSchema",

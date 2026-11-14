@@ -86,6 +86,47 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     expect(log).toContain(reason);
   }, 30_000);
 
+  test("says its boot artifact is built, with the build's parts, before it says it is ready", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => {});
+process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] }, basePhaseMs: { styles: 7, pages: 5, total: 9 } } });
+`,
+    );
+    await writeText(path.join(appDir, "page/_index.tsx"), "export default () => null;\n");
+    const messages: { type: string; phaseMs?: Record<string, number> }[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+      serialization: "advanced",
+      ipc: (message: { type: string; phaseMs?: Record<string, number> }) => {
+        messages.push(message);
+      },
+    });
+    try {
+      await until(proc, "builder-ready", () => messages.some((message) => message.type === "builder-ready"));
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+
+    const types = messages.map((message) => message.type);
+    expect(types.slice(0, 2)).toEqual(["base-built", "builder-ready"]);
+    expect(messages[0]).toEqual({ type: "base-built", phaseMs: { styles: 7, pages: 5, total: 9 } });
+  }, 30_000);
+
   test("builds a view's shell once on request, answers with its failure, and reports it to no tab", async () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");

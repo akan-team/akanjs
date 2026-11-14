@@ -11,6 +11,7 @@ import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
+import { DEFAULT_DOCKER_IMAGE, DOCKER_RUN_USER, DOCKER_WRITE_DIRS } from "./dockerImage";
 import { nativeKeys } from "./nativeKeys";
 import {
   type AkanApiConfig,
@@ -48,8 +49,6 @@ const DEFAULT_OPTIMIZE_IMPORTS = [
   "@material-ui/icons @tabler/icons-react mui-core react-icons/*",
 ].flatMap((line) => line.split(" "));
 const WORKSPACE_BARREL_FACETS = ["ui", "webkit", "common", "client", "server"] as const;
-// `1-slim` floats to whichever Bun is newest at build time, one the framework was never tested on.
-const DEFAULT_DOCKER_IMAGE = "oven/bun:1.4.4-slim";
 const SSR_RUNTIME_PACKAGES = ["react", "react-dom", "react-server-dom-webpack"] as const;
 const DEFAULT_AKAN_IMAGE_CONFIG: AkanImageConfig = {
   deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
@@ -606,13 +605,14 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
 ARG TARGETARCH
 ${preRunScripts.join("\n")}
-RUN mkdir -p /workspace
 WORKDIR /workspace
 ${lockfile ? "COPY ./package.json ./bun.lock ./" : "COPY ./package.json ./package.json"}
 RUN bun install --production${lockfile ? " --frozen-lockfile" : ""}
 ${postRunScripts.join("\n")}
 COPY . .
+RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}
 ${envLines.join("\n")}
+USER ${DOCKER_RUN_USER}
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;
   }
   static #importGeneration = 0;

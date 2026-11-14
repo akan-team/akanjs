@@ -120,7 +120,7 @@ export class FetchClient {
     private ErrorCls?: ErrorConstructor,
   ) {
     this.origin = origin;
-    this.http = new HttpClient(origin, { ErrorCls });
+    this.http = new HttpClient(origin);
     this.ws = new WsClient(makeWsUri(origin), ErrorCls);
     Object.assign(this.#handlerStore, handler);
     this.handler = this.#makeHandlerProxy();
@@ -157,11 +157,11 @@ export class FetchClient {
     testClientIps = enabled;
     testClientIpSeq = 0;
   }
-  static #resolveSharedClientProxy(origin: string, Err?: ErrorConstructor) {
+  static #resolveSharedClientProxy(origin: string) {
     if (typeof window === "undefined") return null;
     // A build asking for another origin owns its own instance; the tab-wide socket stays on the first one.
     if (sharedClientState.proxy) return sharedClientState.origin === origin ? sharedClientState.proxy : null;
-    const proxy = FetchClient.#makeProxy<unknown, Record<string, SliceMeta>>(new FetchClient(origin, {}, {}, Err));
+    const proxy = FetchClient.#makeProxy<unknown, Record<string, SliceMeta>>(new FetchClient(origin, {}, {}));
     sharedClientState.proxy = proxy;
     sharedClientState.origin = origin;
     return proxy;
@@ -176,12 +176,6 @@ export class FetchClient {
   /** For calls neither the caller nor the endpoint budgets; `false` waits as long as the runtime will (minutes). */
   setTimeout(timeout?: number | false) {
     this.http.setTimeout(timeout);
-  }
-  /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is; drop the call. */
-  setErrorConstructor(ErrorCls?: ErrorConstructor) {
-    this.ErrorCls = ErrorCls;
-    this.http.setErrorConstructor(ErrorCls);
-    for (const ws of [this.ws, ...this.#originWs.values()]) ws.setErrorConstructor(ErrorCls);
   }
   applySignal(serializedSignal: { [key: string]: SerializedSignal }, { share = true }: { share?: boolean } = {}) {
     if (share && Object.keys(serializedSignal).length > 0) {
@@ -387,7 +381,7 @@ export class FetchClient {
         return async (...argData: unknown[]) => {
           const { option, argMap, url } = requestOf(argData);
           const signal = option?.signal;
-          if (signal?.aborted) throw this.http.abortError(signal);
+          if (signal?.aborted) throw HttpClient.abortErrorOf(signal, this.ErrorCls);
           const bridge = this.#bridgeOf(option?.origin);
           if (bridge) {
             const call = this.#viaBridge(bridge, { key, type: "query", endpoint, option, argMap, signal });
@@ -448,7 +442,7 @@ export class FetchClient {
   }
   #untilAborted<T>(promise: Promise<T>, signal?: AbortSignal) {
     return AbortSignals.race(promise, signal).catch((error: unknown) => {
-      throw signal?.aborted ? this.http.abortError(signal) : error;
+      throw signal?.aborted ? HttpClient.abortErrorOf(signal, this.ErrorCls) : error;
     });
   }
   #registerEndpoint(key: string, endpoint: SerializedEndpoint, prefix?: string) {
@@ -919,13 +913,11 @@ export class FetchClient {
       origin = getEnv().serverHttpUri,
       connect = false,
       base,
-      Err,
       timeout,
     }: {
       origin?: string;
       connect?: boolean;
       base?: FetchProxy;
-      /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is. */ Err?: ErrorConstructor;
       /** This app's own default request budget, for calls no endpoint and no caller gave one. */
       timeout?: number | false;
     } = {},
@@ -933,12 +925,11 @@ export class FetchClient {
     sig: ClientSignalMap<SigType>;
     fetch: SigType["fetch"];
   } {
-    const shared = base ?? FetchClient.#resolveSharedClientProxy(origin, Err);
+    const shared = base ?? FetchClient.#resolveSharedClientProxy(origin);
     if (shared) shared.instance.applySignal(serializedSignal);
-    if (base && Err) base.instance.setErrorConstructor(Err);
     const proxy =
       shared ??
-      FetchClient.#makeProxy<unknown, Record<string, SliceMeta>>(new FetchClient(origin, {}, serializedSignal, Err));
+      FetchClient.#makeProxy<unknown, Record<string, SliceMeta>>(new FetchClient(origin, {}, serializedSignal));
     if (timeout !== undefined) proxy.instance.setTimeout(timeout);
     if (connect) proxy.instance.connect();
     const sig = {} as any;

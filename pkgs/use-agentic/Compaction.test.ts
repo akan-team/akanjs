@@ -158,7 +158,8 @@ describe("Compaction.digest", () => {
     ]);
     // The value is the whole point of dropping it, and the pointer is the whole point of keeping the line: a model
     // that needs the text again has a refName and an id to read it with.
-    expect(digest).toContain("[referenced videoCut/6a1f#cutFrames.2.content (Cut 3 body), value not carried");
+    expect(digest).toContain("[referenced videoCut/6a1f#cutFrames.2.content, value not carried");
+    expect(digest).not.toContain("Cut 3 body");
     expect(digest).not.toContain("a wide shot");
   });
 

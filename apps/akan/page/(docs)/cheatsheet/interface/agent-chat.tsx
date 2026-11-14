@@ -214,8 +214,8 @@ export default page()
       {
         name: "readState",
         desc: l.trans({
-          en: "Reads one store key the screen subscribed, masked by its model.",
-          ko: "화면이 구독한 스토어 키 하나를 모델로 마스킹해 읽습니다.",
+          en: "Reads one store key the screen subscribed, masked by its model, or the route's `pathname`, `params` or `searchParams`. The turn's context carries only ids, enum members, numbers and booleans; longer text is read here.",
+          ko: "화면이 구독한 스토어 키 하나를 모델로 마스킹해 읽거나, 라우트의 `pathname`, `params`, `searchParams`를 읽습니다. 턴의 컨텍스트에는 id, enum 값, 숫자, 불리언만 실리고, 더 긴 글은 여기서 읽습니다.",
         }),
       },
       {
@@ -758,6 +758,22 @@ export default page()
     ];
 
     const composerNotes = [
+      l.trans({
+        en: (
+          <>
+            <strong>A mention counts as a page read.</strong> The record a pointer names reaches the model as page
+            content, since its title and value are whatever its author wrote. So the first change after a message with a
+            mention shows the approval card, as after <code>readScreen</code>.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>멘션은 화면을 읽은 것으로 칩니다.</strong> 포인터가 가리키는 레코드의 제목과 값은 그 레코드를 쓴
+            사람의 글이므로, 모델에는 페이지 콘텐츠로 전달됩니다. 그래서 멘션이 든 메시지 뒤의 첫 변경은{" "}
+            <code>readScreen</code> 뒤와 같이 승인 카드를 띄웁니다.
+          </>
+        ),
+      }),
       l.trans({
         en: (
           <>

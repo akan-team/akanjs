@@ -23,6 +23,7 @@ import { DeltaStream } from "./deltaStream";
 import { LoopAnswer, type LoopPark } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
+import { LoopContext } from "./loopContext";
 import { LoopRemotes } from "./loopRemotes";
 import { LoopRequest } from "./loopRequest";
 import { LoopStored } from "./loopStored";
@@ -124,7 +125,7 @@ export class AgentLoop {
   async *#drive(): Events<AgentLoopStop> {
     //? Security: a remote the stored messages opened is listed again, and its listing is that party's text.
     const reopened = this.#toolkits.restore(this.#messages);
-    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages);
+    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages) || LoopContext.marked(this.#request);
     const { answer } = this.#request;
     if (answer !== undefined || LoopTranscript.pending(this.#messages).length) {
       if (!(await this.#authorize())) return "unauthorized";
@@ -148,15 +149,19 @@ export class AgentLoop {
     const tools = await this.#listTools();
     yield* this.#compact();
     const answer = yield* this.#ask(tools);
+    //? Security: what the model wrote after reading untrusted text is stored with the mark. A marked context block is
+    //? in no stored message, so without it a resume of these calls, or the next ask, would start untainted.
+    const mark = this.#tainted ? { tainted: true } : {};
     if (answer.stop === "length") {
       //? Calls in an answer the provider cut off may be cut mid-argument, so only its text is kept.
-      if (answer.text) await this.#append({ role: "assistant", text: answer.text });
+      if (answer.text) await this.#append({ role: "assistant", text: answer.text, ...mark });
       return "length";
     }
     const message: AgentWireMessage = {
       role: "assistant",
       ...(answer.text ? { text: answer.text } : {}),
       ...(answer.toolCalls.length ? { toolCalls: answer.toolCalls } : {}),
+      ...mark,
     };
     if (LoopTranscript.carries(message)) await this.#append(message);
     if (!answer.toolCalls.length) return "end";
@@ -448,9 +453,9 @@ export class AgentLoop {
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
     //? Security: a call's arguments leave for the remote, and "read-only" is the remote's own word for its tool.
     if (this.#tainted && remote) return { deny: AgentLoop.taintedRemote };
-    if (this.#tainted && !tool.readOnly && !this.#request.untrusted) return this.#writeAfterRead(call);
-    if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
-    return "allow";
+    if (!this.#tainted || tool.readOnly) return "allow";
+    if (LoopContext.carried(this.#request, this.#messages)) return LoopContext.held(this.#request, call.name);
+    return this.#request.untrusted ? { deny: AgentLoop.taintedWrite } : this.#writeAfterRead(call);
   }
 
   #writeAfterRead({ name }: AgentWireToolCall): Verdict {

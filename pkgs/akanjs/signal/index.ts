@@ -235,13 +235,11 @@ export {
   getCurrentTrace,
   getFlightThresholdMs,
   getTraceSnapshot,
-  isDebugHeaderAllowed,
   isFlightRecorderEnabled,
   isLocalDevRuntime,
   isLogContextEnabled,
   isTraceEnabled,
   runTraced,
-  runWithTrace,
   SignalTrace,
   type SpanRecord,
   setCanonicalLineMode,
@@ -255,7 +253,6 @@ export {
   traceAggregator,
   traceCache,
   traceDataLoaderBatch,
-  traceDbQuery,
   traceSpan,
 } from "./trace";
 export {

@@ -7,6 +7,7 @@ export * from "./documentTransfer";
 export * from "./endpointCacheControl.adaptor";
 export * from "./insightQuery";
 export * from "./llm.adaptor";
+export * from "./llmContext";
 export * from "./llmOverflow";
 export * from "./llmSpend";
 export * from "./logging.adaptor";

@@ -32,6 +32,11 @@ describe("readProcessRssBytes", () => {
   });
 });
 
+interface BuilderStart {
+  onBaseBuilt?: (phaseMs: Record<string, number>) => void;
+  onReady?: () => void;
+}
+
 describe("Redis tunnels during dev startup", () => {
   isolateEnv({ AKAN_PUBLIC_REPO_NAME: "repo", AKAN_PUBLIC_SERVE_DOMAIN: "localhost", AKAN_PUBLIC_ENV: "testing" });
   const track = tempRoots();
@@ -47,14 +52,17 @@ describe("Redis tunnels during dev startup", () => {
       const listener = Bun.listen({ hostname: "127.0.0.1", port: 0, socket: { data() {} } });
       const port = listener.port;
       listener.stop(true);
-      process.env.SSH_TUNNEL_PORT = String(port);
+      Object.assign(process.env, { SSH_TUNNEL_PORT: String(port), SSH_TUNNEL_PASSWORD: "test-password" });
       if (mode === "local") process.env.AKAN_PUBLIC_ENV = "local";
       const create = IncrementalBuilderHost.create;
       IncrementalBuilderHost.create = async () =>
         ({
           status: "ready",
           patcherOff: false,
-          start: ({ onReady }: { onReady?: () => void }) => onReady?.(),
+          start: ({ onBaseBuilt, onReady }: BuilderStart) => {
+            onBaseBuilt?.({});
+            onReady?.();
+          },
           send: () => true,
           stop: () => undefined,
         }) as unknown as IncrementalBuilderHost;
@@ -101,7 +109,10 @@ describe("a gateway whose replica crash-loops", () => {
   const readyBuilder = {
     status: "ready",
     patcherOff: false,
-    start: ({ onReady }: { onReady?: () => void }) => onReady?.(),
+    start: ({ onBaseBuilt, onReady }: BuilderStart) => {
+      onBaseBuilt?.({});
+      onReady?.();
+    },
     send: () => true,
     stop: () => undefined,
   } as unknown as IncrementalBuilderHost;
@@ -151,7 +162,10 @@ describe("a builder request while no builder is running", () => {
   const stoppedBuilder = {
     status: "stopped",
     patcherOff: false,
-    start: ({ onReady }: { onReady?: () => void }) => onReady?.(),
+    start: ({ onBaseBuilt, onReady }: BuilderStart) => {
+      onBaseBuilt?.({});
+      onReady?.();
+    },
     send: () => false,
     stop: () => undefined,
   } as unknown as IncrementalBuilderHost;
@@ -208,7 +222,10 @@ describe("the builder's answers and a returning builder", () => {
     ({
       status: "ready",
       patcherOff: false,
-      start: ({ onReady }: { onReady?: () => void }) => onReady?.(),
+      start: ({ onBaseBuilt, onReady }: BuilderStart) => {
+        onBaseBuilt?.({});
+        onReady?.();
+      },
       send: (message: BuilderMessage) => {
         sent.push(message);
         return true;

@@ -1,10 +1,13 @@
 import path from "node:path";
-import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
-import { resolveSsrPageEntriesForApp } from "@akanjs/devkit/artifact/implicitRootLayout";
-import { computeRouteSeedIndex, saveRouteSeedIndex } from "@akanjs/devkit/artifact/routeSeedIndex";
-import type { App } from "@akanjs/devkit/commandDecorators";
+import { Logger } from "akanjs/common";
+import type { BuilderMessage, BuildPhase, HmrTrace } from "akanjs/server";
+import { resolveDevCsrMode } from "akanjs/server/hmr/csrDevManifest";
+import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
+import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
+import { computeRouteSeedIndex, saveRouteSeedIndex } from "../artifact/routeSeedIndex";
+import type { App } from "../commandDecorators";
 // Subpath imports only, as few as possible: spawned per generation, this process pays every import on every save.
-import { AppExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { AppExecutor, WorkspaceExecutor } from "../executors";
 import {
   CsrArtifactBuilder,
   CsrDevBundler,
@@ -14,10 +17,7 @@ import {
   ServerGraphFile,
   SsrBaseArtifactBuilder,
   SsrDevBundler,
-} from "@akanjs/devkit/frontendBuild";
-import { Logger } from "akanjs/common";
-import type { BuilderMessage, BuildPhase, HmrTrace } from "akanjs/server";
-import { resolveDevCsrMode } from "akanjs/server/hmr/csrDevManifest";
+} from "../frontendBuild";
 import type { BuildBatchRequest, BuildBatchResult, OptimizedFonts, PagesBatchCssAssets } from "./buildBatchProtocol";
 
 // `Bun.build` keeps native bundler arenas that `Bun.gc(true)` cannot reclaim; only exiting returns them.
@@ -84,9 +84,10 @@ class BuildBatch {
   async #buildBase(): Promise<void> {
     const started = Date.now();
     try {
-      const { artifact, optimizedFonts } = await new SsrBaseArtifactBuilder(this.#app).build();
+      const { artifact, optimizedFonts, phaseMs } = await new SsrBaseArtifactBuilder(this.#app).build();
       this.#result.artifact = artifact;
       this.#result.optimizedFonts = optimizedFonts;
+      this.#result.basePhaseMs = phaseMs;
       this.#logger.verbose(`base-artifact ok buildId=${artifact.pagesBundleBuildId} (${Date.now() - started}ms)`);
     } catch (err) {
       this.#fail("base", "base-artifact", err);

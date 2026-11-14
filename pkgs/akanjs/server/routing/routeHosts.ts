@@ -22,6 +22,10 @@ export class RouteHosts {
     return hosts;
   }
 
+  static written(artifactDir: string = resolveArtifactDir()): boolean {
+    return fs.existsSync(path.join(artifactDir, "base-artifact.json"));
+  }
+
   static #read(file: string): Partial<BaseBuildArtifact> | null {
     try {
       return JSON.parse(fs.readFileSync(file, "utf8")) as Partial<BaseBuildArtifact>;

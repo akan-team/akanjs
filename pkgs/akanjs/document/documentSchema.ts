@@ -107,6 +107,3 @@ export class DocumentSchema<Doc = unknown> {
 }
 
 export type SchemaOf<Mdl = unknown, Doc = unknown> = DocumentSchema<Doc> & { readonly __model?: Mdl };
-
-/** @deprecated Construct `new DocumentSchema()`. */
-export const getDefaultSchemaOptions = <_TSchema, TDocument>() => new DocumentSchema<TDocument>();
