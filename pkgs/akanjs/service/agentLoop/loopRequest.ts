@@ -1,6 +1,7 @@
 import { Err } from "akanjs/dictionary";
 import type { AgentLoopRequest } from "./agentLoopTypes";
 import { LoopAsk } from "./loopAsk";
+import { LoopRemotes } from "./loopRemotes";
 import { LoopToolkits } from "./loopToolkits";
 
 export class LoopRequest {
@@ -13,11 +14,16 @@ export class LoopRequest {
   //? A schema nests two levels a property; past a few thousand, `JSON.stringify` overflows the stack, here or in a dialect.
   static readonly maxClientToolDepth = 64;
 
-  static assertValid({ allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask }: AgentLoopRequest) {
+  static assertValid(request: AgentLoopRequest) {
+    const { allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask, remotes, approve } = request;
     //? Security: `listAs` reads a missing `allow` as every tool the account may see.
     if (!Array.isArray(allow)) LoopRequest.#refuse("allow");
     if (!Array.isArray(messages)) LoopRequest.#refuse("messages");
     LoopRequest.#assertToolkits(toolkits, allow);
+    LoopRequest.#assertRemotes(remotes, toolkits, allow);
+    //? Security: a call's arguments leave for the remote, which names its own tools read-only, so someone must be asked.
+    if (remotes?.length && typeof approve !== "function")
+      throw new Err("base.error.requiredArgument", { name: "approve" });
     if (ask !== undefined && typeof ask !== "boolean") LoopRequest.#refuse("ask");
     if (ask && allow.includes(LoopAsk.toolName)) LoopRequest.#refuse("allow");
     LoopRequest.#assertClientTools(clientTools);
@@ -45,6 +51,25 @@ export class LoopRequest {
     }
     //? The run answers that name itself, so a real tool by it would be shadowed.
     if (allow.includes(LoopToolkits.toolName)) LoopRequest.#refuse("allow");
+  }
+
+  static #assertRemotes(
+    remotes: AgentLoopRequest["remotes"],
+    toolkits: AgentLoopRequest["toolkits"],
+    allow: readonly string[],
+  ) {
+    if (remotes === undefined) return;
+    if (!Array.isArray(remotes)) LoopRequest.#refuse("remotes");
+    const names = new Set<string>();
+    for (const remote of remotes as unknown[]) {
+      const name = (remote as { name?: unknown } | null)?.name;
+      //? One `openToolkit` opens both kinds, so a remote may not take a toolkit's name.
+      const valid =
+        LoopRemotes.isValid(remote) && !names.has(remote.name) && !Object.hasOwn(toolkits ?? {}, remote.name);
+      if (!valid) LoopRequest.#refuse(`remotes.${typeof name === "string" ? name : ""}`);
+      names.add(name as string);
+    }
+    if (names.size && allow.includes(LoopToolkits.toolName)) LoopRequest.#refuse("allow");
   }
 
   static #assertClientTools(clientTools: AgentLoopRequest["clientTools"]) {

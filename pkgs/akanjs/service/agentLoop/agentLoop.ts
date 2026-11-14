@@ -23,7 +23,9 @@ import { DeltaStream } from "./deltaStream";
 import { LoopAnswer } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
+import { LoopRemotes } from "./loopRemotes";
 import { LoopRequest } from "./loopRequest";
+import { LoopStored } from "./loopStored";
 import { LoopToolkits } from "./loopToolkits";
 import { LoopToolOutput } from "./loopToolOutput";
 import { LoopTranscript } from "./loopTranscript";
@@ -54,6 +56,8 @@ export class AgentLoop {
     "Not run: this tool changes data, and this run has read untrusted content, so it may not change anything without a person's approval.";
   static readonly writeAfterRead =
     "Not run: this tool changes data, and this run has already read a tool result. agentService.loop was given no `untrusted`, so everything a tool returns counts as untrusted, and no `approve`, so nothing may change data after it. For the app's developer: pass `approve` to decide such calls, or `untrusted` to say which results are not the app's own data. Do not call it again; tell the user what was left undone.";
+  static readonly taintedRemote =
+    "Not run: this tool is another server's, and this run has read text another party wrote, that server's tool list included, so nothing is sent there without approval. None is available: this run's request has no `approve`.";
   static readonly unjudged = "Not run: the approval check returned no verdict.";
   static readonly abandoned =
     "Stopped waiting: this run ended while the tool was still running. It may still finish, so check its effect before calling it again.";
@@ -70,6 +74,7 @@ export class AgentLoop {
   //? An object, and one per run: an aborted model call rejects with this reason, and `LlmSpend` keys its counts on it.
   readonly #wall = new DOMException("The run's wallMs ran out.", "AbortError");
   readonly #signal: AbortSignal;
+  readonly #remotes: LoopRemotes;
   readonly #toolkits: LoopToolkits;
   readonly #askUser: LoopAsk;
   #clientNames = new Set<string>();
@@ -87,7 +92,8 @@ export class AgentLoop {
     this.#request = request;
     this.#messages = Array.isArray(request.messages) ? [...request.messages] : [];
     this.#signal = request.signal ? AbortSignal.any([request.signal, this.#halt.signal]) : this.#halt.signal;
-    this.#toolkits = new LoopToolkits(request.toolkits);
+    this.#remotes = new LoopRemotes(request.remotes);
+    this.#toolkits = new LoopToolkits(request.toolkits, this.#remotes.kits);
     this.#askUser = new LoopAsk(request.ask);
   }
 
@@ -116,8 +122,9 @@ export class AgentLoop {
   }
 
   async *#drive(): Events<AgentLoopStop> {
-    this.#toolkits.restore(this.#messages);
-    this.#tainted = LoopTranscript.markedTainted(this.#messages);
+    //? Security: a remote the stored messages opened is listed again, and its listing is that party's text.
+    const reopened = this.#toolkits.restore(this.#messages);
+    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages);
     const { answer } = this.#request;
     if (answer !== undefined || LoopTranscript.pending(this.#messages).length) {
       if (!(await this.#authorize())) return "unauthorized";
@@ -165,47 +172,37 @@ export class AgentLoop {
 
   async #listTools() {
     const visible = await this.#port.tools.listAs(this.#account, { allow: this.#request.allow });
+    const remote = await this.#untilHalted(this.#remotes.listed(this.#toolkits.opened));
+    for (const kit of remote.lost) this.#toolkits.close(kit);
     const listed = this.#toolkits.listed(visible);
     const taken = new Set(visible.map((tool) => tool.name));
-    //? Security: client input, so a browser's definition never takes a name the server answers, in a closed toolkit too.
+    //? Security: client input, so a browser's definition never takes a name the server answers, in a closed toolkit too,
+    //? nor one under a remote's prefix, which `approve` would read as that remote's.
     const client = (this.#request.clientTools ?? []).filter((tool) => {
       if (taken.has(tool.name) || this.#toolkits.isMeta(tool.name) || this.#askUser.isMeta(tool.name)) return false;
+      if (this.#remotes.ownerOf(tool.name)) return false;
       taken.add(tool.name);
       return true;
     });
     this.#clientNames = new Set(client.map((tool) => tool.name));
     this.#judgeStored(visible);
-    return [...listed, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
+    return [...listed, ...remote.tools, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
   }
 
-  //? Security: once, at the first listing, as whose result a stored one is can be read only off the call its id answers
-  //? and this run's tools. A person's answer is their own input and `untrusted` never sees it; an endpoint's is judged;
-  //? a page's, and one whose tool this run does not have, taints unasked, whatever name or mark it was stored under.
+  //? Security: once, at the first listing, which is what says whose result a stored one is. A person's answer is their
+  //? own input, and `untrusted` never sees it.
   #judgeStored(endpoints: AgentTool[]) {
     if (this.#storedJudged) return;
     this.#storedJudged = true;
     const listed = new Set(endpoints.map((tool) => tool.name));
     const lent = new Set((this.#request.clientTools ?? []).map((tool) => tool.name));
-    for (const [result, call] of LoopTranscript.answered(this.#messages)) {
-      const name = call?.name ?? "";
-      //? A page that lends the name may have answered it in a run that had not turned `ask` or `toolkits` on.
-      const own = !!call && !lent.has(name) && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name));
-      if (own || AgentLoop.#isUnknownRefusal(result, call)) continue;
-      if (listed.has(name)) this.#taintBy({ ...result, name });
+    //? A page that lends the name may have answered it in a run that had not turned `ask` or `toolkits` on.
+    const own = ({ name }: AgentWireToolCall) =>
+      !lent.has(name) && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name));
+    for (const result of LoopStored.read(this.#messages, listed, own)) {
+      if (result) this.#taintBy(result);
       else this.#tainted = true;
     }
-  }
-
-  static #unknownTool(name: string) {
-    return `Unknown tool: ${name}.`;
-  }
-
-  //? Security: this run's own answer to a name the model made up carries nothing read, as the call fixes its every
-  //? character. `code` alone would not say so, and anything stored beside the sentence is not this run's.
-  static #isUnknownRefusal(stored: AgentWireToolResult, call: AgentWireToolCall | undefined) {
-    const { error, result, changes, attachments } = stored;
-    if (!call || error !== AgentLoop.#unknownTool(call.name)) return false;
-    return result === undefined && changes === undefined && attachments === undefined;
   }
 
   //? Security: `readOnly` is the page's own claim, and it lifts the write rules, so a client tool always counts as a write.
@@ -355,13 +352,24 @@ export class AgentLoop {
           stop = "awaiting";
           break;
         }
-        const whole = unasked ?? (meta ? this.#toolkits.open(call) : await this.#execute(call, verdict));
+        const kit = this.#toolkits.externalOf(call);
+        const opened = kit ? await this.#openRemote(call, kit) : null;
+        //? Left unanswered, so a resume runs it again, by then against the connection the person made.
+        if (kit && !opened) {
+          yield { type: "awaiting", call, connect: kit };
+          stop = "awaiting";
+          break;
+        }
+        const whole = unasked ?? opened ?? (meta ? this.#toolkits.open(call) : await this.#execute(call, verdict));
         const result = LoopToolOutput.clipped(whole);
         results.push(result);
+        //? Security: an opened remote's tool names, or the error it answered the open with, are that party's text.
+        if (opened) this.#tainted = true;
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
         if (!meta) this.#taintBy(whole, verdict === "allow");
         await this.#record(results);
-        yield { type: "toolResult", result, round };
+        const view = this.#remotes.takeView(call.id);
+        yield { type: "toolResult", result, round, ...(view ? { view } : {}) };
       }
     } finally {
       //? Holds a result only when `untrusted` threw on it: a call that ran and went unrecorded would run again on resume.
@@ -411,13 +419,20 @@ export class AgentLoop {
       const closed = this.#toolkits.refusalOf(call.name);
       return closed
         ? { deny: closed, code: "toolkitClosed" }
-        : { deny: AgentLoop.#unknownTool(call.name), code: "unknownTool" };
+        : { deny: LoopStored.unknownTool(call.name), code: "unknownTool" };
     }
     const { approve } = this.#request;
-    const client = this.#clientNames.has(call.name) ? { client: true as const } : {};
-    if (approve)
-      return AgentLoop.#judged(await this.#untilHalted(approve(call, { tainted: this.#tainted, tool, ...client })));
+    const remote = this.#remotes.ownerOf(call.name);
+    const state = {
+      tainted: this.#tainted,
+      tool,
+      ...(this.#clientNames.has(call.name) ? { client: true as const } : {}),
+      ...(remote ? { remote } : {}),
+    };
+    if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, state)));
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
+    //? Security: a call's arguments leave for the remote, and "read-only" is the remote's own word for its tool.
+    if (this.#tainted && remote) return { deny: AgentLoop.taintedRemote };
     if (this.#tainted && !tool.readOnly && !this.#request.untrusted) return this.#writeAfterRead(call);
     if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
     return "allow";
@@ -444,7 +459,15 @@ export class AgentLoop {
     if (verdict !== "allow") return { id, name, error: verdict.deny, ...(verdict.code ? { code: verdict.code } : {}) };
     this.#toolCalls += 1;
     try {
-      return await this.#untilHalted(this.#port.tools.callAs(this.#account, call, { allow: this.#request.allow }));
+      const remote = this.#remotes.ownerOf(name);
+      if (!remote)
+        return await this.#untilHalted(this.#port.tools.callAs(this.#account, call, { allow: this.#request.allow }));
+      const result = await this.#untilHalted(this.#remotes.call(call));
+      if (result.code === LoopRemotes.disconnected) {
+        this.#toolkits.close(remote);
+        this.#remotes.forget(remote);
+      }
+      return result;
     } catch (error) {
       if (!this.#signal.aborted) throw error;
       AgentLoop.#logger.warn(`agent loop stopped waiting for ${name}, which may still finish`);
@@ -465,8 +488,20 @@ export class AgentLoop {
     });
   }
 
+  async #openRemote(call: AgentWireToolCall, kit: string): Promise<AgentWireToolResult | null> {
+    const answer = await this.#untilHalted(this.#remotes.open(kit));
+    if (!answer) return null;
+    if ("error" in answer) return { id: call.id, name: call.name, error: answer.error, code: LoopRemotes.unavailable };
+    return this.#toolkits.openExternal(call, kit, answer.tools, answer.omitted);
+  }
+
   #taintBy(result: AgentWireToolResult, ran = true) {
     if (this.#tainted) return;
+    //? Security: a remote's result is another party's text, whatever `untrusted` makes of it and with none given.
+    if (this.#remotes.ownerOf(result.name)) {
+      this.#tainted = true;
+      return;
+    }
     const { untrusted } = this.#request;
     //? Security: fails closed. Nothing says whose text a tool returned, so whatever a call that ran returned is untrusted.
     if (!untrusted) {
