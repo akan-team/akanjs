@@ -543,13 +543,15 @@ at every event.
   lists the toolkits. An opened toolkit's tools are listed from the next round on; `openToolkit` never reaches
   `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
-  (`akanjs/ui`), sent over your own transport. It is client input, and a name an endpoint holds is dropped. The run
-  never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`
-  and resume with what it returned as `answer` — or `answer: { id, error }` when no page answers. The page keeps
-  its own rule beside the run's: `run(call)` asks the member through `host.approve` when a call that changes
-  something follows a `taint: "source"` read. The run's rule below is the wider one, counting every result, the
-  page's included, so with no `approve` a client call is refused once the run has read anything; an `approve` that
-  allows a client call leaves that question to the page.
+  (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
+  counts as a write whatever `readOnly` it was sent with, and past 128 tools or 200,000 characters of definitions
+  the run ends with `agent.error.clientToolsRefused` (413, `data.limit` `"tools"` or `"chars"`). Which of them may
+  run after a read is the app's to say, in `approve`, by name. The run never runs one: `approve` is asked, then the
+  run ends `awaiting` with `client: true`. Have the page `run(call)` and resume with what it returned as `answer` —
+  or `answer: { id, error }` when no page answers. The page keeps its own rule beside the run's: `run(call)` asks
+  the member through `host.approve` when a call that changes something follows a `taint: "source"` read. The run's
+  rule below is the wider one, counting every result, the page's included, so with no `approve` a client call is
+  refused once the run has read anything; an `approve` that allows a client call leaves that question to the page.
 - **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
   A call ends the run `awaiting` with `question: true`; put the question to the member and resume with
   `answer: { id, result }` — or `{ id, error }` when they dismiss it. It never reaches `approve`, counts as no tool
@@ -558,10 +560,11 @@ at every event.
   own user messages and what `onMessage` handed over: never append a client's result to them. A run parks on one
   call, the first of its last batch that nothing answered, so `answer` is accepted for that call alone and only when
   it is a client tool's or `askUser`'s. The run names the result after the call, whatever name was sent, hands it to
-  `onMessage`, emits it as a `toolResult` and runs the calls the batch has left. An endpoint tool's call is
-  answered only by running it: an `answer` naming one, a call the run has not reached, or a call already answered
-  ends the run with `agent.error.answerRefused` before anything runs, and a resume without it carries on. Only
-  `askUser`'s answer is the member's own word; a client tool's is judged by the rule below like any result.
+  `onMessage`, emits it as a `toolResult` and runs the calls the batch has left. It is clipped at 20,000 characters
+  like a tool's result, and of its `attachments` only `data` and `text` are kept. An endpoint tool's call is answered
+  only by running it: an `answer` naming one, a call the run has not reached, or a call already answered ends the
+  run with `agent.error.answerRefused` before anything runs, and a resume without it carries on. Only `askUser`'s
+  answer is the member's own word; a client tool's is judged by the rule below like any result.
 - **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
   result of a call that ran — an endpoint tool's or a client tool's, an error included — and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. `askUser`'s answer, `openToolkit`'s and a call the
@@ -589,8 +592,9 @@ at every event.
   resume judges on everything stored, where an uninterrupted run judges a batch before any of it runs.
 - **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
   usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
-  billing — empty headers and no ip. The relay's default size caps skip loop rounds; a refused quota ends the run as
-  `"quota"`.
+  billing — empty headers and no ip. The relay's default size caps skip loop rounds, except in a run that lists
+  `clientTools`: its turns carry `loop.client` and one past `AgentRelayPolicy.defaultLimits` ends the run with
+  `agent.error.requestRefused`. A refused quota ends the run as `"quota"`.
 - **Limits.** `maxRounds` (12), `budget { tokens, toolCalls, wallMs }` (`"budget"`), `signal` (`"aborted"`) and a
   provider cut (`"length"`). A limit that is not a valid number is an `error` before any model call. `wallMs` and
   `signal` also end a run waiting on a tool or on `approve`. `callAs` cannot cancel a call, so the run stops waiting

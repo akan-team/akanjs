@@ -132,6 +132,7 @@ export interface AgentTurnContext {
     loop?: {
         id: string;
         round: number;
+        client?: true;
     };
     meta?: Record<string, string>;
 }

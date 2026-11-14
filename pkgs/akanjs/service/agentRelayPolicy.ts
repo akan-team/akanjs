@@ -12,8 +12,11 @@ export interface AgentTurnContext {
   /** What the account middleware resolved for this call, as the access guard saw it; `null` for an anonymous one. */
   account: unknown;
   ip: string | null;
-  /** Set on an `agentService.loop` round: `id` is one per run, `round` counts its model calls from 1. */
-  loop?: { id: string; round: number };
+  /**
+   * Set on an `agentService.loop` round: `id` is one per run, `round` counts its model calls from 1, and `client`
+   * says the run lists tools a browser sent (`clientTools`).
+   */
+  loop?: { id: string; round: number; client?: true };
   /** The loop request's `meta`, copied as given; only server code sets it, so it may key billing. */
   meta?: Record<string, string>;
 }
@@ -52,8 +55,8 @@ export class AgentRelayPolicy {
   static #policy: AgentRequestPolicy | null = null;
 
   /**
-   * `null` restores the default, `capped(defaultLimits)` on relayed turns only; `(request) => request` relays every
-   * request untouched.
+   * `null` restores the default, `capped(defaultLimits)` on relayed turns and on loop rounds with `loop.client`;
+   * `(request) => request` relays every request untouched.
    */
   static use(policy: AgentRequestPolicy | null) {
     AgentRelayPolicy.#policy = policy;
@@ -67,9 +70,10 @@ export class AgentRelayPolicy {
     return await policy(request, "id" in context ? context : AgentMeter.turnOf(context.account, { ip: context.ip }));
   }
 
-  //? The caps bound what a browser may write; a loop round is assembled by server code from its own tool results.
+  //? The caps bound what a browser may write; a loop round is assembled by server code from its own tool results,
+  //? unless the run lists a browser's tools, whose definitions and answers then ride every round.
   static readonly #defaultPolicy: AgentRequestPolicy = (request, context) =>
-    context.loop ? request : AgentRelayPolicy.capped(request);
+    context.loop && !context.loop.client ? request : AgentRelayPolicy.capped(request);
 
   static capped(request: LlmTurnRequest, limits: Partial<AgentRequestLimits> = {}): LlmTurnRequest {
     const limit = { ...AgentRelayPolicy.defaultLimits, ...limits };

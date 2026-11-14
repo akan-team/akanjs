@@ -78,9 +78,11 @@ export interface AgentLoopOptions {
   toolkits?: Record<string, AgentLoopToolkit>;
   /**
    * The tools of a screen a connected browser has open (`AgentClientTools.list()` in `akanjs/ui`): client input,
-   * listed beside the endpoint tools and never run here. `approve` is still asked. An allowed call ends the run as
-   * `awaiting` with `client: true`; resume with the browser's result as `answer`, or `{ id, error }` when no page
-   * answers. A name an endpoint tool or `openToolkit` holds is dropped.
+   * listed beside the endpoint tools and never run here. `approve` is still asked, and sees each as a write whatever
+   * `readOnly` it was sent with. An allowed call ends the run as `awaiting` with `client: true`; resume with the
+   * browser's result as `answer`, or `{ id, error }` when no page answers. A name an endpoint tool or `openToolkit`
+   * holds is dropped. Past 128 tools or 200,000 characters of definitions the run ends with
+   * `agent.error.clientToolsRefused`, and its rounds meet the relay's size caps (`AgentRelayPolicy.defaultLimits`).
    */
   clientTools?: AgentTool[];
   /**
@@ -94,7 +96,8 @@ export interface AgentLoopOptions {
    * Answers the call the last run parked on with `client` or `question`: the first call of the last batch that
    * nothing answered, and only when it is a client tool's or `askUser`'s. The run names the result after that call,
    * hands it to `onMessage` and runs on. An endpoint tool's call is answered only by running it, so an `answer` that
-   * names any other call ends the run with `agent.error.answerRefused` before anything runs; resume without it.
+   * names any other call ends the run with `agent.error.answerRefused` before anything runs; resume without it. It is
+   * clipped as a tool's result is, and of its `attachments` only `data` and `text` are kept, never a `url`.
    */
   answer?: AgentLoopCallAnswer;
   /**

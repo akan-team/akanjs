@@ -6,6 +6,10 @@ import { LoopToolkits } from "./loopToolkits";
 export class LoopRequest {
   //? The most `setTimeout` takes: past it a timer fires at once, which would end the run as out of budget.
   static readonly maxWallMs = 2 ** 31 - 1;
+  //? A screen lends six built-in tools, under 3,000 characters in all, beside its own actions. Definitions ride every
+  //? round, so the ceiling is twenty times that count, at 1,500 characters a tool.
+  static readonly maxClientTools = 128;
+  static readonly maxClientToolChars = 200_000;
 
   static assertValid({ allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask }: AgentLoopRequest) {
     //? Security: `listAs` reads a missing `allow` as every tool the account may see.
@@ -53,6 +57,15 @@ export class LoopRequest {
         (parameters === undefined || (typeof parameters === "object" && parameters !== null));
       if (!valid) LoopRequest.#refuse("clientTools");
     }
+    if (clientTools.length > LoopRequest.maxClientTools)
+      LoopRequest.#refuseClientTools("tools", LoopRequest.maxClientTools, clientTools.length);
+    const chars = JSON.stringify(clientTools).length;
+    if (chars > LoopRequest.maxClientToolChars)
+      LoopRequest.#refuseClientTools("chars", LoopRequest.maxClientToolChars, chars);
+  }
+
+  static #refuseClientTools(limit: "tools" | "chars", max: number, sent: number): never {
+    throw new Err("agent.error.clientToolsRefused", { limit, max, sent }, { statusCode: 413 });
   }
 
   static #assertCount(name: string, value: number | undefined) {

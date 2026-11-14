@@ -183,12 +183,13 @@ export class AgentLoop {
     return [...listed, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
   }
 
-  static #clientTool({ name, description, parameters, readOnly, needsConfirm }: AgentTool): AgentTool {
+  //? Security: `readOnly` is the page's own claim, and it lifts the write rules, so a client tool always counts as a write.
+  static #clientTool({ name, description, parameters, needsConfirm }: AgentTool): AgentTool {
     return {
       name,
       ...(description ? { description } : {}),
       ...(parameters ? { parameters } : {}),
-      readOnly: readOnly === true,
+      readOnly: false,
       needsConfirm: needsConfirm === true,
     };
   }
@@ -232,7 +233,7 @@ export class AgentLoop {
     const { meta } = this.#request;
     const turn: AgentTurnContext = {
       ...AgentMeter.turnOf(this.#account),
-      loop: { id: this.#id, round: this.#round },
+      loop: { id: this.#id, round: this.#round, ...(this.#request.clientTools?.length ? { client: true } : {}) },
       ...(meta ? { meta: { ...meta } } : {}),
     };
     const prepared = await AgentRelayPolicy.apply(request, turn);
@@ -346,8 +347,9 @@ export class AgentLoop {
 
   //? Security: judged like a tool's result, a person's answer aside, and stored before the calls it left are judged.
   async *#accept(answer: AgentLoopCallAnswer): Events<void> {
-    const result = LoopAnswer.resultOf(answer, this.#messages, (call) => this.#parks(call));
-    if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
+    const whole = LoopAnswer.resultOf(answer, this.#messages, (call) => this.#parks(call));
+    const result = LoopToolOutput.clipped(whole);
+    if (!this.#askUser.isMeta(whole.name)) this.#taintBy(whole);
     await this.#record([result]);
     yield { type: "toolResult", result, round: this.#round };
   }
