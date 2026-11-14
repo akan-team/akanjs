@@ -1,4 +1,9 @@
-import type { AgentWireAttachment, AgentWireMessage, AgentWireToolResult } from "../predefinedAdaptor/llm.adaptor";
+import type {
+  AgentWireAttachment,
+  AgentWireMessage,
+  AgentWireToolCall,
+  AgentWireToolResult,
+} from "../predefinedAdaptor/llm.adaptor";
 
 //? A server twin of use-agentic's Transcript, which the server may not import; keep the two in step.
 export class LoopTranscript {
@@ -40,11 +45,11 @@ export class LoopTranscript {
 
   //? Every provider refuses a call without its result or a result without its call, on this turn and every later one.
   static sanitize(messages: readonly AgentWireMessage[]): AgentWireMessage[] {
-    const answered = new Set(messages.flatMap((message) => (message.toolResults ?? []).map((result) => result.id)));
+    const unanswered = LoopTranscript.#unanswered(messages);
     const called = new Set<string>();
     const paired = new Set<string>();
     const kept: AgentWireMessage[] = [];
-    for (const message of messages) {
+    for (const [at, message] of messages.entries()) {
       if (message.role === "tool") {
         //? A retried run may store one tool message twice, and a provider refuses two results for one call.
         const results = (message.toolResults ?? []).filter((result) => called.has(result.id) && !paired.has(result.id));
@@ -59,15 +64,30 @@ export class LoopTranscript {
         called.add(call.id);
         paired.delete(call.id);
       }
-      const unanswered = calls.filter((call) => !answered.has(call.id));
+      const stopped = unanswered.get(at) ?? [];
       // A model told the call was stopped asks again; one shown no call at all answers as if it had the result.
-      if (unanswered.length)
+      if (stopped.length)
         LoopTranscript.#answer(kept, {
           role: "tool",
-          toolResults: unanswered.map((call) => ({ id: call.id, name: call.name, error: LoopTranscript.unanswered })),
+          toolResults: stopped.map((call) => ({ id: call.id, name: call.name, error: LoopTranscript.unanswered })),
         });
     }
     return kept;
+  }
+
+  //? Read from the end, as a result answers the nearest call before it: some models reuse an id across turns, and by id
+  //? alone the earlier turn's result would make a later call nothing answered look answered.
+  static #unanswered(messages: readonly AgentWireMessage[]): Map<number, AgentWireToolCall[]> {
+    const waiting = new Set<string>();
+    const unanswered = new Map<number, AgentWireToolCall[]>();
+    for (let at = messages.length - 1; at >= 0; at -= 1) {
+      const { toolCalls = [], toolResults = [] } = messages[at] ?? {};
+      for (const result of toolResults) waiting.add(result.id);
+      const stopped = toolCalls.filter((call) => !waiting.has(call.id));
+      if (stopped.length) unanswered.set(at, stopped);
+      for (const call of toolCalls) waiting.delete(call.id);
+    }
+    return unanswered;
   }
 
   //? Only a resume splits a batch over two tool messages, and OpenAI's dialect puts a message's pictures straight after
