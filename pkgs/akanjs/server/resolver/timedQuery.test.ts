@@ -52,6 +52,7 @@ describe("timedQuery on a SQLite store", () => {
 
   beforeAll(async () => {
     statementMetrics.slowLog.thresholdMs = Number.POSITIVE_INFINITY;
+    statementMetrics.planCheck = null;
     model = await openStatementModel("sqlite", 20);
   });
   afterAll(async () => {

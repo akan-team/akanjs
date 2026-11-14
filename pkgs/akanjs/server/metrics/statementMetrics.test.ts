@@ -20,6 +20,7 @@ describe("statement metrics", () => {
 
   beforeAll(async () => {
     statementMetrics.slowLog.thresholdMs = Number.POSITIVE_INFINITY;
+    statementMetrics.planCheck = null;
     model = await openStatementModel("sqlite", 400);
   });
   afterAll(async () => {

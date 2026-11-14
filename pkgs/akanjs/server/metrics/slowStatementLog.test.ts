@@ -13,6 +13,7 @@ describe("slow statement log", () => {
   let removeSink: () => void;
 
   beforeAll(async () => {
+    statementMetrics.planCheck = null;
     statementMetrics.slowLog.thresholdMs = Number.POSITIVE_INFINITY;
     model = await openStatementModel("sqlite", 50);
     removeSink = Logger.addSink(

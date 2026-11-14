@@ -4,6 +4,7 @@ import { getCurrentTrace, type SignalTrace } from "akanjs/signal";
 import type { CounterSeries, HistogramSeries } from "./metricRegistry";
 import { metricRegistry, OVERFLOW_LABEL_VALUE } from "./metricRegistry";
 import { SlowStatementLog } from "./slowStatementLog";
+import { StatementPlanCheck } from "./statementPlanCheck";
 import { STATEMENT_BUCKETS_SECONDS, StatementReport } from "./statementReport";
 
 const LABELS = ["fingerprint", "model", "op"] as const;
@@ -90,6 +91,9 @@ export class StatementStat {
   readonly buckets = new Float64Array(STATEMENT_BUCKETS_SECONDS.length + 1);
   slowLoggedAt = Number.NEGATIVE_INFINITY;
   slowSuppressed = 0;
+  planEpoch = -1;
+  planPending = false;
+  planDueAt = 0;
   readonly #sites = new Map<StatementSite, SiteSeries>();
   #outside: SiteSeries | null = null;
   readonly #senders = new Map<string, Map<string, Sender>>();
@@ -179,6 +183,7 @@ export class StatementMetrics implements StatementSink {
   static readonly maxStatements = 500;
   readonly #stats = new Map<string, StatementStat>();
   readonly slowLog = new SlowStatementLog();
+  planCheck: StatementPlanCheck | null | undefined = undefined;
 
   sent(
     statement: SentStatement,
@@ -196,6 +201,8 @@ export class StatementMetrics implements StatementSink {
     stat.sentBy(trace, elapsedMs);
     if (trace?.mode === "full") trace.recordDbQuery(series.model, series.op, elapsedMs);
     if (elapsedMs >= this.slowLog.thresholdMs) this.slowLog.log(stat, series, { durationMs, waitMs, rows, trace });
+    if (this.planCheck === undefined) this.planCheck = StatementPlanCheck.fromEnv();
+    this.planCheck?.consider(stat, statement, params, site, series, trace);
   }
 
   top(limit: number): AkanStatementStat[] {

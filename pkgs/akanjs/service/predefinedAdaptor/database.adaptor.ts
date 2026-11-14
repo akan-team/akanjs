@@ -31,6 +31,7 @@ import { PendingStoreEnsures } from "./sql/PendingStoreEnsures";
 import { PostgresInsightSession } from "./sql/PostgresInsightSession";
 import { SqlDocumentStore } from "./sql/SqlDocumentStore";
 import { SqliteInsightSession } from "./sql/SqliteInsightSession";
+import { PostgresPlans, SqlitePlans } from "./sql/statementPlans";
 import { StatementProbe } from "./sql/statementProbe";
 import { TransactionScope } from "./sql/TransactionScope";
 import {
@@ -125,6 +126,7 @@ export class SqliteDatabase
   static readonly #begin = StatementProbe.fixed("BEGIN IMMEDIATE");
   #db!: Database;
   #reader: Database | null = null;
+  #plans: SqlitePlans | null = null;
   #client!: BunSqliteClient;
   #stores = new Map<string, SqlDocumentStore>();
   #transaction = new AsyncLocalStorage<TransactionContext>();
@@ -143,12 +145,15 @@ export class SqliteDatabase
     await mkdir(path.dirname(path.resolve(this.config.filePath)), { recursive: true });
     DirectoryNotWritableError.assertFileDir(this.config.filePath);
     this.#db = new Database(this.config.filePath, { strict: true, create: true });
-    this.#inMemory = !this.#mainFile();
+    const file = this.#mainFile();
+    this.#inMemory = !file;
+    this.#plans = file ? new SqlitePlans(file, this.#stores) : null;
     this.#client = new BunSqliteClient(
       this.#db,
       () => this.#writeTurn(),
       () => this.#readerOf(),
       !this.#inMemory,
+      this.#plans,
     );
     this.#db.run(`PRAGMA journal_mode = ${this.config.journalMode ?? "WAL"}`);
     this.#db.run(`PRAGMA busy_timeout = ${this.config.busyTimeoutMs ?? 5000}`);
@@ -176,6 +181,7 @@ export class SqliteDatabase
     this.scheduler.unregisterInterval(RETRY_INTERVAL_KEY);
     await this.#ensures.settle();
     this.#reader?.close();
+    this.#plans?.close();
     this.#db?.run("PRAGMA wal_checkpoint(TRUNCATE)");
     await this.#client?.close();
   }
@@ -368,6 +374,7 @@ export class PostgresDatabase
   #sql!: Sql;
   #client!: PostgresAkanClient;
   #stores = new Map<string, SqlDocumentStore>();
+  readonly #plans = new PostgresPlans(() => this.#sql, this.#stores);
   #transaction = new AsyncLocalStorage<TransactionContext & { client: PostgresAkanClient }>();
   #ensures = new PendingStoreEnsures();
   #schemaTurn: Promise<void> = Promise.resolve();
@@ -388,7 +395,7 @@ export class PostgresDatabase
           password: this.config.password,
           ...options,
         });
-    this.#client = new PostgresAkanClient(this.#sql);
+    this.#client = new PostgresAkanClient(this.#sql, this.#plans);
     this.#schema =
       (await this.#client.prepare(`SELECT current_schema() AS "schema"`).get<{ schema: string | null }>())?.schema ??
       this.#schema;
@@ -567,7 +574,7 @@ export class PostgresDatabase
       result = (await this.#sql.begin(async (transaction) => {
         StatementProbe.sent(PostgresDatabase.#begin, [], 0, performance.now() - askedAt, 0);
         return await this.#transaction.run(
-          Object.assign(context, { client: new PostgresAkanClient(transaction) }),
+          Object.assign(context, { client: new PostgresAkanClient(transaction, this.#plans) }),
           async () => await fn(),
         );
       })) as T;
@@ -675,12 +682,14 @@ export class PostgresDatabase
         `DROP INDEX IF EXISTS ${quoteIdent(name)}; ALTER INDEX ${quoteIdent(next)} RENAME TO ${quoteIdent(name)}`,
       );
     });
+    StatementProbe.schemaChanged();
   }
 
   async dropIndexConcurrently(name: string) {
     await this.#underIndexLock(name, async (reserved) => {
       await reserved.unsafe(`DROP INDEX CONCURRENTLY IF EXISTS ${quoteIdent(name)}`);
     });
+    StatementProbe.schemaChanged();
   }
 
   // A per-index session lock replaces the schema lock, which would stall other schemas.
