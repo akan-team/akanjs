@@ -11,11 +11,11 @@
     "pkgs/@akanjs/*"
   ],
   "overrides": {
-    "@earendil-works/pi-agent-core": "1.3.0",
-    "@earendil-works/pi-ai": "1.3.0",
-    "@earendil-works/pi-codemode": "1.3.0",
-    "@earendil-works/pi-mcp": "1.3.0",
-    "@earendil-works/pi-tui": "1.3.0"
+    "@earendil-works/pi-agent-core": "1.5.2",
+    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-codemode": "1.5.2",
+    "@earendil-works/pi-mcp": "1.5.2",
+    "@earendil-works/pi-tui": "1.5.2"
   },
   "scripts": {
     "uploadEnv": "chmod +x infra/master/jenkins/uploadEnv.sh && chmod +x infra/master/jenkins/getSecrets.sh && bash infra/master/jenkins/uploadEnv.sh",
@@ -33,6 +33,7 @@
     "release:typecheck-consumer": "bun infra/test/runPackedConsumer.ts",
     "release:smoke-registry": "bun run akan reset-registry && bun run akan smoke-registry --test=true --tag=rc --registry=http://127.0.0.1:4873",
     "api:report": "bun infra/test/runApiReport.ts",
+    "audit:deps": "bun infra/test/runDependencyAudit.ts",
     "error:codes": "bun pkgs/@akanjs/devkit/docs/errorCodeReference.ts && bun run akan agent install",
     "akan": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js",
     "testPkgs": "bun run buildAkan && for p in akanjs @akanjs/devkit @akanjs/cli @akanjs/native @akanjs/language @akanjs/vscode create-akan-workspace use-agentic; do printf '\\n== %s\\n' \"$p\" && bun run runAkan test \"$p\" || exit 1; done",
@@ -80,7 +81,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
-    "@earendil-works/pi-coding-agent": "1.3.0",
+    "@earendil-works/pi-coding-agent": "1.5.2",
     "@excalidraw/excalidraw": "^0.18.1",
     "@inquirer/prompts": "^8.7.3",
     "@kubernetes/client-node": "^1.4.0",

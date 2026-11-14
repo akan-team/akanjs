@@ -12,6 +12,11 @@ import type { CodeAgentProxy } from "./CodeAgentProxy";
 import { CodeSessionIndex } from "./CodeSessionIndex";
 import { WorkspaceTrust } from "./WorkspaceTrust";
 
+type PrepareRequest = (
+  model: unknown,
+  options?: Record<string, unknown>,
+) => Promise<{ model: { compat?: Record<string, unknown> } }>;
+
 export interface AkanCodeServicesOptions {
   workspaceRoot: string;
   cwd: string;
@@ -30,6 +35,8 @@ export class AkanCodeServices {
       enableAnalytics: false,
       quietStartup: true,
       compaction: { reserveTokens: AkanCodeCompaction.reserveFloor },
+      // pi 1.5 defaults to "idle", which sends billed cache refreshes for up to 30 minutes between turns.
+      cacheWarming: "streaming",
     });
   }
 
@@ -43,9 +50,25 @@ export class AkanCodeServices {
         : akanCodePaths.authFile(),
       modelsPath: akanCodePaths.modelsFile(),
     });
+    AkanCodeServices.#holdMessageThreadsOff(runtime);
     if (proxy) await proxy.apply(runtime);
     else await AkanEnvKeys.apply(runtime, workspaceRoot);
     return runtime;
+  }
+
+  // pi 1.5 turned Anthropic message threads on for api.anthropic.com; a models.json `compat` that names it still wins.
+  static #holdMessageThreadsOff(runtime: ModelRuntime) {
+    const target = runtime as unknown as { prepareRequest?: PrepareRequest };
+    const original = target.prepareRequest?.bind(runtime);
+    if (!original) throw new Error("The model runtime no longer exposes prepareRequest; update AkanCodeServices");
+    target.prepareRequest = async (model, options) => {
+      const prepared = await original(model, options);
+      if (prepared.model.compat?.supportsMessageThreads !== undefined) return prepared;
+      return {
+        ...prepared,
+        model: { ...prepared.model, compat: { ...prepared.model.compat, supportsMessageThreads: false } },
+      };
+    };
   }
 
   static sessions(workspaceRoot: string, cwd: string, profile: CodeAgentProfile, resume?: string) {

@@ -1,0 +1,10 @@
+{
+  "advisories": [
+    {
+      "id": "GHSA-m9gg-hp2v-232j",
+      "package": "@grpc/grpc-js",
+      "reason": "firebase pins @grpc/grpc-js ~1.9.0 through @firebase/firestore up to firebase 13.3.0, and 1.9 gets no fix. The flaw is in a gRPC server's getAuthContext with requireClientCertificate false; firestore runs grpc-js only as a client.",
+      "revisit": "2027-02-14"
+    }
+  ]
+}
