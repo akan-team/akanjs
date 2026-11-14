@@ -91,17 +91,35 @@ export class AgentRelayPolicy {
 
   static #attachmentCharsOf({ messages }: LlmTurnRequest) {
     let chars = 0;
-    for (const { attachments = [], toolResults = [] } of messages)
-      for (const attachment of [...attachments, ...toolResults.flatMap((result) => result.attachments ?? [])])
-        chars += (attachment.data?.length ?? 0) + (attachment.text?.length ?? 0);
+    for (const message of AgentRelayPolicy.#rows(messages)) {
+      const returned = AgentRelayPolicy.#rows(message.toolResults).flatMap((result) =>
+        AgentRelayPolicy.#rows(result.attachments),
+      );
+      for (const file of [...AgentRelayPolicy.#rows(message.attachments), ...returned])
+        chars += AgentRelayPolicy.#carried(file.data) + AgentRelayPolicy.#carried(file.text);
+    }
     return chars;
+  }
+
+  //? Security: a browser writes a relayed turn whole, so a list in a shape the counts would skip or throw on is refused.
+  static #rows(value: unknown): Record<string, unknown>[] {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((row) => !row || typeof row !== "object")) AgentRelayPolicy.#refuse();
+    return value;
+  }
+
+  //? Security: a carrier that is not a string has no length to count, or an array's, so it is sized as it would be sent.
+  static #carried(carrier: unknown) {
+    if (typeof carrier === "string") return carrier.length;
+    return carrier == null ? 0 : (JSON.stringify(carrier)?.length ?? 0);
   }
 
   //? A file a tool returned is attachment content like a user's: under `chars`, two pictures would end a run for good.
   static #unfiled(results: AgentWireToolResult[] | undefined) {
     return results?.map(({ attachments, ...result }) => ({
       ...result,
-      attachments: attachments?.map(({ data: _data, text: _text, ...label }) => label),
+      attachments:
+        attachments && AgentRelayPolicy.#rows(attachments).map(({ data: _data, text: _text, ...label }) => label),
     }));
   }
 
