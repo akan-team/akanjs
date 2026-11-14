@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
 import type { App } from "../commandDecorators";
@@ -32,6 +34,8 @@ export class AkanAppHost {
   #lastDevState: DevHostState | null = null;
   readonly #bootLatch = new DevBootLatch(() => this.#onDevEvent?.({ app: this.app.name, booted: true }));
   #stopping = false;
+  //? `pending`: a start is building its first artifact and nothing is on disk; `built`: it is; `settled`: no start runs.
+  #firstArtifact: "pending" | "built" | "settled" = "settled";
   #builderMessageQueue: Promise<void> = Promise.resolve();
   readonly #backendGraph: BackendImportGraph;
   readonly #statuses: DevBuildStatusBoard;
@@ -76,6 +80,7 @@ export class AkanAppHost {
           this.#requests.startGeneration();
           this.#requests.discard("the backend restarted while the builder was away");
         },
+        awaitsArtifact: () => this.#firstArtifact === "pending",
         toBuilder: (message) => this.#requests.send(message),
       },
     );
@@ -110,7 +115,12 @@ export class AkanAppHost {
           this.#timeline.mark("builderReady");
           this.#requests.flush();
         },
-        onBaseBuilt: (phaseMs) => this.#timeline.baseBuilt(phaseMs),
+        onBaseBuilt: (phaseMs) => {
+          this.#timeline.baseBuilt(phaseMs);
+          //? A builder retried inside one start wrote the artifact again, under a backend that booted on the first.
+          if (this.#firstArtifact === "built") this.#backend.scheduleRestart({ files: [], roles: [] });
+          else if (this.#firstArtifact === "pending") this.#firstArtifact = "built";
+        },
         onRestartReady: () => {
           this.logger.verbose("[builder-recovery] builder ready after restart; replaying latest state");
           this.#backend.replay();
@@ -166,13 +176,28 @@ export class AkanAppHost {
     if (this.#backend.running) await this.#backend.stop();
     if (this.#builder.current) this.#builder.stop();
     this.#timeline.begin();
-    const [redisHost] = await Promise.all([
-      this.#prepareDatabase("redis"),
-      this.#backendGraph.refresh(),
-      this.#builder.start(),
-    ]);
-    Object.assign(this.env, { REDIS_HOST: redisHost });
-    this.#backend.start();
+    const artifactFile = path.join(this.app.cwdPath, ".akan/artifact/base-artifact.json");
+    //? Beside the build only when nothing is on disk: the backend would boot on an artifact an earlier start left.
+    this.#firstArtifact = fs.existsSync(artifactFile) ? "settled" : "pending";
+    const prepared = Promise.all([this.#prepareDatabase("redis"), this.#backendGraph.refresh()]).then(([redisHost]) => {
+      Object.assign(this.env, { REDIS_HOST: redisHost });
+      if (this.#firstArtifact !== "settled") this.#backend.start();
+    });
+    try {
+      await Promise.all([this.#builder.start(), prepared]);
+    } catch (error) {
+      this.#firstArtifact = "settled";
+      if (!this.#stopping) await this.#backend.stop();
+      throw error;
+    }
+    const artifactMissing = this.#firstArtifact === "pending" && !fs.existsSync(artifactFile);
+    this.#firstArtifact = "settled";
+    //? The boot build failed and its builder waits for the fix: a backend holding out for the artifact serves no API.
+    if (artifactMissing && !this.#stopping) {
+      await this.#backend.restarting;
+      await this.#backend.stop();
+    }
+    if (!this.#backend.running) this.#backend.start();
     this.#idle.arm();
     return this;
   }

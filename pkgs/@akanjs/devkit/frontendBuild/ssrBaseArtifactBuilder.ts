@@ -1,3 +1,4 @@
+import { rename } from "node:fs/promises";
 import path from "node:path";
 import { optimize } from "@tailwindcss/node";
 import type { AkanNativeAppId, AkanWebConfig } from "akanjs";
@@ -137,7 +138,10 @@ export class SsrBaseArtifactBuilder {
           androidSha256CertFingerprints: target.android?.sha256CertFingerprints,
         })),
     };
-    await Bun.write(path.join(this.#absArtifactDir, "base-artifact.json"), `${JSON.stringify(artifact, null, 2)}\n`);
+    //? Renamed into place, last: a dev backend booted beside this build starts on the file the moment it exists.
+    const artifactPath = path.join(this.#absArtifactDir, "base-artifact.json");
+    await Bun.write(`${artifactPath}.tmp`, `${JSON.stringify(artifact, null, 2)}\n`);
+    await rename(`${artifactPath}.tmp`, artifactPath);
     phaseMs.total = Date.now() - this.#started;
     this.#app.verbose(`[base-artifact] complete in ${phaseMs.total}ms`);
 

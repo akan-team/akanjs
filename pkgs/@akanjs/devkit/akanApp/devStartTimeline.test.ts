@@ -30,6 +30,24 @@ describe("DevStartTimeline", () => {
     ]);
   });
 
+  test("says what a backend spawned beside the build took once the artifact was there", () => {
+    const { lines, clock, timeline: start } = timeline();
+    clock.at = 800;
+    start.begin();
+    clock.at = 850;
+    start.mark("backendSpawned");
+    clock.at = 2700;
+    start.baseBuilt(phases);
+    clock.at = 2730;
+    start.mark("builderReady");
+    clock.at = 2950;
+    start.mark("backendReady");
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toStartWith("ready in 2950ms (prepare 800 · builder 1930: spawn 200 + base build 1700 [");
+    expect(lines[0]).toEndWith("+ watch 30 · backend 2100 (250 after the artifact) · first artifact at 2700)");
+  });
+
   test("reports at the builder's ready when the backend was ready first", () => {
     const { lines, clock, timeline: start } = timeline();
     start.begin();

@@ -56,12 +56,14 @@ interface FakeBuilder {
   stopped: number;
   toHost: (message: BuilderMessage) => void;
   baseBuilt: (phaseMs?: Record<string, number>) => void;
+  exit: () => void;
   ready: () => void;
   away: () => void;
   restartReady: () => void;
 }
 
 interface FakeBackend {
+  awaitsArtifact: boolean;
   sent: BuilderMessage[];
   signals: string[];
   lingers: boolean;
@@ -71,6 +73,7 @@ interface FakeBackend {
 }
 
 interface BackendSpawnOptions {
+  env?: Record<string, string>;
   ipc: (message: BuilderMessage) => void;
   onExit?: (proc: unknown, code: number | null, signal: string | null) => void;
 }
@@ -103,6 +106,10 @@ const fakeBuilder = (toHost: (message: BuilderMessage) => void, boot: Boot) => {
     stopped: 0,
     toHost,
     baseBuilt: (phaseMs = {}) => options.onBaseBuilt?.(phaseMs),
+    exit: () => {
+      builder.status = "stopped";
+      options.onExit?.();
+    },
     ready: () => {
       builder.status = "ready";
       options.onReady?.();
@@ -127,8 +134,10 @@ const fakeBuilder = (toHost: (message: BuilderMessage) => void, boot: Boot) => {
       if (boot === "exit") {
         builder.status = "stopped";
         options.onExit?.();
-      } else if (boot === "ready") builder.ready();
-      else {
+      } else if (boot === "ready") {
+        builder.baseBuilt();
+        builder.ready();
+      } else {
         builder.status = "starting";
         if (boot === "starting") options.onReady?.();
       }
@@ -166,6 +175,7 @@ const fakeBackends = () => {
       queueMicrotask(() => options.onExit?.(proc, code, signal));
     };
     const backend: FakeBackend = {
+      awaitsArtifact: options.env?.AKAN_DEV_AWAIT_ARTIFACT === "1",
       sent: [],
       signals: [],
       lingers: false,
@@ -711,6 +721,177 @@ describe("AkanAppHost start and stop", () => {
 
     expect(dev.backends.map((backend) => backend.signals)).toEqual([["SIGTERM"], []]);
     expect(dev.builders.map((builder) => builder.stopped)).toEqual([1, 0]);
+  });
+});
+
+describe("AkanAppHost boots the backend beside the first base build", () => {
+  isolateEnv({ AKAN_PUBLIC_REPO_NAME: "repo", AKAN_PUBLIC_SERVE_DOMAIN: "localhost", AKAN_PUBLIC_ENV: "local" });
+
+  const building = async (boots: Boot[] = ["hold"]) => {
+    const dev = await devHost(boots);
+    const outcome = { error: null as unknown, settled: false };
+    const starting = dev.host.start().then(
+      () => void Object.assign(outcome, { settled: true }),
+      (error: unknown) => void Object.assign(outcome, { error, settled: true }),
+    );
+    return { dev, starting, outcome };
+  };
+  const artifactOf = (dev: DevHost) => path.join(dev.root, "apps/demo/.akan/artifact/base-artifact.json");
+  const quiet = () => Bun.sleep(60);
+
+  test("starts the backend while the builder still builds, told to hold its web surface for the artifact", async () => {
+    const { dev, starting, outcome } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+    expect(dev.backend().awaitsArtifact).toBe(true);
+    expect(outcome.settled).toBe(false);
+
+    dev.builder().baseBuilt();
+    dev.builder().ready();
+    await starting;
+    readyBackend(dev);
+
+    expect(dev.backends.map((backend) => backend.signals)).toEqual([[]]);
+    expect(dev.lastState()).toBe("ready");
+  });
+
+  test("a backend ready before the builder has its requests held, and gets its answers once the builder is ready", async () => {
+    const { dev, starting } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+    dev.builder().baseBuilt();
+    readyBackend(dev);
+    expect(dev.lastState()).toBe("ready");
+    dev.backend().say({ type: "build-graph", id: 7 });
+    await quiet();
+    expect(dev.builder().sent).toEqual([]);
+    expect(dev.backend().sent).toEqual([]);
+
+    dev.builder().ready();
+    await starting;
+
+    expect(sentOf(dev.builder().sent, "build-graph")).toHaveLength(1);
+    expect(dev.backends).toHaveLength(1);
+  });
+
+  test("a builder ready before the backend keeps what it built meanwhile, and the backend gets it at its ready", async () => {
+    const { dev, starting } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+    dev.builder().baseBuilt();
+    dev.builder().ready();
+    await starting;
+    dev.builder().toHost(pages(3));
+    dev.builder().toHost({ type: "build-status", data: status(3, false) });
+    await quiet();
+    expect(dev.backend().sent).toEqual([]);
+
+    readyBackend(dev);
+
+    expect(sentOf(dev.backend().sent, "pages-updated")).toEqual([pages(3)]);
+    expect(statusesOf(dev.backend().sent)).toContainEqual(status(3, false));
+  });
+
+  test("a save that restarts the backend during start-up replaces it with one that no longer waits", async () => {
+    const { dev, starting } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+    dev.builder().baseBuilt();
+    dev.builder().ready();
+    await starting;
+
+    dev.builder().toHost(invalidate(2, ["restart-backend"]));
+
+    expect(await until(() => dev.backends.length === 2)).toBe(true);
+    expect(dev.backends.map((backend) => backend.signals)).toEqual([["SIGTERM"], []]);
+    expect(dev.backend().awaitsArtifact).toBe(false);
+  });
+
+  test("a boot build that wrote no artifact gets a backend that serves the API without waiting for one", async () => {
+    const { dev, starting } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+
+    dev.builder().ready();
+    await starting;
+
+    expect(dev.backends.map((backend) => backend.signals)).toEqual([["SIGTERM"], []]);
+    expect(dev.backends.map((backend) => backend.awaitsArtifact)).toEqual([true, false]);
+  });
+
+  test("a builder that never comes up takes the waiting backend down with the failed start", async () => {
+    const { dev, starting, outcome } = await building(["hold", "exit", "exit"]);
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+
+    dev.builder().exit();
+    await starting;
+
+    expect(outcome.error).toBeInstanceOf(Error);
+    expect(dev.backends.map((backend) => backend.signals)).toEqual([["SIGTERM"]]);
+    await quiet();
+    expect(dev.backends).toHaveLength(1);
+  });
+
+  test("a backend that dies while the builder builds comes back still waiting for the artifact", async () => {
+    const { dev, starting } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+
+    dev.backend().crash();
+
+    expect(await until(() => dev.backends.length === 2, (backendRecoveryPolicy.min ?? 0) + 2_000)).toBe(true);
+    expect(dev.backend().awaitsArtifact).toBe(true);
+    dev.builder().baseBuilt();
+    dev.builder().ready();
+    await starting;
+    expect(dev.backends).toHaveLength(2);
+    expect(dev.backend().signals).toEqual([]);
+  });
+
+  test("a builder retried inside one start restarts a backend that booted on the artifact the first try wrote", async () => {
+    const { dev, starting } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+    dev.builder().baseBuilt();
+
+    dev.builder().baseBuilt();
+
+    expect(await until(() => dev.backends.length === 2)).toBe(true);
+    expect(dev.backends.map((backend) => backend.awaitsArtifact)).toEqual([true, false]);
+    dev.builder().ready();
+    await starting;
+  });
+
+  test("a stop during start-up signals the waiting backend once, stops the builder, and starts nothing after", async () => {
+    const { dev, starting, outcome } = await building();
+    expect(await until(() => dev.backends.length === 1)).toBe(true);
+
+    await dev.host.stop();
+    await starting;
+
+    expect(outcome.error).toBeInstanceOf(Error);
+    expect(dev.backends.map((backend) => backend.signals)).toEqual([["SIGTERM"]]);
+    expect(dev.builder().stopped).toBeGreaterThanOrEqual(1);
+    await quiet();
+    expect(dev.backends).toHaveLength(1);
+  });
+
+  test("a stop before the backend was spawned never spawns it", async () => {
+    const { dev, starting } = await building();
+
+    await dev.host.stop();
+    await starting;
+    await quiet();
+
+    expect(dev.backends).toEqual([]);
+  });
+
+  test("an artifact already on disk keeps the backend behind the builder, so it never boots on the old one", async () => {
+    const dev = await devHost(["hold"]);
+    await writeText(artifactOf(dev), "{}\n");
+    const starting = dev.host.start();
+    expect(await until(() => dev.builders.length === 1)).toBe(true);
+    await quiet();
+    expect(dev.backends).toEqual([]);
+
+    dev.builder().ready();
+    await starting;
+
+    expect(dev.backends).toHaveLength(1);
+    expect(dev.backend().awaitsArtifact).toBe(false);
   });
 });
 

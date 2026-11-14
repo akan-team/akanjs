@@ -82,7 +82,7 @@ export class DevBuilder {
       this.#host = builder;
       try {
         await this.#waitForReady(attempt, { announceBootState });
-        this.#app.verbose(`[cli] base build ready in ${Date.now() - startTime}ms — starting backend`);
+        this.#app.verbose(`[cli] base build ready in ${Date.now() - startTime}ms`);
         return this.#host;
       } catch (err) {
         lastError = err;

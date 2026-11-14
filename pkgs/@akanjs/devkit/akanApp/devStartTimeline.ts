@@ -42,7 +42,14 @@ export class DevStartTimeline {
     const ms = (value: number) => Math.round(value).toString();
     //? The clock counts from the start of the process, so the first mark is what the CLI spent before the host.
     const parts = [`prepare ${ms(started)}`, `builder ${ms(builderReady - started)}${this.#builderParts()}`];
-    if (backendSpawned !== undefined) parts.push(`backend ${ms(backendReady - backendSpawned)}`);
+    if (backendSpawned !== undefined) {
+      //? Spawned beside the build, most of its time is the wait for the artifact: what it took after that is its own.
+      const afterArtifact =
+        baseBuilt !== undefined && backendSpawned < baseBuilt && baseBuilt <= backendReady
+          ? ` (${ms(backendReady - baseBuilt)} after the artifact)`
+          : "";
+      parts.push(`backend ${ms(backendReady - backendSpawned)}${afterArtifact}`);
+    }
     if (baseBuilt !== undefined) parts.push(`first artifact at ${ms(baseBuilt)}`);
     this.#logger.info(`ready in ${ms(Math.max(builderReady, backendReady))}ms (${parts.join(" · ")})`);
   }

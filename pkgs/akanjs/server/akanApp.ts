@@ -259,6 +259,8 @@ export class AkanApp {
     if (!message || typeof message !== "object") return;
     switch (message.type) {
       case "ready":
+        //? Again: under `akan start` this gateway listens before the first base build has written the hosts.
+        if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#config.artifactDir);
         this.#supervisor.markReady(idx, message);
         return;
       case "pubsub.publish":

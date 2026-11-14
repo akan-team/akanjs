@@ -1551,6 +1551,45 @@ describe("AkanApp", () => {
     }
   }, 20_000);
 
+  test("under akan start admits the hosts of an artifact written after it began listening, once a replica is ready", async () => {
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-late-hosts-");
+    const artifactPath = path.join(root, ".akan", "artifact", "base-artifact.json");
+    await writeOkChild(serverPath, "page");
+    await Bun.write(
+      serverPath,
+      (await Bun.file(serverPath).text()).replace(
+        "async start() {",
+        `async start() { await Bun.write(${JSON.stringify(artifactPath)}, JSON.stringify({ domains: ["late.example.com"] }));`,
+      ),
+    );
+    const identity = {
+      AKAN_PUBLIC_APP_NAME: "alpha",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+    };
+    const saved = Object.fromEntries(Object.keys(identity).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, identity);
+    const app = withEnvSet(
+      { AKAN_COMMAND_TYPE: "start" },
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 }),
+    );
+    const running = app.start();
+    try {
+      const port = await portOf(app);
+      await waitForReady(port);
+      const answer = await fetch(`http://127.0.0.1:${port}/`, { headers: { host: `late.example.com:${port}` } });
+
+      expect([answer.status, await answer.text()]).toEqual([200, "page"]);
+    } finally {
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }, 20_000);
+
   test("answers ready 503 until a replica is ready and again once the last one dies, while health stays 200", async () => {
     const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ready-");
     const goPath = path.join(root, "go");
