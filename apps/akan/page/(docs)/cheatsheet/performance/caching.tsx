@@ -735,14 +735,18 @@ keys() · entries() · forEach(fn)`,
                       <strong>The page still reads the full query.</strong> Its <code>.search()</code> values come from
                       the URL as requested, and <code>window.location</code> keeps every parameter. Only the URL the
                       server renders the page with is the sorted one, so a server render never sees a tracking parameter
-                      it did not declare.
+                      it did not declare. A guard's <code>request.path</code>, <code>usePathCtx().location</code> and{" "}
+                      <code>usePageLocation()</code> carry that URL too, the hooks until the first navigation, so the
+                      browser hydrates what the server rendered.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>페이지는 여전히 쿼리 전체를 읽습니다.</strong> <code>.search()</code> 값은 요청된 URL에서
                       오고, <code>window.location</code>에는 모든 파라미터가 남습니다. 서버가 페이지를 렌더할 때 쓰는
-                      URL만 정렬된 것이라, 서버 렌더는 선언하지 않은 추적 파라미터를 보지 못합니다.
+                      URL만 정렬된 것이라, 서버 렌더는 선언하지 않은 추적 파라미터를 보지 못합니다. guard의{" "}
+                      <code>request.path</code>, <code>usePathCtx().location</code>, <code>usePageLocation()</code>도 그
+                      URL을 따르고, 두 hook은 첫 이동 전까지 그대로라 브라우저가 서버가 렌더한 값으로 hydrate합니다.
                     </span>
                   ),
                 })}
