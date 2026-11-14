@@ -197,8 +197,8 @@ export default page()
         type: "boolean",
         default: "false",
         desc: l.trans({
-          en: "Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`. `true` has ingress-nginx answer every preflight and add `Access-Control-Allow-Origin: *` to every response instead.",
-          ko: "끄면 앱이 직접 CORS에 답합니다. 네이티브 셸과 `option.setCrossSite({ allowedOrigins })`에 적은 origin이 대상입니다. `true`면 ingress-nginx가 모든 preflight에 대신 답하고 모든 응답에 `Access-Control-Allow-Origin: *`를 붙입니다.",
+          en: "Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`. Only fonts carry `Access-Control-Allow-Origin: *`, so a page elsewhere cannot `fetch` a public file or draw an `/_akan/image` on a canvas. `true` has ingress-nginx answer every preflight and add `Access-Control-Allow-Origin: *` to every response instead.",
+          ko: "끄면 앱이 직접 CORS에 답합니다. 네이티브 셸과 `option.setCrossSite({ allowedOrigins })`에 적은 origin이 대상입니다. `Access-Control-Allow-Origin: *`는 폰트에만 붙으므로, 다른 origin의 페이지는 공개 파일을 `fetch`하거나 `/_akan/image`를 canvas에 그릴 수 없습니다. `true`면 ingress-nginx가 모든 preflight에 대신 답하고 모든 응답에 `Access-Control-Allow-Origin: *`를 붙입니다.",
         }),
       },
     ];
@@ -810,6 +810,36 @@ main:
               })}
             </div>
             <Docs.OptionTable items={topLevelKeys} />
+            <Docs.Alert type="warning">
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Some images still need root.</strong> The pod runs as uid 1000. An image built with akanjs
+                    3.2 or earlier, a rollback to one through <code>image.tag</code> included, a declared{" "}
+                    <code>docker</code> Dockerfile string that runs the server as root, or a custom{" "}
+                    <code>docker.image</code> whose files uid 1000 cannot read, needs these lines in the app's values
+                    file.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>root가 필요한 이미지도 있습니다.</strong> pod는 uid 1000으로 실행됩니다. akanjs 3.2 이하로
+                    빌드한 이미지(<code>image.tag</code>로 그 이미지로 되돌리는 경우 포함), 서버를 root로 실행하는{" "}
+                    <code>docker</code> Dockerfile 문자열, uid 1000이 파일을 읽을 수 없는 <code>docker.image</code>는
+                    앱의 values 파일에 아래 줄이 필요합니다.
+                  </span>
+                ),
+              })}
+            </Docs.Alert>
+            <Code.Snippet
+              className="w-full"
+              title="app/values/myapp-values.yaml"
+              language="yaml"
+              showLineNumbers={false}
+              code={`podSecurityContext: { runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }
+securityContext: { capabilities: null }
+volumePermissions: { enabled: false }`}
+            />
 
             <Docs.SubSubTitle>{l.trans({ en: "Per-branch keys", ko: "브랜치별 키" })}</Docs.SubSubTitle>
             <div>
