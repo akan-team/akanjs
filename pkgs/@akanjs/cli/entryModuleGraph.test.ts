@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import path from "node:path";
+import { type CommandModuleId, commandModuleIds } from "./commandModules";
 import { EntryModuleGraph } from "./entryModuleGraph";
 
 // These processes live for the whole dev session or spawn per build, so one stray barrel import costs 15-236 MB.
@@ -46,5 +48,48 @@ describe("dev entry module graphs", () => {
       const eager = graph.eagerHeavyDependencies(entry).filter((dep) => neverEager.includes(dep));
       expect([entry, eager]).toEqual([entry, []]);
     }
+  });
+
+  // `akan <command>` evaluates only its module's chunk closure, so every command in it pays these, `--help` too.
+  test("each command module pulls only the heavy stack listed for it", () => {
+    const expected: Record<CommandModuleId, string[]> = {
+      workspace: ["@inquirer/prompts", "ssh2", "typescript"],
+      agent: ["@inquirer/prompts", "ssh2", "typescript"],
+      code: [],
+      // Eager on purpose: `start` and `sync` compile anyway, and loading typescript mid-sync left the host ~20 MB larger.
+      application: ["@inquirer/prompts", "ssh2", "typescript"],
+      library: [],
+      localRegistry: ["@inquirer/prompts", "ssh2", "typescript"],
+      package: [],
+      module: ["typescript"],
+      page: [],
+      context: ["@inquirer/prompts", "typescript"],
+      cloud: ["@inquirer/prompts", "ssh2", "typescript"],
+      subspace: [],
+      guideline: ["@inquirer/prompts"],
+      scalar: ["typescript"],
+      primitive: ["typescript"],
+      quality: ["typescript"],
+      verify: ["ssh2", "typescript"],
+      repair: ["typescript"],
+      workflow: ["typescript"],
+      pipeline: [],
+      tunnel: ["@inquirer/prompts"],
+    };
+    const root = path.resolve(import.meta.dir, "..");
+    const actual = Object.fromEntries(
+      commandModuleIds.map((id) => {
+        const source = path.join(import.meta.dir, id, `${id}.command.ts`);
+        const heavy = graph.eagerHeavyDependencies(graph.chunkOf(source)).map((dep) => {
+          if (expected[id].includes(dep)) return dep;
+          const chain = graph
+            .importChain(source, dep)
+            .map((step) => (path.isAbsolute(step) ? path.relative(root, step) : step));
+          return `${dep} via ${chain.join(" > ")}`;
+        });
+        return [id, heavy];
+      }),
+    );
+    expect(actual).toEqual(expected);
   });
 });

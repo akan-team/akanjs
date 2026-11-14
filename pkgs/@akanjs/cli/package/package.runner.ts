@@ -1,10 +1,8 @@
 import path from "node:path";
 import { type Pkg, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
-import { FrameworkGraph } from "@akanjs/devkit/docs/frameworkGraph";
 import { PkgExecutor } from "@akanjs/devkit/executors";
 import { MaintainabilityBaseline } from "@akanjs/devkit/quality/maintainabilityBaseline";
 import { FileSys } from "@akanjs/devkit/util/fileSys";
-import { TypeScriptDependencyScanner } from "@akanjs/devkit/workspace/dependencyScanner";
 import { PackageExportsMap } from "@akanjs/devkit/workspace/packageExportsMap";
 import type { PackageJson } from "@akanjs/devkit/workspace/types";
 import { Logger } from "akanjs/common";
@@ -74,6 +72,7 @@ export class PackageRunner extends runner("package") {
   async buildPackage(pkg: Pkg) {
     await $`rm -rf ${pkg.dist.cwdPath}`;
     await pkg.dist.mkdir(pkg.dist.cwdPath);
+    const { TypeScriptDependencyScanner } = await import("@akanjs/devkit/workspace/dependencyScanner");
     const scanner = await TypeScriptDependencyScanner.from(pkg);
     const { npmDeps, npmDevDeps, missingDeps } = await scanner.getPackageBuildDependencies(pkg.name);
     // The pi packages are pinned here: neither pi-coding-agent's own dependency ranges nor our `overrides` reach a
@@ -282,6 +281,7 @@ export class PackageRunner extends runner("package") {
   }
 
   async syncArchitecture(workspace: Workspace) {
+    const { FrameworkGraph } = await import("@akanjs/devkit/docs/frameworkGraph");
     const architecture = await FrameworkGraph.architecture(workspace.workspaceRoot);
     if (!architecture) throw new Error(`${FrameworkGraph.architectureFile} is only kept in the akanjs repository`);
     const { file, current, next, unknownClasses, map } = architecture;

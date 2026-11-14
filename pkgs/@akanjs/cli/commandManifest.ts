@@ -37,6 +37,7 @@ export class CommandManifest {
   /** `null` means "cannot narrow": load everything so commander can render full help and did-you-mean. */
   static resolve(manifest: CommandManifestData | null, argv: string[]): CommandModuleId[] | null {
     const requested = argv[2];
+    if (requested === "--version" || requested === "-V") return [];
     if (!manifest || !requested || requested.startsWith("-")) return null;
     const id = manifest.byCommand[requested];
     return id ? [id] : null;

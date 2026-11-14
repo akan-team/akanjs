@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import type { App } from "../commandDecorators";
 import { WorkspaceExecutor } from "../executors";
-import { CsrArtifactBuilder } from "../frontendBuild/csrArtifactBuilder";
 
 export type PublicEnv = Record<string, string>;
 
@@ -68,6 +67,7 @@ export class NativePublicEnv {
 
   /** What the app's last `akan build` inlined, or null when it built no CSR bundle. */
   static async built(app: App): Promise<PublicEnv | null> {
+    const { CsrArtifactBuilder } = await import("../frontendBuild/csrArtifactBuilder");
     const file = Bun.file(CsrArtifactBuilder.publicEnvPath(app));
     if (!(await file.exists())) return null;
     return NativePublicEnv.of((await file.json()) as Record<string, unknown>);
@@ -75,6 +75,7 @@ export class NativePublicEnv {
 
   /** Every `AKAN_PUBLIC_*` the last `akan build` inlined, derived keys included, else the ones this process has. */
   static async inlined(app: App): Promise<PublicEnv> {
+    const { CsrArtifactBuilder } = await import("../frontendBuild/csrArtifactBuilder");
     const file = Bun.file(CsrArtifactBuilder.publicEnvPath(app));
     const env = (await file.exists()) ? ((await file.json()) as Record<string, unknown>) : process.env;
     return Object.fromEntries(
