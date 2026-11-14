@@ -245,7 +245,7 @@ The same filters inside akan console
 
 - Free While Nobody Watches — A child forwards over IPC only while a subscriber wants that level; under ndjson it always sends what stdout carries. `AKAN_LOG_STREAM=1` forwards everything, always.
 
-- Bounded Ring — The hub owner keeps 2,000 records or 4MB (`AKAN_LOG_BUFFER`, `AKAN_LOG_BUFFER_MB`). More than 20 identical lines a second fold into one "suppressed" line.
+- Bounded Ring — The hub owner keeps 2,000 records or 4MB (`AKAN_LOG_BUFFER`, `AKAN_LOG_BUFFER_MB`). More than 20 identical lines a second fold into one "suppressed" line there and in the log file; request lines never fold, and the ndjson stdout gets every record.
 
 - Lines Without Context — Gateway-internal lines, the scheduler's own started/finished lines and unauthenticated primitive GET queries on the fast path carry no traceId or endpoint. `AKAN_LOG_CONTEXT=0` turns request context off everywhere.
 
@@ -261,9 +261,9 @@ With the process level left at info, you still get trace detail for exactly the 
 
 What the request line carries
 
-- ok | error <endpoint>: The message. A clean call is written at info, a failed one at warn.
+- ok | error <endpoint>: The message. A clean call is written at info, a failure under 500 at warn, and a 5xx at error with the error's type and stack.
 
-- ms, status: Duration and status. On failure, status is the error's statusCode, or 500.
+- ms, status: Duration and status. On failure, status is the one HTTP answers: an AkanError's statusCode, otherwise 500.
 
 - userId: The caller's account id, once the call knows who is asking.
 
@@ -348,6 +348,8 @@ Piece
 - id, Last-Event-ID: Each event's id is the hub seq, so a reconnect resumes where it left off.
 
 - : heartbeat: A heartbeat comment every 15 seconds, and a 2-second reconnect hint.
+
+- dropped: A client that stops reading holds at most 4MB of live records, on top of a resume's replay; what it missed arrives as one dropped event with a count when it reads again, and past 10,000 missed records the stream is closed.
 
 Gaps are explicit
 
