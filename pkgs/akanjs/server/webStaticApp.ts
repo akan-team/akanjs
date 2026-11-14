@@ -16,7 +16,6 @@ export class WebStaticApp {
   }
 
   async render({ origin, ...input }: PagePromptRenderInput): Promise<PagePromptRender> {
-    const deadlineAt = Date.now() + SsrStaticApp.deadlineMs;
     const rsc = this.#rsc();
     const entry = (await rsc.listPagePrompts()).find((candidate) => candidate.name === input.name);
     if (entry?.kind !== "app" || !entry.static) return { run: await rsc.runPagePrompt(input), html: null };
@@ -25,6 +24,8 @@ export class WebStaticApp {
     const manifest = await this.#context.ensureRoute(
       new URL(RscPagePrompts.urlOf(entry.pattern, { ...input.arguments, lang }, {})),
     );
+    //? Counted from here: a dev server compiles the route above on its first request, which is not the page's time.
+    const deadlineAt = Date.now() + SsrStaticApp.deadlineMs;
     const { run, drawn } = await rsc.drawPagePrompt(
       { ...input, language: lang },
       manifest.clientManifest,
