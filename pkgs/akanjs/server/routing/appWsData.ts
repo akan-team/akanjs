@@ -10,6 +10,8 @@ import {
   websocketCredentialContract,
 } from "akanjs/common";
 
+import { RequestTrace } from "../../signal/requestTrace";
+
 const CREDENTIAL_HEADERS = ["authorization", "cookie", "user-agent"] as const;
 
 // Copies only the needed headers: retaining the whole Request would pin it for the socket's life.
@@ -43,6 +45,8 @@ export class AppWsData {
   account?: unknown;
   // Per-connection, process-local (a reconnect gets a new one): never a caller identity; survives credential swaps.
   socketId: string;
+  /** The handshake's trace: every frame of the socket is a span of its own under this one id. */
+  trace: RequestTrace | null = RequestTrace.current() ?? null;
   // Trusts the handshake headers blindly (a child's socket came through the gateway, which settled trust);
   // endpoints read `ipOf`, which has the peer and can decide.
   get ip(): string | null {

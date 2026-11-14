@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { Logger } from "akanjs/common";
+import { Logger, type LogRecord, TrustedProxy } from "akanjs/common";
 import { RestartSchedule } from "../../common/restartSchedule";
 import { AKAN_CHILD_HOST } from "../akanAppHeaders";
 import { ServerLimits } from "../routing/serverLimits";
@@ -23,14 +23,18 @@ afterEach(async () => {
 
 const server = { requestIP: () => null } as unknown as Bun.Server<GatewayWsData>;
 
-const proxyToReplica = async (listen: (socketPath: string) => { stop: (closeActive?: boolean) => void }) => {
+const proxyToReplica = async (
+  listen: (socketPath: string) => { stop: (closeActive?: boolean) => void },
+  realLogger?: Logger,
+) => {
   const root = await mkdtemp(path.join(tmpdir(), "akan-proxy-"));
   roots.push(root);
   const socketPath = path.join(root, "replica.sock");
   upstreams.push(listen(socketPath));
   const warnings: string[] = [];
   const restarts: string[] = [];
-  const logger = { warn: (message: string) => warnings.push(message), error: () => undefined } as unknown as Logger;
+  const logger =
+    realLogger ?? ({ warn: (message: string) => warnings.push(message), error: () => undefined } as unknown as Logger);
   const config = new GatewayConfig(path.join(root, "server.ts"), { replica: 1, runtimeDir: root, port: 0 });
   const children = new GatewayChildren(logger);
   children.set(0, {
@@ -96,5 +100,77 @@ describe("GatewayHttpProxy", () => {
     expect(await locationOf("/internal")).toBe("/signin?next=%2Forders#form");
     expect(await locationOf("/external")).toBe("https://accounts.example.com/authorize?client=app");
     expect(await locationOf("/relative")).toBe("/signin?next=%2Forders");
+  });
+
+  test("answers with the id it handed the replica, and never one an untrusted caller chose", async () => {
+    const inbound = "0af7651916cd43dd8448eb211c80319c";
+    const handed: (string | null)[][] = [];
+    const { proxy } = await proxyToReplica((socketPath) =>
+      Bun.serve({
+        unix: socketPath,
+        fetch: (req) => {
+          handed.push(["x-request-id", "traceparent", "x-akan-trace-link"].map((name) => req.headers.get(name)));
+          return new URL(req.url).pathname === "/silent"
+            ? new Response("replica")
+            : new Response("replica", { headers: { "x-request-id": req.headers.get("x-request-id") ?? "" } });
+        },
+      }),
+    );
+    const from = (address: string) => ({ requestIP: () => ({ address, port: 40_000, family: "IPv4" }) });
+    const ask = async (path: string, headers: Record<string, string>, address: string) =>
+      (
+        await proxy.proxyHttp(
+          new Request(`http://localhost${path}`, { headers }),
+          from(address) as unknown as Bun.Server<GatewayWsData>,
+        )
+      ).headers.get("x-request-id");
+
+    const traceparent = `00-${inbound}-b7ad6b7169203331-01`;
+    const forged = await ask("/api/orders", { "x-request-id": inbound }, "198.51.100.7");
+    const viaIngress = await ask("/api/orders", { traceparent }, "10.0.0.5");
+    const viaLoopback = await ask("/api/orders", { traceparent }, "127.0.0.1");
+    const silent = await ask("/silent", {}, "198.51.100.7");
+    process.env.AKAN_TRACE_ADOPT = "trusted-proxies";
+    TrustedProxy.configure("10.0.0.5");
+    let relayed: string | null;
+    try {
+      relayed = await ask("/api/orders", { traceparent }, "10.0.0.5");
+    } finally {
+      delete process.env.AKAN_TRACE_ADOPT;
+      TrustedProxy.reset();
+    }
+
+    const minted = [forged, viaIngress, viaLoopback, silent];
+    for (const id of minted) {
+      expect(id).toMatch(/^[0-9a-f]{32}$/);
+      expect(id).not.toBe(inbound);
+    }
+    expect(new Set(minted).size).toBe(4);
+    expect(relayed).toBe(inbound);
+    expect(handed.map(([requestId]) => requestId)).toEqual([...minted, relayed]);
+    expect(handed.map(([, sent]) => sent?.split("-")[1])).toEqual([...minted, relayed] as string[]);
+    expect(handed.map(([, , link]) => link)).toEqual([inbound, inbound, inbound, null, null]);
+  });
+
+  test("names the request's id on an answer of its own, and on the log line of the hop that failed", async () => {
+    const records: LogRecord[] = [];
+    const removeSink = Logger.addSink((entry) => void records.push(entry.record));
+    let answer: Response;
+    try {
+      const { proxy } = await proxyToReplica(
+        (socketPath) => Bun.listen({ unix: socketPath, socket: { data: (socket) => void socket.end() } }),
+        new Logger("GatewayProxyTest"),
+      );
+      answer = await proxy.proxyHttp(new Request("http://localhost/api/orders"), server);
+    } finally {
+      removeSink();
+    }
+
+    const id = answer.headers.get("x-request-id");
+    expect(answer.status).toBe(502);
+    expect(id).toMatch(/^[0-9a-f]{32}$/);
+    expect(records.filter((record) => record.name === "GatewayProxyTest").map((record) => record.traceId)).toEqual([
+      id,
+    ]);
   });
 });

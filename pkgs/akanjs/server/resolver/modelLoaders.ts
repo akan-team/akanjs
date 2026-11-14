@@ -7,6 +7,7 @@ import { timedQuery } from "./timedQuery";
 interface StoreHost {
   readonly __database: DatabaseAdaptor;
   readonly __store: DocumentStore;
+  readonly __model: { refName: string };
 }
 type DocumentCopy = (doc: Record<string, unknown> | null) => unknown;
 type StoredFields = Record<string, unknown>;
@@ -23,7 +24,9 @@ export const idLoaderOf = (host: StoreHost, name: string, copy: DocumentCopy) =>
   new DataLoader<string, any>(
     async (ids) => {
       traceDataLoaderBatch(ids.length);
-      const docs = await timedQuery(() => host.__store.find({ id: documentQueryHelper.oneOf([...ids]) }));
+      const docs = await timedQuery(host.__model.refName, "find", () =>
+        host.__store.find({ id: documentQueryHelper.oneOf([...ids]) }),
+      );
       const byId = new Map(docs.map((doc) => [String(doc.id), doc]));
       return ids.map((id) => byId.get(String(id)) ?? null);
     },
@@ -37,7 +40,9 @@ export const declaredLoaderOf = (host: StoreHost, key: string, loaderInfo: Loade
       if (loaderInfo.type === "query") {
         const fields = loaderInfo.field as string[];
         const query = { kind: "any", queries: keys } as QueryOf<unknown>;
-        const docs = await timedQuery(() => host.__store.find(documentQueryHelper.all(loaderInfo.defaultQuery, query)));
+        const docs = await timedQuery(host.__model.refName, "find", () =>
+          host.__store.find(documentQueryHelper.all(loaderInfo.defaultQuery, query)),
+        );
         const byKey = new Map(docs.map((doc) => [queryKeyOf(fields, doc), doc]));
         return keys.map((queryKey) => byKey.get(queryKeyOf(fields, queryKey)) ?? null);
       }
@@ -45,7 +50,9 @@ export const declaredLoaderOf = (host: StoreHost, key: string, loaderInfo: Loade
       const query = {
         [field]: documentQueryHelper.oneOf([...keys]),
       };
-      const docs = await timedQuery(() => host.__store.find(documentQueryHelper.all(loaderInfo.defaultQuery, query)));
+      const docs = await timedQuery(host.__model.refName, "find", () =>
+        host.__store.find(documentQueryHelper.all(loaderInfo.defaultQuery, query)),
+      );
       if (loaderInfo.type === "arrayField") {
         const byKey = new Map<string, unknown>();
         for (const doc of docs) {

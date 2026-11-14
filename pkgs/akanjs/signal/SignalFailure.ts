@@ -1,5 +1,5 @@
 import { AkanError } from "akanjs/base";
-import { FailureCode, isGuardRefusal, type LogAttrs } from "akanjs/common";
+import { FailureCode, isGuardRefusal, type LogAttrs, readLogContext } from "akanjs/common";
 import { isExceptionLike } from "./exception";
 
 // Anything but an `Exception` is generalized: a stack names server paths and a driver message quotes the statement.
@@ -70,16 +70,38 @@ export class SignalFailure {
   static body<Extra extends Record<string, unknown> = Record<string, never>>(
     error: unknown,
     extra: Extra = {} as Extra,
-  ): Extra & { error: string; statusCode: number; code?: string; timestamp: string; stack?: string } {
+  ): Extra & {
+    error: string;
+    statusCode: number;
+    code?: string;
+    traceId?: string;
+    timestamp: string;
+    stack?: string;
+  } {
     const detailed = SignalFailure.detailed;
     const generalized = SignalFailure.generalized(error);
     return {
       ...generalized,
       ...(detailed ? { error: error instanceof Error ? error.message : String(error) } : {}),
+      ...SignalFailure.#requestOf(),
       ...extra,
       timestamp: new Date().toISOString(),
       ...(detailed && error instanceof Error && error.stack ? { stack: error.stack } : {}),
     };
+  }
+
+  static #requestOf(): { traceId?: string } {
+    const traceId = readLogContext()?.traceId;
+    return traceId ? { traceId } : {};
+  }
+
+  static answer(error: unknown, extra: Record<string, unknown> = {}): Response {
+    if (!isExceptionLike(error)) return SignalFailure.response(error, extra);
+    const body = { ...error.toJSON(), ...extra, timestamp: new Date().toISOString() };
+    return new Response(JSON.stringify(body), {
+      status: error.statusCode,
+      headers: SignalFailure.headersOf(error, error.statusCode),
+    });
   }
 
   static response(error: unknown, extra: Record<string, unknown> = {}): Response {

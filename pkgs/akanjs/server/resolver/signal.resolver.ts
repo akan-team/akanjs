@@ -46,7 +46,6 @@ import type { ServerSignal, ServerSignalCls } from "../../signal/serverSignal";
 import { SignalContext, type WebSocketExecutionContext } from "../../signal/signalContext";
 import type { SliceCls } from "../../signal/slice";
 import type { SliceInfo } from "../../signal/sliceInfo";
-import { runTraced, SignalTrace } from "../../signal/trace";
 import type {
   LiveEndpointOption,
   LiveEventPayload,
@@ -59,6 +58,7 @@ import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
 import { httpEndpointHandler } from "./httpEndpointHandler";
 import { invalidSignal as invalid } from "./invalidSignal";
+import { JobTrace } from "./jobTrace";
 import { LivePause } from "./livePause";
 import { PendingSubscribes } from "./PendingSubscribes";
 import { RoomAdmission } from "./roomAdmission";
@@ -186,7 +186,7 @@ export class SignalResolver {
         [key]: async function (this: ServerSignal, ...args: [...args: any, jobOptions?: AkanJobOptions]) {
           const serverArgs = args.slice(0, argLength);
           const jobOptions = args.at(argLength) as AkanJobOptions | undefined;
-          return await this.queue.registerProcessQueue(key, serverArgs, jobOptions);
+          return await this.queue.registerProcessQueue(key, serverArgs, JobTrace.linked(jobOptions));
         },
       });
     });
@@ -331,8 +331,7 @@ export class SignalResolver {
     });
   }
   static #traced<A extends unknown[], R>(key: string, fn: (...args: A) => R) {
-    return async (...args: A) =>
-      await runTraced(SignalTrace.create(key, "internal", "internal"), async () => await fn(...args));
+    return async (...args: A) => await JobTrace.run(key, args[0], async () => await fn(...args));
   }
   // `placement`: the skip is a deliberate role split (operationMode/serverMode), not a disabled internal.
   static getScheduleSkipReason(

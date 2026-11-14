@@ -261,6 +261,7 @@ export declare class HttpClient {
     get timeout(): false | number | undefined;
     setRetry(retry: RetryPolicy | false): void;
     get retry(): RetryPolicy | false;
+    static traceHeaders(): Record<string, string>;
     get<Returns = unknown>(url: string, options?: FetchOptions): Promise<Returns>;
     send<Returns = unknown>(method: HttpMutationMethod, url: string, data: FormData | Record<string, unknown>, options?: FetchOptions): Promise<Returns>;
     put<Returns = unknown>(url: string, data: FormData | Record<string, unknown>, options?: FetchOptions): Promise<Returns>;

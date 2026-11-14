@@ -86,50 +86,56 @@ export const modelFacadeOf = (
   };
   const pickById = async (id: string | undefined, projection?: any) => {
     if (!id) throw new NoDocumentError("No Document ID");
-    const doc = await timedQuery(() => store.findOne({ id }, { select: projection }));
+    const doc = await timedQuery(modelName, "findOne", () => store.findOne({ id }, { select: projection }));
     if (!doc) throw missedById(modelName, id);
     return doc;
   };
   return Object.assign(Model, {
     refName: modelName,
-    pickOne: (query: QueryOf<any>, projection?: any) => timedQuery(() => store.pickOne(query, { select: projection })),
+    pickOne: (query: QueryOf<any>, projection?: any) =>
+      timedQuery(modelName, "pickOne", () => store.pickOne(query, { select: projection })),
     pickById,
     // `AndWrite` saves through the document so save hooks run; `updateById` is the hookless query-level write.
     pickAndWrite: async (id: string, rawData: any, options?: DocumentTouchOptions) =>
       await (await pickById(id)).set(rawData).save(...touchArgs(options)),
     pickOneAndWrite: async (query: QueryOf<any>, rawData: any, options?: DocumentTouchOptions) =>
-      await (await timedQuery(() => store.pickOne(query))).set(rawData).save(...touchArgs(options)),
+      await (await timedQuery(modelName, "pickOne", () => store.pickOne(query)))
+        .set(rawData)
+        .save(...touchArgs(options)),
     exists: async (query: QueryOf<any>, options?: DocumentScopeOptions) =>
-      await timedQuery(() => store.exists(query, ...scopeArgs(options))),
-    sample: (query: QueryOf<any>, size = 1) => timedQuery(() => store.find(query, { sample: size, limit: size })),
-    sampleOne: (query: QueryOf<any>) => timedQuery(() => store.findOne(query, { sample: true })),
+      await timedQuery(modelName, "exists", () => store.exists(query, ...scopeArgs(options))),
+    sample: (query: QueryOf<any>, size = 1) =>
+      timedQuery(modelName, "find", () => store.find(query, { sample: size, limit: size })),
+    sampleOne: (query: QueryOf<any>) => timedQuery(modelName, "findOne", () => store.findOne(query, { sample: true })),
     find: (query: QueryOf<any>, projection?: any, options?: DocumentScopeOptions) =>
       createFindManyChain(query, { select: projection, ...scopeOf(options) }),
     findOne: (query: QueryOf<any>, projection?: any, options?: DocumentScopeOptions) =>
       createFindOneChain(query, { select: projection, ...scopeOf(options) }),
     findById: (id: string | undefined, projection?: any, options?: DocumentScopeOptions) =>
-      id ? timedQuery(() => store.findOne({ id }, { select: projection, ...scopeOf(options) })) : Promise.resolve(null),
+      id
+        ? timedQuery(modelName, "findOne", () => store.findOne({ id }, { select: projection, ...scopeOf(options) }))
+        : Promise.resolve(null),
     count: (query: QueryOf<any>, options?: DocumentScopeOptions) =>
-      timedQuery(() => store.count(query, ...scopeArgs(options))),
+      timedQuery(modelName, "count", () => store.count(query, ...scopeArgs(options))),
     updateOne: (query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentUpdateOptions) =>
-      timedQuery(() => store.updateOneByQuery(query, update, options)),
+      timedQuery(modelName, "updateOne", () => store.updateOneByQuery(query, update, options)),
     updateMany: (
       query: QueryOf<any>,
       update: DocumentUpdateInput,
       options?: DocumentScopeOptions & DocumentTouchOptions,
-    ) => timedQuery(() => store.updateManyByQuery(query, update, ...updateManyArgs(options))),
-    removeOne: (query: QueryOf<any>) => timedQuery(() => store.removeOneByQuery(query)),
-    removeMany: (query: QueryOf<any>) => timedQuery(() => store.removeManyByQuery(query)),
-    purgeMany: (query: QueryOf<any>) => timedQuery(() => store.purgeManyByQuery(query)),
+    ) => timedQuery(modelName, "updateMany", () => store.updateManyByQuery(query, update, ...updateManyArgs(options))),
+    removeOne: (query: QueryOf<any>) => timedQuery(modelName, "removeOne", () => store.removeOneByQuery(query)),
+    removeMany: (query: QueryOf<any>) => timedQuery(modelName, "removeMany", () => store.removeManyByQuery(query)),
+    purgeMany: (query: QueryOf<any>) => timedQuery(modelName, "purgeMany", () => store.purgeManyByQuery(query)),
     updateById: (id: string, update: DocumentUpdateInput, options?: DocumentUpdateOptions) =>
-      timedQuery(() => store.updateOneByQuery({ id }, update, options)),
-    removeById: (id: string) => timedQuery(() => store.removeOneByQuery({ id })),
+      timedQuery(modelName, "updateOne", () => store.updateOneByQuery({ id }, update, options)),
+    removeById: (id: string) => timedQuery(modelName, "removeOne", () => store.removeOneByQuery({ id })),
     upsertById: (data: Record<string, unknown> & { id: string }, options?: UpsertByIdOptions) =>
-      timedQuery(() => store.upsertById(data, options)),
+      timedQuery(modelName, "upsertById", () => store.upsertById(data, options)),
     // Kept so existing call sites keep working; `@deprecated` on the `Mdl` type is what points them onward.
-    countDocuments: (query: QueryOf<any>) => timedQuery(() => store.count(query)),
+    countDocuments: (query: QueryOf<any>) => timedQuery(modelName, "count", () => store.count(query)),
     bulkWrite: (operations: { updateOne: { filter: QueryOf<any>; update: DocumentUpdateInput; upsert?: boolean } }[]) =>
-      timedQuery(() => store.bulkWrite(operations)),
+      timedQuery(modelName, "bulkWrite", () => store.bulkWrite(operations)),
     listenPre: listenPreHook,
     listenPost: listenPostHook,
   }) as unknown as Mdl<any, any>;

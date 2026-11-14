@@ -206,9 +206,20 @@ normalized to `info` with one warning.
   `traceId`. Internal triggers get `internal:<key>`, the RSC worker gets `page:<route>`, MCP calls are the
   endpoint's own type with `origin: "mcp"`. `AKAN_LOG_CONTEXT=0` is the escape hatch; `AKAN_TRACE=1` is a
   different switch that adds span and query aggregation. Measured cost: ~25ns per call.
+- **One id per request, across processes.** The `traceId` is 32 hex digits (a W3C trace id), written on the response
+  as `x-request-id` and in a failed call's body as `traceId`. The server always mints it: an inbound `traceparent`,
+  or else an `x-request-id` that is a UUID or 32 hex digits, is kept as `link` on every record of the request, and
+  `akan logs --trace` matches `link` too and takes the id as the caller sent it. Only the gateway's unix-socket hop
+  to its replica carries an id over. `AKAN_TRACE_ADOPT=trusted-proxies` lets a peer `AKAN_TRUSTED_PROXIES` names
+  (an address, a CIDR, or `private`; never the unset default, `*`, or loopback unlisted) choose the id, which is
+  safe only when that proxy overwrites or strips both headers. The replica hands its id to the RSC worker in the
+  render message, a server-side `fetch` sends `traceparent` to the app's own server and to a `clone({ origin })`,
+  every websocket frame is a span under its handshake's id, and a queued job is a trace of its own that links the
+  enqueuing one.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
-  lines wrap the traced handler from outside; gateway-internal lines have none. `akan logs --endpoint` says so.
+  lines wrap the traced handler from outside; gateway lines written outside a request have none. `akan logs
+  --endpoint` says so.
 - **`Logger.addSink(sink, { minLevel })` — give a sink its floor.** A sink with none follows `AKAN_LOG_FILE_LEVEL`
   (default `trace`), which is why a registered sink used to make every `verbose` call render (1,294ns against an
   11ns reject). The IPC forwarder and any sink that never reads the text pass a floor and cost a record literal.
@@ -239,8 +250,10 @@ normalized to `info` with one warning.
 - **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call, at `info`, `warn` under
   500, or `error` with `type` and `stack` for a 5xx (then the only 5xx record); **`AKAN_LOG_FLIGHT=1`**
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
-  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — under the local dev runtime, or
-  with the `AKAN_LOG_DEBUG_HEADER` secret.
+  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace`, records its spans and answers with
+  `Server-Timing` — under the local dev runtime, or with the `AKAN_LOG_DEBUG_HEADER` secret. A local runtime sends
+  `Server-Timing` on every signal response. Spans carry ids, parents and start offsets; under `AKAN_TRACE=1` each
+  database call is a `db:<model>.<op>` span, never its statement or values.
 - **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,
   the ssr-dev and csr-dev module registries, `/__rsc/manifest` — and is mounted through `DevRoutes.mount`, which
   refuses a path the list lacks. Each answers only localhost, an IP address, the app's own hosts and

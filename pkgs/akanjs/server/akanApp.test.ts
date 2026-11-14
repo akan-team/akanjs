@@ -597,6 +597,59 @@ describe("makeAkanChildProxyHeaders", () => {
     expect(unlisted.get("x-forwarded-proto")).toBe("https");
   });
 
+  test("hands the child one id for the request: its own, with a caller's as a link unless the operator lets a listed proxy choose", () => {
+    const inbound = "0af7651916cd43dd8448eb211c80319c";
+    const traceparent = `00-${inbound}-b7ad6b7169203331-01`;
+    const req = (headers: Record<string, string>) => new Request("https://app.example/api/x", { headers });
+    const stranger = { address: "198.51.100.7", port: 40_000, family: "IPv4" };
+    const ingress = { address: "10.0.0.5", port: 443, family: "IPv4" };
+    const idsOf = (headers: Headers) => ({
+      requestId: headers.get("x-request-id"),
+      traceId: headers.get("traceparent")?.split("-")[1],
+      parent: headers.get("traceparent")?.split("-")[2],
+      link: headers.get("x-akan-trace-link"),
+    });
+
+    const bare = idsOf(makeAkanChildProxyHeaders(req({}), 0, stranger));
+    const forged = [
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, stranger)),
+      idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, stranger)),
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent, "x-akan-trace-link": "c".repeat(32) }), 0)),
+    ];
+    const loopback = { address: "127.0.0.1", port: 50_000, family: "IPv4" };
+    const byDefault = [
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress)),
+      idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, ingress)),
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, loopback)),
+    ];
+    const viaUnixSocket = idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, null));
+    process.env.AKAN_TRACE_ADOPT = "trusted-proxies";
+    const optedInUnlisted = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    TrustedProxy.configure("10.0.0.5");
+    const relayed = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    const malformed = idsOf(
+      makeAkanChildProxyHeaders(req({ "x-request-id": "req-1\tx", traceparent: "00-1-2-3" }), 0, ingress),
+    );
+    TrustedProxy.configure("192.0.2.1/32");
+    const unlisted = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    delete process.env.AKAN_TRACE_ADOPT;
+
+    expect(bare.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(bare).toMatchObject({ traceId: bare.requestId, link: null });
+    const minted = [...forged, ...byDefault, optedInUnlisted, unlisted];
+    for (const ids of minted) {
+      expect(ids.requestId).toMatch(/^[0-9a-f]{32}$/);
+      expect(ids.requestId).not.toBe(inbound);
+      expect(ids).toMatchObject({ traceId: ids.requestId, link: inbound });
+    }
+    expect(new Set(minted.map((ids) => ids.requestId)).size).toBe(minted.length);
+    expect(relayed).toMatchObject({ requestId: inbound, traceId: inbound, link: null });
+    expect(relayed.parent).not.toBe("b7ad6b7169203331");
+    expect(viaUnixSocket).toMatchObject({ requestId: inbound, traceId: inbound });
+    expect(malformed.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(malformed).toMatchObject({ traceId: malformed.requestId, link: null });
+  });
+
   test("relays a trusted proxy's host and scheme, even when it recorded no client address", () => {
     const req = () =>
       new Request("http://akan-internal/api/x", {

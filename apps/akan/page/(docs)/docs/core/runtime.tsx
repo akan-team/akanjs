@@ -340,6 +340,15 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                     ko: "loopback 외에 전달 헤더를 믿을 프록시입니다. 목록을 주면 사설 대역을 대신합니다. 그 밖의 peer가 보낸 전달 host·scheme·port는 버립니다. private을 넣으면 그 대역의 어느 pod든 아무 호출자 주소나 댈 수 있으니, ingress만 들이는 NetworkPolicy와 함께 씁니다.",
                   }),
                 },
+                {
+                  key: "AKAN_TRACE_ADOPT",
+                  type: "trusted-proxies",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "Unset, every request gets an id the server mints, and a traceparent or x-request-id it arrived with is kept as its link. trusted-proxies takes that id as the request's own from a peer AKAN_TRUSTED_PROXIES names by address, by CIDR or with private; loopback and the private ranges count only when the list spells them, and * does not. Before turning it on, make that proxy overwrite or strip both headers on every request: one that passes them through lets any caller choose the id its response and its logs carry.",
+                    ko: "설정하지 않으면 모든 요청이 서버가 만든 id를 받고, 요청에 실려 온 traceparent나 x-request-id는 link로 남습니다. trusted-proxies로 두면 AKAN_TRUSTED_PROXIES에 주소, CIDR 또는 private으로 적은 peer가 보낸 id를 요청의 id로 씁니다. loopback과 사설 대역은 목록에 직접 적었을 때만 해당하고, *는 해당하지 않습니다. 켜기 전에 그 프록시가 모든 요청에서 두 헤더를 덮어쓰거나 지우게 하세요. 그대로 통과시키는 프록시라면 아무 호출자나 응답과 로그에 실릴 id를 정할 수 있습니다.",
+                  }),
+                },
               ]}
             />
           </Docs.Description>
@@ -758,8 +767,8 @@ REDIS_URI=redis://redis.internal:6379`}
                   type: "string",
                   default: l.trans({ en: "unset — local only", ko: "미설정 — local에서만" }),
                   desc: l.trans({
-                    en: "The secret x-akan-debug must carry outside local to log that one request at trace. With AKAN_DEVTOOLS=true it also opens devtools and Studio, when it has at least 32 characters.",
-                    ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록합니다. AKAN_DEVTOOLS=true이면 이 값이 32자 이상일 때 devtools와 Studio도 이 값으로 열립니다.",
+                    en: "The secret x-akan-debug must carry outside local to log that one request at trace and answer it with Server-Timing. With AKAN_DEVTOOLS=true it also opens devtools and Studio, when it has at least 32 characters.",
+                    ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록하고 Server-Timing으로 답합니다. AKAN_DEVTOOLS=true이면 이 값이 32자 이상일 때 devtools와 Studio도 이 값으로 열립니다.",
                   }),
                 },
               ]}

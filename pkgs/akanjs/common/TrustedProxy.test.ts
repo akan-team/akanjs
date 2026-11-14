@@ -150,6 +150,25 @@ describe("AKAN_TRUSTED_PROXIES", () => {
     expect(TrustedProxy.isTrusted("203.0.113.5")).toBe(false);
   });
 
+  test("lists a peer only when an entry spells it: not through the unset default, `*`, or loopback's standing trust", () => {
+    const peers = ["127.0.0.1", "::1", "10.0.0.5", "fd00::1", "192.0.2.1", "203.0.113.5"];
+    const listed = (list: string | undefined) => {
+      TrustedProxy.configure(list);
+      return peers.filter((peer) => TrustedProxy.isListed(peer));
+    };
+
+    expect(listed(undefined)).toEqual([]);
+    expect(listed("")).toEqual([]);
+    expect(listed("none")).toEqual([]);
+    expect(listed("*")).toEqual([]);
+    expect(listed("192.0.2.1")).toEqual(["192.0.2.1"]);
+    expect(listed("10.0.0.0/8, 192.0.2.1/32")).toEqual(["10.0.0.5", "192.0.2.1"]);
+    expect(listed("private")).toEqual(["10.0.0.5", "fd00::1"]);
+    expect(listed("127.0.0.0/8, ::1")).toEqual(["127.0.0.1", "::1"]);
+    expect(TrustedProxy.isListed(null)).toBe(false);
+    expect(TrustedProxy.isListed("not an address")).toBe(false);
+  });
+
   test("`none` trusts loopback and a unix socket only", () => {
     TrustedProxy.configure("none");
     expect(TrustedProxy.isTrusted("127.0.0.1")).toBe(true);
