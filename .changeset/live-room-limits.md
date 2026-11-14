@@ -15,7 +15,7 @@ A server process now holds at most 50,000 live rooms per model that every write 
 
 Subscribe frames now have a budget, over every pubsub endpoint: 1,000 a minute per websocket, and 10,000 a minute per caller across its sockets. A caller is its account when signed in, else its address. A subscribe past either budget is refused with the usual 429 `base.error.tooManyRequests` and `data: { seconds }`. A page's subscribes and a reconnect that resubscribes every room the socket held fit well inside both.
 
-When the server refuses a subscribe with 429, the error frame names the room it refused (`requestRoomId`).
+When the server refuses a subscribe with 429, the error frame names the room it refused (`requestRoomId`) and carries back the `token` the client numbered that subscribe frame with. A refusal whose token is not the room's latest subscribe answers an earlier one, and the client ignores it.
 - Refused for a room limit (`liveRoomLimit`), the room is dropped, so a reconnect does not send it again, and the subscriber's new `onRefused(error)` fetch policy is called.
 - Refused for a budget (`tooManyRequests`), the subscribe is sent again after the `seconds` the server named (counted as 1 to 60), plus up to a second of random wait per attempt. After five such tries without an ack, the room is dropped the same way.
 - A refusal with any other status leaves the room as it was.

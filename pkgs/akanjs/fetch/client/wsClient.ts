@@ -65,6 +65,8 @@ interface SubscribeOption {
   refused: Set<(error: unknown) => void>;
   /** Subscribes sent again after a budget refusal since the room was last acked. */
   retries: number;
+  /** The last subscribe frame sent for the room; an error frame carrying another answers an earlier one. */
+  token: number;
 }
 interface Listener {
   callback: (data: unknown) => void;
@@ -197,10 +199,12 @@ export class WsClient {
       this.#roomSubscribeMap.forEach((option) => {
         const { epoch, seq } = option.cursor;
         const since = reconnected && epoch !== null && seq !== null ? { epoch, seq } : undefined;
+        option.token = nextSubscribeToken();
         const data: WebsocketReqData = {
           key: option.key,
           data: option.data,
           subscribe: true,
+          token: option.token,
           ...(since ? { since } : {}),
         };
         this.#ws?.send(JSON.stringify(data));
@@ -240,20 +244,22 @@ export class WsClient {
           statusCode?: number;
           data?: unknown;
           requestRoomId?: string;
+          token?: number;
         } & WebsocketResData;
         if (parsed.error) {
           const error = restoreRemoteError(parsed, 500, this.ErrorCls);
           this.#options.onError?.(error, parsed.key);
           const refusedId = parsed.statusCode === 429 ? parsed.requestRoomId : undefined;
-          const refused = refusedId ? this.#roomSubscribeMap.get(refusedId) : undefined;
+          const held = refusedId ? this.#roomSubscribeMap.get(refusedId) : undefined;
+          const refused = held && parsed.token === held.token ? held : undefined;
           const retryInMs = refused ? subscribeRetryDelayOf(parsed, refused) : null;
           if (refusedId && refused && retryInMs === null) {
             this.#roomSubscribeMap.delete(refusedId);
             for (const handler of refused.refused) handler(error);
           } else if (refusedId && refused)
             setTimeout(() => {
-              if (this.#roomSubscribeMap.get(refusedId) !== refused || this.#ws?.readyState !== WebSocket.OPEN) return;
-              this.#sendSubscribe(refused.key, refused.data, true);
+              const current = this.#roomSubscribeMap.get(refusedId) === refused && refused.token === parsed.token;
+              if (current && this.#ws?.readyState === WebSocket.OPEN) this.#sendSubscribe(refused, true);
             }, retryInMs ?? 0).unref?.();
           throw error;
         }
@@ -592,9 +598,10 @@ export class WsClient {
         recovering: false,
         refused: new Set(),
         retries: 0,
+        token: 0,
       };
       this.#roomSubscribeMap.set(roomId, roomSubscribe);
-      if (this.#ws?.readyState === WebSocket.OPEN) this.#sendSubscribe(option.key, option.data, true);
+      if (this.#ws?.readyState === WebSocket.OPEN) this.#sendSubscribe(roomSubscribe, true);
       this.logger.verbose(`Websocket subscribe pubsub for ${roomId}`);
     }
     roomSubscribe.listener.add(option.handleEvent);
@@ -614,19 +621,27 @@ export class WsClient {
     this.logger.verbose(`Unsubscribe pubsub for ${roomId} - ${roomSusbscribe.listener.size} listeners remaining`);
     if (roomSusbscribe.listener.size === 0) {
       if (this.#ws?.readyState === WebSocket.OPEN) {
-        this.#sendSubscribe(option.key, option.data, false);
+        this.#sendSubscribe(roomSusbscribe, false);
       }
       this.#roomSubscribeMap.delete(roomId);
       this.logger.verbose(`Websocket unsubscribe for ${roomId}`);
     }
   }
-  #sendSubscribe(key: string, data: unknown[], subscribe: boolean) {
-    const payload: WebsocketReqData = { key, data, subscribe };
+  #sendSubscribe(option: SubscribeOption, subscribe: boolean) {
+    if (subscribe) option.token = nextSubscribeToken();
+    const payload: WebsocketReqData = {
+      key: option.key,
+      data: option.data,
+      subscribe,
+      ...(subscribe ? { token: option.token } : {}),
+    };
     this.#ws?.send(JSON.stringify(payload));
   }
 }
 
 const subscribeRetryLimit = 5;
+let lastSubscribeToken = 0;
+const nextSubscribeToken = () => ++lastSubscribeToken;
 
 //? A room refused for a limit is dropped, or every reconnect would send it again and be refused again; one refused
 //? for a budget is sent again after the server's `seconds`, plus up to a second per attempt so sockets refused

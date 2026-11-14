@@ -297,7 +297,7 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
     expect(loggerErrors).toEqual([]);
   });
 
-  test("names a refused subscribe's room on its error frame, as the client built it", async () => {
+  test("names a refused subscribe's room and token on its error frame, as the client sent them", async () => {
     const sent: string[] = [];
     const ws = fakeWs({}, (message) => sent.push(message));
     const handlers = await buildWebsocketHandlers({
@@ -309,7 +309,7 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
       logger: { error: () => undefined, warn: () => undefined } as never,
     });
 
-    await handlers.message?.(ws, JSON.stringify({ key: "feed", data: ["news"], subscribe: true }));
+    await handlers.message?.(ws, JSON.stringify({ key: "feed", data: ["news"], subscribe: true, token: 7 }));
     await handlers.message?.(ws, JSON.stringify({ key: "feed", data: ["news"] }));
 
     expect(JSON.parse(sent[0] ?? "{}")).toMatchObject({
@@ -319,6 +319,7 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
       data: { limit: 256, per: "socket" },
       key: "feed",
       requestRoomId: websocketRoomContract.idOf("feed", ["news"]),
+      token: 7,
     });
     expect(JSON.parse(sent[1] ?? "{}")).not.toHaveProperty("requestRoomId");
   });

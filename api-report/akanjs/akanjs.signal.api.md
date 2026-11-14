@@ -1834,6 +1834,7 @@ export type WebsocketReqData = {
     data: unknown[];
     subscribe?: boolean;
     since?: WebsocketRoomCursor;
+    token?: number;
 };
 
 export type WebsocketResData = WebsocketAuthAck | WebsocketMessageData | WebsocketPublishData | WebsocketResyncData | WebsocketSubscribeAck;

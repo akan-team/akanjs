@@ -171,13 +171,13 @@ export class ApiRouter {
           return;
         }
         //? Named on an error frame, so a client can tell which subscribe or message the refusal answers.
-        let failed: { key?: string; requestRoomId?: string } = {};
+        let failed: { key?: string; requestRoomId?: string; token?: number } = {};
         try {
           const msg = ApiRouter.#frameOf(message);
           failed = {
             key: msg.key,
             ...(msg.subscribe === true && Array.isArray(msg.data)
-              ? { requestRoomId: websocketRoomContract.idOf(msg.key, msg.data) }
+              ? { requestRoomId: websocketRoomContract.idOf(msg.key, msg.data), token: msg.token }
               : {}),
           };
           if (msg.key === websocketAuthContract.key) {
