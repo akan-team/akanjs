@@ -2,6 +2,11 @@ export interface AgentWireToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /**
+   * Set by an adaptor when a finished answer's arguments were not one JSON object, and `args` is then `{}`: why, for
+   * the call to be answered with as its error, never run, so the model can write it again.
+   */
+  argsError?: string;
 }
 
 export interface AgentWireToolResult {

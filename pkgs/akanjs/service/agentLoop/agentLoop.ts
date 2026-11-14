@@ -299,8 +299,8 @@ export class AgentLoop {
     try {
       for (const [at, call] of calls.entries()) {
         const verdict = verdicts[at] ?? { deny: AgentLoop.unjudged };
-        const asked = this.#askUser.isMeta(call.name);
-        const meta = asked || this.#toolkits.isMeta(call.name);
+        const asked = !call.argsError && this.#askUser.isMeta(call.name);
+        const meta = asked || (!call.argsError && this.#toolkits.isMeta(call.name));
         stop = this.#haltStop() ?? (verdict === "allow" && !meta ? this.#callBudgetStop() : null);
         if (stop) break;
         const unasked = asked ? LoopAsk.refusalOf(call) : null;
@@ -332,6 +332,7 @@ export class AgentLoop {
   }
 
   async #verdictOf(call: AgentWireToolCall, tool: AgentTool | undefined): Promise<Verdict> {
+    if (call.argsError) return { deny: call.argsError, code: "invalidArgument" };
     if (this.#toolkits.isMeta(call.name) || this.#askUser.isMeta(call.name)) return "allow";
     //? Security: refused here, as a guard that hid a tool from the listing may still pass it at call time, past `approve`.
     if (!tool) {

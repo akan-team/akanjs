@@ -1,4 +1,4 @@
-import type { AgentWireTool } from "./llm.adaptor";
+import type { AgentWireTool, AgentWireToolCall } from "./llm.adaptor";
 
 export const eachSseData = async (body: ReadableStream<Uint8Array>, onData: (payload: string) => void) => {
   let buffer = "";
@@ -36,6 +36,26 @@ export const parseToolArgs = (raw: string | undefined): Record<string, unknown> 
   }
 };
 
+const argsProblem = (raw: string): string => {
+  try {
+    JSON.parse(raw);
+    return "the value is not an object";
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+};
+
+export const toolCallOf = (id: string, name: string, raw: string | undefined): AgentWireToolCall => {
+  const args = parseToolArgs(raw);
+  if (args) return { id, name, args };
+  return {
+    id,
+    name,
+    args: {},
+    argsError: `Not run: the arguments were not one JSON object (${argsProblem(raw ?? "")}). Call the tool again with valid JSON arguments.`,
+  };
+};
+
 const takesNoArguments = (tools: AgentWireTool[], name: string | undefined): boolean => {
   const tool = tools.find((candidate) => candidate.name === name);
   if (!tool) return false;
@@ -45,13 +65,13 @@ const takesNoArguments = (tools: AgentWireTool[], name: string | undefined): boo
 
 //? Security: a call that lost its arguments would otherwise run with `{}`, which every optional-argument write accepts.
 //? A gateway that loses the provider mid-call still closes with its own end marker, so with no finish reason behind
-//? it, empty arguments are a finished call only for a tool that takes none.
+//? it, empty arguments are a finished call only for a tool that takes none. Behind a finish reason, arguments that do
+//? not parse are the model's, and `toolCallOf` hands them back to it.
 export const isStreamCut = (
   calls: Iterable<{ name?: string; args: string }>,
   { ended, finished }: { ended: boolean; finished: boolean },
   tools: AgentWireTool[],
 ): boolean =>
   !ended ||
-  [...calls].some(
-    ({ name, args }) => parseToolArgs(args) === null || (!finished && !args && !takesNoArguments(tools, name)),
-  );
+  (!finished &&
+    [...calls].some(({ name, args }) => parseToolArgs(args) === null || (!args && !takesNoArguments(tools, name))));

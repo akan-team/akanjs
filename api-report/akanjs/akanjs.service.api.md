@@ -279,6 +279,7 @@ export interface AgentWireToolCall {
     id: string;
     name: string;
     args: Record<string, unknown>;
+    argsError?: string;
 }
 
 export interface AgentWireToolResult {

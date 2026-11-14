@@ -152,6 +152,7 @@ export declare class AgentTurnStream {
             requested?: number;
         };
     };
+    static relayable<Turn extends StreamedTurn>(turn: Turn): Turn;
     static response(run: RunTurn): Response;
 }
 

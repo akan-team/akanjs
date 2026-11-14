@@ -58,10 +58,50 @@ describe("a stream that did not finish", () => {
     expect((await anthropic([start, blockStop, stopped, messageStop], writing)).stop).toBe("toolUse");
   });
 
-  test("an OpenAI call with no finish reason or [DONE], or arguments that do not parse, is cut", async () => {
+  test("an OpenAI call with no finish reason or [DONE], or arguments that do not parse behind a bare [DONE], is cut", async () => {
     expect((await openai(toolFrame('{"a":1}'))).stop).toBe("length");
-    expect((await openai([...toolFrame('{"a":'), finished])).stop).toBe("length");
-    expect((await openai([...toolFrame("[1]"), finished])).stop).toBe("length");
+    expect((await openai([...toolFrame('{"a":'), "data: [DONE]"])).stop).toBe("length");
+    expect((await openai([...toolFrame("[1]"), "data: [DONE]"])).stop).toBe("length");
+  });
+
+  test("a finished stream's malformed arguments come back as that call's error, not as a cut turn", async () => {
+    const chunk = (choice: object) =>
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, ...choice }] })}`;
+    const answer = await openai([
+      chunk({
+        delta: {
+          role: "assistant",
+          tool_calls: [{ index: 0, id: "c1", type: "function", function: { name: "write", arguments: "" } }],
+        },
+        finish_reason: null,
+      }),
+      chunk({ delta: { tool_calls: [{ index: 0, function: { arguments: '{"body": "hi",}' } }] }, finish_reason: null }),
+      chunk({ delta: {}, finish_reason: "tool_calls" }),
+      "data: [DONE]",
+    ]);
+    expect(answer.stop).toBe("toolUse");
+    expect(answer.toolCalls).toEqual([
+      { id: "c1", name: "write", args: {}, argsError: expect.stringContaining("Not run") },
+    ]);
+    expect((await openai([...toolFrame("[1]"), finished])).toolCalls?.[0]?.argsError).toContain("not an object");
+    const ceiling = `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}`;
+    expect((await openai([...toolFrame('{"body": "half'), ceiling, "data: [DONE]"])).stop).toBe("length");
+  });
+
+  test("an Anthropic stream that stopped on tool_use hands malformed input back the same way", async () => {
+    const answer = await anthropic([
+      `data: ${JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 40, output_tokens: 1 } } })}`,
+      ...anthropicToolFrames('{"a":'),
+      `data: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`,
+      `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 12 } })}`,
+      `data: ${JSON.stringify({ type: "message_stop" })}`,
+    ]);
+    expect(answer.stop).toBe("toolUse");
+    expect(answer.toolCalls?.[0]).toMatchObject({ id: "c1", name: "write", args: {} });
+    expect(answer.toolCalls?.[0]?.argsError).toContain("Not run");
+    expect(answer.usage).toMatchObject({ inputTokens: 40, outputTokens: 12 });
+    const ceiling = `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "max_tokens" } })}`;
+    expect((await anthropic([...anthropicToolFrames('{"a":'), ceiling])).stop).toBe("length");
   });
 
   test("an OpenAI call that finished is not, a gateway's bare [DONE] and a no-argument call included", async () => {
@@ -70,9 +110,11 @@ describe("a stream that did not finish", () => {
     expect((await openai([...toolFrame(""), finished])).stop).toBe("toolUse");
   });
 
-  test("an Anthropic call with no stop reason, or arguments that do not parse, is cut", async () => {
+  test("an Anthropic call with no stop reason, or arguments that do not parse behind a bare message_stop, is cut", async () => {
     expect((await anthropic(anthropicToolFrames('{"a":1}'))).stop).toBe("length");
-    expect((await anthropic([...anthropicToolFrames('{"a":'), stopped])).stop).toBe("length");
+    expect(
+      (await anthropic([...anthropicToolFrames('{"a":'), `data: ${JSON.stringify({ type: "message_stop" })}`])).stop,
+    ).toBe("length");
     expect((await anthropic([...anthropicToolFrames('{"a":1}'), stopped])).stop).toBe("toolUse");
   });
 

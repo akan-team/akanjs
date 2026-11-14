@@ -510,6 +510,84 @@ describe("AgentLoop spend on interruption", () => {
     expect(called).toEqual([]);
   });
 
+  test("answers a finished stream's malformed call with the parse error, and asks the model again", async () => {
+    const encoder = new TextEncoder();
+    const chunk = (choice: object) =>
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, ...choice }] })}\n\n`;
+    const scripts = [
+      [
+        chunk({
+          delta: {
+            role: "assistant",
+            tool_calls: [{ index: 0, id: "c1", type: "function", function: { name: "renameTitle", arguments: "" } }],
+          },
+          finish_reason: null,
+        }),
+        chunk({
+          delta: { tool_calls: [{ index: 0, function: { arguments: '{"title": "a",}' } }] },
+          finish_reason: null,
+        }),
+        chunk({ delta: {}, finish_reason: "tool_calls" }),
+        "data: [DONE]\n\n",
+      ],
+      [chunk({ delta: { content: "Renamed." }, finish_reason: "stop" }), "data: [DONE]\n\n"],
+    ];
+    const requests: LlmTurnRequest[] = [];
+    const called: string[] = [];
+    const { port } = harness([]);
+    const service = Object.assign(new AgentService(), {
+      llm: {
+        chat: (request: LlmTurnRequest, onDelta: (delta: string) => void) => {
+          requests.push(request);
+          const frames = scripts.shift() ?? [];
+          const body = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode(frames.join("")));
+              controller.close();
+            },
+          });
+          return OpenaiDialect.consumeStream(body, onDelta, "https://llm.test", request.tools);
+        },
+      },
+      agentTools: {
+        ...port.tools,
+        callAs: async (_account: unknown, call: AgentWireToolCall) => {
+          called.push(call.id);
+          return { id: call.id, name: call.name, result: "ran" };
+        },
+      },
+    });
+    const events: AgentLoopEvent[] = [];
+    for await (const event of service.loop(ask("rename it"))) events.push(event);
+    expect(stopOf(events)).toBe("end");
+    expect(called).toEqual([]);
+    const answered = { id: "c1", name: "renameTitle", code: "invalidArgument" };
+    expect(events.find((event) => event.type === "toolResult")).toMatchObject({ result: answered });
+    expect(requests[1]?.messages.at(-1)).toMatchObject({ role: "tool", toolResults: [answered] });
+  });
+
+  test("answers a malformed askUser or openToolkit call with its error instead of acting on it", async () => {
+    const argsError = "Not run: the arguments were not one JSON object.";
+    const { port, called } = harness([
+      calling(
+        { id: "q1", name: "askUser", args: {}, argsError },
+        { id: "k1", name: "openToolkit", args: {}, argsError },
+      ),
+      saying("Sorry."),
+    ]);
+    const events = await drain(
+      port,
+      ask("go", { ask: true, toolkits: { docs: { description: "d", tools: ["readPage"] } } }),
+    );
+    expect(stopOf(events)).toBe("end");
+    expect(events.some((event) => event.type === "awaiting")).toBe(false);
+    expect(called).toEqual([]);
+    expect(events.filter((event) => event.type === "toolResult").map((event) => event.result)).toEqual([
+      { id: "q1", name: "askUser", error: argsError, code: "invalidArgument" },
+      { id: "k1", name: "openToolkit", error: argsError, code: "invalidArgument" },
+    ]);
+  });
+
   test("keeps the provider's own counts an adaptor attached to wallMs's rejection", async () => {
     const counted = { inputTokens: 7, outputTokens: 3, cachedTokens: 1 };
     const { reports } = await cutShort({ budget: { wallMs: 5 } }, counted);

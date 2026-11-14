@@ -17,7 +17,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData, isStreamCut, parseToolArgs } from "./sseData";
+import { eachSseData, isStreamCut, parseToolArgs, toolCallOf } from "./sseData";
 
 type AnthropicSource = { type: "base64"; media_type: string; data: string } | { type: "url"; url: string };
 type AnthropicContentBlock =
@@ -410,9 +410,7 @@ export class AnthropicLlm
     });
     const toolCalls = [...calls.entries()]
       .sort(([a], [b]) => a - b)
-      .flatMap(([, call]) =>
-        call.id && call.name ? [{ id: call.id, name: call.name, args: AnthropicLlm.parsedArgs(call.args) }] : [],
-      );
+      .flatMap(([, call]) => (call.id && call.name ? [toolCallOf(call.id, call.name, call.args)] : []));
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),

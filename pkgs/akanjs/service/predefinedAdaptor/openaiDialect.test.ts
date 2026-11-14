@@ -231,6 +231,20 @@ describe("OpenaiDialect", () => {
     ).toBe("length");
   });
 
+  test("a whole answer's malformed arguments mark the call with why, so it is answered rather than run", () => {
+    const answer = OpenaiDialect.turnAnswer({
+      choices: [
+        {
+          message: { tool_calls: [{ id: "c1", function: { name: "submitTask", arguments: "{'title': 'x'}" } }] },
+          finish_reason: "tool_calls",
+        },
+      ],
+    });
+    expect(answer.stop).toBe("toolUse");
+    expect(answer.toolCalls?.[0]).toMatchObject({ id: "c1", name: "submitTask", args: {} });
+    expect(answer.toolCalls?.[0]?.argsError).toContain("Call the tool again");
+  });
+
   test("an unparsable arguments string becomes an empty call rather than a crash", () => {
     expect(OpenaiDialect.parsedArgs("not json")).toEqual({});
     expect(OpenaiDialect.parsedArgs('["array"]')).toEqual({});

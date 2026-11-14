@@ -11,7 +11,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData, isStreamCut, parseToolArgs } from "./sseData";
+import { eachSseData, isStreamCut, parseToolArgs, toolCallOf } from "./sseData";
 
 export interface OpenaiToolCall {
   id?: string;
@@ -247,9 +247,7 @@ export class OpenaiDialect {
     });
     const toolCalls = [...calls]
       .sort((a, b) => a.index - b.index)
-      .flatMap((call) =>
-        call.id && call.name ? [{ id: call.id, name: call.name, args: OpenaiDialect.parsedArgs(call.args) }] : [],
-      );
+      .flatMap((call) => (call.id && call.name ? [toolCallOf(call.id, call.name, call.args)] : []));
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
@@ -288,7 +286,7 @@ export class OpenaiDialect {
     const choice = answer.choices?.[0];
     const toolCalls = (choice?.message?.tool_calls ?? []).flatMap((call) => {
       if (!call.id || !call.function?.name) return [];
-      return [{ id: call.id, name: call.function.name, args: OpenaiDialect.parsedArgs(call.function.arguments) }];
+      return [toolCallOf(call.id, call.function.name, call.function.arguments)];
     });
     return {
       ...(choice?.message?.content ? { text: choice.message.content } : {}),
