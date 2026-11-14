@@ -354,8 +354,8 @@ export default page()
         key: "load<Model>Many(ids)",
         type: "Promise<Doc[]>",
         desc: l.trans({
-          en: "Loads several ids in one batched query.",
-          ko: "여러 id를 쿼리 한 번에 묶어 불러옵니다.",
+          en: "Loads several ids in one batched query for every 500 distinct ids.",
+          ko: "여러 id를 서로 다른 id 500개마다 쿼리 한 번에 묶어 불러옵니다.",
         }),
       },
       {
@@ -1870,16 +1870,16 @@ export class UserModel extends into(
               {l.trans({
                 en: (
                   <span>
-                    A loader collects the lookups made in the same tick and answers them with one query, so a hundred{" "}
-                    <code>load()</code> calls cost one round-trip. Declare one in the fourth argument of{" "}
-                    <code>into()</code> for a lookup key you use often.
+                    A loader collects the lookups made in the same tick and answers them with one query for every 500
+                    distinct keys, so a hundred <code>load()</code> calls cost one round-trip. Declare one in the fourth
+                    argument of <code>into()</code> for a lookup key you use often.
                   </span>
                 ),
                 ko: (
                   <span>
-                    로더는 같은 틱에 들어온 조회를 모아 쿼리 한 번으로 답합니다. <code>load()</code>를 백 번 불러도
-                    왕복은 한 번입니다. 자주 쓰는 조회 키가 있으면 <code>into()</code>의 네 번째 인자에 로더를
-                    선언합니다.
+                    로더는 같은 틱에 들어온 조회를 모아 서로 다른 키 500개마다 쿼리 한 번으로 답합니다.{" "}
+                    <code>load()</code>를 백 번 불러도 왕복은 한 번입니다. 자주 쓰는 조회 키가 있으면{" "}
+                    <code>into()</code>의 네 번째 인자에 로더를 선언합니다.
                   </span>
                 ),
               })}
