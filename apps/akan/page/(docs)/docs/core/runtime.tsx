@@ -317,8 +317,8 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                   type: "CIDR, … | private | none | *",
                   default: l.trans({ en: "private ranges", ko: "사설 대역" }),
                   desc: l.trans({
-                    en: "Proxies besides loopback whose headers are believed; a list replaces the private ranges. Any other peer's forwarded host, scheme and port are dropped. private lets any pod in them name any caller, so pair it with a NetworkPolicy admitting only the ingress.",
-                    ko: "loopback 외에 전달 헤더를 믿을 프록시입니다. 목록을 주면 사설 대역을 대신합니다. 그 밖의 peer가 보낸 전달 host·scheme·port는 버립니다. private을 넣으면 그 대역의 어느 pod든 아무 호출자 주소나 댈 수 있으니, ingress만 들이는 NetworkPolicy와 함께 씁니다.",
+                    en: "Proxies besides loopback whose headers are believed; a list replaces the private ranges. Any other peer's forwarded host, scheme and port are dropped, and its traceparent or x-request-id is kept as a link beside a fresh request id. private lets any pod in them name any caller, so pair it with a NetworkPolicy admitting only the ingress.",
+                    ko: "loopback 외에 전달 헤더를 믿을 프록시입니다. 목록을 주면 사설 대역을 대신합니다. 그 밖의 peer가 보낸 전달 host·scheme·port는 버리고, traceparent나 x-request-id는 새 요청 id 옆에 link로만 남깁니다. private을 넣으면 그 대역의 어느 pod든 아무 호출자 주소나 댈 수 있으니, ingress만 들이는 NetworkPolicy와 함께 씁니다.",
                   }),
                 },
               ]}
@@ -739,8 +739,8 @@ REDIS_URI=redis://redis.internal:6379`}
                   type: "string",
                   default: l.trans({ en: "unset — local only", ko: "미설정 — local에서만" }),
                   desc: l.trans({
-                    en: "The secret x-akan-debug must carry outside local to log that one request at trace.",
-                    ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록합니다.",
+                    en: "The secret x-akan-debug must carry outside local to log that one request at trace and answer it with Server-Timing.",
+                    ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록하고 Server-Timing으로 답합니다.",
                   }),
                 },
               ]}

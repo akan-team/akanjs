@@ -41,8 +41,8 @@ export default page()
       {
         name: "traceId",
         desc: l.trans({
-          en: "An id shared by every line one request writes, such as `m8x1k2-a9f3c1`.",
-          ko: "요청 하나가 남긴 모든 줄이 함께 갖는 id입니다. 예: `m8x1k2-a9f3c1`.",
+          en: "An id shared by every line one request writes, in the gateway, the replica and the RSC worker alike: 32 hex digits such as `0af7651916cd43dd8448eb211c80319c`. The response carries it as `x-request-id`, and a failed call's body as `traceId`.",
+          ko: "요청 하나가 gateway, replica, RSC worker 어디에서든 남긴 모든 줄이 함께 갖는 id입니다. `0af7651916cd43dd8448eb211c80319c` 같은 16진수 32자리입니다. 응답은 `x-request-id` 헤더로, 실패한 호출의 본문은 `traceId`로 이 값을 알려 줍니다.",
         }),
       },
       {
@@ -329,15 +329,16 @@ export default page()
         desc: l.trans({
           en: (
             <>
-              Gateway-internal lines, the scheduler's own started/finished lines and unauthenticated primitive GET
-              queries on the fast path carry no traceId or endpoint. <code>AKAN_LOG_CONTEXT=0</code> turns request
-              context off everywhere.
+              Gateway lines written outside a request, the scheduler's own started/finished lines and unauthenticated
+              primitive GET queries on the fast path carry no traceId or endpoint. <code>AKAN_LOG_CONTEXT=0</code> turns
+              the endpoint context off everywhere; the gateway and the replica still write the request's id.
             </>
           ),
           ko: (
             <>
-              gateway 내부 줄, 스케줄러 자체의 started/finished 줄, fast path로 처리되는 비인증 primitive GET 쿼리에는
-              traceId와 endpoint가 없습니다. <code>AKAN_LOG_CONTEXT=0</code>은 요청 문맥을 전부 끕니다.
+              요청 밖에서 쓰인 gateway 줄, 스케줄러 자체의 started/finished 줄, fast path로 처리되는 비인증 primitive
+              GET 쿼리에는 traceId와 endpoint가 없습니다. <code>AKAN_LOG_CONTEXT=0</code>은 endpoint 문맥을 전부 끄지만
+              gateway와 replica는 요청의 id를 계속 씁니다.
             </>
           ),
         }),
@@ -386,6 +387,13 @@ export default page()
         }),
       },
       {
+        name: "link",
+        desc: l.trans({
+          en: "An id the call was handed but did not take: the `traceparent` or `x-request-id` of a caller that is not a trusted proxy, or for a queued job the trace that enqueued it.",
+          ko: "호출이 받았지만 자기 id로 쓰지 않은 id입니다. 신뢰하는 프록시가 아닌 호출자가 보낸 `traceparent`나 `x-request-id`, 큐 작업이라면 그 작업을 넣은 trace의 id입니다.",
+        }),
+      },
+      {
         name: ["db", "dbMs", "cacheHit"],
         desc: l.trans({
           en: "Query count, query time and cache hit ratio, only under `AKAN_TRACE=1`.",
@@ -402,6 +410,43 @@ export default page()
     ];
 
     const requestNotes = [
+      l.trans({
+        en: (
+          <>
+            <strong>A caller's own id counts only from a trusted proxy.</strong> A request that arrives with a W3C{" "}
+            <code>traceparent</code>, or else an <code>x-request-id</code> that is a UUID or 32 hex digits, keeps that
+            id when its peer is in <code>AKAN_TRUSTED_PROXIES</code>. From anyone else the server mints an id and keeps
+            the caller's as <code>link</code>. Have your proxy set or overwrite both headers, as it does{" "}
+            <code>x-forwarded-for</code>.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>호출자가 보낸 id는 신뢰하는 프록시의 것만 씁니다.</strong> W3C <code>traceparent</code>나, UUID 또는
+            16진수 32자리인 <code>x-request-id</code>를 달고 온 요청은 peer가 <code>AKAN_TRUSTED_PROXIES</code>에 있을
+            때만 그 id를 씁니다. 그 밖의 호출자에게는 서버가 새 id를 만들고 호출자의 id는 <code>link</code>로 남깁니다.
+            프록시가 <code>x-forwarded-for</code>처럼 두 헤더도 직접 쓰거나 덮어쓰게 하세요.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>The id follows what the request starts.</strong> A page's render in the RSC worker, the{" "}
+            <code>fetch</code> calls a server makes to this app or to a <code>clone({"{ origin }"})</code>, and every
+            frame of a websocket (under its handshake's id) write the same <code>traceId</code>. A queued job gets an id
+            of its own and names the enqueuing one as <code>link</code>.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>id는 요청이 시작한 일을 따라갑니다.</strong> RSC worker의 페이지 렌더, 서버가 이 앱이나{" "}
+            <code>clone({"{ origin }"})</code> 대상에 보내는 <code>fetch</code> 호출, websocket의 모든 frame(handshake의
+            id 아래)이 같은 <code>traceId</code>를 씁니다. 큐 작업은 자기 id를 받고, 작업을 넣은 쪽의 id를{" "}
+            <code>link</code>로 남깁니다.
+          </>
+        ),
+      }),
       l.trans({
         en: (
           <>
@@ -1635,8 +1680,8 @@ akan:myapp> .tail off`}
                   type: "string",
                   default: l.trans({ en: "unset", ko: "없음" }),
                   desc: l.trans({
-                    en: "Secret for `x-akan-debug`, which lowers one request to trace. Unset, it works only in local.",
-                    ko: "요청 하나를 trace로 낮추는 `x-akan-debug` 헤더의 비밀값입니다. 없으면 local에서만 받습니다.",
+                    en: "Secret for `x-akan-debug`, which lowers one request to trace, records its spans and answers with `Server-Timing`. Unset, it works only in local.",
+                    ko: "`x-akan-debug` 헤더의 비밀값입니다. 이 헤더는 요청 하나를 trace로 낮추고, 그 요청의 span을 기록하고, `Server-Timing`으로 답합니다. 없으면 local에서만 받습니다.",
                   }),
                 },
                 {
@@ -1644,8 +1689,8 @@ akan:myapp> .tail off`}
                   type: "1",
                   default: off,
                   desc: l.trans({
-                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics.",
-                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다.",
+                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per database call among them.",
+                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다. 데이터베이스 호출마다 `db:<model>.<op>` span이 하나씩 들어갑니다.",
                   }),
                 },
               ]}
@@ -1676,7 +1721,8 @@ akan:myapp> .tail off`}
 # ${l.trans({
                 en: "that request alone is logged at trace, its lines marked debug=true",
                 ko: "그 요청만 trace로 찍히고, 그 줄에는 debug=true가 붙습니다",
-              })}`}
+              })}
+# Server-Timing: total;dur=12.4, guards;dur=0.3, handler;dur=11.2, db;desc="order.findOne";dur=9.8`}
             />
             <ul className={bulletList}>
               {requestNotes.map((note, idx) => (
@@ -1814,14 +1860,14 @@ akan:myapp> .tail off`}
                     <>
                       <strong>Keep traceId and userId as JSON fields, not Loki labels.</strong> Labels must stay
                       low-cardinality (app, env, role, level); pick ids at query time with{" "}
-                      <code>{'{app="myapp"} | json | traceId="m8x1k2-a9f3c1"'}</code>.
+                      <code>{'{app="myapp"} | json | traceId="0af7651916cd43dd8448eb211c80319c"'}</code>.
                     </>
                   ),
                   ko: (
                     <>
                       <strong>traceId와 userId는 Loki 라벨이 아니라 JSON 필드로 둡니다.</strong> 라벨은 app, env, role,
                       level처럼 값의 종류가 적어야 합니다. id는 쿼리할 때{" "}
-                      <code>{'{app="myapp"} | json | traceId="m8x1k2-a9f3c1"'}</code>로 고릅니다.
+                      <code>{'{app="myapp"} | json | traceId="0af7651916cd43dd8448eb211c80319c"'}</code>로 고릅니다.
                     </>
                   ),
                 })}
