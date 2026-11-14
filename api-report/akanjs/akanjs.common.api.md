@@ -786,6 +786,7 @@ export interface LogContextSnapshot {
     traceId: null | string;
     endpoint: null | string;
     origin: null | string;
+    link?: null | string;
     flight?: LogFlightRecorder | null;
     debugSev?: null | number;
 }
@@ -816,6 +817,7 @@ export interface LogRecord {
     origin: null | string;
     traceId: null | string;
     endpoint: null | string;
+    link?: string;
     attrs?: LogAttrs;
 }
 
@@ -1324,6 +1326,7 @@ export declare class TrustedProxy {
     static configure(list: null | string | undefined): void;
     static reset(): void;
     static isTrusted(address: null | string | undefined): boolean;
+    static isListed(address: null | string | undefined): boolean;
     static clientAddress(headers: Headers, peerAddress: null | string | undefined): null | string;
     static resolve(headers: Headers, peerAddress: null | string | undefined): ResolvedClient;
     static isPrivateAddress(address: string): boolean;

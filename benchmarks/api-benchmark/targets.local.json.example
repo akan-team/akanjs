@@ -26,8 +26,7 @@
       "AKAN_PUBLIC_OPERATION_MODE": "local",
       "SERVER_MODE": "all",
       "AKAN_PUBLIC_LOG_LEVEL": "warn",
-      "AKAN_LOG_FILE_LEVEL": "warn",
-      "AKAN_BENCH_SKIP_REQUEST_ID": "1"
+      "AKAN_LOG_FILE_LEVEL": "warn"
     },
     "port": 8282,
     "baseUrl": "http://127.0.0.1:8282",

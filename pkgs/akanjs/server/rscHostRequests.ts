@@ -1,9 +1,10 @@
 import { AkanError } from "akanjs/base";
 import type { Logger } from "akanjs/common";
+import { RequestTrace } from "../signal/requestTrace";
 import type { ClientManifest } from "./artifact";
 import { createRscHostRenderStream, type RscPending, type RscRenderResult } from "./rscHostRenderStream";
 import type { RscProcess, RscWorkerErrorCode, RscWorkerProcess } from "./rscWorkerProcess";
-import type { RscRenderOptions } from "./ssrTypes";
+import type { RscRenderOptions, RscRenderTrace } from "./ssrTypes";
 
 interface RscCall {
   resolve: (value: unknown) => void;
@@ -39,10 +40,12 @@ export class RscHostRequests {
 
   render(req: Request, options: RscRenderOptions): Promise<RscRenderResult> {
     const requestId = crypto.randomUUID();
+    //? Read here, in the request's own turn: a render queued behind a starting worker is sent from another one.
+    const trace = RscHostRequests.#traceOf(RequestTrace.current());
     return createRscHostRenderStream({
       setPending: (pending) => this.pending.set(requestId, pending),
       deletePending: () => this.pending.delete(requestId),
-      sendRenderOrQueue: () => this.#sendRenderOrQueue(requestId, req, options),
+      sendRenderOrQueue: () => this.#sendRenderOrQueue(requestId, req, options, trace),
       cancelRender: () => this.#cancelRender(requestId),
       signal: options.signal,
       onPendingChunkOverflow: () => {
@@ -103,7 +106,17 @@ export class RscHostRequests {
     return headers;
   }
 
-  #sendRenderOrQueue(requestId: string, req: Request, { clientManifest, clientIp, prefetch }: RscRenderOptions): void {
+  static #traceOf(request: RequestTrace | undefined): RscRenderTrace {
+    if (!request) return {};
+    return { traceparent: request.traceparent, ...(request.link ? { traceLink: request.link } : {}) };
+  }
+
+  #sendRenderOrQueue(
+    requestId: string,
+    req: Request,
+    { clientManifest, clientIp, prefetch }: RscRenderOptions,
+    trace: RscRenderTrace,
+  ): void {
     const send = () => {
       if (!this.pending.has(requestId)) return;
       try {
@@ -120,6 +133,7 @@ export class RscHostRequests {
           manifestRevision: named?.revision,
           clientManifest: named?.held ? undefined : clientManifest,
           prefetch,
+          ...trace,
         });
         if (clientManifest && named && !named.held)
           this.#sentManifest = { proc, manifest: clientManifest, revision: named.revision };

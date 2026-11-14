@@ -1468,7 +1468,7 @@ export declare class SignalContext<Ctx extends HttpExecutionContext | WebSocketE
     static setHttpPeerResolver(resolve: HttpPeerResolver | null): void;
     exec(): Promise<unknown>;
     static wasReported(error: unknown): boolean;
-    static run<T>(endpoint: Adaptor, endpointInfo: EndpointInfo, key: string, origin: TraceOrigin, fn: () => Promise<T>): Promise<T>;
+    static run<T>(endpoint: Adaptor, endpointInfo: EndpointInfo, key: string, origin: TraceOrigin, fn: () => Promise<T>, parent?: TraceParentRef | null): Promise<T>;
     static try(endpoint: Adaptor, endpointInfo: EndpointInfo, key: string, fn: () => Promise<Response | undefined>): Promise<Response | undefined>;
     static resolveReturn(value: unknown, { signalContext, returnRef, arrDepth, registry, live, cache, path, }: {
         signalContext: SignalContext | null;
@@ -1523,9 +1523,11 @@ export declare class SignalFailure {
         error: string;
         statusCode: number;
         code?: string;
+        traceId?: string;
         timestamp: string;
         stack?: string;
     };
+    static answer(error: unknown, extra?: Record<string, unknown>): Response;
     static response(error: unknown, extra?: Record<string, unknown>): Response;
     static headersOf(error: unknown, statusCode: number): Record<string, string>;
 }
@@ -1571,7 +1573,7 @@ export declare class SignalTrace {
     readonly endpointKey: string;
     readonly endpointType: string;
     readonly origin: TraceOrigin;
-    readonly mode: TraceMode;
+    mode: TraceMode;
     readonly startedAt: number;
     readonly spans: SpanRecord[];
     readonly attrs: LogAttrs;
@@ -1586,19 +1588,30 @@ export declare class SignalTrace {
     error: unknown;
     debugSev: null | number;
     flight: LogFlightRecorder | null;
-    constructor(endpointKey: string, endpointType: string, { mode, origin }?: {
+    link: null | string;
+    constructor(endpointKey: string, endpointType: string, { mode, origin, parent, }?: {
         mode?: TraceMode;
         origin?: TraceOrigin;
+        parent?: TraceParentRef | null;
     });
     get traceId(): string;
-    static create(endpointKey: string, endpointType: string, origin: TraceOrigin): SignalTrace | null;
+    get spanId(): string;
+    get parentSpanId(): null | string;
+    get sampled(): boolean;
+    get traceparent(): string;
+    static create(endpointKey: string, endpointType: string, origin: TraceOrigin, parent?: TraceParentRef | null): SignalTrace | null;
     static get activeFlights(): number;
     get endpoint(): string;
     startFlightRecorder(): boolean;
     applyDebugHeader(value: null | string | undefined): boolean;
+    get exposesTiming(): boolean;
+    writeServerTiming(response: Response): void;
+    serverTiming(): string;
     setAttr(key: string, value: LogAttrs[string]): void;
-    recordSpan(name: string, durationMs: number): void;
+    recordSpan(name: string, durationMs: number, attrs?: LogAttrs): void;
+    span<T>(name: string, fn: () => Promise<T>): Promise<T>;
     countDbQuery(durationMs: number): void;
+    recordDbQuery(model: string, op: string, durationMs: number): void;
     countCache(hit: boolean): void;
     countDataLoaderBatch(keyCount: number): void;
     fail(error: unknown): void;
@@ -1783,8 +1796,12 @@ export type SliceInfoServerArgs<S> = SliceInfoParts<S>["serverArgs"];
 export type SliceInfoSrvs<S> = SliceInfoParts<S>["srvs"];
 
 export interface SpanRecord {
+    id: string;
+    parentId: null | string;
     name: string;
+    startMs: number;
     durationMs: number;
+    attrs?: LogAttrs;
 }
 
 export type SrvMap<S extends ServiceModel> = S["srvMap"];
@@ -2829,6 +2846,13 @@ declare class TraceAggregator {
             }[];
         }[];
     };
+}
+
+interface TraceParentRef {
+    readonly traceId: string;
+    readonly spanId: string;
+    readonly sampled?: boolean;
+    readonly link?: null | string;
 }
 
 interface WebSocketRequest {

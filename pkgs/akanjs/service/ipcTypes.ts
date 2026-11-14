@@ -19,6 +19,8 @@ export interface AkanJobOptions {
   backoff?: number | { type?: string; delay?: number; maxDelay?: number };
   removeOnComplete?: boolean | number;
   removeOnFail?: boolean | number;
+  /** The trace id of the call that enqueued the job, set by the framework: the job's own trace names it as `link`. */
+  traceLink?: string;
 }
 
 export interface AkanJob<Data = unknown, Returns = unknown> {

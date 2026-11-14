@@ -322,7 +322,7 @@ export class FetchClient {
   }
   #makeRequestHeaders(option?: FetchPolicy): Record<string, string> {
     const clientIp = this.#clientIp ? { "x-real-ip": this.#clientIp } : this.#forwardedClientIp(option);
-    return { ...this.#makeAuthHeaders(option), ...clientIp };
+    return { ...this.#makeAuthHeaders(option), ...clientIp, ...HttpClient.traceHeaders() };
   }
   // A call made while rendering reaches this server from its own address; the page request's `x-real-ip` (which the
   // page renderer resolved) keeps rate limits and `.with(Ip)` about the person.

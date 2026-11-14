@@ -4,6 +4,7 @@ import { Logger, type LogRecord, SessionCookies } from "akanjs/common";
 import { getDefaultInjectRegistry, LiveRoomLimitError } from "akanjs/service";
 import { SignalContext } from "akanjs/signal";
 import { websocketRoomContract } from "../../common/websocketContract";
+import { RequestTrace } from "../../signal/requestTrace";
 import { AkanResponse, WebProxyRunner } from "../proxy";
 import type { HttpRoutes, WebsocketRoutes } from "../types";
 import type { ApiRouter as ApiRouterType } from "./apiRouter";
@@ -220,6 +221,74 @@ describe("ApiRouter.buildRoutes", () => {
     expect((await open({ upgrade: "h2c" }))?.status).toBe(426);
     expect((await open({ upgrade: "WebSocket", connection: "Upgrade" }))?.status).toBe(500);
   });
+
+  test("gives every request an id of its own on its answer, and takes one over only from the gateway's hop", async () => {
+    const inbound = "0af7651916cd43dd8448eb211c80319c";
+    const traceparent = `00-${inbound}-b7ad6b7169203331-01`;
+    const { HostAllowlist } = await import("./hostAllowlist");
+    const seen: (string | undefined)[] = [];
+    const page = () => {
+      seen.push(RequestTrace.current()?.traceId);
+      return new Response("page");
+    };
+    const routes = await buildRoutes({
+      routes: { "/ping": () => new Response("api") } as HttpRoutes,
+      builtinRoutes: { "/mcp": { POST: () => new Response("mcp") } } as unknown as HttpRoutes,
+      renderEnvRoutes: { "/*": page } as HttpRoutes,
+      hostAllowlist: new HostAllowlist(["app.example.com"]),
+    });
+    const idOf = async (headers: Record<string, string>) =>
+      (
+        await (routes["/*"] as RouteFn)(
+          new Request("http://app.example.com/", { headers: { host: "app.example.com", ...headers } }),
+        )
+      ).headers.get("x-request-id");
+
+    try {
+      const minted = await idOf({});
+      SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
+      const forgedTraceparent = await idOf({ traceparent });
+      const forgedRequestId = await idOf({ "x-request-id": inbound });
+      SignalContext.setHttpPeerResolver(() => ({ address: "10.0.0.2", port: 50_000 }));
+      const viaPrivateProxy = await idOf({ traceparent });
+      SignalContext.setHttpPeerResolver(() => ({ address: "127.0.0.1", port: 50_000 }));
+      const fromLoopback = await idOf({ "x-request-id": inbound });
+      SignalContext.setHttpPeerResolver(() => null);
+      const fromGateway = await idOf({ traceparent, "x-request-id": "f".repeat(32) });
+      const malformed = await idOf({ "x-request-id": "0af7651916cd43dd8448eb211c80319c0" });
+      const refused = await (routes["/*"] as RouteFn)(
+        new Request("http://evil.example/", { headers: { traceparent } }),
+      );
+      const api = await (routes["/api/ping"] as RouteFn)(
+        new Request("http://app.example.com/api/ping", { headers: { host: "app.example.com" } }),
+      );
+      const mcp = await (routes["/mcp"] as { POST: RouteFn }).POST(
+        new Request("http://app.example.com/mcp", { method: "POST", headers: { host: "app.example.com" } }),
+      );
+
+      const own = [minted, forgedTraceparent, forgedRequestId, viaPrivateProxy, fromLoopback, malformed];
+      for (const id of own) {
+        expect(id).toMatch(/^[0-9a-f]{32}$/);
+        expect(id).not.toBe(inbound);
+      }
+      expect(new Set(own).size).toBe(6);
+      expect(fromGateway).toBe(inbound);
+      expect(seen).toEqual([...own.slice(0, 5), inbound, malformed] as string[]);
+      expect(refused.status).toBe(403);
+      expect(refused.headers.get("x-request-id")).toBe(inbound);
+      expect([await api.text(), api.headers.get("x-request-id")]).toEqual([
+        "api",
+        expect.stringMatching(/^[0-9a-f]{32}$/),
+      ]);
+      expect([await mcp.text(), mcp.headers.get("x-request-id")]).toEqual([
+        "mcp",
+        expect.stringMatching(/^[0-9a-f]{32}$/),
+      ]);
+      expect(RequestTrace.current()).toBeUndefined();
+    } finally {
+      SignalContext.setHttpPeerResolver(null);
+    }
+  });
 });
 
 describe("ApiRouter.buildWebsocketHandlers", () => {
@@ -262,6 +331,56 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
     expect(JSON.parse(sent[2] ?? "{}")).toMatchObject({ statusCode: 500, key: "broken" });
     expect(loggerErrors).toHaveLength(1);
     expect(loggerErrors[0]).toContain("SQLITE_ERROR: no such column: item.secret");
+  });
+
+  test("runs every frame of a socket under its handshake's id, each as a span of its own, and names it on a refusal", async () => {
+    const { AppWsData } = await import("./appWsData");
+    const { SignalTrace } = await import("../../signal/trace");
+    const upgraded: AppWsDataType[] = [];
+    const routes = await buildRoutes({ upgradeAppWs: (_req, data) => upgraded.push(data) > 0 });
+    const open = (headers: Record<string, string>) =>
+      (routes["/api/ws"] as RouteFn)(new Request("http://localhost/api/ws", { headers }));
+    SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
+    try {
+      await open({ "x-request-id": "0af7651916cd43dd8448eb211c80319c" });
+      await open({});
+    } finally {
+      SignalContext.setHttpPeerResolver(null);
+    }
+    const [first, second] = upgraded.map((data) => data.trace);
+    const sent: string[] = [];
+    const frames: { traceId?: string; spanId?: string; parent?: string | null }[] = [];
+    const handlers = await buildWebsocketHandlers({
+      wsRoutes: {
+        echo: async () => {
+          const trace = SignalTrace.create("echo", "message", "websocket");
+          frames.push({ traceId: trace?.traceId, spanId: trace?.spanId, parent: trace?.parentSpanId });
+          return { ok: true };
+        },
+      } as WebsocketRoutes,
+    });
+    const frame = async (data: unknown, key: string) =>
+      await handlers.message?.(
+        fakeWs(data, (message) => sent.push(message)),
+        JSON.stringify({ key, data: [] }),
+      );
+
+    await frame(upgraded[0], "echo");
+    await frame(upgraded[0], "echo");
+    await frame(upgraded[1], "echo");
+    await frame(upgraded[0], "missing");
+    await frame(AppWsData.fromRequest(new Request("http://localhost/api/ws")), "missing");
+
+    expect(first?.traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(first?.traceId).not.toBe("0af7651916cd43dd8448eb211c80319c");
+    expect(first?.link).toBe("0af7651916cd43dd8448eb211c80319c");
+    expect(second?.traceId).not.toBe(first?.traceId);
+    expect(frames.map((seen) => seen.traceId)).toEqual([first?.traceId, first?.traceId, second?.traceId]);
+    expect(frames.map((seen) => seen.parent)).toEqual([first?.spanId, first?.spanId, second?.spanId] as string[]);
+    expect(frames[0]?.spanId).not.toBe(frames[1]?.spanId);
+    expect(JSON.parse(sent[3] ?? "{}")).toMatchObject({ statusCode: 404, key: "missing", traceId: first?.traceId });
+    expect(JSON.parse(sent[4] ?? "{}")).not.toHaveProperty("traceId");
+    expect(RequestTrace.current()).toBeUndefined();
   });
 
   test("answers a frame it cannot read 400 with its code, and only the reason outside development", async () => {

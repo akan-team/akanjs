@@ -15,6 +15,7 @@ import {
   SignalFailure,
   type SliceCls,
 } from "akanjs/signal";
+import { TraceContext } from "../common/TraceContext";
 import { AppScope } from "./appScope";
 import { type FetchBridgeCall, FetchClient, type FetchProxy } from "./client/fetchClient";
 import { HttpClient } from "./client/httpClient";
@@ -2316,6 +2317,37 @@ describe("FetchClient HTTP generation", () => {
       null,
       "Bearer visitor",
     ]);
+  });
+
+  test("continues the open trace on a server's own calls, to this server and to one a clone names, and sends nothing else", async () => {
+    setMockFetch();
+    jsonResponses.push("outside", "own", "clone", "per-call");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    type Getter = { getThing: (id: string, tags: string[], empty: null) => Promise<unknown> };
+    const id = "abcdefabcdefabcdefabcdef";
+    const traceparent = "00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-00";
+    let open: string | undefined;
+    TraceContext.registerOutboundReader(() => open);
+    try {
+      await client.handler.getThing(id, [], null);
+      open = traceparent;
+      await client.handler.getThing(id, [], null);
+      await (client.clone({ origin: "https://cloud.example", connect: false }) as unknown as Getter).getThing(
+        id,
+        [],
+        null,
+      );
+      await client.handler.getThing(id, [], null, { origin: "https://cloud.example" });
+    } finally {
+      TraceContext.registerOutboundReader(null);
+    }
+
+    const sent = fetchCalls.map((call) => new Headers(call.init?.headers as HeadersInit));
+    expect(sent.map((headers) => headers.get("traceparent"))).toEqual([null, traceparent, traceparent, traceparent]);
+    expect(sent.map((headers) => [headers.get("x-request-id"), headers.get("x-akan-trace-link")])).toEqual(
+      sent.map(() => [null, null]),
+    );
+    expect(HttpClient.traceHeaders()).toEqual({});
   });
 
   test("sends the token setJwt holds only to this client's origin: another origin gets the token its caller gave or none", async () => {

@@ -58,6 +58,12 @@ export interface RscRenderOptions {
   prefetch?: boolean;
 }
 
+/** The trace a render belongs to, beside its `requestId`, which only names the render to cancel or answer. */
+export interface RscRenderTrace {
+  traceparent?: string;
+  traceLink?: string;
+}
+
 export interface SsrFromRscInput {
   request?: Request;
   requestStore?: AkanRequestStore;

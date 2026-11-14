@@ -482,6 +482,7 @@ export interface AkanJobOptions {
     };
     removeOnComplete?: boolean | number;
     removeOnFail?: boolean | number;
+    traceLink?: string;
 }
 
 export interface AkanMetricsReport {
