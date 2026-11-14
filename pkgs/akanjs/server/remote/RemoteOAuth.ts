@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import type { RemoteFetch } from "./RemoteFetch";
-import { RemoteError } from "./remoteError";
+import { clipRemoteText, RemoteError } from "./remoteError";
 
 export interface RemoteAuthServer {
   issuer: string;
@@ -53,9 +53,15 @@ export class RemoteOAuth {
   static async discover(fetcher: RemoteFetch, mcpUrl: string, challenge?: string | null): Promise<RemoteAuthServer> {
     const resourceDoc = await RemoteOAuth.#first(fetcher, RemoteOAuth.#resourceUrls(mcpUrl, challenge));
     const resource = typeof resourceDoc?.resource === "string" ? resourceDoc.resource : mcpUrl;
+    //? RFC 9728 §3.3: a document naming another resource is not used, so the token is never minted for one elsewhere.
+    if (!RemoteOAuth.#covers(resource, mcpUrl))
+      throw new RemoteError("remoteOAuth", `${new URL(mcpUrl).host} names another resource as its own.`);
     const issuers = RemoteOAuth.#strings(resourceDoc?.authorization_servers);
     for (const issuer of issuers.length ? issuers : [new URL(mcpUrl).origin]) {
-      const doc = await RemoteOAuth.#first(fetcher, RemoteOAuth.#serverUrls(issuer));
+      //? RFC 8414 §3.3: the issuer a document names must be the one asked about, or the document is not used.
+      const doc = await RemoteOAuth.#first(fetcher, RemoteOAuth.#serverUrls(issuer), (found) =>
+        RemoteOAuth.#sameIssuer(found.issuer, issuer),
+      );
       if (!doc) continue;
       const methods = RemoteOAuth.#strings(doc.code_challenge_methods_supported);
       //? Refused rather than downgraded (OAuth 2.1): a document without S256 is too old, or rewritten on the way.
@@ -172,9 +178,13 @@ export class RemoteOAuth {
         ...RemoteOAuth.#credentials(client),
       }).toString(),
     });
+    //? Only a refusal ends the grant: a 5xx, a 429 or an error page is a token endpoint that is down for now.
+    const refused = status >= 400 && status < 500 && status !== 429;
+    if (!refused && (status >= 400 || body === null))
+      throw new RemoteError("remoteUnavailable", `The token endpoint could not answer: ${status}.`, { status });
     const answer = (body ?? {}) as TokenBody;
-    if (status >= 300 || typeof answer.access_token !== "string" || !answer.access_token) {
-      const reason = typeof answer.error === "string" ? answer.error : String(status);
+    if (refused || typeof answer.access_token !== "string" || !answer.access_token) {
+      const reason = typeof answer.error === "string" ? clipRemoteText(answer.error) : String(status);
       throw new RemoteError("remoteOAuth", `The token request was refused: ${reason}.`, { status });
     }
     const seconds = typeof answer.expires_in === "number" && answer.expires_in > 0 ? answer.expires_in : null;
@@ -225,13 +235,34 @@ export class RemoteOAuth {
     }
   }
 
-  static async #first(fetcher: RemoteFetch, urls: string[]): Promise<Record<string, unknown> | undefined> {
+  static async #first(
+    fetcher: RemoteFetch,
+    urls: string[],
+    accept: (doc: Record<string, unknown>) => boolean = () => true,
+  ): Promise<Record<string, unknown> | undefined> {
     for (const url of [...new Set(urls)]) {
       const answer = await fetcher.json(url).catch(() => null);
       const body = answer?.status === 200 ? answer.body : null;
-      if (body && typeof body === "object" && !Array.isArray(body)) return body as Record<string, unknown>;
+      if (body && typeof body === "object" && !Array.isArray(body) && accept(body as Record<string, unknown>))
+        return body as Record<string, unknown>;
     }
     return undefined;
+  }
+
+  //? Compared as parsed urls: a bare origin and the same origin with a slash are one issuer, a path and its slash are not.
+  static #sameIssuer(named: unknown, asked: string): boolean {
+    if (typeof named !== "string") return true;
+    const parsed = URL.parse(named);
+    return named === asked || (!!parsed && parsed.href === URL.parse(asked)?.href);
+  }
+
+  //? Many servers name their origin or a parent path as the resource while serving MCP below it.
+  static #covers(resource: string, mcpUrl: string): boolean {
+    const named = URL.parse(resource);
+    const mcp = new URL(mcpUrl);
+    if (!named || named.origin !== mcp.origin) return false;
+    const base = named.pathname.replace(/\/$/, "");
+    return !base || mcp.pathname === base || mcp.pathname.startsWith(`${base}/`);
   }
 
   static #strings(value: unknown): string[] {

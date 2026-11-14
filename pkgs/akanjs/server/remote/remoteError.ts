@@ -14,3 +14,6 @@ export class RemoteError extends AkanError<RemoteErrorCode, { challenge?: string
     this.name = "RemoteError";
   }
 }
+
+export const clipRemoteText = (text: string, max = 300): string =>
+  text.length > max ? `${text.slice(0, max)}…` : text;

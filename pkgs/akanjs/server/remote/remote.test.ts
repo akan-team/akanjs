@@ -148,6 +148,7 @@ describe("RemoteOAuth", () => {
     );
     expect(authorize.searchParams.get("code_challenge_method")).toBe("S256");
     expect(authorize.searchParams.get("resource")).toBe(server.resource);
+    expect(server.resource).toBe("https://shop.example.com/mcp");
     const tokens = await RemoteOAuth.exchange(fetcher, server, {
       code: "c1",
       verifier,
@@ -161,7 +162,99 @@ describe("RemoteOAuth", () => {
       client_id: "dyn_1",
       client_secret: "s3",
       code_verifier: verifier,
+      resource: "https://shop.example.com/mcp",
     });
+  });
+
+  test("takes a server's metadata only when it names the issuer it was asked about", async () => {
+    const other = fetcherOf(({ url }) =>
+      url.includes("/.well-known/oauth-authorization-server") || url.includes("/.well-known/openid-configuration")
+        ? json({ ...metadata, issuer: "https://auth.example.org" })
+        : new Response(null, { status: 404 }),
+    );
+    expect(await codeOf(RemoteOAuth.discover(other.fetcher, "https://shop.example.com/mcp"))).toBe("remoteOAuth");
+
+    const tenant = "https://auth.example.org/tenant";
+    const pathed = fetcherOf(({ url }) => {
+      if (url.endsWith("/.well-known/oauth-protected-resource/mcp"))
+        return json({ resource: "https://shop.example.com/mcp", authorization_servers: [tenant] });
+      if (url === "https://93.184.216.34/.well-known/oauth-authorization-server/tenant")
+        return json({ ...metadata, issuer: "https://auth.example.org" });
+      if (url === "https://93.184.216.34/tenant/.well-known/openid-configuration")
+        return json({ ...metadata, issuer: tenant, token_endpoint: `${tenant}/token` });
+      return new Response(null, { status: 404 });
+    });
+    const server = await RemoteOAuth.discover(pathed.fetcher, "https://shop.example.com/mcp");
+    expect(server).toMatchObject({ issuer: tenant, tokenEndpoint: `${tenant}/token` });
+
+    const slashed = fetcherOf(({ url }) =>
+      url.endsWith("/.well-known/oauth-authorization-server")
+        ? json({ ...metadata, issuer: "https://shop.example.com/" })
+        : new Response(null, { status: 404 }),
+    );
+    expect((await RemoteOAuth.discover(slashed.fetcher, "https://shop.example.com/mcp")).issuer).toBe(
+      "https://shop.example.com/",
+    );
+  });
+
+  test("takes the resource a server's metadata names only on the MCP endpoint's origin and path", async () => {
+    const discoverWith = async (resource: string, mcpUrl = "https://shop.example.com/api/mcp") => {
+      const { fetcher, seen } = fetcherOf(({ url }) => {
+        if (url.includes("/.well-known/oauth-protected-resource"))
+          return json({ resource, authorization_servers: ["https://shop.example.com"] });
+        if (url.endsWith("/.well-known/oauth-authorization-server")) return json(metadata);
+        return new Response(null, { status: 404 });
+      });
+      try {
+        return { resource: (await RemoteOAuth.discover(fetcher, mcpUrl)).resource, seen };
+      } catch (error) {
+        return { resource: error instanceof RemoteError ? error.code : String(error), seen };
+      }
+    };
+    expect((await discoverWith("https://shop.example.com/api/mcp")).resource).toBe("https://shop.example.com/api/mcp");
+    expect((await discoverWith("https://shop.example.com/api")).resource).toBe("https://shop.example.com/api");
+    expect((await discoverWith("https://shop.example.com")).resource).toBe("https://shop.example.com");
+    expect((await discoverWith("https://shop.example.com/api/mcp/")).resource).toBe(
+      "https://shop.example.com/api/mcp/",
+    );
+    expect((await discoverWith("https://shop.example.com/ap")).resource).toBe("remoteOAuth");
+    expect((await discoverWith("https://shop.example.com/api/mcp/tools")).resource).toBe("remoteOAuth");
+    const foreign = await discoverWith("https://mail.example.org/api/mcp");
+    expect(foreign.resource).toBe("remoteOAuth");
+    expect(foreign.seen.some(({ url }) => url.includes("oauth-authorization-server"))).toBe(false);
+  });
+
+  test("takes only https endpoints out of a server's metadata", async () => {
+    const plain = fetcherOf(() => json({ ...metadata, token_endpoint: "http://shop.example.com/oauth/token" }));
+    expect(await codeOf(RemoteOAuth.discover(plain.fetcher, "https://shop.example.com/mcp"))).toBe("remoteOAuth");
+  });
+
+  test("tells a token endpoint that refused from one that could not answer", async () => {
+    const refreshWith = async (response: () => Response) => {
+      const { fetcher } = fetcherOf(response);
+      try {
+        await RemoteOAuth.refresh(
+          fetcher,
+          { tokenEndpoint: metadata.token_endpoint, resource: "https://shop.example.com/mcp" },
+          { refreshToken: "old", client: { clientId: "dyn_1" } },
+        );
+        return null;
+      } catch (error) {
+        return error instanceof RemoteError ? [error.code, error.data?.status] : String(error);
+      }
+    };
+    expect(await refreshWith(() => json({ error: "invalid_grant" }, { status: 400 }))).toEqual(["remoteOAuth", 400]);
+    expect(await refreshWith(() => new Response(null, { status: 401 }))).toEqual(["remoteOAuth", 401]);
+    expect(await refreshWith(() => json({ token_type: "Bearer" }))).toEqual(["remoteOAuth", 200]);
+    expect(await refreshWith(() => json({ error: "temporarily_unavailable" }, { status: 503 }))).toEqual([
+      "remoteUnavailable",
+      503,
+    ]);
+    expect(await refreshWith(() => new Response("slow down", { status: 429 }))).toEqual(["remoteUnavailable", 429]);
+    expect(await refreshWith(() => new Response("<html>maintenance</html>", { status: 200 }))).toEqual([
+      "remoteUnavailable",
+      200,
+    ]);
   });
 
   test("names the refusal of a token request", async () => {
