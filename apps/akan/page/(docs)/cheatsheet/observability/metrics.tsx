@@ -889,6 +889,34 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
                 {l.trans({
                   en: (
                     <span>
+                      <strong>
+                        <code>rscFirstRenderMemory</code> names the routes that grew the RSC worker most.
+                      </strong>{" "}
+                      In <code>/_akan/app/metrics</code>, next to the last render&apos;s fields, it lists per route what
+                      its first render added to <code>rss</code>, <code>heapUsed</code>, <code>external</code> and{" "}
+                      <code>arrayBuffers</code>, and the modules it loaded: largest first, at most 20 routes. Renders
+                      running at the same time share one delta, so read it on a quiet replica. It costs two memory reads
+                      per route&apos;s first render, and one check per render while <code>AKAN_MEMORY_LOG</code> is off.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>
+                        <code>rscFirstRenderMemory</code>는 RSC worker를 가장 많이 키운 라우트를 알려 줍니다.
+                      </strong>{" "}
+                      <code>/_akan/app/metrics</code>의 마지막 렌더 필드 옆에, 라우트마다 첫 렌더가 <code>rss</code>,{" "}
+                      <code>heapUsed</code>, <code>external</code>, <code>arrayBuffers</code>를 얼마나 늘렸는지와 그
+                      렌더가 불러온 모듈을 큰 순서로 20개 라우트까지 보여 줍니다. 동시에 돈 렌더는 같은 증가분에
+                      섞이므로 조용한 replica에서 읽으세요. 라우트마다 첫 렌더에 메모리를 두 번 읽는 비용이 들고,{" "}
+                      <code>AKAN_MEMORY_LOG</code>가 꺼져 있으면 렌더마다 검사 하나만 거칩니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
                       <strong>The gateway's own line is at verbose.</strong> That is below the default <code>info</code>
                       , so set <code>AKAN_PUBLIC_LOG_LEVEL=verbose</code> to see it in the console.
                     </span>

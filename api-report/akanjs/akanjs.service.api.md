@@ -567,6 +567,14 @@ export interface AkanMetricsReport {
     rscLastRenderRouteId?: string;
     rscLastRenderLoadedModuleDelta?: number;
     rscLastRenderLoadedModules?: string[];
+    rscFirstRenderMemory?: Array<{
+        routeId: string;
+        rssDeltaBytes: number;
+        heapUsedDeltaBytes: number;
+        externalDeltaBytes: number;
+        arrayBuffersDeltaBytes: number;
+        loadedModules: string[];
+    }>;
     rscResultCacheEntries?: number;
     rscResultCacheBytes?: number;
     rscPatchResultCacheEntries?: number;

@@ -411,6 +411,7 @@ export class RscRenderer {
       rscLastRenderDurationMs: this.#stats.lastRenderDurationMs,
       rscLastRenderLoadedModuleDelta: this.#stats.lastRenderLoadedModuleDelta,
       rscLastRenderLoadedModules: this.#stats.lastRenderLoadedModules,
+      rscFirstRenderMemory: this.#stats.firstRenderMemory.report,
       rscLastFlightBytes: this.#stats.lastFlightBytes,
       rscLastFlightChunks: this.#stats.lastFlightChunks,
       rscTotalFlightBytes: this.#stats.totalFlightBytes,
