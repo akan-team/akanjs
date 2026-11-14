@@ -196,9 +196,11 @@ export class AgentLoop {
     this.#storedJudged = true;
     const listed = new Set(endpoints.map((tool) => tool.name));
     const lent = new Set((this.#request.clientTools ?? []).map((tool) => tool.name));
-    //? A page that lends the name may have answered it in a run that had not turned `ask` or `toolkits` on.
-    const own = ({ name }: AgentWireToolCall) =>
-      !lent.has(name) && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name));
+    //? A page that lends the name may have answered it in a run that had not turned `ask` or `toolkits` on. An open
+    //? that names a remote is answered with that party's text: its tool list, or the error of an open that failed.
+    const own = (call: AgentWireToolCall) =>
+      !lent.has(call.name) &&
+      (this.#askUser.isMeta(call.name) || (this.#toolkits.isMeta(call.name) && !this.#toolkits.externalOf(call)));
     for (const result of LoopStored.read(this.#messages, listed, own)) {
       if (result) this.#taintBy(result);
       else this.#tainted = true;

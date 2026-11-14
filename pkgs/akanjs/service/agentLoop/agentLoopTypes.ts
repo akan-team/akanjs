@@ -170,13 +170,16 @@ export interface AgentLoopOptions {
    * Says which endpoint results carry text someone else wrote. Left out, every result of a call that ran taints the
    * run, an error included, so with no `approve` only the batch written before any result may write; `() => false`
    * trusts them all. A client tool's answer always taints and is never shown to it, as a page may name a tool after
-   * an endpoint. `askUser`'s answer, `openToolkit`'s and a call the run refused never taint. Sees a
-   * result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results, or with none
-   * counts every stored result, a refusal included, and also reads the `tainted` mark on stored messages, so store
-   * each message `onMessage` hands over whole. A stored result whose call names no endpoint the resumed run lists, a
-   * page's tool or one the run no longer has, taints without it; the run's own `Unknown tool: <name>.` taints
-   * nothing. Keep `ask` and `toolkits` the same for the life of a transcript: a stored `askUser` or `openToolkit`
-   * answer is the run's own only under the options it was given with, and one whose name the page lends taints.
+   * an endpoint, and so do the open of a remote and any call into one, refused or not. `askUser`'s answer, the open
+   * of a toolkit of `toolkits` and any other call the run refused never taint. Sees a result whole, before the
+   * 20,000-character clip. A resume re-applies it to stored, clipped results, or with none counts every stored
+   * result, a refusal included, and also reads the `tainted` mark on stored messages, so store each message
+   * `onMessage` hands over whole. A stored result whose call names no endpoint the resumed run lists, a page's tool,
+   * a remote's, the open of a remote or a tool the run no longer has, taints without it; the run's own
+   * `Unknown tool: <name>.` taints nothing. A stored refusal to connect reads as the error of an open that failed, so
+   * it taints a later resume. Keep `ask`, `toolkits` and `remotes` the same for the life of a transcript: a stored
+   * `askUser` or `openToolkit` answer is the run's own only under the options it was given with, and one whose name
+   * the page lends taints.
    */
   untrusted?: (result: AgentWireToolResult) => boolean;
   meta?: Record<string, string>;

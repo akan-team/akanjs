@@ -53,8 +53,10 @@ at every event.
 - **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
   result of a call that ran — an endpoint tool's or a client tool's, an error included — and every later call
   reaches `approve(call, { tainted, tool, client })` with `tainted` set, and `client: true` when the call is to a
-  page's tool. `askUser`'s answer, `openToolkit`'s and a call the run refused without running taint nothing. A batch
-  is judged before it runs, since the model wrote it before reading its results. Without `approve`, a `needsConfirm`
+  page's tool. `askUser`'s answer, `openToolkit`'s and a call the run refused without running taint nothing. A
+  remote is the exception on each count: opening one taints the run, and so does any call into one, refused or not,
+  whatever `untrusted` returns and with none given. A batch is judged before it runs, since the model wrote it
+  before reading its results. Without `approve`, a `needsConfirm`
   tool — on this catalogue, a mutation with the `destructive` hint above — is refused, and so is every write once
   tainted: such a run writes only in the batch written before any result, and a later write is answered with the
   code `writeAfterRead` and a sentence naming the two ways on. Pass `approve` to decide those calls, or pass
@@ -68,11 +70,11 @@ at every event.
 - **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice
   — and call `loop` again with them. A stored result is read as the answer to the call its id names, under that
   call's name. It is judged as an endpoint's only when that call names an endpoint this run lists: any other, a
-  page's tool or a tool this run no longer has, taints the run without asking `untrusted`, whatever mark it was
-  stored with. The run's own answer to a tool name the model made up, `Unknown tool: <name>.` with nothing beside
-  it, taints nothing. Keep `ask` and `toolkits` the same for the life of a transcript: a stored `askUser` or
-  `openToolkit` answer is the run's own only under the options it was given with, and one whose name the page lends
-  taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
+  page's tool, a remote's, the open of a remote or a tool this run no longer has, taints the run without asking
+  `untrusted`, whatever mark it was stored with. The run's own answer to a tool name the model made up,
+  `Unknown tool: <name>.` with nothing beside it, taints nothing. Keep `ask`, `toolkits` and `remotes` the same for
+  the life of a transcript: a stored `askUser` or `openToolkit` answer is the run's own only under the options it
+  was given with, and one whose name the page lends taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
   the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the run
   and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal included, as a resume
   cannot tell one from a result. Store every message whole, marks included. `compacted` says the first `replaced`
@@ -128,11 +130,14 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   it opens the other server's sign-in in a window and calls back once `page/remote/callback` finished the exchange.
   Resume with the stored messages and no `answer`, and the run opens the toolkit itself. When the user declines,
   resume with `answer: { id, error }` for that call: the run stores your sentence as the open's result and goes on.
-  It is the user's own word, so it taints nothing. An `answer` carrying a `result` for an open is refused with
+  It is the user's own word, so it taints nothing in that run; a later resume cannot tell the stored refusal from
+  the error of an open that failed, and starts tainted. An `answer` carrying a `result` for an open is refused with
   `agent.error.answerRefused`, as only the server sees whether a connection exists.
 - **What a remote lists and returns is another party's text.** Opening a remote taints the run, whatever `untrusted`
-  says: its tools' names, descriptions and schemas reach the model with the open, and so does the error of an open
-  that failed. An open that only asks the user to connect taints nothing. A call's arguments leave for that server,
+  says and with none given: its tools' names, descriptions and schemas reach the model with the open, and so does
+  the error of an open that failed. A resume reads it off the stored call, mark or no mark: a stored result of a
+  `<name>.<tool>` call, or of an `openToolkit` call that names a remote, taints unasked. An open that only asks the
+  user to connect taints nothing. A call's arguments leave for that server,
   and `readOnly` is the remote's own word for its tool, so a request with `remotes` and no `approve` is refused
   before any model call, as `base.error.requiredArgument` naming `approve`: pass one with `remotes`. It is told the
   target as `state.remote`, and hears a tool the remote does not call read-only as a `needsConfirm` one. Show the
