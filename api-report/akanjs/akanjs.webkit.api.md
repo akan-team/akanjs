@@ -27,12 +27,47 @@ export interface McpAppBootProps {
     basePath?: string;
 }
 
+export declare class McpAppHost {
+    static readonly protocolVersion = "2026-01-26";
+    static readonly maxHeight = 4000;
+    constructor(props: McpAppHostProps);
+    receive(data: unknown): void;
+    contextChanged(): void;
+    dispose(): void;
+}
+
+export interface McpAppHostProps {
+    post: (message: McpJsonRpcMessage) => void;
+    start: () => Promise<Partial<McpToolResult>>;
+    callTool: (name: string, args: Record<string, unknown>, signal: AbortSignal) => Promise<Partial<McpToolResult>>;
+    openLink: (url: string) => boolean;
+    context: () => McpHostContext;
+    onSize?: (height: number) => void;
+    name?: string;
+}
+
 export interface McpAppRootProps {
     params: {
         lang: string;
     };
     path: string;
     children: ReactNode;
+}
+
+export interface McpHostContext {
+    theme?: "dark" | "light";
+    displayMode?: "fullscreen" | "inline" | "pip";
+    locale?: string;
+    timeZone?: string;
+    containerDimensions?: {
+        width?: number;
+        height?: number;
+        maxWidth?: number;
+        maxHeight?: number;
+    };
+    styles?: {
+        variables?: Record<string, string | undefined>;
+    };
 }
 
 export interface ScreenScopeItem {
@@ -70,6 +105,8 @@ export declare const createSitemapPage: (clientHttpUri: string, paths: string[])
 }[];
 
 export declare const lazy: <Loaded>(loader: () => Promise<Loaded>, option?: LazyOption) => LoadedOf<Loaded>;
+
+export declare const needsBrowser: () => void;
 
 export declare const replacePages: (context: CsrRouteContext) => Promise<boolean>;
 

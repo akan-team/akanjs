@@ -10,11 +10,46 @@ import type {
 
 export type AgentLoopApproval = "allow" | "defer" | { deny: string };
 
-/** `tainted`: a result `untrusted` marked was read earlier in this run, or in the messages it resumed from. */
+/**
+ * `tainted`: a result `untrusted` marked was read, or a remote was opened, earlier in this run or in the messages it
+ * resumed from. `remote`: the call goes to that entry of `remotes`, not to this server.
+ */
 export type AgentLoopApprove = (
   call: AgentWireToolCall,
-  state: { tainted: boolean; tool: AgentTool },
+  state: { tainted: boolean; tool: AgentTool; remote?: string },
 ) => PromiseOrObject<AgentLoopApproval>;
+
+/** Where a remote's result can be drawn for the person: its screen on that server. Never sent to the model. */
+export interface AgentLoopView {
+  remote: string;
+  /** The remote's own name for the tool, without the `<remote>.` prefix, and the arguments it was called with. */
+  tool: string;
+  args: Record<string, unknown>;
+  /** The screen's path and query on the remote's web origin. */
+  href?: string;
+  /** The remote can draw this result as script-less HTML (`page().app(…, { static: true })`). */
+  static?: boolean;
+  /** The MCP Apps view (`ui://…`) that draws this result. */
+  resourceUri?: string;
+}
+
+export interface AgentLoopRemoteResult extends Omit<AgentWireToolResult, "id" | "name"> {
+  view?: Omit<AgentLoopView, "remote" | "tool" | "args">;
+}
+
+/**
+ * Another server's tools, called as the run's account over a connection that account granted. `list` answers `null`
+ * when there is no live connection. `call` takes the tool's name as `list` gave it; a failure comes back as the
+ * result's `error`, with `code` "remoteDisconnected" once the connection is gone.
+ */
+export interface AgentLoopRemote {
+  /** `[a-z][A-Za-z0-9]{0,15}`: names its toolkit and prefixes its tools as `<name>.<tool>`. */
+  name: string;
+  /** The one line the model reads, in `openToolkit`'s own description, to decide whether to open it. */
+  description: string;
+  list(): Promise<AgentTool[] | null>;
+  call(tool: string, args: Record<string, unknown>): Promise<AgentLoopRemoteResult>;
+}
 
 /** `description` is the one line the model reads, in `openToolkit`'s own description, to decide whether to open it. */
 export interface AgentLoopToolkit {
@@ -35,8 +70,8 @@ export interface AgentLoopBudget {
 }
 
 /**
- * `awaiting`: `approve` deferred a call, and a resume with the messages `onMessage` stored asks it again; or a client
- * tool or `askUser` was called, and a resume with its result appended runs on from it.
+ * `awaiting`: `approve` deferred a call, or a remote needs connecting, and a resume with the messages `onMessage`
+ * stored runs it again; or a client tool or `askUser` was called, and a resume with its result appended runs on from it.
  */
 export type AgentLoopStop =
   | "end"
@@ -68,6 +103,15 @@ export interface AgentLoopOptions {
    */
   toolkits?: Record<string, AgentLoopToolkit>;
   /**
+   * Other servers, each a toolkit the model opens with `openToolkit({ name })`; none is listed or contacted before.
+   * Opening one the account has no live connection to ends the run as `awaiting` with `connect` naming it: connect
+   * and resume, or append an `error` for that call when the person declines. Security: what a remote lists and returns
+   * is another party's text, so opening one taints the run, and a call's arguments leave for that server, so a
+   * request with `remotes` and no `approve` is refused. `approve` hears a tool the remote does not call read-only as
+   * a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
+   */
+  remotes?: readonly AgentLoopRemote[];
+  /**
    * The tools of a screen a connected browser has open (`AgentClientTools.list()` in `akanjs/ui`): client input,
    * listed beside the endpoint tools and never run here. `approve` is still asked. An allowed call ends the run as
    * `awaiting` with `client: true`; append the browser's result, or an error when no page answers, and resume. A name
@@ -87,7 +131,10 @@ export interface AgentLoopOptions {
    * `limit` and `requested`, in any one unit, lowers `at` for the rest of the run to where the request would fit.
    */
   compact?: { at: number; keep?: number };
-  /** Asked before every call; without it a `needsConfirm` tool is refused, and so is any write once tainted. */
+  /**
+   * Asked before every call, and required with `remotes`; without it a `needsConfirm` tool is refused, and so is any
+   * write once tainted.
+   */
   approve?: AgentLoopApprove;
   /**
    * Sees a result whole, before the 20,000-character clip. A resume re-applies it to stored, clipped results and also
@@ -111,13 +158,13 @@ export type AgentLoopRequest = AgentLoopOptions &
 export type AgentLoopEvent =
   | { type: "text"; delta: string; round: number }
   | { type: "toolCall"; call: AgentWireToolCall; round: number }
-  | { type: "toolResult"; result: AgentWireToolResult; round: number }
+  | { type: "toolResult"; result: AgentWireToolResult; round: number; view?: AgentLoopView }
   | { type: "usage"; usage: LlmUsage; model?: string; round: number }
   /**
    * The first `replaced` messages of the transcript as it stands, `onMessage`'s included, are now `summary`. Store it
    * whole: its `tainted` carries the run's taint across a resume.
    */
   | { type: "compacted"; replaced: number; summary: AgentWireMessage }
-  | { type: "awaiting"; call: AgentWireToolCall; client?: true; question?: true }
+  | { type: "awaiting"; call: AgentWireToolCall; client?: true; question?: true; connect?: string }
   | { type: "done"; stop: AgentLoopStop; rounds: number }
   | { type: "error"; message: string; error: unknown };
