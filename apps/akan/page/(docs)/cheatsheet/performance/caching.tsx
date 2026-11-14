@@ -337,6 +337,23 @@ keys() · entries() · forEach(fn)`,
       },
     ];
 
+    const renderSlotEnvRows = [
+      {
+        name: "AKAN_RSC_WORKER_MAX_CONCURRENCY",
+        desc: l.trans({
+          en: "Renders one render worker runs at a time. The rest wait in the order they came, and one whose client has gone leaves the queue. Unset, `0` or `off`, the default, starts every render as it arrives.",
+          ko: "렌더 워커 하나가 동시에 실행하는 렌더 수입니다. 나머지는 온 순서대로 기다리고, 클라이언트가 떠난 렌더는 대기열에서 빠집니다. 기본값인 미설정, `0`, `off`에서는 렌더가 오는 대로 시작합니다.",
+        }),
+      },
+      {
+        name: "AKAN_RSC_WORKER_MAX_QUEUE",
+        desc: l.trans({
+          en: "Renders that may wait. One more is answered `503` with `Retry-After: 1` before it renders. The default is the cap times the idle timeout's seconds (120, so 960 for a cap of 8); `0` or `off` lets the queue grow.",
+          ko: "기다릴 수 있는 렌더 수입니다. 이를 넘는 렌더는 렌더하기 전에 `Retry-After: 1`과 함께 `503`으로 답합니다. 기본값은 상한에 idle timeout의 초(120)를 곱한 값이라 상한이 8이면 960이고, `0`이나 `off`면 대기열에 한도를 두지 않습니다.",
+        }),
+      },
+    ];
+
     const queryFormColumns = [
       { key: "a", label: l.trans({ en: "Request", ko: "요청" }), code: true },
       { key: "b", label: l.trans({ en: "Shares an entry with", ko: "같은 항목을 쓰는 요청" }), code: true },
@@ -767,6 +784,84 @@ keys() · entries() · forEach(fn)`,
                       <code>.config({"{ canonicalQuery: false }"})</code>를 둔 페이지나 layout,{" "}
                       <code>.search("utm_source", String)</code>처럼 추적 파라미터를 선언한 페이지, 모든 값을 받는 예전
                       default 함수 페이지는 요청된 쿼리마다 항목을 따로 둡니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+            <Docs.SubSubTitle>
+              {l.trans({ en: "When a page has to render", ko: "페이지를 렌더해야 할 때" })}
+            </Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: "A stored page is replayed at once. Every other page is rendered, and by default the render worker starts each render as it arrives. Two variables make it run a set number at a time and keep the rest in line:",
+                ko: "저장된 페이지는 바로 재생합니다. 그 밖의 페이지는 렌더해야 하고, 기본으로 렌더 워커는 렌더가 오는 대로 시작합니다. 두 변수로 한 번에 정한 수만 실행하고 나머지는 줄을 세울 수 있습니다:",
+              })}
+            </div>
+            <Docs.Table columns={pageCacheEnvColumns} rows={renderSlotEnvRows} stacked />
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A page that awaits data holds its slot while it waits.</strong> Measured on this site's
+                      production build with 32 requests at once, pages that wait 20–200 ms on data served 151 requests a
+                      second with no cap, 95 with a cap of 16 and 32 with a cap of 4, while pages that only use the CPU
+                      served about 105 at every cap. Set the cap to the number of requests one replica is sized to hold
+                      at once, so it only bounds a burst past that, and go lower only for pages that render without
+                      waiting on data.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>데이터를 기다리는 페이지는 기다리는 동안에도 slot을 쥡니다.</strong> 이 사이트의
+                      production 빌드에 요청 32개를 한꺼번에 보내 측정하면, 데이터를 20–200ms 기다리는 페이지는 상한이
+                      없을 때 초당 151개, 상한 16에서 95개, 상한 4에서 32개를 처리했고, CPU만 쓰는 페이지는 어느
+                      상한에서나 약 105개를 처리했습니다. 상한은 replica 하나가 동시에 받도록 잡은 요청 수로 두어 그
+                      수를 넘는 몰림만 막게 하고, 데이터를 기다리지 않고 렌더하는 페이지일 때만 더 낮추세요.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A full queue answers 503, and so does a long wait.</strong> A render past{" "}
+                      <code>AKAN_RSC_WORKER_MAX_QUEUE</code>, or one that has waited as long as{" "}
+                      <code>AKAN_IDLE_TIMEOUT</code> (120 s), gets <code>503</code> with <code>Retry-After: 1</code> and{" "}
+                      <code>Cache-Control: no-store</code> before any of it renders: a page that reloads itself for a
+                      browser, <code>base.error.serverUnavailable</code> JSON for a JSON caller.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>대기열이 가득 차면 503으로 답하고, 너무 오래 기다려도 그렇습니다.</strong>{" "}
+                      <code>AKAN_RSC_WORKER_MAX_QUEUE</code>를 넘은 렌더와 <code>AKAN_IDLE_TIMEOUT</code>(120초)만큼
+                      기다린 렌더는 렌더를 시작하기 전에 <code>Retry-After: 1</code>,{" "}
+                      <code>Cache-Control: no-store</code>와 함께 <code>503</code>을 받습니다. 브라우저에는 스스로
+                      새로고침하는 페이지로, JSON 호출자에는 <code>base.error.serverUnavailable</code> JSON으로
+                      답합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The queue is in the metrics.</strong> <code>akan_rsc_renders_in_flight</code>,{" "}
+                      <code>akan_rsc_render_queue_depth</code>, <code>akan_rsc_render_queue_wait_seconds</code> and{" "}
+                      <code>akan_rsc_render_refusals_total</code> report it per process, and a page that waited carries{" "}
+                      <code>queueMs</code> on its request line. The cap counts per render worker, so per replica.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>대기열은 metrics에 나옵니다.</strong> <code>akan_rsc_renders_in_flight</code>,{" "}
+                      <code>akan_rsc_render_queue_depth</code>, <code>akan_rsc_render_queue_wait_seconds</code>,{" "}
+                      <code>akan_rsc_render_refusals_total</code>이 프로세스별로 알려 주고, 기다린 페이지는 요청 줄에{" "}
+                      <code>queueMs</code>가 붙습니다. 상한은 렌더 워커마다, 곧 replica마다 따로 셉니다.
                     </span>
                   ),
                 })}

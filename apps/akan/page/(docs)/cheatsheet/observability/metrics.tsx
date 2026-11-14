@@ -406,6 +406,18 @@ export default page()
         }),
       },
       {
+        name: [
+          "akan_rsc_renders_in_flight",
+          "akan_rsc_render_queue_depth",
+          "akan_rsc_render_queue_wait_seconds",
+          "akan_rsc_render_refusals_total",
+        ],
+        desc: l.trans({
+          en: "Renders the worker is running, a replayed stored page not among them, and renders waiting for a slot. With `AKAN_RSC_WORKER_MAX_CONCURRENCY` set, also how long each render waited, and the renders answered 503 by `reason`: `queue-full` or `wait-timeout`.",
+          ko: "worker가 실행 중인 렌더 수(저장된 페이지 재생은 빼고)와 slot을 기다리는 렌더 수입니다. `AKAN_RSC_WORKER_MAX_CONCURRENCY`를 설정하면 렌더가 기다린 시간과, 503으로 답한 렌더 수를 `reason`(`queue-full` 또는 `wait-timeout`)별로 함께 셉니다.",
+        }),
+      },
+      {
         name: ["akan_rsc_worker_restarts_total", "akan_rsc_worker_recycles_total"],
         desc: l.trans({
           en: "Worker restarts after it exited or hung, and planned swaps at a memory limit.",
