@@ -34,6 +34,7 @@ export interface AkanUiOverrides {
     AgentMenu: ComponentType<AgentMenuProps>;
     AgentMarkdown: ComponentType<AgentMarkdownProps>;
     AgentToolCard: ComponentType<AgentToolCardProps>;
+    AgentToolRow: ComponentType<AgentToolRowProps>;
     AgentCode: ComponentType<AgentCodeProps>;
     Button: ComponentType<ButtonProps<unknown>>;
     Select: ComponentType<SelectProps<boolean | null | number | string | undefined>>;
