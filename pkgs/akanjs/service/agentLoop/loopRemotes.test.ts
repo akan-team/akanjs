@@ -175,6 +175,29 @@ describe("AgentLoop remotes", () => {
     expect(toolOf(requests[0], "openToolkit")).toBeDefined();
   });
 
+  test("a refusal given for an open the run held for approval only keeps the open from running, and the batch is asked about again", async () => {
+    const { remote, state } = remoteOf("shop");
+    const batch = calling(callOf("c1", "openToolkit", { name: "shop" }), callOf("c2", "createNote"));
+    const asked: string[] = [];
+    const approve: AgentLoopRequest["approve"] = (call) => {
+      asked.push(call.id);
+      return "defer";
+    };
+    const first = harness([batch]);
+    const { messages, request } = stored(ask([remote], { approve }));
+    expect(stopOf(await drain(first.port, request))).toBe("awaiting");
+    expect(messages).toHaveLength(2);
+
+    const second = harness([]);
+    const resumed = { ...request, messages: [...messages], answer: { id: "c1", error: "Not now." } };
+    const events = await drain(second.port, resumed);
+    expect(resultsOf(events)).toEqual([
+      { id: "c1", name: "openToolkit", error: LoopRemotes.declined("shop"), code: "remoteDeclined" },
+    ]);
+    expect(asked).toEqual(["c2", "c2"]);
+    expect([stopOf(events), state.lists, second.called.length]).toEqual(["awaiting", 0, 0]);
+  });
+
   test("a declined connection taints no later resume, as the stored refusal is the run's own sentence", async () => {
     const { remote } = remoteOf("shop", { tools: null });
     const parked: AgentWireMessage[] = [

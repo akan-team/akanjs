@@ -156,7 +156,9 @@ export interface AgentLoopOptions {
    * parking on, is stored as it stands. A call parked with `connect` takes only the person's refusal, `{ id, error }`:
    * the run stores a sentence of its own naming the remote, coded `remoteDeclined`, and none of the `error` text, so
    * it taints neither that run nor a later resume. With a `result`, or for an `openToolkit` call that names no
-   * remote, it is refused the same way, as a connected remote is opened by resuming without `answer`.
+   * remote, it is refused the same way, as a connected remote is opened by resuming without `answer`. The stored
+   * messages do not say why a run stopped at an open, so a refusal is taken for any first unanswered `openToolkit`
+   * call naming a remote, one in a batch `approve` deferred included: all it does is keep that open from running.
    */
   answer?: AgentLoopCallAnswer;
   /**

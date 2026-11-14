@@ -134,7 +134,10 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   resume with `answer: { id, error }` for that call. The `error` only says that they refused: the run stores a
   sentence of its own naming the remote, coded `remoteDeclined`, as the open's result and goes on, and none of your
   text reaches the model or `onMessage`. That sentence taints neither this run nor a later resume, while the error
-  of an open that failed still does. An `answer` carrying a `result` for an open is refused with
+  of an open that failed still does. The stored messages do not say why a run stopped at an open, so a refusal is
+  taken for any first unanswered open of a remote, one in a batch `approve` deferred included: all it does is keep
+  that open from running, and the rest of the batch is judged as usual. An `answer` carrying a `result` for an open
+  is refused with
   `agent.error.answerRefused`, as only the server sees whether a connection exists.
 - **What a remote lists and returns is another party's text.** Opening a remote taints the run, whatever `untrusted`
   says and with none given: its tools' names, descriptions and schemas reach the model with the open, and so does
