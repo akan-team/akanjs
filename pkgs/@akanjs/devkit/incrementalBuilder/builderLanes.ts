@@ -1,6 +1,6 @@
-import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
-import type { App } from "@akanjs/devkit/commandDecorators";
 import type { Logger } from "akanjs/common";
+import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
+import type { App } from "../commandDecorators";
 import type { BatchWork, BuildBatchResult } from "./buildBatchProtocol";
 import { sendBuildStatus } from "./builderBuildStatus";
 import { BuilderChannel } from "./builderChannel";

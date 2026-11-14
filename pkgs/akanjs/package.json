@@ -30,7 +30,21 @@
       "types": "./common/index.ts",
       "default": "./common/index.ts"
     },
-    "./common/*": "./common/*",
+    "./common/akanNames.ts": {
+      "import": "./common/akanNames.ts",
+      "types": "./common/akanNames.ts",
+      "default": "./common/akanNames.ts"
+    },
+    "./common/facetBarrel.ts": {
+      "import": "./common/facetBarrel.ts",
+      "types": "./common/facetBarrel.ts",
+      "default": "./common/facetBarrel.ts"
+    },
+    "./common/routeConvention.ts": {
+      "import": "./common/routeConvention.ts",
+      "types": "./common/routeConvention.ts",
+      "default": "./common/routeConvention.ts"
+    },
     "./fetch": {
       "import": "./fetch/index.ts",
       "types": "./fetch/index.ts",
@@ -61,7 +75,21 @@
       "types": "./ui/index.ts",
       "default": "./ui/index.ts"
     },
-    "./ui/*": "./ui/*",
+    "./ui/System/index.tsx": {
+      "import": "./ui/System/index.tsx",
+      "types": "./ui/System/index.tsx",
+      "default": "./ui/System/index.tsx"
+    },
+    "./ui/System/SSR.tsx": {
+      "import": "./ui/System/SSR.tsx",
+      "types": "./ui/System/SSR.tsx",
+      "default": "./ui/System/SSR.tsx"
+    },
+    "./ui/UiOverride/UiOverride.tsx": {
+      "import": "./ui/UiOverride/UiOverride.tsx",
+      "types": "./ui/UiOverride/UiOverride.tsx",
+      "default": "./ui/UiOverride/UiOverride.tsx"
+    },
     "./client": {
       "import": "./client/index.ts",
       "types": "./client/index.ts",
@@ -72,10 +100,225 @@
       "types": "./client/native.ts",
       "default": "./client/native.ts"
     },
-    "./client/native/*": {
-      "import": "./client/native/*.ts",
-      "types": "./client/native/*.ts",
-      "default": "./client/native/*.ts"
+    "./client/native/accessibility": {
+      "import": "./client/native/accessibility.ts",
+      "types": "./client/native/accessibility.ts",
+      "default": "./client/native/accessibility.ts"
+    },
+    "./client/native/app": {
+      "import": "./client/native/app.ts",
+      "types": "./client/native/app.ts",
+      "default": "./client/native/app.ts"
+    },
+    "./client/native/app-state": {
+      "import": "./client/native/app-state.ts",
+      "types": "./client/native/app-state.ts",
+      "default": "./client/native/app-state.ts"
+    },
+    "./client/native/appearance": {
+      "import": "./client/native/appearance.ts",
+      "types": "./client/native/appearance.ts",
+      "default": "./client/native/appearance.ts"
+    },
+    "./client/native/auth-session": {
+      "import": "./client/native/auth-session.ts",
+      "types": "./client/native/auth-session.ts",
+      "default": "./client/native/auth-session.ts"
+    },
+    "./client/native/autostart": {
+      "import": "./client/native/autostart.ts",
+      "types": "./client/native/autostart.ts",
+      "default": "./client/native/autostart.ts"
+    },
+    "./client/native/badge": {
+      "import": "./client/native/badge.ts",
+      "types": "./client/native/badge.ts",
+      "default": "./client/native/badge.ts"
+    },
+    "./client/native/biometric": {
+      "import": "./client/native/biometric.ts",
+      "types": "./client/native/biometric.ts",
+      "default": "./client/native/biometric.ts"
+    },
+    "./client/native/browser": {
+      "import": "./client/native/browser.ts",
+      "types": "./client/native/browser.ts",
+      "default": "./client/native/browser.ts"
+    },
+    "./client/native/camera": {
+      "import": "./client/native/camera.ts",
+      "types": "./client/native/camera.ts",
+      "default": "./client/native/camera.ts"
+    },
+    "./client/native/clipboard": {
+      "import": "./client/native/clipboard.ts",
+      "types": "./client/native/clipboard.ts",
+      "default": "./client/native/clipboard.ts"
+    },
+    "./client/native/contacts": {
+      "import": "./client/native/contacts.ts",
+      "types": "./client/native/contacts.ts",
+      "default": "./client/native/contacts.ts"
+    },
+    "./client/native/device": {
+      "import": "./client/native/device.ts",
+      "types": "./client/native/device.ts",
+      "default": "./client/native/device.ts"
+    },
+    "./client/native/dialog": {
+      "import": "./client/native/dialog.ts",
+      "types": "./client/native/dialog.ts",
+      "default": "./client/native/dialog.ts"
+    },
+    "./client/native/dock": {
+      "import": "./client/native/dock.ts",
+      "types": "./client/native/dock.ts",
+      "default": "./client/native/dock.ts"
+    },
+    "./client/native/external-view": {
+      "import": "./client/native/external-view.ts",
+      "types": "./client/native/external-view.ts",
+      "default": "./client/native/external-view.ts"
+    },
+    "./client/native/file-picker": {
+      "import": "./client/native/file-picker.ts",
+      "types": "./client/native/file-picker.ts",
+      "default": "./client/native/file-picker.ts"
+    },
+    "./client/native/filesystem": {
+      "import": "./client/native/filesystem.ts",
+      "types": "./client/native/filesystem.ts",
+      "default": "./client/native/filesystem.ts"
+    },
+    "./client/native/geolocation": {
+      "import": "./client/native/geolocation.ts",
+      "types": "./client/native/geolocation.ts",
+      "default": "./client/native/geolocation.ts"
+    },
+    "./client/native/global-shortcut": {
+      "import": "./client/native/global-shortcut.ts",
+      "types": "./client/native/global-shortcut.ts",
+      "default": "./client/native/global-shortcut.ts"
+    },
+    "./client/native/haptics": {
+      "import": "./client/native/haptics.ts",
+      "types": "./client/native/haptics.ts",
+      "default": "./client/native/haptics.ts"
+    },
+    "./client/native/http": {
+      "import": "./client/native/http.ts",
+      "types": "./client/native/http.ts",
+      "default": "./client/native/http.ts"
+    },
+    "./client/native/iap": {
+      "import": "./client/native/iap.ts",
+      "types": "./client/native/iap.ts",
+      "default": "./client/native/iap.ts"
+    },
+    "./client/native/keep-awake": {
+      "import": "./client/native/keep-awake.ts",
+      "types": "./client/native/keep-awake.ts",
+      "default": "./client/native/keep-awake.ts"
+    },
+    "./client/native/keyboard": {
+      "import": "./client/native/keyboard.ts",
+      "types": "./client/native/keyboard.ts",
+      "default": "./client/native/keyboard.ts"
+    },
+    "./client/native/local-notifications": {
+      "import": "./client/native/local-notifications.ts",
+      "types": "./client/native/local-notifications.ts",
+      "default": "./client/native/local-notifications.ts"
+    },
+    "./client/native/menu": {
+      "import": "./client/native/menu.ts",
+      "types": "./client/native/menu.ts",
+      "default": "./client/native/menu.ts"
+    },
+    "./client/native/network": {
+      "import": "./client/native/network.ts",
+      "types": "./client/native/network.ts",
+      "default": "./client/native/network.ts"
+    },
+    "./client/native/opener": {
+      "import": "./client/native/opener.ts",
+      "types": "./client/native/opener.ts",
+      "default": "./client/native/opener.ts"
+    },
+    "./client/native/preferences": {
+      "import": "./client/native/preferences.ts",
+      "types": "./client/native/preferences.ts",
+      "default": "./client/native/preferences.ts"
+    },
+    "./client/native/push": {
+      "import": "./client/native/push.ts",
+      "types": "./client/native/push.ts",
+      "default": "./client/native/push.ts"
+    },
+    "./client/native/screen": {
+      "import": "./client/native/screen.ts",
+      "types": "./client/native/screen.ts",
+      "default": "./client/native/screen.ts"
+    },
+    "./client/native/screen-orientation": {
+      "import": "./client/native/screen-orientation.ts",
+      "types": "./client/native/screen-orientation.ts",
+      "default": "./client/native/screen-orientation.ts"
+    },
+    "./client/native/secure-storage": {
+      "import": "./client/native/secure-storage.ts",
+      "types": "./client/native/secure-storage.ts",
+      "default": "./client/native/secure-storage.ts"
+    },
+    "./client/native/share": {
+      "import": "./client/native/share.ts",
+      "types": "./client/native/share.ts",
+      "default": "./client/native/share.ts"
+    },
+    "./client/native/single-instance": {
+      "import": "./client/native/single-instance.ts",
+      "types": "./client/native/single-instance.ts",
+      "default": "./client/native/single-instance.ts"
+    },
+    "./client/native/splash-screen": {
+      "import": "./client/native/splash-screen.ts",
+      "types": "./client/native/splash-screen.ts",
+      "default": "./client/native/splash-screen.ts"
+    },
+    "./client/native/sqlite": {
+      "import": "./client/native/sqlite.ts",
+      "types": "./client/native/sqlite.ts",
+      "default": "./client/native/sqlite.ts"
+    },
+    "./client/native/toast": {
+      "import": "./client/native/toast.ts",
+      "types": "./client/native/toast.ts",
+      "default": "./client/native/toast.ts"
+    },
+    "./client/native/tray": {
+      "import": "./client/native/tray.ts",
+      "types": "./client/native/tray.ts",
+      "default": "./client/native/tray.ts"
+    },
+    "./client/native/updates": {
+      "import": "./client/native/updates.ts",
+      "types": "./client/native/updates.ts",
+      "default": "./client/native/updates.ts"
+    },
+    "./client/native/volume": {
+      "import": "./client/native/volume.ts",
+      "types": "./client/native/volume.ts",
+      "default": "./client/native/volume.ts"
+    },
+    "./client/native/window": {
+      "import": "./client/native/window.ts",
+      "types": "./client/native/window.ts",
+      "default": "./client/native/window.ts"
+    },
+    "./client/native/window-state": {
+      "import": "./client/native/window-state.ts",
+      "types": "./client/native/window-state.ts",
+      "default": "./client/native/window-state.ts"
     },
     "./native/api": {
       "import": "./native/api.ts",
@@ -97,13 +340,21 @@
       "types": "./webkit/index.ts",
       "default": "./webkit/index.ts"
     },
-    "./webkit/*": "./webkit/*",
+    "./webkit/RouteLevelBoundary.tsx": {
+      "import": "./webkit/RouteLevelBoundary.tsx",
+      "types": "./webkit/RouteLevelBoundary.tsx",
+      "default": "./webkit/RouteLevelBoundary.tsx"
+    },
+    "./webkit/usePurchase": {
+      "import": "./webkit/usePurchase.tsx",
+      "types": "./webkit/usePurchase.tsx",
+      "default": "./webkit/usePurchase.tsx"
+    },
     "./server": {
       "import": "./server/index.ts",
       "types": "./server/index.ts",
       "default": "./server/index.ts"
     },
-    "./server/*": "./server/*",
     "./service": {
       "import": "./service/index.ts",
       "types": "./service/index.ts",

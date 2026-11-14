@@ -1,12 +1,4 @@
 import path from "node:path";
-// Module paths, never a barrel: the devkit and `frontendBuild` barrels would hold tailwindcss (~40MB), ssh2, ink
-// and the cloud stack for the whole dev session (`entryModuleGraph.test.ts` enforces it).
-import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
-import type { App } from "@akanjs/devkit/commandDecorators";
-import { AppExecutor, type PageRoot, WorkspaceExecutor } from "@akanjs/devkit/executors";
-import type { ClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientBuildTypes";
-import { GraphClientEntryDiscovery } from "@akanjs/devkit/frontendBuild/clientEntryDiscovery";
-import { RouteClientBuilder } from "@akanjs/devkit/frontendBuild/routeClientBuilder";
 import { Logger } from "akanjs/common";
 import type {
   BaseBuildArtifact,
@@ -18,6 +10,14 @@ import type {
   BuildRouteResultPayload,
   ChangeBatch,
 } from "akanjs/server";
+// Module paths, never a barrel: the devkit and `frontendBuild` barrels would hold tailwindcss (~40MB), ssh2, ink
+// and the cloud stack for the whole dev session (`entryModuleGraph.test.ts` enforces it).
+import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
+import type { App } from "../commandDecorators";
+import { AppExecutor, type PageRoot, WorkspaceExecutor } from "../executors";
+import type { ClientEntryDiscovery } from "../frontendBuild/clientBuildTypes";
+import { GraphClientEntryDiscovery } from "../frontendBuild/clientEntryDiscovery";
+import { RouteClientBuilder } from "../frontendBuild/routeClientBuilder";
 import type { BatchWork, BuildBatchRequest, BuildBatchResult, OptimizedFonts } from "./buildBatchProtocol";
 import { BuildBatchRunner } from "./buildBatchRunner";
 import { BuilderBoot, type IncrementalBuilderOptions } from "./builderBoot";

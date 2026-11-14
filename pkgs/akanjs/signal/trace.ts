@@ -79,8 +79,7 @@ export const isLocalDevRuntime = ({
 
 // `x-akan-debug` lowers one request's log floor to `trace`; outside `local` it must carry `AKAN_LOG_DEBUG_HEADER`,
 // since a client that can lower the log level is a log-volume vector.
-/** @internal */
-export const isDebugHeaderAllowed = (): boolean => isLocalDevRuntime() || !!process.env.AKAN_LOG_DEBUG_HEADER;
+const isDebugHeaderAllowed = (): boolean => isLocalDevRuntime() || !!process.env.AKAN_LOG_DEBUG_HEADER;
 
 //? Digests have one length, so neither a length check nor a multi-byte header value can make the comparison throw.
 const sameSecret = (presented: string, secret: string): boolean =>
@@ -349,9 +348,6 @@ export const logCrash = (trace: SignalTrace | null, { name, label, error, status
   });
 };
 
-/** @deprecated Unused by akanjs. `runTraced` replaces it only where the caller owns the trace: it finalizes it. */
-export const runWithTrace = <T>(trace: SignalTrace, fn: () => T): T => als.run(trace, fn);
-
 /** Finalizes `trace` after the caller's own catch has run, which is what lets an error log carry the traceId. */
 export const runTraced = async <T>(trace: SignalTrace | null, fn: () => Promise<T>): Promise<T> => {
   if (!trace) return await fn();
@@ -389,11 +385,6 @@ export const traceSpan = async <T>(name: string, fn: () => Promise<T>): Promise<
   } finally {
     trace.recordSpan(name, performance.now() - start);
   }
-};
-
-/** @deprecated Unused by akanjs; call `getCurrentTrace()?.countDbQuery(ms)`. */
-export const traceDbQuery = (durationMs: number): void => {
-  getCurrentTrace()?.countDbQuery(durationMs);
 };
 
 export const traceCache = (hit: boolean): void => {
