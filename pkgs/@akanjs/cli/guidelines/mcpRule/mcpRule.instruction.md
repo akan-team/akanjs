@@ -597,7 +597,8 @@ at every event.
   run before any tool has run: a `context` block marked `untrusted: true`, and a user message's `references`, the
   records it points at. With no `approve`, a write in such a run is refused as a write after an untrusted result is.
   `context` reaches the model as data in a user turn, never in the system prompt, and a marked block is fenced as
-  page content. A batch is judged before it runs, since the model wrote it
+  page content. The run stores `tainted: true` on each assistant message it writes while tainted, so a resume and
+  the next ask in that conversation keep the taint without the block being passed again. A batch is judged before it runs, since the model wrote it
   before reading its results. Without `approve`, a `needsConfirm`
   tool — on this catalogue, a mutation with the `destructive` hint above — is refused, and so is every write once
   tainted: such a run writes only in the batch written before any result, and a later write is answered with the

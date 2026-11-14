@@ -38,9 +38,10 @@ agent nothing, and only the current page's declarations are live.
 - Page text is data the model reads, never instructions: after a screen read the next call that changes something
   asks once, and `data-agent-private="<label>"` keeps a region's text out of every read. An `@` mention of a record
   counts as a screen read.
-- A turn's context carries ids, enum members, numbers and booleans. Any longer string, a search param or a path
-  param included, is left out and read with `readState`, so instructions say "read `searchParams`", never "the
-  query is in the route context".
+- A turn's context carries ids, enum members, numbers and booleans. Any other string, a search param, a path
+  param or a list row's title included, is left out and read with `readState` or `readScreen`, so instructions say
+  "read `searchParams`", never "the query is in the route context". A zone's `label` and an `st.expose` value ride
+  whole: publish an id or a count there, never text a user wrote.
 - A tool value is capped at 20,000 characters.
 - Route guidance is `<Agent.Guide instructions="…" />`; model-facing text is English.
 

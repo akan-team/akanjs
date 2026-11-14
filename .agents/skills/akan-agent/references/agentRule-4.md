@@ -1,5 +1,86 @@
 <!-- akan:generated -->
 
+## Slash Commands And The Transcript
+- **The `/` menu is the chat's own.** An app's prompts are `page().prompt()` declarations served over MCP to
+  external agents; a browser chat lists none of them, so the menu holds the six built-in commands and nothing else.
+- **The chat answers six slash commands of its own**: `/new` (`/clear`), `/retry`, `/compact`, `/copy`, `/help` and
+  `/tools`. An app writes none of them and cannot add one — a workflow a person invokes by name belongs to MCP, as
+  a `page().prompt()`, where it is guarded by the page it opens. `/new` and `/copy` are dispatched *before* the is-a-turn-running check **and before the question card takes the
+  composer**, because mid-turn is exactly when they are reached for and a question the agent asked is the middle
+  of a turn like any other — answered as text, `/new` would have reached the model as the user's decision.
+  `/new` therefore aborts the turn it is clearing and waits for it to wind down, since the loop clears its own
+  running flag a microtask later and a transcript emptied before that lands is one the dying turn appends onto.
+- **A command's output is a `local` message: rendered in the transcript, withheld from the wire.** The transcript
+  *is* the model's history, so `/help` text appended plainly would come back next turn as something the assistant
+  believes it said. `session.note(text)` is the only way to write one, `session.report(error)` stays what a
+  host-side *failure* lands in, and `local` messages are left out of a `/copy` export too — they are the chat
+  talking to itself. Their text is user-facing, so it goes through `l("base.*")` like every other chat string.
+- **`/copy` exists because nothing else keeps the transcript.** The relay is stateless and the conversation lives
+  only in that browser, so an export is the one path a wrong answer has to whoever could fix it — which is why it
+  carries the route and the timestamp. `/retry` replays only the trailing user message, leaving anything before it
+  in place, so a prompt's own preamble is not sent twice.
+- **A long conversation summarizes itself, because nothing else is keeping it inside the model's window.** The
+  loop runs in the browser and the relay holds no session, so an uncompacted chat grows until the provider
+  refuses the whole request — a refusal, never a shorter answer, which is why compaction runs *before* the turn
+  that would have overflowed. **Two triggers, each before every assistant turn.** `compact.at` is a ceiling on
+  cost: past that many estimated transcript tokens (four characters to a token, over the JSON the turn posts —
+  except an inlined picture, counted at the ~1,600 tokens a provider bills for its pixels rather than its base64;
+  24k by default) the history compacts, because the relay resends the whole transcript every turn and the app
+  pays for each one. The **window guard** compacts once the prompt nears the window the server reports —
+  `window − answer ceiling (8,192 when unreported) − compact.buffer (13,000, the margin Claude Code leaves)` —
+  measured by the provider's own count of the last turn (`done.usage`, kept on that assistant message) plus the
+  four-character estimate for what arrived since, so a Korean transcript the character rule reads as small is
+  still caught. The window comes from `option.setLlm({ contextWindow })` or from a refusal that names it, scaled by
+  its `limit / requested` to this estimate when it gives both; with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
+  the wire, and the session compacts and sends the same turn again, and a second refusal in the same send fails
+  with `agent.error.contextOverflow`. Either way the history above the last `keep` messages
+  becomes one message standing in for it, flagged `summary` on the wire — `<Agent.Chat compact={{ at, keep, buffer }} />`
+  tunes it, `{ at: Infinity }` leaves only the window guard, `{ at: 0 }` turns off the ceiling, the guard and the recovery alike, and `/compact` does
+  the same on demand keeping nothing. The header draws the estimate against whichever trigger is nearer.
+  **The cut never lands on a `tool` message**: the kept half may not open with a result whose call was summarized
+  away, a shape every provider dialect rejects. A user message is preferred where the tail holds one — everything
+  above it is settled — but one assistant turn that ran ten tools has none, and that is the transcript that
+  outgrows the window, so a cut there opens on the assistant message instead. The summarizing
+  turn carries no tools and no screen context — it summarizes the conversation, it does not act on it — and it is
+  fed a *bounded* digest rather than the transcript itself, since the transcript being summarized is the one that
+  no longer fits. The previous summary is the exception: it rides the digest whole, under its own label and outside
+  the bound, because it is the only record of what was compacted before it. A summary that cannot be produced leaves the transcript alone, the turn goes out as it would
+  have, and the next one asks again — a summarizer that was momentarily unreachable says nothing about whether
+  this transcript can shrink. One that *landed* and shrank nothing does, so that one is not retried until another
+  threshold's worth has been added. On the
+  wire a summary wears the user's role because the wire has no other, so a provider mapping frames it as fenced
+  history in a user turn and `/retry` steps over it — replaying it would send the notes back as a question. **While a summary is
+  being written the transcript says so** (`session.isCompacting`, distinct from `isRunning`, which an
+  auto-compaction runs inside): that turn takes as long as any other and answers nothing the user asked, so a chat
+  that only shows the running dot reads as a question being ignored.
+- **The transcript shows what each turn costs, because nothing else can.** The header carries the whole
+  conversation's estimated tokens (`session.tokens`), and every settled tool row carries its own and **opens onto
+  the value the model was handed** — a tool result is the one part of a transcript neither the user nor the app
+  author ever sees, being the app's own return value. A window that filled after four messages is explained by
+  *which* row cost a million tokens and by nothing else, so that is the question the row answers in one click.
+- **A stopped turn answers the calls it never ran, because an unanswered call ends the conversation.** Every
+  provider dialect refuses an assistant message whose `tool_calls` have no results — on that turn and on every
+  later one — so Stop landing between a call and its result would leave a transcript nothing can be sent from,
+  with no way out but `/new`. `Transcript.sanitize` holds the invariant in one place and runs where a transcript
+  is assembled rather than where each hole is made: the turn's own request, a transcript restored from storage,
+  and a stored transcript capped to its newest messages, whose window can start mid-pair. A call the loop never
+  reached is *answered* rather than erased — a model told the call was stopped asks again, where one shown no
+  call at all answers as if it had the result.
+- **A turn that failed says so on the wire.** `error` is a field only this wire has, so a provider mapping reads
+  `text` and drops it; `AgentService.explained` folds it into the text before any adaptor sees it, because an
+  assistant turn that says nothing is one the model repeats.
+- **A failed turn keeps its code for the host.** The relay's `error` event carries `code`: the `Err`'s key, else
+  an `AkanError`'s own code when its JSON carries it, else the status's name, so a custom `toJSON()` keeps `code`
+  in what it returns or the failure reads as its status. It is one code whether the failure is answered before the
+  stream opens or inside it, a 5xx included. A refusal (401/403) is named by its status alone, unless the server
+  kept it under its own code. The chat keeps it on that assistant message as `errorCode` after translating the
+  text, so a host branches on `message.errorCode`, never on the sentence. It is never sent back to the relay.
+- **↑ and ↓ in the composer walk what was sent**, seeded from the transcript so a persisted chat does not lose
+  only what was just typed. A single-line input has nothing of its own on the vertical arrows, and the
+  half-written draft they were walked away from comes back at the bottom of the walk. **The `/` menu takes those
+  keys while it is open** — it is the thing on screen the arrows point at — with Enter picking the highlighted
+  row, Tab completing its name, and Escape closing the menu and then, pressed again, the panel.
+
 ## Built-In Tools
 - The framework publishes six built-ins on every store surface: `navigate` (internal paths only, the same router
   `Link` rides, so the app's navigation guards are asked and a refusal is reported as a kept page), `goBack` (this session's history — global, because history is not a control a page owns and a page
@@ -145,72 +226,3 @@
   between it and a `.card()` tool is what the answer *is*: a sentence or a pick off a list is `askUser` and belongs
   to the conversation, while a shape the model must not invent — fields, a form, a signature — is a card the screen
   declares, because only the screen knows what filling it in looks like.
-
-## What The Page Draws
-- **The page shows the agent's work, not just the transcript.** A chat panel is closed as often as it is open, and
-  a form that fills itself or a tab that switches on its own is a change the user watches happen with nothing
-  anywhere attributing it. So **the control a call was published from is ringed** where it stands, scrolled to
-  first when it is off screen, and **a pointer travels to it and presses it** — both on by default, and both
-  driven from the tool call itself rather than from a store action, which cannot tell the agent's write from the
-  user's.
-- **It costs an app nothing, for the same reason `data-akan-action` does.** `onChange={st.do.setTitleOnTask}` by
-  reference is what annotates the control, and the annotation is what makes it findable — so the fields and verbs
-  that matter light up with no code. An inline arrow publishes no tool, carries no annotation, and therefore
-  draws nothing: one wrapper silently costs three things at once.
-- **For a control the framework did not render, spread `agentAttrs`** from `akanjs/ui`:
-  `<button type="button" {...agentAttrs(run)} onClick={run}>`, where `run` is what `st.tool(…).exec(…)` returned.
-  It reads the name off the callable, so there is nothing to keep in sync and no `ref` to thread — and it earns the
-  same E2E selector and accessibility name an `akanjs/ui` control has. Never hand-write `data-akan-*`.
-- **A control that shares its handler with its siblings takes a key**: `agentAttrs(switchTab, menu)`, in the same
-  vocabulary the call's argument uses. One tool serves a whole tab strip or a whole list, so without it every
-  namesake is interchangeable in the DOM and the page can say *what* the agent did but never *where* — which the
-  no-guessing rule then turns into drawing nothing. `Tab.Menu` passes its `menu` key; do the same for a row verb
-  whose id the call names.
-- **Almost nothing is waited on.** The call starts the moment the effect is handed its event; a ring that lands a
-  frame later costs the turn nothing, and an animation that held a call would make the agent slower for a
-  decoration. A turn past four scrolls stops scrolling and keeps ringing — eight scrolls across a page is motion
-  sickness rather than attribution. **The one exception is `navigate`**, whose press has to land before the router
-  replaces the tree the link is in; it is capped at 600ms and the call goes either way.
-- **What it refuses to draw is the point.** A name several rows answer to rings nothing rather than guessing a row,
-  a call an approval or a guard turned back is never drawn at all, a tool no control carries draws nothing, and a
-  backgrounded tab draws nothing. A ring on the wrong element is worse than no ring: it is the screen telling the
-  user something untrue about what just happened. **A control the screen is not actually showing is not pointed at
-  either, and the pointer goes rather than travelling to it**: `checkVisibility` answers about an element alone, so
-  one under a modal's backdrop, inside a drawer that has slid off, or faded to nothing all pass it while being
-  invisible, and a pointer sent there lands on a blank patch of overlay. The test is `elementFromPoint` at the
-  control's own centre, taken after the reveal has settled. **`navigate` is mostly in that last class** — the router is not
-  an element, so it draws nothing. A bar across the top of the page was tried for it and removed: it read as
-  chrome the page had grown rather than as the agent doing something, which is the opposite of attribution. What
-  it does draw is the **link already on screen that goes where it is going**, when exactly one does and the user
-  can already see it: that one is an element, and the pointer presses it before the route moves. Addresses are
-  compared as routes (`router.routeOf`), since the locale and base-path segments are on the `<a>` and never on the
-  tool argument. An off-screen link is left alone — scrolling to a link and then leaving the page it is on is two
-  motions for one act. **Link presence is a drawing condition, never a permission one**: the agent may navigate
-  anywhere the user could type, and a zone that must not leave one screen drops `navigate` through `builtins`.
-- **Turn it off with `visual`** on `Agent.Chat` / `Agent.Zone` — `false` for all of it, `{ cursor: false }` or
-  `{ reveal: false }` for one effect. The pointer is chrome (`data-agent-ui`, `aria-hidden`,
-  `pointer-events: none`), so `readScreen` never reads it back and `highlight` can never aim at it.
-- **`ToolActivity` is the channel underneath**, a `ToolRunner` host option and an `AgentSession.onActivity`, firing
-  `start` / `end` around the execution alone. It is deliberately not `progress`: that one fires only for a tool
-  that chose to report, and a tool that says nothing about itself is exactly the one whose effect arrives
-  unexplained. The `start` may answer a promise, and the call waits for it — the whole of what makes drawing a
-  click on a link possible.
-- **`AgentSession.onTurn(running)` is the other half**, and the unit the pointer's life is measured in. A model's
-  calls arrive with its own writing between them, seconds each, so a pointer that lived for the length of a *call*
-  spent every turn vanishing and coming back. Only the conversation loop reports there — `compact` runs under the
-  same internal flag and drives nothing on screen.
-- **The pointer presses on arrival, never on departure** — a press fired as it leaves is a click on whatever it
-  was still over. It glides only when the hop is far enough to be worth following (a third of a second to cross
-  fifty pixels reads as lag, not motion), and teleports otherwise. It appears at the first control it presses,
-  **drifts clear of what it pressed** and waits out the gap between calls there as a spinner — a person clicks and
-  takes the hand away, and a spinner left sitting on the button covers the change it just caused — and fades when
-  the turn ends; **a turn that
-  drove no control draws no pointer at all**, since parking one in a corner for a turn that only answered a
-  question claims something that did not happen. While a reveal scrolls, it holds still — as a person's does — and
-  carries a chevron pointing the way the view is travelling, because stillness over a sliding page otherwise reads
-  as a pointer that has come loose rather than as the one doing the scrolling. The ring answers *where* and the
-  pointer answers *who*, which is why they are one default rather than two.
-- **A form patch fans out over the fields it named.** `fill<Model>Form` is published by the form rather than by any
-  one control, so it rings one control per field in the arguments — resolved through the same
-  `data-akan-state="<model>Form.<field>"` the setter annotates — capped at five. `writeOn<Model>(path, value)`
-  draws nothing, for the same reason it carries no annotation: there is no control to put one on.

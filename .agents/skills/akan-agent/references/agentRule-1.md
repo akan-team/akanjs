@@ -123,10 +123,14 @@ pages declaring one name never clash, and a registry kept outside the surface re
   tool results, so the system prompt is the instructions alone and stays the same text from turn to turn. The
   block closes on a delimiter chosen so its content cannot contain it. A block marked `untrusted: true` holds text
   someone other than the developer or the user may have written; it goes in a `<page-content …>` block of its own,
-  the one a `readScreen` result arrives in, and the turn counts as an untrusted read. `LlmContext.of(context)`
-  (`akanjs/service`) builds both. An adaptor of the app's own that does not go through `OpenaiDialect.requestBody`
-  appends that text to its last user-role content and writes no context value into its system prompt. A dialect
-  added to the framework joins `llmDialect.conformance.test.ts`, which fails one that does either.
+  the one a `readScreen` result arrives in, and the turn counts as an untrusted read. A compaction summary is
+  history the model wrote, so it too rides a user turn, in a `<conversation-summary …>` block, never the system
+  role. `LlmContext.of(context)` and `LlmContext.summary(text)` (`akanjs/service`) build them. An adaptor of the
+  app's own that does not go through `OpenaiDialect.requestBody` appends the context text to its last user-role
+  content, maps a `summary` message to a user turn, and writes neither into its system prompt — `systemPrompt`
+  returns the instructions alone, so pairing it with hand-built messages sends no context. A dialect added to the
+  framework is a class with a static `requestBody`; `llmDialect.conformance.test.ts` finds it by that and fails
+  until it passes the same checks.
 - **`OpenaiLlm` claims vision for its default host and for nothing else.** OpenAI's own endpoint takes image
   parts, so that is what it answers with no `host` set. A `host` the app named is a gateway the class knows
   nothing about, and it stays text-only until `option.setLlm({ accepts })` says otherwise — handing bytes to a

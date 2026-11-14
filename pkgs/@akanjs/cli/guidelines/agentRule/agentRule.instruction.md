@@ -121,10 +121,14 @@ pages declaring one name never clash, and a registry kept outside the surface re
   tool results, so the system prompt is the instructions alone and stays the same text from turn to turn. The
   block closes on a delimiter chosen so its content cannot contain it. A block marked `untrusted: true` holds text
   someone other than the developer or the user may have written; it goes in a `<page-content …>` block of its own,
-  the one a `readScreen` result arrives in, and the turn counts as an untrusted read. `LlmContext.of(context)`
-  (`akanjs/service`) builds both. An adaptor of the app's own that does not go through `OpenaiDialect.requestBody`
-  appends that text to its last user-role content and writes no context value into its system prompt. A dialect
-  added to the framework joins `llmDialect.conformance.test.ts`, which fails one that does either.
+  the one a `readScreen` result arrives in, and the turn counts as an untrusted read. A compaction summary is
+  history the model wrote, so it too rides a user turn, in a `<conversation-summary …>` block, never the system
+  role. `LlmContext.of(context)` and `LlmContext.summary(text)` (`akanjs/service`) build them. An adaptor of the
+  app's own that does not go through `OpenaiDialect.requestBody` appends the context text to its last user-role
+  content, maps a `summary` message to a user turn, and writes neither into its system prompt — `systemPrompt`
+  returns the instructions alone, so pairing it with hand-built messages sends no context. A dialect added to the
+  framework is a class with a static `requestBody`; `llmDialect.conformance.test.ts` finds it by that and fails
+  until it passes the same checks.
 - **`OpenaiLlm` claims vision for its default host and for nothing else.** OpenAI's own endpoint takes image
   parts, so that is what it answers with no `host` set. A `host` the app named is a gateway the class knows
   nothing about, and it stays text-only until `option.setLlm({ accepts })` says otherwise — handing bytes to a
@@ -243,7 +247,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `refName`/`refId`/`path` travel so a tool can read the current value when the answer needs it, and
   `AgentService.referenced` folds the whole lot into the message text in one place, so every provider carries a
   reference without either adaptor knowing the word. **A reference is the record's own text, not the user's**: its
-  pointer, label, value and note reach the model together in one `<page-content …>` block under a heading, and a
+  pointer, label, value and note reach the model together in one `<page-content …>` block under a heading, the
+  token in the user's words is sent as `@[pointer](mention:pointer)` so the title is in that block only, and a
   message that carries one counts as a page read, so the first change after a mention asks the user first, as after
   `readScreen`. **The value is masked on the way in and nowhere else**: masking
   needs the model class, which no wire carries, so the model a host names when it stages the reference is the whole
@@ -567,12 +572,17 @@ pages declaring one name never clash, and a registry kept outside the surface re
   the state context block by name and pulled with `readState(key)`, masked by the model that key declares — while
   a key the screen does not read stays unreadable even when a sibling key of the same store is live. **The block
   carries a value only when it is an id, an enum member, a number or a boolean**: a string rides inline when it is
-  one token of up to 40 letters, digits, `.`, `_` or `-`, and any other string is listed by key and type alone,
-  because free text is whatever the record's author wrote and the model reads that through `readState`, where it
-  arrives as page content. The route block follows the same rule for each path segment, path param and search
-  param: what does not pass is left out, the block names `pathname`, `params` or `searchParams` in `withheld`, and
-  `readState` answers those three whether or not a component subscribes them. So instructions never say "the query
-  is in the route context"; they say to read `searchParams`. **There is no
+  one token of up to 40 letters, digits, `.`, `_` or `-` — with more than two separators only when every part is
+  hex or digits, as in a UUID, since four words joined by dashes are a sentence — and any other string is listed by
+  key and type alone, because free text is whatever the record's author wrote and the model reads that through
+  `readState`, where it arrives as page content. The route block follows the same rule for each path segment, path
+  param and search param, key and value alike, and keeps at most twelve of each: what does not pass is left out,
+  the block names `pathname`, `params` or `searchParams` in `withheld`, and `readState` answers those three whether
+  or not a component subscribes them. The screen block applies it to a `Load` scope's label, which is its record's
+  title, and to the labels of a list scope's `items`, and then says to read the scope with `readScreen`. So
+  instructions never say "the query is in the route context"; they say to read `searchParams`. **Two things still
+  ride whole, because no read returns them**: an `Agent.Zone`'s `label` and a value published with `st.expose` or
+  `st.useState`. Publish an id, a count or an enum member there, never text a user wrote. **There is no
   store-level exposure declaration**: a store class says nothing about agents, and `st.use.x({ agent: false })` is
   how the component that subscribes a value keeps it off the surface. Base-store plumbing does the same at the
   call site — `st.use.path({ agent: false })`, `st.use.tryJwt({ agent: false })` — so routing and the caller's
@@ -644,8 +654,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   have, and the next one asks again — a summarizer that was momentarily unreachable says nothing about whether
   this transcript can shrink. One that *landed* and shrank nothing does, so that one is not retried until another
   threshold's worth has been added. On the
-  wire a summary wears the user's role because the wire has no other, so a provider mapping frames it as a system
-  message and `/retry` steps over it — replaying it would send the notes back as a question. **While a summary is
+  wire a summary wears the user's role because the wire has no other, so a provider mapping frames it as fenced
+  history in a user turn and `/retry` steps over it — replaying it would send the notes back as a question. **While a summary is
   being written the transcript says so** (`session.isCompacting`, distinct from `isRunning`, which an
   auto-compaction runs inside): that turn takes as long as any other and answers nothing the user asked, so a chat
   that only shows the running dot reads as a question being ignored.
