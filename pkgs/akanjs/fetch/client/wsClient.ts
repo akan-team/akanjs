@@ -80,6 +80,14 @@ interface RoomSubscription {
   handleRefused?: (error: unknown) => void;
 }
 
+interface SubscribeRefusal {
+  code?: string;
+  statusCode?: number;
+  data?: unknown;
+  requestRoomId?: string;
+  token?: number;
+}
+
 type WsRequestPayload = unknown | unknown[];
 
 export class WsClient {
@@ -237,30 +245,13 @@ export class WsClient {
           this.logger.warn(`Unknown WebSocket frame ${e.data.slice(0, 200)}`);
           return;
         }
-        const parsed = frame as {
-          error?: unknown;
-          key?: string;
-          code?: string;
-          statusCode?: number;
-          data?: unknown;
-          requestRoomId?: string;
-          token?: number;
-        } & WebsocketResData;
+        const parsed = frame as unknown as { error?: unknown; key?: string } & SubscribeRefusal & WebsocketResData;
         if (parsed.error) {
           const error = restoreRemoteError(parsed, 500, this.ErrorCls);
           this.#options.onError?.(error, parsed.key);
-          const refusedId = parsed.statusCode === 429 ? parsed.requestRoomId : undefined;
-          const held = refusedId ? this.#roomSubscribeMap.get(refusedId) : undefined;
-          const refused = held && parsed.token === held.token ? held : undefined;
-          const retryInMs = refused ? subscribeRetryDelayOf(parsed, refused) : null;
-          if (refusedId && refused && retryInMs === null) {
-            this.#roomSubscribeMap.delete(refusedId);
-            for (const handler of refused.refused) handler(error);
-          } else if (refusedId && refused)
-            setTimeout(() => {
-              const current = this.#roomSubscribeMap.get(refusedId) === refused && refused.token === parsed.token;
-              if (current && this.#ws?.readyState === WebSocket.OPEN) this.#sendSubscribe(refused, true);
-            }, retryInMs ?? 0).unref?.();
+          refuseSubscribe(this.#roomSubscribeMap, parsed, error, (option) => {
+            if (this.#ws?.readyState === WebSocket.OPEN) this.#sendSubscribe(option, true);
+          });
           throw error;
         }
         const type = (parsed as WebsocketResData | WebsocketHeartbeatAckData).type;
@@ -646,12 +637,32 @@ const nextSubscribeToken = () => ++lastSubscribeToken;
 //? A room refused for a limit is dropped, or every reconnect would send it again and be refused again; one refused
 //? for a budget is sent again after the server's `seconds`, plus up to a second per attempt so sockets refused
 //? together do not return together, and dropped like a limit once it has been sent `subscribeRetryLimit` times.
-const subscribeRetryDelayOf = (refusal: { code?: string; data?: unknown }, option: SubscribeOption) => {
+const subscribeRetryDelayOf = (refusal: SubscribeRefusal, option: SubscribeOption) => {
   if (refusal.code === "liveRoomLimit" || option.retries >= subscribeRetryLimit) return null;
   option.retries += 1;
   const seconds = Number(isRecord(refusal.data) ? refusal.data.seconds : undefined);
   const waitMs = Math.min(60, Math.max(1, Number.isFinite(seconds) ? seconds : 1)) * 1_000;
   return waitMs + Math.random() * 1_000 * option.retries;
+};
+
+const refuseSubscribe = (
+  rooms: Map<string, SubscribeOption>,
+  refusal: SubscribeRefusal,
+  error: unknown,
+  resend: (option: SubscribeOption) => void,
+) => {
+  const roomId = refusal.statusCode === 429 ? refusal.requestRoomId : undefined;
+  const held = roomId ? rooms.get(roomId) : undefined;
+  if (!roomId || !held || refusal.token !== held.token) return;
+  const retryInMs = subscribeRetryDelayOf(refusal, held);
+  if (retryInMs !== null) {
+    setTimeout(() => {
+      if (rooms.get(roomId) === held && held.token === refusal.token) resend(held);
+    }, retryInMs).unref?.();
+    return;
+  }
+  rooms.delete(roomId);
+  for (const handler of held.refused) handler(error);
 };
 
 const outboxLimitOf = (outboxLimit: number | undefined) => {
