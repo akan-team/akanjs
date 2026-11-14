@@ -8,6 +8,29 @@ describe("process metrics helpers", () => {
     expect(ProcessMetricsCollector.parseMemoryLogIntervalMs("not-a-number")).toBe(60_000);
   });
 
+  test("leaves the JSC heap walk out of a default sample, and takes it only while memory is being diagnosed", async () => {
+    const saved = { log: process.env.AKAN_MEMORY_LOG, gc: process.env.AKAN_MEMORY_GC_ON_REPORT };
+    try {
+      delete process.env.AKAN_MEMORY_LOG;
+      delete process.env.AKAN_MEMORY_GC_ON_REPORT;
+      const sampled = await ProcessMetricsCollector.collect();
+      expect(sampled.heapUsedBytes).toBeGreaterThan(0);
+      expect("jscHeapSizeBytes" in sampled || "jscObjectCount" in sampled).toBe(false);
+
+      process.env.AKAN_MEMORY_LOG = "1";
+      const diagnosed = await ProcessMetricsCollector.collect();
+      expect(diagnosed.jscHeapSizeBytes).toBeGreaterThan(0);
+      expect(diagnosed.jscObjectCount).toBeGreaterThan(0);
+    } finally {
+      for (const [key, value] of [
+        ["AKAN_MEMORY_LOG", saved.log],
+        ["AKAN_MEMORY_GC_ON_REPORT", saved.gc],
+      ] as const)
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+    }
+  });
+
   test("formats memory usage as stable one-line fields", () => {
     expect(ProcessMetricsCollector.formatBytes(1024 * 1024)).toBe("1.0MiB");
     expect(

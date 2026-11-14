@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AkanWebConfig } from "akanjs";
 import { AkanError } from "akanjs/base";
 import { AppHosts, Logger, type LogRecord, resolveSubRouteHosts } from "akanjs/common";
-import type { AkanMetricsReport } from "akanjs/service";
+import type { AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import { PageDefinition } from "../client/route/PageDefinition";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import {
@@ -24,6 +24,7 @@ import { HtmlResultCache } from "./htmlResultCache";
 import { ImageOptimizer } from "./imageOptimizer";
 import type { McpAppShellSource } from "./mcp/McpApps";
 import { resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
+import { RouteCacheTally } from "./routeCacheTally";
 import { DevRoutes } from "./routing/devRoutes";
 import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
 import { RscWorker, type RscWorkerStatus } from "./rscWorkerHost";
@@ -269,6 +270,10 @@ export class WebRouter {
 
   get rscWorkerStatus(): RscWorkerStatus {
     return this.#rsc.status;
+  }
+
+  metricFamilies(): AkanMetricFamily[] {
+    return [RouteCacheTally.family("html"), ...this.#rsc.metricFamilies()];
   }
 
   getMetrics(): AkanMetricsReport {

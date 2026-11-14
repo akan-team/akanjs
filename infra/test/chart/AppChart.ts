@@ -15,6 +15,7 @@ export interface Manifest {
   metadata: { name: string; annotations?: Record<string, string> };
   spec: {
     template?: {
+      metadata?: { annotations?: Record<string, string> };
       spec: {
         securityContext?: Record<string, unknown>;
         initContainers?: Container[];

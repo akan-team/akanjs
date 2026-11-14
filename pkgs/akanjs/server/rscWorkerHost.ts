@@ -1,7 +1,7 @@
 import { AkanError } from "akanjs/base";
 import { Logger, type LogRecord } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
-import type { AkanMetricsReport } from "akanjs/service";
+import type { AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import { ErrorReporting } from "../signal/errorReporting";
 import type {
   PagePromptEntry,
@@ -12,6 +12,7 @@ import type {
 import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
 import { ForwardedError, type SerializedError } from "./forwardedError";
+import { MetricAggregate } from "./metrics/metricAggregate";
 import { type RscAdoptedBundle, RscHostReloads, type RscWorkerReloadInput } from "./rscHostReloads";
 import type { RscRedirectMethod, RscRedirectStatus, RscRenderResult } from "./rscHostRenderStream";
 import { RscHostRequests } from "./rscHostRequests";
@@ -61,6 +62,8 @@ export function projectRscWorkerProcessMetrics(metrics: AkanMetricsReport): Akan
   const {
     role: _role,
     pid: _pid,
+    startedAt: _startedAt,
+    metricFamilies: _metricFamilies,
     trace: _trace,
     reportedAt,
     rssBytes,
@@ -158,6 +161,7 @@ export class RscWorker {
   readonly #requests: RscHostRequests;
   readonly #recycler: RscWorkerRecycler;
   readonly #reloads: RscHostReloads;
+  readonly #families = new MetricAggregate();
   //? Sends a booting replacement could not take: a worker the host falls back to gets them again.
   #droppedWhileBooting = false;
   onLogRecords: ((records: LogRecord[], dropped: number) => void) | null = null;
@@ -287,6 +291,10 @@ export class RscWorker {
     });
   }
 
+  metricFamilies(): AkanMetricFamily[] {
+    return this.#families.families();
+  }
+
   restartWhenIdle(reason: string): boolean {
     return this.#recycler.restartWhenIdle(reason);
   }
@@ -370,6 +378,7 @@ export class RscWorker {
         return;
       case "metrics":
         this.#worker.lastWorkerMetrics = message.metrics;
+        this.#families.update(0, message.metrics);
         this.#recycler.maybeRecycleFromMetrics(message.metrics);
         return;
       case "log.records":

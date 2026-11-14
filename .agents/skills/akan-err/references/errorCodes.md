@@ -64,6 +64,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `invalidInsightQuery` | 400 | `InsightQueryError` | yes | yes | `service/insightQueryError.ts` |
 | `invalidKey` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `invalidMessage` | 400 | `AkanError` | no | yes | `base/akanError.ts` |
+| `invalidMetric` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `invalidParam` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `invalidPrompt` | 500 | `PromptError` | no | yes | `signal/mcp/promptError.ts` |
 | `invalidQuery` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
