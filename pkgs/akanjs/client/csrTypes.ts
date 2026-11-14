@@ -47,6 +47,10 @@ export interface PageConfig {
   /** `false` answers a `Link` prefetch of the page (on a layout, of every page under it) without rendering it, for a
    * render with a side effect such as counting a view; the click renders it as usual. */
   prefetch?: boolean;
+  /** `false` keys the page in the RSC and HTML result caches on its query exactly as requested (on a layout, every
+   * page under it), for a page whose output follows parameter order or a tracking parameter it reads without declaring
+   * it with `.search()`. By default the key sorts the query and leaves out `AKAN_ROUTE_CACHE_TRACKING_PARAMS`. */
+  canonicalQuery?: boolean;
   topSafeAreaColor?: string;
   bottomSafeAreaColor?: string;
   /** Keeps the route (on a `_layout`, its whole directory) out of `akan build` while `akan start` serves it. Write a
@@ -153,6 +157,8 @@ export interface RouteRender {
   getLayoutManifest?: () => PromiseOrObject<WebAppManifest | undefined>;
   /** The `page()` chain behind a page render, when it was declared as one — what a page prompt is read off. */
   getRouteDefinition?: () => PromiseOrObject<RouteDefinition | undefined>;
+  /** The query names the level reads; `undefined` for a legacy module, which receives every one. */
+  getSearchNames?: () => PromiseOrObject<string[] | undefined>;
 }
 export interface RouteViewport {
   /** `viewport-fit=cover`: the page runs under the notch and home indicator, and `env(safe-area-inset-*)` measures them. */

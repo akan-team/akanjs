@@ -511,6 +511,7 @@ export interface PageConfig {
     ssr?: SsrRenderMode;
     rscPatchHeadSafe?: boolean;
     prefetch?: boolean;
+    canonicalQuery?: boolean;
     topSafeAreaColor?: string;
     bottomSafeAreaColor?: string;
     devOnly?: boolean;
@@ -937,6 +938,7 @@ export interface RouteRender {
     getLayoutViewport?: () => PromiseOrObject<RouteViewport | undefined>;
     getLayoutManifest?: () => PromiseOrObject<WebAppManifest | undefined>;
     getRouteDefinition?: () => PromiseOrObject<RouteDefinition | undefined>;
+    getSearchNames?: () => PromiseOrObject<string[] | undefined>;
 }
 
 export type RouteSearchType = RouteArgType | [

@@ -2072,6 +2072,49 @@ describe("WebRouter full SSR cache orchestration", () => {
     }
   });
 
+  test("serves one stored page to requests that differ only in parameter order or a tracking parameter", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, fakeWorker }) => {
+        const cacheOf = async (href: string) => {
+          const response = await fullSsr(new Request(`https://example.test${href}`));
+          await response.text();
+          return response.headers.get("X-Akan-Cache");
+        };
+
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("MISS");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("HIT");
+        expect(await cacheOf("/docs?utm_source=news&a=1&fbclid=x&b=2")).toBe("HIT");
+        expect(await cacheOf("/docs?a=1&b=3")).toBe("MISS");
+        expect(fakeWorker.renderCalls).toHaveLength(2);
+      },
+      { worker },
+    );
+  });
+
+  test("keeps a stored page per query as requested for a route keyed on its exact query", async () => {
+    const worker = createFakeRscWorker(() => ({ cacheState: { cacheable: true, revalidate: 5, queryForm: "exact" } }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, fakeWorker }) => {
+        const cacheOf = async (href: string) => {
+          const response = await fullSsr(new Request(`https://example.test${href}`));
+          await response.text();
+          return response.headers.get("X-Akan-Cache");
+        };
+
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("MISS");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("MISS");
+        expect(await cacheOf("/docs?utm_source=news&a=1&b=2")).toBe("MISS");
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("HIT");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("HIT");
+        expect(fakeWorker.renderCalls).toHaveLength(3);
+      },
+      { worker },
+    );
+  });
+
   test("stores completed full SSR HTML and serves the next request from cache", async () => {
     await withFullSsrCacheHarness(async ({ fullSsr, fakeWorker }) => {
       const first = await fullSsr(new Request("https://example.test/docs"));

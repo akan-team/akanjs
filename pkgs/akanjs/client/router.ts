@@ -102,10 +102,11 @@ export const isRouteControl = (error: unknown) => {
 };
 
 function getServerRequestContext() {
-  const { untrackedHeaders, untrackedRequest } = require("akanjs/fetch");
-  return { getRequest: untrackedRequest, headers: untrackedHeaders } as {
+  const { untrackedHeaders, untrackedRequest, getRequestRenderSearch } = require("akanjs/fetch");
+  return { getRequest: untrackedRequest, headers: untrackedHeaders, renderSearch: getRequestRenderSearch } as {
     getRequest: () => Request | undefined;
     headers: () => Map<string, string>;
+    renderSearch: () => string | undefined;
   };
 }
 
@@ -123,7 +124,7 @@ export const getRequestRoutePath = (lang: string): string | undefined => {
   const headers = getServerRequestContext().headers();
   const locale = headers.get("x-locale") ?? lang;
   const basePath = getServerBasePath(pathname, locale, headers.get("x-base-path") ?? undefined, "");
-  return `${getPathInfo(pathname, locale, basePath).path}${search}`;
+  return `${getPathInfo(pathname, locale, basePath).path}${getServerRequestContext().renderSearch() ?? search}`;
 };
 
 const shouldExposeBasePath = () => getEnv().operationMode === "local";

@@ -1,6 +1,7 @@
 import { CookieJar, originFromRequest } from "akanjs/common";
 import type { AkanDynamicUsage, AkanRequestPolicy } from "akanjs/fetch";
 import { isOff } from "./assetHeaders";
+import type { RouteCacheQueryForm } from "./routeCacheQuery";
 
 export const DEFAULT_ROUTE_CACHE_TTL_SECONDS = 30;
 
@@ -18,6 +19,7 @@ export interface RouteCacheRenderState {
   tags?: string[];
   dynamicUsage?: AkanDynamicUsage;
   reason?: string;
+  queryForm?: RouteCacheQueryForm;
 }
 
 export interface RouteCacheMetadata {

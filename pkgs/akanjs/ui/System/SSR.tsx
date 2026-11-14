@@ -9,7 +9,7 @@ import {
   Translator,
   usePage,
 } from "akanjs/client";
-import { getRequestFrameState, setRequestTheme, untrackedRequest } from "akanjs/fetch";
+import { getRequestFrameState, getRequestRenderSearch, setRequestTheme, untrackedRequest } from "akanjs/fetch";
 import { Children, type CSSProperties, Fragment, type ReactNode, Suspense } from "react";
 import { FontCss } from "../fontCss";
 import { frameSlotContainerClassNames, frameSlotContentClassNames, frameSlotStyles } from "../Layout/frameSlot";
@@ -140,7 +140,9 @@ const SSRWrapper = ({
   pageState = defaultPageState,
 }: SSRWrapperProps) => {
   //? `path` is the locale proxy's x-path, which drops the query, so the page's location takes the request's own.
-  const requestSearch = path.includes("?") ? "" : new URL(untrackedRequest()?.url ?? "http://localhost").search;
+  const requestSearch = path.includes("?")
+    ? ""
+    : (getRequestRenderSearch() ?? new URL(untrackedRequest()?.url ?? "http://localhost").search);
   const { href, pathname, search, hash } = getPathInfo(`${path}${requestSearch}`, lang, prefix ?? "");
   const frameCssVars = getFrameCssVars(pageState, { cssResolved: true });
   const pageContentStyle: CSSProperties = {
