@@ -95,6 +95,16 @@ describe("a static app drawn as HTML", () => {
     });
   }, 20_000);
 
+  test("drops a script the app wrote, its end tag malformed or not, and sends nothing when one could be spliced", async () => {
+    await withStaticAppWorker(async (draw) => {
+      const { html } = await draw("showScripted");
+      expect(html).toContain("<h1>Scripted</h1>");
+      expect(html).toContain("<p>kept</p>");
+      expect(html).not.toMatch(/<script|boot\(\)|inner\(\)/i);
+      expect(await draw("showSpliced")).toEqual({ ok: true, drawn: true, html: null });
+    });
+  }, 20_000);
+
   test("is not sent when a component needs a browser, on either side of the wire, or the app draws nothing", async () => {
     await withStaticAppWorker(async (draw) => {
       expect(await draw("showCanvas")).toEqual({ ok: true, drawn: true, html: null });

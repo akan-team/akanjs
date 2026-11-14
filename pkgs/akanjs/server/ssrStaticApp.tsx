@@ -88,10 +88,9 @@ export class SsrStaticApp {
 
   //? Security: a host shows this document as it is, so it carries no script, React's own inline ones included.
   static #scriptless(html: string): string {
-    return html
-      .replace(/<script\b[\s\S]*?<\/script\s*>/gi, "")
-      .replace(/<link\b[^>]*\brel="modulepreload"[^>]*>/gi, "")
-      .replace(/<link\b[^>]*\bas="script"[^>]*>/gi, "");
+    return new HTMLRewriter()
+      .on('script, link[rel="modulepreload"], link[as="script"]', { element: (element) => void element.remove() })
+      .transform(html);
   }
 
   //? React writes `<!--$?-->` for a boundary still pending and `<!--$!-->` for one left to the client: a fallback.
@@ -99,12 +98,22 @@ export class SsrStaticApp {
     if (/<script/i.test(html)) return "a script survived its stripping";
     if (html.includes("<!--$?-->") || html.includes("<!--$!-->")) return "a Suspense boundary did not resolve";
     const body = html.replace(/^[\s\S]*?<body[^>]*>/i, "").replace(/<\/body>[\s\S]*$/i, "");
-    const text = body
-      .replace(/<!--[\s\S]*?-->/g, "")
-      .replace(/<[^>]+>/g, "")
-      .trim();
-    if (!text && !SsrStaticApp.#mediaTag.test(body)) return "its body is empty";
+    if (!SsrStaticApp.#hasText(body) && !SsrStaticApp.#mediaTag.test(body)) return "its body is empty";
     return null;
+  }
+
+  static #hasText(body: string): boolean {
+    let at = 0;
+    while (at < body.length) {
+      const open = body.indexOf("<", at);
+      if (body.slice(at, open < 0 ? body.length : open).trim()) return true;
+      if (open < 0) return false;
+      const end = body.startsWith("<!--", open) ? "-->" : ">";
+      const close = body.indexOf(end, open);
+      if (close < 0) return false;
+      at = close + end.length;
+    }
+    return false;
   }
 
   static async #read(stream: ReadableStream<Uint8Array>): Promise<string | null> {

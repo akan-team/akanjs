@@ -31,6 +31,11 @@ const LateNote = async (): Promise<ReactNode> => {
   return <p>late note</p>;
 };
 
+const Raw = ({ html }: { html: string }): ReactNode => (
+  // biome-ignore lint/security/noDangerouslySetInnerHtml: markup an app could write, which the static render must strip
+  <div dangerouslySetInnerHTML={{ __html: html }} />
+);
+
 const signedIn = () => {
   if (untrackedHeaders().get("authorization") !== "Bearer u1")
     throw Object.assign(new Error("redirect"), { digest: "AKAN_REDIRECT", location: "/signin" });
@@ -80,6 +85,27 @@ export const pages: PagesContext = {
             <BrowserChart />
           </article>
         ),
+        { static: true },
+      )
+      .render(() => null),
+  }),
+  "./scripted.tsx": async () => ({
+    default: page()
+      .app(
+        "showScripted",
+        "Show the scripted note.",
+        () => (
+          <article>
+            <h1>Scripted</h1>
+            <Raw html={"<script>boot()</script><script>inner()</script\t\n x><p>kept</p>"} />
+          </article>
+        ),
+        { static: true },
+      )
+      .app(
+        "showSpliced",
+        "Show the spliced note.",
+        () => <Raw html="<p>spliced</p><scr<script></script>ipt>run()</script>" />,
         { static: true },
       )
       .render(() => null),

@@ -354,6 +354,17 @@ describe("RemoteSource", () => {
     expect(metas).toEqual([{ "akanjs/view": true }]);
   });
 
+  test("puts the view's policy ahead of everything the remote wrote but its doctype", () => {
+    const origin = "https://shop.example.com";
+    const early = RemoteSource.framed("<!DOCTYPE html>\n<script>early()</script><html><head></head></html>", origin);
+    expect(early).toStartWith('<!DOCTYPE html><meta http-equiv="Content-Security-Policy"');
+    expect(early.indexOf("Content-Security-Policy")).toBeLessThan(early.indexOf("<script>"));
+    expect(RemoteSource.framed("<script>bare()</script>", origin)).toStartWith("<meta http-equiv=");
+    const started = performance.now();
+    RemoteSource.framed("<head ".repeat(400_000), origin);
+    expect(performance.now() - started).toBeLessThan(500);
+  });
+
   test("reads a bare origin as the /mcp an akan server answers at", () => {
     const { fetcher } = fetcherOf(() => json({}));
     expect(RemoteSource.endpointOf(fetcher, " https://shop.example.com ")).toBe("https://shop.example.com/mcp");

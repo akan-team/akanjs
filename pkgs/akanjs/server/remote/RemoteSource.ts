@@ -143,6 +143,7 @@ export class RemoteSource implements AgentLoopRemote {
     return await this.#with((mcp) => mcp.callTool(tool, args, { [MCP_APP_META.view]: true }));
   }
 
+  //? Security: a policy covers only what is parsed after it, so it follows the doctype and nothing else.
   static framed(html: string, origin: string): string {
     const policy = [
       "default-src 'none'",
@@ -157,9 +158,7 @@ export class RemoteSource implements AgentLoopRemote {
       `base-uri ${origin}`,
     ].join("; ");
     const meta = `<meta http-equiv="Content-Security-Policy" content="${policy}">`;
-    const head = /<head(\s[^>]*)?>/i.exec(html);
-    if (!head) return `${meta}${html}`;
-    const at = head.index + head[0].length;
+    const at = /^\s*<!doctype[^>]*>/i.exec(html)?.[0].length ?? 0;
     return `${html.slice(0, at)}${meta}${html.slice(at)}`;
   }
 
