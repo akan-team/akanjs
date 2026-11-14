@@ -83,6 +83,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `missingModel` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `missingSlice` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `noHandler` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
+| `nonErrorThrown` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `notApplied` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `notFound` | 404 | `Exception.NotFound` | yes | no | `signal/exception.ts` |
 | `notFound` | 404 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
@@ -142,6 +143,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | set when thrown | set when thrown | `Err.Forbidden` | yes | yes | `common/err.ts` |
 | set when thrown | set when thrown | `Err.NotFound` | yes | yes | `common/err.ts` |
 | set when thrown | set when thrown | `Err.Unauthorized` | yes | yes | `common/err.ts` |
+| set when thrown | 500 | `ForwardedError` | no | yes | `server/forwardedError.ts` |
 
 ## Codes by status
 

@@ -507,6 +507,19 @@ export declare class EndpointRateLimit {
 
 export type EndpointType = "message" | "mutation" | "pubsub" | "query";
 
+export interface ErrorReportContext {
+    source: ErrorReportSource;
+    traceId: null | string;
+    endpoint: null | string;
+    routeId: null | string;
+    accountId: null | string;
+    digest: null | string;
+}
+
+export type ErrorReportSource = "process" | "render" | "server";
+
+export type ErrorReporter = (error: Error, context: ErrorReportContext) => Promise<void> | void;
+
 export declare class Exception extends AkanError {
     readonly details?: undefined | unknown;
     constructor(statusCode: number, message: string, details?: undefined | unknown, data?: unknown);

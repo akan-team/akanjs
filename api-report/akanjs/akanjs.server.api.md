@@ -109,6 +109,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     setRateLimit(settingOrFn: ((env: Env) => RateLimitSetting | false) | RateLimitSetting | false): this;
     setLiveRoomLimit(setting: LiveRoomLimitSetting): this;
     setSessionRefresh(hook: SessionRefreshHook | null): this;
+    setErrorReporter(reporter: ErrorReporter | null): this;
     setLlm<Option extends LlmOption>(llmOrFn: ((env: Env) => Option) | Option): this;
     transformEnv(fn: (env: Env) => Env): this;
     resolveEnv(env: Env): Env;
@@ -129,6 +130,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     getRateLimit(env: Env): RateLimitSetting | false | undefined;
     getLiveRoomLimit(): LiveRoomLimitSetting | undefined;
     getSessionRefresh(): SessionRefreshHook | null | undefined;
+    getErrorReporter(): ErrorReporter | null | undefined;
     getLlm(env: Env): LlmOption;
 }
 

@@ -11,6 +11,7 @@ import {
 } from "akanjs/common";
 import { markFailureLogged } from "../common/loggedFailure";
 import { TraceContext } from "../common/TraceContext";
+import { type ErrorReportContext, ErrorReporting } from "./errorReporting";
 import { RequestTrace, type TraceParentRef } from "./requestTrace";
 import { SignalFailure } from "./SignalFailure";
 
@@ -441,20 +442,33 @@ const spanAls = traceProcessStore.__akanSpanAls;
 
 export const getCurrentTrace = (): SignalTrace | undefined => als.getStore();
 
+export const reportedTraceOf = (
+  trace: SignalTrace | null = als.getStore() ?? null,
+): Pick<ErrorReportContext, "traceId" | "endpoint" | "accountId"> => {
+  const userId = trace?.attrs.userId;
+  return {
+    traceId: (trace ?? RequestTrace.current())?.traceId ?? null,
+    endpoint: trace?.endpoint ?? null,
+    accountId: typeof userId === "string" ? userId : null,
+  };
+};
+
 interface CrashLine {
   name: string;
-  label: string;
+  type: string;
+  key: string;
   error: unknown;
   status: number;
 }
 //? A failed call always writes its canonical line when the mode is on, so a 5xx is told there and only there.
-export const logCrash = (trace: SignalTrace | null, { name, label, error, status }: CrashLine): void => {
+export const logCrash = (trace: SignalTrace | null, { name, type, key, error, status }: CrashLine): void => {
+  ErrorReporting.report(error, { source: "server", ...reportedTraceOf(trace), endpoint: `${type}:${key}` });
   if (trace && getCanonicalLineMode() !== "off") return;
   const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
   Logger.emit({
     level: "error",
     name,
-    message: `Error ${label}: ${message}`,
+    message: `Error ${type}-${key}: ${message}`,
     attrs: { status, ...SignalFailure.logAttrs(error) },
   });
 };

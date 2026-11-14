@@ -2,6 +2,7 @@ import { AkanError } from "akanjs/base";
 import { Logger, type LogRecord } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { AkanMetricsReport } from "akanjs/service";
+import { ErrorReporting } from "../signal/errorReporting";
 import type {
   PagePromptEntry,
   PagePromptRun,
@@ -10,6 +11,7 @@ import type {
 } from "../signal/mcp/pagePrompt";
 import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
+import { ForwardedError, type SerializedError } from "./forwardedError";
 import { type RscAdoptedBundle, RscHostReloads, type RscWorkerReloadInput } from "./rscHostReloads";
 import type { RscRedirectMethod, RscRedirectStatus, RscRenderResult } from "./rscHostRenderStream";
 import { RscHostRequests } from "./rscHostRequests";
@@ -124,6 +126,14 @@ type RscInMsg =
   | { type: "not-found"; requestId: string }
   | { type: "metrics"; metrics: AkanMetricsReport }
   | { type: "log.records"; records: LogRecord[]; dropped?: number }
+  | {
+      type: "render-error";
+      error: SerializedError;
+      digest: string;
+      routeId: string | null;
+      traceId: string | null;
+      accountId: string | null;
+    }
   | { type: "page-prompts.result"; requestId: string; result: PagePromptEntry[] }
   | { type: "page-prompt.result"; requestId: string; result: PagePromptRun }
   | { type: "page-prompt.draw.result"; requestId: string; result: RscPagePromptDrawn }
@@ -364,6 +374,15 @@ export class RscWorker {
         return;
       case "log.records":
         this.onLogRecords?.(message.records, message.dropped ?? 0);
+        return;
+      case "render-error":
+        ErrorReporting.report(new ForwardedError(message.error), {
+          source: "render",
+          digest: message.digest,
+          routeId: message.routeId,
+          traceId: message.traceId,
+          accountId: message.accountId,
+        });
         return;
       case "page-prompts.result":
       case "page-prompt.result":

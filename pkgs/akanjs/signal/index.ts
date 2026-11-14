@@ -64,6 +64,7 @@ export {
   type RateLimitSetting,
   type SubscribeRateSetting,
 } from "./endpointRateLimit";
+export type { ErrorReportContext, ErrorReporter, ErrorReportSource } from "./errorReporting";
 export { Exception, type ExceptionLike, isExceptionLike, type StatusException } from "./exception";
 export { type Guard, type GuardCls, type GuardScope, guard, guardOf, refusesAgents } from "./guard";
 export { AgentRelayAccess, None, Public } from "./guards";

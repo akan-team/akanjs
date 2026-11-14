@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { AkanError } from "akanjs/base";
 import { Logger, type LogRecord } from "akanjs/common";
+import { type ErrorReportContext, ErrorReporting } from "../signal/errorReporting";
+import { ForwardedError } from "./forwardedError";
 import { RscWorker } from "./rscWorkerHost";
 import type { BaseBuildArtifact } from "./types";
 
@@ -31,6 +33,15 @@ process.on("message", (message) => {
   if (message.type === "render") {
     const url = new URL(message.url);
     if (url.pathname === "/exit") process.exit(7);
+    if (url.pathname === "/render-error") {
+      const cause = { name: "Error", message: "row 42 had no price", stack: null, code: "rowMissing", cause: null };
+      const error = { name: "TypeError", message: "price was undefined", stack: null, code: null, cause };
+      const traceId = "0af7651916cd43dd8448eb211c80319c";
+      const routeId = "/:lang/orders/:orderId";
+      process.send?.({ type: "render-error", error, digest: "a1b2c3d4", routeId, traceId, accountId: null });
+      process.send?.({ type: "not-found", requestId: message.requestId });
+      return;
+    }
     if (url.pathname === "/metrics") {
       process.send?.({ type: "not-found", requestId: message.requestId });
       const renders = Number(url.searchParams.get("renders"));
@@ -171,6 +182,28 @@ describe("RscWorker collaborator wiring", () => {
     const failed = await reload;
     expect(AkanError.is(failed, "rscWorkerStopped")).toBe(true);
     expect(failed).toMatchObject({ statusCode: 500, message: "rsc worker exited with code 0" });
+  }, 20_000);
+
+  test("a render error the worker sends reaches the app's reporter as an Error with its cause and digest", async () => {
+    const reported: [Error, ErrorReportContext][] = [];
+    ErrorReporting.use((error, context) => void reported.push([error, context]));
+    cleanups.push(async () => ErrorReporting.use(null));
+    const { rsc } = await startWorker();
+    expect((await rsc.renderWithMeta(new Request("http://localhost/render-error"))).type).toBe("not-found");
+
+    await until(() => reported.length === 1, "the report");
+    const [error, context] = reported[0] ?? [];
+    expect(error).toBeInstanceOf(ForwardedError);
+    expect(error).toMatchObject({ name: "TypeError", message: "price was undefined" });
+    expect((error as Error).cause).toMatchObject({ name: "Error", message: "row 42 had no price", code: "rowMissing" });
+    expect(context).toEqual({
+      source: "render",
+      traceId: "0af7651916cd43dd8448eb211c80319c",
+      endpoint: null,
+      routeId: "/:lang/orders/:orderId",
+      accountId: null,
+      digest: "a1b2c3d4",
+    });
   }, 20_000);
 
   test("a cache invalidation reaches the worker", async () => {

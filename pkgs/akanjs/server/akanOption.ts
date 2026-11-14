@@ -5,6 +5,7 @@ import type {
   AgentRequestPolicy,
   AgentUsageHook,
   CrossSiteOption,
+  ErrorReporter,
   GuardCls,
   MiddlewareCls,
   RateLimitSetting,
@@ -36,6 +37,7 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   #getRateLimit: ((env: Env) => RateLimitSetting | false) | undefined;
   #liveRoomLimit: LiveRoomLimitSetting | undefined;
   #sessionRefresh: SessionRefreshHook | null | undefined;
+  #errorReporter: ErrorReporter | null | undefined;
   use(fnOrObject: ((env: Env) => Record<string, PromiseOrObject<unknown>>) | Record<string, PromiseOrObject<unknown>>) {
     if (typeof fnOrObject === "function")
       this.#getUses.push(fnOrObject as (env: Env) => Record<string, PromiseOrObject<unknown>>);
@@ -123,6 +125,15 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
     this.#sessionRefresh = hook;
     return this;
   }
+  /**
+   * Gets each server 5xx, render error, uncaught exception and unhandled rejection of a server process, once, after the
+   * response. A failing reporter is logged once and changes nothing else. The app's wins over its libs'; `null` clears
+   * a lib's.
+   */
+  setErrorReporter(reporter: ErrorReporter | null) {
+    this.#errorReporter = reporter;
+    return this;
+  }
   /** Injected into the `LlmAdaptorRole` adaptor as the `llmOption` use; merged in mount order, the app's last. */
   setLlm<Option extends LlmOption>(llmOrFn: Option | ((env: Env) => Option)) {
     if (typeof llmOrFn === "function") this.#getLlms.push(llmOrFn);
@@ -191,6 +202,9 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getSessionRefresh(): SessionRefreshHook | null | undefined {
     return this.#sessionRefresh;
+  }
+  getErrorReporter(): ErrorReporter | null | undefined {
+    return this.#errorReporter;
   }
   getLlm(env: Env): LlmOption {
     return Object.assign({}, ...this.#getLlms.map((fn) => fn(env)));
