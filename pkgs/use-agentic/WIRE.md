@@ -43,7 +43,12 @@ tools, and the loop stay in the client; the server serves exactly one stateless 
 - A message may carry `error` — a turn that failed, recorded where every other failure is recorded. No provider
   format has a field for it, so **fold it into the text you send**: an assistant turn that reaches the model
   saying nothing is one the model repeats.
-- `context` blocks are host vocabulary. The server forwards them to the model as data, framed as data.
+- `context` blocks are host vocabulary. The server forwards them to the model as data, framed as data: in a
+  user-role turn, behind a delimiter the content cannot contain, and never in its system prompt.
+- A block may carry `"untrusted": true`: it holds text someone other than the host's developer or the user may have
+  written, such as a record's title. **Fence it apart from the host's own blocks, as page content**, the way a
+  `taint: "source"` tool's result arrives. The client counts a turn sent with one as such a read, so the next
+  change asks the user first.
 - Everything is JSON-serializable by contract; a tool whose `result` is not is the tool's bug.
 
 ## Attachments

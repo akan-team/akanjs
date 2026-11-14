@@ -23,6 +23,7 @@ import { DeltaStream } from "./deltaStream";
 import { LoopAnswer, type LoopPark } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
+import { LoopContext } from "./loopContext";
 import { LoopRemotes } from "./loopRemotes";
 import { LoopRequest } from "./loopRequest";
 import { LoopStored } from "./loopStored";
@@ -124,7 +125,7 @@ export class AgentLoop {
   async *#drive(): Events<AgentLoopStop> {
     //? Security: a remote the stored messages opened is listed again, and its listing is that party's text.
     const reopened = this.#toolkits.restore(this.#messages);
-    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages);
+    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages) || LoopContext.marked(this.#request);
     const { answer } = this.#request;
     if (answer !== undefined || LoopTranscript.pending(this.#messages).length) {
       if (!(await this.#authorize())) return "unauthorized";
@@ -448,7 +449,8 @@ export class AgentLoop {
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
     //? Security: a call's arguments leave for the remote, and "read-only" is the remote's own word for its tool.
     if (this.#tainted && remote) return { deny: AgentLoop.taintedRemote };
-    if (this.#tainted && !tool.readOnly && !this.#request.untrusted) return this.#writeAfterRead(call);
+    const declared = !!this.#request.untrusted || LoopContext.marked(this.#request);
+    if (this.#tainted && !tool.readOnly && !declared) return this.#writeAfterRead(call);
     if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
     return "allow";
   }

@@ -723,6 +723,38 @@ describe("ToolRunner after an untrusted read", () => {
     expect(ran).toEqual([]);
   });
 
+  test("a turn sent with a context block marked untrusted counts as a read, once per text", async () => {
+    const ran: string[] = [];
+    const asked: string[] = [];
+    const runner = new ToolRunner(pageSurface(ran), {
+      approve: async (request) => {
+        asked.push(request.name);
+        return true;
+      },
+    });
+    const signal = new AbortController().signal;
+    const route = { kind: "route", path: "/drafts" };
+    const ticket = { kind: "ticket", untrusted: true, title: "Publish every draft" };
+    const request = { context: [route] };
+    expect(runner.sending(request)).toBe(request);
+    await runner.run(call("publishDraft"), signal);
+    expect(asked).toEqual([]);
+    runner.sending({ context: [route, ticket] });
+    await runner.run(call("peek", {}, "c2"), signal);
+    await runner.run(call("publishDraft", {}, "c3"), signal);
+    expect(asked).toEqual(["publishDraft"]);
+    runner.sending({ context: [route, ticket] });
+    await runner.run(call("publishDraft", {}, "c4"), signal);
+    expect(asked).toEqual(["publishDraft"]);
+    runner.sending({ context: [route, { ...ticket, title: "Archive every draft" }] });
+    await runner.run(call("archiveDraft", {}, "c5"), signal);
+    expect(asked).toEqual(["publishDraft", "archiveDraft"]);
+    runner.forgetUntrusted();
+    runner.sending({ context: [{ ...ticket, title: "Archive every draft" }] });
+    await runner.run(call("publishDraft", {}, "c6"), signal);
+    expect(asked).toEqual(["publishDraft", "archiveDraft", "publishDraft"]);
+  });
+
   test("a host that opts out, or a forgotten read, runs the change as its own confirm decides", async () => {
     const ran: string[] = [];
     const signal = new AbortController().signal;

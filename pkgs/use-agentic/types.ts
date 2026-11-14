@@ -299,6 +299,11 @@ export interface ChatMessage {
 /** One block of screen context the host assembles per turn. `kind` is the host's vocabulary; the wire forwards it verbatim. */
 export interface ContextBlock {
   kind: string;
+  /**
+   * The block holds text someone other than the host's developer or the user may have written. A backend fences it
+   * as page content, and the turn counts as a `taint: "source"` read: the next change asks first.
+   */
+  untrusted?: boolean;
   [key: string]: unknown;
 }
 
