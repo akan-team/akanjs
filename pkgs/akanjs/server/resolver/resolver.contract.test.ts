@@ -963,6 +963,49 @@ describe("ServiceResolver cascade", () => {
     expect(removed).toEqual(gallery);
   });
 
+  test("removes a long array in one query per chunk a database can bind, all in one transaction", async () => {
+    const removed: string[] = [];
+    const chunks: { size: number; inTransaction: boolean }[] = [];
+    const gallery = Array.from({ length: 450 }, (_, idx) => `file-${idx}`);
+    let inTransaction = false;
+    const fileService = {
+      __removeMany: async (query: unknown) => {
+        const asked = idsAsked(query) ?? [];
+        chunks.push({ size: asked.length, inTransaction });
+        if (asked.length > 200) throw new Error("too many bound parameters");
+        removed.push(...asked);
+        return { acknowledged: true, matchedCount: asked.length, modifiedCount: asked.length };
+      },
+      transaction: async <T>(fn: () => Promise<T>) => {
+        inTransaction = true;
+        try {
+          return await fn();
+        } finally {
+          inTransaction = false;
+        }
+      },
+    };
+    class PlainParentService {}
+    class PlainFileService {}
+    const cascade = new CascadeRunner();
+    cascade.register(
+      constantOf(parentRef, { removeRef: new Map([["gallery", cascadeChildFull]]) }),
+      new DocumentSchema(),
+      PlainParentService as never,
+    );
+    cascade.register(cascadeChildConstant, new DocumentSchema(), PlainFileService as never);
+    cascade.seal(() => fileService as never);
+
+    await cascade.run(parentRef, { id: "parent-1", gallery });
+
+    expect(chunks).toEqual([
+      { size: 200, inTransaction: true },
+      { size: 200, inTransaction: true },
+      { size: 50, inTransaction: true },
+    ]);
+    expect(removed).toEqual(gallery);
+  });
+
   test("removes a document once when several fields or array entries hold its id", async () => {
     const child = childTarget(true);
     const { service } = buildCascade(
