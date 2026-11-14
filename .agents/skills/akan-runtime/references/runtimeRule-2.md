@@ -133,9 +133,10 @@ const config: AppConfig = {
   the reason is `terminated` on macOS, and `rebuildFailed` when a rebuild failed and the view is closed, to be opened
   again) / `consoleMessage` events. Every method on Windows and Linux, where a visible view also holds the keyboard
   focus and no `consoleMessage` is sent; macOS 14+ lacks `sendKey`, `setMuted` and `capture`. A view opens only the
-  exact origins `native.desktop.externalView.allowOrigins` lists (none without it): its own `allowOrigins` narrow within
-  them, and opening an open view again never adds one. `evaluate` and `initScript` need `desktop.externalView.evaluate:
-  true`, `sendKey` needs `desktop.externalView.sendKey: true`.
+  exact origins `native.desktop.externalView.allowOrigins` lists (none without it), over the calling page's own window:
+  its own `allowOrigins` narrow within them, and opening it again while it is open never adds one. Closed, its id opens
+  again for any listed origins with the same profile, which belongs to the id. `evaluate` and `initScript` need
+  `desktop.externalView.evaluate: true`, `sendKey` needs `desktop.externalView.sendKey: true`.
 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 

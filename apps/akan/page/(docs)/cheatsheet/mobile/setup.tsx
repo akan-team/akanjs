@@ -1984,7 +1984,9 @@ await NativeSecret.remove("llm.apiKey");`}
                     It opens only the origins <code>desktop.externalView.allowOrigins</code> lists, and none without it;
                     a view's own <code>allowOrigins</code> narrow within them. Running script in it (
                     <code>evaluate</code>, <code>initScript</code>) and typing into it (<code>sendKey</code>) are off
-                    until <code>evaluate</code> and <code>sendKey</code> turn them on.
+                    until <code>evaluate</code> and <code>sendKey</code> turn them on. While a view is open, opening its
+                    id again never adds an origin; once closed, the id opens again for any origins the config lists,
+                    with the same browser profile, which belongs to the id.
                   </span>
                 ),
                 ko: (
@@ -1993,7 +1995,9 @@ await NativeSecret.remove("llm.apiKey");`}
                     <code>desktop.externalView.allowOrigins</code>에 적은 오리진만 열고, 없으면 아무것도 열지 않으며,
                     뷰의 <code>allowOrigins</code>는 그 안에서만 좁힐 수 있습니다. 뷰 안에서 스크립트를 실행하는 것(
                     <code>evaluate</code>, <code>initScript</code>)과 키를 입력하는 것(<code>sendKey</code>)은{" "}
-                    <code>evaluate</code>와 <code>sendKey</code>로 켜기 전까지 꺼져 있습니다.
+                    <code>evaluate</code>와 <code>sendKey</code>로 켜기 전까지 꺼져 있습니다. 열려 있는 뷰의 id를 다시
+                    열어도 오리진은 늘어나지 않고, 닫은 뒤에는 그 id를 설정에 적은 어떤 오리진으로든 다시 열 수 있으며
+                    브라우저 프로필은 id에 속하므로 그대로 이어집니다.
                   </span>
                 ),
               })}
