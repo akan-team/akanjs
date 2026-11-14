@@ -14,6 +14,8 @@ type BatchLoadFn<Key, Value> = (
 interface DataLoaderOptions<Key, Value, CacheKey> {
   /** `false` (default) keeps nothing past its batch, a number keeps a key that many ms, `true` for its whole life. */
   cache?: boolean | number;
+  /** How many keys `cache: true` keeps (10,000 by default): past it, the key used longest ago leaves first. */
+  maxCacheSize?: number;
   cacheKeyFn?: (key: Key) => CacheKey;
   /** What a caller gets in place of a value another caller already holds: a repeated key's, or a kept key's. */
   copy?: (value: Value) => Value;
@@ -34,9 +36,11 @@ interface BatchItem<Key, Value> {
 
 export class DataLoader<Key, Value, CacheKey = Key> {
   static readonly #minSweepSize = 1024;
+  static readonly #defaultMaxCacheSize = 10_000;
   readonly name?: string;
   readonly #batchLoadFn: BatchLoadFn<Key, Value>;
   readonly #ttl: number;
+  readonly #maxCacheSize: number;
   readonly #cacheKeyFn: (key: Key) => CacheKey;
   readonly #batch: boolean;
   readonly #batchScheduleFn: (callback: () => void) => void;
@@ -55,6 +59,7 @@ export class DataLoader<Key, Value, CacheKey = Key> {
         : typeof options.cache === "number" && options.cache > 0
           ? options.cache
           : 0;
+    this.#maxCacheSize = Math.max(1, options.maxCacheSize ?? DataLoader.#defaultMaxCacheSize);
     this.#cacheKeyFn = options.cacheKeyFn ?? ((key) => key as unknown as CacheKey);
     this.#batch = options.batch !== false;
     this.#batchScheduleFn = options.batchScheduleFn ?? ((callback) => queueMicrotask(callback));
@@ -117,14 +122,21 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     if (this.#ttl <= 0) return undefined;
     const entry = this.#promiseCache.get(cacheKey);
     if (!entry) return undefined;
-    if (entry.expiresAt > Date.now()) return entry.promise;
     this.#promiseCache.delete(cacheKey);
-    return undefined;
+    if (entry.expiresAt <= Date.now()) return undefined;
+    this.#promiseCache.set(cacheKey, entry);
+    return entry.promise;
   }
 
   // Swept whenever the map doubles, so a process-long loader holds about one TTL window of keys, not every key seen.
+  // A key that never expires has no window: the map is kept in order of use, and its oldest key leaves past the bound.
   #remember(cacheKey: CacheKey, promise: Promise<Value>) {
     this.#promiseCache.set(cacheKey, { promise, expiresAt: Date.now() + this.#ttl });
+    if (this.#ttl === Number.POSITIVE_INFINITY) {
+      if (this.#promiseCache.size > this.#maxCacheSize)
+        this.#promiseCache.delete(this.#promiseCache.keys().next().value as CacheKey);
+      return;
+    }
     if (this.#promiseCache.size < this.#sweepAt) return;
     const now = Date.now();
     for (const [key, entry] of this.#promiseCache) if (entry.expiresAt <= now) this.#promiseCache.delete(key);

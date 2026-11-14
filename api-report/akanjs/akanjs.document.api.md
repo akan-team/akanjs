@@ -796,6 +796,7 @@ type ConstantModelCls = DocumentConstantModelRef<unknown>;
 
 interface DataLoaderOptions<Key, Value, CacheKey> {
     cache?: boolean | number;
+    maxCacheSize?: number;
     cacheKeyFn?: (key: Key) => CacheKey;
     copy?: (value: Value) => Value;
     batch?: boolean;

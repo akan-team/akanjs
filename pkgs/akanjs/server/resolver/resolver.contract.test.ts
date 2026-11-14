@@ -114,6 +114,7 @@ interface LoadedItem {
   save: () => Promise<LoadedItem>;
 }
 interface ItemLoader<Key> {
+  load: (key: Key) => Promise<LoadedItem | null>;
   loadMany: (keys: Key[]) => Promise<(LoadedItem | null)[]>;
 }
 interface SqliteItemModel {
@@ -126,6 +127,10 @@ interface SqliteItemModel {
   byOwner: ItemLoader<string>;
   byTag: ItemLoader<string>;
   byOwnerCategory: ItemLoader<Record<string, string>>;
+  keptByTitle: ItemLoader<string>;
+  keptByTag: ItemLoader<string>;
+  keptByTitleCategory: ItemLoader<Record<string, string>>;
+  __remove: (id: string) => Promise<LoadedItem>;
 }
 const sqliteRow = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
 const withSqliteModel = async (
@@ -444,6 +449,73 @@ describe("DatabaseResolver declaration contracts", () => {
       }, options);
     },
   );
+
+  test("a loader that keeps its keys forgets the ones a create, a save or a remove through the model answers", async () => {
+    await withSqliteModel(async (instance) => {
+      const keptOf = async (title: string, tag: string) =>
+        [
+          await instance.keptByTitle.load(title),
+          await instance.keptByTag.load(tag),
+          await instance.keptByTitleCategory.load({ title, category: "news" }),
+        ].map((doc) => doc && [doc.title, doc.count]);
+      expect(await keptOf("Draft", "a")).toEqual([null, null, null]);
+      const created = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      expect(await keptOf("Draft", "a")).toEqual(Array(3).fill(["Draft", 0]));
+      expect(await keptOf("Final", "b")).toEqual([null, null, null]);
+
+      const find = spyOn(instance.__store, "find");
+      await keptOf("Draft", "a");
+      expect(find).not.toHaveBeenCalled();
+      find.mockRestore();
+
+      const loaded = await instance.__get(created.id);
+      await loaded.set({ title: "Final", tags: ["b"], count: 2 }).save();
+      expect(await keptOf("Draft", "a")).toEqual([null, null, null]);
+      expect(await keptOf("Final", "b")).toEqual(Array(3).fill(["Final", 2]));
+
+      await instance.__remove(created.id);
+      expect(await keptOf("Final", "b")).toEqual([null, null, null]);
+    });
+  });
+
+  test("a kept key outlives a write that rolls back, leaves when it commits, and is gone before the model's own post hook", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      await instance.keptByTitle.loadMany(["Draft", "Final"]);
+      const titlesInHook: (string | undefined)[] = [];
+      ServerResolverTestModelMixin.afterUpdate = async () => {
+        titlesInHook.push((await instance.keptByTitle.load("Final"))?.title);
+      };
+      try {
+        const retitle = async (fail: boolean) =>
+          await database.transaction(async () => {
+            await (await instance.__get(id)).set({ title: "Final" }).save();
+            expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+              undefined,
+              "Final",
+            ]);
+            if (fail) throw new Error("rollback-probe");
+          });
+        await expect(retitle(true)).rejects.toThrow("rollback-probe");
+        const find = spyOn(instance.__store, "find");
+        expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+          "Draft",
+          undefined,
+        ]);
+        expect(find).not.toHaveBeenCalled();
+        find.mockRestore();
+
+        await retitle(false);
+        expect([...new Set(titlesInHook)]).toEqual(["Final"]);
+        expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+          undefined,
+          "Final",
+        ]);
+      } finally {
+        ServerResolverTestModelMixin.afterUpdate = null;
+      }
+    });
+  });
 
   test("hands the facade projection to the store", async () => {
     const { instance } = await bootModel<{

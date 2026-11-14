@@ -1108,6 +1108,22 @@ describe("data loaders", () => {
     expect(await loader.loadMany(["a", "b", "c"])).toEqual(["committed:a", "committed:b", "committed:c"]);
   });
 
+  test("DataLoader with cache: true keeps its most recently used keys, and a timed cache every key of its window", async () => {
+    const loaded: string[] = [];
+    const batch = async (keys: readonly string[]) => {
+      loaded.push(...keys);
+      return keys.map((key) => `loaded:${key}`);
+    };
+    const kept = new DataLoader<string, string>(batch, { cache: true, maxCacheSize: 2 });
+    for (const key of ["a", "b", "a", "c", "a", "b"]) await kept.load(key);
+    expect(loaded).toEqual(["a", "b", "c", "b"]);
+
+    loaded.length = 0;
+    const timed = new DataLoader<string, string>(batch, { cache: 60_000, maxCacheSize: 2 });
+    for (const key of ["a", "b", "c", "a", "b", "c"]) await timed.load(key);
+    expect(loaded).toEqual(["a", "b", "c"]);
+  });
+
   test("DataLoader loadMany resolves per-key errors", async () => {
     const loader = new DataLoader<string, string>(async (keys) =>
       keys.map((key) => (key === "bad" ? new Error("bad key") : `value:${key}`)),

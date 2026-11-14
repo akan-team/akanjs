@@ -2055,8 +2055,8 @@ export class UserModel extends into(
                 {
                   value: "true",
                   meaning: l.trans({
-                    en: "For as long as the process runs.",
-                    ko: "프로세스가 도는 동안 계속 기억합니다.",
+                    en: "For as long as the process runs, up to the 10,000 keys used most recently.",
+                    ko: "프로세스가 도는 동안 계속 기억합니다. 가장 최근에 쓴 키 10,000개까지입니다.",
                   }),
                 },
               ]}
@@ -2066,14 +2066,36 @@ export class UserModel extends into(
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A kept key serves a stale document.</strong> Loaders live as long as the process, so a
-                      document changed after it was loaded is still answered in its old shape until the key expires.
+                      <strong>A kept key can serve a stale document.</strong> A create, a <code>save()</code>, an update
+                      or a remove through the model drops that document's keys once it commits. A query write such as{" "}
+                      <code>updateMany</code> runs no hook, and another instance keeps its own keys, so there a changed
+                      document is still answered in its old shape until the key expires.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>기억해 둔 키는 오래된 document를 돌려줍니다.</strong> 로더는 프로세스와 수명이 같아서,
-                      불러온 뒤에 바뀐 document도 키가 만료될 때까지 예전 모습으로 답합니다.
+                      <strong>기억해 둔 키는 오래된 document를 돌려줄 수 있습니다.</strong> model을 거친 create,{" "}
+                      <code>save()</code>, update, remove는 commit되면 그 document의 키를 지웁니다.{" "}
+                      <code>updateMany</code> 같은 쿼리 쓰기는 hook을 실행하지 않고, 다른 인스턴스는 자기 키를 따로
+                      기억합니다. 이런 경우에는 바뀐 document도 키가 만료될 때까지 예전 모습으로 답합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A transaction reads past the cache.</strong> A load inside <code>this.transaction()</code>{" "}
+                      always asks the database, so it sees its own writes, and what it reads is not kept, since it may
+                      be rolled back.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>transaction은 캐시를 거치지 않습니다.</strong> <code>this.transaction()</code> 안의 load는
+                      항상 데이터베이스에 물어서 자기가 쓴 내용을 읽습니다. rollback될 수 있으므로 읽은 결과도 기억하지
+                      않습니다.
                     </span>
                   ),
                 })}
