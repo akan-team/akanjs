@@ -1,5 +1,6 @@
 import type { Logger } from "akanjs/common";
 import type { AkanMetricsReport } from "akanjs/service";
+import { RuntimeFamilies } from "../metrics/runtimeFamilies";
 import { ProcessMetricsCollector } from "../processMetricsCollector";
 import type { GatewayChildren } from "./gatewayChildren";
 import type { GatewayConfig } from "./gatewayConfig";
@@ -90,7 +91,15 @@ export class GatewayStatus {
         lastRestartAt: child.lastRestartAt,
         lastRestartReason: child.lastRestartReason,
       })),
-      metricFamilies: this.#children.metricAggregate.families(),
+      metricFamilies: [
+        ...RuntimeFamilies.process(),
+        ...this.#children.metricAggregate.families(),
+        ...RuntimeFamilies.rscReadiness(
+          [...this.#children.values()]
+            .filter((child) => child.role !== "batch")
+            .map((child) => (child.ready ? child.rscWorker : (child.rscWorker ?? "starting"))),
+        ),
+      ],
     };
   }
 

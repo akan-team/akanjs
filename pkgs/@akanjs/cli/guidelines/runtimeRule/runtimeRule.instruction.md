@@ -107,6 +107,15 @@ worker per web-serving replica.
   alone (still 200) and `/_akan/app/metrics` is 401. An address that sends 10 wrong bearers in a minute is refused
   the right one too until the minute passes. A probe that reads only the status code needs nothing; give a scraper or
   monitor `AKAN_STATUS_TOKEN` (32 characters or more, or it warns), which reads nothing else.
+- **`/_akan/app/metrics` answers a Prometheus scrape as text**, behind the same token: `Accept:
+  application/openmetrics-text` gets OpenMetrics 1.0 and `text/plain` the 0.0.4 text, while `*/*`,
+  `application/json` or no Accept keeps the JSON, whose `metricFamilies` carries the same series. Every endpoint and
+  page call is counted and timed with tracing off — `akan_endpoint_requests_total{endpoint, status_class}`,
+  `akan_page_requests_total{route, status_class}` and their `_duration_seconds` histograms (12 buckets, 1 ms to
+  10 s) — labelled `<type>:<key>` or the route id and the process `role`, never a URL, user or query; a path no
+  route matches is `unmatched`, and a label past 2,000 values is `other`. Behind a gateway each replica reports its
+  own and the gateway adds them, as fresh as `AKAN_MEMORY_LOG_INTERVAL_MS`. A new series is one line,
+  `metricRegistry.counter|gauge|histogram(name, help, labels)` from `server/metrics/metricRegistry`.
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once

@@ -1,5 +1,6 @@
 import type { AkanChildRole, AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import { SignalContext } from "akanjs/signal";
+import { RuntimeFamilies } from "../metrics/runtimeFamilies";
 import { AppInfo } from "../ops/appInfo";
 import type { OpsRoute } from "../ops/opsRoute";
 import { StatusAccess } from "../ops/statusAccess";
@@ -63,7 +64,11 @@ export const createSoloAppRoutes = (
             gateway: null,
             proxyHop: null,
             children: [{ ...child(), metrics: read().metrics }],
-            metricFamilies: read().families?.() ?? [],
+            metricFamilies: [
+              ...RuntimeFamilies.process(),
+              ...(read().families?.() ?? []),
+              ...RuntimeFamilies.rscReadiness([read().rscWorker]),
+            ],
           }),
           SignalContext.clientIpOf(req),
         ),

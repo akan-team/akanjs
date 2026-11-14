@@ -1,7 +1,14 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 import { bearerTokenOf, Logger } from "akanjs/common";
+import type { AkanMetricFamily } from "akanjs/service";
 import { isLocalDevRuntime } from "../../signal/trace";
+import { MetricExposition } from "../metrics/metricExposition";
 import { FailureLimiter } from "./failureLimiter";
+
+interface MetricsDetail {
+  [key: string]: unknown;
+  metricFamilies?: AkanMetricFamily[];
+}
 
 interface StatusAccessOptions {
   tokens: (string | null | undefined)[];
@@ -83,9 +90,14 @@ export class StatusAccess {
     });
   }
 
-  metrics(req: Request, detail: () => unknown, client?: string | null): Response {
+  metrics(req: Request, detail: () => MetricsDetail, client?: string | null): Response {
     if (!this.allows(req, client))
       return new Response("Unauthorized", { status: 401, headers: { "www-authenticate": "Bearer" } });
-    return Response.json(detail(), { headers: StatusAccess.#noStore });
+    const format = MetricExposition.negotiate(req.headers.get("accept"));
+    const headers = { ...StatusAccess.#noStore, vary: "accept" };
+    if (!format) return Response.json(detail(), { headers });
+    return new Response(MetricExposition.render(detail().metricFamilies ?? [], format), {
+      headers: { ...headers, "content-type": MetricExposition.contentType(format) },
+    });
   }
 }

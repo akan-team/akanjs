@@ -2,6 +2,7 @@ import type { Logger } from "akanjs/common";
 import type { AkanIpcMessage, AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import type { AkanServer } from "./akanServer";
 import { metricRegistry } from "./metrics/metricRegistry";
+import { RuntimeFamilies } from "./metrics/runtimeFamilies";
 import { AppInfo } from "./ops/appInfo";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import type { ServerListener } from "./routing/serverListener";
@@ -40,7 +41,11 @@ export class ServerMetrics {
   }
 
   families(): AkanMetricFamily[] {
-    return metricRegistry.snapshot({ role: this.#owner.serverMode });
+    const role = this.#owner.serverMode;
+    return [
+      ...metricRegistry.snapshot({ role }),
+      ...RuntimeFamilies.rscWorker(this.#webRouter()?.getMetrics(), { role }),
+    ];
   }
 
   async #reportMetrics() {
