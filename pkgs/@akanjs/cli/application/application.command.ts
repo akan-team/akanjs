@@ -62,7 +62,7 @@ const workspaceTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .exec(async function (app) {
       await this.applicationScript.removeApplication(app);
     }),
-  planSlice: target({ desc: "List the exact files an app needs to live in a workspace of its own" })
+  planSlice: target({ desc: "List the exact files an app needs to live in a workspace of its own", readOnly: true })
     .with(App)
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .exec(async function (app, format) {
@@ -86,6 +86,7 @@ const migrationTargets = ({ public: target }: ApplicationBuilderContext) => ({
     desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration, or list and prune the indexes it no longer declares",
     stdio: true,
     usageExitCode: 2,
+    readOnly: ({ action }) => ["list", "plan", "verify", "indexes"].includes(String(action)),
     //? A `--json` caller parses the last line, so a failure before the app ran answers in the app's shape too.
     onFailure: async (error, { usage, given }) => {
       if (given.json !== true) return;
@@ -167,6 +168,7 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
     }),
   studio: target({
     desc: "Print the Akan Studio URL of the app's running dev server: its ERD, each module's signals, the Change Map, the live DI graph and jobs, and the framework map",
+    readOnly: true,
   })
     .with(App)
     .option("module", String, { desc: "the module to show", nullable: true })
@@ -202,7 +204,10 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .exec(async function (app) {
       await this.applicationScript.console(app);
     }),
-  logs: target({ desc: "Tail the running application's logs, filtered (attaches to akan-control.sock)" })
+  logs: target({
+    desc: "Tail the running application's logs, filtered (attaches to akan-control.sock)",
+    readOnly: true,
+  })
     .with(App)
     .option("level", String, { desc: "minimum level: trace, verbose, debug, info, warn, error", nullable: true })
     .option("grep", String, { desc: "substring the message must contain", nullable: true })
@@ -278,7 +283,11 @@ const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => (
         budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
       });
     }),
-  typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })
+  typecheck: target({
+    short: true,
+    desc: "Typecheck an app or a library, its tests and specs included",
+    readOnly: ({ write }) => write === false,
+  })
     .with(SysOrOnlyApp)
     .option("write", Boolean, writeOption)
     .option("clean", Boolean, { desc: "clear typecheck cache before running", default: false })
@@ -287,7 +296,7 @@ const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => (
     .exec(async function (sys, write, clean, incremental, tests) {
       await this.applicationScript.typecheck(sys, { write, clean, incremental, tests });
     }),
-  test: target({ desc: "Prepare and test an app, library, or package" })
+  test: target({ desc: "Prepare and test an app, library, or package", readOnly: ({ write }) => write === false })
     .with(Exec)
     .arg("files", String, {
       desc: "test files or folders to run, relative to the target or the workspace root, comma-separated (default: all)",
@@ -578,7 +587,7 @@ const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
 });
 
 const databaseTargets = ({ public: target }: ApplicationBuilderContext) => ({
-  dbup: target({ desc: "Start local database services for a database mode" })
+  dbup: target({ desc: "Start local database services for a database mode", readOnly: true })
     .with(Workspace)
     .option("mode", String, {
       desc: "database mode; left out, every mode the workspace's apps declare",
@@ -600,7 +609,7 @@ const databaseTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .exec(async function (app, dir) {
       await this.applicationScript.transferDatabase(app, "import", dir);
     }),
-  dbdown: target({ desc: "Stop local database services" })
+  dbdown: target({ desc: "Stop local database services", readOnly: true })
     .with(Workspace)
     .exec(async function (workspace) {
       await this.applicationScript.dbdown(workspace);

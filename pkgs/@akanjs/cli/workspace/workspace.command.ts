@@ -84,7 +84,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     .exec(async function (overwrite, cursorRules, workspace) {
       await this.workspaceScript.generateAgentRules(workspace, { overwrite, cursorRules });
     }),
-  lint: target({ desc: "Lint and fix code in a specific app/lib/pkg" })
+  lint: target({ desc: "Lint and fix code in a specific app/lib/pkg", readOnly: ({ fix }) => fix === false })
     .with(Exec)
     .option("fix", Boolean, { default: true })
     .option("maxDiagnostics", Number, maxDiagnosticsOption)
@@ -92,7 +92,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
     .exec(async function (exec, fix, maxDiagnostics, workspace) {
       await this.workspaceScript.lint(exec, workspace, { fix, maxDiagnostics });
     }),
-  lintAll: target({ desc: "Lint and fix code in all apps and libraries" })
+  lintAll: target({ desc: "Lint and fix code in all apps and libraries", readOnly: ({ fix }) => fix === false })
     .option("fix", Boolean, { default: true })
     .option("maxDiagnostics", Number, maxDiagnosticsOption)
     .with(Workspace)
