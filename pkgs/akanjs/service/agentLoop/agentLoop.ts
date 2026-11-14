@@ -109,8 +109,9 @@ export class AgentLoop {
   }
 
   async *#drive(): Events<AgentLoopStop> {
-    this.#toolkits.restore(this.#messages);
-    this.#tainted = LoopTranscript.markedTainted(this.#messages, !!this.#request.untrusted);
+    //? Security: a remote the stored messages opened is listed again, and its listing is that party's text.
+    const reopened = this.#toolkits.restore(this.#messages);
+    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages, !!this.#request.untrusted);
     //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it.
     for (const result of LoopTranscript.results(this.#messages))
       if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
@@ -334,6 +335,8 @@ export class AgentLoop {
         const whole = unasked ?? opened ?? (meta ? this.#toolkits.open(call) : await this.#execute(call, verdict));
         const result = LoopToolOutput.clipped(whole);
         results.push(result);
+        //? Security: an opened remote's tool names, or the error it answered the open with, are that party's text.
+        if (opened) this.#tainted = true;
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
         if (!meta) this.#taintBy(whole);
         const view = this.#remotes.takeView(call.id);

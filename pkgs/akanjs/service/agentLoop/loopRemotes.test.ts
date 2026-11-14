@@ -178,7 +178,7 @@ describe("AgentLoop remotes", () => {
     expect(called).toEqual([]);
   });
 
-  test("approve is told which remote a call goes to, and that the run is tainted after a remote read", async () => {
+  test("approve is told which remote a call goes to, and that the run is tainted once the remote is open", async () => {
     const { remote, state } = remoteOf("shop");
     const seen: { name: string; tainted: boolean; remote?: string; needsConfirm?: boolean }[] = [];
     const { port } = harness([
@@ -197,7 +197,7 @@ describe("AgentLoop remotes", () => {
       }),
     );
     expect(seen).toEqual([
-      { name: "shop.orderList", tainted: false, remote: "shop", needsConfirm: false },
+      { name: "shop.orderList", tainted: true, remote: "shop", needsConfirm: false },
       { name: "shop.refundOrder", tainted: true, remote: "shop", needsConfirm: true },
       { name: "createNote", tainted: true, remote: undefined, needsConfirm: undefined },
     ]);
@@ -217,6 +217,93 @@ describe("AgentLoop remotes", () => {
     ];
     const results = resultsOf(await drain(port, ask([remote], { messages })));
     expect(results[0]).toEqual({ id: "c3", name: "createNote", error: AgentLoop.taintedWrite });
+  });
+
+  test("opening a remote taints the run, so a write after it is refused without approve", async () => {
+    const { remote } = remoteOf("shop");
+    const { port, called } = harness([
+      calling(callOf("c1", "openToolkit", { name: "shop" })),
+      calling(callOf("c2", "createNote")),
+      saying("Could not."),
+    ]);
+    const { messages, request } = stored(ask([remote]));
+    const results = resultsOf(await drain(port, request));
+    expect(results[1]).toEqual({ id: "c2", name: "createNote", error: AgentLoop.taintedWrite });
+    expect(called).toEqual([]);
+    expect(messages.find((message) => message.toolResults?.[0]?.id === "c1")?.tainted).toBe(true);
+  });
+
+  test("approve hears of the taint from the first call written after a remote was opened", async () => {
+    const { remote } = remoteOf("shop");
+    const seen: { name: string; tainted: boolean; remote?: string }[] = [];
+    const { port, called } = harness([
+      calling(callOf("c1", "openToolkit", { name: "shop" })),
+      calling(callOf("c2", "createNote")),
+      saying("Done."),
+    ]);
+    await drain(
+      port,
+      ask([remote], {
+        approve: (call, { tainted, remote: target }) => {
+          seen.push({ name: call.name, tainted, remote: target });
+          return "allow";
+        },
+      }),
+    );
+    expect(seen).toEqual([{ name: "createNote", tainted: true, remote: undefined }]);
+    expect(called).toEqual(["createNote"]);
+  });
+
+  test("an open the remote answered with an error taints the run too", async () => {
+    const { remote } = remoteOf("shop", { fail: "list" });
+    const { port, called } = harness([
+      calling(callOf("c1", "openToolkit", { name: "shop" })),
+      calling(callOf("c2", "createNote")),
+      saying("Could not."),
+    ]);
+    const { messages, request } = stored(ask([remote]));
+    const results = resultsOf(await drain(port, request));
+    expect(results[0]?.error).toContain("ECONNREFUSED");
+    expect(results[1]).toEqual({ id: "c2", name: "createNote", error: AgentLoop.taintedWrite });
+    expect(called).toEqual([]);
+    expect(messages.find((message) => message.toolResults?.[0]?.id === "c1")?.tainted).toBe(true);
+  });
+
+  test("an open that only asks the person to connect leaves the run clean: nothing of the remote's was read", async () => {
+    const { remote } = remoteOf("shop", { tools: null });
+    const first = harness([calling(callOf("c1", "openToolkit", { name: "shop" }))]);
+    const { messages, request } = stored(ask([remote]));
+    expect(stopOf(await drain(first.port, request))).toBe("awaiting");
+    expect(messages.some((message) => message.tainted)).toBe(false);
+
+    const declined: AgentWireMessage = {
+      role: "tool",
+      toolResults: [{ id: "c1", name: "openToolkit", error: "The user did not connect shop." }],
+    };
+    const second = harness([calling(callOf("c2", "createNote")), saying("Noted instead.")]);
+    const results = resultsOf(await drain(second.port, { ...request, messages: [...messages, declined] }));
+    expect(results[0]).toEqual({ id: "c2", name: "createNote", result: "createNote:ok" });
+    expect(second.called).toEqual(["createNote"]);
+  });
+
+  test("a remote the stored messages opened taints a resumed run, from a call's result or a summary's toolkits", async () => {
+    const { remote } = remoteOf("shop");
+    const fromCall: AgentWireMessage[] = [
+      { role: "user", text: "Note the last order." },
+      { role: "assistant", toolCalls: [callOf("c1", "openToolkit", { name: "shop" })] },
+      { role: "tool", toolResults: [{ id: "c1", name: "openToolkit", result: { opened: "shop", tools: [] } }] },
+      { role: "user", text: "Go on." },
+    ];
+    const fromSummary: AgentWireMessage[] = [
+      { role: "user", text: "The shop is open.", summary: true, tainted: false, toolkits: ["shop"] },
+      { role: "user", text: "Go on." },
+    ];
+    for (const messages of [fromCall, fromSummary]) {
+      const { port, called } = harness([calling(callOf("c3", "createNote")), saying("Could not.")]);
+      const results = resultsOf(await drain(port, ask([remote], { messages })));
+      expect(results[0]).toEqual({ id: "c3", name: "createNote", error: AgentLoop.taintedWrite });
+      expect(called).toEqual([]);
+    }
   });
 
   test("keeps the remote's prefix on a long or illegal tool name, and calls it by its real name", async () => {

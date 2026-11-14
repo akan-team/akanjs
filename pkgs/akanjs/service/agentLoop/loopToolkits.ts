@@ -123,8 +123,8 @@ export class LoopToolkits {
   }
 
   //? A summary carries what the calls it replaced opened; a call opened its toolkit only if its result is no error.
-  restore(messages: readonly AgentWireMessage[]) {
-    if (!this.#any) return;
+  restore(messages: readonly AgentWireMessage[]): boolean {
+    if (!this.#any) return false;
     const answered = new Map(LoopTranscript.results(messages).map((result) => [result.id, result]));
     for (const message of messages) {
       for (const kit of message.summary ? (message.toolkits ?? []) : []) if (this.#has(kit)) this.#open.add(kit);
@@ -135,6 +135,7 @@ export class LoopToolkits {
         if (result && !result.error && typeof kit === "string" && this.#has(kit)) this.#open.add(kit);
       }
     }
+    return this.opened.some((kit) => this.#external.has(kit));
   }
 
   #has(kit: string): boolean {

@@ -11,7 +11,7 @@ import type {
 export type AgentLoopApproval = "allow" | "defer" | { deny: string };
 
 /**
- * `tainted`: a result `untrusted` marked, or any result of a remote, was read earlier in this run or in the messages it
+ * `tainted`: a result `untrusted` marked was read, or a remote was opened, earlier in this run or in the messages it
  * resumed from. `remote`: the call goes to that entry of `remotes`, not to this server.
  */
 export type AgentLoopApprove = (
@@ -105,8 +105,8 @@ export interface AgentLoopOptions {
   /**
    * Other servers, each a toolkit the model opens with `openToolkit({ name })`; none is listed or contacted before.
    * Opening one the account has no live connection to ends the run as `awaiting` with `connect` naming it: connect
-   * and resume, or append an `error` for that call when the person declines. Security: what a remote returns is
-   * another party's text, so reading any of it taints the run, and a remote tool that does not call itself read-only
+   * and resume, or append an `error` for that call when the person declines. Security: what a remote lists and returns
+   * is another party's text, so opening one taints the run, and a remote tool that does not call itself read-only
    * is a `needsConfirm` one, refused without `approve`. A `clientTools` entry named `<remote>.…` is dropped.
    */
   remotes?: readonly AgentLoopRemote[];
