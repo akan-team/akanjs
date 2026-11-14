@@ -251,6 +251,36 @@ describe("Remote Signal", () => {
     expect(service.remoteOption.vault.open(after?.refresh ?? "", sealedAt("refresh"))).toBe("refresh-2");
   });
 
+  it("keeps a renewal another instance stores just before this one would close the connection", async () => {
+    const renewal = await service.grants.get(keyOf());
+    if (!renewal) throw new Error("the connection is missing");
+    const { fetcher, vault } = service.remoteOption;
+    renewal.access = vault.seal("access-3", sealedAt("access"));
+    renewal.refresh = vault.seal("refresh-3", sealedAt("refresh"));
+    const refused = { json: async () => ({ status: 400, body: { error: "invalid_grant" } }) };
+    let armed = true;
+    const racing = {
+      seal: (text: string, context: readonly string[]) => vault.seal(text, context),
+      open: (sealed: string, context: readonly string[]) => {
+        if (!sealed && armed) {
+          armed = false;
+          void service.grants.set(keyOf(), renewal);
+        }
+        return vault.open(sealed, context);
+      },
+    };
+    const rotate = (service as unknown as { rotate: (key: string) => Promise<string | null> }).rotate.bind(service);
+    Object.assign(service.remoteOption, { fetcher: refused, vault: racing });
+    try {
+      expect(await rotate(keyOf())).toBe("access-3");
+    } finally {
+      Object.assign(service.remoteOption, { fetcher, vault });
+    }
+    expect(armed).toBe(false);
+    const after = await service.grants.get(keyOf());
+    expect(vault.open(after?.refresh ?? "", sealedAt("refresh"))).toBe("refresh-3");
+  });
+
   it("closes the connection when the other server refuses to renew it", async () => {
     const stored = await service.grants.get(keyOf());
     if (!stored) throw new Error("the connection is missing");

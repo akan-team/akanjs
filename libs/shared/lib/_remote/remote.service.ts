@@ -253,8 +253,13 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
     }
   }
 
-  private async drop(key: string, grant: cnst.RemoteGrant, reason: string): Promise<null> {
-    await this.grants.delete(key);
+  private async drop(key: string, grant: cnst.RemoteGrant, reason: string): Promise<string | null> {
+    //? The store has no compare-and-delete: a renewal another instance stored meanwhile is taken out and put back.
+    const removed = await this.grants.getDel(key);
+    if (removed && (removed.refresh !== grant.refresh || removed.access !== grant.access)) {
+      await this.grants.setIfAbsent(key, removed, { expireAt: dayjs().add(this.grantDays, "day") });
+      return this.remoteOption.vault.open(removed.access, RemoteService.sealedAt(removed, "access")) || null;
+    }
     this.logger.warn(`remote connection closed: user ${grant.subjectId} → ${new URL(grant.url).host}: ${reason}`);
     return null;
   }
