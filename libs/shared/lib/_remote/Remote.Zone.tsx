@@ -1,5 +1,6 @@
 "use client";
 import { fetch, st, usePage } from "@libs/shared/client";
+import { RemoteLink } from "@libs/shared/common";
 import { cn } from "akanjs/client";
 import { McpAppHost } from "akanjs/webkit";
 import { useEffect, useRef, useState } from "react";
@@ -46,7 +47,7 @@ export const Screen = ({ className, url, tool, args, href, drawn = true, height 
   const card = useRef<HTMLDivElement>(null);
   const [html, setHtml] = useState<string | null>(drawn ? null : "");
   const host = URL.parse(url)?.host ?? url;
-  const link = href && URL.parse(href)?.host === host ? href : null;
+  const link = RemoteLink.of(href, url);
   const argsKey = JSON.stringify(args);
   useEffect(() => {
     if (!drawn || !card.current) return;
@@ -105,7 +106,7 @@ export const View = ({ className, url, tool, args, uri, href, height = 360 }: Vi
   const [html, setHtml] = useState<string | null>(null);
   const [size, setSize] = useState(height);
   const host = URL.parse(url)?.host ?? url;
-  const link = href && URL.parse(href)?.host === host ? href : null;
+  const link = RemoteLink.of(href, url);
   const argsKey = JSON.stringify(args);
   useEffect(() => {
     if (!card.current) return;
@@ -129,8 +130,9 @@ export const View = ({ className, url, tool, args, uri, href, height = 360 }: Vi
       start: () => call(tool, JSON.parse(argsKey) as Record<string, unknown>),
       callTool: call,
       openLink: (target) => {
-        if (URL.parse(target)?.host !== host) return false;
-        window.open(target, "_blank", "noopener,noreferrer");
+        const opened = RemoteLink.of(target, url);
+        if (!opened) return false;
+        window.open(opened, "_blank", "noopener,noreferrer");
         return true;
       },
       context: () => ({
