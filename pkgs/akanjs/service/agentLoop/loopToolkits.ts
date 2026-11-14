@@ -1,6 +1,7 @@
 import type { AgentTool } from "../predefinedAdaptor/agentTools.adaptor";
 import type { AgentWireMessage, AgentWireToolCall, AgentWireToolResult } from "../predefinedAdaptor/llm.adaptor";
 import type { AgentLoopToolkit } from "./agentLoopTypes";
+import { LoopRemotes } from "./loopRemotes";
 import { LoopTranscript } from "./loopTranscript";
 
 export class LoopToolkits {
@@ -122,20 +123,34 @@ export class LoopToolkits {
     };
   }
 
-  //? A summary carries what the calls it replaced opened; a call opened its toolkit only if its result is no error.
+  //? A summary carries what the calls it replaced opened; a call opened its toolkit only if its result is no error. Read
+  //? in stored order, a result with the call it answers, so a remote a later call found disconnected is closed here as
+  //? the run that stored it closed it. Security: `true` once any remote was opened, open still or not.
   restore(messages: readonly AgentWireMessage[]): boolean {
     if (!this.#any) return false;
-    const answered = new Map(LoopTranscript.results(messages).map((result) => [result.id, result]));
+    const calls = new Map(LoopTranscript.answered(messages));
+    let reached = false;
     for (const message of messages) {
-      for (const kit of message.summary ? (message.toolkits ?? []) : []) if (this.#has(kit)) this.#open.add(kit);
-      for (const call of message.toolCalls ?? []) {
-        if (call.name !== LoopToolkits.toolName) continue;
-        const result = answered.get(call.id);
-        const kit = call.args.name;
-        if (result && !result.error && typeof kit === "string" && this.#has(kit)) this.#open.add(kit);
+      for (const kit of message.summary ? (message.toolkits ?? []) : []) reached = this.#reopen(kit) || reached;
+      for (const result of message.role === "tool" ? (message.toolResults ?? []) : []) {
+        const call = calls.get(result);
+        if (!call) continue;
+        const kit = call.name === LoopToolkits.toolName ? call.args.name : null;
+        if (typeof kit === "string" && !result.error) reached = this.#reopen(kit) || reached;
+        if (result.code === LoopRemotes.disconnected) this.#open.delete(this.#ownerOf(call.name) ?? "");
       }
     }
-    return this.opened.some((kit) => this.#external.has(kit));
+    return reached;
+  }
+
+  #reopen(kit: string): boolean {
+    if (!this.#has(kit)) return false;
+    this.#open.add(kit);
+    return this.#external.has(kit);
+  }
+
+  #ownerOf(toolName: string): string | undefined {
+    return [...this.#external.keys()].find((kit) => toolName.startsWith(`${kit}.`));
   }
 
   #has(kit: string): boolean {

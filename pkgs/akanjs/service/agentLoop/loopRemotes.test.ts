@@ -1034,6 +1034,63 @@ describe("AgentLoop remotes, bounded", () => {
     expect(toolOf(resumed.requests[0], "openToolkit")?.description).toContain("- wiki:");
   });
 
+  test("a resume leaves closed the remote a stored call found disconnected, so the one opened in its place is still open", async () => {
+    const names = ["shop", "bank", "mail", "docs", "wiki"];
+    const remotes = names.map((name) => remoteOf(name));
+    const docs = remotes[3]?.state;
+    if (docs) docs.answer = () => ({ error: "The connection to docs expired.", code: "remoteDisconnected" });
+    const first = harness([
+      calling(...names.slice(0, 4).map((name, at) => callOf(`k${at}`, "openToolkit", { name }))),
+      calling(callOf("c1", "docs.orderList")),
+      calling(callOf("k4", "openToolkit", { name: "wiki" })),
+      saying("Opened."),
+    ]);
+    const { messages, request } = stored(ask(remotes.map(({ remote }) => remote)));
+    await drain(first.port, request);
+    const prefixes = (listed: LlmTurnRequest | undefined) => [
+      ...new Set(namesOf(listed)?.flatMap((name) => (name.includes(".") ? [name.split(".")[0]] : []))),
+    ];
+    const live = ["shop", "bank", "mail", "wiki"];
+    expect(prefixes(first.requests[3])).toEqual(live);
+
+    const unmarked = messages.map(({ tainted: _tainted, ...message }) => message);
+    const heard: boolean[] = [];
+    const resumed = harness([calling(callOf("c2", "wiki.orderList")), saying("Read.")]);
+    const results = resultsOf(
+      await drain(resumed.port, {
+        ...request,
+        messages: [...unmarked, { role: "user", text: "Read the wiki." }],
+        approve: (_call, { tainted }) => {
+          heard.push(tainted);
+          return "allow";
+        },
+      }),
+    );
+    expect(prefixes(resumed.requests[0])).toEqual(live);
+    expect(toolOf(resumed.requests[0], "openToolkit")?.description).toContain("- docs:");
+    expect(results).toEqual([{ id: "c2", name: "wiki.orderList", result: "orderList:ok" }]);
+    expect(heard).toEqual([true]);
+  });
+
+  test("a resume opens again the remote a stored call found disconnected and a later stored call opened", async () => {
+    const { remote, state } = remoteOf("shop");
+    state.answer = () => ({ error: "The connection to shop expired.", code: "remoteDisconnected" });
+    const open = (id: string) => calling(callOf(id, "openToolkit", { name: "shop" }));
+    const first = harness([open("k1"), calling(callOf("c1", "shop.orderList")), saying("Lost it.")]);
+    const { messages, request } = stored(ask([remote]));
+    await drain(first.port, request);
+    const closed = harness([saying("Still lost.")]);
+    await drain(closed.port, { ...request, messages: [...messages, { role: "user", text: "Go on." }] });
+    expect(namesOf(closed.requests[0])).toEqual(["noteList", "createNote", "openToolkit"]);
+
+    const again = harness([open("k2"), saying("Opened again.")]);
+    const reopened = stored({ ...request, messages: [...messages, { role: "user", text: "Open it again." }] });
+    await drain(again.port, reopened.request);
+    const later = harness([saying("Open.")]);
+    await drain(later.port, { ...request, messages: [...reopened.messages, { role: "user", text: "Go on." }] });
+    expect(namesOf(later.requests[0])).toContain("shop.orderList");
+  });
+
   test("hands on a view's link only up to its length, and no view when nothing else is left", async () => {
     const long = `/order/${"x".repeat(LoopRemotes.linkLimit)}`;
     const views: Record<string, unknown> = {
