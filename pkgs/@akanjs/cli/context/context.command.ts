@@ -2,7 +2,7 @@ import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { ContextScript } from "./context.script";
 
 export class ContextCommand extends command("context", [ContextScript], ({ public: target }) => ({
-  context: target({ desc: "Print agent-readable Akan workspace context" })
+  context: target({ desc: "Print agent-readable Akan workspace context", readOnly: true })
     .option("format", String, { desc: "output format", default: "markdown", enum: ["markdown", "json"] })
     .option("app", String, { desc: "app name to include", nullable: true })
     .option("module", String, { desc: "module name to include with abstract content", nullable: true })
@@ -10,7 +10,7 @@ export class ContextCommand extends command("context", [ContextScript], ({ publi
     .exec(async function (format, app, module, workspace) {
       await this.contextScript.context(workspace, { format, app, module });
     }),
-  doctor: target({ desc: "Report Akan workspace convention diagnostics" })
+  doctor: target({ desc: "Report Akan workspace convention diagnostics", readOnly: true })
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .option("strict", Boolean, { desc: "treat recommended conventions as errors", default: false })
     .option("ios", Boolean, {

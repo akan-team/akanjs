@@ -412,6 +412,13 @@ akan logout --host https://cloud.example.com`,
             }),
           },
           {
+            name: l.trans({ en: "version mismatch", ko: "버전 불일치" }),
+            desc: l.trans({
+              en: "When the global CLI's major.minor differs from the workspace's `akanjs`, every command that writes to the workspace (sync, the generators, `workflow apply`, `verify`, `lint`, `start`, `build`) is refused until `akan update` moves both; commands that only read warn. `akan update` itself is never refused, and `AKAN_ALLOW_VERSION_MISMATCH=1` runs a refused command anyway.",
+              ko: "전역 CLI의 major.minor가 워크스페이스의 `akanjs`와 다르면, 워크스페이스에 쓰는 명령(sync, 생성기, `workflow apply`, `verify`, `lint`, `start`, `build`)은 `akan update`로 둘을 맞출 때까지 거부되고, 읽기만 하는 명령은 경고만 합니다. `akan update` 자신은 거부되지 않으며, `AKAN_ALLOW_VERSION_MISMATCH=1`이면 거부된 명령도 실행합니다.",
+            }),
+          },
+          {
             name: "--registry local",
             desc: l.trans({
               en: "Tries a framework build from a local registry before it is published to npm.",

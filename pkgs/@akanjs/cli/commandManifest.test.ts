@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { getTargetCommandNames, getTargetMetas } from "@akanjs/devkit/commandDecorators";
+import { getTargetCommandNames, getTargetMetas, type TargetOption } from "@akanjs/devkit/commandDecorators";
+import { WorkspaceVersionCheck } from "@akanjs/devkit/commandDecorators/workspaceVersionCheck";
 import { CommandManifest } from "./commandManifest";
 import { type CommandModuleId, commandModuleIds, commandModules } from "./commandModules";
 
@@ -63,5 +64,37 @@ describe("CommandManifest", () => {
     expect(CommandManifest.resolve(manifest, ["bun", "akan", "no-such-command"])).toBeNull();
     expect(CommandManifest.resolve(null, ["bun", "akan", "start"])).toBeNull();
     expect(CommandManifest.resolve(manifest, ["bun", "akan", "start"])).toEqual(["application"]);
+  });
+});
+
+describe("the commands a CLI of another major.minor refuses", () => {
+  const optionsOf = async () => {
+    const byName = new Map<string, TargetOption>();
+    for (const id of commandModuleIds)
+      for (const targetMeta of getTargetMetas(await commandModules[id]()))
+        for (const name of getTargetCommandNames(targetMeta)) byName.set(name, targetMeta.targetOption);
+    return byName;
+  };
+
+  test("are the ones that write, for the arguments and options they run with", async () => {
+    const byName = await optionsOf();
+    const readsOnly = (name: string, values: { [name: string]: unknown } = {}) => {
+      const option = byName.get(name);
+      if (!option) throw new Error(`no command ${name}`);
+      return WorkspaceVersionCheck.readsOnly(option, values);
+    };
+    for (const name of ["sync", "sync-all", "create-module", "add-field", "verify", "repair", "start", "build", "mcp"])
+      expect([name, readsOnly(name)]).toEqual([name, false]);
+    expect(readsOnly("lint", { fix: true })).toBe(false);
+    expect(readsOnly("lint", { fix: false })).toBe(true);
+    expect(readsOnly("workflow", { action: "apply", dryRun: false })).toBe(false);
+    expect(readsOnly("workflow", { action: "plan", dryRun: false })).toBe(true);
+    expect(readsOnly("quality", { action: "baseline" })).toBe(false);
+    expect(readsOnly("typecheck", { write: true })).toBe(false);
+    expect(readsOnly("typecheck", { write: false })).toBe(true);
+    expect(readsOnly("agent", { action: "install", check: false })).toBe(false);
+    expect(readsOnly("agent", { action: "hook", check: false })).toBe(true);
+    for (const name of ["context", "doctor", "logs", "guideline", "version", "library-status", "pipeline"])
+      expect([name, readsOnly(name)]).toEqual([name, true]);
   });
 });

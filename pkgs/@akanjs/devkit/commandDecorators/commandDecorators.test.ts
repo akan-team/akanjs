@@ -763,6 +763,70 @@ describe("a target left out where no terminal can ask for it", () => {
   }, 30_000);
 });
 
+describe("a CLI of another major.minor than the workspace's akanjs", () => {
+  const track = tempRoots();
+  const run = async (args: string[], env: { [name: string]: string } = {}) => {
+    const { root } = track(await makeCliTempWorkspace());
+    await writeText(path.join(root, "package.json"), '{ "name": "repo", "version": "1.0.0" }\n');
+    await writeText(path.join(root, "tsconfig.json"), "{}\n");
+    await writeText(path.join(root, "node_modules/akanjs/package.json"), '{ "name": "akanjs", "version": "1.0.0" }\n');
+    const entry = path.join(root, "cli.ts");
+    await writeText(
+      entry,
+      [
+        `import { command, runCommands } from ${JSON.stringify(path.join(import.meta.dir, "index.ts"))};`,
+        'class ThingCommand extends command("thing", ({ public: target }) => ({',
+        '  makeThing: target({ desc: "writes a thing" }).exec(async function () {',
+        '    process.stdout.write("made\\n");',
+        "  }),",
+        '  showThing: target({ desc: "reads a thing", readOnly: true }).exec(async function () {',
+        '    process.stdout.write("shown\\n");',
+        "  }),",
+        '  fixThing: target({ desc: "fixes a thing", readOnly: ({ fix }) => fix === false })',
+        '    .option("fix", Boolean, { default: true })',
+        "    .exec(async function (fix) {",
+        '      process.stdout.write("fix " + fix + "\\n");',
+        "    }),",
+        "})) {}",
+        "await runCommands(ThingCommand);",
+        "",
+      ].join("\n"),
+    );
+    const proc = Bun.spawn(["bun", entry, ...args], {
+      cwd: root,
+      env: { ...process.env, AKAN_ALLOW_VERSION_MISMATCH: "", ...env },
+      stdin: "ignore",
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr, code] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+      proc.exited,
+    ]);
+    return { stdout, stderr, code };
+  };
+
+  test("refuses a command that writes, before it runs, naming akan update and the override", async () => {
+    const refused = await run(["make-thing"]);
+    expect(refused.code).toBe(2);
+    expect(refused.stdout).toContain("but this workspace has akanjs 1.0.0, another major.minor");
+    expect(refused.stdout).toContain("akan update");
+    expect(refused.stdout).toContain("AKAN_ALLOW_VERSION_MISMATCH=1");
+    expect(refused.stdout).not.toContain("made");
+    expect((await run(["fix-thing"])).code).toBe(2);
+  }, 30_000);
+
+  test("only warns for a read-only command, and runs a writing one with the override set", async () => {
+    const shown = await run(["show-thing"]);
+    expect([shown.code, shown.stdout.trim()]).toEqual([0, "shown"]);
+    expect(shown.stderr).toContain("but this workspace has akanjs 1.0.0");
+    expect((await run(["fix-thing", "--fix", "false"])).stdout).toContain("fix false\n");
+    const overridden = await run(["make-thing"], { AKAN_ALLOW_VERSION_MISMATCH: "1" });
+    expect([overridden.code, overridden.stdout.trim()]).toEqual([0, "made"]);
+  }, 30_000);
+});
+
 describe("the exit code of a command that failed", () => {
   const track = tempRoots();
   const run = async (
@@ -1055,7 +1119,7 @@ describe("a workspace whose akanjs is not the CLI's version", () => {
         'class PlanRunner extends runner("plan") {}',
         'class PlanScript extends script("plan", [PlanRunner]) {}',
         'class PlanCommand extends command("plan", [PlanScript], ({ public: target }) => ({',
-        '  plan: target({ desc: "plans", stdio: true }).exec(async function () {',
+        '  plan: target({ desc: "plans", stdio: true, readOnly: true }).exec(async function () {',
         "    process.stdout.write(JSON.stringify({ phases: 1 }));",
         "  }),",
         "})) {}",
