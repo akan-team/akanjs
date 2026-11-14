@@ -202,6 +202,19 @@ export default page()
 - `option.setMcp({ apps: false })` / `AKAN_MCP_APPS=false` publishes no page tools: no app is published and every
   prompt stays a prompt only. `web: { csr: false }` publishes the app tools with no view, and an API-only build
   (`web: false`) has no pages to publish.
+- **`{ static: true }` sends the app as HTML to a host that runs no view.** `.app(name, description, load,
+  { static: true })` marks the tool `_meta["akanjs/static"]: true` wherever the server renders pages, view or not. A
+  `tools/call` whose `params._meta["akanjs/render"]` is `"html"` then gets, after the usual blocks, an embedded
+  `text/html` resource `ui://<app>/static/<name>`: one document drawn under the caller's credential after the route
+  guards, with the load under the same query-only rule — the element inside the root layout's `McpAppRoot` (no
+  `_overrides.tsx`), the layout's theme as `data-theme`, `<base href="<web origin>/" target="_blank">`, the stylesheet
+  as an absolute link, every Suspense boundary resolved in place, and no `<script>`: no view, no Flight payload,
+  nothing runs. Mark an app static only when its server render is the whole picture — nothing hydrates, so a client
+  component shows its first state and a button does nothing.
+- **A static app sends no HTML, and the call answers as if none was asked** (with a server warning), when the guards
+  refuse, the drawing fails or passes 1 MB, the body is empty or a fallback stands in for content, or a component needs
+  a browser: `lazy(…, { ssr: false })` says so itself, and a component whose look only a browser finishes (a canvas, a
+  chart drawn in an effect, data read after mount) calls `needsBrowser()` from `akanjs/webkit` while it renders.
 
 ## Progress Reporting
 **`McpProgress.report(n, { total, message })`** reports progress from anywhere inside a call, a service or adapter
@@ -227,61 +240,3 @@ schedule. A page's `page().app()` tools are left out: `/mcp` `tools/list` shows 
   Its `machine` field is removed, since only a verified machine token may set one.
 - **`headers` are forwarded without `authorization`, `cookie` and `origin`**; `ip` is what `getClientIp()` and an
   ip-scoped `rateLimit` read, unknown by default.
-
-## A Server Agent Loop — `agentService.loop`
-
-`this.agentService.loop(request)` runs a model over that catalogue until it answers, with no browser — a queued
-task, a scheduled run, a reply to a mention. It is an async iterable of `text`, `toolCall`, `toolResult`, `usage`,
-`compacted` and `awaiting` events that ends in exactly one `done { stop }` or `error`, and it waits for the consumer
-at every event.
-
-- **Who it acts as.** `account` is a snapshot the server resolved; `principal` is a stored id that
-  `option.setAgentAccountResolver((principal) => account | null)` resolves at the start and before every round, so
-  a revoked one ends the run as `"unauthorized"`, as does a missing or falsy `account`: there is no anonymous run.
-  Neither is ever client input. The model is offered `allow` ∩ what
-  the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
-  asked about nor run. A request with no `allow` array is an `error`.
-- **Toolkits.** `toolkits: { calendar: { description, tools } }` groups names of `allow` so a round need not carry
-  every tool. A tool in no toolkit is listed every round, beside one more, `openToolkit({ name })`, whose description
-  lists the toolkits. An opened toolkit's tools are listed from the next round on; `openToolkit` never reaches
-  `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
-- **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
-  (`akanjs/ui`), sent over your own transport. It is client input, and a name an endpoint holds is dropped. The run
-  never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`,
-  append its result — or your own error when no page answers — and resume.
-- **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
-  A call ends the run `awaiting` with `question: true`; put the question to the member, append
-  `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
-  counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
-- **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
-  reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
-  wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation
-  with the `destructive` hint above — is refused, and so is every write once tainted. `"defer"` holds the whole batch, emits
-  `awaiting` and ends the run as `"awaiting"`.
-- **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
-  and call `loop` again with them. Trailing calls nothing answered go to `approve` again before any model call, and
-  the taint is rebuilt from the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result
-  whole during the run and clipped on a resume. Store every message whole, marks included. `compacted` says the first
-  `replaced` messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary
-  with no marker counts as tainted to a run with `untrusted`. A batch's results
-  reach `onMessage` one tool message a call, as each call finishes, so a resume runs only the calls that had not
-  finished, even after a crash mid-batch. It cannot tell a call that was running when the run died from one that
-  never started: both go to `approve` again and run again, so a write that must not land twice needs an idempotent
-  endpoint or an `approve` that defers it. A stored result of that batch which `untrusted` marks taints them too: a
-  resume judges on everything stored, where an uninterrupted run judges a batch before any of it runs.
-- **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
-  usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
-  billing — empty headers and no ip. The relay's default size caps skip loop rounds; a refused quota ends the run as
-  `"quota"`.
-- **Limits.** `maxRounds` (12), `budget { tokens, toolCalls, wallMs }` (`"budget"`), `signal` (`"aborted"`) and a
-  provider cut (`"length"`). A limit that is not a valid number is an `error` before any model call. `wallMs` and
-  `signal` also end a run waiting on a tool or on `approve`. `callAs` cannot cancel a call, so the run stops waiting
-  and answers it with an error saying it may still finish; a resume does not run it again, and the endpoint runs on
-  with its outcome unreported. There is no preamble unless `preamble` gives one; with no `instructions` either, a
-  short neutral prompt stands in, as each adaptor's own fallback is about a screen. `compact { at, keep }` summarizes
-  the head, and a tool result is capped at 20,000 characters as the browser caps it. Its calls carry no ip, so an
-  ip-scoped `rateLimit` counts them under one unknown address.
-- **A refusal for length.** With `compact` set, a round whose call fails as `agent.error.contextOverflow` compacts
-  regardless of `at` and asks once more, as one round; a second refusal, or nothing to cut, ends the run with the
-  error. An adaptor with its own size cap throws that error with `{ limit, requested }` in its own unit, bytes
-  included, and the run lowers `at` to where that request would have fit.
