@@ -235,17 +235,10 @@ export class AnthropicLlm
   }
 
   static providerMessage(message: AgentWireMessage, accepts?: LlmAccepts): AnthropicMessage {
-    // The API has no mid-conversation system turn, so a compaction summary is framed as history in a user turn.
+    //? Security: a compaction summary is model-written text over earlier tool results, so it rides a user turn
+    //? fenced as history, as on the other dialect.
     if (message.summary)
-      return {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: `Summary of the earlier conversation, standing in for the messages it replaced:\n\n${message.text ?? ""}`,
-          },
-        ],
-      };
+      return { role: "user", content: [{ type: "text", text: LlmContext.summary(message.text ?? "") }] };
     // A tool result is a user turn here, not a role of its own.
     if (message.role === "tool")
       return {

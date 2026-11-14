@@ -18,4 +18,9 @@ export class LlmContext {
       .filter(Boolean)
       .join("\n\n");
   }
+
+  /** A `summary` message's text as user-role content: a compaction summary is history, never a system message. */
+  static summary(text: string): string {
+    return LlmFence.wrap(LlmFence.summary, text);
+  }
 }

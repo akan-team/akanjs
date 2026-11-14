@@ -122,14 +122,9 @@ export class OpenaiDialect {
   }
 
   static providerMessages(message: AgentWireMessage, accepts?: LlmAccepts): OpenaiMessage[] {
-    // A system turn: as a user turn the compaction summary would read as the newest instruction and be answered.
-    if (message.summary)
-      return [
-        {
-          role: "system" as const,
-          content: `Summary of the earlier conversation, standing in for the messages it replaced:\n\n${message.text ?? ""}`,
-        },
-      ];
+    //? Security: a user turn, fenced. A summary is model-written text over earlier tool results, and the system role
+    //? is the developer's; the fence's note keeps it from reading as the newest thing the user asked.
+    if (message.summary) return [{ role: "user" as const, content: LlmContext.summary(message.text ?? "") }];
     if (message.role === "tool") return OpenaiDialect.toolMessages(message, accepts);
     if (message.role === "assistant")
       return [

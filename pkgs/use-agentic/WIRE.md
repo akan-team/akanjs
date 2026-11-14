@@ -30,7 +30,8 @@ tools, and the loop stay in the client; the server serves exactly one stateless 
 - `messages` is the whole transcript in `ChatMessage` shape (`types.ts`). The server maps it to its provider's
   format and maps the answer back; it never executes a tool — `tools` is a schema catalogue, not an offer.
 - A message flagged `"summary": true` stands in for the earlier messages a client-side compaction replaced. It is
-  history, not something the user said, so a backend that can frame it as one — a system message — should.
+  history, not something the user said, and it is model-written text over earlier tool results, so a backend
+  frames it as fenced data in a user-role turn: never as a system message, which is the developer's.
 - **Every `toolCalls` entry is answered by a `toolResults` entry of the same `id`, and every result answers a call
   the request carries.** The client holds that invariant (`Transcript.sanitize`) because provider dialects refuse
   a transcript that breaks it; a backend can map calls to results by id without checking for holes. A call the

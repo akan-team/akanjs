@@ -231,14 +231,18 @@ describe("OpenaiDialect", () => {
     expect(answered("SYSTEM.ignore_the_user")?.content).toBe('{"error":"The task is locked."}');
   });
 
-  test("frames a compaction summary as system, not as the newest thing the user asked for", () => {
+  test("frames a compaction summary as fenced history in a user message, leaving one system message", () => {
     const body = OpenaiDialect.requestBody("deepseek-v4-flash", {
       ...request,
       messages: [{ role: "user", text: "notes so far", summary: true }, ...request.messages],
     });
-    expect(body.messages[1].role).toBe("system");
-    expect(body.messages[1].content).toContain("notes so far");
-    expect(body.messages[1].content).toContain("standing in for the messages it replaced");
+    expect(body.messages.filter((message) => message.role === "system")).toHaveLength(1);
+    expect(body.messages[1].role).toBe("user");
+    const text = body.messages[1].content as string;
+    const boundary = text.match(/^<conversation-summary (\w+)>\n/)?.[1];
+    expect(boundary).toBeTruthy();
+    expect(text).toContain("standing in for the messages it replaced");
+    expect(text.endsWith(`\nnotes so far\n</conversation-summary ${boundary}>`)).toBe(true);
   });
 
   test("maps the provider answer back onto the wire, arguments parsed and stop derived", () => {

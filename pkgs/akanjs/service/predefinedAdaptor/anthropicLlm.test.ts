@@ -155,7 +155,11 @@ describe("AnthropicLlm.requestBody", () => {
       messages: [{ role: "user", text: "earlier", summary: true }],
     });
     expect(messages[0].role).toBe("user");
-    expect((messages[0].content[0] as { text: string }).text).toContain("Summary of the earlier conversation");
+    const { text } = messages[0].content[0] as { text: string };
+    const boundary = text.match(/^<conversation-summary (\w+)>\n/)?.[1];
+    expect(boundary).toBeTruthy();
+    expect(text).toContain("Summary of the earlier conversation");
+    expect(text.endsWith(`\nearlier\n</conversation-summary ${boundary}>`)).toBe(true);
   });
 });
 

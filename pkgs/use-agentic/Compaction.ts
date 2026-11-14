@@ -219,11 +219,12 @@ export class Compaction {
     for (const attachment of message.attachments ?? [])
       parts.push(`[attached ${attachment.name}, content not carried into this summary]`);
     // Named as gone for the same reason as an attachment, and it matters more: the pointer survives the fold, so
-    // a model that needs the value again has a tool and an id to read it with rather than a memory of it.
+    // a model that needs the value again has a tool and an id to read it with rather than a memory of it. By the
+    // pointer alone: the label is the record's title, which a summary would repeat as the conversation's own words.
     for (const reference of message.references ?? [])
       parts.push(
         `[referenced ${reference.refName}/${reference.refId}${reference.path ? `#${reference.path}` : ""}` +
-          ` (${reference.label}), value not carried into this summary]`,
+          ", value not carried into this summary]",
       );
     for (const call of message.toolCalls ?? [])
       parts.push(`[called ${call.name} ${Compaction.#clip(JSON.stringify(call.args), 200)}]`);
