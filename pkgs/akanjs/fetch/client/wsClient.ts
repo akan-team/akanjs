@@ -62,6 +62,7 @@ interface SubscribeOption {
   cursor: { epoch: string | null; seq: number | null };
   /** Resubscribed after a drop: the ack says whether what was missed came back. */
   recovering: boolean;
+  refused: Set<(error: unknown) => void>;
 }
 interface Listener {
   callback: (data: unknown) => void;
@@ -72,6 +73,7 @@ interface RoomSubscription {
   data: unknown[];
   handleEvent: (data: unknown) => void;
   handleResync?: () => void;
+  handleRefused?: (error: unknown) => void;
 }
 
 type WsRequestPayload = unknown | unknown[];
@@ -229,10 +231,22 @@ export class WsClient {
           this.logger.warn(`Unknown WebSocket frame ${e.data.slice(0, 200)}`);
           return;
         }
-        const parsed = frame as { error?: unknown; key?: string } & WebsocketResData;
+        const parsed = frame as {
+          error?: unknown;
+          key?: string;
+          statusCode?: number;
+          requestRoomId?: string;
+        } & WebsocketResData;
         if (parsed.error) {
           const error = restoreRemoteError(parsed, 500, this.ErrorCls);
           this.#options.onError?.(error, parsed.key);
+          //? A room refused for a limit is dropped, or every reconnect would send it again and be refused again.
+          const refusedId = parsed.statusCode === 429 ? parsed.requestRoomId : undefined;
+          const refused = refusedId ? this.#roomSubscribeMap.get(refusedId) : undefined;
+          if (refusedId && refused) {
+            this.#roomSubscribeMap.delete(refusedId);
+            for (const handler of refused.refused) handler(error);
+          }
           throw error;
         }
         const type = (parsed as WebsocketResData | WebsocketHeartbeatAckData).type;
@@ -567,6 +581,7 @@ export class WsClient {
         resync: new Set(),
         cursor: { epoch: null, seq: null },
         recovering: false,
+        refused: new Set(),
       };
       this.#roomSubscribeMap.set(roomId, roomSubscribe);
       if (this.#ws?.readyState === WebSocket.OPEN) this.#sendSubscribe(option.key, option.data, true);
@@ -574,6 +589,7 @@ export class WsClient {
     }
     roomSubscribe.listener.add(option.handleEvent);
     if (option.handleResync) roomSubscribe.resync.add(option.handleResync);
+    if (option.handleRefused) roomSubscribe.refused.add(option.handleRefused);
     if (!this.#ws) this.#requireConnection("subscribe", option.key);
     this.logger.verbose(`Websocket subscribe pubsub for ${roomId} - ${roomSubscribe.listener.size} listeners added`);
     return this;
@@ -584,6 +600,7 @@ export class WsClient {
     if (!roomSusbscribe) return;
     roomSusbscribe.listener.delete(option.handleEvent);
     if (option.handleResync) roomSusbscribe.resync.delete(option.handleResync);
+    if (option.handleRefused) roomSusbscribe.refused.delete(option.handleRefused);
     this.logger.verbose(`Unsubscribe pubsub for ${roomId} - ${roomSusbscribe.listener.size} listeners remaining`);
     if (roomSusbscribe.listener.size === 0) {
       if (this.#ws?.readyState === WebSocket.OPEN) {

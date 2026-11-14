@@ -8,6 +8,7 @@ import {
 } from "akanjs/common";
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
 import { CrossSiteGuard, isExceptionLike, SignalContext, SignalFailure, type WebsocketReqData } from "akanjs/signal";
+import { websocketRoomContract } from "../../common/websocketContract";
 import { compressResponse, compressStreamResponse } from "../contentEncoding";
 import type { HmrWsData, HmrWsHub } from "../hmr/wsHub";
 import { copyBunRequestFields, type WebProxyRunner } from "../proxy";
@@ -170,10 +171,15 @@ export class ApiRouter {
           return;
         }
         //? Named on an error frame, so a client can tell which subscribe or message the refusal answers.
-        let failedKey: string | undefined;
+        let failed: { key?: string; requestRoomId?: string } = {};
         try {
           const msg = ApiRouter.#frameOf(message);
-          failedKey = msg.key;
+          failed = {
+            key: msg.key,
+            ...(msg.subscribe === true && Array.isArray(msg.data)
+              ? { requestRoomId: websocketRoomContract.idOf(msg.key, msg.data) }
+              : {}),
+          };
           if (msg.key === websocketAuthContract.key) {
             // Must stay synchronous: the next frame (e.g. a subscribe) has to see the new credential.
             AppWsData.applyCredential(AppWsData.of(ws), websocketAuthContract.readJwt(msg.data));
@@ -200,14 +206,14 @@ export class ApiRouter {
           ws.send(JSON.stringify(result));
         } catch (error) {
           if (isExceptionLike(error)) {
-            ws.send(JSON.stringify({ ...error.toJSON(), key: failedKey, timestamp: new Date().toISOString() }));
+            ws.send(JSON.stringify({ ...error.toJSON(), ...failed, timestamp: new Date().toISOString() }));
             return;
           }
           if (!SignalContext.wasReported(error) && SignalFailure.generalized(error).statusCode >= 500) {
             logger.error(error instanceof Error ? (error.stack ?? error.message) : String(error));
           }
           // The same generalization the HTTP 500 makes: a socket frame is no less readable by the caller.
-          ws.send(JSON.stringify({ ...SignalFailure.body(error), key: failedKey, at: dayjs() }));
+          ws.send(JSON.stringify({ ...SignalFailure.body(error), ...failed, at: dayjs() }));
         }
       },
       close: (ws) => {

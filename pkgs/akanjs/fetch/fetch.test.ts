@@ -3620,6 +3620,52 @@ describe("WsClient", () => {
     client.destroy();
   });
 
+  test("drops a room the server refused with 429 and tells its subscriber once, so a reconnect does not send it again", async () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 1, jitter: 0 } });
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    const refusals: unknown[] = [];
+    const refusedRoom = {
+      key: "commandOfPc",
+      data: ["pc-7"],
+      handleEvent: () => undefined,
+      handleRefused: (error: unknown) => refusals.push(error),
+    };
+    client.subscribe(refusedRoom);
+    client.subscribe({ key: "commandOfPc", data: ["pc-8"], handleEvent: () => undefined });
+    client.subscribe({ key: "commandOfPc", data: ["pc-9"], handleEvent: () => undefined });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.receive({
+      error: "base.error.liveRoomLimit",
+      code: "liveRoomLimit",
+      statusCode: 429,
+      data: { limit: 2, per: "socket" },
+      key: "commandOfPc",
+      requestRoomId: "commandOfPc-pc-7",
+    });
+    ws.receive({ error: "Access denied", statusCode: 403, key: "commandOfPc", requestRoomId: "commandOfPc-pc-9" });
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({ code: "liveRoomLimit", statusCode: 429, data: { limit: 2, per: "socket" } });
+
+    setSystemTime(new Date(Date.now() + WsClient.stableMs));
+    ws.close();
+    await waitUntil(() => FakeWebSocket.instances.length > 1);
+    const reconnected = FakeWebSocket.instances[1];
+    reconnected.open();
+    const resubscribed = reconnected.sent.map(
+      (frame) => JSON.parse(frame) as { data?: unknown[]; subscribe?: boolean },
+    );
+    expect(resubscribed.filter((frame) => frame.subscribe).map((frame) => frame.data)).toEqual([["pc-8"], ["pc-9"]]);
+
+    client.subscribe(refusedRoom);
+    expect(JSON.parse(reconnected.sent.at(-1) ?? "{}")).toMatchObject({ data: ["pc-7"], subscribe: true });
+    client.unsubscribe(refusedRoom);
+    client.destroy();
+    setSystemTime();
+  });
+
   test("a server-side client sends its headers and its token with the upgrade", () => {
     setFakeWebSocket();
     const client = new WsClient("wss://cloud.example/ws").configure({ headers: { "x-edge-version": "3" } });

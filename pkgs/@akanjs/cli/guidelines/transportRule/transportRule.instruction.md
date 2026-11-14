@@ -241,6 +241,10 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   `AKAN_LIVE_ROOMS_PER_MODEL`), since every write to a model is matched against its rooms. A new room past it is
   refused the same way with `per: "model"`, existing rooms keep working, and the refusal is warned at most once a
   minute per model.
+- **A subscribe refused with 429 names its room** (`requestRoomId` on the error frame). The client drops that room,
+  so a reconnect does not send it again, and calls the subscriber's `onRefused(error)` fetch policy once. A live
+  slice shows the error as a message, marks its list stale, and subscribes again only on its next watch, such as the
+  next mount — never in a loop.
 - **Subscribe frames have a budget of their own**, over every pubsub endpoint: 1,000 a minute per websocket, counted
   before the arguments are read, and 10,000 a minute per caller (`accountKey(account)`, else the address; one whose
   address is unknown is counted per socket only), shared through the cache. A reconnect resubscribing every held

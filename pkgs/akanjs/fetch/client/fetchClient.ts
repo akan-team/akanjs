@@ -477,15 +477,15 @@ export class FetchClient {
               handleEvent(parsedReturn);
             };
             const ws = this.#resolveWs(fetchPolicy?.origin);
-            const onResync = fetchPolicy?.onResync;
             const handleResync =
-              onResync &&
+              fetchPolicy?.onResync &&
               (() => {
                 this.#inflight.detach();
-                onResync();
+                fetchPolicy.onResync?.();
               });
-            ws.subscribe({ key, data, handleEvent: wrapped, handleResync });
-            return () => ws.unsubscribe({ key, data, handleEvent: wrapped, handleResync });
+            const room = { key, data, handleEvent: wrapped, handleResync, handleRefused: fetchPolicy?.onRefused };
+            ws.subscribe(room);
+            return () => ws.unsubscribe(room);
           };
         });
         return;

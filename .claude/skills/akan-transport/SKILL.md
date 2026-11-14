@@ -48,4 +48,4 @@ Full detail: `get_guideline` with `transportRule`, or `mcpRule` for what a guard
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
 - `.agents/skills/akan-transport/references/transportRule-1.md` — Guards And Transports · Writing A Guard · Request Deadlines · Cached Answers · Repeated Mutations · …
-- `.agents/skills/akan-transport/references/transportRule-2.md` — Binary Pubsub · Mutation HTTP Verb
+- `.agents/skills/akan-transport/references/transportRule-2.md` — Body Types And Bytes · Binary Pubsub · Mutation HTTP Verb

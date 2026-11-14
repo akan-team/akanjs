@@ -243,6 +243,10 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   `AKAN_LIVE_ROOMS_PER_MODEL`), since every write to a model is matched against its rooms. A new room past it is
   refused the same way with `per: "model"`, existing rooms keep working, and the refusal is warned at most once a
   minute per model.
+- **A subscribe refused with 429 names its room** (`requestRoomId` on the error frame). The client drops that room,
+  so a reconnect does not send it again, and calls the subscriber's `onRefused(error)` fetch policy once. A live
+  slice shows the error as a message, marks its list stale, and subscribes again only on its next watch, such as the
+  next mount — never in a loop.
 - **Subscribe frames have a budget of their own**, over every pubsub endpoint: 1,000 a minute per websocket, counted
   before the arguments are read, and 10,000 a minute per caller (`accountKey(account)`, else the address; one whose
   address is unknown is counted per socket only), shared through the cache. A reconnect resubscribing every held
@@ -269,20 +273,3 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   `Internal Server Error` on the way out.
 - `String(err)` and `${err}` read `Err: <key> {…data}`, the data as one line of JSON with secret-named keys masked,
   so a ``logger.warn(`…: ${String(error)}`)`` keeps the exit code or status the `Err` carried.
-
-## Body Types And Bytes
-
-- `.body(...)` / `.param(...)` args accept `ConstantFieldTypeInput` only: scalars, model refs, or `enumOf(...)`.
-  Numbers are `Int` or `Float` — `Number` is rejected (`pkgs/akanjs/signal/endpointInfo.ts`).
-- **`Upload` is valid only inside a mutation flagged for file upload**:
-  `mutation([cnst.File], { fileUpload: true }).body("files", [Upload])`, as the `file` module does. It is not a
-  model field type. The other body args of such a mutation arrive typed as in a JSON body. A file's `type` on the
-  server is what its name implies, not its bytes — check the bytes when the type matters.
-- **`Binary` is raw bytes on the wire.** It is `Uint8Array` on both sides — a Node `Buffer` is one, so a server
-  handler may pass one straight in — and it accepts base64 in either direction, so the same declaration serves a
-  JSON body and a binary frame. A `Binary` return travels as base64 in an HTTP body. It is never a model field
-  (`fieldRule`).
-- **Never send bytes as `Any`.** `Any` passes a `Buffer` through untouched and `JSON.stringify` then spells it
-  `{ type: "Buffer", data: number[] }`, which `JSON.parse` never restores; the result is 3.6x the wire and a shape
-  that only breaks at the first byte-offset read. A return declared `Any` that turns out to be bytes fails instead
-  of reaching the caller as `{}`, and MCP refuses a `Binary` return for the same reason it refuses `Any`.
