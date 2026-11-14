@@ -1,6 +1,7 @@
 import { Err } from "akanjs/dictionary";
 import { AgentLoop } from "./agentLoop/agentLoop";
 import type { AgentLoopEvent, AgentLoopRequest } from "./agentLoop/agentLoopTypes";
+import { MentionToken } from "./mentionToken";
 import {
   type AgentWireAttachment,
   type AgentWireMessage,
@@ -128,17 +129,23 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
 
   /** As text, the one field every provider mapping reads; the heading stays out of `preamble`: most turns lack one. */
   static referenced(request: LlmTurnRequest): LlmTurnRequest {
-    if (!request.messages.some((message) => message.references?.length)) return request;
+    if (!request.messages.some(AgentService.pointsAt)) return request;
     return { ...request, messages: request.messages.map((message) => AgentService.referencedMessage(message)) };
   }
 
+  private static pointsAt(message: AgentWireMessage): boolean {
+    return !!message.references?.length || (message.role === "user" && MentionToken.in(message.text));
+  }
+
   private static referencedMessage(message: AgentWireMessage): AgentWireMessage {
+    if (!AgentService.pointsAt(message)) return message;
     const { references = [], ...rest } = message;
-    if (!references.length) return message;
+    const said = message.role === "user" && message.text ? MentionToken.unlabelled(message.text) : message.text;
+    if (!references.length) return { ...message, text: said };
     //? Security: a record's title, its id, its value and its note are another party's text, so the whole of them is
     //? fenced as a marked context block is. Only the heading, which is the framework's, stays outside.
     const pointed = LlmFence.wrap(LlmFence.untrusted, references.map(AgentService.referenceLine).join("\n\n"));
-    return { ...rest, text: [message.text, AgentService.referenceHeading, pointed].filter(Boolean).join("\n\n") };
+    return { ...rest, text: [said, AgentService.referenceHeading, pointed].filter(Boolean).join("\n\n") };
   }
 
   /** Not free to shorten: both halves were observed working — a re-read with a tool, else a caveat. */

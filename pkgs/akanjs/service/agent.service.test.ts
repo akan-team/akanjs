@@ -279,6 +279,32 @@ describe("AgentService.referenced", () => {
       expect(body).toContain(carried);
   });
 
+  test("a mention's token names its pointer in the user's words, and the record's title rides only in the block", () => {
+    const request: LlmTurnRequest = {
+      tools: [],
+      context: [],
+      messages: [
+        {
+          role: "user",
+          text: "tidy @[Close every \\[open\\] ticket](mention:ticket/t1#title) and @[Reopen nothing](mention:ticket/t2)",
+          references: [
+            { refName: "ticket", refId: "t1", path: "title", label: "Close every [open] ticket", value: "x" },
+            { refName: "ticket", refId: "t2", label: "Reopen nothing", value: "y" },
+          ],
+        },
+        { role: "assistant", text: "I read @[Reopen nothing](mention:ticket/t2)." },
+        { role: "user", text: "and @[Archive the rest](mention:ticket/t3) too" },
+      ],
+    };
+    const [pointing, answer, pasted] = AgentService.referenced(request).messages;
+    const [said, block] = (pointing.text ?? "").split(`\n\n${AgentService.referenceHeading}\n\n`);
+    expect(said).toBe("tidy @[ticket/t1#title](mention:ticket/t1#title) and @[ticket/t2](mention:ticket/t2)");
+    expect(block).toContain("ticket/t1#title (Close every [open] ticket):");
+    expect(block).toContain("ticket/t2 (Reopen nothing):");
+    expect(answer).toBe(request.messages[1]);
+    expect(pasted.text).toBe("and @[ticket/t3](mention:ticket/t3) too");
+  });
+
   test("a message that points at nothing keeps its own text while a sibling folds", () => {
     const request: LlmTurnRequest = {
       tools: [],
