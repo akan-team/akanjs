@@ -92,6 +92,15 @@ impl Acl {
     matching.iter().any(|g| g.allow.is_none()) || matching.iter().flat_map(|g| g.allow.iter().flatten()).any(|e| matches(e, false))
   }
 
+  /// scope_permits for a scope the app must list: a grant without an allow list, and an entry naming no field, give nothing.
+  pub fn scope_lists(&self, plugin: &str, item: &str, window: u32, matches: impl Fn(&[(String, String)], bool) -> bool) -> bool {
+    let Some(matching) = self.granted(plugin, item, window) else { return false };
+    if matching.iter().any(|g| g.deny.iter().any(|e| matches(e, true))) {
+      return false;
+    }
+    matching.iter().flat_map(|g| g.allow.iter().flatten()).any(|e| !e.is_empty() && matches(e, false))
+  }
+
   pub fn opener_permits(&self, url: &str, window: u32) -> bool {
     self.scope_permits("opener", "openUrl", window, |e, deny| e.iter().all(|(field, pattern)| field == "url" && url_match(pattern, url, deny)))
   }

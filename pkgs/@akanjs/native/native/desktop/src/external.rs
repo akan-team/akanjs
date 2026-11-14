@@ -168,21 +168,20 @@ impl Bounds {
 
 const PLUGIN: &str = "external-view";
 
-/// With no ACL (boot.json has none) every item is allowed, as aclCheck has it.
+/// Unlike aclCheck, no ACL grants nothing: every boot.json the CLI builds has one.
 fn needs(acl: Option<&Acl>, item: &str, window: u32, what: &str) -> Result<(), String> {
-  if acl.is_none_or(|acl| acl.permits(PLUGIN, item, window)) {
+  if acl.is_some_and(|acl| acl.permits(PLUGIN, item, window)) {
     return Ok(());
   }
   let config = if matches!(item, "evaluate" | "sendKey") { format!(", which native.desktop.externalView.{item}: true grants") } else { String::new() };
   Err(format!("NOT_ALLOWED: {what} needs the permission {PLUGIN}:allow-{item}{config}"))
 }
 
-/// Each origin is one the app's capabilities give open, the scope native.desktop.externalView.allowOrigins sets.
+/// Each origin is one the app's capabilities list for open, the scope native.desktop.externalView.allowOrigins sets.
 fn in_scope(acl: Option<&Acl>, allow: &[String], window: u32) -> Result<(), String> {
-  let Some(acl) = acl else { return Ok(()) };
   for origin in allow {
     let listed = |entry: &[(String, String)], _deny: bool| entry.iter().all(|(field, value)| field == "origin" && scope_origin(value).as_deref() == Some(origin.as_str()));
-    if !acl.scope_permits(PLUGIN, "open", window, listed) {
+    if !acl.is_some_and(|acl| acl.scope_lists(PLUGIN, "open", window, listed)) {
       return Err(format!("NOT_ALLOWED: {origin} is not in native.desktop.externalView.allowOrigins, the origins the app lets a view open for"));
     }
   }
@@ -206,7 +205,7 @@ fn cdp_item(method: &str) -> Result<&'static str, String> {
 impl OpenOptions {
   /// externalView.open's arguments, for a view in `window`, within what the ACL lets a view open.
   pub(crate) fn from_cmd(cmd: &json::V, window: u32, acl: Option<&Acl>) -> Result<Self, String> {
-    let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?.to_string();
+    let url = cmd.get("url").and_then(|v| v.as_str()).ok_or("url must be a string")?;
     let allow: Vec<String> = cmd
       .get("allowOrigins")
       .and_then(|v| v.as_array())
@@ -214,9 +213,7 @@ impl OpenOptions {
       .iter()
       .map(|o| o.as_str().and_then(origin_of).ok_or("allowOrigins holds an origin that is not http(s)"))
       .collect::<Result<_, _>>()?;
-    if !allowed(&allow, &url) {
-      return Err(format!("NOT_ALLOWED: {url} is on none of allowOrigins"));
-    }
+    let url = approved(&allow, url).ok_or_else(|| format!("NOT_ALLOWED: {url} is on none of allowOrigins"))?;
     in_scope(acl, &allow, window)?;
     let init_script = cmd.get("initScript").and_then(|v| v.as_str()).map(str::to_string);
     if init_script.as_deref().is_some_and(|s| !s.is_empty()) {
@@ -268,6 +265,13 @@ fn scope_origin(value: &str) -> Option<String> {
 
 pub(crate) fn allowed(allow: &[String], url: &str) -> bool {
   url == "about:blank" || origin_of(url).is_some_and(|origin| allow.contains(&origin))
+}
+
+/// What a view loads for `url`: the URL parser's serialization, which `allowed` checks, never the page's own text.
+//? Another parser can read that text differently or refuse it: NSURL answers nil for " https://…", which wry unwraps.
+pub(crate) fn approved(allow: &[String], url: &str) -> Option<String> {
+  let serialized = if url == "about:blank" { url.to_string() } else { url::Url::parse(url).ok()?.into() };
+  allowed(allow, &serialized).then_some(serialized)
 }
 
 pub(crate) fn admits(allow: &[String], url: &str, sub_frame: bool) -> bool {
@@ -556,11 +560,11 @@ impl Views {
 
   pub(crate) fn navigate(&mut self, view: &str, url: &str) -> Result<String, String> {
     let v = self.get_mut(view)?;
-    if !allowed(&v.allow.borrow(), url) {
+    let Some(url) = approved(&v.allow.borrow(), url) else {
       return Err(format!("NOT_ALLOWED: {url} is not on an origin view {view} was opened for"));
-    }
-    v.webview.load_url(url).map_err(|e| e.to_string())?;
-    v.url = url.to_string();
+    };
+    v.webview.load_url(&url).map_err(|e| e.to_string())?;
+    v.url = url;
     #[cfg(target_os = "linux")]
     self.give_keyboard_by(view);
     Ok("null".into())
@@ -1202,7 +1206,49 @@ mod tests {
     let none_listed = acl(r#"[{"plugin":"external-view","windows":"*","items":["open"],"allow":[]}]"#);
     assert!(OpenOptions::from_cmd(&open_cmd(r#"["https://board.example"]"#, None), 1, Some(&none_listed)).is_err());
     assert!(OpenOptions::from_cmd(&open_cmd(r#"["https://board.example"]"#, None), 1, Some(&acl("[]"))).is_err());
-    assert!(OpenOptions::from_cmd(&open_cmd(r#"["https://board.example"]"#, None), 1, None).is_ok());
+  }
+
+  #[test]
+  fn a_grant_gives_a_view_only_the_origins_it_names() {
+    let opens = |grants: &str| OpenOptions::from_cmd(&open_cmd(r#"["https://board.example"]"#, None), 1, Some(&acl(grants))).is_ok();
+    assert!(opens(BOARD));
+    for grants in [
+      r#"[{"plugin":"external-view","windows":"*","items":["open"]}]"#,
+      r#"[{"plugin":"external-view","windows":"*","items":"*"}]"#,
+      r#"[{"plugin":"external-view","windows":"*","items":["open"],"allow":[{}]}]"#,
+      r#"[{"plugin":"external-view","windows":"*","items":["open"],"allow":[]},{"plugin":"external-view","windows":"*","items":["open","evaluate"]}]"#,
+      r#"[{"plugin":"external-view","windows":"*","items":["open"],"allow":[{"origin":"https://board.example","url":"*"}]}]"#,
+    ] {
+      assert!(!opens(grants), "{grants}");
+    }
+  }
+
+  #[test]
+  fn no_capabilities_give_a_view_nothing() {
+    let refused = OpenOptions::from_cmd(&open_cmd(r#"["https://board.example"]"#, None), 1, None).err().unwrap_or_default();
+    assert!(refused.starts_with("NOT_ALLOWED: ") && refused.contains("native.desktop.externalView.allowOrigins"), "{refused}");
+    for item in ["evaluate", "sendKey"] {
+      let refused = needs(None, item, 1, item).err().unwrap_or_default();
+      assert!(refused.starts_with("NOT_ALLOWED: ") && refused.contains(&format!("native.desktop.externalView.{item}")), "{refused}");
+    }
+    assert!(needs(None, "capture", 1, "capture").is_err());
+  }
+
+  #[test]
+  fn a_view_loads_the_url_the_check_read() {
+    let board = acl(BOARD);
+    let open = |url: &str| OpenOptions::from_cmd(&json::parse(&format!(r#"{{"view":"v","url":{},"allowOrigins":["https://board.example"]}}"#, json::quote(url))).unwrap(), 1, Some(&board)).map(|o| o.url);
+    assert_eq!(open(" https://board.example/"), Ok("https://board.example/".to_string()));
+    assert_eq!(open("https://board.example\\.other.example/"), Ok("https://board.example/.other.example/".to_string()));
+    assert_eq!(open("https://BOARD.example:443/a b?q=\"x\""), Ok("https://board.example/a%20b?q=%22x%22".to_string()));
+    assert_eq!(open("https://board.example./"), Ok("https://board.example./".to_string()));
+    for url in ["https://other.example\\.board.example/", "https://board.example@other.example/", "board.example", "https://other.example/"] {
+      assert!(open(url).is_err_and(|e| e.starts_with("NOT_ALLOWED: ")), "{url}");
+    }
+    let allow = vec!["https://board.example".to_string()];
+    assert_eq!(approved(&allow, "\thttps://board.example/next\n").as_deref(), Some("https://board.example/next"));
+    assert_eq!(approved(&allow, "about:blank").as_deref(), Some("about:blank"));
+    assert_eq!(approved(&allow, "https://other.example/"), None);
   }
 
   #[test]
@@ -1244,7 +1290,6 @@ mod tests {
     assert_eq!(needs(Some(&window_two), "sendKey", 2, "sendKey"), Ok(()));
     let denied = Acl::from(&json::parse(r#"{"grants":[{"plugin":"external-view","windows":"*","items":"*"}],"denied":{"external-view":["evaluate"]}}"#).unwrap());
     assert!(needs(Some(&denied), "evaluate", 1, "evaluate").is_err());
-    assert_eq!(needs(None, "evaluate", 1, "evaluate"), Ok(()));
   }
 
   #[test]
