@@ -27,8 +27,13 @@ export interface OpenaiAnswer {
   choices?: { message?: { content?: string | null; tool_calls?: OpenaiToolCall[] }; finish_reason?: string }[];
   usage?: OpenaiUsage | null;
 }
-interface OpenaiStreamChunk {
-  error?: { message?: unknown; code?: unknown } | string;
+interface OpenaiStreamError {
+  message?: unknown;
+  code?: unknown;
+}
+interface OpenaiStreamChunk extends OpenaiStreamError {
+  error?: OpenaiStreamError | string;
+  object?: string;
   usage?: OpenaiUsage | null;
   choices?: {
     delta?: {
@@ -215,6 +220,8 @@ export class OpenaiDialect {
       }
       const chunk = JSON.parse(payload) as OpenaiStreamChunk;
       if (chunk.error) failure = OpenaiDialect.#streamFailure(host, chunk.error);
+      //? vLLM can send its error response as the frame itself, with no `error` wrapper around it.
+      else if (chunk.object === "error") failure = OpenaiDialect.#streamFailure(host, chunk);
       if (chunk.usage) usage = OpenaiDialect.usageOf(chunk.usage);
       const choice = chunk.choices?.[0];
       if (!choice) return;
@@ -236,6 +243,8 @@ export class OpenaiDialect {
         if (fragment.function?.arguments) call.args += fragment.function.arguments;
       }
       if (choice.finish_reason) finish = choice.finish_reason;
+      //? A gateway such as OpenRouter ends a stream its upstream failed with `finish_reason: "error"`.
+      if (choice.finish_reason === "error") failure ??= OpenaiDialect.#streamFailure(host, "no reason given");
     });
     //? Thrown here, as `eachSseData` swallows a throw from its callback: an error frame arrives on a 200 response.
     const failed = read.then(() => {
@@ -258,7 +267,7 @@ export class OpenaiDialect {
     };
   }
 
-  static #streamFailure(host: string, error: NonNullable<OpenaiStreamChunk["error"]>): Error {
+  static #streamFailure(host: string, error: OpenaiStreamError | string): Error {
     const { message, code } = typeof error === "string" ? { message: error, code: undefined } : error;
     return LlmOverflow.refusal(
       host,

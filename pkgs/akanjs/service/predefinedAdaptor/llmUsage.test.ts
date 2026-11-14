@@ -181,6 +181,48 @@ describe("a stream that did not finish", () => {
     const failure = await openai([frame]).catch((error: unknown) => error);
     expect(Err.is(failure, "agent.error.contextOverflow")).toBe(true);
   });
+
+  test("vLLM's bare error frame fails the turn with its own code, billed at what was streamed", async () => {
+    const failure = await openai([
+      `data: ${JSON.stringify({ id: "cmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content: "Half an" }, finish_reason: null }] })}`,
+      `data: ${JSON.stringify({ object: "error", message: "The engine is dead.", type: "InternalServerError", param: null, code: 503 })}`,
+      "data: [DONE]",
+    ]).catch((error: unknown) => error);
+    expect(Err.is(failure, "agent.error.llmRequestFailed")).toBe(true);
+    expect((failure as { data?: unknown }).data).toEqual({ provider: "llm.test", status: "503" });
+    expect(LlmSpend.of(failure)).toEqual({
+      usage: { inputTokens: 0, outputTokens: LlmSpend.tokensOf("Half an"), cachedTokens: 0 },
+      estimated: true,
+    });
+    const overflow = `data: ${JSON.stringify({ object: "error", message: "This model's maximum context length is 4096 tokens.", code: 400 })}`;
+    expect(Err.is(await openai([overflow]).catch((error: unknown) => error), "agent.error.contextOverflow")).toBe(true);
+  });
+
+  test("a finish_reason of error fails the turn, keeping the counts the provider sent after it", async () => {
+    const chunk = (body: object) =>
+      `data: ${JSON.stringify({ id: "gen-1", object: "chat.completion.chunk", ...body })}`;
+    const content = chunk({
+      choices: [{ index: 0, delta: { role: "assistant", content: "Half an" }, finish_reason: null }],
+    });
+    const counts = chunk({ choices: [], usage: { prompt_tokens: 80, completion_tokens: 4 } });
+    const bare = await openai([
+      content,
+      chunk({ choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] }),
+      counts,
+      "data: [DONE]",
+    ]).catch((error: unknown) => error);
+    expect(Err.is(bare, "agent.error.llmRequestFailed")).toBe(true);
+    expect(LlmSpend.of(bare)).toEqual({ usage: { inputTokens: 80, outputTokens: 4, cachedTokens: 0 } });
+    const explained = await openai([
+      content,
+      chunk({
+        error: { code: 502, message: "Provider disconnected" },
+        choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }],
+      }),
+      "data: [DONE]",
+    ]).catch((error: unknown) => error);
+    expect((explained as { data?: unknown }).data).toEqual({ provider: "llm.test", status: "502" });
+  });
 });
 
 describe("LLM usage", () => {
