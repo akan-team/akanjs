@@ -33,6 +33,7 @@
     "release:typecheck-consumer": "bun infra/test/runPackedConsumer.ts",
     "release:smoke-registry": "bun run akan reset-registry && bun run akan smoke-registry --test=true --tag=rc --registry=http://127.0.0.1:4873",
     "api:report": "bun infra/test/runApiReport.ts",
+    "audit:deps": "bun infra/test/runDependencyAudit.ts",
     "error:codes": "bun pkgs/@akanjs/devkit/docs/errorCodeReference.ts && bun run akan agent install",
     "akan": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js",
     "testPkgs": "bun run buildAkan && for p in akanjs @akanjs/devkit @akanjs/cli @akanjs/native @akanjs/language @akanjs/vscode create-akan-workspace use-agentic; do printf '\\n== %s\\n' \"$p\" && bun run runAkan test \"$p\" || exit 1; done",
