@@ -69,6 +69,30 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(ids(await table.find({ id: { $in: ["a2", "a4"] } }))).toEqual(["a2", "a4"]);
     });
 
+    test("$in and $nin match a list by value and type, on a dot path and on a base column", async () => {
+      const { table } = await open();
+      expect(ids(await table.find({ name: { $in: ["Kenny", 'it\'s "x"', "a,b", "Eve"] } }))).toEqual(["a1", "a4"]);
+      expect(ids(await table.find({ score: { $in: [3, 10, "7"] } }))).toEqual(["a1", "a4"]);
+      expect(ids(await table.find({ score: { $in: [3, null] } }))).toEqual(["a1"]);
+      expect(ids(await table.find({ "profile.tier": { $in: ["gold", "silver"] } }))).toEqual(["a1", "a2"]);
+      expect(ids(await table.find({ org: { $nin: ["o1"] } }))).toEqual(["a4"]);
+      expect(ids(await table.find({ org: { $nin: [] } }))).toEqual(["a1", "a2", "a3", "a4"]);
+      expect(ids(await table.find({ id: { $in: ["a2", "a2", "nobody"] } }))).toEqual(["a2"]);
+      expect(ids(await table.find({ id: { $nin: ["a1", "a2"] } }))).toEqual(["a3", "a4"]);
+      expect(ids(await table.find({ id: { $nin: ["a1", null] } }))).toEqual([]);
+      expect(ids(await table.find({ createdAt: { $in: [1_600_000_000_000, 5] } }))).toEqual(["a1", "a2", "a3", "a4"]);
+      expect(ids(await table.find({ removedAt: { $nin: [5] } }))).toEqual(["a3"]);
+      expect(await table.count({ score: { $in: [1, 3, 7] } }, { withRemoved: false })).toBe(2);
+    });
+
+    // Postgres takes 65,534 parameters in a statement.
+    test("$in takes a list of tens of thousands of values", async () => {
+      const { table } = await open();
+      const absent = Array.from({ length: kind === "postgres" ? 70_000 : 30_000 }, (_, idx) => `absent${idx}`);
+      expect(ids(await table.find({ id: { $in: [...absent, "a3"] } }))).toEqual(["a3"]);
+      expect(ids(await table.find({ name: { $in: [...absent, "Jane"] } }))).toEqual(["a2"]);
+    });
+
     test("writes `_doc` and removedAt as given, leaving updatedAt alone, and deletes", async () => {
       const { table } = await open();
       expect(await table.write("a1", { _doc: { name: "Kenny", legacy: true }, removedAt: 5 })).toBe(true);

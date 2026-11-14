@@ -268,6 +268,8 @@ export interface CompileContext {
   joins: SearchJoin[];
   memberTests: string[];
   conjunctive: boolean;
+  /** Each list value gets its own placeholder, where a query binds the whole list as one. */
+  writtenLists: boolean;
 }
 
 /**
