@@ -68,9 +68,9 @@ const config: AppConfig = { api: { prefix: "/backend", websocketPrefix: "/socket
   inside it can reach a prebuilt bundle at all. The two jobs need two names.
 - **`new AkanApp({ prefix })` reaches the browser through the page, not through a prop.** `FetchClient` fixes its
   origin when the module graph initializes, before any component renders, so a React prop — a `System.Provider`
-  value, anything out of `implicitRootLayout` — is always too late. The value rides the SSR classic bootstrap
-  script instead, the one thing guaranteed to run ahead of every module script, and is omitted when it matches
-  what the bundle already assumes. `akan.config.ts` is what a native app bundle or a statically served CSR shell
+  value, anything out of `implicitRootLayout` — is always too late. The value rides the data block the SSR classic
+  bootstrap script reads instead, the one thing guaranteed to run ahead of every module script, and is omitted when
+  it matches what the bundle already assumes. `akan.config.ts` is what a native app bundle or a statically served CSR shell
   follows, because neither is rendered by a server that could tell it otherwise.
 - **A prefix is a path segment.** A blank value or a bare `/` is refused: `/` would be mounted ahead of the SSR
   catch-all and swallow every page route. A prefix whose first segment is a declared basePath is refused at

@@ -21,6 +21,9 @@ Full contract — guards, apps, heads, CSR root layouts, typed params, lib pages
 - `.head()` takes JSX or a function returning it — never a metadata object; deeper heads replace by tag identity,
   and a canonical link / `og:url` comes only from the page's own `.head()`. A 404's title is the `<title>` a layout's
   `.notFound()` returns at its top: `.notFound(() => <><title>Not found</title>…</>)`, except below a `.loading()`.
+- An inline `<script>` in a `.head()` is named in the page's script policy, reported now and refused from 3.5.0:
+  `scriptHashes("sha256-…")` for a constant snippet (the page stays cacheable), `nonce={scriptNonce()}` for anything
+  else (the page turns dynamic); both from `akanjs/client`, called in the `.head()`.
 - In a CSR bundle a root layout's own markup is hidden: what a person must see from it renders through
   `createPortal(…, document.body)`.
 - `_overrides.tsx` is one `export default override({ Slot: AppComponent })` (`akanjs/ui`), no logic, no

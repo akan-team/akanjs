@@ -131,6 +131,17 @@ body shape — this is the full contract behind them. Before changing route beha
 - **A not-found or error view titles itself**: the `<title>` and `<meta>` at the top of what a layout's `.notFound()`
   / `.error()` returns replace the layouts' head, and the page's own head is dropped. Under a `.loading()` the head is
   already out, so they stay in the view.
+- **An inline `<script>` a `.head()` writes has to be named in the page's script policy.** Every HTML response sends
+  `Content-Security-Policy-Report-Only: script-src … 'strict-dynamic'`, which 3.5.0 enforces: an inline script runs by
+  its hash or by the response's nonce, and a `<script src>` in JSX by the nonce (its host in a policy does nothing
+  under `'strict-dynamic'`). For a constant snippet call `scriptHashes("sha256-…")` in the `.head()` — the page stays
+  cacheable, and the hash is the one the browser prints in its console report. For text that differs per request, or
+  a script loaded by URL, pass `nonce={scriptNonce()}`; reading it makes the page dynamic, so no result cache keeps
+  it. Both come from `akanjs/client`, do nothing in the browser, and are too late outside a `.head()`: the header
+  leaves with the first byte. An `onclick="…"` attribute and a `javascript:` URL have no such form.
+  `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header, `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names
+  where the browser posts reports, and `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response
+  (`'wasm-unsafe-eval'` for a page that compiles WebAssembly).
 
 ## A Root Layout Inside A CSR Bundle
 
