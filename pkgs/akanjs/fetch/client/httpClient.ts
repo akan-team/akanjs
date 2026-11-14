@@ -1,5 +1,6 @@
 import { AbortSignals, Backoff, isRecord, Logger, type RetryPolicy } from "akanjs/common";
 import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
+import { TraceContext } from "../../common/TraceContext";
 import {
   type ErrorConstructor,
   type ErrorResponsePayload,
@@ -79,6 +80,10 @@ export class HttpClient {
   }
   get retry(): RetryPolicy | false {
     return this.#retry;
+  }
+  static traceHeaders(): Record<string, string> {
+    const traceparent = TraceContext.outbound();
+    return traceparent ? { traceparent } : {};
   }
   #resolveUrl(url: string, options: FetchOptions) {
     return `${(options.baseUrl ?? this.baseUrl).replace(/\/$/, "")}${url}`;

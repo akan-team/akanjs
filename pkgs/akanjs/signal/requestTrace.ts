@@ -52,15 +52,9 @@ export class RequestTrace implements TraceParentRef {
   }
 
   //? Security: only for what a parent process sent over IPC, a channel no caller writes to; a header goes to `adopt`.
-  static continued(traceparent: string | null | undefined, link?: string | null): RequestTrace | null {
+  static continued(traceparent: string | null | undefined, link?: string | null): TraceParentRef | null {
     const parent = TraceContext.parseTraceparent(traceparent);
-    if (!parent) return null;
-    return new RequestTrace({
-      traceId: parent.traceId,
-      parentSpanId: parent.spanId,
-      sampled: parent.sampled,
-      link: TraceContext.parseId(link),
-    });
+    return parent ? { ...parent, link: TraceContext.parseId(link) } : null;
   }
 
   static current(): RequestTrace | undefined {

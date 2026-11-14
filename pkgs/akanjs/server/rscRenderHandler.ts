@@ -8,6 +8,7 @@ import {
   updateRequestPolicy,
 } from "akanjs/fetch";
 import type { ReactNode } from "react";
+import { RequestTrace, type TraceParentRef } from "../signal/requestTrace";
 import type { ClientManifest } from "./artifact";
 import {
   type RouteCacheEntry,
@@ -86,7 +87,12 @@ interface RscRenderHandlerProps {
   routes: () => PathRoute[];
   fallbackRoutes: () => LayoutFallbackRoute[];
   clientManifest: () => ClientManifest;
-  runWithRequest: <T>(request: Request, routeId: string, fn: () => Promise<T>) => Promise<T>;
+  runWithRequest: <T>(
+    request: Request,
+    routeId: string,
+    parent: TraceParentRef | null,
+    fn: () => Promise<T>,
+  ) => Promise<T>;
 }
 
 export class RscRenderHandler {
@@ -135,8 +141,9 @@ export class RscRenderHandler {
       const urlObj = new URL(url);
       const match = RouteTreeBuilder.match(urlObj.pathname, this.#pathRoutes);
       const routeId = match?.pathRoute.path ?? "__not_found__";
+      const parent = RequestTrace.continued(msg.traceparent, msg.traceLink);
       //? Not a helper: unless akanjs resolves into node_modules, each frame down to JSX joins its dev owner stack.
-      await this.#props.runWithRequest(request, routeId, async () => {
+      await this.#props.runWithRequest(request, routeId, parent, async () => {
         activeRoute.url = urlObj;
         activeRoute.request = request;
         this.#stats.lastRenderedPath = urlObj.pathname;

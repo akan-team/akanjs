@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import { RequestTrace } from "../signal/requestTrace";
 import type { ClientManifest } from "./artifact";
 import { RscHostRequests } from "./rscHostRequests";
 import type { RscWorkerProcess } from "./rscWorkerProcess";
@@ -66,6 +67,39 @@ describe("RscHostRequests renders", () => {
     live.failRequests(new AkanError("rscWorkerFailed", "rsc worker exited with code 3 while loading the pages bundle"));
 
     expect(AkanError.is(await inFlight, "rscWorkerFailed")).toBe(true);
+  });
+});
+
+describe("RscHostRequests render trace", () => {
+  interface SentRender {
+    type: string;
+    requestId: string;
+    traceparent?: string;
+    traceLink?: string;
+  }
+
+  test("names the request a render belongs to beside the id that cancels it, for a queued render too", async () => {
+    const sent: SentRender[] = [];
+    const worker = { status: "ready", proc: { send: (message: SentRender) => void sent.push(message) } };
+    const requests = new RscHostRequests(worker as unknown as RscWorkerProcess, new Logger("RscHostRequestsTest"));
+    const render = () => void requests.render(new Request("http://localhost/x"), {}).catch(() => undefined);
+    const direct = RequestTrace.adopt(new Headers({ "x-request-id": "c".repeat(32) }), () => false);
+    const queued = RequestTrace.fresh();
+
+    render();
+    RequestTrace.run(direct, render);
+    worker.status = "restarting";
+    RequestTrace.run(queued, render);
+    worker.status = "ready";
+    RequestTrace.run(direct, () => requests.flushQueuedSends());
+
+    expect(sent.map((message) => [message.traceparent, message.traceLink])).toEqual([
+      [undefined, undefined],
+      [direct.traceparent, "c".repeat(32)],
+      [queued.traceparent, undefined],
+    ]);
+    expect(new Set(sent.map((message) => message.requestId)).size).toBe(3);
+    for (const message of sent) expect(message.traceparent ?? "").not.toContain(message.requestId);
   });
 });
 

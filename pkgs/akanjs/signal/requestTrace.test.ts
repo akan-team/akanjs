@@ -105,7 +105,7 @@ describe("RequestTrace", () => {
   test("continues what a parent process handed over, and nothing it cannot read", () => {
     const continued = RequestTrace.continued(traceparent, "c".repeat(32));
 
-    expect(continued).toMatchObject({ traceId: inbound, parentSpanId: inboundSpan, link: "c".repeat(32) });
+    expect(continued).toEqual({ traceId: inbound, spanId: inboundSpan, sampled: true, link: "c".repeat(32) });
     expect(RequestTrace.continued("junk")).toBeNull();
     expect(RequestTrace.continued(undefined)).toBeNull();
     expect(RequestTrace.continued(traceparent, "not an id")?.link).toBeNull();

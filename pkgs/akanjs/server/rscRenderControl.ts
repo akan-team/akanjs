@@ -1,7 +1,8 @@
 import type { AkanNotFoundError, AkanRedirectError } from "akanjs/client";
 import type { ClientManifest } from "./artifact";
+import type { RscRenderTrace } from "./ssrTypes";
 
-export interface RscRenderRequest {
+export interface RscRenderRequest extends RscRenderTrace {
   requestId: string;
   url: string;
   method?: string;

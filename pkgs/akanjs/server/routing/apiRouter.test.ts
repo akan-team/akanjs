@@ -328,6 +328,56 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
     expect(loggerErrors[0]).toContain("SQLITE_ERROR: no such column: item.secret");
   });
 
+  test("runs every frame of a socket under its handshake's id, each as a span of its own, and names it on a refusal", async () => {
+    const { AppWsData } = await import("./appWsData");
+    const { SignalTrace } = await import("../../signal/trace");
+    const upgraded: AppWsDataType[] = [];
+    const routes = await buildRoutes({ upgradeAppWs: (_req, data) => upgraded.push(data) > 0 });
+    const open = (headers: Record<string, string>) =>
+      (routes["/api/ws"] as RouteFn)(new Request("http://localhost/api/ws", { headers }));
+    SignalContext.setHttpPeerResolver(() => ({ address: "203.0.113.9", port: 50_000 }));
+    try {
+      await open({ "x-request-id": "0af7651916cd43dd8448eb211c80319c" });
+      await open({});
+    } finally {
+      SignalContext.setHttpPeerResolver(null);
+    }
+    const [first, second] = upgraded.map((data) => data.trace);
+    const sent: string[] = [];
+    const frames: { traceId?: string; spanId?: string; parent?: string | null }[] = [];
+    const handlers = await buildWebsocketHandlers({
+      wsRoutes: {
+        echo: async () => {
+          const trace = SignalTrace.create("echo", "message", "websocket");
+          frames.push({ traceId: trace?.traceId, spanId: trace?.spanId, parent: trace?.parentSpanId });
+          return { ok: true };
+        },
+      } as WebsocketRoutes,
+    });
+    const frame = async (data: unknown, key: string) =>
+      await handlers.message?.(
+        fakeWs(data, (message) => sent.push(message)),
+        JSON.stringify({ key, data: [] }),
+      );
+
+    await frame(upgraded[0], "echo");
+    await frame(upgraded[0], "echo");
+    await frame(upgraded[1], "echo");
+    await frame(upgraded[0], "missing");
+    await frame(AppWsData.fromRequest(new Request("http://localhost/api/ws")), "missing");
+
+    expect(first?.traceId).toMatch(/^[0-9a-f]{32}$/);
+    expect(first?.traceId).not.toBe("0af7651916cd43dd8448eb211c80319c");
+    expect(first?.link).toBe("0af7651916cd43dd8448eb211c80319c");
+    expect(second?.traceId).not.toBe(first?.traceId);
+    expect(frames.map((seen) => seen.traceId)).toEqual([first?.traceId, first?.traceId, second?.traceId]);
+    expect(frames.map((seen) => seen.parent)).toEqual([first?.spanId, first?.spanId, second?.spanId] as string[]);
+    expect(frames[0]?.spanId).not.toBe(frames[1]?.spanId);
+    expect(JSON.parse(sent[3] ?? "{}")).toMatchObject({ statusCode: 404, key: "missing", traceId: first?.traceId });
+    expect(JSON.parse(sent[4] ?? "{}")).not.toHaveProperty("traceId");
+    expect(RequestTrace.current()).toBeUndefined();
+  });
+
   test("answers a frame it cannot read 400 with its code, and only the reason outside development", async () => {
     const { SignalFailure } = await import("akanjs/signal");
     const sent: string[] = [];

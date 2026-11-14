@@ -190,7 +190,8 @@ export class ApiRouter {
           return;
         }
         //? Named on an error frame, so a client can tell which subscribe or message the refusal answers.
-        let failed: { key?: string; requestRoomId?: string; token?: number } = {};
+        let failed: { key?: string; requestRoomId?: string; token?: number; traceId?: string } = {};
+        const trace = (ws.data as { trace?: RequestTrace | null } | undefined)?.trace;
         try {
           const msg = ApiRouter.#frameOf(message);
           failed = {
@@ -221,9 +222,11 @@ export class ApiRouter {
           }
           const eventType =
             typeof msg.subscribe === "boolean" ? (msg.subscribe ? "subscribe" : "unsubscribe") : "message";
-          const result = await wsRoute(ws, msg.data, eventType, { since: msg.since });
+          const call = () => wsRoute(ws, msg.data, eventType, { since: msg.since });
+          const result = await (trace ? RequestTrace.run(trace, call) : call());
           ws.send(JSON.stringify(result));
         } catch (error) {
+          if (trace) failed = { ...failed, traceId: trace.traceId };
           if (isExceptionLike(error)) {
             ws.send(JSON.stringify({ ...error.toJSON(), ...failed, timestamp: new Date().toISOString() }));
             return;
