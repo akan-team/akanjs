@@ -82,7 +82,7 @@ export interface AgentLoopOptions {
    * listed beside the endpoint tools and never run here. `approve` is still asked, and sees each as a write whatever
    * `readOnly` it was sent with. An allowed call ends the run as `awaiting` with `client: true`; resume with the
    * browser's result as `answer`, or `{ id, error }` when no page answers. A name an endpoint tool or `openToolkit`
-   * holds is dropped. Past 128 tools or 200,000 characters of definitions the run ends with
+   * holds is dropped. Past 128 tools, 200,000 characters of definitions or 64 levels of nesting the run ends with
    * `agent.error.clientToolsRefused`, and its rounds meet the relay's size caps (`AgentRelayPolicy.defaultLimits`).
    */
   clientTools?: AgentTool[];

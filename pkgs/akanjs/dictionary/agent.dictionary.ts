@@ -44,8 +44,8 @@ export const agentDictionary = serviceDictionary(["en", "ko"])
       "이 에이전트 실행은 이 답이 가리키는 호출을 기다리고 있지 않습니다.",
     ],
     clientToolsRefused: [
-      "A screen lent this agent run more tools than a run takes: {sent} {limit}, past {max}",
-      "화면이 이 에이전트 실행에 받을 수 있는 것보다 많은 툴을 빌려주었습니다: {limit} {sent}, 한도 {max}",
+      "A screen lent this agent run tool definitions past what a run takes: {limit} {sent}, limit {max}",
+      "화면이 빌려준 툴 정의가 이 에이전트 실행이 받는 한도를 넘었습니다: {limit} {sent}, 한도 {max}",
     ],
     accountResolverMissing: [
       "An agent loop named a principal, and this server has no account resolver to resolve it with",

@@ -194,6 +194,33 @@ describe("AgentLoop client input", () => {
     expect(called).toEqual([]);
   });
 
+  test("refuses client tool parameters nested past what a schema needs, however deep, with the same coded error", async () => {
+    const nested = (levels: number) => {
+      const root: Record<string, unknown> = { type: "object" };
+      let leaf = root;
+      for (let at = 0; at < levels; at += 1) {
+        const next: Record<string, unknown> = { type: "object" };
+        leaf.properties = { field: next };
+        leaf = next;
+      }
+      return root;
+    };
+    for (const levels of [40, 20_000]) {
+      const { port, requests } = harness([saying("never")]);
+      const { events } = await drain(
+        port,
+        ask({ clientTools: [{ name: "fillForm", parameters: nested(levels) }] as AgentTool[] }),
+      );
+      const failure = failureOf(events);
+      expect(Err.is(failure, "agent.error.clientToolsRefused")).toBe(true);
+      expect(failure).toMatchObject({ statusCode: 413, data: { limit: "depth", max: LoopRequest.maxClientToolDepth } });
+      expect(requests).toHaveLength(0);
+    }
+    const { port, requests } = harness([saying("Ok.")]);
+    await drain(port, ask({ clientTools: [{ name: "fillForm", parameters: nested(12) }] as AgentTool[] }));
+    expect(requests).toHaveLength(1);
+  });
+
   test("bounds every part of an answer: its changes as one value, its code, and its files' count and labels", async () => {
     const big = "x".repeat(3_000_000);
     const messages: AgentWireMessage[] = [

@@ -544,14 +544,15 @@ at every event.
   `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
-  counts as a write whatever `readOnly` it was sent with, and past 128 tools or 200,000 characters of definitions
-  the run ends with `agent.error.clientToolsRefused` (413, `data.limit` `"tools"` or `"chars"`). Which of them may
-  run after a read is the app's to say, in `approve`, by name. The run never runs one: `approve` is asked, then the
-  run ends `awaiting` with `client: true`. Have the page `run(call)` and resume with what it returned as `answer` —
-  or `answer: { id, error }` when no page answers. The page keeps its own rule beside the run's: `run(call)` asks
-  the member through `host.approve` when a call that changes something follows a `taint: "source"` read. The run's
-  rule below is the wider one, counting every result, the page's included, so with no `approve` a client call is
-  refused once the run has read anything; an `approve` that allows a client call leaves that question to the page.
+  counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or
+  64 levels of nesting the run ends with `agent.error.clientToolsRefused` (413, `data.limit` `"tools"`, `"chars"` or
+  `"depth"`). Which of them may run after a read is the app's to say, in `approve`, by name. The run never runs one:
+  `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)` and resume with
+  what it returned as `answer` — or `answer: { id, error }` when no page answers. The page keeps its own rule beside
+  the run's: `run(call)` asks the member through `host.approve` when a call that changes something follows a `taint:
+  "source"` read. The run's rule below is the wider one, counting every result, the page's included, so with no
+  `approve` a client call is refused once the run has read anything; an `approve` that allows a client call leaves
+  that question to the page.
 - **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
   A call ends the run `awaiting` with `question: true`; put the question to the member and resume with
   `answer: { id, result }` — or `{ id, error }` when they dismiss it. It never reaches `approve`, counts as no tool

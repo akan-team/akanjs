@@ -10,6 +10,8 @@ export class LoopRequest {
   //? round, so the ceiling is twenty times that count, at 1,500 characters a tool.
   static readonly maxClientTools = 128;
   static readonly maxClientToolChars = 200_000;
+  //? A schema nests two levels a property; past a few thousand, `JSON.stringify` overflows the stack, here or in a dialect.
+  static readonly maxClientToolDepth = 64;
 
   static assertValid({ allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask }: AgentLoopRequest) {
     //? Security: `listAs` reads a missing `allow` as every tool the account may see.
@@ -59,12 +61,28 @@ export class LoopRequest {
     }
     if (clientTools.length > LoopRequest.maxClientTools)
       LoopRequest.#refuseClientTools("tools", LoopRequest.maxClientTools, clientTools.length);
+    const depth = LoopRequest.#depthOf(clientTools, LoopRequest.maxClientToolDepth + 1);
+    if (depth > LoopRequest.maxClientToolDepth)
+      LoopRequest.#refuseClientTools("depth", LoopRequest.maxClientToolDepth, depth);
     const chars = JSON.stringify(clientTools).length;
     if (chars > LoopRequest.maxClientToolChars)
       LoopRequest.#refuseClientTools("chars", LoopRequest.maxClientToolChars, chars);
   }
 
-  static #refuseClientTools(limit: "tools" | "chars", max: number, sent: number): never {
+  //? Level by level, as a recursive walk would overflow where `JSON.stringify` does. A level wider than the character
+  //? ceiling is left to that measure.
+  static #depthOf(value: unknown, stopAt: number): number {
+    let level: unknown[] = [value];
+    let depth = 0;
+    while (depth < stopAt && level.length <= LoopRequest.maxClientToolChars) {
+      level = level.flatMap((item) => (item && typeof item === "object" ? Object.values(item) : []));
+      if (!level.length) break;
+      depth += 1;
+    }
+    return depth;
+  }
+
+  static #refuseClientTools(limit: "tools" | "chars" | "depth", max: number, sent: number): never {
     throw new Err("agent.error.clientToolsRefused", { limit, max, sent }, { statusCode: 413 });
   }
 
