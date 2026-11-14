@@ -254,10 +254,15 @@ export class AgentLoop {
   }
 
   async *#metered(request: LlmTurnRequest, preamble: string | false, streamed: boolean): Events<AgentLoopAnswer> {
-    const { meta } = this.#request;
+    const { meta, clientTools, remotes } = this.#request;
     const turn: AgentTurnContext = {
       ...AgentMeter.turnOf(this.#account),
-      loop: { id: this.#id, round: this.#round, ...(this.#request.clientTools?.length ? { client: true } : {}) },
+      loop: {
+        id: this.#id,
+        round: this.#round,
+        ...(clientTools?.length ? { client: true } : {}),
+        ...(remotes?.length ? { remote: true } : {}),
+      },
       ...(meta ? { meta: { ...meta } } : {}),
     };
     const prepared = await AgentRelayPolicy.apply(request, turn);

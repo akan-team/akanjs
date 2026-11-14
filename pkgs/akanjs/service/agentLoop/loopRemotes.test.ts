@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { Err } from "akanjs/dictionary";
-import { AgentMeter } from "../agentMeter";
+import { AgentMeter, type AgentUsageReport } from "../agentMeter";
+import { AgentRelayPolicy } from "../agentRelayPolicy";
 import type { AgentTool, AgentToolsAdaptor } from "../predefinedAdaptor/agentTools.adaptor";
 import type {
   AgentWireMessage,
@@ -923,5 +924,98 @@ describe("AgentLoop remotes under the read rule", () => {
       ["fillForm", true, undefined],
     ]);
     expect(stopOf(events)).toBe("awaiting");
+  });
+});
+
+describe("AgentLoop remotes, bounded", () => {
+  test("meets the relay's size caps on a round of a run with remotes, and marks the turn `remote`", async () => {
+    const reports: AgentUsageReport[] = [];
+    AgentMeter.use({ usage: (report) => void reports.push(report) });
+    const messages: AgentWireMessage[] = Array.from(
+      { length: AgentRelayPolicy.defaultLimits.messages + 1 },
+      (): AgentWireMessage => ({ role: "user", text: "hi" }),
+    );
+    const { remote, state } = remoteOf("shop");
+    const capped = harness([saying("never")]);
+    const refused = await drain(capped.port, ask([remote], { messages }));
+    expect(refused.map((event) => event.type)).toEqual(["error"]);
+    const { error } = refused[0] as Extract<AgentLoopEvent, { type: "error" }>;
+    expect(Err.is(error, "agent.error.requestRefused")).toBe(true);
+    expect([capped.requests.length, state.lists]).toEqual([0, 0]);
+
+    const own = harness([saying("Ok.")]);
+    expect(stopOf(await drain(own.port, ask([], { messages })))).toBe("end");
+
+    const reaching = harness([saying("Ok.")]);
+    await drain(reaching.port, ask([remote]));
+    await Bun.sleep(0);
+    expect(reports.map((report) => report.turn.loop?.remote)).toEqual([undefined, true]);
+  });
+
+  test("opens four remotes in one run, and answers the open of a fifth without contacting it", async () => {
+    const names = ["shop", "bank", "mail", "docs", "wiki"];
+    const remotes = names.map((name) => remoteOf(name));
+    const opens = names.map((name, at) => callOf(`k${at}`, "openToolkit", { name }));
+    const request = ask(remotes.map(({ remote }) => remote));
+    const { port, requests } = harness([calling(...opens), saying("Opened.")]);
+    const results = resultsOf(await drain(port, request));
+    expect(results.slice(0, 4).map((result) => (result.result as { opened: string }).opened)).toEqual(
+      names.slice(0, 4),
+    );
+    expect(results[4]).toEqual({
+      id: "k4",
+      name: "openToolkit",
+      error: "Not opened: 4 other servers are open, the most one run takes.",
+      code: "remoteUnavailable",
+    });
+    expect(remotes.map(({ state }) => state.lists)).toEqual([1, 1, 1, 1, 0]);
+    const prefixes = (listed: LlmTurnRequest | undefined) => [
+      ...new Set(namesOf(listed)?.flatMap((name) => (name.includes(".") ? [name.split(".")[0]] : []))),
+    ];
+    expect(prefixes(requests[1])).toEqual(names.slice(0, 4));
+    expect(toolOf(requests[1], "openToolkit")?.description).toContain("- wiki:");
+
+    const opened = (name: string) => ({ opened: name, tools: [] });
+    const messages: AgentWireMessage[] = [
+      { role: "user", text: "Open them all." },
+      { role: "assistant", toolCalls: opens },
+      ...opens.map(
+        ({ id, name, args }): AgentWireMessage => ({
+          role: "tool",
+          toolResults: [{ id, name, result: opened(String(args.name)) }],
+        }),
+      ),
+      { role: "user", text: "Go on." },
+    ];
+    for (const { state } of remotes) state.lists = 0;
+    const resumed = harness([saying("Read.")]);
+    await drain(resumed.port, { ...request, messages });
+    expect(prefixes(resumed.requests[0])).toEqual(names.slice(0, 4));
+    expect(remotes.map(({ state }) => state.lists)).toEqual([1, 1, 1, 1, 0]);
+    expect(toolOf(resumed.requests[0], "openToolkit")?.description).toContain("- wiki:");
+  });
+
+  test("hands on a view's link only up to its length, and no view when nothing else is left", async () => {
+    const long = `/order/${"x".repeat(LoopRemotes.linkLimit)}`;
+    const views: Record<string, unknown> = {
+      o1: { href: long, resourceUri: "ui://shop/apps/x" },
+      o2: { href: "/order/o2", resourceUri: `ui://shop/${"x".repeat(LoopRemotes.linkLimit)}` },
+      o3: { href: long },
+    };
+    const { remote } = remoteOf("shop", {
+      answer: (_tool, args) => ({ result: "Order", view: views[String(args.id)] }) as AgentLoopRemoteResult,
+    });
+    const { port } = harness([
+      calling(callOf("c1", "openToolkit", { name: "shop" })),
+      calling(...["o1", "o2", "o3"].map((id) => callOf(id, "shop.orderList", { id }))),
+      saying("Shown."),
+    ]);
+    const events = await drain(port, ask([remote]));
+    const shown = events.flatMap((event) => (event.type === "toolResult" && event.round === 2 ? [event.view] : []));
+    expect(shown).toEqual([
+      { remote: "shop", tool: "orderList", args: { id: "o1" }, resourceUri: "ui://shop/apps/x" },
+      { remote: "shop", tool: "orderList", args: { id: "o2" }, href: "/order/o2" },
+      undefined,
+    ]);
   });
 });

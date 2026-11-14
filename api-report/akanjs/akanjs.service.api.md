@@ -238,6 +238,7 @@ export interface AgentTurnContext {
         id: string;
         round: number;
         client?: true;
+        remote?: true;
     };
     meta?: Record<string, string>;
 }

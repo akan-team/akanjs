@@ -20,7 +20,7 @@
 - **Metering.**
   - Each model call is its own turn for the request policy, the quota and the usage hook. That includes compactions.
   - `AgentTurnContext` gains `loop { id, round }` and `meta`, which is copied from the request.
-  - A loop turn has empty headers and a `null` ip. The relay's default size caps do not apply to loop rounds, unless the run lists `clientTools`.
+  - A loop turn has empty headers and a `null` ip. The relay's default size caps do not apply to loop rounds, unless the run lists `clientTools` or names `remotes`.
 - **Limits.**
   - The run is bounded by `maxRounds` (default 12), `budget { tokens, toolCalls, wallMs }` and `signal`. A limit that is not a valid number is an `error` before any model call.
   - `wallMs` and `signal` also end a run waiting on a tool or on `approve`. `callAs` cannot cancel a call, so the run stops waiting and answers it with an error saying it may still finish. A resume does not run it again, and the endpoint runs on with its outcome unreported.

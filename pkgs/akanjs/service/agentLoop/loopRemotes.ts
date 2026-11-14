@@ -18,6 +18,11 @@ export class LoopRemotes {
   static readonly maxTools = 120;
   static readonly schemaLimit = 8_000;
   static readonly listingLimit = 120_000;
+  //? Every open listing rides every later round: four at their limit are 480 of the 512 tools, and 480,000 of the
+  //? 8,000,000 characters, the relay's caps take in one request.
+  static readonly maxOpen = 4;
+  //? A view's link is drawn by a page and its length is the remote's to choose: past a URL's usual ceiling it is dropped.
+  static readonly linkLimit = 2_048;
   static readonly unavailable = "remoteUnavailable";
   /** A remote answers a call with this code once its connection is gone, so the run offers the toolkit again. */
   static readonly disconnected = "remoteDisconnected";
@@ -57,6 +62,8 @@ export class LoopRemotes {
   async open(name: string): Promise<Opened> {
     const remote = this.#remotes.get(name);
     if (!remote) return { error: `No remote named "${name}".` };
+    if (!this.#tools.has(name) && this.#tools.size >= LoopRemotes.maxOpen)
+      return { error: `Not opened: ${LoopRemotes.maxOpen} other servers are open, the most one run takes.` };
     try {
       const listed = await remote.list();
       if (listed === null) return null;
@@ -113,11 +120,15 @@ export class LoopRemotes {
     if (!view || typeof view !== "object") return null;
     const { href, static: drawn, resourceUri } = view as Record<string, unknown>;
     const known = {
-      ...(typeof href === "string" ? { href } : {}),
+      ...(LoopRemotes.#isLink(href) ? { href } : {}),
       ...(typeof drawn === "boolean" ? { static: drawn } : {}),
-      ...(typeof resourceUri === "string" ? { resourceUri } : {}),
+      ...(LoopRemotes.#isLink(resourceUri) ? { resourceUri } : {}),
     };
     return Object.keys(known).length ? known : null;
+  }
+
+  static #isLink(value: unknown): value is string {
+    return typeof value === "string" && value.length <= LoopRemotes.linkLimit;
   }
 
   //? Security: a remote's annotations are its own claim, so a tool it does not call read-only needs a person.

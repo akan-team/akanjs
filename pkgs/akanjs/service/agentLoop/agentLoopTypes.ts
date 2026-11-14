@@ -33,7 +33,7 @@ export interface AgentLoopView {
   /** The remote's own name for the tool, without the `<remote>.` prefix, and the arguments it was called with. */
   tool: string;
   args: Record<string, unknown>;
-  /** The screen's path and query on the remote's web origin. */
+  /** The screen's path and query on the remote's web origin; like `resourceUri`, dropped past 2,048 characters. */
   href?: string;
   /** The remote can draw this result as script-less HTML (`page().app(…, { static: true })`). */
   static?: boolean;
@@ -122,6 +122,8 @@ export interface AgentLoopOptions {
    * Security: what a remote lists and returns is another party's text, so opening one taints the run, and a call's
    * arguments leave for that server, so a request with `remotes` and no `approve` is refused. `approve` hears a tool
    * the remote does not call read-only as a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
+   * A run keeps at most four remotes open, answering the open of a fifth with an error, and its rounds meet the
+   * relay's size caps (`AgentRelayPolicy.defaultLimits`), as with `clientTools`.
    */
   remotes?: readonly AgentLoopRemote[];
   /**

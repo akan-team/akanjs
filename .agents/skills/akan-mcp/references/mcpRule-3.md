@@ -88,8 +88,9 @@ at every event.
 - **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
   usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
   billing — empty headers and no ip. The relay's default size caps skip loop rounds, except in a run that lists
-  `clientTools`: its turns carry `loop.client` and one past `AgentRelayPolicy.defaultLimits` ends the run with
-  `agent.error.requestRefused`. A refused quota ends the run as `"quota"`.
+  `clientTools` or names `remotes`: its turns carry `loop.client` or `loop.remote`, and one past
+  `AgentRelayPolicy.defaultLimits` ends the run with `agent.error.requestRefused`. A refused quota ends the run as
+  `"quota"`.
 - **Limits.** `maxRounds` (12), `budget { tokens, toolCalls, wallMs }` (`"budget"`), `signal` (`"aborted"`) and a
   provider cut (`"length"`). A limit that is not a valid number is an `error` before any model call. `wallMs` and
   `signal` also end a run waiting on a tool or on `approve`. `callAs` cannot cancel a call, so the run stops waiting
@@ -147,14 +148,16 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   characters a provider refuses is listed under a shortened alias and still called by its real name. A run takes
   at most 120 tools from one remote, a description to 1,000 characters and a parameter schema to 8,000, and stops
   listing at 120,000 characters in all; the open's result counts the tools left out as `omitted`. Pass `allow` in
-  the remote's entry to choose which tools those are.
+  the remote's entry to choose which tools those are. A run keeps at most four remotes open, as each listing rides
+  every later round: the open of a fifth is answered with an error and that server is not contacted. A call's result
+  is capped at 20,000 characters like any tool's, and the run's rounds meet the relay's size caps (see Metering).
 - **Addresses.** `url` is the server's address or its MCP endpoint; a bare origin means `/mcp`. Every request goes
   through `RemoteFetch`: https only, no private address, no redirect, the checked address pinned. A local run
   (`operationMode: "local"`) reaches loopback over http, so two dev servers can connect; `remote.allowUrl` narrows
   the addresses an app accepts.
 - **A screen in the result.** When the called tool is a `page().app()`, the `toolResult` event carries `view`
-  (`{ remote, tool, args, href?, static?, resourceUri? }`) beside the result. It never reaches the model or
-  `onMessage`; store it yourself and draw `<Remote.Zone.Screen url tool={view.tool} args={view.args} href={view.href}
+  (`{ remote, tool, args, href?, static?, resourceUri? }`) beside the result, without an `href` or `resourceUri`
+  longer than 2,048 characters. It never reaches the model or `onMessage`; store it yourself and draw `<Remote.Zone.Screen url tool={view.tool} args={view.args} href={view.href}
   drawn={view.static} />`. For an app the other server declared `{ static: true }` the card asks `remoteScreen` for
   that server's script-less HTML when it scrolls into view and shows it in a frame that runs no script; for any other
   app, draw `<Remote.Zone.View url tool args uri={view.resourceUri} href />`: it frames that server's view (its
