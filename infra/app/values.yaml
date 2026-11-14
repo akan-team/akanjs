@@ -1,4 +1,4 @@
-# uid and gid 1000 are oven/bun's `bun` user, which owns the generated image's files and volume mount points.
+# uid and gid 1000 are oven/bun's `bun` user, which owns the directories the generated image's server writes.
 podSecurityContext:
   runAsNonRoot: true
   runAsUser: 1000

@@ -2,6 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+export interface Container {
+  name: string;
+  image: string;
+  command?: string[];
+  securityContext?: Record<string, unknown>;
+  volumeMounts?: { name: string; mountPath: string; subPath?: string }[];
+}
+
 export interface Manifest {
   kind: string;
   metadata: { name: string; annotations?: Record<string, string> };
@@ -9,7 +17,8 @@ export interface Manifest {
     template?: {
       spec: {
         securityContext?: Record<string, unknown>;
-        containers: { name: string; securityContext?: Record<string, unknown> }[];
+        initContainers?: Container[];
+        containers: Container[];
       };
     };
   };
@@ -20,6 +29,7 @@ export interface RenderOptions {
   branch?: string;
   valueFiles?: string[];
   values?: Record<string, unknown>;
+  chartRoot?: string;
 }
 
 export class AppChart {
@@ -37,7 +47,13 @@ export class AppChart {
     this.#helm = helm;
   }
 
-  render({ appName = "myapp", branch = "main", valueFiles = [], values }: RenderOptions = {}): Manifest[] {
+  render({
+    appName = "myapp",
+    branch = "main",
+    valueFiles = [],
+    values,
+    chartRoot = AppChart.root,
+  }: RenderOptions = {}): Manifest[] {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-chart-"));
     try {
       const extra: string[] = [];
@@ -50,7 +66,7 @@ export class AppChart {
         this.#helm,
         "template",
         "app",
-        AppChart.root,
+        chartRoot,
         "-n",
         `${appName}-${branch}`,
         "-f",
@@ -66,6 +82,14 @@ export class AppChart {
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
+  }
+
+  //? `helm upgrade --reuse-values` renders with the last release's values in place of the chart's own values.yaml.
+  static copyWithoutDefaults(): { root: string; remove: () => void } {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-chart-copy-"));
+    fs.cpSync(AppChart.root, root, { recursive: true });
+    fs.rmSync(path.join(root, "values.yaml"));
+    return { root, remove: () => fs.rmSync(root, { recursive: true, force: true }) };
   }
 
   static find(manifests: Manifest[], kind: string): Manifest {

@@ -6,6 +6,8 @@ import { AppChart, type RenderOptions } from "./AppChart";
 const helm = Bun.which("helm");
 const chart = new AppChart(helm ?? "helm");
 
+const clusterValues = () => ({ main: { database: { mode: "cluster", secretName: "db" } } });
+
 const renderCases: { name: string; render: RenderOptions }[] = [
   ...[[], ...AppChart.valueFiles.map((file) => [file])].flatMap((valueFiles) =>
     AppChart.branches.map((branch) => ({
@@ -13,7 +15,7 @@ const renderCases: { name: string; render: RenderOptions }[] = [
       render: { branch, valueFiles },
     })),
   ),
-  { name: "cluster main", render: { values: { main: { database: { mode: "cluster", secretName: "db" } } } } },
+  { name: "cluster main", render: { values: clusterValues() } },
 ];
 
 describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
@@ -41,19 +43,30 @@ describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
   it("runs the pod as root again from a values file", () => {
     const pod = AppChart.podSpec(
       chart.render({
-        values: { podSecurityContext: { runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }, securityContext: null },
+        values: {
+          podSecurityContext: { runAsUser: 0, runAsGroup: 0, runAsNonRoot: false },
+          securityContext: { capabilities: null },
+        },
       }),
     );
 
     expect(pod.securityContext).toMatchObject({ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false });
-    expect(pod.containers[0]).not.toHaveProperty("securityContext");
+    expect(pod.containers[0]?.securityContext).toEqual({ allowPrivilegeEscalation: false });
   });
 
-  it("drops both security contexts when a values file sets them to null", () => {
-    const pod = AppChart.podSpec(chart.render({ values: { podSecurityContext: null, securityContext: null } }));
-
-    expect(pod).not.toHaveProperty("securityContext");
-    expect(pod.containers[0]).not.toHaveProperty("securityContext");
+  it("renders the hardened defaults when the values predate them, as `helm upgrade --reuse-values` does, or null them", () => {
+    const copy = AppChart.copyWithoutDefaults();
+    const fresh = chart.render();
+    try {
+      for (const chartRoot of [copy.root, AppChart.root])
+        for (const values of [{}, { podSecurityContext: null, securityContext: null, ingress: null }]) {
+          const rendered = chart.render({ chartRoot, values });
+          expect(AppChart.podSpec(rendered)).toEqual(AppChart.podSpec(fresh));
+          expect(AppChart.find(rendered, "Ingress").metadata).toEqual(AppChart.find(fresh, "Ingress").metadata);
+        }
+    } finally {
+      copy.remove();
+    }
   });
 
   it("caps an ingress body at the largest body the server accepts, and leaves CORS to the app", () => {
