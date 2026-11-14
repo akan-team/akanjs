@@ -922,15 +922,18 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         @Suppress("DEPRECATION") // deprecated in 35, where edge-to-edge is enforced and this is a no-op
         fun decorFitsSystemWindows(window: Window, fits: Boolean) = window.setDecorFitsSystemWindows(fits)
 
+        // API 30-32's PhoneWindow.getInsetsController reads a decor it never creates, so it threw before setContentView.
+        private fun controller(window: Window): WindowInsetsController? = window.decorView.let { window.insetsController }
+
         fun lightBars(window: Window, status: Boolean, navigation: Boolean) {
             val bits = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
             val light = (if (status) WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS else 0) or
                 (if (navigation) WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS else 0)
-            window.insetsController?.setSystemBarsAppearance(light, bits)
+            controller(window)?.setSystemBarsAppearance(light, bits)
         }
 
         fun systemBars(window: Window, visible: Boolean) {
-            val controller = window.insetsController ?: return
+            val controller = controller(window) ?: return
             if (visible) return controller.show(WindowInsets.Type.systemBars())
             controller.hide(WindowInsets.Type.systemBars())
             controller.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
