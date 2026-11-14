@@ -329,6 +329,12 @@ export const encodedFileResponse = async (
     return new Response(file, { headers });
   }
   headers.set("Content-Encoding", sidecar.encoding);
+  if (req.headers.has("range")) {
+    const bytes = await sidecar.file.bytes();
+    const whole = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    headers.set("Content-Length", String(whole.byteLength));
+    return new Response(whole, { headers });
+  }
   headers.set("Content-Length", String(sidecar.size));
   return new Response(sidecar.file, { headers });
 };

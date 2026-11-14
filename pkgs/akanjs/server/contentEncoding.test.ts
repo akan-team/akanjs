@@ -743,12 +743,21 @@ describe("encodedFileResponse behind Bun.serve", () => {
     });
   });
 
-  test("a Range request gets the same answer a sidecar-less file would", async () => {
-    const file = write("ranged.js", { raw: script, br: brBytes });
+  test("a Range request on an encoded asset gets the whole sidecar with 200, in range or not", async () => {
+    const file = write("ranged.js", { raw: script, br: brBytes, gz: gzBytes });
     await withServer(file, async (url) => {
-      const res = await fetch(url, { headers: { "accept-encoding": "br", range: "bytes=0-9" }, decompress: false });
-      expect(res.headers.get("content-encoding")).toBe("br");
-      expect(Number(res.headers.get("content-length"))).toBe((await res.arrayBuffer()).byteLength);
+      for (const [encoding, bytes] of [
+        ["br", brBytes],
+        ["gzip", gzBytes],
+      ] as const) {
+        for (const range of ["bytes=0-9", "bytes=999999-1000000"]) {
+          const res = await fetch(url, { headers: { "accept-encoding": encoding, range }, decompress: false });
+          expect(res.status).toBe(200);
+          expect(res.headers.get("content-encoding")).toBe(encoding);
+          expect(res.headers.get("content-length")).toBe(String(bytes.length));
+          expect(Buffer.from(await res.arrayBuffer()).equals(bytes)).toBe(true);
+        }
+      }
     });
   });
 
