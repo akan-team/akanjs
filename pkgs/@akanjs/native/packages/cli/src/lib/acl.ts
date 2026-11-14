@@ -3,7 +3,8 @@
 //
 // Permission identifiers, all derived from the plugin manifest (no permission files):
 //   <plugin>:default                 manifest `defaultPermissions` (everything when absent), within the
-//                                    manifest `defaultScope` unless the capability gives its own allow
+//                                    manifest `defaultScope` unless the capability gives its own allow;
+//                                    every grant of a plugin whose manifest scope is `required` is
 //   <plugin>:all                     every method and event
 //   <plugin>:allow-<method>          / deny-<method>
 //   <plugin>:allow-listen-<event>    / deny-listen-<event>   ($listen subscriptions)
@@ -145,6 +146,8 @@ export function manifestPermissionProblems(manifest: PluginManifest): string[] {
     // A field named url that is not a URL field would be matched as a plain glob (the old syntax).
     if (Object.hasOwn(scope.fields, "url") && !scope.urlFields?.includes("url"))
       problems.push(`${id}: scope field "url" must be listed in scope.urlFields (URL patterns)`);
+    if (scope.required !== undefined && typeof scope.required !== "boolean")
+      problems.push(`${id}: scope.required must be true or false`);
   }
   const defaults = manifest.defaultScope;
   if (defaults !== undefined) {
@@ -178,6 +181,10 @@ function scopeProblems(where: string, entries: unknown, manifest: PluginManifest
       problems.push(`${where}: a scope entry must be an object like { ${fields[0]}: "…" }`);
       continue;
     }
+    if (manifest.scope.required === true && Object.keys(entry).length === 0)
+      problems.push(
+        `${where}: a scope entry names no field, which ${manifest.id} does not take: write { ${fields[0]}: "…" }`,
+      );
     for (const [field, value] of Object.entries(entry)) {
       if (!fields.includes(field))
         problems.push(`${where}: ${manifest.id} scopes have no field "${field}" (fields: ${fields.join(", ")})`);
@@ -305,7 +312,9 @@ export function resolveAcl(
         problems.push(...scopeIssues);
         if (!applies || scopeIssues.length) continue;
         const scopes =
-          local === "default" && manifest ? defaultScope(manifest, entry) : { allow: entry.allow, deny: entry.deny };
+          manifest && (local === "default" || manifest.scope?.required === true)
+            ? defaultScope(manifest, entry)
+            : { allow: entry.allow, deny: entry.deny };
         grants.push({
           plugin: pluginId,
           windows,
@@ -395,7 +404,7 @@ function defaultScope(
   manifest: PluginManifest,
   entry: { allow?: Record<string, string>[]; deny?: Record<string, string>[] },
 ): Pick<AclGrant, "allow" | "deny"> {
-  const allow = entry.allow ?? manifest.defaultScope?.allow;
+  const allow = entry.allow ?? manifest.defaultScope?.allow ?? (manifest.scope?.required === true ? [] : undefined);
   const deny = [...(manifest.defaultScope?.deny ?? []), ...(entry.deny ?? [])];
   return { ...(allow ? { allow } : {}), ...(deny.length ? { deny } : {}) };
 }

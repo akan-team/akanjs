@@ -36,7 +36,8 @@
     "description": "Which origins open may give a view: its allowOrigins must each be one of them. The shell checks it.",
     "fields": {
       "origin": "an exact origin, scheme://host[:port] with no path, compared after URL parsing (punycode host, no trailing dot, no default port); no wildcards"
-    }
+    },
+    "required": true
   },
   "defaultScope": {
     "allow": []

@@ -54,8 +54,33 @@ describe("external-view plugin", () => {
       allow: [{ origin: "https://board.example" }],
       deny: [],
     });
-    for (const item of ["evaluate", "sendKey"])
-      expect(aclCheck(granted, "external-view", item)).toEqual({ allowed: true });
+    for (const item of ["evaluate", "sendKey"]) expect(aclCheck(granted, "external-view", item).allowed).toBe(true);
+  });
+
+  test("lists an origin only where a grant names it: not through all, allow-open or an entry naming no field", () => {
+    const plugin = { spec: "external-view", dir: `${import.meta.dir}/..`, manifest: manifest as never };
+    const openScope = (permissions: (string | { identifier: string; allow?: Record<string, string>[] })[]) =>
+      aclCheck(resolveAcl([{ identifier: "app", permissions }], [plugin], "linux"), "external-view", "open").scope;
+    expect(openScope(["external-view:all"])).toEqual({ allow: [], deny: [] });
+    expect(openScope(["external-view:allow-open"])).toEqual({ allow: [], deny: [] });
+    expect(openScope(["external-view:default", "external-view:allow-open"])).toEqual({ allow: [], deny: [] });
+    const board = [{ origin: "https://board.example" }];
+    expect(openScope([{ identifier: "external-view:allow-open", allow: board }])).toEqual({ allow: board, deny: [] });
+    for (const identifier of ["external-view:default", "external-view:all", "external-view:allow-open"])
+      expect(() => openScope([{ identifier, allow: [{}] }])).toThrow("names no field");
+  });
+
+  test("opens a view only over the calling page's own window", async () => {
+    const host = fakeHost(createDesktopExternalView(), answer);
+    const args = { id: "board", url: opened.url, allowOrigins: ["https://cus.example"] };
+    expect(await host.call("open", { ...args, window: 2 }, 1)).toMatchObject({
+      ok: false,
+      error: { code: "NOT_ALLOWED" },
+    });
+    expect(host.shell).toEqual([]);
+    expect(await host.call("open", { ...args, window: 2 }, 2)).toMatchObject({ ok: true });
+    expect(await host.call("open", args, 3)).toMatchObject({ ok: true });
+    expect(host.shell.map((s) => s.args?.window)).toEqual([2, 3]);
   });
 
   test("opens with sound on and the console off unless asked, and answers the view under the page's id", async () => {

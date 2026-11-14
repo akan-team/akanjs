@@ -45,7 +45,7 @@ export interface ExternalViewOpenOptions {
   autoplay?: boolean;
   /** Sends the page's console as `consoleMessage` from this level up (`true` is "warn"); off by default. */
   console?: boolean | ExternalViewConsoleLevel;
-  /** The window it is laid over; the calling page's window by default. */
+  /** The window it is laid over: only the calling page's own (the default); another is NOT_ALLOWED. */
   window?: number;
 }
 
@@ -62,12 +62,13 @@ export interface ExternalViewApi {
   /**
    * Opens the view, or brings an open one with this id to these options (a page that mounts again finds it). Another
    * `initScript` builds the view again and loads its page anew, as does another `console` on Windows and another
-   * `autoplay` on macOS and Linux; Windows refuses another `autoplay` as UNSUPPORTED, before anything is built. The
-   * open view keeps its `allowOrigins` or narrows to fewer of them: one it was not open for is NOT_ALLOWED until it is
-   * closed.
+   * `autoplay` on macOS and Linux; Windows refuses another `autoplay` as UNSUPPORTED, before anything is built. While
+   * open, the view keeps its `allowOrigins` or narrows to fewer of them: one it was not open for is NOT_ALLOWED. Closed,
+   * the id opens again for any origins of `native.desktop.externalView.allowOrigins`, with the same profile (its
+   * cookies and storage belong to the id).
    */
   open(args: ExternalViewOpenOptions): Promise<ExternalViewState>;
-  /** Rejects NOT_ALLOWED for a URL on none of its `allowOrigins`. */
+  /** Rejects NOT_ALLOWED for a URL on none of its `allowOrigins`. The view loads the URL as the URL parser writes it. */
   navigate(args: { id: string; url: string }): Promise<void>;
   reload(args: { id: string }): Promise<void>;
   close(args: { id: string }): Promise<void>;
