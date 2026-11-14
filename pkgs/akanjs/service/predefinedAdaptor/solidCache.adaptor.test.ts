@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { Database } from "bun:sqlite";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,8 +7,9 @@ import { dayjs } from "akanjs/base";
 import { SolidCache } from "./solidCache.adaptor";
 import { getSolidConfig } from "./solidSqlite";
 
-const createCache = async () => {
-  const filePath = path.join(tmpdir(), `solid-cache-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+const createCache = async (
+  filePath = path.join(tmpdir(), `solid-cache-test-${Date.now()}-${Math.random().toString(36).slice(2)}.db`),
+) => {
   const config = getSolidConfig({ solid: { filePath } });
   const cache = new SolidCache();
   // The DI container injects `config`; in tests we assign it directly before init.
@@ -103,5 +105,154 @@ describe("SolidCache adaptor (sqlite)", () => {
   test("expires hash values once the expiration has passed", async () => {
     await cache.hset("session", "user-1", "field-a", "value-a", { expireAt: dayjs().subtract(1, "second") });
     expect(await cache.hget<string>("session", "user-1", "field-a")).toBeUndefined();
+  });
+
+  test("hkeys and hentries leave expired fields to the sweep and never return them", async () => {
+    await cache.hset("session", "user-1", "live", "a", { expireAt: dayjs().add(1, "minute") });
+    await cache.hset("session", "user-1", "forever", "b");
+    await cache.hset("session", "user-1", "soon", "c", { expireAt: dayjs().add(100, "ms") });
+    for (const field of ["dead-1", "dead-2", "dead-3"])
+      await cache.hset("session", "user-1", field, "x", { expireAt: dayjs().subtract(1, "second") });
+    await Bun.sleep(150);
+
+    expect(await cache.hkeys("session", "user-1")).toEqual(["forever", "live"]);
+    expect(await cache.hentries<string>("session", "user-1")).toEqual([
+      ["forever", "b"],
+      ["live", "a"],
+    ]);
+    const raw = new Database(filePath);
+    const { expired } = raw
+      .query(`SELECT count(*) AS "expired" FROM "_akan_solid_cache_hash" WHERE "expiresAt" <= ?`)
+      .get(Date.now()) as { expired: number };
+    raw.close();
+    expect(expired).toBe(4);
+  });
+});
+
+describe("SolidCache on one file shared by two processes (sqlite)", () => {
+  let alpha: SolidCache;
+  let beta: SolidCache;
+  let filePath: string;
+
+  beforeEach(async () => {
+    ({ cache: alpha, filePath } = await createCache());
+    ({ cache: beta } = await createCache(filePath));
+  });
+
+  afterEach(async () => {
+    await alpha.onDestroy();
+    await beta.onDestroy();
+    cleanup(filePath);
+  });
+
+  const writeBeforeFirstDelete = (write: () => Promise<void>) => {
+    const query = Database.prototype.query;
+    let written = false;
+    return spyOn(Database.prototype, "query").mockImplementation(function (this: Database, sql: string) {
+      if (!written && sql.startsWith("DELETE FROM")) {
+        written = true;
+        void write();
+      }
+      return query.call(this, sql);
+    } as unknown as typeof query);
+  };
+
+  test("a value written while another reader drops the key's expired entry is kept", async () => {
+    await alpha.set("session", "user-1", "stale", { expireAt: dayjs().subtract(1, "second") });
+    const spy = writeBeforeFirstDelete(async () => await beta.set("session", "user-1", "fresh"));
+    expect(await alpha.get<string>("session", "user-1")).toBeUndefined();
+    spy.mockRestore();
+    expect(await beta.get<string>("session", "user-1")).toBe("fresh");
+  });
+
+  test("a hash field written while another reader drops the field's expired entry is kept", async () => {
+    await alpha.hset("session", "user-1", "field", "stale", { expireAt: dayjs().subtract(1, "second") });
+    const spy = writeBeforeFirstDelete(async () => await beta.hset("session", "user-1", "field", "fresh"));
+    expect(await alpha.hget<string>("session", "user-1", "field")).toBeUndefined();
+    spy.mockRestore();
+    expect(await beta.hget<string>("session", "user-1", "field")).toBe("fresh");
+  });
+});
+
+describe("SolidCache expiry sweep (sqlite)", () => {
+  const backlog = 2500;
+  const tables = ["_akan_solid_cache", "_akan_solid_cache_hash"];
+  let filePath: string;
+  let cache: SolidCache | undefined;
+
+  const expiredCounts = (raw: Database) =>
+    tables.map((table) => {
+      const row = raw.query(`SELECT count(*) AS "count" FROM "${table}" WHERE "expiresAt" <= ?`).get(Date.now());
+      return (row as { count: number }).count;
+    });
+
+  beforeEach(async () => {
+    const seeded = await createCache();
+    filePath = seeded.filePath;
+    await seeded.cache.onDestroy();
+    const raw = new Database(filePath);
+    const now = Date.now();
+    raw.transaction(() => {
+      for (let i = 0; i < backlog; i++) {
+        raw
+          .query(`INSERT INTO "_akan_solid_cache" VALUES (?, ?, 'x', 'string', ?, ?, ?)`)
+          .run("endpoint", `dead-${i}`, now - 1000, now, now);
+        raw
+          .query(`INSERT INTO "_akan_solid_cache_hash" VALUES (?, ?, ?, 'x', 'string', ?, ?, ?)`)
+          .run("endpoint", "hash", `dead-${i}`, now - 1000, now, now);
+      }
+      raw
+        .query(`INSERT INTO "_akan_solid_cache" VALUES ('endpoint', 'live', 'x', 'string', ?, ?, ?)`)
+        .run(now + 60_000, now, now);
+      raw
+        .query(`INSERT INTO "_akan_solid_cache" VALUES ('endpoint', 'forever', 'x', 'string', NULL, ?, ?)`)
+        .run(now, now);
+    })();
+    raw.close();
+  });
+
+  afterEach(async () => {
+    await cache?.onDestroy();
+    cache = undefined;
+    cleanup(filePath);
+  });
+
+  test("deletes a backlog at most 1000 rows per statement, yielding between them, until none is left", async () => {
+    ({ cache } = await createCache(filePath));
+    const raw = new Database(filePath);
+    expect(expiredCounts(raw)).toEqual([backlog - 1000, backlog]);
+    for (let waited = 0; waited < 5000 && expiredCounts(raw).some(Boolean); waited += 10) await Bun.sleep(10);
+    expect(expiredCounts(raw)).toEqual([0, 0]);
+    expect(await cache.get("endpoint", "live")).toBe("x");
+    expect(await cache.get("endpoint", "forever")).toBe("x");
+    raw.close();
+  });
+
+  test("the DELETE the sweep sends finds expired rows through the expiresAt index, not a table scan", async () => {
+    const query = spyOn(Database.prototype, "query");
+    ({ cache } = await createCache(filePath));
+    const raw = new Database(filePath);
+    for (let waited = 0; waited < 5000 && expiredCounts(raw).some(Boolean); waited += 10) await Bun.sleep(10);
+    const sent = new Set(query.mock.calls.map(([sql]) => sql).filter((sql) => sql.startsWith("DELETE FROM")));
+    query.mockRestore();
+    for (const table of tables) {
+      const sweeps = [...sent].filter((sql) => sql.startsWith(`DELETE FROM "${table}" WHERE`));
+      expect(sweeps).toHaveLength(1);
+      const plan = raw.query(`EXPLAIN QUERY PLAN ${sweeps[0]}`).all(Date.now()) as { detail: string }[];
+      expect(plan.map((row) => row.detail).join("\n")).toContain(`USING COVERING INDEX ${table}_expiry_idx`);
+    }
+    raw.close();
+  });
+
+  test("closing the cache in the middle of a sweep stops it without touching the closed database", async () => {
+    ({ cache } = await createCache(filePath));
+    const warn = spyOn(cache.logger, "warn");
+    await cache.onDestroy();
+    cache = undefined;
+    await Bun.sleep(20);
+    expect(warn).not.toHaveBeenCalled();
+    const raw = new Database(filePath);
+    expect(expiredCounts(raw)).toEqual([backlog - 1000, backlog]);
+    raw.close();
   });
 });
