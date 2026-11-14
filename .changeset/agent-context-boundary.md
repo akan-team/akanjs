@@ -1,5 +1,7 @@
 ---
 "akanjs": minor
+"@akanjs/cli": patch
+"@akanjs/devkit": patch
 ---
 
 What an agent turn carries beside the conversation reaches the model as marked data in a user turn, outside the system prompt.
@@ -10,6 +12,7 @@ What an agent turn carries beside the conversation reaches the model as marked d
 - **Text from a mentioned record is treated like text a tool read.** An `@` mention's reference reaches the model with its pointer, label, value and note together in one `<page-content …>` block under the "Referenced data" heading; before, only the value was fenced. A message that carries a reference counts as an untrusted read: in `Agent.Chat` the first change after it shows the approval card a change after `readScreen` shows, and an `agentService.loop` run whose messages carry `references` is tainted from its first round.
 - **The page's default context keeps ids, enum members, numbers and booleans inline, and leaves free text to `readState`.** A store string rides the `state` block only when it is one token: up to 40 letters, digits, `.`, `_` or `-`. Any other string is listed by key and type with no value; it used to ride inline up to 200 characters. The `route` block follows the same rule for each path segment, path param and search param, key and value alike: what does not pass is left out (`…` in the path), and the block names the keys to read in `withheld`. `readState` answers `pathname`, `params` and `searchParams` whether or not a component subscribes them, as page content.
 - `AgentService.preamble` and each adaptor's fallback prompt say what a `<turn-context …>` block is, and that a `<page-content …>` block may also end a user turn.
+- The agent and MCP guidelines and the `akan-agent` skill describe the context block, the `untrusted` mark, the ask after a mention and the inline rule.
 
 **Upgrading.** An `LlmAdaptor` of your own that builds its request with `OpenaiDialect.requestBody` or `AnthropicLlm.requestBody` needs no change. One that reads `request.context` itself should stop writing it into the system prompt and append `LlmContext.of(request.context)` to the last user-role content instead:
 

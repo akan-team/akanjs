@@ -152,7 +152,14 @@
   `st.useState(name, Type, { set: true }).desc("…").init(initial)` local state, read-only without `set`. Both
   end in a hook, so a conditional surface withholds the name rather than skipping the chain. A subscribed store key is listed in
   the state context block by name and pulled with `readState(key)`, masked by the model that key declares — while
-  a key the screen does not read stays unreadable even when a sibling key of the same store is live. **There is no
+  a key the screen does not read stays unreadable even when a sibling key of the same store is live. **The block
+  carries a value only when it is an id, an enum member, a number or a boolean**: a string rides inline when it is
+  one token of up to 40 letters, digits, `.`, `_` or `-`, and any other string is listed by key and type alone,
+  because free text is whatever the record's author wrote and the model reads that through `readState`, where it
+  arrives as page content. The route block follows the same rule for each path segment, path param and search
+  param: what does not pass is left out, the block names `pathname`, `params` or `searchParams` in `withheld`, and
+  `readState` answers those three whether or not a component subscribes them. So instructions never say "the query
+  is in the route context"; they say to read `searchParams`. **There is no
   store-level exposure declaration**: a store class says nothing about agents, and `st.use.x({ agent: false })` is
   how the component that subscribes a value keeps it off the surface. Base-store plumbing does the same at the
   call site — `st.use.path({ agent: false })`, `st.use.tryJwt({ agent: false })` — so routing and the caller's

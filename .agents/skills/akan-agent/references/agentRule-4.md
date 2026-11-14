@@ -7,7 +7,8 @@
   not with prose), `readScreen` (the rendered DOM as compact text — headings, links, control values, and `(disabled)`
   on a control or button that has it; the chat's own UI is skipped via `data-agent-ui`, and a password value is never
   read), `readState(key)` (one masked store key — a key that is unknown or that this screen does not read is refused
-  *with the keys it can* read, the way `readScreen` names its sections), `highlight(target)`, and `viewImage(src)` (one
+  *with the keys it can* read, the way `readScreen` names its sections; the route's own `pathname`, `params` and
+  `searchParams` are always readable), `highlight(target)`, and `viewImage(src)` (one
   `<img>` on screen, redrawn as a JPEG at most 1568px long and attached to the result — `src` must be one this view
   shows, as `readScreen({ images: true })` printed it, so the agent cannot have the browser fetch an address of its
   own, and a `data:` one is refused). Declaring a hook tool under one of those names shadows the built-in, so reuse
@@ -103,7 +104,7 @@
   above the cut and a result this large arrives below it. Clipped rather than dropped, because a model handed a
   value it cannot see the end of asks a narrower question, where one handed nothing answers from the field names.
   The cap is a safety rail, not the design: a tool should return what answers the question — an id, a count, the
-  three fields the agent asked about — and `AgentContext` inlines only small primitives for the same reason.
+  three fields the agent asked about — and `AgentContext` inlines only numbers, booleans and one-token strings.
 - **A slow tool reports its own progress with `AgentProgress.report(message, { done, total })`** from wherever the
   work is — a store action, an upload loop, an adapter — reached through a module slot rather than a parameter, and
   a no-op when nobody is rendering it. The chat shows it on that call's row until the row resolves. It is the

@@ -118,6 +118,15 @@ pages declaring one name never clash, and a registry kept outside the surface re
   blocks, the results ride in a *user* turn, roles must alternate — so two wire turns that map to one role are
   merged — and `max_tokens` is required. **Both require `model`**: a default would age into a 404, and worse, it
   would decide the vision claim for the app.
+- **A turn's context is data in a user turn, never part of the system prompt.** Both adaptors send
+  `request.context` as a `<turn-context …>` block that ends the turn's last user-role content, after that turn's
+  tool results, so the system prompt is the instructions alone and stays the same text from turn to turn. The
+  block closes on a delimiter chosen so its content cannot contain it. A block marked `untrusted: true` holds text
+  someone other than the developer or the user may have written; it goes in a `<page-content …>` block of its own,
+  the one a `readScreen` result arrives in, and the turn counts as an untrusted read. `LlmContext.of(context)`
+  (`akanjs/service`) builds both. An adaptor of the app's own that does not go through `OpenaiDialect.requestBody`
+  appends that text to its last user-role content and writes no context value into its system prompt. A dialect
+  added to the framework joins `llmDialect.conformance.test.ts`, which fails one that does either.
 - **`OpenaiLlm` claims vision for its default host and for nothing else.** OpenAI's own endpoint takes image
   parts, so that is what it answers with no `host` set. A `host` the app named is a gateway the class knows
   nothing about, and it stays text-only until `option.setLlm({ accepts })` says otherwise — handing bytes to a
