@@ -239,6 +239,12 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   with the app last; `AKAN_LIVE_ROOMS_PER_SOCKET=<count>|off` wins over it). A subscribe past the cap is refused
   with 429 `base.error.liveRoomLimit`, `data: { limit, per: "socket" }`; the rooms already held keep their events,
   subscribing a held room again does not count twice, and leaving a room or closing the socket frees its place.
+- **Subscribe frames have a budget of their own**, over every pubsub endpoint: 1,000 a minute per websocket, counted
+  before the arguments are read, and 10,000 a minute per caller (`accountKey(account)`, else the address; one whose
+  address is unknown is counted per socket only), shared through the cache. A reconnect resubscribing every held
+  room fits either. `option.setRateLimit({ subscribe: { perConnection, perCaller } })` changes them (`{ calls,
+  windowMs? }`, or `false` to lift one; `subscribe: false` lifts both), and `AKAN_RATE_LIMIT=off` and a `local`
+  environment turn them off with every other budget. A refusal is the same 429 `base.error.tooManyRequests`.
 
 ## Calling Another Server
 

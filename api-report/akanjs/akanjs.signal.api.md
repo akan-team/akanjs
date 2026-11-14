@@ -491,9 +491,12 @@ export type EndpointInfoParts<E> = E extends EndpointInfo<infer ReqType, infer S
 } : EndpointInfoEmptyParts;
 
 export declare class EndpointRateLimit {
+    static readonly defaultSubscribePerConnection: WindowBudget;
+    static readonly defaultSubscribePerCaller: WindowBudget;
     static configure(setting: RateLimitSetting | false): void;
     static applyEnv(value: string | undefined, environment: string): void;
     static reset(): void;
+    static subscribeBudgetOf(per: keyof SubscribeRateSetting): WindowBudget | null;
     static budgetOf(key: string, endpointInfo: EndpointInfo): ResolvedBudget | null;
     static admit(context: SignalContext, phase: "account" | "ip"): Promise<void> | undefined;
 }
@@ -1248,6 +1251,7 @@ export interface RateLimitSetting {
         [key: string]: Partial<RateLimitBudget> | false;
     };
     accountKey?: (account: unknown) => null | string | undefined;
+    subscribe?: SubscribeRateSetting | false;
 }
 
 export declare class Req implements InternalArg {
@@ -1769,6 +1773,11 @@ export type SrvRefName<S extends ServiceModel> = SrvOf<S>["refName"];
 export interface StatusException {
     new (message?: string, details?: unknown): Exception;
     is(error: unknown, ...codes: string[]): error is Exception;
+}
+
+export interface SubscribeRateSetting {
+    perConnection?: Omit<RateLimitBudget, "by"> | false;
+    perCaller?: Omit<RateLimitBudget, "by"> | false;
 }
 
 export declare class Timeout extends Timeout_base {
@@ -2812,4 +2821,6 @@ interface WebSocketRequest {
     data: unknown[];
     eventType: WebSocketEventType;
 }
+
+type WindowBudget = Omit<ResolvedBudget, "by">;
 ```

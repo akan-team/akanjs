@@ -21,9 +21,18 @@ export interface RateLimitSetting {
   endpoints?: { [key: string]: Partial<RateLimitBudget> | false };
   /** Who `by: "account"` counts; nothing returned counts the caller's address instead. */
   accountKey?: (account: unknown) => string | null | undefined;
+  /** Subscribe frames, over every pubsub endpoint, per websocket and per caller; `false` lifts one or both. */
+  subscribe?: SubscribeRateSetting | false;
+}
+
+export interface SubscribeRateSetting {
+  perConnection?: Omit<RateLimitBudget, "by"> | false;
+  /** Counted by `accountKey(account)`, else the caller's address, across every socket and replica. */
+  perCaller?: Omit<RateLimitBudget, "by"> | false;
 }
 
 type ResolvedBudget = Required<RateLimitBudget>;
+type WindowBudget = Omit<ResolvedBudget, "by">;
 
 export class EndpointRateLimit {
   static readonly #logger = new Logger("EndpointRateLimit");
@@ -35,6 +44,14 @@ export class EndpointRateLimit {
   static readonly #limiters = new WeakMap<object, RateLimiter>();
   static #localLimiter: RateLimiter | null = null;
   static readonly #warned = new Set<string>();
+  //? A reconnect resubscribes every room the socket held in one burst, and a socket holds at most 256 live rooms.
+  static readonly defaultSubscribePerConnection: WindowBudget = { calls: 1_000, windowMs: 60_000 };
+  //? Ten sockets' worth: a caller's tabs and devices all resubscribe at once after a server restart.
+  static readonly defaultSubscribePerCaller: WindowBudget = { calls: 10_000, windowMs: 60_000 };
+  static #subscribe: SubscribeRateSetting = {};
+  static #connectionLimiter: RateLimiter | null = null;
+  static readonly #connectionIds = new WeakMap<object, number>();
+  static #connectionCount = 0;
 
   /** Merges over what an earlier call set, so libs configure in mount order and the app's `option.ts` goes last. */
   static configure(setting: RateLimitSetting | false) {
@@ -46,6 +63,9 @@ export class EndpointRateLimit {
     if (setting.budget) EndpointRateLimit.#budget = setting.budget;
     if (setting.endpoints) EndpointRateLimit.#endpoints = { ...EndpointRateLimit.#endpoints, ...setting.endpoints };
     if (setting.accountKey) EndpointRateLimit.#accountKey = setting.accountKey;
+    if (setting.subscribe === false) EndpointRateLimit.#subscribe = { perConnection: false, perCaller: false };
+    else if (setting.subscribe)
+      EndpointRateLimit.#subscribe = { ...EndpointRateLimit.#subscribe, ...setting.subscribe };
   }
 
   /**
@@ -72,6 +92,24 @@ export class EndpointRateLimit {
     EndpointRateLimit.#accountKey = (account) => EndpointRateLimit.#claimOf(account);
     EndpointRateLimit.#localLimiter = null;
     EndpointRateLimit.#warned.clear();
+    EndpointRateLimit.#subscribe = {};
+    EndpointRateLimit.#connectionLimiter = null;
+  }
+
+  static subscribeBudgetOf(per: keyof SubscribeRateSetting): WindowBudget | null {
+    if (EndpointRateLimit.#enabled === false) return null;
+    const setting = EndpointRateLimit.#subscribe[per];
+    if (setting === false) return null;
+    const fallback =
+      per === "perConnection"
+        ? EndpointRateLimit.defaultSubscribePerConnection
+        : EndpointRateLimit.defaultSubscribePerCaller;
+    const calls = Math.floor(Number(setting?.calls ?? fallback.calls));
+    const windowMs = Math.floor(Number(setting?.windowMs ?? fallback.windowMs));
+    return {
+      calls: calls >= 1 ? calls : fallback.calls,
+      windowMs: windowMs >= 1 ? windowMs : EndpointRateLimit.#defaultWindowMs,
+    };
   }
 
   static budgetOf(key: string, endpointInfo: EndpointInfo): ResolvedBudget | null {
@@ -93,9 +131,57 @@ export class EndpointRateLimit {
 
   /** `ip` runs before the request body is read; `account` after the middlewares resolved the caller. */
   static admit(context: SignalContext, phase: "ip" | "account"): Promise<void> | undefined {
+    const subscribing =
+      context.transport === "websocket" && context.getWebSocketContext().eventType === "subscribe"
+        ? EndpointRateLimit.subscribeBudgetOf(phase === "ip" ? "perConnection" : "perCaller")
+        : null;
     const budget = EndpointRateLimit.budgetOf(context.key, context.endpointInfo);
-    if (!budget || budget.by !== phase) return undefined;
-    return EndpointRateLimit.#consume(context, phase, budget);
+    const own = budget?.by === phase ? budget : null;
+    if (!subscribing) return own ? EndpointRateLimit.#consume(context, phase, own) : undefined;
+    return EndpointRateLimit.#consumeSubscribe(context, phase, subscribing).then(async () => {
+      if (own) await EndpointRateLimit.#consume(context, phase, own);
+    });
+  }
+
+  //? The connection is counted before the arguments are read, the caller once the middlewares resolved the account.
+  static async #consumeSubscribe(context: SignalContext, phase: "ip" | "account", budget: WindowBudget) {
+    const per = phase === "ip" ? "connection" : "caller";
+    const caller = phase === "ip" ? null : EndpointRateLimit.#subscriberOf(context);
+    if (phase === "account" && !caller) return;
+    const verdict =
+      phase === "ip"
+        ? await EndpointRateLimit.#connectionLimiterOf().consume(EndpointRateLimit.#connectionOf(context), budget)
+        : await EndpointRateLimit.#limiterOf(context).consume(`subscribe:${caller}`, budget);
+    if (verdict.ok) return;
+    EndpointRateLimit.#warnOnce(
+      `refused:subscribe:${per}`,
+      `A ${per} went over its budget of ${budget.calls} subscribes / ${Math.round(budget.windowMs / 1000)}s (first on "${context.key}"); later refusals are not logged.`,
+    );
+    throw new Exception(429, "base.error.tooManyRequests", undefined, {
+      seconds: Math.max(1, Math.ceil(verdict.retryAfterMs / 1000)),
+    });
+  }
+
+  //? Unlike an endpoint budget, an unknown address is not pooled: every anonymous socket behind a proxy that records
+  //? no address would share one budget, and the connection budget still bounds each of them.
+  static #subscriberOf(context: SignalContext) {
+    const ip = context.getClientIp();
+    return EndpointRateLimit.#accountOf(context) ?? (ip ? `ip:${ip}` : null);
+  }
+
+  static #connectionOf(context: SignalContext) {
+    const { ws } = context.getWebSocketContext();
+    let id = EndpointRateLimit.#connectionIds.get(ws);
+    if (id === undefined) {
+      id = ++EndpointRateLimit.#connectionCount;
+      EndpointRateLimit.#connectionIds.set(ws, id);
+    }
+    return `connection:${id}`;
+  }
+
+  static #connectionLimiterOf() {
+    EndpointRateLimit.#connectionLimiter ??= new RateLimiter(null, { topic: "subscribeRate" });
+    return EndpointRateLimit.#connectionLimiter;
   }
 
   static async #consume(context: SignalContext, phase: "ip" | "account", budget: ResolvedBudget) {

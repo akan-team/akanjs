@@ -159,6 +159,69 @@ describe("EndpointRateLimit", () => {
     await leave();
   });
 
+  describe("subscribe frames", () => {
+    const roomInfo = buildEndpoint
+      .pubsub(String, { guards: [Public] })
+      .room("roomId", String)
+      .exec(() => undefined);
+    const socketOf = (account?: unknown, address = "198.51.100.7") => ({ data: { account }, remoteAddress: address });
+    const subscribe = async (ws: ReturnType<typeof socketOf>, room = "room-1") => {
+      const context = await contextOf("room", roomInfo, { ws, data: [room], eventType: "subscribe" } as never).init();
+      await context.exec();
+    };
+
+    test("let a page's burst and a reconnect resubscribing 256 rooms through, and refuse a socket past 1,000 a minute", async () => {
+      const account = { sid: "s1" };
+      const page = socketOf(account);
+      for (let room = 0; room < 256; room++) await subscribe(page, `room-${room}`);
+      const reconnected = socketOf(account);
+      for (let room = 0; room < 256; room++) await subscribe(reconnected, `room-${room}`);
+      for (let frame = 256; frame < 1_000; frame++) await subscribe(reconnected);
+
+      await expect(subscribe(reconnected)).rejects.toMatchObject({
+        statusCode: 429,
+        message: "base.error.tooManyRequests",
+        data: { seconds: expect.any(Number) },
+      });
+      await subscribe(page);
+      await subscribe(socketOf(account));
+    });
+
+    test("count a caller across its sockets by account, else by address", async () => {
+      EndpointRateLimit.configure({ subscribe: { perCaller: { calls: 3 } } });
+      const signedIn = { sid: "s1" };
+      await subscribe(socketOf(signedIn));
+      await subscribe(socketOf(signedIn));
+      await subscribe(socketOf(signedIn, "203.0.113.9"));
+      await expect(subscribe(socketOf(signedIn))).rejects.toMatchObject({ statusCode: 429 });
+      await subscribe(socketOf({ sid: "s2" }));
+
+      await subscribe(socketOf());
+      await subscribe(socketOf());
+      await subscribe(socketOf());
+      await expect(subscribe(socketOf())).rejects.toMatchObject({ statusCode: 429 });
+      await subscribe(socketOf(undefined, "203.0.113.9"));
+    });
+
+    test("default to 1,000 per socket and 10,000 per caller a minute, which the settings and the env change", () => {
+      expect(EndpointRateLimit.subscribeBudgetOf("perConnection")).toEqual({ calls: 1_000, windowMs: 60_000 });
+      expect(EndpointRateLimit.subscribeBudgetOf("perCaller")).toEqual({ calls: 10_000, windowMs: 60_000 });
+
+      EndpointRateLimit.configure({ subscribe: { perConnection: { calls: 5_000, windowMs: 10_000 } } });
+      EndpointRateLimit.configure({ subscribe: { perCaller: false } });
+      expect(EndpointRateLimit.subscribeBudgetOf("perConnection")).toEqual({ calls: 5_000, windowMs: 10_000 });
+      expect(EndpointRateLimit.subscribeBudgetOf("perCaller")).toBeNull();
+
+      EndpointRateLimit.reset();
+      EndpointRateLimit.configure({ subscribe: false });
+      expect(EndpointRateLimit.subscribeBudgetOf("perConnection")).toBeNull();
+
+      EndpointRateLimit.reset();
+      EndpointRateLimit.applyEnv("off", "main");
+      expect(EndpointRateLimit.subscribeBudgetOf("perCaller")).toBeNull();
+    });
+  });
+
   test("callers without an address share one budget", async () => {
     SignalContext.setHttpPeerResolver(null);
     const endpointInfo = buildEndpoint.query(String, { guards: [Public], rateLimit: { calls: 1 } }).exec(() => "ok");
