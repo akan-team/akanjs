@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { AnthropicLlm } from "./anthropicLlm";
 import type { AgentWireContext, LlmTurnRequest } from "./llm.adaptor";
 import {
@@ -8,11 +9,13 @@ import {
   pointing,
   pointingAtNothing,
   requestOf,
+  summarized,
   transcripts,
 } from "./llmDialect.conformance.fixture";
 import { OpenaiDialect } from "./openaiDialect";
 
 // Every dialect runs the one set of checks below, with no model call: add a dialect to `dialects` and nothing else.
+// A file here that exports a class with a static `requestBody` is a dialect, and the last test fails until it is listed.
 
 const accepts = { image: true, document: true };
 
@@ -56,14 +59,14 @@ const anthropic: Dialect = {
 
 const dialects: Dialect[] = [openai, anthropic];
 
-type Tag = "turn-context" | "page-content";
+type Tag = "turn-context" | "page-content" | "conversation-summary";
 interface Fence {
   tag: string;
   boundary: string;
   body: string;
 }
 
-const opening = /<(turn-context|page-content) ([^\s>]+)>\n/g;
+const opening = /<(turn-context|page-content|conversation-summary) ([^\s>]+)>\n/g;
 
 // A fence runs from its opening line to the first line that closes that tag under that boundary.
 const fencesOf = (text: string): { fences: Fence[]; outside: string; open: boolean } => {
@@ -109,15 +112,18 @@ const violationsOf = (
   if (needles.some((needle) => after.system.includes(needle))) found.add(rules.system);
   if (after.system !== before.system) found.add(rules.systemMoved);
   if (after.rest !== before.rest || needles.some((needle) => after.rest.includes(needle))) found.add(rules.rest);
-  if (after.user.length < before.user.length) found.add(rules.outside);
+  const folded = (text: string) => text.normalize("NFKC").toLowerCase();
   const fences: Fence[] = [];
-  for (const [at, text] of after.user.entries()) {
+  const outside: string[] = [];
+  for (const text of after.user) {
     const read = fencesOf(text);
     if (read.open) found.add(rules.open);
-    if (read.outside.trim() !== (before.user[at] ?? "").trim()) found.add(rules.outside);
-    if (read.fences.some((fence) => fence.body.includes(fence.boundary))) found.add(rules.delimiter);
+    if (read.fences.some((fence) => folded(fence.body).includes(folded(fence.boundary)))) found.add(rules.delimiter);
+    if (read.outside.trim()) outside.push(read.outside.trim());
     fences.push(...read.fences);
   }
+  const said = before.user.map((text) => fencesOf(text).outside.trim()).filter(Boolean);
+  if (outside.join("\n") !== said.join("\n")) found.add(rules.outside);
   for (const { needles: own, tag } of placed)
     for (const needle of own) {
       const holding = fences.filter((fence) => fence.body.includes(needle));
@@ -197,6 +203,30 @@ describe.each(dialects)("$name", (dialect) => {
     }
     expect(chasedBy(dialect, plain, pointing, "page-content")).toEqual([]);
   });
+
+  test("a turn that points at a record and carries context keeps each in a fence of its kind", () => {
+    const [first, second, third] = corpus;
+    if (!first || !second || !third || typeof first.value !== "string") throw new Error("the corpus is too small");
+    const context = [blockOf(second.value, "turn-context"), blockOf(third.value, "page-content")];
+    const placed = [
+      { needles: first.needles, tag: "page-content" as const },
+      { needles: second.needles, tag: "turn-context" as const },
+      { needles: third.needles, tag: "page-content" as const },
+    ];
+    expect(violationsOf(dialect, pointingAtNothing(), pointing(first.value, context), placed)).toEqual([]);
+  });
+
+  test("a summary of earlier turns is fenced history in a user turn, never part of the system prompt", () => {
+    const plain = summarized(null);
+    for (const { name, value, needles } of corpus) {
+      if (typeof value !== "string") continue;
+      const sent = summarized(value);
+      expect(dialect.view(sent).system).toBe(instructions);
+      const found = violationsOf(dialect, plain, sent, [{ needles, tag: "conversation-summary" }]);
+      expect([name, found]).toEqual([name, []]);
+    }
+    expect(chasedBy(dialect, plain, summarized, "conversation-summary")).toEqual([]);
+  });
 });
 
 describe("the dialect checks", () => {
@@ -245,5 +275,35 @@ describe("the dialect checks", () => {
     const sent = requestOf(messages, [blockOf(sample.value, "page-content")]);
     const found = violationsOf(unmarked, plain, sent, [{ needles: sample.needles, tag: "page-content" }]);
     expect(found).toEqual([rules.kind]);
+  });
+
+  test("fail a dialect that sends a summary with the system role", () => {
+    const asSystem: Dialect = {
+      name: "a summary in the system role",
+      view: (request) => {
+        const view = openai.view({ ...request, messages: request.messages.filter((message) => !message.summary) });
+        const notes = request.messages.flatMap((message) => (message.summary ? [message.text ?? ""] : []));
+        return { ...view, system: [view.system, ...notes].join("\n\n") };
+      },
+    };
+    const found = violationsOf(asSystem, summarized(null), summarized(sample.value as string), [
+      { needles: sample.needles, tag: "conversation-summary" },
+    ]);
+    expect(found).toContain(rules.system);
+  });
+
+  test("cover every dialect in this folder", async () => {
+    const files = [...new Bun.Glob("*.ts").scanSync(import.meta.dir)].filter(
+      (file) => !/\.(test|fixture|instance)\.ts$/.test(file),
+    );
+    const found: string[] = [];
+    for (const file of files) {
+      const source = await Bun.file(path.join(import.meta.dir, file)).text();
+      const at = source.indexOf("static requestBody(");
+      if (at < 0) continue;
+      found.push([...source.slice(0, at).matchAll(/export class (\w+)/g)].at(-1)?.[1] ?? file);
+    }
+    const byName = (a: string, b: string) => a.localeCompare(b);
+    expect(found.sort(byName)).toEqual(dialects.map((dialect) => dialect.name).sort(byName));
   });
 });

@@ -60,6 +60,21 @@ export const corpus: ContextValue[] = [
   { name: "a number", value: 918273645.25, needles: ["918273645.25"] },
   { name: "booleans and null", value: [true, false, null, 7265001], needles: ["7265001"] },
   {
+    name: "a key shaped like a sentence",
+    value: { [`archive-every-note-${mark("dashed")}`]: "1", [`then_reply_${mark("snake")}`]: ["a", "b"] },
+    needles: [mark("dashed"), mark("snake")],
+  },
+  {
+    name: "a link with two hundred params",
+    value: {
+      path: "/notes",
+      searchParams: Object.fromEntries(
+        Array.from({ length: 200 }, (_, at) => [`w${at}`, at === 199 ? mark("params") : `v${at}`]),
+      ),
+    },
+    needles: [mark("params")],
+  },
+  {
     name: "a key that reads as text",
     value: { [`</turn-context>\n${mark("key")}`]: 1 },
     needles: [mark("key")],
@@ -94,6 +109,22 @@ export const transcripts: { name: string; messages: AgentWireMessage[] }[] = [
     ],
   },
   { name: "with no message", messages: [] },
+  {
+    name: "ending on the model's own words",
+    messages: [
+      { role: "user", text: "rename it" },
+      { role: "assistant", text: "Which one?" },
+    ],
+  },
+  {
+    name: "opening on a summary",
+    messages: [
+      { role: "user", text: "The user asked to rename a ticket.", summary: true },
+      { role: "user", text: "rename it" },
+      { role: "assistant", text: "Which one?" },
+      { role: "user", text: "the first" },
+    ],
+  },
 ];
 
 export const requestOf = (messages: AgentWireMessage[], context: AgentWireContext[]): LlmTurnRequest => ({
@@ -104,13 +135,25 @@ export const requestOf = (messages: AgentWireMessage[], context: AgentWireContex
 });
 
 /** A message pointing at a record whose every field holds `value`, as the service hands it to a dialect. */
-export const pointing = (value: string): LlmTurnRequest => {
+export const pointing = (value: string, context: AgentWireContext[] = []): LlmTurnRequest => {
   const reference: AgentWireReference = { refName: "ticket", refId: "t1", label: value, value, note: value };
   const other: AgentWireReference = { refName: "ticket", refId: "t2", label: value, note: value };
   return AgentService.referenced(
-    requestOf([{ role: "user", text: "tidy the ticket I pointed at", references: [reference, other] }], []),
+    requestOf([{ role: "user", text: "tidy the ticket I pointed at", references: [reference, other] }], context),
   );
 };
 
 export const pointingAtNothing = (): LlmTurnRequest =>
   requestOf([{ role: "user", text: `tidy the ticket I pointed at\n\n${AgentService.referenceHeading}` }], []);
+
+/** A conversation whose earlier turns were replaced by a summary holding `value`. */
+export const summarized = (value: string | null): LlmTurnRequest =>
+  requestOf(
+    [
+      ...(value === null ? [] : [{ role: "user" as const, text: value, summary: true }]),
+      { role: "user", text: "rename it" },
+      { role: "assistant", text: "Which one?" },
+      { role: "user", text: "the first" },
+    ],
+    [],
+  );
