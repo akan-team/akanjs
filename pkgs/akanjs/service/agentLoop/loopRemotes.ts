@@ -1,6 +1,7 @@
 import type { AgentTool } from "../predefinedAdaptor/agentTools.adaptor";
 import type { AgentWireToolCall, AgentWireToolResult } from "../predefinedAdaptor/llm.adaptor";
 import type { AgentLoopRemote, AgentLoopView } from "./agentLoopTypes";
+import { LoopAnswer } from "./loopAnswer";
 
 interface RemoteEntry {
   tool: AgentTool;
@@ -102,7 +103,7 @@ export class LoopRemotes {
       const { view, ...answer } = await remote.call(entry.real, args);
       const shown = LoopRemotes.#viewOf(view);
       if (shown) this.#views.set(id, { ...shown, remote: owner, tool: entry.real, args });
-      return { ...answer, id, name };
+      return LoopAnswer.bounded({ id, name }, answer);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       return { id, name, error: `"${owner}" did not answer: ${message}`, code: LoopRemotes.unavailable };

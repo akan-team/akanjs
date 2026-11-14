@@ -952,6 +952,45 @@ describe("AgentLoop remotes, bounded", () => {
     expect(reports.map((report) => report.turn.loop?.remote)).toEqual([undefined, true]);
   });
 
+  test("stores only a result's declared fields from a remote, each under the bound a page's answer meets", async () => {
+    const big = "x".repeat(9_000_000);
+    const picture = { name: "shot.png", mimeType: "image/png", data: "AAAA" };
+    const answers: Record<string, unknown> = {
+      o1: { result: "ok", code: big, note: big, id: "other", name: "createNote" },
+      o2: {
+        error: "No such order.",
+        code: "shop.error.notFound",
+        changes: [{ path: big, value: 1 }],
+        attachments: [
+          { name: "far.png", mimeType: "image/png", url: "https://files.example/a.png" },
+          { ...picture, name: big },
+          ...Array.from({ length: 6 }, () => picture),
+        ],
+      },
+    };
+    const { remote } = remoteOf("shop", { answer: (_tool, args) => answers[String(args.id)] as AgentLoopRemoteResult });
+    const { port, requests } = harness([
+      calling(callOf("c1", "openToolkit", { name: "shop" })),
+      calling(callOf("c2", "shop.orderList", { id: "o1" }), callOf("c3", "shop.orderList", { id: "o2" })),
+      saying("Read."),
+    ]);
+    const { messages, request } = stored(ask([remote]));
+    const events = await drain(port, request);
+    expect(stopOf(events)).toBe("end");
+    expect(requests).toHaveLength(3);
+    const [first, second] = resultsOf(events).slice(1);
+    expect(first).toEqual({ id: "c2", name: "shop.orderList", result: "ok" });
+    expect(second).toMatchObject({ id: "c3", error: "No such order.", code: "shop.error.notFound" });
+    expect(second?.changes).toHaveLength(1);
+    expect(String(second?.changes?.[0])).toStartWith("[Truncated:");
+    expect(second?.attachments).toEqual([picture, picture, picture, picture]);
+    expect(JSON.stringify(messages).length).toBeLessThan(100_000);
+
+    const later = harness([saying("Still here.")]);
+    const resumed = await drain(later.port, { ...request, messages: [...messages, { role: "user", text: "Go on." }] });
+    expect(stopOf(resumed)).toBe("end");
+  });
+
   test("opens four remotes in one run, and answers the open of a fifth without contacting it", async () => {
     const names = ["shop", "bank", "mail", "docs", "wiki"];
     const remotes = names.map((name) => remoteOf(name));

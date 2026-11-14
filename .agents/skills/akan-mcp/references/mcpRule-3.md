@@ -149,8 +149,9 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   at most 120 tools from one remote, a description to 1,000 characters and a parameter schema to 8,000, and stops
   listing at 120,000 characters in all; the open's result counts the tools left out as `omitted`. Pass `allow` in
   the remote's entry to choose which tools those are. A run keeps at most four remotes open, as each listing rides
-  every later round: the open of a fifth is answered with an error and that server is not contacted. A call's result
-  is capped at 20,000 characters like any tool's, and the run's rounds meet the relay's size caps (see Metering).
+  every later round: the open of a fifth is answered with an error and that server is not contacted. Of a call's
+  result the run keeps `result`, `error`, `code`, `changes` and `attachments`, each bounded as the parts of an
+  `answer` are, and nothing else the remote sent; the run's rounds meet the relay's size caps (see Metering).
 - **Addresses.** `url` is the server's address or its MCP endpoint; a bare origin means `/mcp`. Every request goes
   through `RemoteFetch`: https only, no private address, no redirect, the checked address pinned. A local run
   (`operationMode: "local"`) reaches loopback over http, so two dev servers can connect; `remote.allowUrl` narrows

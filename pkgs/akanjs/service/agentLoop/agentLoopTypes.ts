@@ -48,7 +48,8 @@ export interface AgentLoopRemoteResult extends Omit<AgentWireToolResult, "id" | 
 /**
  * Another server's tools, called as the run's account over a connection that account granted. `list` answers `null`
  * when there is no live connection. `call` takes the tool's name as `list` gave it; a failure comes back as the
- * result's `error`, with `code` "remoteDisconnected" once the connection is gone.
+ * result's `error`, with `code` "remoteDisconnected" once the connection is gone. Of what `call` returns, the run
+ * keeps `result`, `error`, `code`, `changes`, `attachments` and `view`, each bounded as the parts of an `answer` are.
  */
 export interface AgentLoopRemote {
   /** `[a-z][A-Za-z0-9]{0,15}`: names its toolkit and prefixes its tools as `<name>.<tool>`. */

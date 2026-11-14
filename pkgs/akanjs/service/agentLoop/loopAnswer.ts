@@ -26,7 +26,7 @@ export class LoopAnswer {
     parks: (call: AgentWireToolCall) => LoopPark | null,
   ): AgentWireToolResult {
     const sent = (answer as Partial<AgentLoopCallAnswer> | null) ?? {};
-    const { id, result, changes, error, code, attachments } = sent;
+    const { id, result, error, code } = sent;
     if (typeof id !== "string" || !id) throw new Err("base.error.invalidArgument", { name: "answer" });
     const [parked] = LoopTranscript.pending(messages);
     const park = parked?.id === id ? parks(parked) : null;
@@ -34,14 +34,22 @@ export class LoopAnswer {
     const whole = park === "answer";
     if (!parked || !(whole || (park === "refusal" && result === undefined && refused.error)))
       throw new Err("agent.error.answerRefused", { id });
+    if (whole) return LoopAnswer.bounded(parked, sent);
+    return { id: parked.id, name: parked.name, ...refused, ...(FailureCode.is(code) ? { code } : {}) };
+  }
+
+  //? Security: what another party sent as a call's result, a page or a remote. Only the fields a result declares pass,
+  //? each by type and under its bound, as anything kept rides every later round.
+  static bounded({ id, name }: Pick<AgentWireToolCall, "id" | "name">, sent: unknown): AgentWireToolResult {
+    const { result, changes, error, code, attachments } = (sent ?? {}) as Partial<AgentWireToolResult>;
     return {
-      id: parked.id,
-      name: parked.name,
-      ...(whole && result !== undefined ? { result } : {}),
-      ...(whole && Array.isArray(changes) ? { changes: LoopAnswer.#changes(changes) } : {}),
-      ...refused,
+      id,
+      name,
+      ...(result !== undefined ? { result } : {}),
+      ...(Array.isArray(changes) ? { changes: LoopAnswer.#changes(changes) } : {}),
+      ...(typeof error === "string" && error ? { error } : {}),
       ...(FailureCode.is(code) ? { code } : {}),
-      ...(whole && Array.isArray(attachments) ? { attachments: LoopAnswer.#files(attachments) } : {}),
+      ...(Array.isArray(attachments) ? { attachments: LoopAnswer.#files(attachments) } : {}),
     };
   }
 
@@ -51,7 +59,7 @@ export class LoopAnswer {
     return whole === changes ? changes : [whole];
   }
 
-  //? Security: a file arrives as its bytes or its text. A `url` is fetched by the provider, from an address a client chose.
+  //? Security: a file arrives as its bytes or its text. A `url` is fetched by the provider, from an address the sender chose.
   static #files(attachments: unknown[]): AgentWireAttachment[] {
     const files = attachments.flatMap((attachment): AgentWireAttachment[] => {
       const { name, mimeType, data, text } = (attachment ?? {}) as Partial<AgentWireAttachment>;
