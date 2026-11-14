@@ -267,9 +267,34 @@ export const encodedBodyResponse = (
 };
 
 export interface EncodedSidecar {
-  bytes: ArrayBuffer;
-  encoding: string;
+  file: ReturnType<typeof Bun.file>;
+  size: number;
+  encoding: ContentEncoding;
 }
+
+const MEMO_LIMIT = 4096;
+const sidecarSizes = new Map<string, number>();
+
+const isProductionServer = () => process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
+
+const probeSidecar = async (sidecarPath: string) => {
+  const file = Bun.file(sidecarPath);
+  return { file, size: (await file.exists()) ? file.size : 0 };
+};
+
+const memoizedSidecar = async (sidecarPath: string) => {
+  const known = sidecarSizes.get(sidecarPath);
+  if (known === 0) return null;
+  if (known !== undefined) {
+    const file = Bun.file(sidecarPath);
+    //? A sidecar replaced or removed under a running server drops out of the memo, so a stale size never reaches Content-Length.
+    if (file.size === known) return { file, size: known };
+  }
+  const probed = await probeSidecar(sidecarPath);
+  if (sidecarSizes.size >= MEMO_LIMIT) sidecarSizes.clear();
+  sidecarSizes.set(sidecarPath, probed.size);
+  return probed.size ? probed : null;
+};
 
 export const resolveEncodedSidecar = async (
   req: Request,
@@ -278,13 +303,12 @@ export const resolveEncodedSidecar = async (
 ): Promise<EncodedSidecar | null> => {
   if (!isCompressibleContentType(contentType)) return null;
   const accepted = acceptedEncodings(req.headers.get("accept-encoding") ?? "");
+  const production = isProductionServer();
   for (const { encoding, ext } of CONTENT_ENCODINGS) {
     if (!accepted.includes(encoding)) continue;
-    const file = Bun.file(`${filePath}${ext}`);
-    if (!(await file.exists())) continue;
-    const bytes = await file.bytes();
-    const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-    return { bytes: buffer, encoding };
+    const sidecarPath = `${filePath}${ext}`;
+    const found = production ? await memoizedSidecar(sidecarPath) : await probeSidecar(sidecarPath);
+    if (found?.size) return { file: found.file, size: found.size, encoding };
   }
   return null;
 };
@@ -305,6 +329,6 @@ export const encodedFileResponse = async (
     return new Response(file, { headers });
   }
   headers.set("Content-Encoding", sidecar.encoding);
-  headers.set("Content-Length", String(sidecar.bytes.byteLength));
-  return new Response(sidecar.bytes, { headers });
+  headers.set("Content-Length", String(sidecar.size));
+  return new Response(sidecar.file, { headers });
 };
