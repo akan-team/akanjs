@@ -305,8 +305,13 @@ const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => (
     })
     .option("write", Boolean, writeOption)
     .option("coverage", Boolean, { desc: "measure coverage; lcov goes under local/coverage/<target>", default: false })
-    .exec(async function (exec, files, write, coverage) {
-      await this.applicationScript.test(exec, { write, files: listOf(files), coverage });
+    .option("parallel", Number, {
+      desc: "bun processes to spread the test files over, balanced by the timings under local/test-timings/<target>",
+      default: 1,
+    })
+    .option("junit", String, { desc: "also write a JUnit XML report to this path", nullable: true })
+    .exec(async function (exec, files, write, coverage, parallel, junit) {
+      await this.applicationScript.test(exec, { write, files: listOf(files), coverage, parallel, junit });
     }),
 });
 

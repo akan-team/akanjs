@@ -1,3 +1,4 @@
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
@@ -264,10 +265,22 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
 
   async test(
     exec: Exec,
-    { write = true, files = [], coverage = false }: { write?: boolean; files?: string[]; coverage?: boolean } = {},
+    {
+      write = true,
+      files = [],
+      coverage = false,
+      parallel = 1,
+      junit,
+    }: { write?: boolean; files?: string[]; coverage?: boolean; parallel?: number; junit?: string | null } = {},
   ) {
+    if (!Number.isInteger(parallel) || parallel < 1)
+      throw new CliError("usage", `--parallel takes a whole number of bun processes, 1 or more; got ${parallel}`);
     const testPaths = this.applicationRunner.resolveTestPaths(exec, files);
-    const flags = coverage ? ApplicationScript.#coverageFlagsOf(exec) : [];
+    const flags = [
+      ...(coverage ? ApplicationScript.#coverageFlagsOf(exec) : []),
+      ...(parallel > 1 ? await ApplicationScript.#parallelFlagsOf(exec, parallel) : []),
+      ...(junit ? await ApplicationScript.#junitFlagsOf(junit) : []),
+    ];
     if (exec instanceof LibExecutor) {
       if (write) await this.libraryScript.syncLibrary(exec);
       else await exec.scan({ write: false });
@@ -288,10 +301,52 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await this.applicationRunner.test(exec, testPaths, flags);
   }
 
-  static #coverageFlagsOf(exec: Exec) {
+  static #localDirOf(exec: Exec, kind: string) {
     const root = exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : null;
-    const dir = root ? path.join(root, "local", "coverage", path.relative(root, exec.cwdPath)) : "local/coverage";
+    return root ? path.join(root, "local", kind, path.relative(root, exec.cwdPath)) : `local/${kind}`;
+  }
+
+  static #coverageFlagsOf(exec: Exec) {
+    const dir = ApplicationScript.#localDirOf(exec, "coverage");
     return ["--coverage", "--coverage-reporter=text", "--coverage-reporter=lcov", `--coverage-dir=${dir}`];
+  }
+
+  //? Bun balances the files over its processes by the durations it recorded here on the last parallel run.
+  static async #parallelFlagsOf(exec: Exec, parallel: number) {
+    const timings = path.join(ApplicationScript.#localDirOf(exec, "test-timings"), "timings.json");
+    if (!(await ApplicationScript.#readsAsTimings(timings))) {
+      await rm(timings, { force: true });
+      Logger.warn(`${timings} was not a timings file bun reads, so it was dropped; this run records it again`);
+    }
+    return [`--parallel=${parallel}`, `--timings=${timings}`, "--update-timings"];
+  }
+
+  //? Bun 1.4.4 runs no test when the file is neither empty nor `version` 1 with a string-free `files` object.
+  static async #readsAsTimings(timings: string) {
+    const file = Bun.file(timings);
+    if (!(await file.exists())) return true;
+    const text = await file.text();
+    if (text === "") return true;
+    try {
+      const parsed = JSON.parse(text) as { version?: unknown; files?: unknown } | null;
+      const files = parsed?.files;
+      return (
+        parsed?.version === 1 &&
+        typeof files === "object" &&
+        files !== null &&
+        !Array.isArray(files) &&
+        Object.values(files).every((ms) => typeof ms !== "string")
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  //? Resolved here because bun runs in the target's folder; bun fails the report rather than create its folder.
+  static async #junitFlagsOf(junit: string) {
+    const outfile = path.resolve(junit);
+    await mkdir(path.dirname(outfile), { recursive: true });
+    return ["--reporter=junit", `--reporter-outfile=${outfile}`];
   }
 
   async start(
