@@ -1,5 +1,6 @@
 import type { AsyncLocalStorage } from "node:async_hooks";
-import type { TransactionContext } from "./types";
+import type { PromiseOrObject } from "akanjs/base";
+import type { AfterCommitOptions, TransactionContext } from "./types";
 
 export class TransactionScope {
   //? A task the transaction started without awaiting keeps its async context past the commit: it must not join the
@@ -9,17 +10,23 @@ export class TransactionScope {
     return context && !context.closed ? context : undefined;
   }
 
+  static queue(context: TransactionContext, fn: () => PromiseOrObject<void>, { first = false }: AfterCommitOptions) {
+    context.first ??= [];
+    (first ? context.first : context.afterCommit).push(fn);
+  }
+
   //? One post-save hook that throws must not skip the callbacks after it; its error still reaches the caller, as it
   //? does for a save outside a transaction.
   static async runAfterCommit(context: TransactionContext) {
     let failure: { error: unknown } | null = null;
-    for (const hook of context.afterCommit) {
-      try {
-        await hook();
-      } catch (error) {
-        failure ??= { error };
+    for (const hooks of [context.first ?? [], context.afterCommit])
+      for (const hook of hooks) {
+        try {
+          await hook();
+        } catch (error) {
+          failure ??= { error };
+        }
       }
-    }
     if (failure) throw failure.error;
   }
 }

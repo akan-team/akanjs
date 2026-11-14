@@ -14,11 +14,16 @@ type BatchLoadFn<Key, Value> = (
 interface DataLoaderOptions<Key, Value, CacheKey> {
   /** `false` (default) keeps nothing past its batch, a number keeps a key that many ms, `true` for its whole life. */
   cache?: boolean | number;
+  /** How many keys `cache: true` keeps (10,000 by default): past it, the key used longest ago leaves first. */
+  maxCacheSize?: number;
   cacheKeyFn?: (key: Key) => CacheKey;
   /** What a caller gets in place of a value another caller already holds: a repeated key's, or a kept key's. */
   copy?: (value: Value) => Value;
   batch?: boolean;
+  /** Must run the callback in its caller's async context, as `queueMicrotask` and `setImmediate` do. */
   batchScheduleFn?: (callback: () => void) => void;
+  /** What a load belongs to, such as its open transaction: a scope's loads batch apart and never touch the cache. */
+  scopeFn?: () => object | undefined;
   maxBatchSize?: number;
   name?: string;
 }
@@ -31,18 +36,20 @@ interface BatchItem<Key, Value> {
 
 export class DataLoader<Key, Value, CacheKey = Key> {
   static readonly #minSweepSize = 1024;
+  static readonly #defaultMaxCacheSize = 10_000;
   readonly name?: string;
   readonly #batchLoadFn: BatchLoadFn<Key, Value>;
   readonly #ttl: number;
+  readonly #maxCacheSize: number;
   readonly #cacheKeyFn: (key: Key) => CacheKey;
   readonly #batch: boolean;
   readonly #batchScheduleFn: (callback: () => void) => void;
   readonly #maxBatchSize: number;
   readonly #copy: ((value: Value) => Value) | null;
+  readonly #scopeFn: (() => object | undefined) | null;
   readonly #promiseCache = new Map<CacheKey, { promise: Promise<Value>; expiresAt: number }>();
   #sweepAt = DataLoader.#minSweepSize;
-  #queue: BatchItem<Key, Value>[] = [];
-  #scheduled = false;
+  readonly #queues = new Map<object | undefined, BatchItem<Key, Value>[]>();
 
   constructor(batchLoadFn: BatchLoadFn<Key, Value>, options: DataLoaderOptions<Key, Value, CacheKey> = {}) {
     this.#batchLoadFn = batchLoadFn;
@@ -52,25 +59,33 @@ export class DataLoader<Key, Value, CacheKey = Key> {
         : typeof options.cache === "number" && options.cache > 0
           ? options.cache
           : 0;
+    this.#maxCacheSize = Math.max(1, options.maxCacheSize ?? DataLoader.#defaultMaxCacheSize);
     this.#cacheKeyFn = options.cacheKeyFn ?? ((key) => key as unknown as CacheKey);
     this.#batch = options.batch !== false;
     this.#batchScheduleFn = options.batchScheduleFn ?? ((callback) => queueMicrotask(callback));
     this.#maxBatchSize = options.maxBatchSize ?? Number.POSITIVE_INFINITY;
     this.#copy = options.copy ?? null;
+    this.#scopeFn = options.scopeFn ?? null;
     this.name = options.name;
   }
 
   load(key: Key): Promise<Value> {
+    const scope = this.#scopeFn?.();
     const cacheKey = this.#cacheKeyFn(key);
-    const cached = this.#cached(cacheKey);
+    const cached = scope ? undefined : this.#cached(cacheKey);
     if (cached) return this.#copy ? cached.then(this.#copy) : cached;
 
     const promise = new Promise<Value>((resolve, reject) => {
-      this.#queue.push({ key, resolve, reject });
-      if (this.#batch) this.#schedule();
-      else this.#dispatch();
+      const item = { key, resolve, reject };
+      const queue = this.#queues.get(scope);
+      if (!this.#batch) this.#run([item]);
+      else if (queue) queue.push(item);
+      else {
+        this.#queues.set(scope, [item]);
+        this.#batchScheduleFn(() => this.#dispatch(scope));
+      }
     });
-    if (this.#ttl > 0) {
+    if (this.#ttl > 0 && !scope) {
       this.#remember(cacheKey, promise);
       // A failed load is not an answer worth keeping: the next caller asks the store again.
       promise.catch(() => {
@@ -96,7 +111,7 @@ export class DataLoader<Key, Value, CacheKey = Key> {
   }
 
   prime(key: Key, value: Value | Error): this {
-    if (this.#ttl <= 0) return this;
+    if (this.#ttl <= 0 || this.#scopeFn?.()) return this;
     const cacheKey = this.#cacheKeyFn(key);
     if (this.#cached(cacheKey)) return this;
     this.#remember(cacheKey, value instanceof Error ? Promise.reject(value) : Promise.resolve(value));
@@ -107,31 +122,37 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     if (this.#ttl <= 0) return undefined;
     const entry = this.#promiseCache.get(cacheKey);
     if (!entry) return undefined;
-    if (entry.expiresAt > Date.now()) return entry.promise;
     this.#promiseCache.delete(cacheKey);
-    return undefined;
+    if (entry.expiresAt <= Date.now()) return undefined;
+    this.#promiseCache.set(cacheKey, entry);
+    return entry.promise;
   }
 
   // Swept whenever the map doubles, so a process-long loader holds about one TTL window of keys, not every key seen.
+  // A key that never expires has no window: the map is kept in order of use, and its oldest key leaves past the bound.
   #remember(cacheKey: CacheKey, promise: Promise<Value>) {
     this.#promiseCache.set(cacheKey, { promise, expiresAt: Date.now() + this.#ttl });
+    if (this.#ttl === Number.POSITIVE_INFINITY) {
+      if (this.#promiseCache.size > this.#maxCacheSize)
+        this.#promiseCache.delete(this.#promiseCache.keys().next().value as CacheKey);
+      return;
+    }
     if (this.#promiseCache.size < this.#sweepAt) return;
     const now = Date.now();
     for (const [key, entry] of this.#promiseCache) if (entry.expiresAt <= now) this.#promiseCache.delete(key);
     this.#sweepAt = Math.max(DataLoader.#minSweepSize, this.#promiseCache.size * 2);
   }
 
-  #schedule() {
-    if (this.#scheduled) return;
-    this.#scheduled = true;
-    this.#batchScheduleFn(() => this.#dispatch());
+  #dispatch(scope: object | undefined) {
+    const queue = this.#queues.get(scope);
+    if (!queue) return;
+    const batch = queue.splice(0, this.#maxBatchSize);
+    if (queue.length > 0) this.#batchScheduleFn(() => this.#dispatch(scope));
+    else this.#queues.delete(scope);
+    this.#run(batch);
   }
 
-  #dispatch() {
-    this.#scheduled = false;
-    const batch = this.#queue.splice(0, this.#maxBatchSize);
-    if (this.#queue.length > 0) this.#schedule();
-    if (batch.length === 0) return;
+  #run(batch: BatchItem<Key, Value>[]) {
     const keys = batch.map(({ key }) => key);
     Promise.resolve(this.#batchLoadFn(keys)).then(
       (values) => {

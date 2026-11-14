@@ -32,6 +32,7 @@ import { SqlDocumentStore } from "./sql/SqlDocumentStore";
 import { SqliteInsightSession } from "./sql/SqliteInsightSession";
 import { TransactionScope } from "./sql/TransactionScope";
 import {
+  type AfterCommitOptions,
   BASE_COLUMNS,
   type ConcurrentIndexBuild,
   type CreateIndexProps,
@@ -57,12 +58,14 @@ export {
 } from "./sql/RawDocumentTable";
 export { SqlDocumentStore } from "./sql/SqlDocumentStore";
 export type {
+  AfterCommitOptions,
   AkanSqlClient,
   AkanSqlStatement,
   DatabaseAdaptor,
   DatabaseConfig,
   DocumentDatabaseOwner,
   DocumentStore,
+  DocumentWriteListener,
   InsightSession,
   PostgresDatabaseConfig,
   PrunedIndex,
@@ -116,18 +119,23 @@ export class SqliteDatabase
   #ensures = new PendingStoreEnsures();
   #searchIndex!: SearchIndex;
   // A second writer would wait on the lock synchronously and park the event loop the holder needs to commit, so other
-  // contexts' writes queue behind `#open`. Their reads use `#reader` instead: queued reads would deadlock mixed load.
-  #open: { context: TransactionContext; done: Promise<void> } | null = null;
+  // contexts' writes queue behind `#open`. Their reads use `#reader` instead: a queued read would stall a transaction
+  // that awaits it, and every request after that one.
+  #open: TransactionContext | null = null;
+  #inMemory = false;
+  #committed: Uint8Array | null = null;
   #queue: Promise<void> = Promise.resolve();
 
   override async onInit() {
     // Resolved first: Bun on Windows fails a recursive mkdir of "." (":memory:", a bare file name) with EEXIST.
     await mkdir(path.dirname(path.resolve(this.config.filePath)), { recursive: true });
     this.#db = new Database(this.config.filePath, { strict: true, create: true });
+    this.#inMemory = !this.#mainFile();
     this.#client = new BunSqliteClient(
       this.#db,
       () => this.#writeTurn(),
       () => this.#readerOf(),
+      !this.#inMemory,
     );
     this.#db.run(`PRAGMA journal_mode = ${this.config.journalMode ?? "WAL"}`);
     this.#db.run(`PRAGMA busy_timeout = ${this.config.busyTimeoutMs ?? 5000}`);
@@ -159,10 +167,12 @@ export class SqliteDatabase
     await this.#client?.close();
   }
 
-  // Only WAL lets a second connection read the last commit without waiting on the writer; `:memory:` is never WAL.
+  // Under a rollback journal a second connection reads while the writer holds only RESERVED, which spilling its dirty
+  // pages mid-transaction would raise to EXCLUSIVE.
   #openReader() {
     const file = this.#mainFile();
-    if (!file || this.#db.query("PRAGMA journal_mode").values().at(0)?.at(0) !== "wal") return null;
+    if (!file) return null;
+    if (this.#db.query("PRAGMA journal_mode").values().at(0)?.at(0) !== "wal") this.#db.run("PRAGMA cache_spill = OFF");
     const reader = new Database(file, { readonly: true, strict: true });
     reader.run(`PRAGMA busy_timeout = ${this.config.busyTimeoutMs ?? 5000}`);
     if (this.config.cacheSize) reader.run(`PRAGMA cache_size = ${this.config.cacheSize}`);
@@ -187,7 +197,8 @@ export class SqliteDatabase
 
   async openInsight(): Promise<InsightSession> {
     const file = this.#mainFile();
-    return file ? SqliteInsightSession.open(file) : await SqliteInsightSession.openSnapshot(this.#db.serialize());
+    if (file) return SqliteInsightSession.open(file);
+    return await SqliteInsightSession.openSnapshot((this.#readerOf() ?? this.#db).serialize());
   }
 
   stores() {
@@ -203,9 +214,11 @@ export class SqliteDatabase
     return store;
   }
 
-  getMeta(key: string) {
-    const row = (this.#readerOf() ?? this.#db).query(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`).get(key);
-    return (row as { value: string } | null)?.value;
+  async getMeta(key: string) {
+    const row = await this.#client
+      .prepare(`SELECT "value" FROM "_akan_meta" WHERE "key" = ?`)
+      .get<{ value: string }>(key);
+    return row?.value;
   }
 
   async setMeta(key: string, value: string) {
@@ -216,10 +229,10 @@ export class SqliteDatabase
       .run(key, value, Date.now());
   }
 
-  listMeta(prefix: string) {
-    return (this.#readerOf() ?? this.#db)
-      .query(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, ?) = ?`)
-      .all(prefix.length, prefix) as { key: string; value: string }[];
+  async listMeta(prefix: string) {
+    return await this.#client
+      .prepare(`SELECT "key", "value" FROM "_akan_meta" WHERE substr("key", 1, ?) = ?`)
+      .all<{ key: string; value: string }>(prefix.length, prefix);
   }
 
   async deleteMeta(key: string) {
@@ -236,9 +249,10 @@ export class SqliteDatabase
     this.#queue = done;
     await previous;
     const context: TransactionContext = { afterCommit: [] };
-    this.#open = { context, done };
     let result: T;
     try {
+      this.#keepCommitted();
+      this.#open = context;
       result = await this.#transaction.run(context, async () => {
         this.#db.run("BEGIN IMMEDIATE");
         try {
@@ -253,26 +267,56 @@ export class SqliteDatabase
     } finally {
       context.closed = true;
       this.#open = null;
+      this.#dropCommitted();
       release();
     }
     await TransactionScope.runAfterCommit(context);
     return result;
   }
 
+  // The last transaction in line, not the open one: a waiter then runs before any transaction asked for after it.
   #writeTurn() {
-    const open = this.#open;
-    if (!open || this.#transaction.getStore() === open.context) return null;
-    return open.done;
+    if (!this.#open || this.#transaction.getStore() === this.#open) return null;
+    return this.#queue;
+  }
+
+  // A private in-memory database cannot be opened a second time, so work outside a transaction reads a copy of the
+  // last commit. Serialized after the transaction's first write it would hold that write, so it is taken before BEGIN.
+  #keepCommitted() {
+    if (this.#inMemory) this.#committed = this.#db.serialize();
+  }
+
+  // The engine does not count the serialized bytes toward its heap, so left to the collector a dozen copies of the
+  // database pile up between two of its runs; detaching the buffer frees them now.
+  #dropBytes() {
+    (this.#committed?.buffer as ArrayBuffer | undefined)?.transfer(0);
+    this.#committed = null;
+  }
+
+  #dropCommitted() {
+    if (!this.#inMemory) return;
+    this.#dropBytes();
+    this.#reader?.close();
+    this.#reader = null;
   }
 
   #readerOf() {
-    return this.#writeTurn() ? this.#reader : null;
+    if (!this.#writeTurn()) return null;
+    if (this.#committed) {
+      this.#reader = Database.deserialize(this.#committed, { readonly: true, strict: true });
+      this.#dropBytes();
+    }
+    return this.#reader;
   }
 
-  async afterCommit(fn: () => PromiseOrObject<void>) {
+  async afterCommit(fn: () => PromiseOrObject<void>, options: AfterCommitOptions = {}) {
     const active = TransactionScope.live(this.#transaction);
     if (!active) return await fn();
-    active.afterCommit.push(fn);
+    TransactionScope.queue(active, fn, options);
+  }
+
+  transactionKey(): object | undefined {
+    return TransactionScope.live(this.#transaction);
   }
 
   checkpoint(mode: "PASSIVE" | "FULL" | "RESTART" | "TRUNCATE" = "TRUNCATE") {
@@ -517,10 +561,14 @@ export class PostgresDatabase
     return result;
   }
 
-  async afterCommit(fn: () => PromiseOrObject<void>) {
+  async afterCommit(fn: () => PromiseOrObject<void>, options: AfterCommitOptions = {}) {
     const active = TransactionScope.live(this.#transaction);
     if (!active) return await fn();
-    active.afterCommit.push(fn);
+    TransactionScope.queue(active, fn, options);
+  }
+
+  transactionKey(): object | undefined {
+    return TransactionScope.live(this.#transaction);
   }
 
   // One at a time in-process, and across processes through an advisory lock the transaction releases.

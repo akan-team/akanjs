@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,7 +39,7 @@ import type { SignalContext } from "../../signal/signalContext";
 import { type SliceCls, slice } from "../../signal/slice";
 import { runTraced, SignalTrace } from "../../signal/trace";
 import type { WebsocketSubscribeAck } from "../../signal/types";
-import { ConformanceEnv } from "../../test/conformance";
+import { ConformanceEnv, type SqlDriver, type SqlDriverOptions } from "../../test/conformance";
 import { Ed25519Key } from "../ed25519Key";
 import { MachineAccount, MachineToken } from "../machine";
 import { RoomReplay } from "../routing/roomReplay";
@@ -113,10 +114,15 @@ interface LoadedItem {
   save: () => Promise<LoadedItem>;
 }
 interface ItemLoader<Key> {
+  load: (key: Key) => Promise<LoadedItem | null>;
   loadMany: (keys: Key[]) => Promise<(LoadedItem | null)[]>;
 }
 interface SqliteItemModel {
-  __store: { find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]> };
+  __store: {
+    find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]>;
+    bulkWrite: (operations: { updateOne: { filter: unknown; update: unknown } }[]) => Promise<unknown>;
+    upsertById: (data: Record<string, unknown> & { id: string }) => Promise<unknown>;
+  };
   __create: (data: Record<string, unknown>) => Promise<LoadedItem>;
   __get: (id: string) => Promise<LoadedItem>;
   ServerResolverTestItem: { pickById: (id: string) => Promise<LoadedItem> };
@@ -125,13 +131,21 @@ interface SqliteItemModel {
   byOwner: ItemLoader<string>;
   byTag: ItemLoader<string>;
   byOwnerCategory: ItemLoader<Record<string, string>>;
+  keptByTitle: ItemLoader<string>;
+  keptByTag: ItemLoader<string>;
+  keptByTitleCategory: ItemLoader<Record<string, string>>;
+  __remove: (id: string) => Promise<LoadedItem>;
+  __updateMany: (query: Record<string, unknown>, update: Record<string, unknown>) => Promise<unknown>;
 }
 const sqliteRow = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
-const withSqliteModel = async (run: (instance: SqliteItemModel) => Promise<void>) => {
-  const driver = await ConformanceEnv.openSqlDriver("sqlite", { memory: true });
+const withSqliteModel = async (
+  run: (instance: SqliteItemModel, database: SqlDriver["database"]) => Promise<void>,
+  options: SqlDriverOptions = { memory: true },
+) => {
+  const driver = await ConformanceEnv.openSqlDriver("sqlite", options);
   try {
     const { instance } = await bootModel<SqliteItemModel>(driver.database as unknown as FakeSqliteDatabase);
-    await run(instance);
+    await run(instance, driver.database);
   } finally {
     await driver.close();
   }
@@ -394,6 +408,173 @@ describe("DatabaseResolver declaration contracts", () => {
         expect(again).not.toBe(loaded);
       }
     });
+  });
+
+  test.each([
+    ["in memory", { memory: true }],
+    ["in a WAL file", {}],
+  ] as [string, SqlDriverOptions][])(
+    "a load inside a transaction reads its own writes, and one from outside none of them, whichever asked first (%s)",
+    async (_, options) => {
+      await withSqliteModel(async (instance, database) => {
+        const { id } = await instance.__create({ ...sqliteRow, title: "Committed" });
+        for (const insideFirst of [false, true]) {
+          let resume!: () => void;
+          const resumed = new Promise<void>((resolve) => {
+            resume = resolve;
+          });
+          let entered!: () => void;
+          const inside = new Promise<void>((resolve) => {
+            entered = resolve;
+          });
+          // Bound here, so the call the transaction makes in its own turn still comes from outside it.
+          const loadOutside = AsyncLocalStorage.bind(() => instance.__get(id));
+          let outside!: Promise<LoadedItem>;
+          const titles: string[] = [];
+          const transaction = database.transaction(async () => {
+            const draft = await instance.ServerResolverTestItem.pickById(id);
+            await draft.set({ title: "Uncommitted" }).save();
+            entered();
+            await resumed;
+            const mine = instance.__get(id);
+            if (insideFirst) outside = loadOutside();
+            titles.push((await mine).title, (await instance.byOwner.loadMany([validId])).at(0)?.title ?? "");
+            throw new Error("rollback-probe");
+          });
+          await inside;
+          resume();
+          if (!insideFirst) outside = instance.__get(id);
+          await expect(transaction).rejects.toThrow("rollback-probe");
+          expect([insideFirst, titles, (await outside).title]).toEqual([
+            insideFirst,
+            ["Uncommitted", "Uncommitted"],
+            "Committed",
+          ]);
+        }
+      }, options);
+    },
+  );
+
+  test("a loader that keeps its keys forgets the ones a create, a save or a remove through the model answers", async () => {
+    await withSqliteModel(async (instance) => {
+      const keptOf = async (title: string, tag: string) =>
+        [
+          await instance.keptByTitle.load(title),
+          await instance.keptByTag.load(tag),
+          await instance.keptByTitleCategory.load({ title, category: "news" }),
+        ].map((doc) => doc && [doc.title, doc.count]);
+      expect(await keptOf("Draft", "a")).toEqual([null, null, null]);
+      const created = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      expect(await keptOf("Draft", "a")).toEqual(Array(3).fill(["Draft", 0]));
+      expect(await keptOf("Final", "b")).toEqual([null, null, null]);
+
+      const find = spyOn(instance.__store, "find");
+      await keptOf("Draft", "a");
+      expect(find).not.toHaveBeenCalled();
+      find.mockRestore();
+
+      const loaded = await instance.__get(created.id);
+      await loaded.set({ title: "Final", tags: ["b"], count: 2 }).save();
+      expect(await keptOf("Draft", "a")).toEqual([null, null, null]);
+      expect(await keptOf("Final", "b")).toEqual(Array(3).fill(["Final", 2]));
+
+      await instance.__remove(created.id);
+      expect(await keptOf("Final", "b")).toEqual([null, null, null]);
+    });
+  });
+
+  test("a kept key outlives a write that rolls back, leaves when it commits, and is gone before the model's own post hook", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      await instance.keptByTitle.loadMany(["Draft", "Final"]);
+      const titlesInHook: (string | undefined)[] = [];
+      ServerResolverTestModelMixin.afterUpdate = async () => {
+        titlesInHook.push((await instance.keptByTitle.load("Final"))?.title);
+      };
+      try {
+        const retitle = async (fail: boolean) =>
+          await database.transaction(async () => {
+            await (await instance.__get(id)).set({ title: "Final" }).save();
+            expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+              undefined,
+              "Final",
+            ]);
+            if (fail) throw new Error("rollback-probe");
+          });
+        await expect(retitle(true)).rejects.toThrow("rollback-probe");
+        const find = spyOn(instance.__store, "find");
+        expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+          "Draft",
+          undefined,
+        ]);
+        expect(find).not.toHaveBeenCalled();
+        find.mockRestore();
+
+        await retitle(false);
+        expect([...new Set(titlesInHook)]).toEqual(["Final"]);
+        expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+          undefined,
+          "Final",
+        ]);
+      } finally {
+        ServerResolverTestModelMixin.afterUpdate = null;
+      }
+    });
+  });
+
+  test("every key a transaction's writes outdated is gone before the first of the model's post hooks runs", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const first = await instance.__create({ ...sqliteRow, title: "First" });
+      const second = await instance.__create({ ...sqliteRow, title: "Second" });
+      await instance.keptByTitle.loadMany(["First", "Second", "Second, retitled"]);
+      const seenByHooks: (string | undefined)[][] = [];
+      ServerResolverTestModelMixin.afterUpdate = async () => {
+        const kept = await instance.keptByTitle.loadMany(["Second", "Second, retitled"]);
+        seenByHooks.push(kept.map((doc) => doc?.title));
+      };
+      try {
+        await database.transaction(async () => {
+          await (await instance.__get(first.id)).set({ count: 1 }).save();
+          await (await instance.__get(second.id)).set({ title: "Second, retitled" }).save();
+        });
+        expect(seenByHooks.length).toBeGreaterThan(0);
+        expect(new Set(seenByHooks.map((titles) => titles.join("|")))).toEqual(new Set(["|Second, retitled"]));
+      } finally {
+        ServerResolverTestModelMixin.afterUpdate = null;
+      }
+    });
+  });
+
+  test("a write by query drops every kept key once it commits, and none when it rolls back", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      const countOf = async () => (await instance.keptByTitle.load("Draft"))?.count;
+      expect(await countOf()).toBe(0);
+      const writes = [
+        () => instance.__updateMany({ id }, { count: 1 }),
+        () => instance.__store.bulkWrite([{ updateOne: { filter: { id }, update: { count: 2 } } }]),
+        () => instance.__store.upsertById({ id, ...sqliteRow, title: "Draft", tags: ["a"], count: 3 }),
+      ];
+      for (const [index, write] of writes.entries()) {
+        await write();
+        expect(await countOf()).toBe(index + 1);
+      }
+      const rolledBack = database.transaction(async () => {
+        await instance.__updateMany({ id }, { count: 9 });
+        throw new Error("rollback-probe");
+      });
+      await expect(rolledBack).rejects.toThrow("rollback-probe");
+      const find = spyOn(instance.__store, "find");
+      expect(await countOf()).toBe(3);
+      expect(find).not.toHaveBeenCalled();
+      find.mockRestore();
+    });
+  });
+
+  test("a loader that keeps its keys adds no remove hook, so a cascade still removes its model in one query", async () => {
+    const { schema } = await bootModel();
+    expect(schema.postHooks.get("remove") ?? []).toEqual([]);
+    expect(schema.preHooks.get("remove") ?? []).toEqual([]);
   });
 
   test("hands the facade projection to the store", async () => {
