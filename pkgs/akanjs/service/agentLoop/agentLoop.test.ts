@@ -710,6 +710,39 @@ describe("AgentLoop spend on interruption", () => {
     ]);
   });
 
+  test("stores a malformed call's refusal before the batch parks, so a store that drops argsError cannot run it", async () => {
+    const argsError = "Not run: the arguments were not one JSON object.";
+    const refusal = { id: "c2", name: "renameTitle", error: argsError, code: "invalidArgument" };
+    const batch = calling(callOf("q1", "askUser", { question: "Sure?" }), {
+      ...callOf("c2", "renameTitle"),
+      argsError,
+    });
+    const stored: AgentWireMessage[] = [{ role: "user", text: "go" }];
+    const first = harness([batch]);
+    const park = await drain(first.port, ask("go", { ask: true, onMessage: (message) => void stored.push(message) }));
+    expect(stopOf(park)).toBe("awaiting");
+    expect(stored.at(-1)).toEqual({ role: "tool", toolResults: [refusal] });
+
+    const flagless = stored.map((message) => ({
+      ...message,
+      ...(message.toolCalls ? { toolCalls: message.toolCalls.map(({ id, name, args }) => ({ id, name, args })) } : {}),
+    }));
+    flagless.push({ role: "tool", toolResults: [{ id: "q1", name: "askUser", result: "Yes" }] });
+    const resumed = harness([saying("Sorry.")]);
+    await drain(resumed.port, ask("unused", { messages: flagless, ask: true }));
+    expect(resumed.called).toHaveLength(0);
+    expect(resumed.requests[0]?.messages.at(-1)?.toolResults).toEqual([refusal, expect.objectContaining({ id: "q1" })]);
+
+    const held = harness([calling({ ...callOf("c1", "renameTitle"), argsError }, callOf("c2", "deleteAll"))]);
+    const deferred: AgentWireMessage[] = [];
+    const events = await drain(
+      held.port,
+      ask("go", { approve: () => "defer", onMessage: (message) => void deferred.push(message) }),
+    );
+    expect(stopOf(events)).toBe("awaiting");
+    expect(deferred.at(-1)?.toolResults).toEqual([{ ...refusal, id: "c1" }]);
+  });
+
   test("keeps the provider's own counts an adaptor attached to wallMs's rejection", async () => {
     const counted = { inputTokens: 7, outputTokens: 3, cachedTokens: 1 };
     const { reports } = await cutShort({ budget: { wallMs: 5 } }, counted);

@@ -285,6 +285,7 @@ export class AgentLoop {
   async *#runCalls(calls: AgentWireToolCall[], tools: AgentTool[]): Events<AgentLoopStop | null> {
     const round = this.#round;
     for (const call of calls) yield { type: "toolCall", call, round };
+    yield* this.#refuseMalformed(calls, round);
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
     //? Judged before any runs: the batch was written before its results were read, so none of them taints it.
     const verdicts: Verdict[] = [];
@@ -298,9 +299,10 @@ export class AgentLoop {
     let stop: AgentLoopStop | null = null;
     try {
       for (const [at, call] of calls.entries()) {
+        if (call.argsError) continue;
         const verdict = verdicts[at] ?? { deny: AgentLoop.unjudged };
-        const asked = !call.argsError && this.#askUser.isMeta(call.name);
-        const meta = asked || (!call.argsError && this.#toolkits.isMeta(call.name));
+        const asked = this.#askUser.isMeta(call.name);
+        const meta = asked || this.#toolkits.isMeta(call.name);
         stop = this.#haltStop() ?? (verdict === "allow" && !meta ? this.#callBudgetStop() : null);
         if (stop) break;
         const unasked = asked ? LoopAsk.refusalOf(call) : null;
@@ -336,6 +338,17 @@ export class AgentLoop {
     const toolResults = results.splice(0);
     if (toolResults.length)
       await this.#append({ role: "tool", toolResults, ...(this.#tainted ? { tainted: true } : {}) });
+  }
+
+  //? Security: answered and stored before anything parks or runs. A store that keeps a call as `{ id, name, args }` drops
+  //? `argsError`, and with no result behind the call a resume would run it with `{}`.
+  async *#refuseMalformed(calls: AgentWireToolCall[], round: number): Events<void> {
+    for (const { id, name, argsError } of calls) {
+      if (!argsError) continue;
+      const result = LoopToolOutput.clipped({ id, name, error: argsError, code: "invalidArgument" });
+      await this.#record([result]);
+      yield { type: "toolResult", result, round };
+    }
   }
 
   async #verdictOf(call: AgentWireToolCall, tool: AgentTool | undefined): Promise<Verdict> {
