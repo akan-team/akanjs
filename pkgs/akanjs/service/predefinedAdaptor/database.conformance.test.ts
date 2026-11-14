@@ -1681,9 +1681,10 @@ const describeDriver = (kind: SqlDriverKind) => {
           await Bun.sleep(20);
           throw new Error("rollback-probe");
         });
+        const secondSettled = second.catch(() => undefined);
         releaseFirst();
         await first;
-        await Promise.race([secondInside, second.catch(() => undefined)]);
+        await Promise.race([secondInside, secondSettled]);
         await outside;
         await expect(second).rejects.toThrow("rollback-probe");
         expect(titlesOf(await store.find({})).sort((a, b) => a.localeCompare(b))).toEqual(["first", "outside-write"]);

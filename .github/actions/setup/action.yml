@@ -35,3 +35,6 @@ runs:
           pkgs/*/node_modules
           pkgs/@akanjs/*/node_modules
         key: ${{ steps.node-modules.outputs.cache-primary-key }}
+    # Flushed here, or the first test that calls fsync or sync(1) waits for the node_modules this action just wrote.
+    - shell: bash
+      run: sync
