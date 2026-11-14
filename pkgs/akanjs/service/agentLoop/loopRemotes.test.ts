@@ -611,3 +611,175 @@ describe("AgentLoop remotes", () => {
     }
   });
 });
+
+describe("AgentLoop remotes, stored a call at a time", () => {
+  const argsError = "Not run: the arguments were not one JSON object.";
+  const opening = () => calling(callOf("c1", "openToolkit", { name: "shop" }));
+  const traced = (request: AgentLoopRequest) => {
+    const order: string[] = [];
+    const kept = stored(request);
+    const onMessage = (message: AgentWireMessage) => {
+      order.push(`stored ${message.toolResults?.map((result) => result.id).join() ?? message.role}`);
+      kept.messages.push(message);
+    };
+    return { order, messages: kept.messages, request: { ...request, onMessage } };
+  };
+  const trace = async (port: AgentLoopPort, request: AgentLoopRequest, order: string[]) => {
+    for await (const event of new AgentLoop(port, request).run()) {
+      if (event.type === "toolResult") order.push(`event ${event.result.id}${event.view ? " with a view" : ""}`);
+      if (event.type === "awaiting") order.push(`awaiting ${event.call.id}`);
+    }
+  };
+
+  test("stores a remote call's result before its event, and its view rides the event alone", async () => {
+    const { remote } = remoteOf("shop", { answer: (tool) => ({ result: `${tool}:ok`, view: { href: `/${tool}` } }) });
+    const { port } = harness([
+      opening(),
+      calling(callOf("c2", "shop.orderList"), callOf("c3", "shop.refundOrder")),
+      saying("Done."),
+    ]);
+    const { order, messages, request } = traced(ask([remote]));
+    await trace(port, request, order);
+    expect(order).toEqual([
+      "stored assistant",
+      "stored c1",
+      "event c1",
+      "stored assistant",
+      "stored c2",
+      "event c2 with a view",
+      "stored c3",
+      "event c3 with a view",
+      "stored assistant",
+    ]);
+    expect(JSON.stringify(messages)).not.toContain("href");
+  });
+
+  test("a run that dies mid-batch has stored the remote calls that finished, so a resume sends only the rest", async () => {
+    const { remote, state } = remoteOf("shop");
+    const { messages, request } = stored(ask([remote]));
+    let atKill: AgentWireMessage[] = [];
+    state.answer = (tool) => {
+      if (tool === "orderList") atKill = structuredClone(messages);
+      return { result: `${tool}:ok` };
+    };
+    const first = harness([
+      opening(),
+      calling(callOf("c2", "shop.refundOrder"), callOf("c3", "shop.orderList")),
+      saying("Done."),
+    ]);
+    await drain(first.port, request);
+    expect(atKill.at(-1)?.toolResults).toEqual([{ id: "c2", name: "shop.refundOrder", result: "refundOrder:ok" }]);
+
+    state.calls.length = 0;
+    const asked: string[] = [];
+    const resumed = harness([saying("Done.")]);
+    const approve: AgentLoopRequest["approve"] = (call) => {
+      asked.push(call.id);
+      return "allow";
+    };
+    await drain(resumed.port, ask([remote], { messages: atKill, approve }));
+    expect(asked).toEqual(["c3"]);
+    expect(state.calls.map((call) => call.tool)).toEqual(["orderList"]);
+    expect(resumed.requests[0]?.messages.at(-1)?.toolResults?.map((result) => result.id)).toEqual(["c2", "c3"]);
+  });
+
+  test("a batch that parks on a connection has stored the calls before it, and the resume runs on from the open", async () => {
+    const { remote, state } = remoteOf("shop", { tools: null });
+    const first = harness([
+      calling(callOf("c1", "createNote"), callOf("c2", "openToolkit", { name: "shop" }), callOf("c3", "createNote")),
+    ]);
+    const { order, messages, request } = traced(ask([remote]));
+    await trace(first.port, request, order);
+    expect(order).toEqual(["stored assistant", "stored c1", "event c1", "awaiting c2"]);
+    expect(first.called).toEqual(["createNote"]);
+
+    state.tools = shopTools;
+    const second = harness([saying("Connected.")]);
+    const resumed = resultsOf(await drain(second.port, { ...request, messages: [...messages] }));
+    expect(resumed.map((result) => result.id)).toEqual(["c2", "c3"]);
+    expect(second.called).toEqual(["createNote"]);
+  });
+
+  test("answers a malformed open or remote call with its error, and sends nothing to the remote", async () => {
+    const unconnected = remoteOf("shop", { tools: null });
+    const closed = harness([
+      calling({ ...callOf("k1", "openToolkit", { name: "shop" }), argsError }),
+      saying("Sorry."),
+    ]);
+    const events = await drain(closed.port, ask([unconnected.remote]));
+    expect(stopOf(events)).toBe("end");
+    expect(events.some((event) => event.type === "awaiting")).toBe(false);
+    expect(resultsOf(events)).toEqual([{ id: "k1", name: "openToolkit", error: argsError, code: "invalidArgument" }]);
+    expect(unconnected.state.lists).toBe(0);
+
+    const { remote, state } = remoteOf("shop");
+    const asked: string[] = [];
+    const open = harness([
+      opening(),
+      calling({ ...callOf("c2", "shop.refundOrder"), argsError }, callOf("c3", "shop.orderList")),
+      saying("Sorry."),
+    ]);
+    const approve: AgentLoopRequest["approve"] = (call) => {
+      asked.push(call.id);
+      return "allow";
+    };
+    const results = resultsOf(await drain(open.port, ask([remote], { approve })));
+    expect(results.filter((result) => result.id === "c2")).toEqual([
+      { id: "c2", name: "shop.refundOrder", error: argsError, code: "invalidArgument" },
+    ]);
+    expect(asked).toEqual(["c3"]);
+    expect(state.calls.map((call) => call.tool)).toEqual(["orderList"]);
+  });
+
+  test("two remote calls or two opens a model gave one id get a result each, and a resume runs only the one left", async () => {
+    const { remote, state } = remoteOf("shop", {
+      answer: (tool, args) => ({ result: `${tool}:${String(args.id)}`, view: { href: `/order/${String(args.id)}` } }),
+    });
+    const toolkits = { notes: { description: "Notes.", tools: ["noteList"] } };
+    const { port, requests } = harness([
+      calling(callOf("k1", "openToolkit", { name: "shop" }), callOf("k1", "openToolkit", { name: "notes" })),
+      calling(callOf("c2", "shop.orderList", { id: "o1" }), callOf("c2", "shop.orderList", { id: "o2" })),
+      saying("Done."),
+    ]);
+    const { messages, request } = stored(ask([remote], { toolkits }));
+    const events = await drain(port, request);
+    expect(namesOf(requests[1])).toEqual(["noteList", "createNote", "shop.orderList", "shop.refundOrder"]);
+    expect(requests[2]?.messages.at(-1)?.toolResults?.map((result) => result.result)).toEqual([
+      "orderList:o1",
+      "orderList:o2",
+    ]);
+    const views = events.flatMap((event) => (event.type === "toolResult" && event.view ? [event.view.href] : []));
+    expect(views).toEqual(["/order/o1", "/order/o2"]);
+
+    const firstOpen = messages.findIndex((message) => message.role === "tool");
+    const opened = harness([saying("Opened.")]);
+    await drain(opened.port, ask([remote], { toolkits, messages: messages.slice(0, firstOpen + 1) }));
+    expect(namesOf(opened.requests[0])).toEqual(["noteList", "createNote", "shop.orderList", "shop.refundOrder"]);
+
+    state.calls.length = 0;
+    const firstCall = messages.findIndex((message) => message.toolResults?.[0]?.id === "c2");
+    const resumed = harness([saying("Done.")]);
+    await drain(resumed.port, ask([remote], { toolkits, messages: messages.slice(0, firstCall + 1) }));
+    expect(state.calls).toEqual([{ tool: "orderList", args: { id: "o2" } }]);
+  });
+
+  test("a resume judges the calls a part-finished batch left as tainted by the open stored beside them", async () => {
+    const { remote } = remoteOf("shop");
+    const first = harness([calling(callOf("c1", "openToolkit", { name: "shop" }), callOf("c2", "createNote"))]);
+    const { messages, request } = stored(ask([remote]));
+    for await (const event of new AgentLoop(first.port, request).run()) if (event.type === "toolResult") break;
+    expect(messages.at(-1)).toMatchObject({ role: "tool", toolResults: [{ id: "c1" }], tainted: true });
+
+    const unmarked = messages.map(({ tainted: _tainted, ...message }) => message);
+    for (const kept of [messages, unmarked]) {
+      const asked: [string, boolean][] = [];
+      const resumed = harness([saying("Noted.")]);
+      const approve: AgentLoopRequest["approve"] = (call, { tainted }) => {
+        asked.push([call.id, tainted]);
+        return "allow";
+      };
+      await drain(resumed.port, ask([remote], { messages: kept, approve }));
+      expect(asked).toEqual([["c2", true]]);
+    }
+  });
+});

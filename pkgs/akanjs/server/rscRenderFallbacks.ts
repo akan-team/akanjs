@@ -1,6 +1,7 @@
 import type { LayoutFallbackRoute, PathRoute } from "akanjs/client";
 import { type Logger, parseSearchParams } from "akanjs/common";
 import type { ReactNode } from "react";
+import { wasFailureLogged } from "../common/loggedFailure";
 import type { ClientManifest } from "./artifact";
 import { RouteElementComposer } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
@@ -163,9 +164,10 @@ export class RscRenderFallbacks {
       this.#send({ type: "not-found", requestId });
       return;
     }
-    this.#logger.error(
-      `render[${requestId}] failed url=${url}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-    );
+    if (!wasFailureLogged(error))
+      this.#logger.error(
+        `render[${requestId}] failed url=${url}: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+      );
     if (await trySendFallback("error")) return;
     this.#send({
       type: "error",

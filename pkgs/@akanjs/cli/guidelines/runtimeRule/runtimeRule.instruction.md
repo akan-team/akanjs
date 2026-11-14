@@ -200,7 +200,8 @@ normalized to `info` with one warning.
 - **The hub lives with whoever owns the surface**: the gateway when there is one, the replica itself under solo
   (`AKAN_REPLICA=0,0,1`), the same rule as the rotating log file and `/_akan/app/*`. It keeps a ring
   (`AKAN_LOG_BUFFER` records / `AKAN_LOG_BUFFER_MB`, default 2000 / 4), suppresses a line repeating more than 20
-  times a second into one counted line, and serves `<runtimeDir>/akan-control.sock` (`0600`, NDJSON). A child
+  times a second into one counted line there, in live tails and in the log file (never a request line; the ndjson
+  stdout gets every record), and serves `<runtimeDir>/akan-control.sock` (`0600`, NDJSON). A child
   forwards records only while a subscriber wants that level (`log.level` IPC), so an unwatched process sends
   nothing; `AKAN_LOG_STREAM=1` keeps it on. The RSC worker forwards to its replica the same way.
 - **`akan logs <app>`** is the client: `--level --grep --endpoint --trace --child --role --origin --since`
@@ -216,9 +217,12 @@ normalized to `info` with one warning.
   solo replica) its only writer** — every other server process turns its console off and forwards from
   `AKAN_LOG_STDOUT_LEVEL` (default: the console level); a child's or the RSC worker's crash stack is wrapped as a
   `raw=true` record instead of breaking the stream. Text stays the default; turn it on in the deployment.
-- **`AKAN_LOG_STREAM_TOKEN` mounts `/_akan/app/logs`** (SSE, `Last-Event-ID` resume, explicit `gap` events);
+- **`AKAN_LOG_STREAM_TOKEN` mounts `/_akan/app/logs`** (SSE, `Last-Event-ID` resume, explicit `gap` events;
+  a client that stops reading holds at most 4 MiB of live records beyond a resume's replay, hears `{type:"dropped",count}` when it reads again, and is cut off
+  past 10,000 dropped records);
   unset, the route does not exist. The same bearer also unlocks the health detail and metrics.
-- **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call; **`AKAN_LOG_FLIGHT=1`**
+- **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call, at `info`, `warn` under
+  500, or `error` with `type` and `stack` for a 5xx (then the only 5xx record); **`AKAN_LOG_FLIGHT=1`**
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
   `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — under the local dev runtime, or
   with the `AKAN_LOG_DEBUG_HEADER` secret.

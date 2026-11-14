@@ -143,6 +143,32 @@ const givenOptionsOf = (argMetas: (ArgMeta | InternalArgMeta)[], opt: Record<str
   return given;
 };
 
+const argValuesOf = (argMetas: (ArgMeta | InternalArgMeta)[], cmdArgs: unknown[], opt: Record<string, unknown>) => {
+  const values = givenOptionsOf(argMetas, opt);
+  for (const argMeta of argMetas) {
+    if (argMeta.type === "Argument") values[argMeta.name] = cmdArgs[argMeta.idx] ?? argMeta.argsOption.default;
+    else if (argMeta.type === "Option") values[argMeta.name] ??= argMeta.argsOption.default;
+  }
+  return values;
+};
+
+const resolvedValuesOf = (argMetas: (ArgMeta | InternalArgMeta)[], commandArgs: unknown[]) =>
+  Object.fromEntries(
+    argMetas.flatMap((argMeta) =>
+      argMeta.type === "Option" || argMeta.type === "Argument" ? [[argMeta.name, commandArgs[argMeta.idx]]] : [],
+    ),
+  );
+
+const versionGateOf = (cliVersion: string | undefined) => {
+  let warning = WorkspaceVersionCheck.warning(cliVersion, process.argv, process.cwd());
+  const refusal = WorkspaceVersionCheck.refusal(cliVersion, process.argv, process.cwd());
+  return (targetOption: TargetOption, values: { [name: string]: unknown }) => {
+    if (refusal && !WorkspaceVersionCheck.readsOnly(targetOption, values)) throw new CliError("refused", refusal);
+    if (warning) Logger.rawLog(chalk.yellow(`\n${warning}`), undefined, "error");
+    warning = null;
+  };
+};
+
 const normalizeEnumChoices = (enumChoices: EnumChoices) =>
   enumChoices.map((choice: EnumChoice) =>
     typeof choice === "object"
@@ -509,8 +535,7 @@ export const runCommands = async (...commands: CommandCls[]) => {
   program.version(process.env.AKAN_VERSION).description("Akan CLI").configureHelp({
     helpWidth: 100,
   });
-  const versionWarning = WorkspaceVersionCheck.warning(cliPackageJson?.version, process.argv, process.cwd());
-  if (versionWarning) Logger.rawLog(chalk.yellow(`\n${versionWarning}`), undefined, "error");
+  const checkVersion = versionGateOf(cliPackageJson?.version);
 
   for (const command of commands) {
     const targetMetas = getTargetMetas(command);
@@ -569,6 +594,7 @@ export const runCommands = async (...commands: CommandCls[]) => {
             usage: false,
             given: givenOptionsOf(allArgMetas, opt),
           });
+          checkVersion(targetMeta.targetOption, argValuesOf(allArgMetas, cmdArgs, opt));
           const commandArgs = [] as unknown[];
           if (targetMeta.targetOption.runsOnWorkspaceRoot) {
             await assertCurrentDirectoryIsWorkspaceRoot();
@@ -606,6 +632,8 @@ export const runCommands = async (...commands: CommandCls[]) => {
             assignCommandContext(commandContext, argMeta, commandArgs[argMeta.idx]);
             if ((opt as { verbose?: boolean }).verbose) Executor.setVerbose(true);
           }
+          //? Again on the answers: a left-out argument reads as read-only above, then may be answered `apply`.
+          checkVersion(targetMeta.targetOption, resolvedValuesOf(allArgMetas, commandArgs));
           const cmd = CommandContainer.get(command);
 
           try {

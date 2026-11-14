@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { chmod } from "node:fs/promises";
 import path from "node:path";
 import { tempDirs, writeText } from "../test/testHelpers";
 import { AbstractDoc } from "./abstractDoc";
@@ -173,6 +174,45 @@ describe("AkanQualityScanner ssr rules", () => {
     expect(ssrBalance[0]).toMatchObject({ serverMass: 3, clientMass: 0, serverShare: 1 });
     expect(ssrBalance[1]).toMatchObject({ serverMass: 0, clientMass: 1 });
     expect(ssrBalance[2]).toMatchObject({ scope: "workspace", serverMass: 3, clientMass: 1 });
+  });
+
+  test("an SSR scan of some folders reads only them and the libs' signals, and warns there as the full scan does", async () => {
+    const root = await makeWorkspace({
+      "libs/shared/lib/item/item.signal.ts": [
+        "export class ItemEndpoint extends endpoint(srv.item, ({ mutation }) => ({",
+        '  approveItem: mutation(cnst.Item, { guards: [User] }).param("itemId", ID).exec(async function (itemId) {',
+        "    return await this.itemService.approve(itemId);",
+        "  }),",
+        "})) {}",
+        "",
+      ].join("\n"),
+      "apps/demo/page/item/[itemId].tsx": [
+        'import { fetch } from "@apps/demo/client";',
+        'import { ID } from "akanjs/base";',
+        'import { page } from "akanjs/client";',
+        "",
+        'export default page().param("itemId", ID).render(async ({ itemId }) => {',
+        "  await fetch.approveItem(itemId);",
+        "  return <p>{itemId}</p>;",
+        "});",
+        "",
+      ].join("\n"),
+      "apps/demo/ui/Plain.tsx": `"use client";\nexport const Plain = () => <div>plain</div>;\n`,
+      "apps/other/ui/Plain.tsx": `"use client";\nexport const Plain = () => <div>plain</div>;\n`,
+    });
+    const scanner = new AkanQualityScanner();
+    const full = (await scanner.scan(root)).warnings.filter(
+      (warning) => warning.scope === "ssr" && warning.file?.startsWith("apps/demo/"),
+    );
+    await chmod(path.join(root, "apps/other/ui/Plain.tsx"), 0);
+
+    const scoped = await scanner.scanSsr(root, ["apps/demo"]);
+
+    expect(scoped.map(({ rule, file }) => [rule, file])).toEqual([
+      ["akan.ssr.render-mutation", "apps/demo/page/item/[itemId].tsx"],
+      ["akan.ssr.unnecessary-use-client", "apps/demo/ui/Plain.tsx"],
+    ]);
+    expect(scoped).toEqual(full);
   });
 });
 

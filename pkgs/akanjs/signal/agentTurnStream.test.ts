@@ -54,6 +54,21 @@ describe("AgentTurnStream", () => {
     ]);
   });
 
+  test("a call whose arguments did not parse ends the relayed turn as cut, streamed or whole, so no browser runs it", async () => {
+    const turn = {
+      text: "",
+      toolCalls: [
+        { id: "c1", name: "deleteRow", args: {}, argsError: "Not run: the arguments were not one JSON object." },
+      ],
+      stop: "toolUse" as "toolUse" | "length",
+    };
+    const frames = await framesOf(AgentTurnStream.response(async () => turn));
+    expect(frames.at(-1)).toEqual({ type: "done", stop: "length" });
+    expect(AgentTurnStream.relayable(turn).stop).toBe("length");
+    const fine = { ...turn, toolCalls: [{ id: "c1", name: "deleteRow", args: { id: "r1" } }] };
+    expect(AgentTurnStream.relayable(fine)).toBe(fine);
+  });
+
   test("a reader that goes away aborts the turn's signal", async () => {
     const started = Promise.withResolvers<AbortSignal>();
     const response = AgentTurnStream.response(

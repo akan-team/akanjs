@@ -2,7 +2,10 @@ import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { WorkflowScript } from "./workflow.script";
 
 export class WorkflowCommand extends command("workflow", [WorkflowScript], ({ public: target }) => ({
-  workflow: target({ desc: "List, explain, plan, apply, validate, or report Akan workflows" })
+  workflow: target({
+    desc: "List, explain, plan, apply, validate, or report Akan workflows",
+    readOnly: ({ action, dryRun }) => action !== "apply" || dryRun === true,
+  })
     .arg("action", String, {
       desc: "list, explain, plan, apply, validate, or report",
       enum: ["list", "explain", "plan", "apply", "validate", "report"],

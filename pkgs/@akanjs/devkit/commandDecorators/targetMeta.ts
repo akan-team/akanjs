@@ -48,6 +48,8 @@ export interface TargetOption {
   usageExitCode?: number;
   /** It deletes files in its app, lib, pkg or module, so one left out or unknown is refused, never picked or asked. */
   destructive?: boolean;
+  /** Writes nothing akanjs's version shapes, so another major.minor CLI only warns; left out, it is refused. */
+  readOnly?: boolean | ((values: { [name: string]: unknown }) => boolean);
   /** Runs after the CLI printed a failure and before it exits, so what it writes ends the output. */
   onFailure?: (error: unknown, failure: TargetFailure) => void | Promise<void>;
 }

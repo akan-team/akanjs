@@ -126,9 +126,10 @@ export interface AgentLoopOptions {
    */
   ask?: boolean;
   /**
-   * Summarizes all but the last `keep` messages (6) once the transcript is estimated at `at` tokens, and also when a
-   * round's call fails as `agent.error.contextOverflow`, which is then asked again once. A refusal whose data carries
-   * `limit` and `requested`, in any one unit, lowers `at` for the rest of the run to where the request would fit.
+   * Summarizes all but the last `keep` messages (6), a batch's results counting as one, once the transcript is
+   * estimated at `at` tokens, and also when a round's call fails as `agent.error.contextOverflow`, which is then asked
+   * again once. A refusal whose data carries `limit` and `requested`, in any one unit, lowers `at` for the rest of the
+   * run to where the request would fit.
    */
   compact?: { at: number; keep?: number };
   /**
@@ -143,7 +144,10 @@ export interface AgentLoopOptions {
   untrusted?: (result: AgentWireToolResult) => boolean;
   meta?: Record<string, string>;
   signal?: AbortSignal;
-  /** Awaited for each message the run appends, before it acts on it; a retried run may hand one over twice. */
+  /**
+   * Awaited for each message the run appends, before it acts on it; a retried run may hand one over twice. A batch's
+   * results arrive one tool message a call, as each call finishes: a run that dies mid-batch has stored those.
+   */
   onMessage?: (message: AgentWireMessage) => PromiseOrObject<void>;
 }
 

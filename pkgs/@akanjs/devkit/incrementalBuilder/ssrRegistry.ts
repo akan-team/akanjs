@@ -43,7 +43,11 @@ export class SsrRegistry {
   //* before reporting (an OOM kill) route builds do retry, at most every `#crashRetryMs`.
   #ssrBroken = false;
   #ssrCrashedAt: number | null = null;
-  static readonly #crashRetryMs = 10_000;
+  static get #crashRetryMs(): number {
+    //? `AKAN_DEV_SSR_CRASH_RETRY_MS` is a test hook: a builder test waits out a shorter window than a developer's.
+    const ms = Number(process.env.AKAN_DEV_SSR_CRASH_RETRY_MS);
+    return Number.isInteger(ms) && ms > 0 ? ms : 10_000;
+  }
 
   constructor(
     app: App,

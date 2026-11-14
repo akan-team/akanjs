@@ -295,6 +295,7 @@ export class AgentLoop {
   async *#runCalls(calls: AgentWireToolCall[], tools: AgentTool[]): Events<AgentLoopStop | null> {
     const round = this.#round;
     for (const call of calls) yield { type: "toolCall", call, round };
+    yield* this.#refuseMalformed(calls, round);
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
     //? Judged before any runs: the batch was written before its results were read, so none of them taints it.
     const verdicts: Verdict[] = [];
@@ -308,6 +309,7 @@ export class AgentLoop {
     let stop: AgentLoopStop | null = null;
     try {
       for (const [at, call] of calls.entries()) {
+        if (call.argsError) continue;
         const verdict = verdicts[at] ?? { deny: AgentLoop.unjudged };
         const asked = this.#askUser.isMeta(call.name);
         const meta = asked || this.#toolkits.isMeta(call.name);
@@ -341,18 +343,37 @@ export class AgentLoop {
         if (opened) this.#tainted = true;
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
         if (!meta) this.#taintBy(whole);
+        await this.#record(results);
         const view = this.#remotes.takeView(call.id);
         yield { type: "toolResult", result, round, ...(view ? { view } : {}) };
       }
     } finally {
-      //? A consumer's break or a later throw lands here too: a call that ran and went unrecorded would run again on resume.
-      if (results.length)
-        await this.#append({ role: "tool", toolResults: results, ...(this.#tainted ? { tainted: true } : {}) });
+      //? Holds a result only when `untrusted` threw on it: a call that ran and went unrecorded would run again on resume.
+      await this.#record(results);
     }
     return stop;
   }
 
+  //? Per call, not per batch: a run killed mid-batch reaches no `finally`, and its resume would run a landed write again.
+  async #record(results: AgentWireToolResult[]) {
+    const toolResults = results.splice(0);
+    if (toolResults.length)
+      await this.#append({ role: "tool", toolResults, ...(this.#tainted ? { tainted: true } : {}) });
+  }
+
+  //? Security: answered and stored before anything parks or runs. A store that keeps a call as `{ id, name, args }` drops
+  //? `argsError`, and with no result behind the call a resume would run it with `{}`.
+  async *#refuseMalformed(calls: AgentWireToolCall[], round: number): Events<void> {
+    for (const { id, name, argsError } of calls) {
+      if (!argsError) continue;
+      const result = LoopToolOutput.clipped({ id, name, error: argsError, code: "invalidArgument" });
+      await this.#record([result]);
+      yield { type: "toolResult", result, round };
+    }
+  }
+
   async #verdictOf(call: AgentWireToolCall, tool: AgentTool | undefined): Promise<Verdict> {
+    if (call.argsError) return { deny: call.argsError, code: "invalidArgument" };
     if (this.#toolkits.isMeta(call.name) || this.#askUser.isMeta(call.name)) return "allow";
     //? Security: refused here, as a guard that hid a tool from the listing may still pass it at call time, past `approve`.
     if (!tool) {

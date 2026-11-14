@@ -55,3 +55,14 @@ export async function getLatestPackageVersion(
   if (!version) throw new Error(`No npm dist-tag "${tag}" found for ${packageName}`);
   return version;
 }
+
+export async function getPublishedPeerDependencies(
+  packageName: string,
+  version: string,
+  registryUrl?: string,
+): Promise<Record<string, string>> {
+  const registry = getNpmRegistryUrl(registryUrl);
+  const res = await fetch(`${packageUrl(registry, packageName)}/${encodeURIComponent(version)}`);
+  if (!res.ok) throw new Error(`Failed to fetch ${packageName}@${version} metadata from ${registry} (${res.status})`);
+  return ((await res.json()) as { peerDependencies?: Record<string, string> }).peerDependencies ?? {};
+}

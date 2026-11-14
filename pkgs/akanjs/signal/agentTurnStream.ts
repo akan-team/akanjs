@@ -51,6 +51,12 @@ export class AgentTurnStream {
     return { message, code, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
   }
 
+  //? The wire cannot answer a call with its own error, and a browser would run one whose arguments did not parse with
+  //? `{}`, so such a turn is relayed as one cut short.
+  static relayable<Turn extends StreamedTurn>(turn: Turn): Turn {
+    return turn.toolCalls?.some((call) => call.argsError) ? { ...turn, stop: "length" } : turn;
+  }
+
   static response(run: RunTurn): Response {
     const abort = new AbortController();
     const stream = new EventStream(() => abort.abort());
@@ -61,11 +67,13 @@ export class AgentTurnStream {
   static async #deliver(stream: EventStream, run: RunTurn, signal: AbortSignal) {
     try {
       let streamed = 0;
-      const turn = await run((delta) => {
-        if (!delta) return;
-        streamed += delta.length;
-        stream.write({ type: "text", delta });
-      }, signal);
+      const turn = AgentTurnStream.relayable(
+        await run((delta) => {
+          if (!delta) return;
+          streamed += delta.length;
+          stream.write({ type: "text", delta });
+        }, signal),
+      );
       // An adapter that ignores onDelta still resolves the whole text; deliver it as one late delta.
       if (!streamed && turn.text) stream.write({ type: "text", delta: turn.text });
       const toolCalls = turn.toolCalls ?? [];
