@@ -1,12 +1,12 @@
 import { rm } from "node:fs/promises";
 import path from "node:path";
-import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
-import type { App } from "@akanjs/devkit/commandDecorators";
-import { CsrDevBundler } from "@akanjs/devkit/frontendBuild/csrDevBundler";
-import { CsrDevPatcher } from "@akanjs/devkit/frontendBuild/csrDevPatcher";
 import type { Logger } from "akanjs/common";
 import type { BaseBuildArtifact, BuilderCsrReq, HmrTrace } from "akanjs/server";
 import { CSR_DEV_PATCHING_MARKER } from "akanjs/server/hmr/csrDevManifest";
+import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
+import type { App } from "../commandDecorators";
+import { CsrDevBundler } from "../frontendBuild/csrDevBundler";
+import { CsrDevPatcher } from "../frontendBuild/csrDevPatcher";
 import type { BatchWork, BuildBatchRequest } from "./buildBatchProtocol";
 import type { BuildBatchRunner } from "./buildBatchRunner";
 import { isCompileError, sendBuildStatus } from "./builderBuildStatus";

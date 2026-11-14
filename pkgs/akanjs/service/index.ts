@@ -18,5 +18,4 @@ export * from "./predefinedAdaptor";
 export * from "./rateLimiter";
 export * from "./serve";
 export * from "./serviceModule";
-export * from "./serviceRegistry";
 export * from "./types";

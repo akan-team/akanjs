@@ -17,6 +17,7 @@ interface DevBuilderLinks {
   onMessage: (message: BuilderMessage) => void;
   onAway: () => void;
   onReady: () => void;
+  onBaseBuilt: (phaseMs: Record<string, number>) => void;
   onRestartReady: () => void;
   onStartFailed: () => void;
   onStop: () => void;
@@ -81,7 +82,7 @@ export class DevBuilder {
       this.#host = builder;
       try {
         await this.#waitForReady(attempt, { announceBootState });
-        this.#app.verbose(`[cli] base build ready in ${Date.now() - startTime}ms — starting backend`);
+        this.#app.verbose(`[cli] base build ready in ${Date.now() - startTime}ms`);
         return this.#host;
       } catch (err) {
         lastError = err;
@@ -186,6 +187,9 @@ export class DevBuilder {
         onReady: () => {
           settle(resolve);
           this.#links.onReady();
+        },
+        onBaseBuilt: (phaseMs) => {
+          this.#links.onBaseBuilt(phaseMs);
         },
         onRestartReady: () => {
           this.#links.onRestartReady();

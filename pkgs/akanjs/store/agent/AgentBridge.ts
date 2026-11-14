@@ -7,6 +7,10 @@ import { type SerializedStoreState, StoreCatalogue } from "./StoreCatalogue";
 
 /** Masked store reads for an in-page agent: `<model>Form` holds typed credentials, and reads ship to a remote model. */
 export class AgentBridge {
+  //? The route block of a turn's context names these when it leaves free text out, so a read of one needs no
+  //? component to subscribe it: the page's own address is not a value a screen can withhold.
+  static readonly routeKeys = ["pathname", "params", "searchParams"] as const;
+
   readonly refusals: AgentRefusal[];
 
   readonly #instance: StoreInstance;
@@ -42,7 +46,8 @@ export class AgentBridge {
   read(key: string, viewKey = ""): unknown {
     const entry = this.#state[key];
     if (!entry) throw new Error(`Unknown state key: ${key}.${this.#readableInstead(viewKey)}`);
-    if (!this.#instance.liveKeysIn(viewKey).has(key))
+    const route = (AgentBridge.routeKeys as readonly string[]).includes(key);
+    if (!route && !this.#instance.liveKeysIn(viewKey).has(key))
       throw new Error(
         `State key "${key}" is not read by this screen, so it is not part of its surface.${this.#readableInstead(viewKey)}`,
       );
@@ -51,7 +56,7 @@ export class AgentBridge {
       const model = ConstantRegistry.getModelRef(entry.refName, entry.modelType) as MaskModel;
       return mask(model, value);
     }
-    if (AgentBridge.#isPlainValue(value)) return value;
+    if (route || AgentBridge.#isPlainValue(value)) return value;
     throw new Error(
       `State key "${key}" holds an object that belongs to no model, so there is nothing to mask it by and it is not published. Read the model's own keys instead.`,
     );

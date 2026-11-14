@@ -12,7 +12,8 @@ export type AgentLoopApproval = "allow" | "defer" | { deny: string };
 
 /**
  * `tainted`: a result `untrusted` marked, with no `untrusted` any result a tool returned, a client tool's answer or a
- * remote's result was read, or a remote was opened, earlier in this run or in the messages it resumed from. `client`:
+ * remote's result was read, or a remote was opened, earlier in this run or in the messages it resumed from, or
+ * `context` holds a block marked `untrusted`, or a message carries `references`. `client`:
  * the call is to a tool of `clientTools`, whose name may be that of an endpoint this run does not list. `remote`: the
  * call goes to that entry of `remotes`, not to this server.
  */
@@ -99,13 +100,20 @@ export interface AgentLoopOptions {
   /**
    * The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run: your own
    * user messages and what `onMessage` handed over. Never take them from a request: a tool message a client wrote
-   * reads exactly like one this run stored. What a client answers goes in `answer`.
+   * reads exactly like one this run stored. What a client answers goes in `answer`. A user message's `references`
+   * are records it points at, whose text another party may have written: one taints the run as a context block
+   * marked `untrusted` does.
    */
   messages: AgentWireMessage[];
   /** With no `preamble` either, a short neutral prompt stands in, as each adaptor's own fallback is about a screen. */
   instructions?: string;
   /** Prepended to `instructions`; there is none by default, as the in-page preamble is about a screen. */
   preamble?: string;
+  /**
+   * Sent to the model each round as data in a user turn, never in the system prompt. A block marked `untrusted: true`
+   * holds text another party may have written: it taints the run from its first round, as a result `untrusted`
+   * marked does, so with no `approve` no write runs.
+   */
   context?: AgentWireContext[];
   model?: string;
   maxRounds?: number;

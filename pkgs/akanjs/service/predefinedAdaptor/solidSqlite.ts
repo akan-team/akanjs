@@ -2,6 +2,7 @@ import { Database } from "bun:sqlite";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { AkanError, type Dayjs } from "akanjs/base";
+import { DirectoryNotWritableError } from "./directoryNotWritableError";
 import { defaultSqliteFile } from "./sqlitePath";
 
 export interface SolidConfig {
@@ -41,6 +42,7 @@ export const getSolidConfig = (env: SolidEnv): Required<SolidConfig> => {
 export const openSolidDatabase = async (config: Required<SolidConfig>) => {
   // Resolved first: Bun on Windows fails a recursive mkdir of "." (":memory:", a bare file name) with EEXIST.
   await mkdir(path.dirname(path.resolve(config.filePath)), { recursive: true });
+  DirectoryNotWritableError.assertFileDir(config.filePath);
   let lastError: unknown;
   for (let attempt = 0; attempt < 8; attempt++) {
     try {

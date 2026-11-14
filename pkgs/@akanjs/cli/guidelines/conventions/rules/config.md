@@ -20,7 +20,7 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
 - Give every log sink a floor (`Logger.addSink(sink, { minLevel })`), never log per delivered record in anything
   that delivers records, and tail with `akan logs <app>`.
 - **`docker` is `string | { image, preRuns, postRuns, command }`**; the generated image installs only
-  `ca-certificates` and `tzdata`.
+  `ca-certificates` and `tzdata`, and runs the server as uid 1000 (`bun`) after its root build steps.
 - **Native apps are the `native` section** (iOS, Android, desktop). A desktop app's carried server listens on a
   loopback port any local program can call — guard it as a network server — and ships `private/` and its env
   readable on the user's computer; read runtime files from `AKAN_APP_DIR`, and keep a secret the user gives it with

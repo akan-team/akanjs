@@ -115,8 +115,8 @@ export class DevBarrelImports {
 
   static #fileOf(subpath: string, packages: PackageEntry[]): string | null {
     const pkg = packages.find(({ pkgName }) => subpath === pkgName || subpath.startsWith(`${pkgName}/`));
-    if (!pkg) return null;
-    const file = CsrDevPaths.resolveOnDisk(path.join(pkg.pkgDir, subpath.slice(pkg.pkgName.length)));
+    if (!pkg && !path.isAbsolute(subpath)) return null;
+    const file = CsrDevPaths.resolveOnDisk(pkg ? path.join(pkg.pkgDir, subpath.slice(pkg.pkgName.length)) : subpath);
     return file ? CsrDevPaths.realpath(file) : null;
   }
 

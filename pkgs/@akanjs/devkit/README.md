@@ -38,9 +38,9 @@ await runner.build();
 
 Import values from the facet that owns them (`@akanjs/devkit/executors`, `@akanjs/devkit/akanConfig`,
 `@akanjs/devkit/workflow`, …). The root `@akanjs/devkit` entry exports types only, so loading a tool does not pull
-every facet into the process. A tool with no facet of its own is imported from its folder (`@akanjs/devkit/app/…`,
-`quality/`, `workspace/`, `util/`, …); the paths these tools had at the package root still resolve until the next
-minor release.
+every facet into the process. Besides the facets, `exports` names a few files (`app/applicationBuildRunner`,
+`cloud/cloudApi`, `mobile/desktopRelease`, …); any other file is internal to the `akan` command and does not resolve
+from outside the package.
 
 ## What It Provides
 

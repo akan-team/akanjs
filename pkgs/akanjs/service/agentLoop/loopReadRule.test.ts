@@ -144,7 +144,10 @@ describe("AgentLoop with no `untrusted`", () => {
     expect(resultOf(refused.events, "c1")?.error).toBe(AgentLoop.needsPerson);
     expect(resultOf(refused.events, "c2")?.code).toBe("unknownTool");
     expect(refusing.called).toEqual(["c3"]);
-    expect(refused.stored.filter((message) => message.tainted)).toHaveLength(1);
+    expect(refused.stored.filter((message) => message.tainted).map((message) => message.role)).toEqual([
+      "tool",
+      "assistant",
+    ]);
   });
 
   test("counts nothing read from askUser's answer or from openToolkit, in a run and on a resume", async () => {

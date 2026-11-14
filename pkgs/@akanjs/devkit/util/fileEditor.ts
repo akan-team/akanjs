@@ -1,3 +1,4 @@
+/** @deprecated Nothing in akanjs uses it; removed in a later minor. */
 export class FileEditor {
   #filePath: string;
   #content: string;

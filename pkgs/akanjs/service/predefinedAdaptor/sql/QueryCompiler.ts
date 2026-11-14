@@ -9,6 +9,7 @@ import {
 } from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
 import { DEFAULT_SEARCH_WEIGHTS, type SearchIndex } from "../searchIndex";
+import { BoundList } from "./BoundList";
 import {
   BASE_COLUMNS,
   type CompileContext,
@@ -30,25 +31,39 @@ const isPlainRecord = (value: unknown) => {
   return proto === Object.prototype || proto === null;
 };
 
+let compileWrittenOut: (compiler: QueryCompiler, where: DocumentQuery) => CompiledQuery;
+
 export class QueryCompiler {
+  readonly #lists: BoundList;
+
+  static {
+    compileWrittenOut = (compiler, where) => compiler.#compile(where, true);
+  }
+
   constructor(
     private readonly fields: FieldMap,
     private readonly dialect: SqlDialect,
     private readonly ref: string,
     private readonly searchIndex: () => SearchIndex | null,
-  ) {}
+  ) {
+    this.#lists = new BoundList(dialect);
+  }
 
   #leaf(path: string): QueryLeafOps {
     return BASE_COLUMNS.has(path) ? BASE_COLUMN_LEAF : this.dialect;
   }
 
   compile(query?: DocumentQuery): CompiledQuery {
+    return this.#compile(query, false);
+  }
+
+  #compile(query: DocumentQuery | undefined, writtenLists: boolean): CompiledQuery {
     const joins: SearchJoin[] = [];
     const memberTests: string[] = [];
     if (!query || (typeof query === "object" && !Array.isArray(query) && Object.keys(query).length === 0)) {
       return { where: "1 = 1", params: [], joins, memberTests };
     }
-    const compiled = this.compileNode(query, { joins, memberTests, conjunctive: true });
+    const compiled = this.compileNode(query, { joins, memberTests, conjunctive: true, writtenLists });
     return { where: compiled.sql || "1 = 1", params: compiled.params, joins, memberTests };
   }
 
@@ -197,7 +212,7 @@ export class QueryCompiler {
               params: parts.flatMap((part) => part.params),
             };
           }
-          return leaf.inList(path, values, kind);
+          return this.#inList(leaf, path, values, kind, ctx, false);
         }
         case "notOneOf": {
           const values = (value.value as unknown[]) ?? [];
@@ -209,7 +224,7 @@ export class QueryCompiler {
               params: parts.flatMap((part) => part.params),
             };
           }
-          return leaf.notInList(path, values, kind);
+          return this.#inList(leaf, path, values, kind, ctx, true);
         }
         case "gt":
         case "gte":
@@ -266,6 +281,11 @@ export class QueryCompiler {
     return !!field && !field.isArray && !field.isMap && singleValueRefs.has(field.modelRef);
   }
 
+  #inList(leaf: QueryLeafOps, path: string, values: unknown[], kind: PathKind, ctx: CompileContext, negated: boolean) {
+    const bound = ctx.writtenLists ? null : this.#lists.compare(path, values, { kind, negated });
+    return bound ?? (negated ? leaf.notInList(path, values, kind) : leaf.inList(path, values, kind));
+  }
+
   #arrayHas(leaf: QueryLeafOps, path: string, value: unknown, ctx: CompileContext) {
     if (!ctx.memberTests.includes(path)) ctx.memberTests.push(path);
     return leaf.arrayHas(path, value);
@@ -290,3 +310,8 @@ export class QueryCompiler {
     }
   }
 }
+
+//? An index predicate keeps each list written out value by value, as every release before built it: neither dialect
+//? binds a parameter in DDL, and an array there reads back from Postgres as a changed index, which is then rebuilt.
+export const compileIndexPredicate = (compiler: QueryCompiler, where: DocumentQuery) =>
+  compileWrittenOut(compiler, where);

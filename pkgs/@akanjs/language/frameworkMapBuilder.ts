@@ -1,5 +1,4 @@
-import type { AkanGraphLocation } from "akanjs/common/akanGraph.ts";
-import type { FrameworkClass, FrameworkFacet, FrameworkImport, FrameworkMap } from "akanjs/common/frameworkMap.ts";
+import type { AkanGraphLocation, FrameworkClass, FrameworkFacet, FrameworkImport, FrameworkMap } from "akanjs/common";
 import type * as TS from "typescript";
 import type { Ts } from "./ast";
 import { FrameworkChannelReader, type FrameworkChannelSpec } from "./frameworkChannelReader";

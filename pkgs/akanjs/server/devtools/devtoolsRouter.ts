@@ -1,12 +1,14 @@
 import type { BaseEnv } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { DictionaryRegistry, type RootDictionary } from "akanjs/dictionary";
-import { isLocalDevRuntime } from "../../signal/trace";
+import { SignalContext } from "../../signal/signalContext";
 import type { BuildChangesPayload, BuilderRpc, BuildFrameworkPayload, BuildGraphPayload } from "../artifact";
 import type { DiLifecycle } from "../di/diLifecycle";
+import { DevRoutes } from "../routing/devRoutes";
 import type { HttpRoutes } from "../types";
 import { ConstantSerializer } from "./constantSerializer";
 import { DepsSerializer } from "./depsSerializer";
+import { DevtoolsAccess } from "./devtoolsAccess";
 import { SignalSerializer } from "./signalSerializer";
 import { StudioRoute } from "./studio/studioRoute";
 import type { DepsData, DevtoolsApp, DevtoolsEnvelope, DevtoolsIndex, DictionaryData, SignalData } from "./types";
@@ -31,12 +33,8 @@ export class DevtoolsRouter {
   static readonly basePath = "/_akan";
   static readonly logger = new Logger("DevtoolsRouter");
 
-  /** A local dev runtime only, unless `AKAN_DEVTOOLS` ("true"/"1", "false"/"0") overrides it, e.g. to debug a deployed env. */
   static isEnabled(env: BaseEnv): boolean {
-    const override = process.env.AKAN_DEVTOOLS;
-    if (override === "false" || override === "0") return false;
-    if (override === "true" || override === "1") return true;
-    return isLocalDevRuntime(env);
+    return DevtoolsAccess.modeOf(env) !== "closed";
   }
 
   static buildsFrom(
@@ -58,7 +56,10 @@ export class DevtoolsRouter {
   }
 
   createRoutes(): HttpRoutes {
-    if (!DevtoolsRouter.isEnabled(this.#context.env)) return {};
+    const { env } = this.#context;
+    const closedReason = DevtoolsAccess.closedReason(env);
+    if (closedReason) DevtoolsRouter.logger.warn(closedReason);
+    if (!DevtoolsRouter.isEnabled(env)) return {};
     const studio = new StudioRoute({
       basePath: `${DevtoolsRouter.basePath}/studio`,
       appName: this.#context.env.appName,
@@ -72,19 +73,29 @@ export class DevtoolsRouter {
         signal: DevtoolsRouter.#attempt("studio runtime (signal)", () => this.#signal()),
       }),
     });
-    return {
-      [`${DevtoolsRouter.basePath}/studio`]: { GET: (req: Request) => this.#gated(() => studio.page(req)) },
-      [`${DevtoolsRouter.basePath}/studio/graph`]: { GET: (req: Request) => this.#gated(() => studio.graph(req)) },
-      [`${DevtoolsRouter.basePath}/devtools`]: { GET: () => DevtoolsRouter.#json(this.#index()) },
-      [`${DevtoolsRouter.basePath}/constant`]: {
-        GET: () => this.#respond("constant", () => ConstantSerializer.serialize()),
+    return DevRoutes.mount(
+      {
+        [`${DevtoolsRouter.basePath}/studio`]: { GET: (req: Request) => studio.page(req) },
+        [`${DevtoolsRouter.basePath}/studio/graph`]: { GET: (req: Request) => studio.graph(req) },
+        [`${DevtoolsRouter.basePath}/devtools`]: { GET: () => DevtoolsRouter.#json(this.#index()) },
+        [`${DevtoolsRouter.basePath}/constant`]: {
+          GET: () => this.#respond("constant", () => ConstantSerializer.serialize()),
+        },
+        [`${DevtoolsRouter.basePath}/signal`]: { GET: () => this.#respond("signal", () => this.#signal()) },
+        [`${DevtoolsRouter.basePath}/dictionary`]: {
+          GET: (req: Request) => this.#respond("dictionary", () => DevtoolsRouter.#dictionary(req)),
+        },
+        [`${DevtoolsRouter.basePath}/deps`]: { GET: () => this.#respond("deps", () => this.#deps()) },
+        ...(DevtoolsAccess.modeOf(env) === "secret"
+          ? {
+              [DevtoolsAccess.unlockPath]: {
+                POST: (req: Request) => DevtoolsAccess.unlock(req, env, SignalContext.clientIpOf(req)),
+              },
+            }
+          : {}),
       },
-      [`${DevtoolsRouter.basePath}/signal`]: { GET: () => this.#respond("signal", () => this.#signal()) },
-      [`${DevtoolsRouter.basePath}/dictionary`]: {
-        GET: (req: Request) => this.#respond("dictionary", () => DevtoolsRouter.#dictionary(req)),
-      },
-      [`${DevtoolsRouter.basePath}/deps`]: { GET: () => this.#respond("deps", () => this.#deps()) },
-    };
+      env,
+    );
   }
 
   #signal(): SignalData {
@@ -116,9 +127,7 @@ export class DevtoolsRouter {
     };
   }
 
-  /** Re-checks the gate per request (defense in depth) and keeps a serializer bug from crashing the dev server. */
   #respond<Kind extends string, Data>(kind: Kind, build: () => Data): Response {
-    if (!DevtoolsRouter.isEnabled(this.#context.env)) return DevtoolsRouter.#json({ error: "Not found" }, 404);
     try {
       return DevtoolsRouter.#json(this.#envelope(kind, build()));
     } catch (error) {
@@ -138,11 +147,6 @@ export class DevtoolsRouter {
     const message = error instanceof Error ? error.message : String(error);
     DevtoolsRouter.logger.warn(`Failed to serialize ${label}: ${message}`);
     return message;
-  }
-
-  async #gated(respond: () => Promise<Response>): Promise<Response> {
-    if (!DevtoolsRouter.isEnabled(this.#context.env)) return DevtoolsRouter.#json({ error: "Not found" }, 404);
-    return await respond();
   }
 
   #envelope<Kind extends string, Data>(kind: Kind, data: Data): DevtoolsEnvelope<Kind, Data> {

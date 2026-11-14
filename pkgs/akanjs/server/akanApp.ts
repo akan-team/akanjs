@@ -22,12 +22,16 @@ import type { OpsHost } from "./ops/opsCommand";
 import type { OpsRoute } from "./ops/opsRoute";
 import { StatusAccess } from "./ops/statusAccess";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
+import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
+import { DevSurfaces } from "./routing/devSurfaces";
 import { HostAllowlist } from "./routing/hostAllowlist";
 import { RouteHosts } from "./routing/routeHosts";
 import { ServerLimits } from "./routing/serverLimits";
 import { SelfExec } from "./selfExec";
 
 export type { AkanAppOptions } from "./gateway/gatewayConfig";
+
+type GatewayRoute = (req: Request, client: string | null) => Response | null;
 
 interface SoloServer {
   start: (options: { listen: boolean }) => Promise<unknown>;
@@ -50,8 +54,11 @@ export class AkanApp {
   #metricsTimer: Timer | null = null;
   #ops: OpsRoute | null = null;
   #hostAllowlist = HostAllowlist.fromEnv();
+  //? Under `akan start` the first base build has not written the route hosts yet: a Host refused now may be the app's.
+  #routeHostsPending = false;
   readonly #limits = new ServerLimits();
   readonly #statusAccess = StatusAccess.fromEnv();
+  readonly #ownRoutes = this.#createOwnRoutes();
   #resolveStopped: (() => void) | null = null;
   #exitAfterStop = false;
 
@@ -192,6 +199,7 @@ export class AkanApp {
   async #startOps() {
     if (!process.env.AKAN_OPS_PUBLIC_KEY?.trim()) return;
     const { OpsRoute } = await import("./ops/opsRoute");
+    DevSurfacePolicy.checkReserved("The gateway", [[`${OpsRoute.prefix}*`, null]]);
     this.#ops = OpsRoute.fromEnv({
       detail: () => AppInfo.detail({ serverMode: "gateway", solo: false, replicaIdx: null }),
     });
@@ -199,7 +207,8 @@ export class AkanApp {
 
   #listen() {
     //? Replicas declare the route hosts in their own processes, and here, ahead of them, is where Host is checked.
-    if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#config.artifactDir);
+    if (this.#hostAllowlist?.devDefault) this.#routeHostsPending = !RouteHosts.written(this.#config.artifactDir);
+    RouteHosts.declare(this.#config.artifactDir);
     this.#server = Bun.serve({
       idleTimeout: this.#limits.idleTimeout,
       maxRequestBodySize: this.#limits.uploadBodyBytes,
@@ -223,25 +232,38 @@ export class AkanApp {
   }
 
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {
-    if (this.#hostAllowlist && !this.#hostAllowlist.allows(req)) return this.#hostAllowlist.refuse();
+    if (this.#hostAllowlist && !this.#hostAllowlist.allows(req))
+      return this.#routeHostsPending ? this.#proxy.respondWithUnavailable(req) : this.#hostAllowlist.refuse();
     const oversized = this.#limits.refuseDeclared(req);
     if (oversized) return oversized;
     const url = new URL(req.url);
-    if (url.pathname === "/_akan/app/health")
-      return this.#statusAccess.health(req, () => this.#status.healthStatus(), AkanApp.#clientOf(req, server));
-    if (url.pathname === "/_akan/app/ready")
-      return this.#statusAccess.ready(req, () => this.#status.readyStatus(), AkanApp.#clientOf(req, server));
-    if (url.pathname === "/_akan/app/metrics")
-      return this.#statusAccess.metrics(req, () => this.#status.metricsStatus(), AkanApp.#clientOf(req, server));
-    const logStream = this.#logging.stream;
-    if (url.pathname === LogStreamRoute.path && logStream) return logStream.handle(req, AkanApp.#clientOf(req, server));
-    if (url.pathname === "/_akan/bench/ping") return new Response("ok");
-    if (url.pathname === AppInfo.publicPath) return AppInfo.handlePublic();
+    //? With every dev surface closed, a dev path is one the app does not know, so it gets the replica's ordinary 404.
+    if (DevSurfaces.find(url.pathname) && DevSurfacePolicy.anyOpens() && !HostAllowlist.devSurfaces.allows(req))
+      return HostAllowlist.devSurfaces.refuse();
+    const own = this.#ownRoutes.get(url.pathname)?.(req, AkanApp.#clientOf(req, server));
+    if (own) return own;
     if (this.#ops?.matches(url.pathname)) return await this.#ops.handle(req, AkanApp.#clientOf(req, server));
     if (this.#config.isWebSocketPath(url.pathname)) return this.#ws.upgrade(req, server);
     const assetResponse = await this.#proxy.serveImmutableArtifact(req, url);
     if (assetResponse) return assetResponse;
     return await this.#proxy.proxyHttp(req, server);
+  }
+
+  #createOwnRoutes(): ReadonlyMap<string, GatewayRoute> {
+    const routes = new Map<string, GatewayRoute>([
+      ["/_akan/app/health", (req, client) => this.#statusAccess.health(req, () => this.#status.healthStatus(), client)],
+      ["/_akan/app/ready", (req, client) => this.#statusAccess.ready(req, () => this.#status.readyStatus(), client)],
+      [
+        "/_akan/app/metrics",
+        (req, client) => this.#statusAccess.metrics(req, () => this.#status.metricsStatus(), client),
+      ],
+      [LogStreamRoute.path, (req, client) => this.#logging.stream?.handle(req, client) ?? null],
+      ["/_akan/bench/ping", () => new Response("ok")],
+      [AppInfo.publicPath, () => AppInfo.handlePublic()],
+    ]);
+    const assets = GatewayHttpProxy.immutableRoutes.map((key) => [key, null] as const);
+    DevSurfacePolicy.checkReserved("The gateway", [...routes, ...assets]);
+    return routes;
   }
 
   //? The gateway listens on TCP only, so a missing peer is unknown, never the unix-socket hop whose headers count.
@@ -259,6 +281,11 @@ export class AkanApp {
     if (!message || typeof message !== "object") return;
     switch (message.type) {
       case "ready":
+        //? Again: under `akan start` this gateway listens before the first base build has written the hosts.
+        if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#config.artifactDir);
+        this.#routeHostsPending = false;
+        //? A replica respawned from here on must not wait for an artifact that is already there, or never coming.
+        delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
         this.#supervisor.markReady(idx, message);
         return;
       case "pubsub.publish":

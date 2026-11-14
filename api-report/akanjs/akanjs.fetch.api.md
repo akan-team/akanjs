@@ -151,7 +151,6 @@ export declare class FetchClient {
         [key: string]: SerializedSignal;
     };
     setTimeout(timeout?: false | number): void;
-    setErrorConstructor(ErrorCls?: ErrorConstructor): void;
     applySignal(serializedSignal: {
         [key: string]: SerializedSignal;
     }, { share }?: {
@@ -193,11 +192,10 @@ export declare class FetchClient {
         fetch: any;
     }>(constant: object, serializedSignal: {
         [key: string]: SerializedSignal;
-    }, { origin, connect, base, Err, timeout, }?: {
+    }, { origin, connect, base, timeout, }?: {
         origin?: string;
         connect?: boolean;
         base?: FetchProxy;
-        Err?: ErrorConstructor;
         timeout?: false | number;
     }): {
         sig: ClientSignalMap<SigType>;
@@ -258,7 +256,6 @@ export type GetSliceMetaObjFromDatabaseSignals<Signals extends readonly unknown[
 export declare class HttpClient {
     readonly baseUrl: string;
     constructor(baseUrl: string, options?: HttpClientOptions);
-    setErrorConstructor(ErrorCls?: ErrorConstructor): void;
     setTimeout(timeout?: false | number): void;
     get timeout(): false | number | undefined;
     setRetry(retry: RetryPolicy | false): void;
@@ -281,7 +278,6 @@ export declare class HttpClient {
 export interface HttpClientOptions {
     headers?: Record<string, string>;
     timeout?: false | number;
-    ErrorCls?: ErrorConstructor;
 }
 
 export type InitHandle<RefName extends string, Suffix extends string, Light, Insight, Args, Filter extends FilterInstance> = FetchHandleOf<InitReturn<RefName, Suffix, Light, Insight, Args, Filter>, InitHandleShape<RefName, Capitalize<Suffix>, ServerInit<RefName, Light, Insight, Args, Filter>, Light extends {
@@ -396,7 +392,6 @@ export declare class WsClient {
     readonly url: string;
     connected: boolean;
     constructor(url: string, ErrorCls?: ErrorConstructor | undefined);
-    setErrorConstructor(ErrorCls?: ErrorConstructor): void;
     configure(options: WsClientOptions): this;
     get state(): WsClientState;
     setJwt(jwt: null | string): void;
