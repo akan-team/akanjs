@@ -10,6 +10,7 @@ import type {
 import { ToolNames } from "../toolNames";
 import { AgentLoop, type AgentLoopAnswer, type AgentLoopPort } from "./agentLoop";
 import type { AgentLoopEvent, AgentLoopRemote, AgentLoopRemoteResult, AgentLoopRequest } from "./agentLoopTypes";
+import { LoopRemotes } from "./loopRemotes";
 
 afterEach(() => {
   AgentMeter.use({ usage: null, quota: null, serial: true });
@@ -344,6 +345,26 @@ describe("AgentLoop remotes", () => {
     expect(opened.tools).toHaveLength(120);
     expect(opened.omitted).toBe(11);
     expect(toolOf(requests[1], "shop.big")?.parameters).toEqual({ type: "object", additionalProperties: true });
+  });
+
+  test("cuts a listing past its size in all, and says how many tools it left out", async () => {
+    const wide = { type: "object", properties: { note: { type: "string", description: "x".repeat(7_000) } } };
+    const { remote } = remoteOf("shop", {
+      tools: Array.from({ length: 100 }, (_, at) => ({
+        name: `t${at}`,
+        description: "d".repeat(1_000),
+        parameters: wide,
+        readOnly: true,
+      })),
+    });
+    const { port, requests } = harness([calling(callOf("c1", "openToolkit", { name: "shop" })), saying("Opened.")]);
+    const opened = resultsOf(await drain(port, ask([remote])))[0]?.result as { tools: string[]; omitted: number };
+    const listed = requests[1]?.tools.filter((tool) => tool.name.startsWith("shop.")) ?? [];
+    expect(listed.map((tool) => tool.name)).toEqual(opened.tools);
+    expect(opened.tools[0]).toBe("shop.t0");
+    expect(JSON.stringify(listed).length).toBeLessThanOrEqual(LoopRemotes.listingLimit);
+    expect(opened.omitted).toBe(100 - opened.tools.length);
+    expect(opened.omitted).toBeGreaterThan(0);
   });
 
   test("drops a client tool under a remote's prefix", async () => {

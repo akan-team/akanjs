@@ -17,6 +17,7 @@ export class LoopRemotes {
   //? A remote's listing rides every later round, and its size is the remote's to choose: past these it is cut.
   static readonly maxTools = 120;
   static readonly schemaLimit = 8_000;
+  static readonly listingLimit = 120_000;
   static readonly unavailable = "remoteUnavailable";
   /** A remote answers a call with this code once its connection is gone, so the run offers the toolkit again. */
   static readonly disconnected = "remoteDisconnected";
@@ -109,6 +110,7 @@ export class LoopRemotes {
   //? Security: a remote's annotations are its own claim, so only a tool it calls read-only runs without a person.
   static #entriesOf(remote: string, listed: readonly AgentTool[]): Map<string, RemoteEntry> {
     const entries = new Map<string, RemoteEntry>();
+    let room = LoopRemotes.listingLimit;
     for (const { name: real, description, parameters, readOnly } of listed) {
       if (entries.size >= LoopRemotes.maxTools) break;
       if (typeof real !== "string" || !real) continue;
@@ -122,6 +124,8 @@ export class LoopRemotes {
         readOnly: readOnly === true,
         needsConfirm: readOnly !== true,
       };
+      room -= JSON.stringify(tool).length;
+      if (room < 0) break;
       entries.set(name, { tool, real });
     }
     return entries;
