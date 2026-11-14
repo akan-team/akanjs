@@ -311,13 +311,15 @@ export default page()
           en: (
             <>
               The hub owner keeps 2,000 records or 4MB (<code>AKAN_LOG_BUFFER</code>, <code>AKAN_LOG_BUFFER_MB</code>).
-              More than 20 identical lines a second fold into one &quot;suppressed&quot; line.
+              More than 20 identical lines a second fold into one &quot;suppressed&quot; line there and in the log file;
+              request lines never fold, and the ndjson stdout gets every record.
             </>
           ),
           ko: (
             <>
               허브 소유 프로세스는 레코드 2,000건 또는 4MB까지 보관합니다(<code>AKAN_LOG_BUFFER</code>,{" "}
-              <code>AKAN_LOG_BUFFER_MB</code>). 같은 줄이 1초에 20번을 넘으면 &quot;suppressed&quot; 한 줄로 접힙니다.
+              <code>AKAN_LOG_BUFFER_MB</code>). 같은 줄이 1초에 20번을 넘으면 링에서 &quot;suppressed&quot; 한 줄로
+              접히고 로그 파일도 같습니다. 요청 줄은 접히지 않고, ndjson stdout에는 모든 레코드가 기록됩니다.
             </>
           ),
         }),
@@ -365,15 +367,15 @@ export default page()
       {
         name: "ok | error <endpoint>",
         desc: l.trans({
-          en: "The message. A clean call is written at info, a failed one at warn.",
-          ko: "메시지입니다. 정상 호출은 info, 실패한 호출은 warn으로 씁니다.",
+          en: "The message. A clean call is written at info, a failure under 500 at warn, and a 5xx at error with the error's type and stack.",
+          ko: "메시지입니다. 정상 호출은 info, 500 미만 실패는 warn, 5xx는 에러의 type과 stack을 붙여 error로 씁니다.",
         }),
       },
       {
         name: ["ms", "status"],
         desc: l.trans({
-          en: "Duration and status. On failure, status is the error's statusCode, or 500.",
-          ko: "걸린 시간과 status입니다. 실패하면 에러의 statusCode, 없으면 500입니다.",
+          en: "Duration and status. On failure, status is the one HTTP answers: an AkanError's statusCode, otherwise 500.",
+          ko: "걸린 시간과 status입니다. 실패하면 HTTP가 답한 status입니다. AkanError면 그 statusCode, 아니면 500입니다.",
         }),
       },
       {
@@ -601,6 +603,13 @@ export default page()
         desc: l.trans({
           en: "A heartbeat comment every 15 seconds, and a 2-second reconnect hint.",
           ko: "15초마다 heartbeat 주석을 보내고, 재연결 간격 힌트는 2초입니다.",
+        }),
+      },
+      {
+        name: "dropped",
+        desc: l.trans({
+          en: "A client that stops reading holds at most 4MB of live records, on top of a resume's replay; what it missed arrives as one dropped event with a count when it reads again, and past 10,000 missed records the stream is closed.",
+          ko: "읽기를 멈춘 클라이언트에는 재개 시 다시 보내는 분량 외에 실시간 레코드가 최대 4MB만 쌓입니다. 놓친 레코드는 다시 읽을 때 개수를 담은 dropped 이벤트 하나로 오고, 10,000건을 넘게 놓치면 스트림이 닫힙니다.",
         }),
       },
     ];

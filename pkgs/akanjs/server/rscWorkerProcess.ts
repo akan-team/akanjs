@@ -146,7 +146,7 @@ export class RscWorkerProcess {
       }
     });
     this.#restartCount += 1;
-    this.#logger.verbose(`[rsc] worker crashed, restarting in ${delay}ms (attempt ${this.restart.attempts})`);
+    this.#logger.warn(`[rsc] worker crashed, restarting in ${delay}ms (attempt ${this.restart.attempts})`);
   }
 
   static isAlive(proc: RscProcess): boolean {

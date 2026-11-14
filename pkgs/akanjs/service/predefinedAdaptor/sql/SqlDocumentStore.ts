@@ -1,5 +1,5 @@
 import { dayjs, FIELD_META } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import { Logger, toError } from "akanjs/common";
 import type { ConstantModel } from "akanjs/constant";
 import {
   type DatabaseModel,
@@ -28,6 +28,7 @@ import {
   BASE_COLUMNS,
   type DocumentDatabaseOwner,
   type DocumentRecord,
+  type DocumentWriteListener,
   type FieldMap,
   type FindIdOptions,
   type FindManyOptions,
@@ -58,6 +59,7 @@ export class SqlDocumentStore {
   readonly #hydrator: DocumentHydrator;
   readonly #writer: DocumentWriter;
   readonly #queryWriter: QueryWriter;
+  readonly #writeListeners = new Set<DocumentWriteListener>();
   static readonly #logger = new Logger("SqlDocumentStore");
 
   constructor(
@@ -96,12 +98,41 @@ export class SqlDocumentStore {
       rows: this.#rows,
       scope: this.#scope,
       prepare: (sql) => this.prepareStmt(sql),
+      written: (doc, previous) => this.#written({ doc, previous }),
     });
     this.#queryWriter = new QueryWriter(owner, this, dialect, this.#scope);
   }
 
   ensure() {
     return this.#tableSchema.ensure();
+  }
+
+  onWrite(listener: DocumentWriteListener) {
+    this.#writeListeners.add(listener);
+    return () => {
+      this.#writeListeners.delete(listener);
+    };
+  }
+
+  async #written(written?: Parameters<DocumentWriteListener>[0]) {
+    if (!this.#writeListeners.size) return;
+    // Logged, never thrown: the row is stored by then, and a throw would fail the write and skip the other listeners.
+    const notify = () => {
+      for (const listener of this.#writeListeners) {
+        try {
+          listener(written);
+        } catch (error) {
+          const { message, stack } = toError(error);
+          SqlDocumentStore.#logger.error(`A write listener on ${this.table} failed:\n${stack ?? message}`);
+        }
+      }
+    };
+    await this.owner.afterCommit(notify, { first: true });
+  }
+
+  async #queryWritten<Result>(result: Result) {
+    await this.#written();
+    return result;
   }
 
   undeclaredIndexes(): Promise<UndeclaredIndex[]> {
@@ -130,7 +161,7 @@ export class SqlDocumentStore {
     data: DocumentRecord & { id: string },
     { preserveTimestamps = false, where, withRemoved }: UpsertByIdOptions = {},
   ) {
-    return await this.#writer.upsertById(data, { preserveTimestamps, where, withRemoved });
+    return await this.#queryWritten(await this.#writer.upsertById(data, { preserveTimestamps, where, withRemoved }));
   }
 
   async update(id: string, patch: DocumentRecord, options: WriteHookOptions = {}) {
@@ -177,6 +208,7 @@ export class SqlDocumentStore {
     };
     if (this.owner.transaction) await this.owner.transaction(write);
     else await write();
+    await this.#written();
   }
 
   // One atomic UPDATE firing no document hooks, as MongoDB query middleware skips document middleware; per-document
@@ -187,7 +219,7 @@ export class SqlDocumentStore {
         "invalidQuery",
         `updateOneByQuery on "${this.table}" takes upsert or { withRemoved: true }, not both: a match would stay removed while a miss inserts a live row`,
       );
-    return await this.#queryWriter.updateOne(query, update, options, "updateOneByQuery");
+    return await this.#queryWritten(await this.#queryWriter.updateOne(query, update, options, "updateOneByQuery"));
   }
 
   async updateManyByQuery(
@@ -195,24 +227,28 @@ export class SqlDocumentStore {
     update: DocumentUpdateInput,
     options: DocumentScopeOptions & DocumentTouchOptions = {},
   ) {
-    return await this.#queryWriter.updateMany(query, update, options, "updateManyByQuery");
+    return await this.#queryWritten(await this.#queryWriter.updateMany(query, update, options, "updateManyByQuery"));
   }
 
   // No scope: an already-removed row keeps its `removedAt`, so a cascade reaching it again changes nothing.
   async removeManyByQuery(query: DocumentQuery) {
     // "remove", not "delete": the row survives; `purgeManyByQuery` is the DELETE.
-    return await this.#queryWriter.updateMany(query, { removedAt: dayjs() }, {}, "removeManyByQuery");
+    return await this.#queryWritten(
+      await this.#queryWriter.updateMany(query, { removedAt: dayjs() }, {}, "removeManyByQuery"),
+    );
   }
 
   async removeOneByQuery(query: DocumentQuery) {
     // The newest match, reported as counts rather than an id: for "at most one of these", not a queue.
-    return await this.#queryWriter.updateOne(query, { removedAt: dayjs() }, {}, "removeOneByQuery");
+    return await this.#queryWritten(
+      await this.#queryWriter.updateOne(query, { removedAt: dayjs() }, {}, "removeOneByQuery"),
+    );
   }
 
   //* Live and removed rows alike, unlike every other write: retention purges by age, and most rows past it were removed
   //* long ago. The search mirror's rows go through its AFTER DELETE trigger; no hook, cascade or live room runs.
   async purgeManyByQuery(query: DocumentQuery) {
-    return await this.#queryWriter.purgeMany(query);
+    return await this.#queryWritten(await this.#queryWriter.purgeMany(query));
   }
 
   async bulkWrite(

@@ -7,6 +7,8 @@ const track = tempRoots();
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const crashWindowMs = 2_000;
+
 const until = async (proc: Bun.Subprocess, what: string, condition: () => boolean, timeoutMs = 20_000) => {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
@@ -443,6 +445,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
         AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
         AKAN_PUBLIC_ENV: "local",
         AKAN_WATCH: "0",
+        AKAN_DEV_SSR_CRASH_RETRY_MS: String(crashWindowMs),
       },
       stdio: ["ignore", "ignore", "ignore"],
       serialization: "advanced",
@@ -453,11 +456,10 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     const ssrRuns = async () =>
       (await Bun.file(runs).exists()) ? (await Bun.file(runs).text()).trim().split("\n").map(Number) : [];
     try {
-      //? boot-armed waits out the 10s crash window first, so 20s left a loaded machine too little for the rest.
-      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"), 30_000);
+      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
       const [first = 0, second = 0] = await ssrRuns();
       expect(await ssrRuns()).toHaveLength(2);
-      expect(second - first).toBeGreaterThanOrEqual(9_500);
+      expect(second - first).toBeGreaterThanOrEqual(crashWindowMs - 500);
       proc.send({
         type: "build-route",
         id: 1,
@@ -471,7 +473,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       const deadline = Date.now() + 15_000;
       while ((await ssrRuns()).length < 3 && Date.now() < deadline) await wait(100);
       const [, retried = 0, third = 0] = await ssrRuns();
-      expect(third - retried).toBeGreaterThanOrEqual(9_500);
+      expect(third - retried).toBeGreaterThanOrEqual(crashWindowMs - 500);
     } finally {
       proc.kill();
       await proc.exited;
@@ -510,6 +512,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
         AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
         AKAN_PUBLIC_ENV: "local",
         AKAN_WATCH: "0",
+        AKAN_DEV_SSR_CRASH_RETRY_MS: String(crashWindowMs),
       },
       stdio: ["ignore", "ignore", "ignore"],
       serialization: "advanced",
@@ -533,7 +536,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       const deadline = Date.now() + 20_000;
       while ((await ssrRuns()).length < 3 && Date.now() < deadline) await wait(100);
       const [, killed = 0, retried = 0] = await ssrRuns();
-      expect(retried - killed).toBeGreaterThanOrEqual(9_500);
+      expect(retried - killed).toBeGreaterThanOrEqual(crashWindowMs - 500);
     } finally {
       proc.kill();
       await proc.exited;

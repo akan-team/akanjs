@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -20,6 +21,8 @@ import {
   getDefaultLiveRegistry,
   getSolidConfig,
   type LiveChange,
+  LiveRoomLimit,
+  LiveRoomLimitError,
   SolidPubSub,
   SolidQueue,
   serve,
@@ -38,7 +41,7 @@ import type { SignalContext } from "../../signal/signalContext";
 import { type SliceCls, slice } from "../../signal/slice";
 import { runTraced, SignalTrace } from "../../signal/trace";
 import type { WebsocketSubscribeAck } from "../../signal/types";
-import { ConformanceEnv } from "../../test/conformance";
+import { ConformanceEnv, type SqlDriver, type SqlDriverOptions } from "../../test/conformance";
 import { Ed25519Key } from "../ed25519Key";
 import { MachineAccount, MachineToken } from "../machine";
 import { RoomReplay } from "../routing/roomReplay";
@@ -113,10 +116,15 @@ interface LoadedItem {
   save: () => Promise<LoadedItem>;
 }
 interface ItemLoader<Key> {
+  load: (key: Key) => Promise<LoadedItem | null>;
   loadMany: (keys: Key[]) => Promise<(LoadedItem | null)[]>;
 }
 interface SqliteItemModel {
-  __store: { find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]> };
+  __store: {
+    find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]>;
+    bulkWrite: (operations: { updateOne: { filter: unknown; update: unknown } }[]) => Promise<unknown>;
+    upsertById: (data: Record<string, unknown> & { id: string }) => Promise<unknown>;
+  };
   __create: (data: Record<string, unknown>) => Promise<LoadedItem>;
   __get: (id: string) => Promise<LoadedItem>;
   ServerResolverTestItem: { pickById: (id: string) => Promise<LoadedItem> };
@@ -125,13 +133,21 @@ interface SqliteItemModel {
   byOwner: ItemLoader<string>;
   byTag: ItemLoader<string>;
   byOwnerCategory: ItemLoader<Record<string, string>>;
+  keptByTitle: ItemLoader<string>;
+  keptByTag: ItemLoader<string>;
+  keptByTitleCategory: ItemLoader<Record<string, string>>;
+  __remove: (id: string) => Promise<LoadedItem>;
+  __updateMany: (query: Record<string, unknown>, update: Record<string, unknown>) => Promise<unknown>;
 }
 const sqliteRow = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
-const withSqliteModel = async (run: (instance: SqliteItemModel) => Promise<void>) => {
-  const driver = await ConformanceEnv.openSqlDriver("sqlite", { memory: true });
+const withSqliteModel = async (
+  run: (instance: SqliteItemModel, database: SqlDriver["database"]) => Promise<void>,
+  options: SqlDriverOptions = { memory: true },
+) => {
+  const driver = await ConformanceEnv.openSqlDriver("sqlite", options);
   try {
     const { instance } = await bootModel<SqliteItemModel>(driver.database as unknown as FakeSqliteDatabase);
-    await run(instance);
+    await run(instance, driver.database);
   } finally {
     await driver.close();
   }
@@ -394,6 +410,173 @@ describe("DatabaseResolver declaration contracts", () => {
         expect(again).not.toBe(loaded);
       }
     });
+  });
+
+  test.each([
+    ["in memory", { memory: true }],
+    ["in a WAL file", {}],
+  ] as [string, SqlDriverOptions][])(
+    "a load inside a transaction reads its own writes, and one from outside none of them, whichever asked first (%s)",
+    async (_, options) => {
+      await withSqliteModel(async (instance, database) => {
+        const { id } = await instance.__create({ ...sqliteRow, title: "Committed" });
+        for (const insideFirst of [false, true]) {
+          let resume!: () => void;
+          const resumed = new Promise<void>((resolve) => {
+            resume = resolve;
+          });
+          let entered!: () => void;
+          const inside = new Promise<void>((resolve) => {
+            entered = resolve;
+          });
+          // Bound here, so the call the transaction makes in its own turn still comes from outside it.
+          const loadOutside = AsyncLocalStorage.bind(() => instance.__get(id));
+          let outside!: Promise<LoadedItem>;
+          const titles: string[] = [];
+          const transaction = database.transaction(async () => {
+            const draft = await instance.ServerResolverTestItem.pickById(id);
+            await draft.set({ title: "Uncommitted" }).save();
+            entered();
+            await resumed;
+            const mine = instance.__get(id);
+            if (insideFirst) outside = loadOutside();
+            titles.push((await mine).title, (await instance.byOwner.loadMany([validId])).at(0)?.title ?? "");
+            throw new Error("rollback-probe");
+          });
+          await inside;
+          resume();
+          if (!insideFirst) outside = instance.__get(id);
+          await expect(transaction).rejects.toThrow("rollback-probe");
+          expect([insideFirst, titles, (await outside).title]).toEqual([
+            insideFirst,
+            ["Uncommitted", "Uncommitted"],
+            "Committed",
+          ]);
+        }
+      }, options);
+    },
+  );
+
+  test("a loader that keeps its keys forgets the ones a create, a save or a remove through the model answers", async () => {
+    await withSqliteModel(async (instance) => {
+      const keptOf = async (title: string, tag: string) =>
+        [
+          await instance.keptByTitle.load(title),
+          await instance.keptByTag.load(tag),
+          await instance.keptByTitleCategory.load({ title, category: "news" }),
+        ].map((doc) => doc && [doc.title, doc.count]);
+      expect(await keptOf("Draft", "a")).toEqual([null, null, null]);
+      const created = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      expect(await keptOf("Draft", "a")).toEqual(Array(3).fill(["Draft", 0]));
+      expect(await keptOf("Final", "b")).toEqual([null, null, null]);
+
+      const find = spyOn(instance.__store, "find");
+      await keptOf("Draft", "a");
+      expect(find).not.toHaveBeenCalled();
+      find.mockRestore();
+
+      const loaded = await instance.__get(created.id);
+      await loaded.set({ title: "Final", tags: ["b"], count: 2 }).save();
+      expect(await keptOf("Draft", "a")).toEqual([null, null, null]);
+      expect(await keptOf("Final", "b")).toEqual(Array(3).fill(["Final", 2]));
+
+      await instance.__remove(created.id);
+      expect(await keptOf("Final", "b")).toEqual([null, null, null]);
+    });
+  });
+
+  test("a kept key outlives a write that rolls back, leaves when it commits, and is gone before the model's own post hook", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      await instance.keptByTitle.loadMany(["Draft", "Final"]);
+      const titlesInHook: (string | undefined)[] = [];
+      ServerResolverTestModelMixin.afterUpdate = async () => {
+        titlesInHook.push((await instance.keptByTitle.load("Final"))?.title);
+      };
+      try {
+        const retitle = async (fail: boolean) =>
+          await database.transaction(async () => {
+            await (await instance.__get(id)).set({ title: "Final" }).save();
+            expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+              undefined,
+              "Final",
+            ]);
+            if (fail) throw new Error("rollback-probe");
+          });
+        await expect(retitle(true)).rejects.toThrow("rollback-probe");
+        const find = spyOn(instance.__store, "find");
+        expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+          "Draft",
+          undefined,
+        ]);
+        expect(find).not.toHaveBeenCalled();
+        find.mockRestore();
+
+        await retitle(false);
+        expect([...new Set(titlesInHook)]).toEqual(["Final"]);
+        expect((await instance.keptByTitle.loadMany(["Draft", "Final"])).map((doc) => doc?.title)).toEqual([
+          undefined,
+          "Final",
+        ]);
+      } finally {
+        ServerResolverTestModelMixin.afterUpdate = null;
+      }
+    });
+  });
+
+  test("every key a transaction's writes outdated is gone before the first of the model's post hooks runs", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const first = await instance.__create({ ...sqliteRow, title: "First" });
+      const second = await instance.__create({ ...sqliteRow, title: "Second" });
+      await instance.keptByTitle.loadMany(["First", "Second", "Second, retitled"]);
+      const seenByHooks: (string | undefined)[][] = [];
+      ServerResolverTestModelMixin.afterUpdate = async () => {
+        const kept = await instance.keptByTitle.loadMany(["Second", "Second, retitled"]);
+        seenByHooks.push(kept.map((doc) => doc?.title));
+      };
+      try {
+        await database.transaction(async () => {
+          await (await instance.__get(first.id)).set({ count: 1 }).save();
+          await (await instance.__get(second.id)).set({ title: "Second, retitled" }).save();
+        });
+        expect(seenByHooks.length).toBeGreaterThan(0);
+        expect(new Set(seenByHooks.map((titles) => titles.join("|")))).toEqual(new Set(["|Second, retitled"]));
+      } finally {
+        ServerResolverTestModelMixin.afterUpdate = null;
+      }
+    });
+  });
+
+  test("a write by query drops every kept key once it commits, and none when it rolls back", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      const countOf = async () => (await instance.keptByTitle.load("Draft"))?.count;
+      expect(await countOf()).toBe(0);
+      const writes = [
+        () => instance.__updateMany({ id }, { count: 1 }),
+        () => instance.__store.bulkWrite([{ updateOne: { filter: { id }, update: { count: 2 } } }]),
+        () => instance.__store.upsertById({ id, ...sqliteRow, title: "Draft", tags: ["a"], count: 3 }),
+      ];
+      for (const [index, write] of writes.entries()) {
+        await write();
+        expect(await countOf()).toBe(index + 1);
+      }
+      const rolledBack = database.transaction(async () => {
+        await instance.__updateMany({ id }, { count: 9 });
+        throw new Error("rollback-probe");
+      });
+      await expect(rolledBack).rejects.toThrow("rollback-probe");
+      const find = spyOn(instance.__store, "find");
+      expect(await countOf()).toBe(3);
+      expect(find).not.toHaveBeenCalled();
+      find.mockRestore();
+    });
+  });
+
+  test("a loader that keeps its keys adds no remove hook, so a cascade still removes its model in one query", async () => {
+    const { schema } = await bootModel();
+    expect(schema.postHooks.get("remove") ?? []).toEqual([]);
+    expect(schema.preHooks.get("remove") ?? []).toEqual([]);
   });
 
   test("hands the facade projection to the store", async () => {
@@ -2535,6 +2718,159 @@ describe("SignalResolver declaration contracts", () => {
     expect(live.syncHub.roomIds()).toEqual([]);
   });
 
+  test("refuses a live room past a socket's cap with 429 liveRoomLimit, and the rooms it holds keep routing", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 2 });
+    try {
+      const { live, route } = resolveLiveCategoryRoute();
+      const ws = makeWs();
+      await route(ws, ["news"], "subscribe");
+      await route(ws, ["sports"], "subscribe");
+      await route(ws, ["news"], "subscribe");
+      await expect(route(ws, ["music"], "subscribe")).rejects.toMatchObject({
+        message: "base.error.liveRoomLimit",
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 2, per: "socket" },
+      });
+      expect(ws.subscribed.map((roomId) => roomId.split("::")[0])).toEqual([
+        "serverResolverTestItemLiveInCategory-news",
+        "serverResolverTestItemLiveInCategory-sports",
+        "serverResolverTestItemLiveInCategory-news",
+      ]);
+      const doc = (category: string) => ({ id: validId, category, createdAt: dayjs(1000), updatedAt: dayjs(1000) });
+      expect(live.syncHub.route("serverResolverTestItem", doc("sports"))).toHaveLength(1);
+      expect(live.syncHub.route("serverResolverTestItem", doc("music"))).toEqual([]);
+      const other = makeWs();
+      await route(other, ["music"], "subscribe");
+      expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(3);
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
+  test("frees a place under a socket's live room cap when it unsubscribes, and all of them when it closes", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 1 });
+    try {
+      const { registry, live, route } = resolveLiveCategoryRoute();
+      const ws = makeWs();
+      await route(ws, ["news"], "subscribe");
+      await expect(route(ws, ["sports"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await route(ws, ["news"], "unsubscribe");
+      expect(await route(ws, ["sports"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+      await SignalResolver.handleWsClose(ws, registry, live);
+      expect(live.syncHub.roomIds()).toEqual([]);
+      const reopened = makeWs();
+      expect(await route(reopened, ["music"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
+  test("counts every room a socket holds against its cap, live or not", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 2 });
+    try {
+      const { registry, route } = resolveLiveCategoryRoute();
+      resetResolverOrder();
+      const feed = resolveWith(ServerResolverTestEndpoint, makeTestEndpoint(), { registry }).wsRoutes.roomFeed;
+      const [first, second, third] = ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013", validId];
+      const ws = makeWs();
+      await feed(ws, [first], "subscribe");
+      await feed(ws, [second], "subscribe");
+      await feed(ws, [first], "subscribe");
+      await expect(feed(ws, [third], "subscribe")).rejects.toMatchObject({
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 2, per: "socket" },
+      });
+      await expect(route(ws, ["news"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await feed(ws, [second], "unsubscribe");
+      expect(await route(ws, ["news"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
+  test("counts a caller's rooms across its sockets, by account else address, and frees them as its sockets leave", async () => {
+    LiveRoomLimit.configure({ roomsPerCaller: 2 });
+    try {
+      const { registry, live, route } = resolveLiveCategoryRoute();
+      const socketOf = (account: object | undefined, address: string) =>
+        Object.assign(makeWs(), { remoteAddress: address, data: { account } });
+      const tab = socketOf({ sid: "caller-rooms" }, "198.51.100.20");
+      const otherTab = socketOf({ sid: "caller-rooms" }, "203.0.113.20");
+      await route(tab, ["news"], "subscribe");
+      await route(otherTab, ["sports"], "subscribe");
+      await route(tab, ["news"], "subscribe");
+      await expect(route(otherTab, ["music"], "subscribe")).rejects.toMatchObject({
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 2, per: "caller" },
+      });
+      expect(await route(socketOf({ sid: "someone-else" }, "198.51.100.20"), ["music"], "subscribe")).toMatchObject({
+        subscribe: true,
+      });
+      const visitor = socketOf(undefined, "192.0.2.20");
+      await route(visitor, ["news"], "subscribe");
+      await route(socketOf(undefined, "192.0.2.20"), ["sports"], "subscribe");
+      await expect(route(visitor, ["music"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await route(socketOf(undefined, "2001:db8:5:6::1"), ["news"], "subscribe");
+      await route(socketOf(undefined, "2001:db8:5:6::2"), ["sports"], "subscribe");
+      await expect(route(socketOf(undefined, "2001:db8:5:6::3"), ["music"], "subscribe")).rejects.toMatchObject({
+        data: { per: "caller" },
+      });
+      await route(socketOf(undefined, "2001:db8:5:7::1"), ["music"], "subscribe");
+
+      await route(tab, ["news"], "unsubscribe");
+      expect(await route(otherTab, ["music"], "subscribe")).toMatchObject({ subscribe: true });
+      await expect(route(tab, ["news"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await SignalResolver.handleWsClose(otherTab, registry, live);
+      expect(await route(tab, ["news"], "subscribe")).toMatchObject({ subscribe: true });
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
+  test("lets a room go when joining it fails, so it holds no place under the caps and no live room", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 1, roomsPerCaller: 1 });
+    try {
+      const { live, route, websocket } = resolveLiveCategoryRoute();
+      const { joinRoom } = websocket.instance;
+      websocket.instance.joinRoom = async () => {
+        throw new Error("pubsub unreachable");
+      };
+      const ws = Object.assign(makeWs(), { remoteAddress: "198.51.100.30", data: { account: { sid: "join-fails" } } });
+      await expect(route(ws, ["news"], "subscribe")).rejects.toThrow("pubsub unreachable");
+      expect(live.syncHub.roomIds()).toEqual([]);
+      expect(websocket.instance.calls.filter(({ method }: { method: string }) => method === "leaveRoom")).toHaveLength(
+        1,
+      );
+      websocket.instance.joinRoom = joinRoom;
+      expect(await route(ws, ["sports"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+      expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(1);
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
+  test("reads the live room limits from the env over what option.ts set, and lifts one set off", () => {
+    try {
+      const limits = () => [LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerCaller, LiveRoomLimit.roomsPerModel];
+      LiveRoomLimit.configure({ roomsPerSocket: 10, roomsPerCaller: 30, roomsPerModel: 20 });
+      LiveRoomLimit.applyEnv({ AKAN_LIVE_ROOMS_PER_SOCKET: "512", AKAN_LIVE_ROOMS_PER_CALLER: "4000" });
+      expect(limits()).toEqual([512, 4_000, 20]);
+      LiveRoomLimit.applyEnv({
+        AKAN_LIVE_ROOMS_PER_SOCKET: "off",
+        AKAN_LIVE_ROOMS_PER_CALLER: "off",
+        AKAN_LIVE_ROOMS_PER_MODEL: "0",
+      });
+      expect(limits()).toEqual([null, null, null]);
+      LiveRoomLimit.reset();
+      expect(limits()).toEqual([256, 2_000, 50_000]);
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
   test("pauses a live room while a declared argument carries a value", async () => {
     class PausedLiveSlice extends slice(
       serverResolverTestServiceModel,
@@ -2897,7 +3233,7 @@ describe("SignalResolver declaration contracts", () => {
     expect(calls.at(-1)).toEqual({ method: "__remove", args: [validId] });
   });
 
-  test("logs a generated by-id read missing its own id at debug, and any other missing document as an error", async () => {
+  test("logs a generated by-id read missing its own id at debug, any other missing document at warn, and leaves a 5xx to the context", async () => {
     const endpointMeta = SignalResolver.resolveSlice(ServerResolverTestSlice)[ENDPOINT_META];
     const ownerId = "507f191e810c19729de860ea";
     const missing = (refName: string, id: string) =>
@@ -2927,6 +3263,7 @@ describe("SignalResolver declaration contracts", () => {
       const lines: [string, string][] = [];
       const logger = {
         debug: (line: string) => lines.push(["debug", line]),
+        warn: (line: string) => lines.push(["warn", line]),
         error: (line: string) => lines.push(["error", line]),
       };
       const context = { endpointInfo, key, args, adaptor: { logger }, isBodyReadFailure: () => false };
@@ -2940,14 +3277,14 @@ describe("SignalResolver declaration contracts", () => {
       const { serverResolverTestItem: get, lightServerResolverTestItem: getLight } = endpointMeta;
       expect(await levelOf("serverResolverTestItem", get, validId)).toEqual(["debug"]);
       expect(await levelOf("lightServerResolverTestItem", getLight, validId)).toEqual(["debug"]);
-      expect(await levelOf("serverResolverTestItem", get, ownerId)).toEqual(["error"]);
-      expect(await levelOf("serverResolverTestItem", get, "byQuery")).toEqual(["error"]);
-      expect(await levelOf("serverResolverTestItem", get, "busy")).toEqual(["error"]);
+      expect(await levelOf("serverResolverTestItem", get, ownerId)).toEqual(["warn"]);
+      expect(await levelOf("serverResolverTestItem", get, "byQuery")).toEqual(["warn"]);
+      expect(await levelOf("serverResolverTestItem", get, "busy")).toEqual([]);
       const update = endpointMeta.updateServerResolverTestItem;
-      expect(await levelOf("updateServerResolverTestItem", update, validId, { title: "Beta" })).toEqual(["error"]);
+      expect(await levelOf("updateServerResolverTestItem", update, validId, { title: "Beta" })).toEqual(["warn"]);
       const remove = endpointMeta.removeServerResolverTestItem;
-      expect(await levelOf("removeServerResolverTestItem", remove, validId)).toEqual(["error"]);
-      expect(await levelOf("itemByTitle", custom, validId)).toEqual(["error"]);
+      expect(await levelOf("removeServerResolverTestItem", remove, validId)).toEqual(["warn"]);
+      expect(await levelOf("itemByTitle", custom, validId)).toEqual(["warn"]);
     } finally {
       debugOn.mockRestore();
     }

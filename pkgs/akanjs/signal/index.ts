@@ -58,7 +58,12 @@ export {
   type InternalArgProps,
   type ReturnInfo,
 } from "./endpointInfo";
-export { EndpointRateLimit, type RateLimitBudget, type RateLimitSetting } from "./endpointRateLimit";
+export {
+  EndpointRateLimit,
+  type RateLimitBudget,
+  type RateLimitSetting,
+  type SubscribeRateSetting,
+} from "./endpointRateLimit";
 export { Exception, type ExceptionLike, isExceptionLike, type StatusException } from "./exception";
 export { type Guard, type GuardCls, type GuardScope, guard, guardOf, refusesAgents } from "./guard";
 export { AgentRelayAccess, None, Public } from "./guards";
@@ -101,6 +106,7 @@ export {
   MCP_META_SERVER_INFO,
   MCP_MODERN_VERSION,
   MCP_SCREEN_REFUSAL,
+  MCP_STATIC_APP_META,
   MCP_SUPPORTED_VERSIONS,
   MCP_UI_EXTENSION,
   MCP_UI_LEGACY_RESOURCE_URI,
@@ -142,6 +148,8 @@ export {
   type PagePromptEntry,
   type PagePromptRecord,
   type PagePromptRefusal,
+  type PagePromptRender,
+  type PagePromptRenderInput,
   type PagePromptRoute,
   type PagePromptRun,
   type PagePromptRunInput,

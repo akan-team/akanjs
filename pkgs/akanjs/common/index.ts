@@ -39,6 +39,7 @@ export { CodeTranscript, type CodeTranscriptPart } from "./CodeTranscript";
 export { capitalize, lowerlize } from "./capitalize";
 export { clamp } from "./clamp";
 export {
+  addressBlockOf,
   clientAddressFromHeaders,
   clientPortFromHeaders,
   forwardedHeaders,

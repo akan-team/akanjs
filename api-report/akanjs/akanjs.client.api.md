@@ -527,7 +527,9 @@ export declare class PageDefinition<Args extends RouteArgsShape = Record<never, 
         [Key in Name]?: RouteArgValue<Type>;
     }, Apps>;
     prompt(name: string, description: string): this;
-    app<Name extends string>(name: Name & FreeName<Name, Args & Apps>, description: string, load: (args: RouteBaseArgs & Args) => PromiseOrObject<ReactNode>): PageDefinition<Args, Apps & {
+    app<Name extends string>(name: Name & FreeName<Name, Args & Apps>, description: string, load: (args: RouteBaseArgs & Args) => PromiseOrObject<ReactNode>, option?: {
+        static?: boolean;
+    }): PageDefinition<Args, Apps & {
         [Key in Name]: ReactNode;
     }>;
     render(render: (args: RouteBaseArgs & Args & Apps) => PromiseOrObject<ReactNode>): this;
@@ -912,6 +914,7 @@ export interface RoutePromptMeta {
     name: string;
     description: string;
     arguments: RoutePromptArgument[];
+    static?: boolean;
 }
 
 export interface RouteRender {

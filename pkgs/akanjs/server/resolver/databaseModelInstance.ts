@@ -28,7 +28,7 @@ import {
 } from "akanjs/service";
 import { Exception } from "akanjs/signal";
 import { missedById, modelFacadeOf } from "./modelFacade";
-import { declaredLoaderOf, idLoaderOf } from "./modelLoaders";
+import { declaredLoaderOf, forgetWritten, idLoaderOf } from "./modelLoaders";
 import { schemaListenerOf } from "./modelSchema";
 import { timedQuery, touchArgs } from "./timedQuery";
 
@@ -82,6 +82,7 @@ export const databaseModelInstanceOf = (
     __store!: DocumentStore;
     __model!: Mdl<any, any>;
     __loader!: DataLoader<string, any, string>;
+    #stopForgetting = () => {};
 
     override async onInit() {
       this.__store = this.__database.getStore(constant, database, schema);
@@ -91,9 +92,17 @@ export const databaseModelInstanceOf = (
       const copy = (doc: Record<string, unknown> | null) => (doc ? this.__store.rehydrate(doc) : doc);
       this.__loader = idLoaderOf(this, names.modelLoader, copy);
       Object.assign(this, { [className]: this.__model, [names.modelLoader]: this.__loader });
-      Object.entries(getLoaderInfos(database.model)).forEach(([key, loaderInfo]) => {
-        Object.assign(this, { [key]: declaredLoaderOf(this, key, loaderInfo, copy) });
+      const declared = Object.entries(getLoaderInfos(database.model)).map(([key, loaderInfo]) => {
+        const loader = declaredLoaderOf(this, key, loaderInfo, copy);
+        Object.assign(this, { [key]: loader });
+        return { loaderInfo, loader };
       });
+      const kept = declared.filter(({ loaderInfo }) => loaderInfo.cache);
+      if (kept.length) this.#stopForgetting = this.__store.onWrite?.(forgetWritten(kept)) ?? this.#stopForgetting;
+    }
+
+    override onDestroy() {
+      this.#stopForgetting();
     }
 
     async __list(query?: QueryOf<any>, queryOption?: ListQueryOption): Promise<any[]> {

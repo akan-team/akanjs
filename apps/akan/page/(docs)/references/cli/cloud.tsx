@@ -400,8 +400,8 @@ akan logout --host https://cloud.example.com`,
           {
             name: "package.json",
             desc: l.trans({
-              en: "In a workspace, pins root `akanjs` and `@akanjs/devkit` to that version and runs `bun install`.",
-              ko: "워크스페이스 안이면 루트 `package.json`의 `akanjs`와 `@akanjs/devkit`을 그 버전으로 바꾸고 `bun install`을 실행합니다.",
+              en: "In a workspace, pins root `akanjs`, `@akanjs/devkit` and `@akanjs/cli` to that version, moves `react`, `react-dom` and `react-server-dom-webpack` to the versions that release of `akanjs` declares as peers, and runs `bun install`.",
+              ko: "워크스페이스 안이면 루트 `package.json`의 `akanjs`, `@akanjs/devkit`, `@akanjs/cli`를 그 버전으로 바꾸고, `react`, `react-dom`, `react-server-dom-webpack`을 그 릴리스의 `akanjs`가 peer로 선언한 버전으로 맞춘 뒤 `bun install`을 실행합니다.",
             }),
           },
           {
@@ -409,6 +409,13 @@ akan logout --host https://cloud.example.com`,
             desc: l.trans({
               en: "Installs `@akanjs/cli@<tag>` globally with `bun add -g`, and prints `akan --version` at the end.",
               ko: "`@akanjs/cli@<tag>`를 `bun add -g`로 전역 설치하고, 끝에 `akan --version`을 출력합니다.",
+            }),
+          },
+          {
+            name: l.trans({ en: "version mismatch", ko: "버전 불일치" }),
+            desc: l.trans({
+              en: "When the global CLI's major.minor differs from the workspace's `akanjs`, every command that writes to the workspace (sync, the generators, `workflow apply`, `verify`, `lint`, `start`, `build`) is refused until `akan update` moves both; commands that only read warn. `akan update` itself is never refused, and `AKAN_ALLOW_VERSION_MISMATCH=1` runs a refused command anyway.",
+              ko: "전역 CLI의 major.minor가 워크스페이스의 `akanjs`와 다르면, 워크스페이스에 쓰는 명령(sync, 생성기, `workflow apply`, `verify`, `lint`, `start`, `build`)은 `akan update`로 둘을 맞출 때까지 거부되고, 읽기만 하는 명령은 경고만 합니다. `akan update` 자신은 거부되지 않으며, `AKAN_ALLOW_VERSION_MISMATCH=1`이면 거부된 명령도 실행합니다.",
             }),
           },
           {

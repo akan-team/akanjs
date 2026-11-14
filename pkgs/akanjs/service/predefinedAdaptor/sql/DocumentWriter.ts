@@ -35,6 +35,7 @@ export interface DocumentWriterOptions {
   rows: StoredRows;
   scope: QueryScope;
   prepare: (sql: string) => AkanSqlStatement;
+  written: (doc: DocumentRecord, previous?: DocumentRecord) => Promise<void>;
 }
 
 export class DocumentWriter {
@@ -47,9 +48,10 @@ export class DocumentWriter {
   readonly #rows: StoredRows;
   readonly #scope: QueryScope;
   readonly #prepare: (sql: string) => AkanSqlStatement;
+  readonly #written: (doc: DocumentRecord, previous?: DocumentRecord) => Promise<void>;
   #immutableKeys: string[] | null = null;
 
-  constructor({ owner, store, dialect, codec, rows, scope, prepare }: DocumentWriterOptions) {
+  constructor({ owner, store, dialect, codec, rows, scope, prepare, written }: DocumentWriterOptions) {
     this.#owner = owner;
     this.#store = store;
     this.#dialect = dialect;
@@ -57,6 +59,7 @@ export class DocumentWriter {
     this.#rows = rows;
     this.#scope = scope;
     this.#prepare = prepare;
+    this.#written = written;
   }
 
   async create(data: DocumentRecord, { runSaveHooks = true }: WriteHookOptions = {}) {
@@ -65,6 +68,7 @@ export class DocumentWriter {
     await this.#runHooks("create", "create", doc, "pre");
     const row = this.#codec.toRow(doc);
     await this.#insertStmt().run(row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc);
+    await this.#written(doc);
     await this.#runHooks("create", "create", doc, "post");
     if (runSaveHooks) await this.#runHooks("save", "create", doc, "post");
     return this.#rows.withStoredRow(doc, row);
@@ -86,6 +90,7 @@ export class DocumentWriter {
           ...batch.flatMap(({ row }) => [row.id, row.createdAt, row.updatedAt, row.removedAt, row._doc]),
         );
       }
+      for (const doc of docs) await this.#written(doc);
       for (const doc of docs) {
         await this.#runHooks("create", "create", doc, "post");
         await this.#runHooks("save", "create", doc, "post");
@@ -213,6 +218,7 @@ export class DocumentWriter {
       row,
       touch,
     );
+    await this.#written(doc, previous);
     await this.#runHooks(crudType, crudType, doc, "post", previous);
     if (runSaveHooks) await this.#runHooks("save", crudType, doc, "post", previous);
     return this.#rows.withStoredRow(doc, row);

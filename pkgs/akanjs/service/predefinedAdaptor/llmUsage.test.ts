@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Err } from "akanjs/dictionary";
 import { AnthropicLlm } from "./anthropicLlm";
+import { type AgentWireTool, llmCallSignal } from "./llm.adaptor";
 import { LlmSpend } from "./llmSpend";
 import { OpenaiDialect } from "./openaiDialect";
 
@@ -24,13 +25,128 @@ const stopped = `data: ${JSON.stringify({ type: "message_delta", delta: { stop_r
 const none = () => undefined;
 
 describe("a stream that did not finish", () => {
-  const openai = (lines: string[]) => OpenaiDialect.consumeStream(streamOf(lines), none, "https://llm.test");
-  const anthropic = (lines: string[]) => AnthropicLlm.consumeStream(streamOf(lines), none, "https://llm.test");
+  const openai = (lines: string[], tools?: AgentWireTool[]) =>
+    OpenaiDialect.consumeStream(streamOf(lines), none, "https://llm.test", tools);
+  const anthropic = (lines: string[], tools?: AgentWireTool[]) =>
+    AnthropicLlm.consumeStream(streamOf(lines), none, "https://llm.test", tools);
+  const writing: AgentWireTool[] = [
+    { name: "write", parameters: { type: "object", properties: { body: { type: "string" } } } },
+  ];
 
-  test("an OpenAI call with no finish reason or [DONE], or arguments that do not parse, is cut", async () => {
+  test("a gateway's bare [DONE] after a call whose arguments never came is cut, unless the tool takes none", async () => {
+    const opened = (fn: object) =>
+      `data: ${JSON.stringify({ choices: [{ delta: { role: "assistant", tool_calls: [{ index: 0, id: "c1", type: "function", function: fn }] } }] })}`;
+    for (const call of [opened({ name: "write", arguments: "" }), opened({ name: "write" })]) {
+      expect((await openai([call, "data: [DONE]"], writing)).stop).toBe("length");
+      expect((await openai([call, "data: [DONE]"])).stop).toBe("length");
+      expect(await openai([call, "data: [DONE]"], [{ name: "write" }])).toEqual({
+        toolCalls: [{ id: "c1", name: "write", args: {} }],
+        stop: "toolUse",
+      });
+      expect((await openai([call, finished, "data: [DONE]"], writing)).stop).toBe("toolUse");
+    }
+    const empty = [{ name: "write", parameters: { type: "object", properties: {} } }];
+    expect((await openai([opened({ name: "write", arguments: "" }), "data: [DONE]"], empty)).stop).toBe("toolUse");
+  });
+
+  test("only an object schema with no properties and nothing else to supply takes no arguments", async () => {
+    const opened = `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "write", arguments: "" } }] } }] })}`;
+    const stopOn = async (parameters?: Record<string, unknown>) =>
+      (await openai([opened, "data: [DONE]"], [{ name: "write", ...(parameters ? { parameters } : {}) }])).stop;
+    const supplied: Record<string, unknown>[] = [
+      { $ref: "#/$defs/Body" },
+      { anyOf: [{ type: "object", properties: { body: { type: "string" } } }] },
+      { oneOf: [{ type: "object" }] },
+      { allOf: [{ $ref: "#/$defs/Body" }] },
+      { type: "object", additionalProperties: { type: "string" } },
+      { type: "object", additionalProperties: true },
+      { type: "object", properties: {}, patternProperties: { "^x-": { type: "string" } } },
+      { type: "string" },
+      { type: "object", properties: [] },
+    ];
+    for (const parameters of supplied) expect([parameters, await stopOn(parameters)]).toEqual([parameters, "length"]);
+    const none: (Record<string, unknown> | undefined)[] = [
+      undefined,
+      {},
+      { type: "object" },
+      { type: "object", properties: {}, additionalProperties: false, required: [] },
+    ];
+    for (const parameters of none) expect([parameters, await stopOn(parameters)]).toEqual([parameters, "toolUse"]);
+  });
+
+  test("an Anthropic message_stop with no stop reason after an argument-less call is cut, unless the tool takes none", async () => {
+    const start = `data: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "c1", name: "write", input: {} } })}`;
+    const blockStop = `data: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`;
+    const messageStop = `data: ${JSON.stringify({ type: "message_stop" })}`;
+    expect((await anthropic([start, blockStop, messageStop], writing)).stop).toBe("length");
+    expect((await anthropic([start, blockStop, messageStop], [{ name: "write" }])).stop).toBe("toolUse");
+    expect((await anthropic([start, blockStop, stopped, messageStop], writing)).stop).toBe("toolUse");
+  });
+
+  test("an OpenAI call with no finish reason or [DONE], or arguments that do not parse behind a bare [DONE], is cut", async () => {
     expect((await openai(toolFrame('{"a":1}'))).stop).toBe("length");
-    expect((await openai([...toolFrame('{"a":'), finished])).stop).toBe("length");
-    expect((await openai([...toolFrame("[1]"), finished])).stop).toBe("length");
+    expect((await openai([...toolFrame('{"a":'), "data: [DONE]"])).stop).toBe("length");
+    expect((await openai([...toolFrame("[1]"), "data: [DONE]"])).stop).toBe("length");
+  });
+
+  test("a finished stream's malformed arguments come back as that call's error, not as a cut turn", async () => {
+    const chunk = (choice: object) =>
+      `data: ${JSON.stringify({ id: "chatcmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, ...choice }] })}`;
+    const answer = await openai([
+      chunk({
+        delta: {
+          role: "assistant",
+          tool_calls: [{ index: 0, id: "c1", type: "function", function: { name: "write", arguments: "" } }],
+        },
+        finish_reason: null,
+      }),
+      chunk({ delta: { tool_calls: [{ index: 0, function: { arguments: '{"body": "hi",}' } }] }, finish_reason: null }),
+      chunk({ delta: {}, finish_reason: "tool_calls" }),
+      "data: [DONE]",
+    ]);
+    expect(answer.stop).toBe("toolUse");
+    expect(answer.toolCalls).toEqual([
+      { id: "c1", name: "write", args: {}, argsError: expect.stringContaining("Not run") },
+    ]);
+    expect((await openai([...toolFrame("[1]"), finished])).toolCalls?.[0]?.argsError).toContain("not an object");
+    const ceiling = `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: "length" }] })}`;
+    expect((await openai([...toolFrame('{"body": "half'), ceiling, "data: [DONE]"])).stop).toBe("length");
+  });
+
+  test("malformed arguments are handed back only behind a finish the model gives when it finished the call", async () => {
+    const finish = (reason: string) => `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: reason }] })}`;
+    const half = toolFrame('{"body": "half');
+    for (const reason of ["content_filter", "length", "a_reason_no_api_documents"])
+      expect((await openai([...half, finish(reason), "data: [DONE]"])).stop).toBe("length");
+    for (const reason of ["tool_calls", "stop"]) {
+      const answer = await openai([...half, finish(reason), "data: [DONE]"]);
+      expect([answer.stop, !!answer.toolCalls?.[0]?.argsError]).toEqual(["toolUse", true]);
+    }
+
+    const stop = (reason: string) =>
+      `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: reason } })}`;
+    for (const reason of ["max_tokens", "refusal", "pause_turn", "stop_sequence"])
+      expect((await anthropic([...anthropicToolFrames('{"a":'), stop(reason)])).stop).toBe("length");
+    for (const reason of ["tool_use", "end_turn"]) {
+      const answer = await anthropic([...anthropicToolFrames('{"a":'), stop(reason)]);
+      expect([answer.stop, !!answer.toolCalls?.[0]?.argsError]).toEqual(["toolUse", true]);
+    }
+  });
+
+  test("an Anthropic stream that stopped on tool_use hands malformed input back the same way", async () => {
+    const answer = await anthropic([
+      `data: ${JSON.stringify({ type: "message_start", message: { usage: { input_tokens: 40, output_tokens: 1 } } })}`,
+      ...anthropicToolFrames('{"a":'),
+      `data: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`,
+      `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "tool_use" }, usage: { output_tokens: 12 } })}`,
+      `data: ${JSON.stringify({ type: "message_stop" })}`,
+    ]);
+    expect(answer.stop).toBe("toolUse");
+    expect(answer.toolCalls?.[0]).toMatchObject({ id: "c1", name: "write", args: {} });
+    expect(answer.toolCalls?.[0]?.argsError).toContain("Not run");
+    expect(answer.usage).toMatchObject({ inputTokens: 40, outputTokens: 12 });
+    const ceiling = `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: "max_tokens" } })}`;
+    expect((await anthropic([...anthropicToolFrames('{"a":'), ceiling])).stop).toBe("length");
   });
 
   test("an OpenAI call that finished is not, a gateway's bare [DONE] and a no-argument call included", async () => {
@@ -39,9 +155,11 @@ describe("a stream that did not finish", () => {
     expect((await openai([...toolFrame(""), finished])).stop).toBe("toolUse");
   });
 
-  test("an Anthropic call with no stop reason, or arguments that do not parse, is cut", async () => {
+  test("an Anthropic call with no stop reason, or arguments that do not parse behind a bare message_stop, is cut", async () => {
     expect((await anthropic(anthropicToolFrames('{"a":1}'))).stop).toBe("length");
-    expect((await anthropic([...anthropicToolFrames('{"a":'), stopped])).stop).toBe("length");
+    expect(
+      (await anthropic([...anthropicToolFrames('{"a":'), `data: ${JSON.stringify({ type: "message_stop" })}`])).stop,
+    ).toBe("length");
     expect((await anthropic([...anthropicToolFrames('{"a":1}'), stopped])).stop).toBe("toolUse");
   });
 
@@ -103,10 +221,88 @@ describe("a stream that did not finish", () => {
     expect(Err.is(failure, "agent.error.llmRequestFailed")).toBe(true);
   });
 
+  test("an Anthropic error event keeps the status its type names, and the prompt counts already sent", async () => {
+    const failedWith = (type: string) =>
+      anthropic([
+        "event: message_start",
+        `data: ${JSON.stringify({ type: "message_start", message: { id: "msg_1", usage: { input_tokens: 120, output_tokens: 1 } } })}`,
+        "event: content_block_delta",
+        `data: ${JSON.stringify({ type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "Half an" } })}`,
+        "event: error",
+        `data: ${JSON.stringify({ type: "error", error: { type, message: "Something went wrong." } })}`,
+      ]).catch((error: unknown) => error);
+    const statusOf = async (type: string) => ((await failedWith(type)) as { data?: { status?: string } }).data?.status;
+    expect(await statusOf("overloaded_error")).toBe("529");
+    expect(await statusOf("rate_limit_error")).toBe("429");
+    expect(await statusOf("invalid_request_error")).toBe("400");
+    expect(await statusOf("api_error")).toBe("500");
+    expect(await statusOf("a_type_not_yet_named")).toBe("500");
+    expect(LlmSpend.of(await failedWith("overloaded_error"))).toEqual({
+      usage: { inputTokens: 120, outputTokens: LlmSpend.tokensOf("Half an"), cachedTokens: 0, cacheWriteTokens: 0 },
+      estimated: true,
+    });
+  });
+
+  test("an OpenAI-dialect error frame keeps the status its code or type names when it carries no number", async () => {
+    const statusOf = async (error: object) =>
+      (
+        (await openai([`data: ${JSON.stringify({ error })}`]).catch((failure: unknown) => failure)) as {
+          data?: { status?: string };
+        }
+      ).data?.status;
+    expect(await statusOf({ message: "Rate limit reached", type: "tokens", code: "rate_limit_exceeded" })).toBe("429");
+    expect(await statusOf({ message: "Provider disconnected", code: "server_error" })).toBe("500");
+    expect(await statusOf({ message: "Bad request", type: "invalid_request_error", code: null })).toBe("400");
+    expect(await statusOf({ message: "Busy", code: "429" })).toBe("429");
+    expect(await statusOf({ message: "Odd", code: 0 })).toBe("500");
+  });
+
   test("a prompt-too-long error frame is the same overflow a refused request is", async () => {
     const frame = `data: ${JSON.stringify({ error: { message: "maximum context length is 8000 tokens" } })}`;
     const failure = await openai([frame]).catch((error: unknown) => error);
     expect(Err.is(failure, "agent.error.contextOverflow")).toBe(true);
+  });
+
+  test("vLLM's bare error frame fails the turn with its own code, billed at what was streamed", async () => {
+    const failure = await openai([
+      `data: ${JSON.stringify({ id: "cmpl-1", object: "chat.completion.chunk", choices: [{ index: 0, delta: { role: "assistant", content: "Half an" }, finish_reason: null }] })}`,
+      `data: ${JSON.stringify({ object: "error", message: "The engine is dead.", type: "InternalServerError", param: null, code: 503 })}`,
+      "data: [DONE]",
+    ]).catch((error: unknown) => error);
+    expect(Err.is(failure, "agent.error.llmRequestFailed")).toBe(true);
+    expect((failure as { data?: unknown }).data).toEqual({ provider: "llm.test", status: "503" });
+    expect(LlmSpend.of(failure)).toEqual({
+      usage: { inputTokens: 0, outputTokens: LlmSpend.tokensOf("Half an"), cachedTokens: 0 },
+      estimated: true,
+    });
+    const overflow = `data: ${JSON.stringify({ object: "error", message: "This model's maximum context length is 4096 tokens.", code: 400 })}`;
+    expect(Err.is(await openai([overflow]).catch((error: unknown) => error), "agent.error.contextOverflow")).toBe(true);
+  });
+
+  test("a finish_reason of error fails the turn, keeping the counts the provider sent after it", async () => {
+    const chunk = (body: object) =>
+      `data: ${JSON.stringify({ id: "gen-1", object: "chat.completion.chunk", ...body })}`;
+    const content = chunk({
+      choices: [{ index: 0, delta: { role: "assistant", content: "Half an" }, finish_reason: null }],
+    });
+    const counts = chunk({ choices: [], usage: { prompt_tokens: 80, completion_tokens: 4 } });
+    const bare = await openai([
+      content,
+      chunk({ choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }] }),
+      counts,
+      "data: [DONE]",
+    ]).catch((error: unknown) => error);
+    expect(Err.is(bare, "agent.error.llmRequestFailed")).toBe(true);
+    expect(LlmSpend.of(bare)).toEqual({ usage: { inputTokens: 80, outputTokens: 4, cachedTokens: 0 } });
+    const explained = await openai([
+      content,
+      chunk({
+        error: { code: 502, message: "Provider disconnected" },
+        choices: [{ index: 0, delta: { content: "" }, finish_reason: "error" }],
+      }),
+      "data: [DONE]",
+    ]).catch((error: unknown) => error);
+    expect((explained as { data?: unknown }).data).toEqual({ provider: "llm.test", status: "502" });
   });
 });
 
@@ -192,5 +388,48 @@ describe("LLM usage", () => {
     const withPicture = { messages: [{ role: "user", attachments: [{ name: "p.png", mimeType: "image/png", data }] }] };
     expect(LlmSpend.promptOf(withPicture)).toBeLessThan(LlmSpend.imageTokens + 100);
     expect(LlmSpend.promptOf({ text: "가".repeat(300) })).toBeGreaterThanOrEqual(300);
+  });
+});
+
+describe("llmCallSignal", () => {
+  test("a caller's abort stops each call under a reason of its own, which names the caller's as its cause", () => {
+    const caller = new AbortController();
+    const calls = [llmCallSignal(caller.signal), llmCallSignal(caller.signal)];
+    expect(calls.map(({ aborted }) => aborted)).toEqual([false, false]);
+    const shutdown = new Error("shutting down");
+    caller.abort(shutdown);
+    const reasons = calls.map(({ reason }) => reason as DOMException);
+    expect(reasons.map(({ name, cause }) => [name, cause])).toEqual([
+      ["AbortError", shutdown],
+      ["AbortError", shutdown],
+    ]);
+    expect(reasons[0]).not.toBe(reasons[1]);
+    LlmSpend.attach(reasons[0], { model: "m1" });
+    expect(LlmSpend.of(reasons[1])).toBeNull();
+    expect(LlmSpend.of(shutdown)).toBeNull();
+  });
+
+  test("a call made on a signal already aborted is stopped at once, under its own reason too", () => {
+    const stopped = llmCallSignal(AbortSignal.abort("left"));
+    expect(stopped.aborted).toBe(true);
+    expect(stopped.reason).toMatchObject({ name: "AbortError", cause: "left" });
+    expect(stopped.reason).not.toBe(llmCallSignal(AbortSignal.abort("left")).reason);
+  });
+
+  test("the call's own time limit still reads as a TimeoutError, on a caller's signal that is not aborted", async () => {
+    const timeout = AbortSignal.timeout;
+    AbortSignal.timeout = () => timeout.call(AbortSignal, 1);
+    try {
+      const caller = new AbortController();
+      const calls = [llmCallSignal(caller.signal), llmCallSignal()];
+      const names = () => calls.map(({ reason }) => (reason as DOMException).name);
+      await Bun.sleep(20);
+      expect(names()).toEqual(["TimeoutError", "TimeoutError"]);
+      expect(caller.signal.aborted).toBe(false);
+      caller.abort();
+      expect(names()).toEqual(["TimeoutError", "TimeoutError"]);
+    } finally {
+      AbortSignal.timeout = timeout;
+    }
   });
 });

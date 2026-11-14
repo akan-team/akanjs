@@ -445,8 +445,8 @@ akan create-workspace acme --app shop --libs true`,
         name: "verify",
         signature: "akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>]",
         desc: l.trans({
-          en: "Check a change in one run: sync, lint with fixes, typecheck, a fast build of each changed app, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.",
-          ko: "변경을 한 번에 검사합니다. sync, 고치기까지 하는 린트, 타입 검사, 바뀐 앱의 빠른 빌드, `.tsx`를 바꿨다면 SSR 검사까지 합니다. 모두 통과하면 한 줄, 아니면 문제마다 한 줄만 출력하므로 편집 뒤에는 이 명령 하나만 실행하면 됩니다.",
+          en: "Check a change in one run: sync, lint with fixes, typecheck, a build of each changed app's server and SSR routes, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.",
+          ko: "변경을 한 번에 검사합니다. sync, 고치기까지 하는 린트, 타입 검사, 바뀐 앱의 서버와 SSR 라우트 빌드, `.tsx`를 바꿨다면 SSR 검사까지 합니다. 모두 통과하면 한 줄, 아니면 문제마다 한 줄만 출력하므로 편집 뒤에는 이 명령 하나만 실행하면 됩니다.",
         }),
         args: [
           {

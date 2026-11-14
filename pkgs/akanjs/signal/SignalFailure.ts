@@ -1,5 +1,5 @@
 import { AkanError } from "akanjs/base";
-import { FailureCode, isGuardRefusal } from "akanjs/common";
+import { FailureCode, isGuardRefusal, type LogAttrs } from "akanjs/common";
 import { isExceptionLike } from "./exception";
 
 // Anything but an `Exception` is generalized: a stack names server paths and a driver message quotes the statement.
@@ -20,6 +20,19 @@ export class SignalFailure {
 
   static reset() {
     SignalFailure.#detailed = null;
+  }
+
+  static statusOf(error: unknown): number {
+    return isExceptionLike(error) ? error.statusCode : SignalFailure.generalized(error).statusCode;
+  }
+
+  static logAttrs(error: unknown): LogAttrs {
+    if (!(error instanceof Error)) return { type: typeof error };
+    return {
+      type: error.name !== "Error" ? error.name : error.constructor.name,
+      ...(AkanError.is(error) ? { code: error.code } : {}),
+      ...(error.stack ? { stack: error.stack } : {}),
+    };
   }
 
   static generalized(error: unknown): { error: string; statusCode: number; code?: string } {

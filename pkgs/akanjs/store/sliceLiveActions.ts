@@ -3,6 +3,7 @@ import type { DynamicRecord } from "akanjs/common";
 import type { BaseInsight, BaseObject } from "akanjs/constant";
 import type { LiveEventPayload } from "akanjs/signal";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
+import { actionErrorMessageOf } from "./actionErrorMessage";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
 import type { SliceListContext } from "./sliceListActions";
 import type { SetGet } from "./types";
@@ -119,6 +120,15 @@ export const sliceLiveActionsOf = (list: SliceListContext) => {
         crystalize: false,
         // The events missed while the socket was down are gone, so the list is refetched rather than patched.
         onResync: () => void refresh({ invalidate: true }),
+        //? Watched again only by the next watch, so a refused room costs one subscribe per mount, never a retry loop.
+        onRefused: (error: unknown) => {
+          if (liveWatch?.signature === signature) liveWatch = null;
+          liveClosed = { signature, at: new Date() };
+          this.set({ [namesOfSlice.modelStaleAt]: new Date() });
+          const content = actionErrorMessageOf(error);
+          const store = this as unknown as { showMessage?: (message: object) => void };
+          store.showMessage?.({ type: "error", key: namesOfSlice.watchLiveModel, duration: 5, content });
+        },
       });
       liveWatch = { signature, dispose };
       // Rows older than the room's last close missed the events sent while it was closed, as on a page shown again.

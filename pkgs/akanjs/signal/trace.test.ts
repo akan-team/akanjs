@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { AkanError } from "akanjs/base";
 import { Logger, type LoggerSinkEntry, logSeverity } from "akanjs/common";
+import { wasFailureLogged } from "../common/loggedFailure";
 import {
   getCurrentTrace,
   isLocalDevRuntime,
@@ -197,19 +199,89 @@ describe("canonical request line", () => {
     }
   });
 
-  test("a failed call is a warn line carrying the error's status and first line", async () => {
+  test("a call failed under 500 is a warn line carrying the error's status and first line", async () => {
     setCanonicalLineMode("all");
     const sink = collect();
     try {
       const trace = new SignalTrace("refund", "mutation", { mode: "context" });
       await expect(
         runTraced(trace, async () => {
-          throw Object.assign(new Error("nope\n    at somewhere"), { statusCode: 403 });
+          throw new AkanError("refused", "nope\n    at somewhere", { statusCode: 403 });
         }),
       ).rejects.toThrow("nope");
       const [line] = sink.canonical();
       expect(line?.record).toMatchObject({ level: "warn", message: "error mutation:refund" });
       expect(line?.record.attrs).toMatchObject({ status: 403, err: "nope" });
+      expect(line?.record.attrs?.stack).toBeUndefined();
+    } finally {
+      sink.restore();
+    }
+  });
+
+  test("a 5xx is an error line with the error's type and stack, and its status is the one HTTP answers", async () => {
+    setCanonicalLineMode("all");
+    const sink = collect();
+    try {
+      const trace = new SignalTrace("refund", "mutation", { mode: "context" });
+      await expect(
+        runTraced(trace, async () => {
+          throw Object.assign(new TypeError("driver broke"), { statusCode: 403 });
+        }),
+      ).rejects.toThrow("driver broke");
+      const [line] = sink.canonical();
+      expect(line?.record).toMatchObject({ level: "error", message: "error mutation:refund" });
+      expect(line?.record.attrs).toMatchObject({ status: 500, err: "driver broke", type: "TypeError" });
+      expect(String(line?.record.attrs?.stack)).toContain("TypeError: driver broke\n    at ");
+    } finally {
+      sink.restore();
+    }
+  });
+
+  test("a page's redirect is an ok line with its 3xx, and its not-found a warn line with 404, neither with a stack", async () => {
+    setCanonicalLineMode("all");
+    const sink = collect();
+    try {
+      const page = (route: string) => new SignalTrace(route, "page", { mode: "context", origin: "page" });
+      const redirect = Object.assign(new Error("Redirect to /login"), {
+        digest: "AKAN_REDIRECT",
+        location: "/login",
+        status: 303,
+      });
+      const notFound = Object.assign(new Error("Not found"), { digest: "AKAN_NOT_FOUND" });
+      await runTraced(page("/admin"), async () => Promise.reject(redirect)).catch(() => undefined);
+      await runTraced(page("/post/[id]"), async () => Promise.reject(notFound)).catch(() => undefined);
+      const [moved, gone] = sink.canonical().map((entry) => entry.record);
+      expect(moved).toMatchObject({ level: "info", message: "ok page:/admin", attrs: { status: 303 } });
+      expect(gone).toMatchObject({ level: "warn", message: "error page:/post/[id]", attrs: { status: 404 } });
+      expect(moved?.attrs?.stack).toBeUndefined();
+      expect(gone?.attrs?.stack).toBeUndefined();
+      expect(wasFailureLogged(redirect) || wasFailureLogged(notFound)).toBe(false);
+    } finally {
+      sink.restore();
+    }
+  });
+
+  test("a 5xx request line marks its error logged, so the caller's own error line can stand down", async () => {
+    setCanonicalLineMode("all");
+    const sink = collect();
+    try {
+      const crash = new TypeError("render broke");
+      const cronFailure = new Error("job broke");
+      await runTraced(new SignalTrace("/", "page", { mode: "context", origin: "page" }), async () =>
+        Promise.reject(crash),
+      ).catch(() => undefined);
+      await runTraced(new SignalTrace("nightly", "internal", { mode: "context", origin: "internal" }), async () =>
+        Promise.reject(cronFailure),
+      ).catch(() => undefined);
+      expect(sink.canonical().map((entry) => entry.record.level)).toEqual(["error", "error"]);
+      expect(wasFailureLogged(crash)).toBe(true);
+      expect(wasFailureLogged(cronFailure)).toBe(true);
+      setCanonicalLineMode("off");
+      const unlogged = new Error("no request line");
+      await runTraced(new SignalTrace("quiet", "internal", { mode: "context" }), async () =>
+        Promise.reject(unlogged),
+      ).catch(() => undefined);
+      expect(wasFailureLogged(unlogged)).toBe(false);
     } finally {
       sink.restore();
     }

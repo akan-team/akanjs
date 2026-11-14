@@ -11,7 +11,7 @@ import {
 } from "akanjs/base";
 import { applyMixins, formSetterNames } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
-import { attachAgentic } from "./agentic";
+import { attachAgentic } from "./agentic/attachAgentic";
 import type { RootStoreCls } from "./rootStore";
 import type { StoreCls } from "./store";
 import { StoreInstance } from "./storeInstance";

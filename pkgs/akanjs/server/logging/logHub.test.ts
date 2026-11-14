@@ -26,6 +26,15 @@ describe("LogHub ring", () => {
     hub.close();
   });
 
+  test("counts attrs toward the byte cap, so a record's stack weighs what it holds", () => {
+    const hub = new LogHub({ maxRecords: 100, maxBytes: 1_000 });
+    hub.ingest(record("a", { attrs: { status: 500, stack: "s".repeat(500) } }));
+    hub.ingest(record("b", { attrs: { status: 500, stack: "s".repeat(500) } }));
+    hub.ingest(record("c"));
+    expect(hub.history({}).entries.map((entry) => entry.record.message)).toEqual(["b", "c"]);
+    hub.close();
+  });
+
   test("history filters, honours limit from the newest end, and since reports gaps", () => {
     const hub = new LogHub({ maxRecords: 3 });
     hub.ingest(record("keep 1"));
@@ -90,6 +99,35 @@ describe("LogHub suppression", () => {
     now += 1_001;
     hub.ingest(record("loop warn"));
     expect(seen.slice(3)).toEqual(["loop warn (suppressed 3 identical lines within 1s)", "loop warn"]);
+    hub.close();
+  });
+
+  test("a request line is never folded, while the ring still folds other repeats", () => {
+    const hub = new LogHub({ suppressPerSecond: 2, now: () => 10_000 });
+    for (let idx = 0; idx < 5; idx += 1)
+      hub.ingest(record("ok query:userList", { name: "Signal", attrs: { ms: idx, status: 200 } }));
+    for (let idx = 0; idx < 5; idx += 1) hub.ingest(record("loop warn"));
+    const messages = hub.history({}).entries.map((entry) => entry.record.message);
+    expect(messages.filter((message) => message === "ok query:userList").length).toBe(5);
+    expect(messages.filter((message) => message === "loop warn").length).toBe(2);
+    hub.close();
+  });
+
+  test("keeps the ring in seq order when a new window writes the fold line, so a resume repeats nothing", () => {
+    let now = 10_000;
+    const hub = new LogHub({ suppressPerSecond: 1, now: () => now });
+    hub.ingest(record("first"));
+    for (let idx = 0; idx < 3; idx += 1) hub.ingest(record("loop warn"));
+    now += 1_001;
+    hub.ingest(record("loop warn"));
+    const seqs = hub.since(0).entries.map((entry) => entry.seq);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+    expect(new Set(seqs).size).toBe(seqs.length);
+    expect(hub.coverage().newestSeq).toBe(hub.seq);
+    const delivered = hub.since(0).entries;
+    const resumeFrom = delivered[delivered.length - 2]?.seq ?? 0;
+    expect(hub.since(resumeFrom).entries.map((entry) => entry.record.message)).toEqual(["loop warn"]);
+    expect(hub.since(resumeFrom).gap).toBeNull();
     hub.close();
   });
 

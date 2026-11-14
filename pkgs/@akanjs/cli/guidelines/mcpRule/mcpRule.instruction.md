@@ -499,6 +499,19 @@ export default page()
 - `option.setMcp({ apps: false })` / `AKAN_MCP_APPS=false` publishes no page tools: no app is published and every
   prompt stays a prompt only. `web: { csr: false }` publishes the app tools with no view, and an API-only build
   (`web: false`) has no pages to publish.
+- **`{ static: true }` sends the app as HTML to a host that runs no view.** `.app(name, description, load,
+  { static: true })` marks the tool `_meta["akanjs/static"]: true` wherever the server renders pages, view or not. A
+  `tools/call` whose `params._meta["akanjs/render"]` is `"html"` then gets, after the usual blocks, an embedded
+  `text/html` resource `ui://<app>/static/<name>`: one document drawn under the caller's credential after the route
+  guards, with the load under the same query-only rule — the element inside the root layout's `McpAppRoot` (no
+  `_overrides.tsx`), the layout's theme as `data-theme`, `<base href="<web origin>/" target="_blank">`, the stylesheet
+  as an absolute link, every Suspense boundary resolved in place, and no `<script>`: no view, no Flight payload,
+  nothing runs. Mark an app static only when its server render is the whole picture — nothing hydrates, so a client
+  component shows its first state and a button does nothing.
+- **A static app sends no HTML, and the call answers as if none was asked** (with a server warning), when the guards
+  refuse, the drawing fails or passes 1 MB, the body is empty or a fallback stands in for content, or a component needs
+  a browser: `lazy(…, { ssr: false })` says so itself, and a component whose look only a browser finishes (a canvas, a
+  chart drawn in an effect, data read after mount) calls `needsBrowser()` from `akanjs/webkit` while it renders.
 
 ## Progress Reporting
 **`McpProgress.report(n, { total, message })`** reports progress from anywhere inside a call, a service or adapter
@@ -550,6 +563,8 @@ at every event.
   A call ends the run `awaiting` with `question: true`; put the question to the member, append
   `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
   counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
+- **Other servers.** `remotes` takes other MCP servers, each a toolkit named after it: none is listed or contacted
+  until the model opens it, and its tools then read `<name>.<tool>`. See "Calling Another Server" below.
 - **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
   wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation
@@ -561,8 +576,11 @@ at every event.
   whole during the run and clipped on a resume. Store every message whole, marks included. `compacted` says the first
   `replaced` messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary
   with no marker counts as tainted to a run with `untrusted`. A batch's results
-  reach `onMessage` even when the consumer stops reading or a later call throws, so a resume runs only calls that
-  never started.
+  reach `onMessage` one tool message a call, as each call finishes, so a resume runs only the calls that had not
+  finished, even after a crash mid-batch. It cannot tell a call that was running when the run died from one that
+  never started: both go to `approve` again and run again, so a write that must not land twice needs an idempotent
+  endpoint or an `approve` that defers it. A stored result of that batch which `untrusted` marks taints them too: a
+  resume judges on everything stored, where an uninterrupted run judges a batch before any of it runs.
 - **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
   usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
   billing — empty headers and no ip. The relay's default size caps skip loop rounds; a refused quota ends the run as
@@ -579,6 +597,66 @@ at every event.
   regardless of `at` and asks once more, as one round; a second refusal, or nothing to cut, ends the run with the
   error. An adaptor with its own size cap throws that error with `{ limit, requested }` in its own unit, bytes
   included, and the run lowers `at` to where that request would have fit.
+
+## Calling Another Server — `remotes`
+
+The other direction: an agent running here calls another server's `/mcp` as the signed-in user. The other server needs
+no change; any akan app is one already, and so is any MCP server that speaks OAuth 2.1 with dynamic registration.
+
+```ts
+// lib/option.ts — off by default, since it lets a signed-in user make this server call an address they name
+export const option = new AkanOption<ModulesOptions>().transformEnv((env) => ({ ...env, remote: { enabled: true } }));
+
+// a service that runs the loop
+const remotes = this.remoteService.sources(account, [
+  { name: "shop", url: project.serverUrl, description: "Orders and refunds of the shop this project runs." },
+]);
+for await (const event of this.agentService.loop({ account, allow, messages, remotes, approve, onMessage })) {
+  if (event.type === "awaiting" && event.connect) /* tell the page: this run waits for a connection to event.connect */;
+}
+```
+
+- **A connection is the user's own OAuth grant at the other server.** `libs/shared`'s `remote` service registers this
+  app there once, sends the user to that server's consent page, and keeps the tokens sealed on the server. The other
+  server judges every call by its own guards, as it judges any agent's, so `Person` endpoints stay closed. Accounts
+  are never matched across servers.
+- **Connecting happens in the chat.** Opening a remote the account has no connection to ends the run `awaiting` with
+  `connect: "<name>"` and leaves the call unanswered. Render `<Remote.Util.Connect url={…} onConnected={resume} />`:
+  it opens the other server's sign-in in a window and calls back once `page/remote/callback` finished the exchange.
+  Resume with the stored messages and the run opens the toolkit itself. When the user declines, append
+  `{ id, name: "openToolkit", error }` for that call and resume.
+- **What a remote lists and returns is another party's text.** Opening a remote taints the run, whatever `untrusted`
+  says: its tools' names, descriptions and schemas reach the model with the open, and so does the error of an open
+  that failed. An open that only asks the user to connect taints nothing. A call's arguments leave for that server,
+  and `readOnly` is the remote's own word for its tool, so a request with `remotes` and no `approve` is refused
+  before any model call, as `base.error.requiredArgument` naming `approve`: pass one with `remotes`. It is told the
+  target as `state.remote`, and hears a tool the remote does not call read-only as a `needsConfirm` one. Show the
+  user that server's name and the arguments before allowing a write: a record on one server can ask the model to
+  write to another.
+- **Names.** A remote's `name` is `[a-z][A-Za-z0-9]{0,15}` and may not be a toolkit's. A tool name too long or with
+  characters a provider refuses is listed under a shortened alias and still called by its real name. A run takes
+  at most 120 tools from one remote, a description to 1,000 characters and a parameter schema to 8,000, and stops
+  listing at 120,000 characters in all; the open's result counts the tools left out as `omitted`. Pass `allow` in
+  the remote's entry to choose which tools those are.
+- **Addresses.** `url` is the server's address or its MCP endpoint; a bare origin means `/mcp`. Every request goes
+  through `RemoteFetch`: https only, no private address, no redirect, the checked address pinned. A local run
+  (`operationMode: "local"`) reaches loopback over http, so two dev servers can connect; `remote.allowUrl` narrows
+  the addresses an app accepts.
+- **A screen in the result.** When the called tool is a `page().app()`, the `toolResult` event carries `view`
+  (`{ remote, tool, args, href?, static?, resourceUri? }`) beside the result. It never reaches the model or
+  `onMessage`; store it yourself and draw `<Remote.Zone.Screen url tool={view.tool} args={view.args} href={view.href}
+  drawn={view.static} />`. For an app the other server declared `{ static: true }` the card asks `remoteScreen` for
+  that server's script-less HTML when it scrolls into view and shows it in a frame that runs no script; for any other
+  app, draw `<Remote.Zone.View url tool args uri={view.resourceUri} href />`: it frames that server's view (its
+  client bundle) with scripts on but no origin, under a policy that lets it load only from that server and connect
+  nowhere, and relays the view's own calls to that one server through `McpAppHost` (`akanjs/webkit`). A view cannot
+  write into the model's context, and a link it opens must stay on its server. Neither card stores what it drew: the
+  HTML and the view's data are fetched again on every draw, since what the user may see there can change. A view
+  weighs over a megabyte, so prefer `{ static: true }` on the other server for anything a person only reads.
+- **Not published onward.** The connection endpoints take `Person` and are `mcp: false`, and remote tools exist only
+  inside the run: an outside agent connected to this app's `/mcp` never reaches a user's other servers through it.
+
+Without `libs/shared`, build each entry from `RemoteSource` (`akanjs/server`) with your own `access { token, renew }`.
 
 ## Rolling MCP Out To An App
 

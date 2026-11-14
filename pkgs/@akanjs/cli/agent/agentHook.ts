@@ -1,6 +1,7 @@
 import { realpathSync } from "node:fs";
 import path from "node:path";
 import type { Workspace } from "@akanjs/devkit/commandDecorators";
+import { WorkspaceVersionCheck } from "@akanjs/devkit/commandDecorators/workspaceVersionCheck";
 import { Logger } from "akanjs/common";
 import { ApplicationRunner } from "../application/application.runner";
 import { VerifyComments } from "../verify/verifyComments";
@@ -38,9 +39,11 @@ export class AgentHook {
     "{apps,libs}/*/{ui,webkit,srvkit,common,plugin}/index.ts",
   ] as const;
   readonly #workspace: Workspace;
+  readonly #cliVersion: string | undefined;
 
-  constructor(workspace: Workspace) {
+  constructor(workspace: Workspace, { cliVersion = process.env.AKAN_VERSION }: { cliVersion?: string } = {}) {
     this.#workspace = workspace;
+    this.#cliVersion = cliVersion;
   }
 
   static isEvent(value: string | null): value is AgentHookEvent {
@@ -82,11 +85,22 @@ export class AgentHook {
   }
 
   async run(event: AgentHookEvent, input: AgentHookInput): Promise<AgentHookOutcome> {
+    const file = event === "stop" ? null : this.#relative(input.tool_input?.file_path);
+    if (event === "pre-edit") return file ? this.#preEdit(file) : { block: false, message: "" };
+    if (file) await this.#record(input.session_id, file);
+    //? Verify writes (sync, fixes) as `akan verify` would, so it is skipped as that is refused, yet never blocks.
+    const refusal = WorkspaceVersionCheck.refusal(
+      this.#cliVersion,
+      ["bun", "akan", "verify"],
+      this.#workspace.workspaceRoot,
+    );
+    if (refusal) {
+      process.stderr.write(`${refusal}\n`);
+      return { block: false, message: refusal };
+    }
     if (event === "stop") return await this.#stop(input);
-    const file = this.#relative(input.tool_input?.file_path);
     if (!file) return { block: false, message: "" };
-    if (event === "pre-edit") return this.#preEdit(file);
-    return await this.#postEdit(file, input.session_id);
+    return await this.#verify([file], { lintOnly: true });
   }
 
   #preEdit(file: string): AgentHookOutcome {
@@ -96,11 +110,6 @@ export class AgentHook {
       block: true,
       message: `${file} is generated (${pattern}). Edit the source file it is generated from, then run \`akan sync <app-or-lib>\`.`,
     };
-  }
-
-  async #postEdit(file: string, session?: string): Promise<AgentHookOutcome> {
-    await this.#record(session, file);
-    return await this.#verify([file], { lintOnly: true });
   }
 
   //? Claude Code sets `stop_hook_active` once a Stop hook has already sent it back; a second block could loop forever.
