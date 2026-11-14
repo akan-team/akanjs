@@ -174,6 +174,11 @@ describe("resolveAcl", () => {
     expect(manifestPermissionProblems({ ...fs, defaultScope: { allow: [{ folder: "x" }] } })[0]).toContain(
       'no field "folder"',
     );
+    expect(
+      manifestPermissionProblems(
+        manifest({ id: "a", methods: ["x"], scope: { fields: { a: "x" }, required: "yes" as unknown as boolean } }),
+      )[0],
+    ).toContain("scope.required must be true or false");
   });
 
   // Architecture review 2026-09-26: a URL deny without a port covers every port, but only its scheme.

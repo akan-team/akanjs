@@ -449,6 +449,27 @@ const nativeFields = [
     ko: "Windows에서 앱을 배포하는 주체이며, 설치된 앱의 게시자와 실행 파일의 회사 이름으로 쓰입니다.",
   },
   {
+    key: "desktop.externalView.allowOrigins",
+    type: "string[]",
+    default: "[]",
+    en: "The exact origins (scheme://host[:port], no path or wildcard) an external-view may be opened for; a view's own allowOrigins narrow within them. With none, no view opens.",
+    ko: "external-view를 열 수 있는 정확한 오리진(scheme://host[:port], 경로·와일드카드 없음)입니다. 뷰의 allowOrigins는 이 안에서만 좁힐 수 있고, 비어 있으면 어떤 뷰도 열리지 않습니다.",
+  },
+  {
+    key: "desktop.externalView.evaluate",
+    type: "boolean",
+    default: "false",
+    en: "Lets a page run script in an external view: evaluate and open's initScript.",
+    ko: "페이지가 external-view 안에서 스크립트를 실행하게 합니다(evaluate와 open의 initScript).",
+  },
+  {
+    key: "desktop.externalView.sendKey",
+    type: "boolean",
+    default: "false",
+    en: "Lets a page type into an external view with sendKey.",
+    ko: "페이지가 sendKey로 external-view에 키를 입력하게 합니다.",
+  },
+  {
     key: "targets",
     type: "Record<string, AkanNativeSettings>",
     default: "{ default: {} }",
