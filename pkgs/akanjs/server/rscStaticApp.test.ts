@@ -139,7 +139,30 @@ describe("a static app drawn as HTML", () => {
       expect(html).toContain('<a href="/kept">plain link</a>');
       expect(html).toContain('<iframe title="frame">');
       expect(html).not.toMatch(/\son[a-z]+=/i);
-      expect(html).not.toMatch(/srcdoc|<object|<embed|http-equiv|javascript|&#x6A;ava/i);
+      expect(html).not.toMatch(/srcdoc|<object|<embed|http-equiv|javascript|&#x6A;ava|&Tab;|&colon;/i);
+      expect(html).toContain("tab link");
+      expect(html).toContain("smil link");
+      expect(html).toContain('<animate attributeName="fill" values="red"/>');
+      expect(html).not.toMatch(/<set|animateMotion|attributeName="HREF"/);
+    });
+  }, 20_000);
+
+  test("keeps a relative link whose query holds an ampersand, and a mailto link", async () => {
+    await withStaticAppWorker(async (draw) => {
+      const { html } = await draw("showRelative");
+      expect(html).toContain('<a href="R&amp;D/page.html">rd</a>');
+      expect(html).toContain('<a href="/list?a=1&amp;b=2">list</a>');
+      expect(html).toContain('<a href="?q=a:b&amp;c">query</a>');
+      expect(html).toContain('<a href="mailto:team@example.com">mail</a>');
+    });
+  }, 20_000);
+
+  test("is not sent when a formula carries a handler or a link, and is sent when it carries neither", async () => {
+    await withStaticAppWorker(async (draw, { warnings }) => {
+      expect(await draw("showMath")).toEqual({ ok: true, drawn: true, html: null });
+      expect(await draw("showOpenMath")).toEqual({ ok: true, drawn: true, html: null });
+      expect(warnings.filter((warning) => warning.includes("a formula carries a handler or a link"))).toHaveLength(2);
+      expect((await draw("showPlainMath")).html).toContain("<p>plain math</p>");
     });
   }, 20_000);
 

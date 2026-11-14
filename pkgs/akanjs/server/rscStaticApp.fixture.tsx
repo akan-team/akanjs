@@ -152,8 +152,65 @@ export const pages: PagesContext = {
                 '<form action="javascript:go()"><button formaction="javascript:go()">send</button></form>',
                 '<svg><a xlink:href="javascript:go()"><text>svg link</text></a></svg>',
                 '<img src="javascript:go()" alt="pic"><a href="/kept">plain link</a>',
+                '<a href="java&Tab;script:go()">tab link</a><a href="javascript&colon;go()">colon link</a>',
+                '<svg><a><animate attributeName="HREF" values="javascript:go()"/>',
+                '<set attributeName="xlink:href" to="javascript:go()"/>',
+                '<animateMotion attributeName="href" from="javascript:go()" by="x"/>',
+                '<animate attributeName="fill" values="red"/><text>smil link</text></a></svg>',
+                '<noscript><meta http-equiv="refresh" content="0;url=/away"></noscript>',
               ].join("")}
             />
+          </article>
+        ),
+        { static: true },
+      )
+      .app(
+        "showRelative",
+        "Show the relative links.",
+        () => (
+          <article>
+            <h1>Relative</h1>
+            <Raw
+              html={[
+                '<a href="R&amp;D/page.html">rd</a><a href="/list?a=1&amp;b=2">list</a>',
+                '<a href="?q=a:b&amp;c">query</a><a href="mailto:team@example.com">mail</a>',
+              ].join("")}
+            />
+          </article>
+        ),
+        { static: true },
+      )
+      .app(
+        "showMath",
+        "Show a formula with a handler.",
+        () => (
+          <article>
+            <h1>Math</h1>
+            <Raw
+              html={'<math><mi>x</mi><mi tabindex="0" autofocus onfocus="go()" href="javascript:go()">y</mi></math>'}
+            />
+          </article>
+        ),
+        { static: true },
+      )
+      .app(
+        "showOpenMath",
+        "Show an unterminated formula with a handler.",
+        () => (
+          <article>
+            <h1>Math</h1>
+            <Raw html={'<math><mn>1</mn><mo title="a>b" onclick="go()">+</mo>'} />
+          </article>
+        ),
+        { static: true },
+      )
+      .app(
+        "showPlainMath",
+        "Show a plain formula.",
+        () => (
+          <article>
+            <h1>Math</h1>
+            <Raw html={"<math><mi>x</mi><mo>+</mo><mn>1</mn><mtext>based on one</mtext></math><p>plain math</p>"} />
           </article>
         ),
         { static: true },

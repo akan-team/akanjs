@@ -24,7 +24,8 @@ export class SsrStaticApp {
   static readonly maxBytes = 1024 * 1024;
   static readonly deadlineMs = 10_000;
   static readonly #scriptElements =
-    'script, link[rel="modulepreload"], link[as="script"], object, embed, meta[http-equiv]';
+    'script, link[rel="modulepreload"], link[as="script"], object, embed, meta[http-equiv], noscript';
+  static readonly #animations = new Set(["animate", "set", "animatetransform", "animatemotion"]);
   static readonly #urlAttributes = new Set(["href", "src", "action", "formaction", "xlink:href"]);
   static readonly #mediaTag = /<(img|svg|picture|video|audio|canvas|iframe|input|select|textarea|object|embed)\b/i;
   readonly #logger: Logger;
@@ -107,10 +108,17 @@ export class SsrStaticApp {
       .on(SsrStaticApp.#scriptElements, { element: (element) => found(element, null) })
       .on("*", {
         element: (element) => {
+          if (SsrStaticApp.#animatesLink(element)) found(element, null);
           for (const name of SsrStaticApp.#scriptAttributes(element)) found(element, name);
         },
       })
       .transform(html);
+  }
+
+  static #animatesLink(element: HTMLRewriterTypes.Element): boolean {
+    if (!SsrStaticApp.#animations.has(element.tagName.toLowerCase())) return false;
+    const target = element.getAttribute("attributename")?.trim().toLowerCase();
+    return target === "href" || target === "xlink:href";
   }
 
   static #scriptAttributes(element: HTMLRewriterTypes.Element): string[] {
@@ -125,18 +133,69 @@ export class SsrStaticApp {
     return names;
   }
 
-  //? The rewriter hands an attribute over still entity-encoded, and a browser drops control characters from a URL; a
-  //? scheme never holds `&`, so one a named reference could still spell is refused rather than decoded.
+  //? The rewriter hands an attribute over still entity-encoded, and a browser drops control characters from a URL. A
+  //? scheme never holds `&`, so one a named reference other than these could still spell is refused, not decoded.
   static #runsScript(value: string): boolean {
     const url = value
       .replace(/&#(x[0-9a-f]+|\d+);?/gi, (_, code: string) => {
         const point = code[0] === "x" || code[0] === "X" ? Number.parseInt(code.slice(1), 16) : Number(code);
         return point <= 0x10ffff ? String.fromCodePoint(point) : "";
       })
+      .replace(/&(colon|tab|newline);/gi, (_, name: string) => (name.toLowerCase() === "colon" ? ":" : ""))
       .replace(/\p{Cc}/gu, "")
       .trim()
       .toLowerCase();
-    return url.startsWith("javascript:") || url.slice(0, url.search(/[:/?#]|$/)).includes("&");
+    const colon = url.indexOf(":");
+    if (colon < 0) return false;
+    const scheme = url.slice(0, colon);
+    if (/[/?#]/.test(scheme)) return false;
+    return scheme === "javascript" || scheme.includes("&");
+  }
+
+  //? The rewriter stops visiting MathML once a token element such as `<mi>` has closed, so it can neither strip nor
+  //? see what follows: a formula naming a handler or a link anywhere in its tags is refused whole.
+  static #formulaRunsScript(html: string): boolean {
+    const lower = html.toLowerCase();
+    let depth = 0;
+    for (let at = lower.indexOf("<math"); at >= 0; ) {
+      const scanned = SsrStaticApp.#tagAt(lower, at + 1);
+      if (scanned.tag === "math") depth++;
+      else if (scanned.tag === "/math") depth = Math.max(0, depth - 1);
+      if (depth > 0 && scanned.names.some((name) => name.startsWith("on") || name === "href" || name === "xlink:href"))
+        return true;
+      at = lower.indexOf(depth > 0 ? "<" : "<math", scanned.end);
+    }
+    return false;
+  }
+
+  //? Read as the HTML tokenizer reads a start tag, quotes included, so a `>` inside a value does not end the tag.
+  static #tagAt(html: string, from: number): { tag: string; names: string[]; end: number } {
+    const names: string[] = [];
+    const space = (char: string | undefined) =>
+      char === " " || char === "\t" || char === "\n" || char === "\f" || char === "\r";
+    let at = html[from] === "/" ? from + 1 : from;
+    while (at < html.length && !space(html[at]) && html[at] !== "/" && html[at] !== ">") at++;
+    const tag = html.slice(from, at);
+    while (at < html.length && html[at] !== ">") {
+      if (space(html[at]) || html[at] === "/") {
+        at++;
+        continue;
+      }
+      const start = at;
+      at++;
+      while (at < html.length && !space(html[at]) && html[at] !== "/" && html[at] !== ">" && html[at] !== "=") at++;
+      names.push(html.slice(start, at));
+      while (space(html[at])) at++;
+      if (html[at] !== "=") continue;
+      at++;
+      while (space(html[at])) at++;
+      const quote = html[at];
+      if (quote === '"' || quote === "'") {
+        const closing = html.indexOf(quote, at + 1);
+        at = closing < 0 ? html.length : closing + 1;
+      } else while (at < html.length && !space(html[at]) && html[at] !== ">") at++;
+    }
+    return { tag, names, end: at };
   }
 
   //? React writes `<!--$?-->` for a boundary still pending and `<!--$!-->` for one left to the client: a fallback.
@@ -146,6 +205,7 @@ export class SsrStaticApp {
       survived = true;
     });
     if (survived) return "a script survived its stripping";
+    if (SsrStaticApp.#formulaRunsScript(html)) return "a formula carries a handler or a link";
     if (html.includes("<!--$?-->") || html.includes("<!--$!-->")) return "a Suspense boundary did not resolve";
     const body = html.replace(/^[\s\S]*?<body[^>]*>/i, "").replace(/<\/body>[\s\S]*$/i, "");
     if (!SsrStaticApp.#hasText(body) && !SsrStaticApp.#mediaTag.test(body)) return "its body is empty";
