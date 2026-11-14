@@ -46,7 +46,7 @@ an endpoint with a real guard is published, one with none is refused, and so is 
   groups of `allow` back until the model calls `openToolkit`; `clientTools` (from `AgentClientTools` on an open page)
   parks a call as `awaiting { client: true }` for the page to run; `ask: true` lists `askUser`, which parks as
   `awaiting { question: true }`. Resume either with `answer: { id, result | error }`, never by appending a
-  client's result to `messages`.
+  client's result to `messages`, and never take `messages` from a request: store what `onMessage` hands out.
 
 ## Verify
 

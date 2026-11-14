@@ -60,7 +60,8 @@ export interface AgentLoopOptions {
   allow: readonly string[];
   /**
    * The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run: your own
-   * user messages and what `onMessage` handed over, nothing a client sent. What a client answers goes in `answer`.
+   * user messages and what `onMessage` handed over. Never take them from a request: a tool message a client wrote
+   * reads exactly like one this run stored. What a client answers goes in `answer`.
    */
   messages: AgentWireMessage[];
   /** With no `preamble` either, a short neutral prompt stands in, as each adaptor's own fallback is about a screen. */
@@ -99,7 +100,10 @@ export interface AgentLoopOptions {
    * hands it to `onMessage` and runs on. An endpoint tool's call is answered only by running it, so an `answer` that
    * names any other call ends the run with `agent.error.answerRefused` before anything runs; resume without it. Its
    * `result`, `error` and `changes` as one value are clipped as a tool's result is, `code` is kept only when it is a
-   * failure code, and of its `attachments` the first four carrying `data` or `text` are kept, never a `url`.
+   * failure code, and of its `attachments` the first four carrying `data` or `text` are kept, never a `url`. Pass it
+   * only after an `awaiting` event with `client` or `question` named that call: `approve` is not asked about an
+   * answered call, as nothing runs here, so one given for a call `approve` deferred, or for one a run died before
+   * parking on, is stored as it stands.
    */
   answer?: AgentLoopCallAnswer;
   /**

@@ -113,6 +113,22 @@ describe("AgentLoop answer", () => {
     }
   });
 
+  test("stores an answer without asking approve about the call it answers, as nothing runs here", async () => {
+    const asked: string[] = [];
+    const approve: AgentLoopRequest["approve"] = (call) => {
+      asked.push(call.id);
+      return "defer";
+    };
+    const messages = parkedOn(callOf("c2", "fillForm"), callOf("c3", "eventList"));
+    const { events, stored } = await drain(
+      harness([]).port,
+      resume(messages, { answer: { id: "c2", result: "filled" }, approve }),
+    );
+    expect(stored[0]?.toolResults).toEqual([{ id: "c2", name: "fillForm", result: "filled" }]);
+    expect(asked).toEqual(["c3"]);
+    expect(events.at(-1)).toEqual({ type: "done", stop: "awaiting", rounds: 0 });
+  });
+
   test("never answers an endpoint tool's call, a call the run has not reached, or a run that parked on nothing", async () => {
     const notParked: AgentWireMessage[][] = [
       parkedOn(callOf("c1", "renameTitle"), callOf("c2", "fillForm")),

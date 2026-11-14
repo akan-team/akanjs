@@ -11,7 +11,8 @@
 - An endpoint tool's call is answered only by running it. An `answer` that names one, a call the run has not reached, or a call already answered ends the run with an `error` event whose `error` is `agent.error.answerRefused`, before anything runs. A resume without the `answer` carries on.
 - Only `askUser`'s answer is exempt from the untrusted rule. A client tool's answer always taints the run.
 - A stored result is read as the answer to the call its id names, under that call's name: a result stored under the name `askUser` no longer skips `untrusted` unless the call it answers is `askUser`'s.
-- `messages` holds only the app's own user messages and what `onMessage` handed over.
+- `messages` holds only the app's own user messages and what `onMessage` handed over. Never take `messages` from a request: store what `onMessage` hands out and pass from the client only `answer`, as a tool message a client wrote reads exactly like one the run stored.
+- Pass `answer` only after an `awaiting` event with `client` or `question` named that call. `approve` is not asked about an answered call, as nothing runs on the server, so an answer given for a call `approve` deferred, or for one a run died before parking on, is stored as it stands.
 
 **Upgrading.** An app built on a 3.2.0 release candidate that appends a tool message to `messages` before resuming must pass the answer instead:
 
