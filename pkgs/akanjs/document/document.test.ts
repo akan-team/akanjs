@@ -1116,6 +1116,16 @@ describe("data loaders", () => {
     }
   });
 
+  test("DataLoader rejects every caller of a batch function that answers with something other than an array", async () => {
+    for (const answer of [null, { a: "loaded:a" }, "ab"]) {
+      const loader = new DataLoader<string, string>(async () => answer as unknown as string[]);
+      const settled = await Promise.allSettled(["a", "b", "a"].map((key) => loader.load(key)));
+      expect(settled.map((result) => (result as PromiseRejectedResult).reason?.message)).toEqual(
+        Array.from({ length: 3 }, () => "DataLoader expected 2 values, received no array"),
+      );
+    }
+  });
+
   test("createArrayLoader gives two callers of one field equal lists of their own", async () => {
     const fake = createFakeModel();
     const loader = createArrayLoader<string, TestLoaderItem[]>(fake.model, "ownerId");

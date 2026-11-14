@@ -184,8 +184,9 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     }
     loading.then(
       (values) => {
-        if (values.length !== keys.length) {
-          const error = new Error(`DataLoader expected ${keys.length} values, received ${values.length}`);
+        const received = Array.isArray(values) ? values.length : "no array";
+        if (received !== keys.length) {
+          const error = new Error(`DataLoader expected ${keys.length} values, received ${received}`);
           for (const { reject } of items) reject(error);
           return;
         }
