@@ -73,7 +73,8 @@ export class FontOptimizer {
     const fontUtilityCss = this.#buildFontUtilityRules(fonts);
     if (fontUtilityCss) this.#cssParts.push(fontUtilityCss);
     const result = { css: this.#cssParts.join("\n"), fonts, files: this.#files };
-    if (cacheKey) await this.#writeCache(cacheKey, result);
+    // An unwritable cache is a slower start, never a failed one.
+    if (cacheKey) await this.#writeCache(cacheKey, result).catch(() => undefined);
     return result;
   }
 
@@ -81,16 +82,16 @@ export class FontOptimizer {
     return path.join(this.#cacheRoot, "fontCache.json");
   }
 
-  // null skips the cache: an unstat-able source's staleness is undetectable, and the uncached path warns about it.
+  // null skips the cache: an unreadable source's staleness is undetectable, and the uncached path warns about it.
   async #buildCacheKey(fonts: ReactFont[]): Promise<string | null> {
     const sources: unknown[] = [];
     for (const font of fonts) {
       if (!this.#isFontOptimizationEnabled(font)) continue;
       for (const face of this.#getFontFaces(font)) {
         const sourcePath = await this.#resolveFontSourcePath(face.src);
-        const stamp = sourcePath ? await this.#fileStamp(sourcePath) : null;
-        if (!stamp) return null;
-        sources.push({ optimizedSrc: face.optimizedSrc, sourcePath, ...stamp });
+        const digest = sourcePath ? await this.#fileDigest(sourcePath) : null;
+        if (!digest) return null;
+        sources.push({ optimizedSrc: face.optimizedSrc, sourcePath, ...digest });
       }
       for (const filePath of font.subsetFiles ?? []) {
         const abs = path.isAbsolute(filePath) ? filePath : path.join(this.#app.cwdPath, filePath);
@@ -131,6 +132,13 @@ export class FontOptimizer {
   // sha256, not #hashFontConfig's 32-bit FNV: a key collision would serve a stale subset as current.
   #cacheDigest(value: unknown) {
     return new Bun.CryptoHasher("sha256").update(this.#stableStringify(value)).digest("hex");
+  }
+
+  async #fileDigest(filePath: string): Promise<{ size: number; sha256: string } | null> {
+    const bytes = await Bun.file(filePath)
+      .bytes()
+      .catch(() => null);
+    return bytes ? { size: bytes.byteLength, sha256: this.#sha256(bytes) } : null;
   }
 
   async #fileStamp(filePath: string): Promise<{ mtimeMs: number; size: number } | null> {
@@ -198,6 +206,7 @@ export class FontOptimizer {
     const names = await readdir(dir).catch(() => [] as string[]);
     await Promise.all(
       names
+        .filter((name) => !name.endsWith(".tmp"))
         .map((name) => path.join(dir, name))
         .filter((filePath) => !keep.has(filePath))
         .map((filePath) => rm(filePath, { force: true })),

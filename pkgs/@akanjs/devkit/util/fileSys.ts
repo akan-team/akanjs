@@ -47,7 +47,7 @@ export class FileSys {
   // One `rename`, so a watcher never reads a half-written barrel as a user edit. The temp is a sibling (rename is atomic
   // only within a filesystem), and its `.tmp` suffix is what `HmrChangeClassifier` ignores it by.
   static async writeTextAtomic(filePath: string, content: string | Uint8Array) {
-    const temp = `${filePath}.${process.pid}.${Date.now().toString(36)}.tmp`;
+    const temp = `${filePath}.${process.pid}.${crypto.randomUUID()}.tmp`;
     try {
       await Bun.write(temp, content);
       await FileSys.replace(temp, filePath);

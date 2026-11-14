@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdir, rm, stat, writeFile } from "node:fs/promises";
+import { chmod, mkdir, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
 import { tempDirs } from "../test/testHelpers";
@@ -220,6 +220,50 @@ describe("FontOptimizer cache", () => {
         path.join(cwdPath, ".akan/cache", path.relative(path.join(cwdPath, ".akan/artifact"), first.files[0])),
       ).exists(),
     ).toBe(true);
+  });
+
+  test("still writes the fonts when the cache folder cannot be written", async () => {
+    const { app, cwdPath } = await makeApp(layoutWith());
+    const cacheDir = path.join(cwdPath, ".akan/cache");
+    await mkdir(cacheDir, { recursive: true });
+    await chmod(cacheDir, 0o500);
+    try {
+      const result = await optimize(app);
+      expect(result.files).toHaveLength(1);
+      expect(await Bun.file(result.files[0]).exists()).toBe(true);
+    } finally {
+      await chmod(cacheDir, 0o700);
+    }
+  });
+
+  test("resubsets when the source font is replaced by one of the same size and mtime", async () => {
+    const { app, cwdPath, reusedCount } = await makeApp(`
+export const fonts = [{ name: "Gilda", paths: [{ src: "/fonts/Gilda.ttf", weight: 400 }] }];
+export default function Layout() {
+  return null;
+}
+`);
+    const sourcePath = path.join(cwdPath, "public/fonts/Gilda.ttf");
+    const source = await Bun.file(path.resolve(path.dirname(SOURCE_FONT), "GildaDisplay-Regular.ttf")).bytes();
+    await Bun.write(sourcePath, source);
+    await optimize(app);
+    const { mtime } = await stat(sourcePath);
+
+    await Bun.write(sourcePath, renameSfntTable(source.slice(), "OS/2", "XS/2"));
+    await utimes(sourcePath, mtime, mtime);
+    await optimize(app);
+    expect(reusedCount()).toBe(0);
+  });
+
+  test("leaves a temporary file another start is still writing in the cache folder", async () => {
+    const { app, cwdPath } = await makeApp(layoutWith());
+    await optimize(app);
+    const tempPath = path.join(cwdPath, ".akan/cache/fonts/Assistant-400-normal-abc.woff2.123.abc.tmp");
+    await Bun.write(tempPath, "in progress");
+
+    await writeFile(path.join(cwdPath, "page/_layout.tsx"), layoutWith(`\n    className: "font-brand",`));
+    await optimize(app);
+    expect(await Bun.file(tempPath).exists()).toBe(true);
   });
 
   test("skips route files that never mention fonts", async () => {
