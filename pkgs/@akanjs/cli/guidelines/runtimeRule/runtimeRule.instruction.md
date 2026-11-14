@@ -192,12 +192,15 @@ normalized to `info` with one warning.
   endpoint's own type with `origin: "mcp"`. `AKAN_LOG_CONTEXT=0` is the escape hatch; `AKAN_TRACE=1` is a
   different switch that adds span and query aggregation. Measured cost: ~25ns per call.
 - **One id per request, across processes.** The `traceId` is 32 hex digits (a W3C trace id), written on the response
-  as `x-request-id` and in a failed call's body as `traceId`. An inbound `traceparent`, or else an `x-request-id` that
-  is a UUID or 32 hex digits, is adopted only from a trusted proxy (`AKAN_TRUSTED_PROXIES`, the forwarded-header
-  rule); from any other caller the server mints an id and keeps the caller's as `link` on the request line. The
-  gateway hands its id to the replica, the replica to the RSC worker in the render message, a server-side `fetch`
-  sends `traceparent` to the app's own server and to a `clone({ origin })`, every websocket frame is a span under its
-  handshake's id, and a queued job is a trace of its own that links the enqueuing one.
+  as `x-request-id` and in a failed call's body as `traceId`. The server always mints it: an inbound `traceparent`,
+  or else an `x-request-id` that is a UUID or 32 hex digits, is kept as `link` on every record of the request, and
+  `akan logs --trace` matches `link` too and takes the id as the caller sent it. Only the gateway's unix-socket hop
+  to its replica carries an id over. `AKAN_TRACE_ADOPT=trusted-proxies` lets a peer `AKAN_TRUSTED_PROXIES` names
+  (an address, a CIDR, or `private`; never the unset default, `*`, or loopback unlisted) choose the id, which is
+  safe only when that proxy overwrites or strips both headers. The replica hands its id to the RSC worker in the
+  render message, a server-side `fetch` sends `traceparent` to the app's own server and to a `clone({ origin })`,
+  every websocket frame is a span under its handshake's id, and a queued job is a trace of its own that links the
+  enqueuing one.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
   lines wrap the traced handler from outside; gateway lines written outside a request have none. `akan logs

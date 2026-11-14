@@ -105,6 +105,13 @@ export default page()
         }),
       },
       {
+        name: "link",
+        desc: l.trans({
+          en: "Present when the request was handed an id it did not take: its caller's, or for a job the enqueuing trace's.",
+          ko: "요청이 받았지만 자기 id로 쓰지 않은 id가 있을 때만 붙습니다. 호출자의 id, 큐 작업이라면 작업을 넣은 trace의 id입니다.",
+        }),
+      },
+      {
         name: "attrs",
         desc: l.trans({
           en: "Structured key=value data attached with `Logger.emit`.",
@@ -389,8 +396,8 @@ export default page()
       {
         name: "link",
         desc: l.trans({
-          en: "An id the call was handed but did not take: the `traceparent` or `x-request-id` of a caller that is not a trusted proxy, or for a queued job the trace that enqueued it.",
-          ko: "호출이 받았지만 자기 id로 쓰지 않은 id입니다. 신뢰하는 프록시가 아닌 호출자가 보낸 `traceparent`나 `x-request-id`, 큐 작업이라면 그 작업을 넣은 trace의 id입니다.",
+          en: "An id the call was handed but did not take: the `traceparent` or `x-request-id` a caller sent, or for a queued job the trace that enqueued it. Every record of the call carries it as `link` too.",
+          ko: "호출이 받았지만 자기 id로 쓰지 않은 id입니다. 호출자가 보낸 `traceparent`나 `x-request-id`, 큐 작업이라면 그 작업을 넣은 trace의 id입니다. 그 호출의 모든 레코드에도 `link`로 붙습니다.",
         }),
       },
       {
@@ -413,19 +420,23 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>A caller's own id counts only from a trusted proxy.</strong> A request that arrives with a W3C{" "}
-            <code>traceparent</code>, or else an <code>x-request-id</code> that is a UUID or 32 hex digits, keeps that
-            id when its peer is in <code>AKAN_TRUSTED_PROXIES</code>. From anyone else the server mints an id and keeps
-            the caller's as <code>link</code>. Have your proxy set or overwrite both headers, as it does{" "}
-            <code>x-forwarded-for</code>.
+            <strong>The id on a response is the server's own.</strong> A request that arrives with a W3C{" "}
+            <code>traceparent</code>, or else an <code>x-request-id</code> that is a UUID or 32 hex digits, gets a fresh
+            id and keeps the caller's as <code>link</code>, on every record it writes. <code>akan logs --trace</code>{" "}
+            matches <code>link</code> too and takes the id as the caller sent it, so a caller's own id still finds its
+            request. Only the gateway's hop to its replica carries an id over.{" "}
+            <code>AKAN_TRACE_ADOPT=trusted-proxies</code> lets a proxy that <code>AKAN_TRUSTED_PROXIES</code> lists by
+            address choose the id; turn it on only when that proxy overwrites or strips both headers.
           </>
         ),
         ko: (
           <>
-            <strong>호출자가 보낸 id는 신뢰하는 프록시의 것만 씁니다.</strong> W3C <code>traceparent</code>나, UUID 또는
-            16진수 32자리인 <code>x-request-id</code>를 달고 온 요청은 peer가 <code>AKAN_TRUSTED_PROXIES</code>에 있을
-            때만 그 id를 씁니다. 그 밖의 호출자에게는 서버가 새 id를 만들고 호출자의 id는 <code>link</code>로 남깁니다.
-            프록시가 <code>x-forwarded-for</code>처럼 두 헤더도 직접 쓰거나 덮어쓰게 하세요.
+            <strong>응답의 id는 서버가 만든 것입니다.</strong> W3C <code>traceparent</code>나, UUID 또는 16진수 32자리인{" "}
+            <code>x-request-id</code>를 달고 온 요청은 새 id를 받고, 호출자의 id는 그 요청이 쓰는 모든 레코드에{" "}
+            <code>link</code>로 남습니다. <code>akan logs --trace</code>는 <code>link</code>도 함께 찾고 호출자가 보낸
+            모양 그대로 받으므로, 호출자의 id로도 요청을 찾을 수 있습니다. id를 그대로 이어받는 것은 gateway가 replica로
+            넘기는 hop뿐입니다. <code>AKAN_TRACE_ADOPT=trusted-proxies</code>를 켜면 <code>AKAN_TRUSTED_PROXIES</code>에
+            주소로 적은 프록시가 id를 정할 수 있습니다. 그 프록시가 두 헤더를 덮어쓰거나 지울 때만 켜세요.
           </>
         ),
       }),
@@ -1519,7 +1530,10 @@ akan:myapp> .tail off`}
                 {
                   key: "--trace",
                   type: "string",
-                  desc: l.trans({ en: "One request's traceId.", ko: "요청 하나의 traceId입니다." }),
+                  desc: l.trans({
+                    en: "One request's traceId, or an id it linked: the one its caller sent, as sent.",
+                    ko: "요청 하나의 traceId, 또는 그 요청이 link로 남긴 id입니다. 호출자가 보낸 id를 보낸 모양 그대로 넣어도 됩니다.",
+                  }),
                 },
                 {
                   key: "--child",

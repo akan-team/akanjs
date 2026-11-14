@@ -1040,8 +1040,8 @@ kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun 
             name: "--trace",
             type: "String",
             desc: l.trans({
-              en: "One request's traceId; collects every line that request wrote.",
-              ko: "요청 하나의 traceId입니다. 그 요청이 남긴 모든 줄을 모읍니다.",
+              en: "One request's traceId, or the id its caller sent, as sent; collects every line that request wrote.",
+              ko: "요청 하나의 traceId, 또는 호출자가 보낸 id(보낸 모양 그대로)입니다. 그 요청이 남긴 모든 줄을 모읍니다.",
             }),
           },
           {

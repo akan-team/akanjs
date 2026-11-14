@@ -317,8 +317,17 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                   type: "CIDR, … | private | none | *",
                   default: l.trans({ en: "private ranges", ko: "사설 대역" }),
                   desc: l.trans({
-                    en: "Proxies besides loopback whose headers are believed; a list replaces the private ranges. Any other peer's forwarded host, scheme and port are dropped, and its traceparent or x-request-id is kept as a link beside a fresh request id. private lets any pod in them name any caller, so pair it with a NetworkPolicy admitting only the ingress.",
-                    ko: "loopback 외에 전달 헤더를 믿을 프록시입니다. 목록을 주면 사설 대역을 대신합니다. 그 밖의 peer가 보낸 전달 host·scheme·port는 버리고, traceparent나 x-request-id는 새 요청 id 옆에 link로만 남깁니다. private을 넣으면 그 대역의 어느 pod든 아무 호출자 주소나 댈 수 있으니, ingress만 들이는 NetworkPolicy와 함께 씁니다.",
+                    en: "Proxies besides loopback whose headers are believed; a list replaces the private ranges. Any other peer's forwarded host, scheme and port are dropped. private lets any pod in them name any caller, so pair it with a NetworkPolicy admitting only the ingress.",
+                    ko: "loopback 외에 전달 헤더를 믿을 프록시입니다. 목록을 주면 사설 대역을 대신합니다. 그 밖의 peer가 보낸 전달 host·scheme·port는 버립니다. private을 넣으면 그 대역의 어느 pod든 아무 호출자 주소나 댈 수 있으니, ingress만 들이는 NetworkPolicy와 함께 씁니다.",
+                  }),
+                },
+                {
+                  key: "AKAN_TRACE_ADOPT",
+                  type: "trusted-proxies",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "Unset, every request gets an id the server mints, and a traceparent or x-request-id it arrived with is kept as its link. trusted-proxies takes that id as the request's own from a peer AKAN_TRUSTED_PROXIES names by address, by CIDR or with private; loopback and the private ranges count only when the list spells them, and * does not. Before turning it on, make that proxy overwrite or strip both headers on every request: one that passes them through lets any caller choose the id its response and its logs carry.",
+                    ko: "설정하지 않으면 모든 요청이 서버가 만든 id를 받고, 요청에 실려 온 traceparent나 x-request-id는 link로 남습니다. trusted-proxies로 두면 AKAN_TRUSTED_PROXIES에 주소, CIDR 또는 private으로 적은 peer가 보낸 id를 요청의 id로 씁니다. loopback과 사설 대역은 목록에 직접 적었을 때만 해당하고, *는 해당하지 않습니다. 켜기 전에 그 프록시가 모든 요청에서 두 헤더를 덮어쓰거나 지우게 하세요. 그대로 통과시키는 프록시라면 아무 호출자나 응답과 로그에 실릴 id를 정할 수 있습니다.",
                   }),
                 },
               ]}
