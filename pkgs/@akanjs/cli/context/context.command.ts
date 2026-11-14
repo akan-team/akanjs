@@ -29,13 +29,16 @@ export class ContextCommand extends command("context", [ContextScript], ({ publi
     .exec(async function (targetName, force, mode, workspace) {
       await this.contextScript.mcpInstall(workspace, targetName, { force, mode });
     }),
-  mcp: target({ desc: "Start the Akan MCP server over stdio", stdio: true })
+  mcp: target({ desc: "Start the Akan MCP server over stdio", stdio: true, readOnly: ({ mode }) => mode !== "apply" })
     .option("mode", String, { desc: "MCP permission mode", default: "readonly", enum: ["readonly", "plan", "apply"] })
     .with(Workspace)
     .exec(async function (mode, workspace) {
       await this.contextScript.mcp(workspace, { mode });
     }),
-  mcpCall: target({ desc: "Call one Akan MCP tool for debugging without stdio JSON-RPC" })
+  mcpCall: target({
+    desc: "Call one Akan MCP tool for debugging without stdio JSON-RPC",
+    readOnly: ({ mode }) => mode !== "apply",
+  })
     .arg("tool", String, { desc: "MCP tool name" })
     .option("mode", String, { desc: "MCP permission mode", default: "readonly", enum: ["readonly", "plan", "apply"] })
     .option("args", String, { desc: "JSON object to pass as MCP tool arguments", nullable: true })

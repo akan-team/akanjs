@@ -86,6 +86,7 @@ const migrationTargets = ({ public: target }: ApplicationBuilderContext) => ({
     desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration, or list and prune the indexes it no longer declares",
     stdio: true,
     usageExitCode: 2,
+    readOnly: ({ action }) => ["list", "plan", "verify", "indexes"].includes(String(action)),
     //? A `--json` caller parses the last line, so a failure before the app ran answers in the app's shape too.
     onFailure: async (error, { usage, given }) => {
       if (given.json !== true) return;

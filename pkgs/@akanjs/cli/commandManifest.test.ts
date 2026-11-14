@@ -83,7 +83,17 @@ describe("the commands a CLI of another major.minor refuses", () => {
       if (!option) throw new Error(`no command ${name}`);
       return WorkspaceVersionCheck.readsOnly(option, values);
     };
-    for (const name of ["sync", "sync-all", "create-module", "add-field", "verify", "repair", "start", "build", "mcp"])
+    for (const name of [
+      "sync",
+      "sync-all",
+      "create-module",
+      "add-field",
+      "verify",
+      "repair",
+      "start",
+      "build",
+      "mcp-install",
+    ])
       expect([name, readsOnly(name)]).toEqual([name, false]);
     expect(readsOnly("lint", { fix: true })).toBe(false);
     expect(readsOnly("lint", { fix: false })).toBe(true);
@@ -94,6 +104,18 @@ describe("the commands a CLI of another major.minor refuses", () => {
     expect(readsOnly("typecheck", { write: false })).toBe(true);
     expect(readsOnly("agent", { action: "install", check: false })).toBe(false);
     expect(readsOnly("agent", { action: "hook", check: false })).toBe(true);
+    for (const name of ["mcp", "mcp-call"]) {
+      expect([name, readsOnly(name, { mode: "readonly" }), readsOnly(name, { mode: "plan" })]).toEqual([
+        name,
+        true,
+        true,
+      ]);
+      expect([name, readsOnly(name, { mode: "apply" })]).toEqual([name, false]);
+    }
+    for (const action of ["list", "plan", "verify", "indexes"])
+      expect([action, readsOnly("migrate", { action })]).toEqual([action, true]);
+    for (const action of ["apply", "rollback", "prune-indexes"])
+      expect([action, readsOnly("migrate", { action })]).toEqual([action, false]);
     for (const name of ["context", "doctor", "logs", "guideline", "version", "library-status", "pipeline"])
       expect([name, readsOnly(name)]).toEqual([name, true]);
   });
