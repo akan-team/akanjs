@@ -140,7 +140,7 @@ describe("FontOptimizer cache", () => {
     expect(await Bun.file(second.files[0]).bytes()).toEqual(firstBytes);
   });
 
-  test.each(["akanjs", "bun"])("resubsets when the cache was written by another %s version", async (field) => {
+  test.each(["akanjs", "bun", "code"])("resubsets when the cache was written by another %s version", async (field) => {
     const { app, cwdPath, reusedCount } = await makeApp(layoutWith());
     await optimize(app);
     const indexPath = path.join(cwdPath, ".akan/cache/fontCache.json");

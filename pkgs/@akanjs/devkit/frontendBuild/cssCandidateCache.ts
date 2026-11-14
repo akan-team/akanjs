@@ -32,7 +32,7 @@ export class CssCandidateCache {
   #reused = 0;
   #rescanned = 0;
 
-  constructor(cachePath: string, stamp = buildCacheStamp()) {
+  constructor(cachePath: string, stamp = buildCacheStamp([import.meta.path])) {
     this.#path = cachePath;
     this.#stamp = stamp;
   }

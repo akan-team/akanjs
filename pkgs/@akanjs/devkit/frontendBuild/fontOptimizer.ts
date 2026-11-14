@@ -43,6 +43,7 @@ export class FontOptimizer {
   #command: FontOptimizerCommand;
   #artifactRoot: string;
   #cacheRoot: string;
+  #stamp = buildCacheStamp([import.meta.path]);
   #files: string[] = [];
   #cssParts: string[] = [];
   #woff2Ready: Promise<void> | null = null;
@@ -156,7 +157,7 @@ export class FontOptimizer {
       .catch(() => null)) as Partial<FontOptimizerCache> | null;
     if (cache?.version !== FontOptimizer.#cacheVersion || cache.key !== key || typeof cache.css !== "string")
       return null;
-    if (!isBuildCacheStamp(cache, buildCacheStamp()) || !Array.isArray(cache.files)) return null;
+    if (!isBuildCacheStamp(cache, this.#stamp) || !Array.isArray(cache.files)) return null;
     const files: string[] = [];
     for (const file of cache.files) {
       const bytes = await this.#readIntact(this.#cacheRoot, file);
@@ -190,7 +191,7 @@ export class FontOptimizer {
     }
     const cache: FontOptimizerCache = {
       version: FontOptimizer.#cacheVersion,
-      ...buildCacheStamp(),
+      ...this.#stamp,
       key,
       css: result.css,
       files,

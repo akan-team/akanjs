@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import type { BuildCacheStamp } from "./buildCacheStamp";
 import { CssCandidateCache } from "./cssCandidateCache";
 
 const scan = async (source: string) => {
@@ -58,7 +59,7 @@ describe("CssCandidateCache token extraction", () => {
 });
 
 describe("CssCandidateCache persistence", () => {
-  const writeCache = async (stamp: { akanjs: string; bun: string }) => {
+  const writeCache = async (stamp: BuildCacheStamp) => {
     const dir = await mkdtemp(path.join(tmpdir(), "css-candidate-"));
     const file = path.join(dir, "probe.tsx");
     const cachePath = path.join(dir, "cache.json");
@@ -70,27 +71,28 @@ describe("CssCandidateCache persistence", () => {
   };
 
   test("reuses an entry the same akanjs and Bun wrote", async () => {
-    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a" });
-    const cache = await new CssCandidateCache(cachePath, { akanjs: "1.0.0", bun: "1.0.0+a" }).load();
+    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a", code: "1:1" });
+    const cache = await new CssCandidateCache(cachePath, { akanjs: "1.0.0", bun: "1.0.0+a", code: "1:1" }).load();
     expect(await cache.candidatesFor(file)).toContain("w-full");
     expect([cache.reused, cache.rescanned]).toEqual([1, 0]);
   });
 
   test.each([
-    ["akanjs", { akanjs: "1.0.1", bun: "1.0.0+a" }],
-    ["Bun", { akanjs: "1.0.0", bun: "1.0.0+b" }],
-  ])("rescans an entry another %s version wrote", async (_, stamp) => {
-    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a" });
+    ["akanjs", { akanjs: "1.0.1", bun: "1.0.0+a", code: "1:1" }],
+    ["Bun", { akanjs: "1.0.0", bun: "1.0.0+b", code: "1:1" }],
+    ["scanner build", { akanjs: "1.0.0", bun: "1.0.0+a", code: "2:1" }],
+  ])("rescans an entry another %s wrote", async (_, stamp) => {
+    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a", code: "1:1" });
     const cache = await new CssCandidateCache(cachePath, stamp).load();
     expect(await cache.candidatesFor(file)).toContain("w-full");
     expect([cache.reused, cache.rescanned]).toEqual([0, 1]);
   });
 
   test("rescans when the cache file was cut short", async () => {
-    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a" });
+    const { file, cachePath } = await writeCache({ akanjs: "1.0.0", bun: "1.0.0+a", code: "1:1" });
     const text = await Bun.file(cachePath).text();
     await writeFile(cachePath, text.slice(0, text.length / 2));
-    const cache = await new CssCandidateCache(cachePath, { akanjs: "1.0.0", bun: "1.0.0+a" }).load();
+    const cache = await new CssCandidateCache(cachePath, { akanjs: "1.0.0", bun: "1.0.0+a", code: "1:1" }).load();
     expect(await cache.candidatesFor(file)).toContain("w-full");
     expect([cache.reused, cache.rescanned]).toEqual([0, 1]);
   });
