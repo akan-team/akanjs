@@ -114,6 +114,11 @@ export interface AkanNativeDesktopConfig {
     publisher?: string;
     entitlements?: Record<string, AkanNativeValue>;
     dmg?: AkanNativeDmgConfig;
+    externalView?: {
+        allowOrigins?: string[];
+        evaluate?: boolean;
+        sendKey?: boolean;
+    };
 }
 
 export interface AkanNativeDesktopServerConfig {

@@ -864,6 +864,16 @@ describe("AkanAppConfig", () => {
     expect(make({ native: { desktop: { dmg: { backgroundImage: "bg.png" } } } })).toThrow(
       "native.desktop.dmg.backgroundImage in apps/portal/akan.config.ts is not a native setting",
     );
+    expect(make({ native: { desktop: { externalView: { origins: ["https://board.example"] } } } })).toThrow(
+      "native.desktop.externalView.origins in apps/portal/akan.config.ts is not a native setting. Known: allowOrigins, evaluate, sendKey.",
+    );
+    expect(
+      make({
+        native: {
+          desktop: { externalView: { allowOrigins: ["https://board.example"], evaluate: true, sendKey: true } },
+        },
+      }),
+    ).not.toThrow();
   });
 
   test("derives a repo-scoped default appId and records an explicit native section", () => {

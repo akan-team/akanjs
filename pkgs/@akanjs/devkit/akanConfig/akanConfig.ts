@@ -11,6 +11,7 @@ import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
+import { nativeKeys } from "./nativeKeys";
 import {
   type AkanApiConfig,
   type AkanAssetsConfig,
@@ -452,56 +453,6 @@ export class AkanAppConfig implements AppConfigResult {
   static #isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
-  static readonly #nativeKeys = {
-    native: [
-      "basePath",
-      "indexPath",
-      "appName",
-      "appId",
-      "fileName",
-      "version",
-      "buildNum",
-      "icon",
-      "splash",
-      "backgroundColor",
-      "permissions",
-      "plugins",
-      "deepLinks",
-      "updates",
-      "devtools",
-      "csp",
-      "openUrls",
-      "ios",
-      "android",
-      "desktop",
-    ],
-    ios: ["indexPath", "teamId", "infoPlist", "entitlements", "privacy", "files"],
-    android: [
-      "indexPath",
-      "sha256CertFingerprints",
-      "googleServices",
-      "push",
-      "autoplay",
-      "manifest",
-      "application",
-      "activity",
-      "files",
-    ],
-    desktop: [
-      "indexPath",
-      "server",
-      "recovery",
-      "window",
-      "screenCapture",
-      "webview2",
-      "publisher",
-      "entitlements",
-      "dmg",
-    ],
-    desktopServer: ["omit", "profile", "modules", "env", "restart", "watchdog"],
-    dmg: ["background", "background2x", "window", "iconSize", "textSize", "app", "applications"],
-    deepLinks: ["schemes", "domains"],
-  } as const;
   //* Settings that moved when `mobile` became `native` are named with where they went, instead of "unknown".
   static readonly #movedKeys: Readonly<Record<string, string>> = {
     native: "the platform sections and plugins sit directly in the native section: ios, android, desktop, plugins",
@@ -526,19 +477,15 @@ export class AkanAppConfig implements AppConfigResult {
         );
       }
     };
-    check(section, AkanAppConfig.#nativeKeys.native, where, "native");
+    check(section, nativeKeys.native, where, "native");
     const settings = section as AkanNativeSettings;
-    check(settings.ios, AkanAppConfig.#nativeKeys.ios, `${where}.ios`, "ios");
-    check(settings.android, AkanAppConfig.#nativeKeys.android, `${where}.android`, "android");
-    check(settings.desktop, AkanAppConfig.#nativeKeys.desktop, `${where}.desktop`, "desktop");
-    check(
-      settings.desktop?.server,
-      AkanAppConfig.#nativeKeys.desktopServer,
-      `${where}.desktop.server`,
-      "desktopServer",
-    );
-    check(settings.desktop?.dmg, AkanAppConfig.#nativeKeys.dmg, `${where}.desktop.dmg`, "dmg");
-    check(settings.deepLinks, AkanAppConfig.#nativeKeys.deepLinks, `${where}.deepLinks`, "deepLinks");
+    check(settings.ios, nativeKeys.ios, `${where}.ios`, "ios");
+    check(settings.android, nativeKeys.android, `${where}.android`, "android");
+    check(settings.desktop, nativeKeys.desktop, `${where}.desktop`, "desktop");
+    check(settings.desktop?.server, nativeKeys.desktopServer, `${where}.desktop.server`, "desktopServer");
+    check(settings.desktop?.dmg, nativeKeys.dmg, `${where}.desktop.dmg`, "dmg");
+    check(settings.desktop?.externalView, nativeKeys.externalView, `${where}.desktop.externalView`, "externalView");
+    check(settings.deepLinks, nativeKeys.deepLinks, `${where}.deepLinks`, "deepLinks");
   }
   static readonly #androidFilePattern = /^(?:res\/[^/]+\/[^/]+|assets\/.+)$/;
   static #assertFiles(settings: AkanNativeSettings, where: string, configPath: string) {
