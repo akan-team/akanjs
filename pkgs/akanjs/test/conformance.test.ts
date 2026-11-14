@@ -3,7 +3,7 @@ import path from "node:path";
 
 const probe = async (env: Record<string, string>) => {
   const inherited = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("AKAN_TEST_")));
-  const proc = Bun.spawn(["bun", "test", "--isolate", "./test/requireBackendsProbe.ts"], {
+  const proc = Bun.spawn(["bun", "test", "--isolate", "./test/requireBackendsProbe.fixture.ts"], {
     cwd: path.resolve(import.meta.dir, ".."),
     env: { ...inherited, ...env },
     stdout: "pipe",

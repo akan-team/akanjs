@@ -178,7 +178,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U akan -d akan"
+          --health-cmd "pg_isready -h 127.0.0.1 -U akan -d akan"
           --health-interval 1s
           --health-timeout 3s
           --health-retries 60
@@ -198,9 +198,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup
-      # A service container cannot mount infra/test/postgres-init.sql, so the same file is applied over the wire.
+      # A service container cannot mount infra/test/postgres-init.sql, so the same file is piped into the container.
       - name: Create the Postgres extensions the search engine needs
-        run: psql "$AKAN_TEST_POSTGRES_URL" -v ON_ERROR_STOP=1 -f infra/test/postgres-init.sql
+        run: docker exec -i ${{ job.services.postgres.id }} psql -U akan -d akan -v ON_ERROR_STOP=1 < infra/test/postgres-init.sql
       # The suites and their order mirror ConformanceRun in infra/test/runConformance.ts.
       - name: Framework conformance suites
         working-directory: pkgs/akanjs
