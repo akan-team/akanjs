@@ -2209,15 +2209,15 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      Copy the app files owned by uid 1000, set <code>PORT</code>, <code>NODE_ENV</code>, the{" "}
-                      <code>AKAN_PUBLIC_*</code> values and <code>AKAN_LOG_TO_FILE=0</code>, then{" "}
-                      <code>USER 1000:1000</code> and <code>CMD</code>.
+                      Copy the app files, give uid 1000 the directories the server writes, set <code>PORT</code>,{" "}
+                      <code>NODE_ENV</code>, the <code>AKAN_PUBLIC_*</code> values and <code>AKAN_LOG_TO_FILE=0</code>,
+                      then <code>USER 1000:1000</code> and <code>CMD</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      앱 파일을 uid 1000 소유로 복사하고 <code>PORT</code>, <code>NODE_ENV</code>,{" "}
-                      <code>AKAN_PUBLIC_*</code> 값과 <code>AKAN_LOG_TO_FILE=0</code>을 설정한 뒤{" "}
+                      앱 파일을 복사하고 서버가 쓰는 디렉터리만 uid 1000에게 준 뒤 <code>PORT</code>,{" "}
+                      <code>NODE_ENV</code>, <code>AKAN_PUBLIC_*</code> 값과 <code>AKAN_LOG_TO_FILE=0</code>을 설정하고{" "}
                       <code>USER 1000:1000</code>과 <code>CMD</code>를 둡니다.
                     </span>
                   ),
@@ -2276,11 +2276,11 @@ const config: AppConfig = {
     "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg imagemagick",
     "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
     "ARG TARGETARCH",
-    "RUN mkdir -p /workspace/sqlite /workspace/local && chown 1000:1000 /workspace /workspace/sqlite /workspace/local",
     "WORKDIR /workspace",
     "COPY ./package.json ./bun.lock ./",
     "RUN bun install --production --frozen-lockfile",
-    "COPY --chown=1000:1000 . .",
+    "COPY . .",
+    "RUN mkdir -p /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache && chown 1000:1000 /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache",
     "ENV PORT=8282",
     "ENV NODE_ENV=production",
     "ENV AKAN_PUBLIC_REPO_NAME=akanjs",

@@ -7,5 +7,11 @@ export const BUN_IMAGE_PIN = {
 export const DEFAULT_DOCKER_IMAGE = `oven/bun:${BUN_IMAGE_PIN.version}-slim@${BUN_IMAGE_PIN.digest}`;
 //? oven/bun's `bun` user, numeric so a kubelet can check `runAsNonRoot` without reading the image's passwd file.
 export const DOCKER_RUN_USER = "1000:1000";
-//? Docker hands an empty named volume the owner of the image directory it mounts over, so these exist already owned.
-export const DOCKER_VOLUME_DIRS = ["/workspace/sqlite", "/workspace/local"];
+//? The directories the server writes, its code staying read-only; an empty named volume mounted on one takes its owner.
+export const DOCKER_WRITE_DIRS = [
+  "/workspace/sqlite",
+  "/workspace/local",
+  "/workspace/runtime",
+  "/workspace/data",
+  "/workspace/.akan/artifact/image-cache",
+];

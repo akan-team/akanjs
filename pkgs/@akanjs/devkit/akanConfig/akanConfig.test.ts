@@ -16,6 +16,8 @@ const akanPackageJson = JSON.parse(
 const rootPackageJson = JSON.parse(
   fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../package.json"), "utf8"),
 ) as { engines: { bun: string } };
+const writeDirsStep =
+  "RUN mkdir -p /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache && chown 1000:1000 /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache";
 const setupActionBunVersion = /bun-version:\s*(\S+)/.exec(
   fs.readFileSync(
     path.join(path.dirname(fileURLToPath(import.meta.url)), "../../../../.github/actions/setup/action.yml"),
@@ -242,7 +244,7 @@ describe("AkanAppConfig", () => {
       .map(([key, value]) => `ENV ${key}=${value}`)
       .join("\n");
     expect(config.dockerfile).toContain(
-      `COPY --chown=1000:1000 . .\n${envBlock}\nUSER 1000:1000\nCMD ["bun","main.js"]`,
+      `COPY . .\n${writeDirsStep}\n${envBlock}\nUSER 1000:1000\nCMD ["bun","main.js"]`,
     );
   });
 
@@ -265,12 +267,12 @@ describe("AkanAppConfig", () => {
       "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
       "ARG TARGETARCH",
       "",
-      "RUN mkdir -p /workspace/sqlite /workspace/local && chown 1000:1000 /workspace /workspace/sqlite /workspace/local",
       "WORKDIR /workspace",
       "COPY ./package.json ./bun.lock ./",
       "RUN bun install --production --frozen-lockfile",
       "",
-      "COPY --chown=1000:1000 . .",
+      "COPY . .",
+      writeDirsStep,
       "ENV PORT=8282",
       "ENV NODE_ENV=production",
       "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
@@ -318,7 +320,7 @@ describe("AkanAppConfig", () => {
     expect(DEFAULT_DOCKER_IMAGE).toBe(`oven/bun:${BUN_IMAGE_PIN.version}-slim@${BUN_IMAGE_PIN.digest}`);
   });
 
-  test("runs the generated image as the bun user once every root step is done, on directories it owns", () => {
+  test("runs the generated image as the bun user once every root step is done, owning only what it writes", () => {
     const config = new AkanAppConfig(
       app,
       [],
@@ -333,11 +335,9 @@ describe("AkanAppConfig", () => {
     expect(instructions.slice(userAt + 1)).toEqual(['CMD ["bun","main.js"]']);
     for (const rootStep of ["apt-get update", "apt-get install -y ffmpeg", "bun install", "echo after"])
       expect(instructions.findIndex((line) => line.includes(rootStep))).toBeLessThan(userAt);
-    expect(instructions.filter((line) => line.startsWith("COPY . "))).toEqual([]);
-    expect(instructions).toContain("COPY --chown=1000:1000 . .");
-    expect(instructions).toContain(
-      "RUN mkdir -p /workspace/sqlite /workspace/local && chown 1000:1000 /workspace /workspace/sqlite /workspace/local",
-    );
+    expect(instructions.filter((line) => line.includes("--chown"))).toEqual([]);
+    expect(instructions[instructions.indexOf("COPY . .") + 1]).toBe(writeDirsStep);
+    expect(instructions.filter((line) => line.includes("chown") && / \/workspace( |$)/.test(line))).toEqual([]);
   });
 
   test("keeps a declared Dockerfile string verbatim", () => {

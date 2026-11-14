@@ -7,7 +7,7 @@ The Dockerfile `akan build` writes runs the server as oven/bun's `bun` user (uid
 **Image**
 
 - The base is `oven/bun:1.4.4-slim@sha256:…`, the multi-arch index's digest, so every build of a release, amd64 and arm64 alike, starts from the same Bun the workspace pins. A test fails when the image tag and the repo's Bun version disagree.
-- `apt-get`, `preRuns`, `bun install` and `postRuns` still run as root. The app files are copied `--chown=1000:1000`, and `/workspace` with the volume mount points `/workspace/sqlite` and `/workspace/local` belong to uid 1000, so SQLite, uploads, the runtime sockets and the image cache are writable while `node_modules` stays read-only. An empty named volume mounted at either point starts out owned by uid 1000.
+- `apt-get`, `preRuns`, `bun install` and `postRuns` still run as root, and the app files, `node_modules` included, stay root's and read-only to the server. uid 1000 owns only the directories the server writes: `/workspace/sqlite`, `/workspace/local`, `/workspace/runtime` (the control socket), `/workspace/data` and `/workspace/.akan/artifact/image-cache`. An empty named volume mounted at `/workspace/sqlite` or `/workspace/local` starts out owned by uid 1000.
 
 **Chart** (`infra/app`, not an npm package; its defaults now live in `infra/app/values.yaml`)
 

@@ -11,7 +11,7 @@ import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
-import { DEFAULT_DOCKER_IMAGE, DOCKER_RUN_USER, DOCKER_VOLUME_DIRS } from "./dockerImage";
+import { DEFAULT_DOCKER_IMAGE, DOCKER_RUN_USER, DOCKER_WRITE_DIRS } from "./dockerImage";
 import {
   type AkanApiConfig,
   type AkanAssetsConfig,
@@ -658,12 +658,12 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
 ARG TARGETARCH
 ${preRunScripts.join("\n")}
-RUN mkdir -p ${DOCKER_VOLUME_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} /workspace ${DOCKER_VOLUME_DIRS.join(" ")}
 WORKDIR /workspace
 ${lockfile ? "COPY ./package.json ./bun.lock ./" : "COPY ./package.json ./package.json"}
 RUN bun install --production${lockfile ? " --frozen-lockfile" : ""}
 ${postRunScripts.join("\n")}
-COPY --chown=${DOCKER_RUN_USER} . .
+COPY . .
+RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}
 ${envLines.join("\n")}
 USER ${DOCKER_RUN_USER}
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;

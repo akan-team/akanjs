@@ -1594,20 +1594,22 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>The server runs as the image's bun user, uid 1000.</strong> apt-get, preRuns, bun install
-                    and postRuns still run as root. The app files, <code>/workspace</code> and the default volume mounts{" "}
-                    <code>/workspace/sqlite</code> and <code>/workspace/local</code> belong to bun, and{" "}
-                    <code>node_modules</code> stays read-only to the server. A directory a postRuns step makes for the
-                    server to write needs <code>chown 1000:1000</code>.
+                    <strong>The server runs as the image's bun user, uid 1000, and owns only what it writes.</strong>{" "}
+                    apt-get, preRuns, bun install and postRuns still run as root, and the app files,{" "}
+                    <code>node_modules</code> included, stay root's and read-only to the server. bun owns{" "}
+                    <code>/workspace/sqlite</code>, <code>/workspace/local</code>, <code>/workspace/runtime</code>,{" "}
+                    <code>/workspace/data</code> and <code>/workspace/.akan/artifact/image-cache</code>. A directory a
+                    postRuns step makes for the server to write needs <code>chown 1000:1000</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>서버는 이미지의 bun 사용자(uid 1000)로 실행됩니다.</strong> apt-get, preRuns, bun install,
-                    postRuns는 그대로 root로 실행됩니다. 앱 파일, <code>/workspace</code>, 기본 볼륨 위치인{" "}
-                    <code>/workspace/sqlite</code>와 <code>/workspace/local</code>은 bun이 소유하고,{" "}
-                    <code>node_modules</code>는 서버가 읽기만 합니다. postRuns 단계가 서버가 쓸 디렉터리를 만든다면{" "}
-                    <code>chown 1000:1000</code>을 붙입니다.
+                    <strong>서버는 이미지의 bun 사용자(uid 1000)로 실행되며, 자기가 쓰는 곳만 소유합니다.</strong>{" "}
+                    apt-get, preRuns, bun install, postRuns는 그대로 root로 실행되고, <code>node_modules</code>를 포함한
+                    앱 파일은 root 소유로 남아 서버는 읽기만 합니다. bun은 <code>/workspace/sqlite</code>,{" "}
+                    <code>/workspace/local</code>, <code>/workspace/runtime</code>, <code>/workspace/data</code>,{" "}
+                    <code>/workspace/.akan/artifact/image-cache</code>를 소유합니다. postRuns 단계가 서버가 쓸
+                    디렉터리를 만든다면 <code>chown 1000:1000</code>을 붙입니다.
                   </span>
                 ),
               })}
