@@ -24,6 +24,8 @@ export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Well above any sensible TTL: this only has to reclaim a cache nobody is reading, not track expiry closely. */
 const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
 
+const emptyBody: EncodedBody = { bytes: new Uint8Array(0), encodings: {}, byteLength: 0 };
+
 interface HtmlCacheStreamOptions {
   shouldCache?: () => boolean | Promise<boolean>;
   maxBodyBytes?: number | null;
@@ -101,6 +103,8 @@ export interface CachedHtmlPage {
 }
 
 interface CachedHtmlResult extends CachedHtmlPage {
+  //* Held in place of a page whose replay would name too many hashes: its requests skip the cache until this expires.
+  unstored?: true;
   pathname: string;
   routeId?: string;
   tags?: string[];
@@ -176,12 +180,18 @@ export class HtmlResultCache {
       RouteCacheTally.bypass("html", decision.reason);
       return decision;
     }
-    return { entry: { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) } };
+    const entry = { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) };
+    if (this.#lookup(entry)?.unstored) {
+      this.#bypass += 1;
+      RouteCacheTally.bypass("html", "script-hashes");
+      return { entry: null, reason: "script-hashes" };
+    }
+    return { entry };
   }
 
   get(entry: HtmlCacheEntry): CachedHtmlPage | null {
     const cached = this.#lookup(entry);
-    if (!cached) {
+    if (!cached || cached.unstored) {
       this.#misses += 1;
       return null;
     }
@@ -190,11 +200,9 @@ export class HtmlResultCache {
     return cached;
   }
 
-  //? The scripts React wrote under the render's nonce are named by hash in a replay's policy. Past the cap the page is
-  //? not stored: its policy header would outgrow what a proxy in front reads.
-  static #scriptHashesOf(body: Uint8Array, { nonce, hashes = [] }: ScriptPolicySources = {}): string[] | null {
-    const all = [...new Set([...hashes, ...(nonce ? ScriptPolicy.hashesOfNonced(body, nonce) : [])])];
-    return all.length > MAX_RESPONSE_SCRIPT_HASHES ? null : all;
+  //? The scripts React wrote under the render's nonce are named by hash in a replay's policy.
+  static #scriptHashesOf(body: Uint8Array, { nonce, hashes = [] }: ScriptPolicySources = {}): string[] {
+    return [...new Set([...hashes, ...(nonce ? ScriptPolicy.hashesOfNonced(body, nonce) : [])])];
   }
 
   static #lookupReason({ key, exactKey }: HtmlCacheEntry, queryForm: RouteCacheQueryForm): RouteCacheLookupReason {
@@ -238,8 +246,15 @@ export class HtmlResultCache {
       htmlStream,
       (bytes) => {
         const scriptHashes = HtmlResultCache.#scriptHashesOf(bytes, input.scripts);
-        if (!scriptHashes) {
-          logger.verbose(`html cache store skipped pathname=${pathname} reason=script-hashes`);
+        if (scriptHashes.length > MAX_RESPONSE_SCRIPT_HASHES) {
+          const unstored = { body: emptyBody, scriptHashes: [], unstored: true as const, ...htmlCacheMetadata };
+          this.#cache.set(htmlStoreKey, unstored, htmlStoreTtl);
+          const route = htmlCacheMetadata.routeId ?? "unknown";
+          if (ScriptPolicy.firstReport("replay", route))
+            logger.warn(
+              `html cache: a page of route ${route} is rendered for each request (X-Akan-Cache-Reason: script-hashes): ` +
+                `its replay would name ${scriptHashes.length} script hashes, and a response names ${MAX_RESPONSE_SCRIPT_HASHES}`,
+            );
           return;
         }
         void encodeBody(bytes).then((body) =>

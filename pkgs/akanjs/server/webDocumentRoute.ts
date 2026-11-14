@@ -94,15 +94,16 @@ export class WebDocumentRoute {
       return encodedBodyResponse(req, cachedHtml.body, { headers: cachedHeaders });
     }
     const nonce = ScriptPolicy.createNonce();
-    const rscResult = await this.#rsc.renderWithMeta(WebDocumentRoute.#withScriptNonce(req, nonce), {
+    const renderReq = WebDocumentRoute.#withScriptNonce(req, nonce);
+    const rscResult = await this.#rsc.renderWithMeta(renderReq, {
       clientManifest: manifest.clientManifest,
       signal: req.signal,
       clientIp: SignalContext.clientIpOf(req),
     });
     if (rscResult.type === "redirect") return createDocumentRedirectResponse(rscResult.location, url, rscResult.status);
     if (rscResult.type === "not-found") return "not-found";
-    const hostRequestStore = createRequestStore(req);
-    const scripts = this.#scriptSources(nonce, rscResult.trace?.scriptHashes);
+    const hostRequestStore = createRequestStore(renderReq);
+    const scripts = this.#scriptSources(nonce, page.route, rscResult.trace?.scriptHashes);
     const htmlStream = await this.#renderHtml(req, url, { rscResult, manifest, isCrawler, hostRequestStore, nonce });
     //? A not-found or redirect the page raised after the stream started is known here only if the host still held the
     //? response (a blocking or crawler render, or one raised before the shell was ready); then it is a real one.
@@ -159,10 +160,16 @@ export class WebDocumentRoute {
     return new Request(req.url, { method: req.method, headers });
   }
 
-  #scriptSources(nonce: string, declared: string[] = []): ScriptPolicySources {
+  #scriptSources(nonce: string, route: string, declared: string[] = []): ScriptPolicySources {
     const own = SsrInlineScripts.policyHashes(this.#context.artifact.vendorMap);
     const added = declared.flatMap((hash) => ScriptPolicy.hashSource(hash) ?? []);
-    return { nonce, hashes: [...own, ...added].slice(0, MAX_RESPONSE_SCRIPT_HASHES) };
+    const hashes = [...new Set([...own, ...added])];
+    if (hashes.length > MAX_RESPONSE_SCRIPT_HASHES && ScriptPolicy.firstReport("declared", route))
+      this.#context.logger.warn(
+        `script policy: route ${route} names ${hashes.length} script hashes and a response names ` +
+          `${MAX_RESPONSE_SCRIPT_HASHES}, so its last ${hashes.length - MAX_RESPONSE_SCRIPT_HASHES} are left out`,
+      );
+    return { nonce, hashes: hashes.slice(0, MAX_RESPONSE_SCRIPT_HASHES) };
   }
 
   async #renderHtml(req: Request, url: URL, input: HtmlRenderInput): Promise<ReadableStream<Uint8Array>> {

@@ -116,6 +116,7 @@ export class SsrInlineScripts {
         for (var j = 0; j < d.modules.length; j++) {
           var s = document.createElement("script");
           s.type = "module";
+          s.async = false;
           s.src = d.modules[j];
           document.head.appendChild(s);
         }

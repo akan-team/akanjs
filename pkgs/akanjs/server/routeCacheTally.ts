@@ -10,6 +10,7 @@ const bypassReasons = [
   "request-not-public",
   "dev-registry",
   "no-route",
+  "script-hashes",
   "other",
 ] as const;
 

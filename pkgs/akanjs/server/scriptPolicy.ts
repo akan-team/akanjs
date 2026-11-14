@@ -3,8 +3,10 @@ import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
 
 export const SCRIPT_POLICY_REPORT_ONLY_HEADER = "Content-Security-Policy-Report-Only";
 export const SCRIPT_POLICY_REPORT_GROUP = "akan-csp";
-/** A proxy caps the header block (nginx reads it into 4 KB by default), and one hash source is 53 bytes. */
+//? A proxy reads a response's headers into one buffer (4 KB in nginx by default) and answers 502 past it. A hash
+//? source is 54 bytes, so 32 keep the policy under 2 KB: half the buffer, the rest for cookies and other headers.
 export const MAX_RESPONSE_SCRIPT_HASHES = 32;
+const MAX_REPORTED_ROUTES = 512;
 
 export interface ScriptPolicySources {
   nonce?: string;
@@ -24,6 +26,15 @@ const scriptCloseRe = /<\/script[\s/>]/i;
 const executableTypeRe = /^(?:|module|importmap|speculationrules|(?:text|application)\/(?:x-)?(?:java|ecma)script)$/i;
 
 export class ScriptPolicy {
+  static readonly #reported = new Set<string>();
+
+  static firstReport(about: "declared" | "replay", route: string): boolean {
+    const key = `${about} ${route}`;
+    if (ScriptPolicy.#reported.has(key) || ScriptPolicy.#reported.size >= MAX_REPORTED_ROUTES) return false;
+    ScriptPolicy.#reported.add(key);
+    return true;
+  }
+
   //? A browser hashes the text the parser kept, in which CRLF and a lone CR have become LF.
   static hashOf(text: string): string {
     return `'sha256-${createHash("sha256").update(text.replace(/\r\n?/g, "\n"), "utf8").digest("base64")}'`;

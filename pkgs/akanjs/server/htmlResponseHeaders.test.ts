@@ -1,12 +1,13 @@
 //? Loaded before any test sets NODE_ENV: the system pages import it on first use, and a production build of it
 //? beside the development `react` this process already holds cannot render.
 import "react-dom/server.browser";
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { AkanError, type BaseEnv } from "akanjs/base";
-import { DEFAULT_AKAN_I18N } from "akanjs/common";
+import { DEFAULT_AKAN_I18N, type Logger } from "akanjs/common";
+import { SCRIPT_NONCE_HEADER } from "akanjs/fetch";
 import { getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
 import { RouteClientCache } from "./artifact";
 import { DevtoolsRouter } from "./devtools/devtoolsRouter";
@@ -15,17 +16,25 @@ import type { DiLifecycle } from "./di/diLifecycle";
 import { GatewayStatusPage } from "./gateway/gatewayStatusPage";
 import { CSR_DEV_DIRNAME, CSR_DEV_MANIFEST_FILE, SSR_DEV_DIRNAME, SSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import { CsrDevShell } from "./hmr/csrDevShell";
-import { declaredHash, declaredSnippet, noncedSnippet } from "./htmlResponseHeaders.fixture";
+import {
+  boundaryCount,
+  declaredHash,
+  declaredSnippet,
+  manyDeclaredHashes,
+  noncedSnippet,
+} from "./htmlResponseHeaders.fixture";
 import { HtmlResultCache } from "./htmlResultCache";
 import { OAuthErrors } from "./oauth/OAuthErrors";
+import { RouteCacheTally } from "./routeCacheTally";
 import { RscWorker } from "./rscWorkerHost";
-import { SCRIPT_POLICY_REPORT_ONLY_HEADER, ScriptPolicy } from "./scriptPolicy";
+import { MAX_RESPONSE_SCRIPT_HASHES, SCRIPT_POLICY_REPORT_ONLY_HEADER, ScriptPolicy } from "./scriptPolicy";
 import { SsrInlineScripts } from "./ssrInlineScripts";
 import { createSubRouteIndexResponse, createSystemPageResponse } from "./systemPages";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
 import { WebCsrSurface } from "./webCsrSurface";
 import { WebDocumentRoute } from "./webDocumentRoute";
 import { WebRouteContext } from "./webRouteContext";
+import { WebRscRoute } from "./webRscRoute";
 
 const securityHeaderNames = [
   "content-security-policy",
@@ -134,7 +143,9 @@ const contextOf = (prodMode: boolean) =>
 
 interface Documents {
   get: (pathname: string, init?: RequestInit & { origin?: string }) => Promise<Response>;
+  navigate: (pathname: string, init?: RequestInit) => Promise<Response>;
   cache: HtmlResultCache;
+  logger: Logger;
 }
 
 let tmpDir = "";
@@ -177,7 +188,12 @@ afterAll(async () => {
 
 const documentsOf = (prodMode: boolean): Documents => {
   const cache = new HtmlResultCache({ prodMode, devRegistry: !prodMode });
-  const route = new WebDocumentRoute(contextOf(prodMode), {
+  const context = contextOf(prodMode);
+  const navigations = new WebRscRoute(context, { rsc, importMapKey: "k1" }).routes() as Record<
+    string,
+    (req: Request) => Promise<Response>
+  >;
+  const route = new WebDocumentRoute(context, {
     rsc,
     importMapKey: "k1",
     ssrDevShell: prodMode
@@ -187,6 +203,11 @@ const documentsOf = (prodMode: boolean): Documents => {
   });
   return {
     cache,
+    logger: context.logger,
+    navigate: async (pathname, init) => {
+      const request = new Request(`http://localhost/__rsc?url=${encodeURIComponent(pathname)}`, init);
+      return (await navigations["/__rsc"]?.(request)) ?? new Response(null, { status: 599 });
+    },
     get: async (pathname, { origin = "http://localhost", ...init } = {}) => {
       const request = new Request(`${origin}${pathname}`, init);
       return await route.render(request, new URL(request.url));
@@ -610,6 +631,86 @@ describe("HTML response classes", () => {
       expect(
         ScriptPolicy.hashesOfNonced(new TextEncoder().encode(firstHtml), nonce).every((hash) => policy.includes(hash)),
       ).toBe(true);
+    });
+  }, 30_000);
+
+  test("a page whose replay would name more hashes than a response does skips the cache, says why, and is warned about once", async () => {
+    await withEnv(production, async () => {
+      const { get, cache, logger } = documentsOf(true);
+      const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
+      const before = RouteCacheTally.snapshot().html.bypass["script-hashes"];
+      const first = await get("/en/boundaries");
+      const firstHtml = await first.text();
+      const nonce = /'nonce-([^']+)'/.exec(first.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "")?.[1] ?? "";
+      await stored(cache, 1);
+      const second = await get("/en/boundaries");
+      const secondHtml = await second.text();
+      const third = await get("/en/boundaries?from=another-url");
+      await third.text();
+      await Bun.sleep(50);
+      const fourth = await get("/en/boundaries?from=another-url");
+      await fourth.text();
+      const warnings = warn.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("script-hashes"));
+      warn.mockRestore();
+
+      expect(ScriptPolicy.hashesOfNonced(new TextEncoder().encode(firstHtml), nonce).length).toBeGreaterThanOrEqual(
+        boundaryCount,
+      );
+      expect(boundaryCount).toBeGreaterThan(MAX_RESPONSE_SCRIPT_HASHES);
+      expect(first.headers.get("X-Akan-Cache")).toBe("MISS");
+      expect([second.headers.get("X-Akan-Cache"), second.headers.get("X-Akan-Cache-Reason")]).toEqual([
+        "BYPASS",
+        "script-hashes",
+      ]);
+      expect(fourth.headers.get("X-Akan-Cache-Reason")).toBe("script-hashes");
+      expect(second.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER)).toContain("'nonce-");
+      expect(scriptsOf(secondHtml, second).uncovered).toEqual([]);
+      expect(RouteCacheTally.snapshot().html.bypass["script-hashes"] - before).toBeGreaterThanOrEqual(2);
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(`a response names ${MAX_RESPONSE_SCRIPT_HASHES}`);
+    });
+  }, 30_000);
+
+  test("a page that names more hashes than a response does keeps the first of them and is warned about once", async () => {
+    await withEnv(production, async () => {
+      const { get, logger } = documentsOf(true);
+      const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
+      const first = await get("/en/declares");
+      await first.text();
+      await (await get("/en/declares?again=1")).text();
+      const warnings = warn.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("script policy"));
+      warn.mockRestore();
+      const policy = first.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "";
+      const kept = MAX_RESPONSE_SCRIPT_HASHES - SsrInlineScripts.policyHashes(vendorMap).length;
+
+      expect(policy.match(/'sha256-[^']+'/g)).toHaveLength(MAX_RESPONSE_SCRIPT_HASHES);
+      expect(manyDeclaredHashes.map((hash) => policy.includes(`'${hash}'`))).toEqual(
+        manyDeclaredHashes.map((_, index) => index < kept),
+      );
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(`its last ${manyDeclaredHashes.length - kept} are left out`);
+    });
+  }, 30_000);
+
+  test("a page reads the nonce of its own response, never a value the request brought", async () => {
+    await withEnv(production, async () => {
+      const { get, navigate, cache } = documentsOf(true);
+      const brought = { headers: { [SCRIPT_NONCE_HEADER]: "brought-by-the-request" } };
+      const stores = spyOn(cache, "storeWhileStreaming");
+      const document = await get("/en/echoed", brought);
+      const html = await document.text();
+      const nonce = /'nonce-([^']+)'/.exec(document.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "")?.[1];
+      const hostRequest = stores.mock.calls[0]?.[1].hostRequestStore.request;
+      stores.mockRestore();
+      const navigation = await navigate("/en/echoed", brought);
+      const flight = await navigation.text();
+
+      expect(html).toContain(`nonce:${nonce}`);
+      expect(html).not.toContain("brought-by-the-request");
+      expect(hostRequest?.headers.get(SCRIPT_NONCE_HEADER)).toBe(nonce ?? "");
+      expect(navigation.status).toBe(200);
+      expect(flight).toContain("nonce:none");
+      expect(flight).not.toContain("brought-by-the-request");
     });
   }, 30_000);
 

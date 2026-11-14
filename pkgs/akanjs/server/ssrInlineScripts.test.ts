@@ -97,7 +97,16 @@ const boot = (data: Partial<SsrBootstrapData> & { themeInit?: 1 }, cookie = "", 
     cookie,
     documentElement: document.documentElement,
     head: document.head,
-    createElement: (tag: string) => document.createElement(tag),
+    //? A browser runs a script-created script as it loads until `async` is set false; happy-dom lacks that default.
+    createElement: (tag: string) => {
+      let isAsync = true;
+      return Object.defineProperty(document.createElement(tag), "async", {
+        get: () => isAsync,
+        set: (value: boolean) => {
+          isAsync = value;
+        },
+      });
+    },
     querySelectorAll: (selector: string) => document.querySelectorAll(selector),
   };
   const view = {
@@ -178,6 +187,22 @@ describe("the document's bootstrap script", () => {
     ]);
     expect(self.__RSC_CLOSED__).toBe(true);
     expect(document.head.querySelector('script[type="module"]')?.getAttribute("src")).toBe("/_akan/client/rsc.js");
+  });
+
+  test("inserts each bootstrap module as a module script that runs in the order written, not as each one loads", () => {
+    const { document, flush } = boot({ modules: ["/_akan/client/first.js", "/_akan/client/second.js"] });
+
+    flush(SsrInlineScripts.endTags(token));
+
+    const inserted = [...document.head.querySelectorAll("script[src]")].map((script) => ({
+      src: script.getAttribute("src"),
+      type: script.getAttribute("type"),
+      async: (script as unknown as { async: boolean }).async,
+    }));
+    expect(inserted).toEqual([
+      { src: "/_akan/client/first.js", type: "module", async: false },
+      { src: "/_akan/client/second.js", type: "module", async: false },
+    ]);
   });
 
   test("hands a chunk that arrives after hydration began to the stream reading it", () => {
