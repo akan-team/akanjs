@@ -800,6 +800,7 @@ interface DataLoaderOptions<Key, Value, CacheKey> {
     copy?: (value: Value) => Value;
     batch?: boolean;
     batchScheduleFn?: (callback: () => void) => void;
+    scopeFn?: () => object | undefined;
     maxBatchSize?: number;
     name?: string;
 }

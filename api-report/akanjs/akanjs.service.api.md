@@ -733,6 +733,7 @@ export interface DatabaseAdaptor {
     stores?(): SqlDocumentStore[];
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
     afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    transactionKey?(): object | undefined;
     getSearchIndex(): SearchIndex | null;
     openInsight?(): Promise<InsightSession>;
 }
@@ -1346,6 +1347,7 @@ export declare class PostgresDatabase extends PostgresDatabase_base implements D
     deleteMeta(key: string): Promise<void>;
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
     afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    transactionKey(): object | undefined;
     lockSchema<T>(fn: () => Promise<T>): Promise<T>;
     hasTable(table: string): Promise<boolean>;
     hasValidIndex(name: string): Promise<boolean>;
@@ -1957,6 +1959,7 @@ export declare class SqliteDatabase extends SqliteDatabase_base implements Datab
     deleteMeta(key: string): Promise<void>;
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
     afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    transactionKey(): object | undefined;
     checkpoint(mode?: "FULL" | "PASSIVE" | "RESTART" | "TRUNCATE"): void;
     vacuum(): void;
 }

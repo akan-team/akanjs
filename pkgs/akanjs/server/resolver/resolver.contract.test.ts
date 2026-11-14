@@ -1,4 +1,5 @@
 import { describe, expect, spyOn, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -38,7 +39,7 @@ import type { SignalContext } from "../../signal/signalContext";
 import { type SliceCls, slice } from "../../signal/slice";
 import { runTraced, SignalTrace } from "../../signal/trace";
 import type { WebsocketSubscribeAck } from "../../signal/types";
-import { ConformanceEnv } from "../../test/conformance";
+import { ConformanceEnv, type SqlDriver, type SqlDriverOptions } from "../../test/conformance";
 import { Ed25519Key } from "../ed25519Key";
 import { MachineAccount, MachineToken } from "../machine";
 import { RoomReplay } from "../routing/roomReplay";
@@ -127,11 +128,14 @@ interface SqliteItemModel {
   byOwnerCategory: ItemLoader<Record<string, string>>;
 }
 const sqliteRow = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
-const withSqliteModel = async (run: (instance: SqliteItemModel) => Promise<void>) => {
-  const driver = await ConformanceEnv.openSqlDriver("sqlite", { memory: true });
+const withSqliteModel = async (
+  run: (instance: SqliteItemModel, database: SqlDriver["database"]) => Promise<void>,
+  options: SqlDriverOptions = { memory: true },
+) => {
+  const driver = await ConformanceEnv.openSqlDriver("sqlite", options);
   try {
     const { instance } = await bootModel<SqliteItemModel>(driver.database as unknown as FakeSqliteDatabase);
-    await run(instance);
+    await run(instance, driver.database);
   } finally {
     await driver.close();
   }
@@ -395,6 +399,51 @@ describe("DatabaseResolver declaration contracts", () => {
       }
     });
   });
+
+  test.each([
+    ["in memory", { memory: true }],
+    ["in a WAL file", {}],
+  ] as [string, SqlDriverOptions][])(
+    "a load inside a transaction reads its own writes, and one from outside none of them, whichever asked first (%s)",
+    async (_, options) => {
+      await withSqliteModel(async (instance, database) => {
+        const { id } = await instance.__create({ ...sqliteRow, title: "Committed" });
+        for (const insideFirst of [false, true]) {
+          let resume!: () => void;
+          const resumed = new Promise<void>((resolve) => {
+            resume = resolve;
+          });
+          let entered!: () => void;
+          const inside = new Promise<void>((resolve) => {
+            entered = resolve;
+          });
+          // Bound here, so the call the transaction makes in its own turn still comes from outside it.
+          const loadOutside = AsyncLocalStorage.bind(() => instance.__get(id));
+          let outside!: Promise<LoadedItem>;
+          const titles: string[] = [];
+          const transaction = database.transaction(async () => {
+            const draft = await instance.ServerResolverTestItem.pickById(id);
+            await draft.set({ title: "Uncommitted" }).save();
+            entered();
+            await resumed;
+            const mine = instance.__get(id);
+            if (insideFirst) outside = loadOutside();
+            titles.push((await mine).title, (await instance.byOwner.loadMany([validId])).at(0)?.title ?? "");
+            throw new Error("rollback-probe");
+          });
+          await inside;
+          resume();
+          if (!insideFirst) outside = instance.__get(id);
+          await expect(transaction).rejects.toThrow("rollback-probe");
+          expect([insideFirst, titles, (await outside).title]).toEqual([
+            insideFirst,
+            ["Uncommitted", "Uncommitted"],
+            "Committed",
+          ]);
+        }
+      }, options);
+    },
+  );
 
   test("hands the facade projection to the store", async () => {
     const { instance } = await bootModel<{

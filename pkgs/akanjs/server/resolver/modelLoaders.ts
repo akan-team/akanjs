@@ -1,10 +1,11 @@
 import type { QueryOf } from "akanjs/constant";
 import { DataLoader, documentQueryHelper, type LoaderInfo } from "akanjs/document";
-import type { DocumentStore } from "akanjs/service";
+import type { DatabaseAdaptor, DocumentStore } from "akanjs/service";
 import { traceDataLoaderBatch } from "akanjs/signal";
 import { timedQuery } from "./timedQuery";
 
 interface StoreHost {
+  readonly __database: DatabaseAdaptor;
   readonly __store: DocumentStore;
 }
 type DocumentCopy = (doc: Record<string, unknown> | null) => unknown;
@@ -17,7 +18,7 @@ export const idLoaderOf = (host: StoreHost, name: string, copy: DocumentCopy) =>
       const byId = new Map(docs.map((doc) => [String(doc.id), doc]));
       return ids.map((id) => byId.get(String(id)) ?? null);
     },
-    { name, cache: false, copy },
+    { name, cache: false, copy, scopeFn: () => host.__database.transactionKey?.() },
   );
 
 export const declaredLoaderOf = (host: StoreHost, key: string, loaderInfo: LoaderInfo, copy: DocumentCopy) =>
@@ -48,5 +49,5 @@ export const declaredLoaderOf = (host: StoreHost, key: string, loaderInfo: Loade
       const byKey = new Map(docs.map((doc) => [String(doc[field]), doc]));
       return keys.map((key) => byKey.get(String(key)) ?? null);
     },
-    { name: key, cache: loaderInfo.cache, copy },
+    { name: key, cache: loaderInfo.cache, copy, scopeFn: () => host.__database.transactionKey?.() },
   );

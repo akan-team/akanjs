@@ -282,6 +282,10 @@ export class SqliteDatabase
     active.afterCommit.push(fn);
   }
 
+  transactionKey(): object | undefined {
+    return TransactionScope.live(this.#transaction);
+  }
+
   checkpoint(mode: "PASSIVE" | "FULL" | "RESTART" | "TRUNCATE" = "TRUNCATE") {
     this.#db.run(`PRAGMA wal_checkpoint(${mode})`);
   }
@@ -528,6 +532,10 @@ export class PostgresDatabase
     const active = TransactionScope.live(this.#transaction);
     if (!active) return await fn();
     active.afterCommit.push(fn);
+  }
+
+  transactionKey(): object | undefined {
+    return TransactionScope.live(this.#transaction);
   }
 
   // One at a time in-process, and across processes through an advisory lock the transaction releases.

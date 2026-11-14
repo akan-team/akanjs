@@ -18,7 +18,10 @@ interface DataLoaderOptions<Key, Value, CacheKey> {
   /** What a caller gets in place of a value another caller already holds: a repeated key's, or a kept key's. */
   copy?: (value: Value) => Value;
   batch?: boolean;
+  /** Must run the callback in its caller's async context, as `queueMicrotask` and `setImmediate` do. */
   batchScheduleFn?: (callback: () => void) => void;
+  /** What a load belongs to, such as its open transaction: a scope's loads batch apart and never touch the cache. */
+  scopeFn?: () => object | undefined;
   maxBatchSize?: number;
   name?: string;
 }
@@ -39,10 +42,10 @@ export class DataLoader<Key, Value, CacheKey = Key> {
   readonly #batchScheduleFn: (callback: () => void) => void;
   readonly #maxBatchSize: number;
   readonly #copy: ((value: Value) => Value) | null;
+  readonly #scopeFn: (() => object | undefined) | null;
   readonly #promiseCache = new Map<CacheKey, { promise: Promise<Value>; expiresAt: number }>();
   #sweepAt = DataLoader.#minSweepSize;
-  #queue: BatchItem<Key, Value>[] = [];
-  #scheduled = false;
+  readonly #queues = new Map<object | undefined, BatchItem<Key, Value>[]>();
 
   constructor(batchLoadFn: BatchLoadFn<Key, Value>, options: DataLoaderOptions<Key, Value, CacheKey> = {}) {
     this.#batchLoadFn = batchLoadFn;
@@ -57,20 +60,27 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     this.#batchScheduleFn = options.batchScheduleFn ?? ((callback) => queueMicrotask(callback));
     this.#maxBatchSize = options.maxBatchSize ?? Number.POSITIVE_INFINITY;
     this.#copy = options.copy ?? null;
+    this.#scopeFn = options.scopeFn ?? null;
     this.name = options.name;
   }
 
   load(key: Key): Promise<Value> {
+    const scope = this.#scopeFn?.();
     const cacheKey = this.#cacheKeyFn(key);
-    const cached = this.#cached(cacheKey);
+    const cached = scope ? undefined : this.#cached(cacheKey);
     if (cached) return this.#copy ? cached.then(this.#copy) : cached;
 
     const promise = new Promise<Value>((resolve, reject) => {
-      this.#queue.push({ key, resolve, reject });
-      if (this.#batch) this.#schedule();
-      else this.#dispatch();
+      const item = { key, resolve, reject };
+      const queue = this.#queues.get(scope);
+      if (!this.#batch) this.#run([item]);
+      else if (queue) queue.push(item);
+      else {
+        this.#queues.set(scope, [item]);
+        this.#batchScheduleFn(() => this.#dispatch(scope));
+      }
     });
-    if (this.#ttl > 0) {
+    if (this.#ttl > 0 && !scope) {
       this.#remember(cacheKey, promise);
       // A failed load is not an answer worth keeping: the next caller asks the store again.
       promise.catch(() => {
@@ -96,7 +106,7 @@ export class DataLoader<Key, Value, CacheKey = Key> {
   }
 
   prime(key: Key, value: Value | Error): this {
-    if (this.#ttl <= 0) return this;
+    if (this.#ttl <= 0 || this.#scopeFn?.()) return this;
     const cacheKey = this.#cacheKeyFn(key);
     if (this.#cached(cacheKey)) return this;
     this.#remember(cacheKey, value instanceof Error ? Promise.reject(value) : Promise.resolve(value));
@@ -121,17 +131,16 @@ export class DataLoader<Key, Value, CacheKey = Key> {
     this.#sweepAt = Math.max(DataLoader.#minSweepSize, this.#promiseCache.size * 2);
   }
 
-  #schedule() {
-    if (this.#scheduled) return;
-    this.#scheduled = true;
-    this.#batchScheduleFn(() => this.#dispatch());
+  #dispatch(scope: object | undefined) {
+    const queue = this.#queues.get(scope);
+    if (!queue) return;
+    const batch = queue.splice(0, this.#maxBatchSize);
+    if (queue.length > 0) this.#batchScheduleFn(() => this.#dispatch(scope));
+    else this.#queues.delete(scope);
+    this.#run(batch);
   }
 
-  #dispatch() {
-    this.#scheduled = false;
-    const batch = this.#queue.splice(0, this.#maxBatchSize);
-    if (this.#queue.length > 0) this.#schedule();
-    if (batch.length === 0) return;
+  #run(batch: BatchItem<Key, Value>[]) {
     const keys = batch.map(({ key }) => key);
     Promise.resolve(this.#batchLoadFn(keys)).then(
       (values) => {

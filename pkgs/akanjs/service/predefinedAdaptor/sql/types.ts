@@ -130,6 +130,8 @@ export interface DatabaseAdaptor {
   stores?(): SqlDocumentStore[];
   transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
   afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+  /** The open transaction the caller runs in, as an identity: work batched across callers must not cross it. */
+  transactionKey?(): object | undefined;
   // `null` without text search; declared so a service can `suspend`/`resume` around a bulk import without casting.
   getSearchIndex(): SearchIndex | null;
   openInsight?(): Promise<InsightSession>;
