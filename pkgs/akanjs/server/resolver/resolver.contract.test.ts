@@ -118,7 +118,11 @@ interface ItemLoader<Key> {
   loadMany: (keys: Key[]) => Promise<(LoadedItem | null)[]>;
 }
 interface SqliteItemModel {
-  __store: { find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]> };
+  __store: {
+    find: (query: unknown, options?: unknown) => Promise<Record<string, unknown>[]>;
+    bulkWrite: (operations: { updateOne: { filter: unknown; update: unknown } }[]) => Promise<unknown>;
+    upsertById: (data: Record<string, unknown> & { id: string }) => Promise<unknown>;
+  };
   __create: (data: Record<string, unknown>) => Promise<LoadedItem>;
   __get: (id: string) => Promise<LoadedItem>;
   ServerResolverTestItem: { pickById: (id: string) => Promise<LoadedItem> };
@@ -131,6 +135,7 @@ interface SqliteItemModel {
   keptByTag: ItemLoader<string>;
   keptByTitleCategory: ItemLoader<Record<string, string>>;
   __remove: (id: string) => Promise<LoadedItem>;
+  __updateMany: (query: Record<string, unknown>, update: Record<string, unknown>) => Promise<unknown>;
 }
 const sqliteRow = { ownerId: validId, category: "news", nested: { label: "n" }, secret: "s", resolvedLabel: "r" };
 const withSqliteModel = async (
@@ -515,6 +520,61 @@ describe("DatabaseResolver declaration contracts", () => {
         ServerResolverTestModelMixin.afterUpdate = null;
       }
     });
+  });
+
+  test("every key a transaction's writes outdated is gone before the first of the model's post hooks runs", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const first = await instance.__create({ ...sqliteRow, title: "First" });
+      const second = await instance.__create({ ...sqliteRow, title: "Second" });
+      await instance.keptByTitle.loadMany(["First", "Second", "Second, retitled"]);
+      const seenByHooks: (string | undefined)[][] = [];
+      ServerResolverTestModelMixin.afterUpdate = async () => {
+        const kept = await instance.keptByTitle.loadMany(["Second", "Second, retitled"]);
+        seenByHooks.push(kept.map((doc) => doc?.title));
+      };
+      try {
+        await database.transaction(async () => {
+          await (await instance.__get(first.id)).set({ count: 1 }).save();
+          await (await instance.__get(second.id)).set({ title: "Second, retitled" }).save();
+        });
+        expect(seenByHooks.length).toBeGreaterThan(0);
+        expect(new Set(seenByHooks.map((titles) => titles.join("|")))).toEqual(new Set(["|Second, retitled"]));
+      } finally {
+        ServerResolverTestModelMixin.afterUpdate = null;
+      }
+    });
+  });
+
+  test("a write by query drops every kept key once it commits, and none when it rolls back", async () => {
+    await withSqliteModel(async (instance, database) => {
+      const { id } = await instance.__create({ ...sqliteRow, title: "Draft", tags: ["a"] });
+      const countOf = async () => (await instance.keptByTitle.load("Draft"))?.count;
+      expect(await countOf()).toBe(0);
+      const writes = [
+        () => instance.__updateMany({ id }, { count: 1 }),
+        () => instance.__store.bulkWrite([{ updateOne: { filter: { id }, update: { count: 2 } } }]),
+        () => instance.__store.upsertById({ id, ...sqliteRow, title: "Draft", tags: ["a"], count: 3 }),
+      ];
+      for (const [index, write] of writes.entries()) {
+        await write();
+        expect(await countOf()).toBe(index + 1);
+      }
+      const rolledBack = database.transaction(async () => {
+        await instance.__updateMany({ id }, { count: 9 });
+        throw new Error("rollback-probe");
+      });
+      await expect(rolledBack).rejects.toThrow("rollback-probe");
+      const find = spyOn(instance.__store, "find");
+      expect(await countOf()).toBe(3);
+      expect(find).not.toHaveBeenCalled();
+      find.mockRestore();
+    });
+  });
+
+  test("a loader that keeps its keys adds no remove hook, so a cascade still removes its model in one query", async () => {
+    const { schema } = await bootModel();
+    expect(schema.postHooks.get("remove") ?? []).toEqual([]);
+    expect(schema.preHooks.get("remove") ?? []).toEqual([]);
   });
 
   test("hands the facade projection to the store", async () => {

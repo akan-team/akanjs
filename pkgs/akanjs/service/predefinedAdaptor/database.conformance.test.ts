@@ -1372,6 +1372,46 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(seen).toEqual(["body", "after:1", "now"]);
     });
 
+    test("an afterCommit callback asked for first runs ahead of the others, and at once outside a transaction", async () => {
+      const seen: string[] = [];
+      const note = (name: string, first?: boolean) =>
+        driver.database.afterCommit(() => void seen.push(name), { first });
+      await driver.database.transaction(async () => {
+        await note("a");
+        await note("b", true);
+        await note("c");
+        await note("d", true);
+        expect(seen).toEqual([]);
+      });
+      await note("now", true);
+      expect(seen).toEqual(["b", "d", "a", "c", "now"]);
+    });
+
+    test("a write listener hears every committed write ahead of the afterCommit callbacks, and none that rolled back", async () => {
+      const heard: string[] = [];
+      const stop = store.onWrite((written) =>
+        heard.push(written ? `${String(written.doc.title)}<${String(written.previous?.title ?? "")}` : "query"),
+      );
+      const write = async (fail: boolean) =>
+        await driver.database.transaction(async () => {
+          await driver.database.afterCommit(() => void heard.push("callback"));
+          const { id } = await store.create({ title: "a" });
+          await store.update(id, { title: "b" });
+          await store.updateManyByQuery({ id }, { note: "many" });
+          await store.bulkWrite([{ updateOne: { filter: { id }, update: { note: "bulk" } } }]);
+          await store.upsertById({ id, title: "c" });
+          expect(heard).toEqual([]);
+          if (fail) throw new Error("rollback-probe");
+        });
+      await expect(write(true)).rejects.toThrow("rollback-probe");
+      expect(heard).toEqual([]);
+      await write(false);
+      expect(heard).toEqual(["a<", "b<a", "query", "query", "query", "callback"]);
+      stop();
+      await store.create({ title: "unheard" });
+      expect(heard).toHaveLength(6);
+    });
+
     test("a task the transaction left running neither joins it after the commit nor loses its afterCommit", async () => {
       const seen: string[] = [];
       let late!: Promise<void>;

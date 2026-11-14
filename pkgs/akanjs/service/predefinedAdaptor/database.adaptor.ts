@@ -32,6 +32,7 @@ import { SqlDocumentStore } from "./sql/SqlDocumentStore";
 import { SqliteInsightSession } from "./sql/SqliteInsightSession";
 import { TransactionScope } from "./sql/TransactionScope";
 import {
+  type AfterCommitOptions,
   BASE_COLUMNS,
   type ConcurrentIndexBuild,
   type CreateIndexProps,
@@ -57,12 +58,14 @@ export {
 } from "./sql/RawDocumentTable";
 export { SqlDocumentStore } from "./sql/SqlDocumentStore";
 export type {
+  AfterCommitOptions,
   AkanSqlClient,
   AkanSqlStatement,
   DatabaseAdaptor,
   DatabaseConfig,
   DocumentDatabaseOwner,
   DocumentStore,
+  DocumentWriteListener,
   InsightSession,
   PostgresDatabaseConfig,
   PrunedIndex,
@@ -302,10 +305,10 @@ export class SqliteDatabase
     return this.#reader;
   }
 
-  async afterCommit(fn: () => PromiseOrObject<void>) {
+  async afterCommit(fn: () => PromiseOrObject<void>, options: AfterCommitOptions = {}) {
     const active = TransactionScope.live(this.#transaction);
     if (!active) return await fn();
-    active.afterCommit.push(fn);
+    TransactionScope.queue(active, fn, options);
   }
 
   transactionKey(): object | undefined {
@@ -554,10 +557,10 @@ export class PostgresDatabase
     return result;
   }
 
-  async afterCommit(fn: () => PromiseOrObject<void>) {
+  async afterCommit(fn: () => PromiseOrObject<void>, options: AfterCommitOptions = {}) {
     const active = TransactionScope.live(this.#transaction);
     if (!active) return await fn();
-    active.afterCommit.push(fn);
+    TransactionScope.queue(active, fn, options);
   }
 
   transactionKey(): object | undefined {

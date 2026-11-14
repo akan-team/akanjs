@@ -28,7 +28,7 @@ import {
 } from "akanjs/service";
 import { Exception } from "akanjs/signal";
 import { missedById, modelFacadeOf } from "./modelFacade";
-import { declaredLoaderOf, forgetWrittenKeys, idLoaderOf } from "./modelLoaders";
+import { declaredLoaderOf, forgetWritten, idLoaderOf } from "./modelLoaders";
 import { schemaListenerOf } from "./modelSchema";
 import { timedQuery, touchArgs } from "./timedQuery";
 
@@ -98,7 +98,7 @@ export const databaseModelInstanceOf = (
         return { loaderInfo, loader };
       });
       const kept = declared.filter(({ loaderInfo }) => loaderInfo.cache);
-      if (kept.length) this.#stopForgetting = forgetWrittenKeys(schema, kept);
+      if (kept.length) this.#stopForgetting = this.__store.onWrite?.(forgetWritten(kept)) ?? this.#stopForgetting;
     }
 
     override onDestroy() {

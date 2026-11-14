@@ -1,12 +1,6 @@
 import type { QueryOf } from "akanjs/constant";
-import {
-  DataLoader,
-  type DocumentSaveHook,
-  type DocumentSchema,
-  documentQueryHelper,
-  type LoaderInfo,
-} from "akanjs/document";
-import type { DatabaseAdaptor, DocumentStore } from "akanjs/service";
+import { DataLoader, documentQueryHelper, type LoaderInfo } from "akanjs/document";
+import type { DatabaseAdaptor, DocumentStore, DocumentWriteListener } from "akanjs/service";
 import { traceDataLoaderBatch } from "akanjs/signal";
 import { timedQuery } from "./timedQuery";
 
@@ -78,18 +72,14 @@ interface KeptLoader {
   loader: DataLoader<any, any, string>;
 }
 
-// Post hooks run after the commit, so a rolled-back write drops no key. A query write (`updateMany`) runs no hook,
-// and another process keeps its own keys until they expire.
-export const forgetWrittenKeys = (schema: DocumentSchema, kept: KeptLoader[]) => {
-  const hook: DocumentSaveHook = function (_next, _type, previous) {
-    for (const { loaderInfo, loader } of kept)
-      for (const doc of previous ? [this, previous] : [this])
-        for (const answered of answeredKeysOf(loaderInfo, doc as StoredFields)) loader.clear(answered);
+// A write by query names no document, so every kept key goes. Another process keeps its own keys until they expire.
+export const forgetWritten =
+  (kept: KeptLoader[]): DocumentWriteListener =>
+  (written) => {
+    for (const { loaderInfo, loader } of kept) {
+      if (!written) loader.clearAll();
+      else
+        for (const doc of written.previous ? [written.doc, written.previous] : [written.doc])
+          for (const answered of answeredKeysOf(loaderInfo, doc)) loader.clear(answered);
+    }
   };
-  const types = ["create", "update", "remove"] as const;
-  // Ahead of the model's own post hooks: one of them may load through a loader this write just outdated.
-  for (const type of types) schema.postHooks.set(type, [hook, ...(schema.postHooks.get(type) ?? [])]);
-  return () => {
-    for (const type of types) schema.removePost(type, hook);
-  };
-};

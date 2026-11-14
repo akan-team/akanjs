@@ -14,6 +14,10 @@ export type AdaptorCls<Methods = any, InjectMap extends Record<string, InjectInf
     readonly refName: string;
 }>;
 
+export interface AfterCommitOptions {
+    first?: boolean;
+}
+
 export type AgentAccountResolver = (principal: string) => PromiseOrObject<unknown>;
 
 export declare class AgentAccounts {
@@ -732,7 +736,7 @@ export interface DatabaseAdaptor {
     getStore(constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema): DocumentStore;
     stores?(): SqlDocumentStore[];
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
     transactionKey?(): object | undefined;
     getSearchIndex(): SearchIndex | null;
     openInsight?(): Promise<InsightSession>;
@@ -837,7 +841,7 @@ export interface DocumentDatabaseOwner {
         value: string;
     }[];
     deleteMeta(key: string): Promise<void>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
     transaction?<T>(fn: () => PromiseOrObject<T>): Promise<T>;
     lockSchema?<T>(fn: () => Promise<T>): Promise<T>;
     hasTable?(table: string): Promise<boolean>;
@@ -910,6 +914,7 @@ export interface DocumentStore {
     serialize(doc: DocumentRecord): string;
     deserialize(text: string): any;
     rehydrate<Doc extends DocumentRecord>(doc: Doc): Doc;
+    onWrite?(listener: DocumentWriteListener): () => void;
 }
 
 export declare class DocumentStoreError extends AkanError<DocumentStoreErrorCode> {
@@ -925,6 +930,11 @@ export declare class DocumentTransfer {
     exportTo(dir: string): Promise<TransferReport[]>;
     importFrom(dir: string): Promise<TransferReport[]>;
 }
+
+export type DocumentWriteListener = (written?: {
+    doc: DocumentRecord;
+    previous?: DocumentRecord;
+}) => void;
 
 export interface DownloadRequest {
     path: string;
@@ -1346,7 +1356,7 @@ export declare class PostgresDatabase extends PostgresDatabase_base implements D
     }[]>;
     deleteMeta(key: string): Promise<void>;
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
     transactionKey(): object | undefined;
     lockSchema<T>(fn: () => Promise<T>): Promise<T>;
     hasTable(table: string): Promise<boolean>;
@@ -1870,6 +1880,7 @@ export declare class SqlDocumentStore {
     readonly updateCompiler: UpdateCompiler;
     constructor(owner: DocumentDatabaseOwner, constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema, dialect?: SqlDialect);
     ensure(): Promise<void>;
+    onWrite(listener: DocumentWriteListener): () => void;
     undeclaredIndexes(): Promise<UndeclaredIndex[]>;
     pruneUndeclaredIndexes(): Promise<PrunedIndex[]>;
     create(data: DocumentRecord, { runSaveHooks }?: WriteHookOptions): Promise<any>;
@@ -1958,7 +1969,7 @@ export declare class SqliteDatabase extends SqliteDatabase_base implements Datab
     }[]>;
     deleteMeta(key: string): Promise<void>;
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
     transactionKey(): object | undefined;
     checkpoint(mode?: "FULL" | "PASSIVE" | "RESTART" | "TRUNCATE"): void;
     vacuum(): void;
