@@ -166,6 +166,41 @@ describe("solo app routes", () => {
     expect(await routesOf(running)["/_akan/app/ready"].GET(anonymous()).json()).toEqual({ status: "ready" });
   });
 
+  test("reports the costliest statements and who sent them behind the metrics token", async () => {
+    const statement = {
+      fingerprint: "0a1b2c3d4e5f",
+      text: `SELECT count(*) as count FROM "memo" WHERE "ownerId" = ?`,
+      model: "memo",
+      op: "count",
+      count: 4,
+      totalMs: 1_000,
+      waitMs: 2,
+      rows: 4,
+      buckets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0],
+      sentBy: [{ endpoint: "query:memoListByOwner", count: 4, totalMs: 1_000 }],
+    };
+    const routes = routesOf({ ...running, statements: () => [statement] });
+
+    expect(routes["/_akan/app/statements"].GET(anonymous()).status).toBe(401);
+    const report = routes["/_akan/app/statements"].GET(signedIn());
+    expect(report.headers.get("cache-control")).toBe("no-store");
+    const body = (await report.json()) as { byTotalTime: unknown[]; byP95: unknown[] };
+    const row = {
+      fingerprint: "0a1b2c3d4e5f",
+      text: statement.text,
+      model: "memo",
+      op: "count",
+      count: 4,
+      totalMs: 1_000,
+      meanMs: 250,
+      p95Ms: 242.5,
+      waitMs: 2,
+      rows: 4,
+      sentBy: statement.sentBy,
+    };
+    expect(body).toEqual({ byTotalTime: [row], byP95: [row] });
+  });
+
   test("answers the bench ping the gateway serves without touching a replica or asking for the token", async () => {
     expect(await routesOf(running)["/_akan/bench/ping"].GET().text()).toBe("ok");
   });

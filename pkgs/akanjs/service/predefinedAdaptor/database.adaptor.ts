@@ -31,6 +31,7 @@ import { PendingStoreEnsures } from "./sql/PendingStoreEnsures";
 import { PostgresInsightSession } from "./sql/PostgresInsightSession";
 import { SqlDocumentStore } from "./sql/SqlDocumentStore";
 import { SqliteInsightSession } from "./sql/SqliteInsightSession";
+import { StatementProbe } from "./sql/statementProbe";
 import { TransactionScope } from "./sql/TransactionScope";
 import {
   type AfterCommitOptions,
@@ -58,6 +59,15 @@ export {
   type RawFindOptions,
 } from "./sql/RawDocumentTable";
 export { SqlDocumentStore } from "./sql/SqlDocumentStore";
+export { StatementFingerprint, type StatementShape, type StatementVerb } from "./sql/statementFingerprint";
+export {
+  type SentStatement,
+  type StatementCall,
+  type StatementPlanner,
+  StatementProbe,
+  type StatementSink,
+  type StatementSite,
+} from "./sql/statementProbe";
 export type {
   AfterCommitOptions,
   AkanSqlClient,
@@ -112,6 +122,7 @@ export class SqliteDatabase
   implements DatabaseAdaptor
 {
   readonly dialect = new SqliteDialect();
+  static readonly #begin = StatementProbe.fixed("BEGIN IMMEDIATE");
   #db!: Database;
   #reader: Database | null = null;
   #client!: BunSqliteClient;
@@ -243,6 +254,7 @@ export class SqliteDatabase
 
   async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
     if (TransactionScope.live(this.#transaction)) return await fn();
+    const askedAt = performance.now();
     const previous = this.#queue;
     let release!: () => void;
     const done = new Promise<void>((resolve) => {
@@ -257,6 +269,7 @@ export class SqliteDatabase
       this.#open = context;
       result = await this.#transaction.run(context, async () => {
         this.#db.run("BEGIN IMMEDIATE");
+        StatementProbe.sent(SqliteDatabase.#begin, [], 0, performance.now() - askedAt, 0);
         try {
           const value = await fn();
           this.#db.run("COMMIT");
@@ -351,6 +364,7 @@ export class PostgresDatabase
   implements DatabaseAdaptor
 {
   readonly dialect = new PostgresDialect();
+  static readonly #begin = StatementProbe.fixed("BEGIN");
   #sql!: Sql;
   #client!: PostgresAkanClient;
   #stores = new Map<string, SqlDocumentStore>();
@@ -547,15 +561,16 @@ export class PostgresDatabase
   async transaction<T>(fn: () => PromiseOrObject<T>): Promise<T> {
     if (TransactionScope.live(this.#transaction)) return await fn();
     const context: TransactionContext = { afterCommit: [] };
+    const askedAt = performance.now();
     let result: T;
     try {
-      result = (await this.#sql.begin(
-        async (transaction) =>
-          await this.#transaction.run(
-            Object.assign(context, { client: new PostgresAkanClient(transaction) }),
-            async () => await fn(),
-          ),
-      )) as T;
+      result = (await this.#sql.begin(async (transaction) => {
+        StatementProbe.sent(PostgresDatabase.#begin, [], 0, performance.now() - askedAt, 0);
+        return await this.#transaction.run(
+          Object.assign(context, { client: new PostgresAkanClient(transaction) }),
+          async () => await fn(),
+        );
+      })) as T;
     } finally {
       context.closed = true;
     }

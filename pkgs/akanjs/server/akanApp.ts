@@ -257,6 +257,10 @@ export class AkanApp {
         "/_akan/app/metrics",
         (req, client) => this.#statusAccess.metrics(req, () => this.#status.metricsStatus(), client),
       ],
+      [
+        "/_akan/app/statements",
+        (req, client) => this.#statusAccess.statements(req, () => this.#status.statementsStatus(), client),
+      ],
       [LogStreamRoute.path, (req, client) => this.#logging.stream?.handle(req, client) ?? null],
       ["/_akan/bench/ping", () => new Response("ok")],
       [AppInfo.publicPath, () => AppInfo.handlePublic()],

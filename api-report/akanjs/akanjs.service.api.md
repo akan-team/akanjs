@@ -520,6 +520,7 @@ export interface AkanMetricsReport {
     totalRequests?: number;
     activeWebSockets?: number;
     roomCount?: number;
+    statements?: AkanStatementStat[];
     queueWakeCount?: number;
     pubsubDeliverCount?: number;
     pubsubDropCount?: number;
@@ -635,6 +636,25 @@ export interface AkanSqlStatement {
     run(...params: unknown[]): Promise<unknown>;
     get<Row = Record<string, unknown>>(...params: unknown[]): Promise<Row | null>;
     all<Row = Record<string, unknown>>(...params: unknown[]): Promise<Row[]>;
+}
+
+export interface AkanStatementSender {
+    endpoint: string;
+    count: number;
+    totalMs: number;
+}
+
+export interface AkanStatementStat {
+    fingerprint: string;
+    text: string;
+    model: string;
+    op: string;
+    count: number;
+    totalMs: number;
+    waitMs: number;
+    rows: number;
+    buckets: number[];
+    sentBy: AkanStatementSender[];
 }
 
 export type AkanUpstream = {
@@ -1786,6 +1806,12 @@ export interface SearchQuery {
     weights: readonly number[];
 }
 
+export interface SentStatement {
+    readonly shape: StatementShape;
+    readonly sql: string;
+    readonly planner: StatementPlanner | null;
+}
+
 export interface Service {
     readonly logger: Logger;
     onInit(): Promise<void> | void;
@@ -2111,6 +2137,61 @@ export declare class SqliteDialect implements SqlDialect {
     upsertRow(table: string, conflict: string): string;
     affectedRows(result: unknown): number;
 }
+
+export interface StatementCall {
+    readonly site: StatementSite;
+    sent: number;
+}
+
+export declare class StatementFingerprint {
+    static readonly maxShapes = 500;
+    static readonly maxTexts = 2000;
+    static of(sql: string): StatementShape;
+    static sizes(): {
+        shapes: number;
+        texts: number;
+    };
+    static normalize(sql: string): string;
+    static scrub(text: string): string;
+}
+
+export interface StatementPlanner {
+    explain(sql: string, params: readonly unknown[]): Promise<string[]>;
+    rowsUpTo(table: string, limit: number): Promise<number>;
+    isModelTable(table: string): boolean;
+}
+
+export declare class StatementProbe {
+    static install(sink: StatementSink | null): void;
+    static get schemaEpoch(): number;
+    static schemaChanged(): void;
+    static sent(statement: SentStatement, params: readonly unknown[], durationMs: number, waitMs: number, rows: number): void;
+    static siteOf(model: string, op: string, planned?: boolean): StatementSite;
+    static call(model: string, op: string): StatementCall;
+    static within<T>(call: StatementCall, fn: () => Promise<T>): Promise<T>;
+    static unplanned<T>(fn: () => Promise<T>): Promise<T>;
+    static fixed(sql: string): SentStatement;
+}
+
+export interface StatementShape {
+    readonly fingerprint: string;
+    readonly text: string;
+    readonly verb: StatementVerb;
+    readonly table: null | string;
+    readonly changesSchema: boolean;
+}
+
+export interface StatementSink {
+    sent(statement: SentStatement, site: StatementSite | undefined, params: readonly unknown[], durationMs: number, waitMs: number, rows: number): void;
+}
+
+export interface StatementSite {
+    readonly model: string;
+    readonly op: string;
+    readonly planned: boolean;
+}
+
+export type StatementVerb = "delete" | "insert" | "other" | "select" | "update";
 
 export interface StorageAdaptor {
     readData(path: string): Promise<ReadableStream>;
@@ -2508,7 +2589,7 @@ declare const BullQueue_base: import("..").AdaptorCls<{}, {
 
 declare class BunSqliteClient implements AkanSqlClient {
     readonly db: Database;
-    constructor(db: Database, writeTurn?: SqliteWriteTurn, readerOf?: SqliteReader, readerLasts?: boolean);
+    constructor(db: Database, writeTurn?: SqliteWriteTurn, readerOf?: SqliteReader, readerLasts?: boolean, planner?: StatementPlanner | null);
     execute(sql: string, params?: Record<string, unknown> | unknown[]): Promise<unknown>;
     prepare(sql: string): AkanSqlStatement;
     close(): Promise<void>;
@@ -2657,7 +2738,8 @@ type PathKind = "json" | "text";
 
 declare class PostgresAkanClient implements AkanSqlClient {
     readonly client: Sql | TransactionSql;
-    constructor(client: Sql | TransactionSql);
+    readonly planner: StatementPlanner | null;
+    constructor(client: Sql | TransactionSql, planner?: StatementPlanner | null);
     execute(sql: string, params?: Record<string, unknown> | unknown[]): Promise<import("postgres").RowList<(import("postgres").Row & Iterable<import("postgres").Row>)[]>>;
     prepare(sql: string): AkanSqlStatement;
     close(): Promise<void>;

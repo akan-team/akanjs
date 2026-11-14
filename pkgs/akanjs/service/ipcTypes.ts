@@ -53,6 +53,26 @@ export type AkanMetricFamily =
   | { name: string; help: string; type: "counter" | "gauge"; samples: AkanMetricSample[] }
   | { name: string; help: string; type: "histogram"; buckets: number[]; samples: AkanHistogramSample[] };
 
+export interface AkanStatementSender {
+  endpoint: string;
+  count: number;
+  totalMs: number;
+}
+
+export interface AkanStatementStat {
+  fingerprint: string;
+  text: string;
+  model: string;
+  op: string;
+  count: number;
+  totalMs: number;
+  waitMs: number;
+  rows: number;
+  /** Statements per duration bucket, the last one past every bound. */
+  buckets: number[];
+  sentBy: AkanStatementSender[];
+}
+
 export interface AkanMetricsReport {
   role?: string;
   pid?: number;
@@ -64,6 +84,7 @@ export interface AkanMetricsReport {
   totalRequests?: number;
   activeWebSockets?: number;
   roomCount?: number;
+  statements?: AkanStatementStat[];
   queueWakeCount?: number;
   pubsubDeliverCount?: number;
   pubsubDropCount?: number;

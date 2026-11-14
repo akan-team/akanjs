@@ -91,13 +91,21 @@ export class StatusAccess {
   }
 
   metrics(req: Request, detail: () => MetricsDetail, client?: string | null): Response {
-    if (!this.allows(req, client))
-      return new Response("Unauthorized", { status: 401, headers: { "www-authenticate": "Bearer" } });
+    if (!this.allows(req, client)) return StatusAccess.#unauthorized();
     const format = MetricExposition.negotiate(req.headers.get("accept"));
     const headers = { ...StatusAccess.#noStore, vary: "accept" };
     if (!format) return Response.json(detail(), { headers });
     return new Response(MetricExposition.render(detail().metricFamilies ?? [], format), {
       headers: { ...headers, "content-type": MetricExposition.contentType(format) },
     });
+  }
+
+  statements(req: Request, detail: () => object, client?: string | null): Response {
+    if (!this.allows(req, client)) return StatusAccess.#unauthorized();
+    return Response.json(detail(), { headers: StatusAccess.#noStore });
+  }
+
+  static #unauthorized() {
+    return new Response("Unauthorized", { status: 401, headers: { "www-authenticate": "Bearer" } });
   }
 }
