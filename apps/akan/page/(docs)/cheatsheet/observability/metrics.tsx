@@ -385,6 +385,13 @@ export default page()
         }),
       },
       {
+        name: ["akan_route_cache_lookups_total"],
+        desc: l.trans({
+          en: "Route cache lookups by `cache` (`rsc` in the render worker, `html` in the web server) and `outcome`: a `hit` or `miss` whose `reason` is `requested-query` or `rewritten-query`, or a `bypass` whose `reason` says why the request skipped the cache, such as `request-not-public`.",
+          ko: "route cache 조회 수를 `cache`(render worker의 `rsc`, 웹 서버의 `html`)와 `outcome`별로 셉니다. `hit`과 `miss`의 `reason`은 `requested-query` 또는 `rewritten-query`이고, `bypass`의 `reason`은 `request-not-public`처럼 요청이 cache를 건너뛴 이유입니다.",
+        }),
+      },
+      {
         name: ["akan_rsc_workers", "akan_rsc_workers_ready"],
         desc: l.trans({
           en: "RSC workers the app runs, and those ready to render; fewer ready than running means pages wait or fail.",
@@ -1054,17 +1061,19 @@ rule_files:
                 en: (
                   <span>
                     Import <code>infra/monitoring/akan-dashboard.json</code> into Grafana and pick a Prometheus data
-                    source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, p50/p95/p99
-                    over every endpoint, the RSC workers running and ready, their queue, memory, restarts and recycles,
-                    and the build each process runs. The job, endpoint and route pickers narrow every panel.
+                    source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, the route
+                    caches' hit ratio and bypasses, p50/p95/p99 over every endpoint, the RSC workers running and ready,
+                    their queue, memory, restarts and recycles, and the build each process runs. The job, endpoint and
+                    route pickers narrow every panel.
                   </span>
                 ),
                 ko: (
                   <span>
                     Grafana에 <code>infra/monitoring/akan-dashboard.json</code>을 import하고 Prometheus data source를
-                    고르세요. endpoint와 route별 요청률, 5xx 비율, p95 지연 시간, 전체 endpoint의 p50/p95/p99, 실행
-                    중이고 준비된 RSC worker 수와 대기열, 메모리, 재시작과 교체 횟수, 프로세스마다 돌고 있는 빌드를 보여
-                    줍니다. job, endpoint, route 선택으로 모든 패널을 좁힐 수 있습니다.
+                    고르세요. endpoint와 route별 요청률, 5xx 비율, p95 지연 시간, route cache의 hit 비율과 bypass, 전체
+                    endpoint의 p50/p95/p99, 실행 중이고 준비된 RSC worker 수와 대기열, 메모리, 재시작과 교체 횟수,
+                    프로세스마다 돌고 있는 빌드를 보여 줍니다. job, endpoint, route 선택으로 모든 패널을 좁힐 수
+                    있습니다.
                   </span>
                 ),
               })}

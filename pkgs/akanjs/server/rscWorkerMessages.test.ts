@@ -36,6 +36,15 @@ const withMessagesWorker = async (env: Record<string, string>, run: (rsc: RscWor
   }
 };
 
+const hostOf = (rsc: RscWorker) => {
+  const router = { getMetrics: () => rsc.getMetrics(), metricFamilies: () => rsc.metricFamilies() };
+  return new ServerMetrics(
+    { logger: new Logger("test"), serverMode: "solo" } as unknown as ConstructorParameters<typeof ServerMetrics>[0],
+    {} as unknown as ServerListener,
+    () => router as unknown as WebRouter,
+  );
+};
+
 const until = async (check: () => boolean) => {
   while (!check()) await Bun.sleep(5);
 };
@@ -101,14 +110,34 @@ describe("RscWorker messages", () => {
     });
   }, 15_000);
 
+  test("the RSC cache's hits, misses and bypasses in the worker reach the host's scrape", async () => {
+    await withMessagesWorker({ AKAN_RSC_RESULT_CACHE: "1", AKAN_RSC_RESULT_CACHE_PATHS: "/en/cached" }, async (rsc) => {
+      const host = hostOf(rsc);
+      const lookups = () => {
+        const family = host.families().find((each) => each.name === "akan_route_cache_lookups_total");
+        const samples = family?.type === "counter" ? family.samples : [];
+        const sum = (outcome: string) =>
+          samples
+            .filter(({ labels }) => labels.cache === "rsc" && labels.role === "solo" && labels.outcome === outcome)
+            .reduce((total, sample) => total + sample.value, 0);
+        return { hit: sum("hit"), miss: sum("miss"), bypass: sum("bypass") };
+      };
+      const afterReport = async (url: string, expected: ReturnType<typeof lookups>) => {
+        await traceOf(rsc, url);
+        const count = Object.values(expected).reduce((sum, value) => sum + value, 0);
+        await until(() => Object.values(lookups()).reduce((sum, value) => sum + value, 0) >= count);
+        expect(lookups()).toEqual(expected);
+      };
+
+      await afterReport("http://localhost/en/cached", { hit: 0, miss: 1, bypass: 0 });
+      await afterReport("http://localhost/en/cached", { hit: 1, miss: 1, bypass: 0 });
+      await afterReport("http://localhost/en/counted", { hit: 1, miss: 1, bypass: 1 });
+    });
+  }, 15_000);
+
   test("a counter the worker registers reaches the host's exposition, and its total never drops across a recycle or a crash", async () => {
     await withMessagesWorker({}, async (rsc) => {
-      const router = { getMetrics: () => rsc.getMetrics(), metricFamilies: () => rsc.metricFamilies() };
-      const host = new ServerMetrics(
-        { logger: new Logger("test"), serverMode: "solo" } as unknown as ConstructorParameters<typeof ServerMetrics>[0],
-        {} as unknown as ServerListener,
-        () => router as unknown as WebRouter,
-      );
+      const host = hostOf(rsc);
       const seen: number[] = [];
       const total = () => {
         const family = host.families().find((each) => each.name === "akan_test_counted_renders_total");

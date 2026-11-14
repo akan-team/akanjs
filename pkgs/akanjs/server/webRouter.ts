@@ -24,6 +24,7 @@ import { HtmlResultCache } from "./htmlResultCache";
 import { ImageOptimizer } from "./imageOptimizer";
 import type { McpAppShellSource } from "./mcp/McpApps";
 import { resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
+import { RouteCacheTally } from "./routeCacheTally";
 import { DevRoutes } from "./routing/devRoutes";
 import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
 import { RscWorker, type RscWorkerStatus } from "./rscWorkerHost";
@@ -272,7 +273,7 @@ export class WebRouter {
   }
 
   metricFamilies(): AkanMetricFamily[] {
-    return this.#rsc.metricFamilies();
+    return [RouteCacheTally.family("html"), ...this.#rsc.metricFamilies()];
   }
 
   getMetrics(): AkanMetricsReport {

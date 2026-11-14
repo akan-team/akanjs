@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { AkanError } from "akanjs/base";
-import { DEFAULT_AKAN_I18N } from "akanjs/common";
+import { DEFAULT_AKAN_I18N, Logger } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import type { RouteSeedIndex, RoutesManifest } from "./artifact";
 import {
@@ -31,6 +31,7 @@ import {
   encodeAkanRouterState,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
+import type { ServerListener } from "./routing/serverListener";
 import {
   createRscNavigationStreamResponse,
   createRscNotFoundFallbackResponse,
@@ -38,6 +39,7 @@ import {
   createRscStreamResponse,
 } from "./rscResponse";
 import type { RscRenderResult } from "./rscWorkerHost";
+import { ServerMetrics } from "./serverMetrics";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
@@ -92,6 +94,7 @@ interface FakeRscWorker {
   kill(): void;
   reload(): Promise<unknown>;
   getMetrics(): Record<string, unknown>;
+  metricFamilies(): never[];
 }
 
 function createFakeRscWorker(
@@ -131,6 +134,9 @@ function createFakeRscWorker(
     async reload() {},
     getMetrics() {
       return {};
+    },
+    metricFamilies() {
+      return [];
     },
   };
 }
@@ -2207,6 +2213,46 @@ describe("WebRouter full SSR cache orchestration", () => {
         expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(1);
         expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(1);
         expect(after.bypass["request-not-public"] - before.bypass["request-not-public"]).toBe(1);
+      },
+      { worker },
+    );
+  });
+
+  test("exposes the HTML cache's hits, misses and bypasses in the server's scrape", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, router }) => {
+        const scrape = new ServerMetrics(
+          { logger: new Logger("test"), serverMode: "solo" } as unknown as ConstructorParameters<
+            typeof ServerMetrics
+          >[0],
+          {} as unknown as ServerListener,
+          () => router,
+        );
+        const lookups = () => {
+          const family = scrape.families().find((each) => each.name === "akan_route_cache_lookups_total");
+          const samples = family?.type === "counter" ? family.samples : [];
+          const sum = (outcome: string) =>
+            samples
+              .filter(({ labels }) => labels.cache === "html" && labels.role === "solo" && labels.outcome === outcome)
+              .reduce((total, sample) => total + sample.value, 0);
+          return { hit: sum("hit"), miss: sum("miss"), bypass: sum("bypass") };
+        };
+        const before = lookups();
+        await (await fullSsr(new Request("https://example.test/docs?b=2&a=1"))).text();
+        const missed = lookups();
+        await (await fullSsr(new Request("https://example.test/docs?a=1&b=2"))).text();
+        const hit = lookups();
+        await (
+          await fullSsr(new Request("https://example.test/docs?a=1&b=3", { headers: { cookie: "jwt=1" } }))
+        ).text();
+        const bypassed = lookups();
+
+        expect(missed).toEqual({ ...before, miss: before.miss + 1 });
+        expect(hit).toEqual({ ...missed, hit: missed.hit + 1 });
+        expect(bypassed).toEqual({ ...hit, bypass: hit.bypass + 1 });
       },
       { worker },
     );
