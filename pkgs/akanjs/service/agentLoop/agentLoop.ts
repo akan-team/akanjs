@@ -149,15 +149,19 @@ export class AgentLoop {
     const tools = await this.#listTools();
     yield* this.#compact();
     const answer = yield* this.#ask(tools);
+    //? Security: what the model wrote after reading untrusted text is stored with the mark. A marked context block is
+    //? in no stored message, so without it a resume of these calls, or the next ask, would start untainted.
+    const mark = this.#tainted ? { tainted: true } : {};
     if (answer.stop === "length") {
       //? Calls in an answer the provider cut off may be cut mid-argument, so only its text is kept.
-      if (answer.text) await this.#append({ role: "assistant", text: answer.text });
+      if (answer.text) await this.#append({ role: "assistant", text: answer.text, ...mark });
       return "length";
     }
     const message: AgentWireMessage = {
       role: "assistant",
       ...(answer.text ? { text: answer.text } : {}),
       ...(answer.toolCalls.length ? { toolCalls: answer.toolCalls } : {}),
+      ...mark,
     };
     if (LoopTranscript.carries(message)) await this.#append(message);
     if (!answer.toolCalls.length) return "end";

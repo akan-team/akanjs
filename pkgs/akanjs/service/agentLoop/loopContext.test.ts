@@ -125,3 +125,65 @@ describe("AgentLoop with a message that points at a record", () => {
     expect(called).toEqual([]);
   });
 });
+
+describe("AgentLoop after a run that read a marked block", () => {
+  test("a resume of the write approve deferred still hears `tainted`, with the block no longer passed", async () => {
+    const first = harness([calling(callOf("c1", "renameTitle"))]);
+    const parked = await drain(first.port, ask({ context: [subject], approve: () => "defer" }));
+    expect(parked.events.at(-1)).toEqual({ type: "done", stop: "awaiting", rounds: 1 });
+    expect(first.called).toEqual([]);
+    const messages: AgentWireMessage[] = [{ role: "user", text: "Tidy the titles." }, ...parked.stored];
+
+    const asked: boolean[] = [];
+    const judged = harness([saying("Done.")]);
+    await drain(
+      judged.port,
+      ask({
+        messages,
+        approve: (_call, { tainted }) => {
+          asked.push(tainted);
+          return "allow";
+        },
+      }),
+    );
+    expect(asked).toEqual([true]);
+
+    const bare = harness([saying("Done.")]);
+    const { events } = await drain(bare.port, ask({ messages }));
+    expect(bare.called).toEqual([]);
+    expect(resultOf(events, "c1")?.code).toBe("writeAfterRead");
+  });
+
+  test("the next ask in that conversation is still tainted, with the block no longer passed", async () => {
+    const first = harness([saying("There are three titles.")]);
+    const ended = await drain(first.port, ask({ context: [subject] }));
+    expect(ended.events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 1 });
+    const messages: AgentWireMessage[] = [
+      { role: "user", text: "Tidy the titles." },
+      ...ended.stored,
+      { role: "user", text: "Go on then." },
+    ];
+    const asked: boolean[] = [];
+    const next = harness(writeFirst());
+    await drain(
+      next.port,
+      ask({
+        messages,
+        approve: (_call, { tainted }) => {
+          asked.push(tainted);
+          return "allow";
+        },
+      }),
+    );
+    expect(asked).toEqual([true]);
+    const bare = harness(writeFirst());
+    await drain(bare.port, ask({ messages }));
+    expect(bare.called).toEqual([]);
+  });
+
+  test("a run that read nothing marked stores no mark on what the model said", async () => {
+    const { port } = harness([saying("There are three titles.")]);
+    const { stored } = await drain(port, ask({ context: [{ kind: "route", path: "/tickets" }] }));
+    expect(stored).toEqual([{ role: "assistant", text: "There are three titles." }]);
+  });
+});

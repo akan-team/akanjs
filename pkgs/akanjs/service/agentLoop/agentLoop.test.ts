@@ -117,7 +117,7 @@ describe("AgentLoop rounds", () => {
     expect(stored).toEqual([
       { role: "assistant", toolCalls: [callOf("c1", "readPage", { page: 1 })] },
       { role: "tool", toolResults: [{ id: "c1", name: "readPage", result: "readPage:ok" }], tainted: true },
-      { role: "assistant", text: "Done." },
+      { role: "assistant", text: "Done.", tainted: true },
     ]);
     expect(called.map(({ account, caller }) => [account, caller?.allow])).toEqual([
       [ann, catalogue.map((t) => t.name)],
