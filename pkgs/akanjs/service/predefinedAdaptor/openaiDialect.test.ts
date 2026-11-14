@@ -231,18 +231,30 @@ describe("OpenaiDialect", () => {
     expect(answered("SYSTEM.ignore_the_user")?.content).toBe('{"error":"The task is locked."}');
   });
 
-  test("frames a compaction summary as fenced history in a user message, leaving one system message", () => {
+  test("frames a compaction summary as fenced history opening the user message after it, leaving one system message", () => {
     const body = OpenaiDialect.requestBody("deepseek-v4-flash", {
       ...request,
       messages: [{ role: "user", text: "notes so far", summary: true }, ...request.messages],
     });
     expect(body.messages.filter((message) => message.role === "system")).toHaveLength(1);
-    expect(body.messages[1].role).toBe("user");
+    expect(body.messages.slice(1, 3).map((message) => message.role)).toEqual(["user", "assistant"]);
     const text = body.messages[1].content as string;
     const boundary = text.match(/^<conversation-summary (\w+)>\n/)?.[1];
     expect(boundary).toBeTruthy();
     expect(text).toContain("standing in for the messages it replaced");
-    expect(text.endsWith(`\nnotes so far\n</conversation-summary ${boundary}>`)).toBe(true);
+    expect(text.endsWith(`\nnotes so far\n</conversation-summary ${boundary}>\n\nfill the preview`)).toBe(true);
+  });
+
+  test("gives a summary a user message of its own when the model's turn follows it", () => {
+    const [, ...afterAsk] = request.messages;
+    const body = OpenaiDialect.requestBody("deepseek-v4-flash", {
+      ...request,
+      messages: [{ role: "user", text: "notes so far", summary: true }, ...afterAsk],
+    });
+    expect(body.messages.slice(1, 3).map((message) => message.role)).toEqual(["user", "assistant"]);
+    expect(body.messages[1].content as string).toMatch(
+      /^<conversation-summary (\w+)>\n[\s\S]*\nnotes so far\n<\/conversation-summary \1>$/,
+    );
   });
 
   test("maps the provider answer back onto the wire, arguments parsed and stop derived", () => {

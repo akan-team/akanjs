@@ -8,6 +8,8 @@ export interface DialectView {
   user: string[];
   /** Assistant turns, tool results and tool definitions, serialized. */
   rest: string;
+  /** The role of each message after the system prompt, in the order sent. */
+  roles: string[];
 }
 
 export interface Dialect {
@@ -123,6 +125,13 @@ export const transcripts: { name: string; messages: AgentWireMessage[] }[] = [
       { role: "user", text: "rename it" },
       { role: "assistant", text: "Which one?" },
       { role: "user", text: "the first" },
+    ],
+  },
+  {
+    name: "cut down to a summary and the newest ask",
+    messages: [
+      { role: "user", text: "The user asked to rename a ticket.", summary: true },
+      { role: "user", text: "the first", attachments: [{ name: "a.png", mimeType: "image/png", data: "QUJD" }] },
     ],
   },
 ];

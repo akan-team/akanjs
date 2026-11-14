@@ -34,6 +34,7 @@ const openai: Dialect = {
         body.messages.filter((message) => message.role !== "system" && message.role !== "user"),
         body.tools,
       ]),
+      roles: body.messages.flatMap((message) => (message.role === "system" ? [] : [message.role])),
     };
   },
 };
@@ -53,6 +54,7 @@ const anthropic: Dialect = {
         asked.flatMap((message) => message.content.filter((block) => block.type !== "text")),
         body.tools,
       ]),
+      roles: body.messages.map((message) => message.role),
     };
   },
 };
@@ -171,6 +173,17 @@ describe.each(dialects)("$name", (dialect) => {
         { needles: second.needles, tag: "page-content" as const },
       ];
       expect(violationsOf(dialect, plain, sent, placed)).toEqual([]);
+    });
+
+    test(`a turn ${name} never sends two user turns or two assistant turns in a row`, () => {
+      const [first, second] = corpus;
+      if (!first || !second) throw new Error("the corpus is empty");
+      const both = [blockOf(first.value, "turn-context"), blockOf(second.value, "page-content")];
+      for (const context of [[], both]) {
+        const { roles } = dialect.view(requestOf(messages, context));
+        const repeated = roles.filter((role, at) => role !== "tool" && role === roles[at - 1]);
+        expect([roles, repeated]).toEqual([roles, []]);
+      }
     });
 
     test(`a turn ${name} keeps a value that holds its fence's closing line inside the fence`, () => {

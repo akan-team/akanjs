@@ -78,7 +78,7 @@ export class OpenaiDialect {
       messages: OpenaiDialect.contextual(
         [
           { role: "system" as const, content: OpenaiDialect.systemPrompt(request) },
-          ...request.messages.flatMap((message) => OpenaiDialect.providerMessages(message, accepts)),
+          ...OpenaiDialect.conversation(request.messages, accepts),
         ],
         request.context,
       ),
@@ -119,6 +119,25 @@ export class OpenaiDialect {
         ? [last.content, text].filter(Boolean).join("\n\n")
         : [...last.content, { type: "text" as const, text }];
     return [...messages.slice(0, -1), { ...last, content }];
+  }
+
+  //? A summary whose cut lands on the user's ask would be two user messages in a row, so it opens that ask's message.
+  static conversation(messages: AgentWireMessage[], accepts?: LlmAccepts): OpenaiMessage[] {
+    const asks = (message?: AgentWireMessage) => message?.role === "user" && !message.summary;
+    return messages.flatMap((message, at) => {
+      if (message.summary && asks(messages[at + 1])) return [];
+      const mapped = OpenaiDialect.providerMessages(message, accepts);
+      const before = messages[at - 1];
+      if (!before?.summary || !asks(message)) return mapped;
+      const summary = LlmContext.summary(before.text ?? "");
+      return mapped.map(({ role, content }) => ({
+        role,
+        content:
+          typeof content === "string"
+            ? [summary, content].filter(Boolean).join("\n\n")
+            : [{ type: "text" as const, text: summary }, ...content],
+      }));
+    });
   }
 
   static providerMessages(message: AgentWireMessage, accepts?: LlmAccepts): OpenaiMessage[] {
