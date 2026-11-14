@@ -90,6 +90,10 @@ export class CsrGuards {
     };
   }
 
+  static expire(location: GuardedLocation) {
+    CsrGuards.#forget(CsrGuards.keyOf(location));
+  }
+
   static #forget(key: string) {
     CsrGuards.#runs.delete(key);
     CsrGuards.#admitted.delete(key);
