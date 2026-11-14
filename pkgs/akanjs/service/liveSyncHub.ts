@@ -1,4 +1,5 @@
 import { AkanError } from "akanjs/base";
+import { Logger } from "akanjs/common";
 import {
   type DocumentQuery,
   DocumentQueryEvaluator,
@@ -7,6 +8,8 @@ import {
   type QueryFieldMap,
 } from "akanjs/document";
 import { canonicalJson } from "../common/websocketContract";
+import { LiveRoomLimit } from "./liveRoomLimit";
+import { LiveRoomLimitError } from "./liveRoomLimitError";
 
 /** What happened to one document from one room's point of view — never the CRUD verb that caused it. */
 export type LiveOp = "enter" | "update" | "leave";
@@ -60,8 +63,11 @@ interface ModelRooms {
  * `removedAt` is wrapped in here as the store does on every read, or a soft delete would route as an update.
  */
 export class LiveSyncHub {
+  static readonly #logger = new Logger("LiveSyncHub");
+  static readonly #ceilingWarnEveryMs = 60_000;
   readonly #rooms = new Map<string, LiveRoom>();
   readonly #models = new Map<string, ModelRooms>();
+  readonly #ceilingWarnedAt = new Map<string, number>();
   #joins = 0;
   #onModels: ((models: string[]) => void) | null = null;
 
@@ -103,6 +109,8 @@ export class LiveSyncHub {
         );
     }
     const known = this.#models.get(refName);
+    const ceiling = LiveRoomLimit.roomsPerModel;
+    if (ceiling !== null && (known?.rooms.size ?? 0) >= ceiling) this.#refuseOverCeiling(refName, ceiling);
     const model = known ?? {
       rooms: new Set<LiveRoom>(),
       invalidating: new Set<LiveRoom>(),
@@ -134,6 +142,18 @@ export class LiveSyncHub {
     }
     if (!known) this.#onModels?.(this.models());
     return room;
+  }
+
+  #refuseOverCeiling(refName: string, ceiling: number): never {
+    const now = Date.now();
+    const warnedAt = this.#ceilingWarnedAt.get(refName);
+    if (warnedAt === undefined || now - warnedAt >= LiveSyncHub.#ceilingWarnEveryMs) {
+      this.#ceilingWarnedAt.set(refName, now);
+      LiveSyncHub.#logger.warn(
+        `"${refName}" holds ${ceiling} live rooms on this server, its ceiling, so new ones are refused (logged once a minute). Raise it with option.setLiveRoomLimit({ roomsPerModel }) or AKAN_LIVE_ROOMS_PER_MODEL.`,
+      );
+    }
+    throw new LiveRoomLimitError("model", ceiling);
   }
 
   roomIds(): string[] {
