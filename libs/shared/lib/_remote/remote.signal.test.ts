@@ -92,6 +92,27 @@ describe("Remote Signal", () => {
     expect(again.searchParams.get("state")).not.toBe(authorizeUrl.searchParams.get("state"));
   });
 
+  it("registers again when the stored registration's secret no longer opens, and keeps a public one", async () => {
+    const [registrationKey] = await service.clients.keys();
+    const registered = registrationKey ? await service.clients.get(registrationKey) : undefined;
+    if (!registrationKey || !registered) throw new Error("the registration is missing");
+    const clientIdOf = async () => new URL(await other.fetch.connectRemote(base)).searchParams.get("client_id");
+    try {
+      const moved = service.remoteOption.vault.seal("secret-1", ["elsewhere", "clientSecret"]);
+      await service.clients.set(
+        registrationKey,
+        JSON.stringify({ clientId: "unopenable-client", clientSecret: moved }),
+      );
+      const renewed = await clientIdOf();
+      expect(renewed).not.toBe("unopenable-client");
+      expect(await service.clients.get(registrationKey)).not.toContain("unopenable-client");
+      await service.clients.set(registrationKey, JSON.stringify({ clientId: "public-client", clientSecret: "" }));
+      expect(await clientIdOf()).toBe("public-client");
+    } finally {
+      await service.clients.set(registrationKey, registered);
+    }
+  });
+
   it("answers a sign-in once, and only to the account that started it", async () => {
     const callback = await signInAt(await owner.fetch.connectRemote(base), owner.accessToken.jwt);
     const state = callback.searchParams.get("state") ?? "";

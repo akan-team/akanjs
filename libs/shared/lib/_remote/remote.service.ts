@@ -335,6 +335,8 @@ export class RemoteService extends serve("remote" as const, ({ use, memory }) =>
       const { clientId, clientSecret } = JSON.parse(stored) as { clientId?: string; clientSecret?: string };
       if (!clientId) return null;
       const secret = vault.open(clientSecret ?? "", context);
+      //? A secret that no longer opens would sign every user in as a public client, which the server refuses.
+      if (clientSecret && !secret) return null;
       return { clientId, ...(secret ? { clientSecret: secret } : {}) };
     } catch {
       return null;
