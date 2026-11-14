@@ -1,3 +1,4 @@
+import { STATE_DERIVED_META } from "akanjs/base";
 import type { ContextBlock, PublishedResource, PublishedScope, SurfaceView } from "use-agentic";
 import type { StoreInstance } from "../storeInstance";
 import { StoreRegistry } from "../storeRegistry";
@@ -15,7 +16,7 @@ export class AgentContext {
     return new AgentContext(StoreRegistry.instance, ensureStoreSurface().bridge);
   }
 
-  /** A pathname as the route block carries it: a segment of free text, or one past the twelfth, reads `…`. */
+  /** A pathname as the route block carries it: a segment of free text, or one past twelve words, reads `…`. */
   static routePath(pathname: string): string {
     return AgentInline.path(pathname);
   }
@@ -38,20 +39,29 @@ export class AgentContext {
     const [pathKey, paramsKey, searchKey] = AgentBridge.routeKeys;
     const pathname = String(state[pathKey] ?? "");
     const path = AgentInline.path(pathname);
-    const params = AgentInline.record(state[paramsKey]);
-    const searchParams = AgentInline.record(state[searchKey]);
+    const params = AgentInline.params(state[paramsKey]);
+    const searchParams = AgentInline.search(state[searchKey], AgentContext.#declaredSearch());
     const withheld = [
       ...(path === pathname ? [] : [pathKey]),
-      ...(params.whole ? [] : [paramsKey]),
-      ...(searchParams.whole ? [] : [searchKey]),
+      ...(params.withheld ? [paramsKey] : []),
+      ...(searchParams.withheld ? [searchKey] : []),
     ];
     return {
       kind: "route",
       path,
       params: params.inline,
       searchParams: searchParams.inline,
-      ...(withheld.length ? { withheld, note: AgentContext.withheldNote } : {}),
+      ...(withheld.length ? { withheld } : {}),
+      ...(searchParams.withheld ? { searchParamsWithheld: searchParams.withheld } : {}),
+      ...(withheld.length ? { note: AgentContext.withheldNote } : {}),
     };
+  }
+
+  static #declaredSearch(): Set<string> {
+    const stores = [...StoreRegistry.stores.values()];
+    return new Set(
+      stores.flatMap((store) => Object.values(store[STATE_DERIVED_META].search).map((meta) => meta.paramKey)),
+    );
   }
 
   //? A `Load` scope's label is its record's title and its `items` are its rows' titles, both drawn inside the scope,
