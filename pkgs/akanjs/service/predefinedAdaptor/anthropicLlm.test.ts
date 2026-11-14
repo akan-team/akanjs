@@ -5,7 +5,7 @@ import { LlmSpend } from "./llmSpend";
 
 const request: LlmTurnRequest = {
   instructions: "Help edit the project.",
-  context: [{ kind: "route", path: "/task" }],
+  context: [],
   tools: [
     {
       name: "setPreviewMode",
@@ -24,6 +24,8 @@ const request: LlmTurnRequest = {
   ],
 };
 
+const onTask: LlmTurnRequest = { ...request, context: [{ kind: "route", path: "/task" }] };
+
 const streamOf = (lines: string[]) =>
   new ReadableStream<Uint8Array>({
     start(controller) {
@@ -34,13 +36,35 @@ const streamOf = (lines: string[]) =>
 
 describe("AnthropicLlm.requestBody", () => {
   test("puts the system prompt in its own field and always names a ceiling", () => {
-    const body = AnthropicLlm.requestBody("claude-opus-5", request);
+    const body = AnthropicLlm.requestBody("claude-opus-5", onTask);
     expect(body.model).toBe("claude-opus-5");
     expect(body.max_tokens).toBe(AnthropicLlm.defaultMaxTokens);
-    expect(body.system).toContain("Help edit the project.");
-    expect(body.system).toContain('{"kind":"route","path":"/task"}');
+    expect(body.system).toBe("Help edit the project.");
     // The type already forbids a system role here, so the assertion worth making is that it did not leak into a turn.
     expect(JSON.stringify(body.messages)).not.toContain("Help edit the project.");
+  });
+
+  test("a turn's context is fenced data ending the last user turn, behind that turn's tool results", () => {
+    const plain = AnthropicLlm.requestBody("claude-opus-5", request);
+    const body = AnthropicLlm.requestBody("claude-opus-5", onTask);
+    expect(body.system).toBe(plain.system);
+    expect(body.messages.slice(0, -1)).toEqual(plain.messages.slice(0, -1));
+    const last = body.messages[body.messages.length - 1];
+    expect(last.role).toBe("user");
+    expect(last.content.slice(0, -1)).toEqual(plain.messages[plain.messages.length - 1].content);
+    const { text } = last.content[last.content.length - 1] as { text: string };
+    const boundary = text.match(/^<turn-context (\w+)>\n/)?.[1];
+    expect(boundary).toBeTruthy();
+    expect(text).toContain('\n[{"kind":"route","path":"/task"}]\n');
+    expect(text.endsWith(`\n</turn-context ${boundary}>`)).toBe(true);
+  });
+
+  test("context with no user turn to end opens one, and a turn with no context adds nothing", () => {
+    const { messages } = AnthropicLlm.requestBody("claude-opus-5", { ...onTask, messages: [] });
+    expect(messages).toHaveLength(1);
+    expect(messages[0].role).toBe("user");
+    expect((messages[0].content[0] as { text: string }).text).toContain('"path":"/task"');
+    expect(AnthropicLlm.requestBody("claude-opus-5", { ...request, messages: [] }).messages).toEqual([]);
   });
 
   test("a tool declares an input_schema, and one with no arguments declares an empty object", () => {
