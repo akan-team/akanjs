@@ -1,5 +1,6 @@
 import { describe, expect, it } from "bun:test";
 import path from "node:path";
+import { ServerLimits } from "akanjs/server/routing/serverLimits";
 import { AppChart, type RenderOptions } from "./AppChart";
 
 const helm = Bun.which("helm");
@@ -53,5 +54,34 @@ describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
 
     expect(pod).not.toHaveProperty("securityContext");
     expect(pod.containers[0]).not.toHaveProperty("securityContext");
+  });
+
+  it("caps an ingress body at the largest body the server accepts, and leaves CORS to the app", () => {
+    const uploadMiB = ServerLimits.defaultUploadBodyBytes / 1024 / 1024;
+    expect(Number.isInteger(uploadMiB)).toBe(true);
+    expect(ServerLimits.defaultUploadBodyBytes).toBeGreaterThanOrEqual(ServerLimits.defaultRequestBodyBytes);
+
+    for (const { name, render } of renderCases) {
+      const annotations = AppChart.find(chart.render(render), "Ingress").metadata.annotations ?? {};
+      expect({ name, bodySize: annotations["nginx.ingress.kubernetes.io/proxy-body-size"] }).toEqual({
+        name,
+        bodySize: `${uploadMiB}m`,
+      });
+      expect({ name, cors: Object.keys(annotations).filter((key) => key.includes("cors")) }).toEqual({
+        name,
+        cors: [],
+      });
+    }
+  });
+
+  it("brings back the unlimited body and the ingress CORS answer from a values file", () => {
+    const { annotations = {} } = AppChart.find(
+      chart.render({ values: { ingress: { proxyBodySize: "0", cors: { enabled: true } } } }),
+      "Ingress",
+    ).metadata;
+
+    expect(annotations["nginx.ingress.kubernetes.io/proxy-body-size"]).toBe("0");
+    expect(annotations["nginx.ingress.kubernetes.io/enable-cors"]).toBe("true");
+    expect(annotations["nginx.ingress.kubernetes.io/cors-allow-headers"]).toContain("Authorization");
   });
 });

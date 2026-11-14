@@ -174,6 +174,24 @@ export default page()
           ko: "컨테이너의 `securityContext`입니다. `allowPrivilegeEscalation: false`이고 모든 capability를 뺍니다. 서버가 이미지 안의 `/workspace/runtime`, `/workspace/.akan`, `/tmp`에 쓰므로 루트 파일시스템은 쓰기 가능한 채로 둡니다. `null`이면 빠집니다.",
         }),
       },
+      {
+        key: "ingress.proxyBodySize",
+        type: "string",
+        default: "128m",
+        desc: l.trans({
+          en: 'The largest request body the Ingress passes on, the server\'s own upload limit. Raise it together with `AKAN_MAX_UPLOAD_BODY`; `"0"` passes any size.',
+          ko: 'Ingress가 넘겨주는 가장 큰 요청 본문으로, 서버의 업로드 한도와 같습니다. `AKAN_MAX_UPLOAD_BODY`와 함께 올리며, `"0"`이면 크기를 따지지 않습니다.',
+        }),
+      },
+      {
+        key: "ingress.cors.enabled",
+        type: "boolean",
+        default: "false",
+        desc: l.trans({
+          en: "Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`. `true` has ingress-nginx answer every preflight and add `Access-Control-Allow-Origin: *` to every response instead.",
+          ko: "끄면 앱이 직접 CORS에 답합니다. 네이티브 셸과 `option.setCrossSite({ allowedOrigins })`에 적은 origin이 대상입니다. `true`면 ingress-nginx가 모든 preflight에 대신 답하고 모든 응답에 `Access-Control-Allow-Origin: *`를 붙입니다.",
+        }),
+      },
     ];
 
     const branchKeys = [

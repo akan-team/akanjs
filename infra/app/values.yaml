@@ -14,3 +14,9 @@ securityContext:
   capabilities:
     drop:
       - ALL
+ingress:
+  # The server's own upload limit (`AKAN_MAX_UPLOAD_BODY`, 128 MiB); raise the two together.
+  proxyBodySize: 128m
+  # The app answers CORS itself; ingress-nginx's answer to a preflight and its headers would replace the app's.
+  cors:
+    enabled: false
