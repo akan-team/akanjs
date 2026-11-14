@@ -97,6 +97,7 @@ const ask = (remotes: AgentLoopRemote[], extra: Partial<AgentLoopRequest> = {}):
     remotes,
     ...extra,
   }) as AgentLoopRequest;
+const allowing: Partial<AgentLoopRequest> = { approve: () => "allow" };
 const namesOf = (request: LlmTurnRequest | undefined) => request?.tools.map((tool) => tool.name);
 const toolOf = (request: LlmTurnRequest | undefined, name: string) => request?.tools.find((tool) => tool.name === name);
 const resultsOf = (events: AgentLoopEvent[]): AgentWireToolResult[] =>
@@ -115,7 +116,7 @@ describe("AgentLoop remotes", () => {
       calling(callOf("c2", "shop.orderList", { limit: 1 })),
       saying("One order."),
     ]);
-    const events = await drain(port, ask([remote]));
+    const events = await drain(port, ask([remote], allowing));
     expect(namesOf(requests[0])).toEqual(["noteList", "createNote", "openToolkit"]);
     expect(toolOf(requests[0], "openToolkit")?.description).toContain("- shop: The shop back-office.");
     expect(namesOf(requests[1])).toEqual(["noteList", "createNote", "shop.orderList", "shop.refundOrder"]);
@@ -163,7 +164,7 @@ describe("AgentLoop remotes", () => {
     expect(toolOf(requests[0], "openToolkit")).toBeDefined();
   });
 
-  test("a remote result taints the run, and a remote write needs a person", async () => {
+  test("without approve, a remote write needs a person and nothing else is sent to a remote once it is open", async () => {
     const { remote, state } = remoteOf("shop");
     const { port, called } = harness([
       calling(callOf("c1", "openToolkit", { name: "shop" })),
@@ -174,8 +175,9 @@ describe("AgentLoop remotes", () => {
     ]);
     const results = resultsOf(await drain(port, ask([remote])));
     expect(results[1]).toEqual({ id: "c2", name: "shop.refundOrder", error: AgentLoop.needsPerson });
+    expect(results[2]).toEqual({ id: "c3", name: "shop.orderList", error: AgentLoop.taintedRemote });
     expect(results[3]).toEqual({ id: "c4", name: "createNote", error: AgentLoop.taintedWrite });
-    expect(state.calls.map((call) => call.tool)).toEqual(["orderList"]);
+    expect(state.calls).toEqual([]);
     expect(called).toEqual([]);
   });
 
@@ -307,6 +309,22 @@ describe("AgentLoop remotes", () => {
     }
   });
 
+  test("without approve, a tainted run sends a remote nothing, whatever the remote calls its tool", async () => {
+    const { remote, state } = remoteOf("shop");
+    const { port, called } = harness([
+      calling(callOf("c1", "noteList")),
+      calling(callOf("c2", "openToolkit", { name: "shop" })),
+      calling(callOf("c3", "shop.orderList", { query: "what the notes said" })),
+      calling(callOf("c4", "noteList")),
+      saying("Could not."),
+    ]);
+    const results = resultsOf(await drain(port, ask([remote], { untrusted: (result) => result.name === "noteList" })));
+    expect(results[2]).toEqual({ id: "c3", name: "shop.orderList", error: AgentLoop.taintedRemote });
+    expect(AgentLoop.taintedRemote).toContain("`approve`");
+    expect(state.calls).toEqual([]);
+    expect(called).toEqual(["noteList", "noteList"]);
+  });
+
   test("keeps the remote's prefix on a long or illegal tool name, and calls it by its real name", async () => {
     const long = `orders_${"x".repeat(70)}`;
     const { remote, state } = remoteOf("shop", {
@@ -328,7 +346,7 @@ describe("AgentLoop remotes", () => {
       calling(callOf("c2", opened.tools[0] ?? ""), callOf("c3", opened.tools[1] ?? "")),
       saying("Read."),
     ]);
-    await drain(second.port, ask([remote]));
+    await drain(second.port, ask([remote], allowing));
     expect(state.calls.map((call) => call.tool)).toEqual([long, "order.list/all"]);
   });
 
@@ -396,7 +414,7 @@ describe("AgentLoop remotes", () => {
       calling(callOf("c2", "shop.orderList")),
       saying("Down."),
     ]);
-    const failed = resultsOf(await drain(second.port, ask([flaky.remote])))[1];
+    const failed = resultsOf(await drain(second.port, ask([flaky.remote], allowing)))[1];
     expect(failed).toEqual({
       id: "c2",
       name: "shop.orderList",
@@ -416,7 +434,7 @@ describe("AgentLoop remotes", () => {
       calling(callOf("c2", "shop.orderList")),
       calling(callOf("c3", "openToolkit", { name: "shop" })),
     ]);
-    const events = await drain(port, ask([remote]));
+    const events = await drain(port, ask([remote], allowing));
     expect(namesOf(requests[2])).toEqual(["noteList", "createNote", "openToolkit"]);
     expect(events).toContainEqual({
       type: "awaiting",
@@ -447,7 +465,7 @@ describe("AgentLoop remotes", () => {
       calling(callOf("c2", "shop.orderList", { id: "o1" })),
       saying("Shown."),
     ]);
-    const { messages, request } = stored(ask([remote]));
+    const { messages, request } = stored(ask([remote], allowing));
     const events = await drain(port, request);
     const shown = events.find((event) => event.type === "toolResult" && event.result.id === "c2");
     expect(shown).toEqual({
@@ -485,7 +503,7 @@ describe("AgentLoop remotes", () => {
       calling(callOf("c2", "shop.orderList", { id: "o1" }), callOf("c3", "shop.refundOrder")),
       saying("Shown."),
     ]);
-    const events = await drain(port, ask([remote], { approve: () => "allow" }));
+    const events = await drain(port, ask([remote], allowing));
     const views = events.flatMap((event) => (event.type === "toolResult" && event.round === 2 ? [event.view] : []));
     expect(views).toEqual([{ remote: "shop", tool: "orderList", args: { id: "o1" }, href: "/order/o1" }, undefined]);
   });

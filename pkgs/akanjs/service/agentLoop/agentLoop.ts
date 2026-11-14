@@ -46,6 +46,8 @@ export class AgentLoop {
   static readonly needsPerson = "Not run: this tool needs a person's confirmation, and none is available to this run.";
   static readonly taintedWrite =
     "Not run: this tool changes data, and this run has read untrusted content, so it may not change anything without a person's approval.";
+  static readonly taintedRemote =
+    "Not run: this tool is another server's, and this run has read text another party wrote, that server's tool list included, so nothing is sent there without approval. None is available: this run's request has no `approve`.";
   static readonly unjudged = "Not run: the approval check returned no verdict.";
   static readonly abandoned =
     "Stopped waiting: this run ended while the tool was still running. It may still finish, so check its effect before calling it again.";
@@ -364,6 +366,8 @@ export class AgentLoop {
     const state = { tainted: this.#tainted, tool, ...(remote ? { remote } : {}) };
     if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, state)));
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
+    //? Security: a call's arguments leave for the remote, and "read-only" is the remote's own word for its tool.
+    if (this.#tainted && remote) return { deny: AgentLoop.taintedRemote };
     if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
     return "allow";
   }

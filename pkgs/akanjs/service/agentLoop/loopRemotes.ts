@@ -119,7 +119,7 @@ export class LoopRemotes {
     };
   }
 
-  //? Security: a remote's annotations are its own claim, so only a tool it calls read-only runs without a person.
+  //? Security: a remote's annotations are its own claim, so a tool it does not call read-only needs a person.
   static #entriesOf(remote: string, listed: readonly AgentTool[]): Map<string, RemoteEntry> {
     const entries = new Map<string, RemoteEntry>();
     let room = LoopRemotes.listingLimit;
