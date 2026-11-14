@@ -1,7 +1,7 @@
 import { FailureCode, MCP_FAILURE_META } from "akanjs/common";
 import { MCP_UI_EXTENSION, MCP_UI_MIME_TYPE } from "../../signal/mcp/mcpProtocol";
 import type { RemoteFetch } from "./RemoteFetch";
-import { RemoteError } from "./remoteError";
+import { clipRemoteText, RemoteError } from "./remoteError";
 
 export interface RemoteMcpTool {
   name: string;
@@ -29,6 +29,13 @@ export interface RemoteMcpCallResult {
 interface JsonRpcAnswer {
   result?: Record<string, unknown>;
   error?: { code?: number; message?: string; data?: unknown };
+}
+
+interface JsonRpcMessage {
+  jsonrpc: "2.0";
+  id?: number;
+  method: string;
+  params?: unknown;
 }
 
 export interface RemoteMcpOptions {
@@ -66,8 +73,8 @@ export class RemoteMcp {
     let cursor: string | undefined;
     for (let page = 0; page < RemoteMcp.maxToolPages; page += 1) {
       const result = RemoteMcp.#resultOf(await this.#call("tools/list", cursor ? { cursor } : {}));
-      const listed = Array.isArray(result.tools) ? (result.tools as RemoteMcpTool[]) : [];
-      tools.push(...listed.filter((tool) => typeof tool.name === "string" && tool.name));
+      const listed = Array.isArray(result.tools) ? (result.tools as unknown[]) : [];
+      tools.push(...listed.filter(RemoteMcp.#isTool));
       const next = result.nextCursor;
       //? Handing back the cursor it was given is a server that would page forever.
       if (typeof next !== "string" || !next || next === cursor) return tools;
@@ -85,15 +92,15 @@ export class RemoteMcp {
     const answer = await this.#call("tools/call", { name, arguments: args, ...(meta ? { _meta: meta } : {}) });
     if (answer.error)
       return {
-        content: [{ type: "text", text: answer.error.message ?? "The call failed." }],
+        content: [{ type: "text", text: RemoteMcp.#messageOf(answer, "The call failed.") }],
         isError: true,
-        ...RemoteMcp.#coded(answer.error.data),
+        ...RemoteMcp.#coded(RemoteMcp.#record(answer.error)?.data),
       };
     const result = answer.result ?? {};
     const isError = result.isError === true;
     const own = RemoteMcp.#record(result._meta);
     return {
-      content: Array.isArray(result.content) ? (result.content as RemoteMcpContent[]) : [],
+      content: Array.isArray(result.content) ? (result.content as unknown[]).filter(RemoteMcp.#isRecord) : [],
       ...(RemoteMcp.#record(result.structuredContent)
         ? { structuredContent: RemoteMcp.#record(result.structuredContent) }
         : {}),
@@ -109,7 +116,7 @@ export class RemoteMcp {
   ): Promise<{ uri?: string; mimeType?: string; text?: string; _meta?: unknown }[]> {
     await this.#initialized();
     const result = RemoteMcp.#resultOf(await this.#call("resources/read", { uri }, maxBytes));
-    return Array.isArray(result.contents) ? result.contents : [];
+    return Array.isArray(result.contents) ? (result.contents as unknown[]).filter(RemoteMcp.#isRecord) : [];
   }
 
   /** The text a model reads: text blocks as they are, anything else named by its type. */
@@ -125,10 +132,16 @@ export class RemoteMcp {
       protocolVersion: RemoteMcp.protocolVersion,
       capabilities: { extensions: { [MCP_UI_EXTENSION]: { mimeTypes: [MCP_UI_MIME_TYPE] } } },
       clientInfo: { name: this.#options.clientName ?? "akan", version: "1" },
-    }).then(async (answer) => {
-      if (answer.error) throw new RemoteError("remoteProtocol", answer.error.message ?? "initialize was refused.");
-      await this.#post({ jsonrpc: "2.0", method: "notifications/initialized" });
-    });
+    })
+      .then(async (answer) => {
+        if (answer.error)
+          throw new RemoteError("remoteProtocol", RemoteMcp.#messageOf(answer, "initialize was refused."));
+        await this.#post({ jsonrpc: "2.0", method: "notifications/initialized" });
+      })
+      .catch((error: unknown) => {
+        this.#ready = null;
+        throw error;
+      });
     return this.#ready;
   }
 
@@ -137,7 +150,7 @@ export class RemoteMcp {
     return await this.#post({ jsonrpc: "2.0", id: this.#nextId, method, params }, maxBytes);
   }
 
-  async #post(body: unknown, maxBytes = this.#options.maxBytes): Promise<JsonRpcAnswer> {
+  async #post(body: JsonRpcMessage, maxBytes = this.#options.maxBytes): Promise<JsonRpcAnswer> {
     const { status, headers, text } = await this.#fetcher.send(this.#url, {
       method: "POST",
       headers: {
@@ -163,29 +176,56 @@ export class RemoteMcp {
       if (status >= 400) throw new RemoteError("remoteProtocol", `The remote server answered ${status}.`, { status });
       return {};
     }
-    //? An SSE answer to a single request carries one `data:` line holding the whole JSON-RPC response.
-    const sse = text.startsWith("event:") || text.startsWith("data:");
-    const payload = sse ? RemoteMcp.#firstSseData(text) : text;
-    try {
-      return payload ? (JSON.parse(payload) as JsonRpcAnswer) : {};
-    } catch {
-      throw new RemoteError("remoteProtocol", `The remote server answered ${status} with no JSON-RPC body.`, {
+    if (body.id === undefined) return {};
+    const sse = headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "text/event-stream";
+    const answer = sse ? RemoteMcp.#answerIn(text, body.id) : RemoteMcp.#parse(text);
+    if (!answer)
+      throw new RemoteError("remoteProtocol", `The remote server answered ${status} with no JSON-RPC answer.`, {
         status,
       });
-    }
+    return answer as JsonRpcAnswer;
   }
 
   static #resultOf(answer: JsonRpcAnswer): Record<string, unknown> {
-    if (answer.error) throw new RemoteError("remoteProtocol", answer.error.message ?? "The request was refused.");
-    return answer.result ?? {};
+    if (answer.error) throw new RemoteError("remoteProtocol", RemoteMcp.#messageOf(answer, "The request was refused."));
+    return RemoteMcp.#record(answer.result) ?? {};
   }
 
-  static #firstSseData(text: string): string | undefined {
-    return text
-      .split("\n")
-      .find((line) => line.startsWith("data:"))
-      ?.slice(5)
-      .trim();
+  //? A stream may carry notifications and the server's own requests ahead of the answer, so it is found by its id.
+  static #answerIn(text: string, id: number): Record<string, unknown> | undefined {
+    let data: string[] = [];
+    const events: string[] = [];
+    for (const line of [...text.split(/\r\n|\r|\n/), ""]) {
+      if (!line) {
+        if (data.length) events.push(data.join("\n"));
+        data = [];
+      } else if (line === "data" || line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    return events
+      .map(RemoteMcp.#parse)
+      .find((message) => message?.id === id && !("method" in message) && ("result" in message || "error" in message));
+  }
+
+  static #parse(text: string): Record<string, unknown> | undefined {
+    try {
+      return RemoteMcp.#record(JSON.parse(text));
+    } catch {
+      return undefined;
+    }
+  }
+
+  static #messageOf(answer: JsonRpcAnswer, fallback: string): string {
+    const message = RemoteMcp.#record(answer.error)?.message;
+    return typeof message === "string" && message ? clipRemoteText(message) : fallback;
+  }
+
+  static #isTool(value: unknown): value is RemoteMcpTool {
+    const name = RemoteMcp.#record(value)?.name;
+    return typeof name === "string" && !!name;
+  }
+
+  static #isRecord(value: unknown): value is Record<string, unknown> {
+    return !!RemoteMcp.#record(value);
   }
 
   static #record(value: unknown): Record<string, unknown> | undefined {

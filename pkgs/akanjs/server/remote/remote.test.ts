@@ -313,12 +313,85 @@ describe("RemoteMcp", () => {
       const { id, method } = rpc(seen);
       if (id === undefined) return new Response(null, { status: 202 });
       if (method === "initialize")
-        return new Response(`event: message\ndata: ${JSON.stringify({ id, result: {} })}\n\n`);
+        return new Response(`event: message\ndata: ${JSON.stringify({ id, result: {} })}\n\n`, {
+          headers: { "content-type": "text/event-stream" },
+        });
       page += 1;
       return json({ id, result: { tools: [{ name: `t${page}` }], ...(page < 3 ? { nextCursor: `c${page}` } : {}) } });
     });
     const listed = await new RemoteMcp(paged.fetcher, "https://shop.example.com/mcp", "good").listTools();
     expect(listed.map((tool) => tool.name)).toEqual(["t1", "t2", "t3"]);
+  });
+
+  test("stops paging when a server hands back the cursor it was given", async () => {
+    const { fetcher, seen } = fetcherOf((entry) => {
+      const { id, method } = rpc(entry);
+      if (id === undefined) return new Response(null, { status: 202 });
+      if (method === "initialize") return json({ id, result: {} });
+      return json({ id, result: { tools: [{ name: `t${id}` }], nextCursor: "same" } });
+    });
+    await new RemoteMcp(fetcher, "https://shop.example.com/mcp", "good").listTools();
+    expect(seen.filter((entry) => rpc(entry).method === "tools/list")).toHaveLength(2);
+  });
+
+  test("skips or refuses what a server answers in the wrong shape", async () => {
+    const long = "x".repeat(5_000);
+    const { fetcher } = fetcherOf((entry) => {
+      const { id, method, params } = rpc(entry);
+      if (id === undefined) return new Response(null, { status: 202 });
+      if (method === "initialize") return json({ id, result: {} });
+      if (method === "tools/list") return json({ id, result: { tools: [null, 7, { name: "kept" }, { name: 3 }] } });
+      if (method === "resources/read") return json({ id, result: { contents: [null, { text: "v" }] } });
+      if (params?.name === "empty") return new Response("null", { headers: { "content-type": "application/json" } });
+      if (params?.name === "long") return json({ id, error: { code: -32000, message: long } });
+      return json({ id, result: { content: [null, { type: "text", text: "kept" }] } });
+    });
+    const mcp = new RemoteMcp(fetcher, "https://shop.example.com/mcp", "good");
+    expect((await mcp.listTools()).map((tool) => tool.name)).toEqual(["kept"]);
+    expect((await mcp.callTool("kept", {})).content).toEqual([{ type: "text", text: "kept" }]);
+    expect(await mcp.readResource("ui://shop/v")).toEqual([{ text: "v" }]);
+    expect(await codeOf(mcp.callTool("empty", {}))).toBe("remoteProtocol");
+    const clipped = RemoteMcp.textOf((await mcp.callTool("long", {})).content);
+    expect(clipped.length).toBeGreaterThan(100);
+    expect(clipped.length).toBeLessThan(400);
+  });
+
+  test("tries the handshake again after one that failed", async () => {
+    let handshakes = 0;
+    const { fetcher } = fetcherOf((entry) => {
+      const { id, method } = rpc(entry);
+      if (id === undefined) return new Response(null, { status: 202 });
+      if (method === "initialize") {
+        handshakes += 1;
+        return handshakes === 1 ? new Response(null, { status: 503 }) : json({ id, result: {} });
+      }
+      return json({ id, result: { tools: [{ name: "t" }] } });
+    });
+    const mcp = new RemoteMcp(fetcher, "https://shop.example.com/mcp", "good");
+    expect(await codeOf(mcp.listTools())).toBe("remoteProtocol");
+    expect((await mcp.listTools()).map((tool) => tool.name)).toEqual(["t"]);
+  });
+
+  test("reads the answer to its own request out of an event stream", async () => {
+    const stream = (body: string) => new Response(body, { headers: { "content-type": "text/event-stream" } });
+    const { fetcher } = fetcherOf((entry) => {
+      const { id, method } = rpc(entry);
+      if (id === undefined) return new Response(null, { status: 202 });
+      if (method === "initialize")
+        return stream(`: ok\r\nretry: 1000\r\n\r\ndata: ${JSON.stringify({ jsonrpc: "2.0", id, result: {} })}\r\n\r\n`);
+      if (method === "tools/call")
+        return stream(`data: ${JSON.stringify({ jsonrpc: "2.0", id: 999, result: {} })}\n\n`);
+      const answer = JSON.stringify({ jsonrpc: "2.0", id, result: { tools: [{ name: "split" }] } });
+      const notice = JSON.stringify({ jsonrpc: "2.0", method: "notifications/progress", params: {} });
+      const asked = JSON.stringify({ jsonrpc: "2.0", id, method: "sampling/createMessage", params: {} });
+      const half = answer.indexOf(',"result"');
+      return stream(
+        `event: message\ndata: ${notice}\n\nid: 3\ndata:${asked}\n\nid: 4\ndata: ${answer.slice(0, half)}\ndata: ${answer.slice(half)}\n\n`,
+      );
+    });
+    const mcp = new RemoteMcp(fetcher, "https://shop.example.com/mcp", "good");
+    expect((await mcp.listTools()).map((tool) => tool.name)).toEqual(["split"]);
+    expect(await codeOf(mcp.callTool("split", {}))).toBe("remoteProtocol");
   });
 });
 
