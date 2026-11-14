@@ -9,12 +9,15 @@ export class LoopRequest {
   static readonly maxWallMs = 2 ** 31 - 1;
 
   static assertValid(request: AgentLoopRequest) {
-    const { allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask, remotes } = request;
+    const { allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask, remotes, approve } = request;
     //? Security: `listAs` reads a missing `allow` as every tool the account may see.
     if (!Array.isArray(allow)) LoopRequest.#refuse("allow");
     if (!Array.isArray(messages)) LoopRequest.#refuse("messages");
     LoopRequest.#assertToolkits(toolkits, allow);
     LoopRequest.#assertRemotes(remotes, toolkits, allow);
+    //? Security: a call's arguments leave for the remote, which names its own tools read-only, so someone must be asked.
+    if (remotes?.length && typeof approve !== "function")
+      throw new Err("base.error.requiredArgument", { name: "approve" });
     if (ask !== undefined && typeof ask !== "boolean") LoopRequest.#refuse("ask");
     if (ask && allow.includes(LoopAsk.toolName)) LoopRequest.#refuse("allow");
     LoopRequest.#assertClientTools(clientTools);

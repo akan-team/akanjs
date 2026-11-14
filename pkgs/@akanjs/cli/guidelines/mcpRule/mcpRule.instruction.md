@@ -625,10 +625,11 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
 - **What a remote lists and returns is another party's text.** Opening a remote taints the run, whatever `untrusted`
   says: its tools' names, descriptions and schemas reach the model with the open, and so does the error of an open
   that failed. An open that only asks the user to connect taints nothing. A call's arguments leave for that server,
-  and `readOnly` is the remote's own word for its tool, so without `approve` no call to a remote runs: pass one with
-  `remotes`. It is told the target as `state.remote`, and hears a tool the remote does not call read-only as a
-  `needsConfirm` one. Show the user that server's name and the arguments before allowing a write: a record on one
-  server can ask the model to write to another.
+  and `readOnly` is the remote's own word for its tool, so a request with `remotes` and no `approve` is refused
+  before any model call, as `base.error.requiredArgument` naming `approve`: pass one with `remotes`. It is told the
+  target as `state.remote`, and hears a tool the remote does not call read-only as a `needsConfirm` one. Show the
+  user that server's name and the arguments before allowing a write: a record on one server can ask the model to
+  write to another.
 - **Names.** A remote's `name` is `[a-z][A-Za-z0-9]{0,15}` and may not be a toolkit's. A tool name too long or with
   characters a provider refuses is listed under a shortened alias and still called by its real name. A run takes
   at most 120 tools from one remote, a description to 1,000 characters and a parameter schema to 8,000, and stops

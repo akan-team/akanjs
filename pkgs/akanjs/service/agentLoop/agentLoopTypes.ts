@@ -106,9 +106,9 @@ export interface AgentLoopOptions {
    * Other servers, each a toolkit the model opens with `openToolkit({ name })`; none is listed or contacted before.
    * Opening one the account has no live connection to ends the run as `awaiting` with `connect` naming it: connect
    * and resume, or append an `error` for that call when the person declines. Security: what a remote lists and returns
-   * is another party's text, so opening one taints the run, and a call's arguments leave for that server, so without
-   * `approve` no call to a remote runs. `approve` hears a tool the remote does not call read-only as a `needsConfirm`
-   * one. A `clientTools` entry named `<remote>.…` is dropped.
+   * is another party's text, so opening one taints the run, and a call's arguments leave for that server, so a
+   * request with `remotes` and no `approve` is refused. `approve` hears a tool the remote does not call read-only as
+   * a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
    */
   remotes?: readonly AgentLoopRemote[];
   /**
@@ -132,8 +132,8 @@ export interface AgentLoopOptions {
    */
   compact?: { at: number; keep?: number };
   /**
-   * Asked before every call; without it a `needsConfirm` tool is refused, and so is any write, and any call to a
-   * remote, once tainted.
+   * Asked before every call, and required with `remotes`; without it a `needsConfirm` tool is refused, and so is any
+   * write once tainted.
    */
   approve?: AgentLoopApprove;
   /**
