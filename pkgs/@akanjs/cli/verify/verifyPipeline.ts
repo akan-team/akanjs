@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { ApplicationBuildReporter } from "@akanjs/devkit/app/applicationBuildReporter";
 import type { Workspace } from "@akanjs/devkit/commandDecorators";
@@ -13,7 +14,7 @@ import { VerifyComments } from "./verifyComments";
 import { type VerifyDiagnostic, VerifyDiagnostics, type VerifyStepName } from "./verifyDiagnostics";
 import { VerifyPrivateMethods } from "./verifyPrivateMethods";
 import type { VerifyResult, VerifyStepResult } from "./verifyReport";
-import type { VerifyScope, VerifyTarget } from "./verifyScope";
+import { VerifyScope, type VerifyTarget } from "./verifyScope";
 import { VerifyStyleClasses } from "./verifyStyleClasses";
 
 export interface VerifyPipelineOptions {
@@ -27,6 +28,11 @@ interface StepOutcome {
 }
 
 export class VerifyPipeline {
+  //? A tsc worker on a large app holds 1-2.5 GB beside biome and the editor, so each one is budgeted 4 GiB of RAM.
+  static concurrencyOf(cpus: number, memoryBytes: number) {
+    return Math.max(1, Math.min(4, Math.max(2, cpus - 1), Math.floor(memoryBytes / 2 ** 32)));
+  }
+  static readonly #concurrency = VerifyPipeline.concurrencyOf(os.availableParallelism(), os.totalmem());
   readonly #workspace: Workspace;
   readonly #workspaceRunner: WorkspaceRunner;
   readonly #applicationRunner: ApplicationRunner;
@@ -43,25 +49,36 @@ export class VerifyPipeline {
     return this.#workspace.workspaceRoot;
   }
 
-  async run(scope: VerifyScope, { lintOnly = false, build = true }: VerifyPipelineOptions = {}): Promise<VerifyResult> {
+  async run(
+    changed: VerifyScope,
+    { lintOnly = false, build = true }: VerifyPipelineOptions = {},
+  ): Promise<VerifyResult> {
     const startedAt = performance.now();
+    const scope = lintOnly ? changed : await this.#withDependents(changed);
     const systems = scope.targets.filter((target) => target.type !== "pkg");
+    const edited = scope.targets.filter((target) => !target.dependent);
     if (!lintOnly) await this.#each("sync", systems, (target) => this.#sync(target));
     const synced = !this.#failed("sync");
     //? Before typecheck starts, so it reads the renamed files: a rename can clash with an inherited member.
     const renames = new Map<VerifyTarget, Map<string, string>>();
-    for (const target of systems)
+    for (const target of edited.filter((target) => target.type !== "pkg"))
       renames.set(
         target,
         await VerifyPrivateMethods.fix(this.#root, target.dir, target.files).catch(() => new Map<string, string>()),
       );
     await Promise.all([
-      this.#each("lint", scope.targets, (target) =>
-        this.#lint(target, { comments: !lintOnly, rewritten: renames.get(target) ?? new Map<string, string>() }),
+      this.#each(
+        "lint",
+        edited,
+        (target) =>
+          this.#lint(target, { comments: !lintOnly, rewritten: renames.get(target) ?? new Map<string, string>() }),
+        VerifyPipeline.#concurrency,
       ),
-      lintOnly || !synced ? null : this.#each("typecheck", scope.targets, (target) => this.#typecheck(target)),
+      lintOnly || !synced
+        ? null
+        : this.#each("typecheck", scope.targets, (target) => this.#typecheck(target), VerifyPipeline.#concurrency),
     ]);
-    const apps = scope.targets.filter((target) => target.type === "app");
+    const apps = edited.filter((target) => target.type === "app");
     const clean = !this.#diagnostics.some((diagnostic) => diagnostic.severity === "error");
     if (!lintOnly && build && apps.length) {
       if (clean) await this.#each("build", apps, (target) => this.#build(target));
@@ -77,21 +94,40 @@ export class VerifyPipeline {
     };
   }
 
-  async #each<T>(name: VerifyStepName, items: T[], step: (item: T) => Promise<StepOutcome>) {
+  async #withDependents(scope: VerifyScope) {
+    if (!scope.changedLibs.length) return scope;
+    const [apps, libs, pkgs] = await this.#workspace.getExecs();
+    const names = { apps, libs, pkgs };
+    return scope.withDependents(names, await VerifyScope.libDepsIn(this.#root, names));
+  }
+
+  //? Sync and build stay one at a time: a sync rewrites the barrels of the libs it uses, and two Bun.build at once
+  //? are unstable.
+  async #each<T>(name: VerifyStepName, items: T[], step: (item: T) => Promise<StepOutcome>, concurrency = 1) {
     if (!items.length) return;
     const startedAt = performance.now();
-    let fixed = 0;
-    let failed = false;
-    for (const item of items) {
-      const outcome = await step(item).catch(
-        (error: unknown): StepOutcome => ({
-          diagnostics: [VerifyDiagnostics.fromMessage(name, ApplicationBuildReporter.formatError(error, this.#root))],
-        }),
-      );
-      fixed += outcome.fixed ?? 0;
-      failed ||= outcome.diagnostics.some((diagnostic) => diagnostic.severity === "error");
-      this.#diagnostics.push(...outcome.diagnostics);
-    }
+    const outcomes: StepOutcome[] = [];
+    let next = 0;
+    const worker = async () => {
+      while (next < items.length) {
+        const idx = next++;
+        outcomes[idx] = await step(items[idx] as T).catch(
+          (error: unknown): StepOutcome => ({
+            diagnostics: [VerifyDiagnostics.fromMessage(name, ApplicationBuildReporter.formatError(error, this.#root))],
+          }),
+        );
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(concurrency, items.length) }, worker));
+    const fixed = outcomes.reduce((sum, outcome) => sum + (outcome.fixed ?? 0), 0);
+    //? An app's typecheck reports the errors of each lib it uses, which the lib's own typecheck reported already.
+    const diagnostics = [
+      ...new Map(
+        outcomes.flatMap((outcome) => outcome.diagnostics).map((entry) => [JSON.stringify(entry), entry]),
+      ).values(),
+    ];
+    this.#diagnostics.push(...diagnostics);
+    const failed = diagnostics.some((diagnostic) => diagnostic.severity === "error");
     const ms = Math.round(performance.now() - startedAt);
     this.#steps.set(name, { name, status: failed ? "fail" : "pass", ms, fixed });
   }
@@ -197,8 +233,9 @@ export class VerifyPipeline {
       else {
         const tsconfigPath = path.join(this.#root, target.dir, "tsconfig.json");
         if (!existsSync(tsconfigPath)) return { diagnostics: [] };
-        await new ProjectTypecheck(path.join(this.#root, target.dir), this.#root, process.env).check(
+        await new ProjectTypecheck(path.join(this.#root, target.dir), this.#root, process.env).checkIncremental(
           tsconfigPath,
+          path.join(this.#root, ".akan", "typecheck", target.dir),
           "records",
         );
       }
@@ -210,17 +247,18 @@ export class VerifyPipeline {
   }
 
   async #build(target: VerifyTarget): Promise<StepOutcome> {
-    //? `fast` drops the build's own typecheck phase; the typecheck step above has already run it.
     const { routeJsWarnings = [] } = await this.#applicationRunner.build(
       AppExecutor.from(this.#workspace, target.name),
-      { fast: true },
+      { verify: true },
     );
     return { diagnostics: routeJsWarnings.map((warning) => VerifyDiagnostics.fromRouteJsBudget(warning)) };
   }
 
   async #ssr(scope: VerifyScope): Promise<StepOutcome> {
-    const scanned = await new AkanQualityScanner().scan(this.#root);
-    const warnings = scanned.warnings.filter((warning) => warning.scope === "ssr");
+    const dirs = scope.targets
+      .filter((target) => target.type !== "pkg" && target.files.some((file) => file.endsWith(".tsx")))
+      .map((target) => target.dir);
+    const warnings = await new AkanQualityScanner().scanSsr(this.#root, dirs);
     return { diagnostics: VerifyDiagnostics.fromQuality(warnings, scope.changedFiles) };
   }
 

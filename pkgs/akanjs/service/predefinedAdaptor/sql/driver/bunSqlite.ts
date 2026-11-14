@@ -19,6 +19,7 @@ class BunSqliteStatement implements AkanSqlStatement {
     private readonly statement: Statement,
     private readonly writeTurn: SqliteWriteTurn = openTurn,
     private readonly readerOf: SqliteReader = ownConnection,
+    private readonly readerLasts = true,
   ) {
     // SQLite reports `BEGIN`, `COMMIT` and `ATTACH` read-only too, so a read must also return rows to skip its turn.
     this.#reads = statement.readonly && statement.reader;
@@ -35,16 +36,25 @@ class BunSqliteStatement implements AkanSqlStatement {
 
   // Checked in the step that runs the write: a transaction begun after an earlier check would take the write in.
   async #execute<T>(use: (statement: Statement) => T) {
-    if (this.#reads) return use(this.#readStatement());
+    if (this.#reads) return this.#read(use);
     for (let turn = this.writeTurn(); turn; turn = this.writeTurn()) await turn;
     return use(this.statement);
   }
 
-  #readStatement() {
+  #read<T>(use: (statement: Statement) => T) {
     const reader = this.readerOf();
-    if (!reader) return this.statement;
-    this.#onReader ??= reader.query(this.sql);
-    return this.#onReader;
+    if (!reader) return use(this.statement);
+    if (this.readerLasts) {
+      this.#onReader ??= reader.query(this.sql);
+      return use(this.#onReader);
+    }
+    // SQLite keeps a closed connection, and here every page of its copy, allocated until its last statement is gone.
+    const statement = reader.prepare(this.sql);
+    try {
+      return use(statement);
+    } finally {
+      statement.finalize();
+    }
   }
 }
 
@@ -53,13 +63,14 @@ export class BunSqliteClient implements AkanSqlClient {
     readonly db: Database,
     private readonly writeTurn: SqliteWriteTurn = openTurn,
     private readonly readerOf: SqliteReader = ownConnection,
+    private readonly readerLasts = true,
   ) {}
   async execute(sql: string, params: unknown[] | Record<string, unknown> = []) {
     const values = Array.isArray(params) ? params : Object.values(params);
     return await this.prepare(sql).run(...values);
   }
   prepare(sql: string): AkanSqlStatement {
-    return new BunSqliteStatement(sql, this.db.query(sql), this.writeTurn, this.readerOf);
+    return new BunSqliteStatement(sql, this.db.query(sql), this.writeTurn, this.readerOf, this.readerLasts);
   }
   async close() {
     this.db.close();

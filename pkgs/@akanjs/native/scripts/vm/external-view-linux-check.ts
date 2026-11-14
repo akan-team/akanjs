@@ -16,14 +16,17 @@
 //    a frame's mailto: link,
 // 5. holds the keyboard while it is shown (the page has it while it is hidden), takes it back when its window is
 //    active again, takes sendKey's keydown and keyup with their codes whether it, the page or another window has the
-//    focus, while it is hidden and while an app dialog is open, the page and the dialog seeing none, types sendKey's
-//    text into a field, answers UNSUPPORTED while its window is hidden, captures its own content as a PNG, and mutes,
+//    focus, while it is hidden and while an app dialog is open, the page and the dialog seeing none, leaves the keyboard
+//    focus where it is when a sent Tab leaves its page, another view open (a real Tab still moves it), types sendKey's
+//    text into a field,
+//    sends Unidentified and NumpadEnter (on the numpad) and refuses Dead, answers UNSUPPORTED while its window is
+//    hidden, captures its own content as a PNG, and mutes,
 // 6. plays sound without a gesture, and a view opened with autoplay false does not,
 // 7. keeps storage of its own, which clearData clears,
 // 8. loads again when its web process ends, counting restarts, with its init script, and an evaluate the end cut off
 //    answers INTERNAL,
 // 9. answers an evaluate sent before its first commit once, run once, gives null for what JSON has no form for, and
-//    answers CANCELLED for an evaluate its close cut off.
+//    answers CANCELLED for an evaluate and a sendKey its close cut off, a real Tab moving the focus again after it.
 
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -63,8 +66,8 @@ const BOARD = `<!doctype html><title>board</title><body style="margin:0;backgrou
 <script>
 window.__keys = []; window.__clicks = 0;
 addEventListener("keydown", (e) => window.__keys.push(e.key + ":" + e.isTrusted));
-window.__sent = []; window.__untrusted = 0;
-for (const type of ["keydown", "keyup"]) addEventListener(type, (e) => { window.__sent.push(type + "," + e.key + "," + e.code); if (!e.isTrusted) window.__untrusted++; });
+window.__sent = []; window.__located = []; window.__untrusted = 0;
+for (const type of ["keydown", "keyup"]) addEventListener(type, (e) => { window.__sent.push(type + "," + e.key + "," + e.code); window.__located.push(type + "," + e.key + "," + e.code + "," + e.location); if (!e.isTrusted) window.__untrusted++; });
 addEventListener("click", () => window.__clicks++);
 addEventListener("message", (e) => { if (typeof e.data?.alive === "string") window.__frame = e.data; });
 const frame = document.createElement("iframe");
@@ -264,7 +267,46 @@ async function main() {
   const pageFocused = await checkpoint("sendPageFocused", { innerWidth, innerHeight });
   if (!pageFocused.skipped) {
     await until("the page holds the keyboard after a click on it", () => document.hasFocus(), 10000);
+    await externalView.open({ id: "spare", url: ORIGIN + "/board", allowOrigins: [ORIGIN], bounds: { x: 400, y: 100, width: 40, height: 40 } });
+    await until("the spare view's board", async () => (await inView("typeof window.__keys", "spare")) === "object");
+    await checkpoint("sendPageFocused", { innerWidth, innerHeight });
+    await until("the page holds the keyboard after a click on it, the spare view open", () => document.hasFocus(), 10000);
     await sent("the page holding the keyboard");
+    const moved = [];
+    const tabbed = async (what, viewHolds) => {
+      await inView("window.__keys = []; 0", "spare");
+      await inView("window.__sent = []; window.__keys = []; window.__last = document.createElement('input'); document.body.append(window.__last); window.__last.focus(); 0");
+      const before = { page: document.hasFocus(), view: await inView("document.hasFocus()") };
+      if (before.view !== viewHolds || before.page === viewHolds) throw new Error(what + ": focusing the view's input moved the keyboard focus");
+      const pageBefore = pageKeys.length;
+      await externalView.sendKey({ id: "board", key: "Tab", code: "Tab" });
+      await until(what + ": the view's Tab", async () => (await inView("window.__sent.join('|')")) === "keydown,Tab,Tab|keyup,Tab,Tab", 5000);
+      const left = await inView("document.activeElement === document.body");
+      if (!left) throw new Error(what + ": the sent Tab did not leave the view's last input");
+      await checkpoint(viewHolds ? "tabbedView" : "tabbedPage");
+      await sleep(300);
+      const took = { view: String(await inView("window.__keys.join()")).includes("x:true"), page: pageKeys.slice(pageBefore).includes("x:true"), spare: String(await inView("window.__keys.join()", "spare")).includes("x:true") };
+      log("a sent Tab past the view's last input, " + what + ", another view open: a real key after it reached " + JSON.stringify(took));
+      if (took.view !== viewHolds || took.page === viewHolds || took.spare) moved.push(what);
+      //? The Tab took the DOM focus out of the view's page, as a browser's does: the next one brings it back in.
+      else if (viewHolds) {
+        await inView("window.__first = document.createElement('input'); document.body.prepend(window.__first); 0");
+        await externalView.sendKey({ id: "board", key: "Tab", code: "Tab" });
+        await holdsKeyboard(what + ", the next sent Tab");
+        if (!(await inView("document.activeElement === window.__first"))) throw new Error(what + ": the next sent Tab did not focus the view's first input");
+        await inView("window.__first.remove(); 0");
+      }
+      await inView("window.__last.remove(); 0");
+    };
+    await tabbed("the page holding the keyboard", false);
+    await checkpoint("realTab", { innerWidth, innerHeight });
+    await until("a real Tab in the page moves the keyboard to a view", async () => !document.hasFocus() && ((await inView("document.hasFocus()")) || (await inView("document.hasFocus()", "spare"))), 10000);
+    await externalView.setVisible({ id: "board", visible: false });
+    await externalView.setVisible({ id: "board", visible: true });
+    await holdsKeyboard("shown again after a real Tab");
+    await tabbed("the view holding the keyboard", true);
+    await externalView.close({ id: "spare" });
+    if (moved.length) throw new Error("a sent Tab moved the keyboard focus with " + moved.join(" and with "));
     await checkpoint("sendBlurred");
     await sent("another window focused");
     await checkpoint("sendRefocused");
@@ -298,6 +340,21 @@ async function main() {
   let field = "";
   for (const t = Date.now(); Date.now() - t < 5000 && field !== "a7 b"; await sleep(250)) field = await inView("window.__field.value");
   if (field !== "a7 b") throw new Error("sendKey typed " + JSON.stringify(field) + " into a field, focused " + (await inView("document.activeElement === window.__field")));
+  const NAMED = [["Unidentified", "KeyA", "keydown,Unidentified,KeyA,0|keyup,Unidentified,KeyA,0"], ["Enter", "NumpadEnter", "keydown,Enter,NumpadEnter,3|keyup,Enter,NumpadEnter,3"]];
+  const misnamed = [];
+  for (const [key, at, expected] of NAMED) {
+    await inView("window.__field.value = ''; window.__located = []; 0");
+    const answered = await code(externalView.sendKey({ id: "board", key, code: at }));
+    let seen = "";
+    for (const t = Date.now(); Date.now() - t < 3000 && seen !== expected; await sleep(250)) seen = await inView("window.__located.join('|')");
+    const typedText = await inView("window.__field.value");
+    log("sendKey " + key + " at " + at + " answered " + answered + ", the view saw " + seen + ", the field reads " + JSON.stringify(typedText));
+    if (answered !== "ok" || seen !== expected || typedText !== "") misnamed.push(key + " at " + at);
+  }
+  const dead = await code(externalView.sendKey({ id: "board", key: "Dead", code: "Quote" }));
+  log("sendKey Dead answered " + dead);
+  if (dead !== "INVALID_ARGS") misnamed.push("Dead, which answered " + dead);
+  if (misnamed.length) throw new Error("sendKey did not send " + misnamed.join(", "));
   await inView("window.__field.remove(); 0");
   const shot = await externalView.capture({ id: "board" });
   log("capture " + JSON.stringify(shot));
@@ -360,9 +417,18 @@ async function main() {
   }
   const cut = code(inView("for (;;) {}", "early"));
   await sleep(500);
+  const keyCut = code(externalView.sendKey({ id: "early", key: "Tab", code: "Tab" }));
+  await sleep(500);
+  const closing = Date.now();
   await externalView.close({ id: "early" });
   const closedMid = await within("an evaluate cut off by a close", cut, 10000);
   if (closedMid !== "CANCELLED") throw new Error("an evaluate cut off by a close answered " + closedMid);
+  const keyClosed = await within("a sendKey to a looping page cut off by a close", keyCut, 10000);
+  const waited = Date.now() - closing;
+  log("a sendKey to a looping page cut off by a close answered " + keyClosed + (waited < 3000 ? " within 3 s" : " after " + waited + " ms"));
+  if (keyClosed !== "CANCELLED" || waited >= 3000) throw new Error("a sendKey cut off by a close answered " + keyClosed + " after " + waited + " ms");
+  const tabbedOut = await checkpoint("realTab", { innerWidth, innerHeight });
+  if (!tabbedOut.skipped) await holdsKeyboard("a real Tab in the page after a sendKey cut off by a close");
 
   await externalView.close({ id: "board" });
   if ((await externalView.list()).length !== 0) throw new Error("the view is still listed");
@@ -507,6 +573,12 @@ try {
       await Bun.sleep(500);
     }
     if (name === "sendPageFocused") click(beside.x, beside.y);
+    if (name === "realTab") {
+      click(beside.x, beside.y);
+      await Bun.sleep(300);
+      xdotool("key", "Tab");
+    }
+    if (name === "tabbedPage" || name === "tabbedView") xdotool("key", "x");
     if (name === "sendBlurred")
       xdotool(
         "windowfocus",
@@ -514,7 +586,8 @@ try {
         xdotool("search", "--maxdepth", "0", "").stdout.toString().trim().split("\n")[0] ?? "",
       );
     if (name === "sendRefocused" || name === "dismiss") xdotool("windowfocus", "--sync", id ?? "");
-    if (name.startsWith("send") || name === "dismiss") await Bun.sleep(500);
+    if (name.startsWith("send") || ["dismiss", "realTab", "tabbedPage", "tabbedView"].includes(name))
+      await Bun.sleep(500);
     if (
       [
         "active",
@@ -522,6 +595,9 @@ try {
         "typeInPage",
         "regain",
         "sendPageFocused",
+        "realTab",
+        "tabbedPage",
+        "tabbedView",
         "sendBlurred",
         "sendRefocused",
         "dismiss",

@@ -28,8 +28,8 @@ const resultOf = (overrides: Partial<VerifyResult>): VerifyResult => ({
 });
 
 describe("VerifyReport", () => {
-  test("a clean run is one line", () => {
-    expect(VerifyReport.text(resultOf({}))).toBe("verify ok · minimal · lint typecheck build · 5.8s");
+  test("a clean run is one line, each step with its own duration", () => {
+    expect(VerifyReport.text(resultOf({}))).toBe("verify ok · minimal · lint 0.7s typecheck 5.0s build 2.0s · 5.8s");
   });
 
   test("nothing changed is one line", () => {
@@ -56,7 +56,7 @@ describe("VerifyReport", () => {
       }),
     );
     expect(text.split("\n")).toEqual([
-      "verify fail · minimal · lint 1 error · typecheck 1 error · build skipped · fixed 2 files · 5.8s",
+      "verify fail · minimal · lint 1 error 0.7s · typecheck 1 error 5.0s · build skipped · fixed 2 files · 5.8s",
       "apps/minimal/main.ts:2:3 lint/x x",
       "apps/minimal/lib/memo/memo.constant.ts:21:14 TS2322 Type 'string' is not assignable to type 'number'.",
       "apps/minimal/lib/memo/memo.constant.ts:21:14 warning lint/suspicious/noExplicitAny any",

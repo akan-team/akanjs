@@ -2,7 +2,7 @@ import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { TunnelScript } from "./tunnel.script";
 
 export class TunnelCommand extends command("tunnel", [TunnelScript], ({ public: target }) => ({
-  tunnel: target({ desc: "Share a locally running app on a public URL" })
+  tunnel: target({ desc: "Share a locally running app on a public URL", readOnly: true })
     .arg("app", String, { desc: "app to share", nullable: true })
     .option("list", Boolean, { desc: "list the shares this account is holding", default: false })
     .option("stop", String, { desc: "stop the share with this code", default: "" })

@@ -10,7 +10,7 @@
   "remoteEnv": {
     "PATH": "/home/vscode/.bun/bin:${containerEnv:PATH}"
   },
-  "onCreateCommand": "export PATH=\"/home/vscode/.bun/bin:$PATH\" && bun add -g @akanjs/cli@latest",
+  "onCreateCommand": "export PATH=\"/home/vscode/.bun/bin:$PATH\" && v=\"$(bun -e \"const p=require('./package.json'),v=p.dependencies?.akanjs??p.devDependencies?.akanjs;if(!v){console.error('package.json lists no akanjs in dependencies or devDependencies');process.exit(1)}console.log(v)\")\" && bun add -g \"@akanjs/cli@$v\"",
   "postCreateCommand": "bun install",
   "forwardPorts": [8282, 8283, 8284, 8285, 8286, 8287, 8288, 8289, 8290],
   "portsAttributes": {

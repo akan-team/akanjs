@@ -319,9 +319,11 @@ The default: not past the batch it was loaded in.
 
 For that many milliseconds.
 
-For as long as the process runs.
+For as long as the process runs, up to the 10,000 keys used most recently.
 
-**A kept key serves a stale document.** Loaders live as long as the process, so a document changed after it was loaded is still answered in its old shape until the key expires.
+**A write through the model drops kept keys.** A create, a `save()`, an update or a remove drops that document's keys, and a write by query such as `updateMany` drops every kept key of the model, once it commits, so a model that is often written by query gets little from `cache`. Another instance keeps its own keys, so there a changed document is still answered in its old shape until the key expires.
+
+**A transaction reads past the cache.** A load inside `this.transaction()` always asks the database, so it sees its own writes, and what it reads is not kept, since it may be rolled back.
 
 **A failed load is never kept.** The next `load()` for that key asks the database again.
 

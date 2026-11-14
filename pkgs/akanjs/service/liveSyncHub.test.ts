@@ -1,6 +1,9 @@
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 import { dayjs } from "akanjs/base";
+import { Logger } from "akanjs/common";
 import { createDocumentQueryHelper, type DocumentQuery, DocumentQueryEvaluator } from "akanjs/document";
+import { LiveRoomLimit } from "./liveRoomLimit";
+import { LiveRoomLimitError } from "./liveRoomLimitError";
 import { LiveSyncHub } from "./liveSyncHub";
 
 const q = createDocumentQueryHelper();
@@ -22,6 +25,63 @@ const hubWith = (rooms: { roomId: string; query?: object; fallback?: "invalidate
     hub.join({ refName: "task", roomId: room.roomId, query: room.query, fallback: room.fallback ?? null, fields });
   return hub;
 };
+
+describe("LiveSyncHub room ceiling", () => {
+  test("defaults to 50,000 rooms per model on a server", () => {
+    expect(LiveRoomLimit.roomsPerModel).toBe(50_000);
+  });
+
+  test("refuses a room every write evaluates past a model's ceiling with 429 liveRoomLimit, warning once a minute, and never counts an indexed one", () => {
+    LiveRoomLimit.configure({ roomsPerModel: 2 });
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    try {
+      setSystemTime(new Date(1_000_000));
+      const hub = hubWith([
+        { roomId: "inOrg-o1", query: { org: "o1" } },
+        { roomId: "inOrg-o2", query: { org: "o2" } },
+        { roomId: "inOrg-o3", query: { org: "o3" } },
+        { roomId: "all-1" },
+        { roomId: "bySearch-x", query: q.search("x"), fallback: "invalidate" },
+      ]);
+      const scan = (roomId: string, refName = "task") =>
+        hub.join({ refName, roomId, query: undefined, fallback: null, fields });
+
+      expect(() => scan("all-2")).toThrow(LiveRoomLimitError);
+      let refused: unknown;
+      try {
+        hub.join({ refName: "task", roomId: "bySearch-y", query: q.search("y"), fallback: "invalidate", fields });
+      } catch (error) {
+        refused = error;
+      }
+      expect((refused as LiveRoomLimitError).toJSON()).toMatchObject({
+        error: "base.error.liveRoomLimit",
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 2, per: "model" },
+      });
+      expect(warn).toHaveBeenCalledTimes(1);
+      setSystemTime(new Date(1_060_000));
+      expect(() => scan("all-3")).toThrow(LiveRoomLimitError);
+      expect(warn).toHaveBeenCalledTimes(2);
+
+      hub.join({ refName: "task", roomId: "inOrg-o4", query: { org: "o4" }, fallback: null, fields });
+      hub.join({ refName: "task", roomId: "all-1", query: undefined, fallback: null, fields });
+      scan("note-all", "note");
+      expect(hub.route("task", doc({ org: "o2" })).map((target) => target.roomId)).toEqual([
+        "inOrg-o2",
+        "all-1",
+        "bySearch-x",
+      ]);
+      hub.leave("bySearch-x");
+      scan("all-4");
+      expect(hub.roomCountOf("task")).toBe(6);
+    } finally {
+      setSystemTime();
+      warn.mockRestore();
+      LiveRoomLimit.reset();
+    }
+  });
+});
 
 describe("LiveSyncHub routing", () => {
   test("a create enters the rooms it belongs to and no others", () => {

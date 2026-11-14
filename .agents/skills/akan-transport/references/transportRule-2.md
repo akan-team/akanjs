@@ -1,5 +1,22 @@
 <!-- akan:generated -->
 
+## Body Types And Bytes
+
+- `.body(...)` / `.param(...)` args accept `ConstantFieldTypeInput` only: scalars, model refs, or `enumOf(...)`.
+  Numbers are `Int` or `Float` — `Number` is rejected (`pkgs/akanjs/signal/endpointInfo.ts`).
+- **`Upload` is valid only inside a mutation flagged for file upload**:
+  `mutation([cnst.File], { fileUpload: true }).body("files", [Upload])`, as the `file` module does. It is not a
+  model field type. The other body args of such a mutation arrive typed as in a JSON body. A file's `type` on the
+  server is what its name implies, not its bytes — check the bytes when the type matters.
+- **`Binary` is raw bytes on the wire.** It is `Uint8Array` on both sides — a Node `Buffer` is one, so a server
+  handler may pass one straight in — and it accepts base64 in either direction, so the same declaration serves a
+  JSON body and a binary frame. A `Binary` return travels as base64 in an HTTP body. It is never a model field
+  (`fieldRule`).
+- **Never send bytes as `Any`.** `Any` passes a `Buffer` through untouched and `JSON.stringify` then spells it
+  `{ type: "Buffer", data: number[] }`, which `JSON.parse` never restores; the result is 3.6x the wire and a shape
+  that only breaks at the first byte-offset read. A return declared `Any` that turns out to be bytes fails instead
+  of reaching the caller as `{}`, and MCP refuses a `Binary` return for the same reason it refuses `Any`.
+
 ## Binary Pubsub
 
 - **`pubsub(Binary)` sends its payload in a websocket binary frame**, skipping the JSON `{ type: "pub" }`

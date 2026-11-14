@@ -13,7 +13,7 @@ import {
   SLICE_META,
   Upload,
 } from "akanjs/base";
-import { Logger, type LoggerSinkEntry } from "akanjs/common";
+import { Logger, type LoggerSinkEntry, type LogRecord } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls, NoDocumentError } from "akanjs/document";
 import {
@@ -48,6 +48,18 @@ import { SignalDeclarationError } from "./signalDeclarationError";
 import { SignalRegistry } from "./signalRegistry";
 import { slice } from "./slice";
 import { buildSlice } from "./sliceInfo";
+import { setCanonicalLineMode } from "./trace";
+
+const recordsNamed = (...names: string[]) => {
+  const records: LogRecord[] = [];
+  const remove = Logger.addSink(
+    (entry) => {
+      if (names.includes(entry.record.name)) records.push(entry.record);
+    },
+    { minLevel: "warn" },
+  );
+  return { records, remove };
+};
 
 const SignalTestNested = via((f) => ({
   label: f(String),
@@ -1349,6 +1361,314 @@ describe("SignalContext execution", () => {
     expect(await broken.invalidate("contextKey")).toBe(false);
   });
 
+  describe("endpoint cache single-flight", () => {
+    const heldQuery = (timeout = 60_000) => {
+      const held = { runs: 0, failing: false, gates: [] as Array<() => void> };
+      const info = buildEndpoint
+        .query(String, { guards: [Public], cache: 60_000, timeout })
+        .param("category", String)
+        .exec(async (category) => {
+          const run = ++held.runs;
+          await new Promise<void>((resolve) => held.gates.push(resolve));
+          if (held.failing) throw new Exception.BadRequest("held run failed");
+          return `${category}-${run}`;
+        });
+      const cache = new FakeCacheAdaptor();
+      const control = Object.assign(new EndpointCacheControl(), { cache });
+      const call = async (category: string, option: { headers?: Record<string, string>; timeout?: boolean } = {}) => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          request: makeHttpRequest({ params: { category }, headers: option.headers }),
+          registry: makeCacheRegistry(cache),
+          middlewareMap: new Map(option.timeout ? [["timeout", Timeout]] : []) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      };
+      const started = async (count: number) => {
+        while (held.gates.length < count) await new Promise((resolve) => setTimeout(resolve, 0));
+      };
+      const release = (index: number) => held.gates[index]?.();
+      const entries = () => [...cache.store.keys()].filter((key) => key.startsWith(`${EndpointCacheKeys.topic}:`));
+      return { held, info, cache, control, call, started, release, entries };
+    };
+
+    test("runs the endpoint once for concurrent misses of one key, and answers every caller", async () => {
+      const { held, call, started, release, entries } = heldQuery();
+      const calls = Array.from({ length: 8 }, () => call("news"));
+      await started(1);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      release(0);
+      const bodies = await Promise.all((await Promise.all(calls)).map((response) => response.json()));
+
+      expect(held.runs).toBe(1);
+      expect(bodies).toEqual(Array.from({ length: 8 }, () => "news-1"));
+      expect(entries()).toHaveLength(1);
+      expect(await (await call("news")).json()).toBe("news-1");
+      expect(held.runs).toBe(1);
+    });
+
+    test("never shares a run between callers whose arguments differ", async () => {
+      const { held, call, started, release } = heldQuery();
+      const news = call("news");
+      const events = call("events");
+      await started(2);
+      release(1);
+      release(0);
+
+      expect(held.runs).toBe(2);
+      expect(await (await news).json()).toBe("news-1");
+      expect(await (await events).json()).toBe("events-2");
+    });
+
+    test("refuses a guarded caller that arrives while a run is in flight, rather than handing it the shared one", async () => {
+      class NeedsPass implements Guard {
+        static name = "NeedsPass";
+        static scope: GuardScope = "account";
+        canPass(context: SignalContext) {
+          return context.getHttpContext().req.headers.get("x-pass") === "yes";
+        }
+      }
+      let runs = 0;
+      const gates: Array<() => void> = [];
+      const info = buildEndpoint.query(String, { guards: [NeedsPass], cache: 60_000 }).exec(async () => {
+        runs++;
+        await new Promise<void>((resolve) => gates.push(resolve));
+        return "secret";
+      });
+      const cache = new FakeCacheAdaptor();
+      const call = async (headers: Record<string, string>) => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          request: makeHttpRequest({ headers }),
+          registry: makeCacheRegistry(cache),
+        });
+        await context.init();
+        return (await SignalContext.try(
+          context.adaptor,
+          info,
+          "guarded",
+          async () => (await context.exec()) as Response,
+        )) as Response;
+      };
+
+      const admitted = call({ "x-pass": "yes" });
+      while (gates.length < 1) await new Promise((resolve) => setTimeout(resolve, 0));
+      const refused = await call({});
+      gates[0]?.();
+
+      expect(refused.status).toBe(403);
+      expect(await (await admitted).json()).toBe("secret");
+      expect(runs).toBe(1);
+    });
+
+    test("caches no failure, rejects every waiter of the failed run, and runs again on the next call", async () => {
+      const { held, call, started, release, entries } = heldQuery();
+      held.failing = true;
+      const waiters = [call("news"), call("news"), call("news")].map((pending) =>
+        pending.then(
+          () => "answered",
+          () => "rejected",
+        ),
+      );
+      await started(1);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      release(0);
+
+      expect(await Promise.all(waiters)).toEqual(["rejected", "rejected", "rejected"]);
+      expect(held.runs).toBe(1);
+      expect(entries()).toHaveLength(0);
+
+      held.failing = false;
+      const retry = call("news");
+      await started(2);
+      release(1);
+      expect(await (await retry).json()).toBe("news-2");
+      expect(held.runs).toBe(2);
+    });
+
+    test("drops the in-flight entry when the run settles, so a cleared cache runs the endpoint again", async () => {
+      const { held, cache, call, started, release } = heldQuery();
+      const first = call("news");
+      await started(1);
+      release(0);
+      expect(await (await first).json()).toBe("news-1");
+
+      for (const key of [...cache.store.keys()])
+        if (key.startsWith(`${EndpointCacheKeys.topic}:`)) cache.store.delete(key);
+      const second = call("news");
+      await started(2);
+      release(1);
+      expect(await (await second).json()).toBe("news-2");
+      expect(held.runs).toBe(2);
+    });
+
+    test("keeps the shared run going for the callers still waiting when one caller's request gave up", async () => {
+      const { held, call, started, release } = heldQuery(40);
+      const impatient = call("news", { timeout: true }).then(
+        (response) => response.status,
+        () => "rejected",
+      );
+      await started(1);
+      const patient = call("news");
+      expect(await impatient).not.toBe(200);
+      release(0);
+
+      expect(held.runs).toBe(1);
+      expect(await (await patient).json()).toBe("news-1");
+    });
+
+    test("gives every caller its own copy of the answer, so a middleware that edits it reaches no other caller", async () => {
+      class PushWho extends middleware("signalTestPushWho") {
+        override async use() {
+          return async (context: SignalContext, next: () => Promise<unknown>) => {
+            const answer = (await next()) as string[];
+            answer.push(context.getHttpContext().req.headers.get("x-who") ?? "nobody");
+            return answer;
+          };
+        }
+      }
+      const gates: Array<() => void> = [];
+      let runs = 0;
+      const info = buildEndpoint.query([String], { guards: [Public], cache: 60_000 }).exec(async () => {
+        runs++;
+        await new Promise<void>((resolve) => gates.push(resolve));
+        return ["base"];
+      });
+      const cache = new FakeCacheAdaptor();
+      const call = async (who: string) => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          request: makeHttpRequest({ headers: { "x-who": who } }),
+          registry: makeCacheRegistry(cache),
+          middlewareMap: new Map([["pushWho", PushWho]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      };
+
+      const alice = call("alice");
+      while (gates.length < 1) await new Promise((resolve) => setTimeout(resolve, 0));
+      const bob = call("bob");
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      gates[0]?.();
+
+      expect(await (await alice).json()).toEqual(["base", "alice"]);
+      expect(await (await bob).json()).toEqual(["base", "bob"]);
+      expect(await (await call("carol")).json()).toEqual(["base", "carol"]);
+      expect(runs).toBe(1);
+    });
+
+    test("gives every caller its own parent to a resolveField that writes to it", async () => {
+      class MutatingInternal extends internal(signalTestServiceModel, (builder) => ({
+        summary: builder.resolveField(String).exec((parent) => {
+          const row = parent as unknown as { title: string };
+          row.title = `${row.title}!`;
+          return row.title;
+        }),
+      })) {}
+      const live = getDefaultLiveRegistry();
+      live.internal.set("signalTestCachedInternal", new MutatingInternal() as unknown as Internal);
+      const gates: Array<() => void> = [];
+      const info = buildEndpoint.query([SignalTestCachedFull], { guards: [Public], cache: 60_000 }).exec(async () => {
+        await new Promise<void>((resolve) => gates.push(resolve));
+        return [
+          new SignalTestCachedFull().set({
+            title: "t",
+            counts: new Map(),
+            openedAt: dayjs("2026-10-14T00:00:00.000Z"),
+            nested: new SignalTestNested().set({ label: "n" }),
+          }),
+        ] as never;
+      });
+      const cache = new FakeCacheAdaptor();
+      const call = async () => {
+        const context = makeSignalContext({ endpointInfo: info, live, registry: makeCacheRegistry(cache) });
+        await context.init();
+        return (await context.exec()) as Response;
+      };
+
+      try {
+        const first = call();
+        while (gates.length < 1) await new Promise((resolve) => setTimeout(resolve, 0));
+        const second = call();
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        gates[0]?.();
+        const summaries = await Promise.all(
+          [await first, await second].map(
+            async (response) => ((await response.json()) as { summary: string }[])[0]?.summary,
+          ),
+        );
+        expect(summaries).toEqual(["t!", "t!"]);
+      } finally {
+        live.internal.delete("signalTestCachedInternal");
+      }
+    });
+
+    test("stops joining a run older than the endpoint's timeout, and the abandoned run overwrites nothing", async () => {
+      const { held, call, started, release, entries } = heldQuery(20);
+      const first = await call("news", { timeout: true }).then(
+        (response) => response.status,
+        () => "rejected",
+      );
+      expect(first).not.toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      const second = call("news");
+      await started(2);
+      expect(held.runs).toBe(2);
+
+      release(0);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      expect(entries()).toHaveLength(0);
+      release(1);
+      expect(await (await second).json()).toBe("news-2");
+      expect(entries()).toHaveLength(1);
+      expect(await (await call("news")).json()).toBe("news-2");
+      expect(held.runs).toBe(2);
+    });
+
+    test("stops joining a run older than the fixed cap when the endpoint declares no timeout", async () => {
+      const { held, call, started, release } = heldQuery(0);
+      const realNow = Date.now;
+      const first = call("news");
+      await started(1);
+      Date.now = () => realNow() + 61_000;
+      try {
+        const second = call("news");
+        await started(2);
+        expect(held.runs).toBe(2);
+        release(1);
+        expect(await (await second).json()).toBe("news-2");
+      } finally {
+        Date.now = realNow;
+      }
+      release(0);
+      expect(await (await first).json()).toBe("news-1");
+    });
+
+    for (const scope of ["the args", "the whole endpoint"]) {
+      test(`neither joins nor lets a run that began before an invalidation of ${scope} write over it`, async () => {
+        const { held, control, call, started, release, entries } = heldQuery();
+        const before = call("news");
+        await started(1);
+
+        expect(await control.invalidate("contextKey", scope === "the args" ? ["news"] : undefined)).toBe(true);
+        const after = call("news");
+        await started(2);
+        expect(held.runs).toBe(2);
+
+        release(1);
+        expect(await (await after).json()).toBe("news-2");
+        release(0);
+        expect(await (await before).json()).toBe("news-1");
+
+        expect(entries()).toHaveLength(1);
+        expect(await (await call("news")).json()).toBe("news-2");
+        expect(held.runs).toBe(2);
+      });
+    }
+  });
+
   test("refuses a cache on a mutation and on a query that takes an internal argument", async () => {
     let mutations = 0;
     const mutationInfo = buildEndpoint.mutation(String, { guards: [Public], cache: 60_000 }).exec(() => {
@@ -1802,25 +2122,60 @@ describe("SignalContext execution", () => {
     expect(errors).not.toHaveBeenCalled();
   });
 
-  test("logs a coded failure as a crash only from 500 up", async () => {
+  test("logs a coded failure as a crash only from 500 up, as one record with its type and stack", async () => {
     const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => "unused");
     const adaptor = new (adapt("signalTestCodedFailureAdaptor"))();
-    const errors = spyOn(adaptor.logger, "error");
+    const sink = recordsNamed("signalTestCodedFailureAdaptor");
     const run = async (statusCode: number) =>
       await SignalContext.run(adaptor, info, "coded", "http", async () => {
-        throw new AkanError("taken", "held by tenant-7", { statusCode });
+        throw new AkanError("taken", "held by tenant-7\nsecond line", { statusCode });
       }).catch((error) => error);
 
-    expect(SignalContext.wasReported(await run(409))).toBe(false);
-    expect(errors).not.toHaveBeenCalled();
+    try {
+      expect(SignalContext.wasReported(await run(409))).toBe(false);
+      expect(sink.records).toEqual([]);
 
-    expect(SignalContext.wasReported(await run(503))).toBe(true);
-    expect(errors).toHaveBeenCalledTimes(1);
+      expect(SignalContext.wasReported(await run(503))).toBe(true);
+      expect(sink.records.length).toBe(1);
+      expect(sink.records[0]).toMatchObject({ level: "error", message: "Error query-coded: held by tenant-7" });
+      expect(sink.records[0]?.attrs).toMatchObject({ status: 503, type: "AkanError", code: "taken" });
+      expect(String(sink.records[0]?.attrs?.stack)).toContain("held by tenant-7\nsecond line\n    at ");
+    } finally {
+      sink.remove();
+    }
   });
 
-  test("logs an error the endpoint declared under 500 at debug, and an undeclared or 5xx one as an error", async () => {
+  test("a 5xx under the canonical line is that one error record, with no second line from the endpoint", async () => {
+    const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => {
+      throw new TypeError("driver broke");
+    });
+    const adaptor = new (adapt("signalTestCanonicalCrashAdaptor"))();
+    const sink = recordsNamed("signalTestCanonicalCrashAdaptor", "Signal");
+    setCanonicalLineMode("all");
+    try {
+      const response = await SignalContext.try(adaptor, info, "crash", async () => {
+        const context = makeSignalContext({
+          endpointInfo: info,
+          adaptor,
+          middlewareMap: new Map([["logging", Logging]]) as never,
+        });
+        await context.init();
+        return (await context.exec()) as Response;
+      });
+      expect(response?.status).toBe(500);
+      expect(sink.records.map((record) => [record.name, record.level])).toEqual([["Signal", "error"]]);
+      expect(sink.records[0]?.attrs).toMatchObject({ status: 500, type: "TypeError", err: "driver broke" });
+      expect(String(sink.records[0]?.attrs?.stack)).toContain("TypeError: driver broke");
+    } finally {
+      setCanonicalLineMode("off");
+      sink.remove();
+    }
+  });
+
+  test("logs an error the endpoint declared under 500 at debug, an undeclared one at warn, and a 5xx as an error", async () => {
     const adaptor = new (adapt("signalTestDeclaredErrorAdaptor"))();
-    const errors = spyOn(adaptor.logger, "error");
+    const sink = recordsNamed("signalTestDeclaredErrorAdaptor");
+    const failureLines = () => sink.records.filter((record) => record.message.startsWith("Error "));
     const debugs = spyOn(adaptor.logger, "debug");
     const debugOn = spyOn(Logger, "shouldLog").mockReturnValue(true);
     const statusOf = async (statusCode: number, errorKey: string) => {
@@ -1843,21 +2198,24 @@ describe("SignalContext execution", () => {
 
     try {
       expect(await statusOf(404, "item.error.notFound")).toBe(404);
-      expect(errors).not.toHaveBeenCalled();
+      expect(failureLines()).toEqual([]);
       expect(debugs.mock.calls.some(([line]) => String(line).includes("item.error.notFound"))).toBe(true);
 
       await statusOf(404, "item.error.gone");
       await statusOf(400, "item.error.notFound");
       await statusOf(503, "item.error.down");
-      expect(errors).toHaveBeenCalledTimes(3);
+      expect(failureLines().map((record) => record.level)).toEqual(["warn", "warn", "error"]);
+      expect(failureLines()[2]?.attrs).toMatchObject({ status: 503, type: "Exception" });
     } finally {
+      sink.remove();
       debugOn.mockRestore();
     }
   });
 
-  test("logs a by-id read missing its own id at debug, and a document its guard or handler loads besides as an error", async () => {
+  test("logs a by-id read missing its own id at debug, and a document its guard or handler loads besides at warn", async () => {
     const adaptor = new (adapt("signalTestByIdReadAdaptor"))();
     const errors = spyOn(adaptor.logger, "error");
+    const warns = spyOn(adaptor.logger, "warn");
     const debugs = spyOn(adaptor.logger, "debug");
     const debugOn = spyOn(Logger, "shouldLog").mockReturnValue(true);
     const missing = (refName: string, id: string) =>
@@ -1883,6 +2241,7 @@ describe("SignalContext execution", () => {
       );
     const loggedAs = async (endpointInfo: EndpointInfo) => {
       errors.mockClear();
+      warns.mockClear();
       debugs.mockClear();
       const response = await SignalContext.try(adaptor, endpointInfo, "item", async () => {
         const context = makeSignalContext({
@@ -1895,23 +2254,25 @@ describe("SignalContext execution", () => {
       });
       expect(response?.status).toBe(404);
       if (errors.mock.calls.length) return "error";
+      if (warns.mock.calls.some(([line]) => String(line).startsWith("Error "))) return "warn";
       return debugs.mock.calls.some(([line]) => String(line).startsWith("Error ")) ? "debug" : "unlogged";
     };
 
     try {
       expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("debug");
-      expect(await loggedAs(readThrowing(missing("user", "u1")))).toBe("error");
-      expect(await loggedAs(readThrowing(missing("item", "456")))).toBe("error");
+      expect(await loggedAs(readThrowing(missing("user", "u1")))).toBe("warn");
+      expect(await loggedAs(readThrowing(missing("item", "456")))).toBe("warn");
       ownerGone = true;
-      expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("error");
+      expect(await loggedAs(readThrowing(missing("item", "123")))).toBe("warn");
     } finally {
       debugOn.mockRestore();
     }
   });
 
-  test("writes no error line for a refused 429, forwarded or not, and names a logged failure's cause", async () => {
+  test("writes no line above debug for a refused 429, forwarded or not, and names a logged failure's cause", async () => {
     const adaptor = new (adapt("signalTestRefusedFloodAdaptor"))();
     const errors = spyOn(adaptor.logger, "error");
+    const warns = spyOn(adaptor.logger, "warn");
     const respond = async (thrown: Error) => {
       const info = buildEndpoint.query(String, { guards: [Public] }).exec(() => {
         throw thrown;
@@ -1935,10 +2296,12 @@ describe("SignalContext execution", () => {
     const forwarded = await respond(new Exception(429, "base.error.tooManyRequests", undefined, { seconds: 2 }));
     expect(forwarded?.headers.get("retry-after")).toBe("2");
     expect(errors).not.toHaveBeenCalled();
+    expect(warns).not.toHaveBeenCalled();
 
     await respond(new AkanError("taken", "held", { statusCode: 409, cause: new Error("driver said x") }));
-    expect(errors).toHaveBeenCalledTimes(1);
-    expect(String(errors.mock.calls[0]?.[0])).toContain("(cause: Error: driver said x)");
+    expect(errors).not.toHaveBeenCalled();
+    expect(warns).toHaveBeenCalledTimes(1);
+    expect(String(warns.mock.calls[0]?.[0])).toContain("(cause: Error: driver said x)");
   });
 
   test("reports guard and internal argument failures through HTTP responses", async () => {

@@ -1,6 +1,7 @@
 import path from "node:path";
 import { toError } from "akanjs/common";
 import { FontPruner } from "../frontendBuild/fontPruner";
+import { servedBrotliBytesOf } from "../frontendBuild/precompressArtifacts";
 import { JsonFormatter } from "../util/jsonFormatter";
 
 export interface RouteJsSize {
@@ -58,11 +59,16 @@ export class RouteJsBudget {
   static readonly #absoluteSlack = 4096;
 
   //? A file under 1 KB has no `.br` sidecar (precompressArtifacts skips it), so it is served, and counted, raw.
-  static async measure(artifactDir: string, modulesByRoute: Record<string, string[]>): Promise<RouteJsSize[]> {
+  static async measure(
+    artifactDir: string,
+    modulesByRoute: Record<string, string[]>,
+    { precompressed = true }: { precompressed?: boolean } = {},
+  ): Promise<RouteJsSize[]> {
     const sizeByUrl = new Map<string, { raw: number; brotli: number }>();
     const sizeOf = async (url: string) => {
       const file = path.join(artifactDir, url.replace(/^\/_akan\//, ""));
       const raw = Bun.file(file).size;
+      if (!precompressed) return { raw, brotli: await servedBrotliBytesOf(artifactDir, file) };
       const sidecar = Bun.file(`${file}.br`);
       return { raw, brotli: (await sidecar.exists()) ? sidecar.size : raw };
     };
