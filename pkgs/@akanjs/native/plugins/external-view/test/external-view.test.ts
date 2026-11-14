@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveAcl } from "../../../packages/cli/src/lib/acl.ts";
 import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
-import { AkanNativeError } from "../../../packages/core/src/index.ts";
+import { AkanNativeError, aclCheck } from "../../../packages/core/src/index.ts";
 import { appTempDir } from "../../../packages/desktop/src/paths.ts";
 import { fakeHost } from "../../menu/test/fake-host.ts";
 import manifest from "../native-plugin.json";
@@ -26,6 +27,35 @@ describe("external-view plugin", () => {
     expect(pluginDecls([plugin], "windows")).toEqual({
       "external-view": { methods: manifest.methods, events: manifest.events },
     });
+  });
+
+  test("opens no origin and grants neither evaluate nor sendKey until the app's capabilities list them", () => {
+    const plugin = { spec: "external-view", dir: `${import.meta.dir}/..`, manifest: manifest as never };
+    const byDefault = resolveAcl(undefined, [plugin], "windows");
+    expect(aclCheck(byDefault, "external-view", "open")).toEqual({ allowed: true, scope: { allow: [], deny: [] } });
+    for (const item of ["navigate", "close", "capture", "listen:load"])
+      expect(aclCheck(byDefault, "external-view", item).allowed).toBe(true);
+    for (const item of ["evaluate", "sendKey"]) expect(aclCheck(byDefault, "external-view", item).allowed).toBe(false);
+    const granted = resolveAcl(
+      [
+        {
+          identifier: "app",
+          permissions: [
+            { identifier: "external-view:default", allow: [{ origin: "https://board.example" }] },
+            "external-view:allow-evaluate",
+            "external-view:allow-sendKey",
+          ],
+        },
+      ],
+      [plugin],
+      "windows",
+    );
+    expect(aclCheck(granted, "external-view", "open").scope).toEqual({
+      allow: [{ origin: "https://board.example" }],
+      deny: [],
+    });
+    for (const item of ["evaluate", "sendKey"])
+      expect(aclCheck(granted, "external-view", item)).toEqual({ allowed: true });
   });
 
   test("opens with sound on and the console off unless asked, and answers the view under the page's id", async () => {

@@ -176,7 +176,18 @@ try {
     config: {
       ...sampleConfig,
       plugins: [...(sampleConfig.plugins ?? []), "external-view"],
-      capabilities: [{ ...app0, permissions: [...app0.permissions, "external-view:default"] }, ...rest],
+      capabilities: [
+        {
+          ...app0,
+          permissions: [
+            ...app0.permissions,
+            { identifier: "external-view:default", allow: [{ origin }, { origin: deadOrigin }] },
+            "external-view:allow-evaluate",
+            "external-view:allow-sendKey",
+          ],
+        },
+        ...rest,
+      ],
       desktop: { ...sampleConfig.desktop, window: { frameless: true }, recovery: "reload" },
       shell: { ...sampleConfig.shell, backgroundColor: `#${BACKGROUND}`, backgroundColorDark: `#${BACKGROUND}` },
     },
