@@ -117,13 +117,6 @@ export class LoopTranscript {
     return last.toolCalls.filter((call) => !answered.has(call.id));
   }
 
-  //? Security: where the pending batch's own stored results begin. A resumed run judges that batch on the messages
-  //? before them, as the run that died did: the model wrote every call of it before any of its results was read.
-  static pendingAnswersAt(messages: readonly AgentWireMessage[]): number {
-    if (!LoopTranscript.pending(messages).length) return messages.length;
-    return messages.findLastIndex((message) => message.role !== "tool") + 1;
-  }
-
   //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that
   //? judges; a tool message's mark stands for what clipping took from the results it stores.
   static markedTainted(messages: readonly AgentWireMessage[], judging: boolean): boolean {

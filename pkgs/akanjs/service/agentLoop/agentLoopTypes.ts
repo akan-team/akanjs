@@ -10,10 +10,7 @@ import type {
 
 export type AgentLoopApproval = "allow" | "defer" | { deny: string };
 
-/**
- * `tainted`: a result `untrusted` marked was read before the model wrote this call's batch, in this run or in the
- * messages it resumed from. A result of the same batch never counts, on a resume either.
- */
+/** `tainted`: a result `untrusted` marked was read earlier in this run, or in the messages it resumed from. */
 export type AgentLoopApprove = (
   call: AgentWireToolCall,
   state: { tainted: boolean; tool: AgentTool },

@@ -267,7 +267,8 @@ at every event.
   reach `onMessage` one tool message a call, as each call finishes, so a resume runs only the calls that had not
   finished, even after a crash mid-batch. It cannot tell a call that was running when the run died from one that
   never started: both go to `approve` again and run again, so a write that must not land twice needs an idempotent
-  endpoint or an `approve` that defers it. The batch's own stored results do not taint those calls, only what follows.
+  endpoint or an `approve` that defers it. A stored result of that batch which `untrusted` marks taints them too: a
+  resume judges on everything stored, where an uninterrupted run judges a batch before any of it runs.
 - **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
   usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
   billing — empty headers and no ip. The relay's default size caps skip loop rounds; a refused quota ends the run as

@@ -107,12 +107,14 @@ export class AgentLoop {
 
   async *#drive(): Events<AgentLoopStop> {
     this.#toolkits.restore(this.#messages);
+    this.#tainted = LoopTranscript.markedTainted(this.#messages, !!this.#request.untrusted);
+    //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it.
+    for (const result of LoopTranscript.results(this.#messages))
+      if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
     const pending = LoopTranscript.pending(this.#messages);
-    const answeredAt = LoopTranscript.pendingAnswersAt(this.#messages);
-    this.#taintFrom(this.#messages.slice(0, answeredAt));
     if (pending.length) {
       if (!(await this.#authorize())) return "unauthorized";
-      const stop = yield* this.#runCalls(pending, await this.#listTools(), this.#messages.slice(answeredAt));
+      const stop = yield* this.#runCalls(pending, await this.#listTools());
       if (stop) return stop;
     }
     for (;;) {
@@ -280,19 +282,13 @@ export class AgentLoop {
     return true;
   }
 
-  async *#runCalls(
-    calls: AgentWireToolCall[],
-    tools: AgentTool[],
-    answers: readonly AgentWireMessage[] = [],
-  ): Events<AgentLoopStop | null> {
+  async *#runCalls(calls: AgentWireToolCall[], tools: AgentTool[]): Events<AgentLoopStop | null> {
     const round = this.#round;
     for (const call of calls) yield { type: "toolCall", call, round };
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
     //? Judged before any runs: the batch was written before its results were read, so none of them taints it.
     const verdicts: Verdict[] = [];
     for (const call of calls) verdicts.push(await this.#verdictOf(call, byName.get(call.name)));
-    //? Security: nor do the `answers` an earlier run stored for this batch, which taint only what follows these verdicts.
-    this.#taintFrom(answers);
     const deferred = calls.filter((_, at) => verdicts[at] === "defer");
     if (deferred.length) {
       for (const call of deferred) yield { type: "awaiting", call };
@@ -392,13 +388,6 @@ export class AgentLoop {
         .then(resolve, reject)
         .finally(() => signal.removeEventListener("abort", halt));
     });
-  }
-
-  #taintFrom(messages: readonly AgentWireMessage[]) {
-    this.#tainted ||= LoopTranscript.markedTainted(messages, !!this.#request.untrusted);
-    //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it.
-    for (const result of LoopTranscript.results(messages))
-      if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
   }
 
   #taintBy(result: AgentWireToolResult) {
