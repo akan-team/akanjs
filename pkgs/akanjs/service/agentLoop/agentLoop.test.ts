@@ -116,7 +116,7 @@ describe("AgentLoop rounds", () => {
     expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 2 });
     expect(stored).toEqual([
       { role: "assistant", toolCalls: [callOf("c1", "readPage", { page: 1 })] },
-      { role: "tool", toolResults: [{ id: "c1", name: "readPage", result: "readPage:ok" }] },
+      { role: "tool", toolResults: [{ id: "c1", name: "readPage", result: "readPage:ok" }], tainted: true },
       { role: "assistant", text: "Done." },
     ]);
     expect(called.map(({ account, caller }) => [account, caller?.allow])).toEqual([
@@ -321,11 +321,12 @@ describe("AgentLoop metering", () => {
 
 describe("AgentLoop interruption", () => {
   const twoWrites = () => calling(callOf("c1", "renameTitle"), callOf("c2", "renameTitle"));
+  const own = () => false;
 
   test("a consumer that stops after a result keeps it, so a resume does not run that write again", async () => {
     const first = harness([twoWrites()]);
     const stored: AgentWireMessage[] = [{ role: "user", text: "go" }];
-    const request = ask("go", { onMessage: (message) => void stored.push(message) });
+    const request = ask("go", { untrusted: own, onMessage: (message) => void stored.push(message) });
     for await (const event of new AgentLoop(first.port, request).run()) if (event.type === "toolResult") break;
     expect(first.called.map(({ call }) => call.id)).toEqual(["c1"]);
     expect(stored.at(-1)).toEqual({
@@ -334,7 +335,7 @@ describe("AgentLoop interruption", () => {
     });
 
     const resumed = harness([saying("Done.")]);
-    await drain(resumed.port, { ...ask("unused"), messages: stored });
+    await drain(resumed.port, { ...ask("unused"), messages: stored, untrusted: own });
     expect(resumed.called.map(({ call }) => call.id)).toEqual(["c2"]);
   });
 
@@ -358,7 +359,7 @@ describe("AgentLoop interruption", () => {
     expect(storedAtKill).toEqual([
       { role: "user", text: "go" },
       { role: "assistant", toolCalls: batch.toolCalls },
-      { role: "tool", toolResults: [{ id: "c1", name: "renameTitle", result: "renameTitle:ok" }] },
+      { role: "tool", toolResults: [{ id: "c1", name: "renameTitle", result: "renameTitle:ok" }], tainted: true },
     ]);
 
     const asked: string[] = [];
@@ -389,11 +390,11 @@ describe("AgentLoop interruption", () => {
     const batch = calling(callOf("c1", "renameTitle", { title: "a" }), callOf("c1", "renameTitle", { title: "b" }));
     const { port, requests } = harness([batch, saying("Done.")]);
     const stored: AgentWireMessage[] = [{ role: "user", text: "go" }];
-    await drain(port, ask("go", { onMessage: (message) => void stored.push(message) }));
+    await drain(port, ask("go", { untrusted: own, onMessage: (message) => void stored.push(message) }));
     expect(requests[1]?.messages.at(-1)?.toolResults?.map((result) => result.id)).toEqual(["c1", "c1"]);
 
     const resumed = harness([saying("Done.")]);
-    await drain(resumed.port, { ...ask("unused"), messages: stored.slice(0, 3) });
+    await drain(resumed.port, { ...ask("unused"), messages: stored.slice(0, 3), untrusted: own });
     expect(resumed.called.map(({ call }) => call.args)).toEqual([{ title: "b" }]);
   });
 
@@ -423,7 +424,10 @@ describe("AgentLoop interruption", () => {
     const { port } = harness([twoWrites()], () => never());
     const stored: AgentWireMessage[] = [{ role: "user", text: "go" }];
     const events = await within(
-      drain(port, ask("go", { budget: { wallMs: 5 }, onMessage: (message) => void stored.push(message) })),
+      drain(
+        port,
+        ask("go", { budget: { wallMs: 5 }, untrusted: own, onMessage: (message) => void stored.push(message) }),
+      ),
     );
     expect(events).not.toBe("still running");
     expect(stopOf(events as AgentLoopEvent[])).toBe("budget");
@@ -434,7 +438,7 @@ describe("AgentLoop interruption", () => {
     expect(LoopTranscript.pending(stored).map((call) => call.id)).toEqual(["c2"]);
 
     const resumed = harness([saying("Checked.")]);
-    await drain(resumed.port, { ...ask("unused"), messages: stored });
+    await drain(resumed.port, { ...ask("unused"), messages: stored, untrusted: own });
     expect(resumed.called.map(({ call }) => call.id)).toEqual(["c2"]);
   });
 
@@ -1144,16 +1148,19 @@ describe("AgentLoop resume", () => {
     expect(asked).toEqual([true]);
   });
 
-  test("a summary marked clean stays clean, and a run that judges nothing is not tainted by an unmarked one", async () => {
+  test("a summary marked clean stays clean, and an unmarked one counts as read in a run with no predicate too", async () => {
     const clean = harness([saying("Done.")]);
     const marked: AgentWireMessage[] = [{ role: "user", text: "notes", summary: true, tainted: false }, pendingWrite];
     await drain(clean.port, { ...ask("unused"), messages: marked, untrusted: untrustedC1 });
     expect(clean.called.map(({ call }) => call.id)).toEqual(["c9"]);
 
-    const unjudged = harness([saying("Done.")]);
+    const unjudged = harness([saying("Could not.")]);
     const unmarked: AgentWireMessage[] = [{ role: "user", text: "notes", summary: true }, pendingWrite];
-    await drain(unjudged.port, { ...ask("unused"), messages: unmarked });
-    expect(unjudged.called.map(({ call }) => call.id)).toEqual(["c9"]);
+    const events = await drain(unjudged.port, { ...ask("unused"), messages: unmarked });
+    expect(unjudged.called).toHaveLength(0);
+    expect(events).toContainEqual(
+      expect.objectContaining({ result: expect.objectContaining({ error: AgentLoop.writeAfterRead }) }),
+    );
   });
 
   test("a summary marked tainted refuses a write even in a run that judges nothing", async () => {
@@ -1206,8 +1213,9 @@ describe("AgentLoop compaction", () => {
     const events = await drain(port, { ...ask("unused"), messages: history, compact: { at: 100, keep: 1 } });
     expect(requests[0]?.tools).toEqual([]);
     expect(requests[0]?.instructions).toBe(LoopCompaction.instruction);
-    expect(requests[1]?.messages).toEqual([LoopCompaction.message("notes so far"), { role: "user", text: "and now?" }]);
-    expect(events).toContainEqual({ type: "compacted", replaced: 8, summary: LoopCompaction.message("notes so far") });
+    const summary = LoopCompaction.message("notes so far", false);
+    expect(requests[1]?.messages).toEqual([summary, { role: "user", text: "and now?" }]);
+    expect(events).toContainEqual({ type: "compacted", replaced: 8, summary });
     await Bun.sleep(0);
     expect(reports.map((report) => report.turn.loop?.round)).toEqual([1, 1]);
     expect(stopOf(events)).toBe("end");

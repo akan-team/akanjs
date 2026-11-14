@@ -7,6 +7,12 @@ import { LoopToolkits } from "./loopToolkits";
 export class LoopRequest {
   //? The most `setTimeout` takes: past it a timer fires at once, which would end the run as out of budget.
   static readonly maxWallMs = 2 ** 31 - 1;
+  //? A screen lends six built-in tools, under 3,000 characters in all, beside its own actions. Definitions ride every
+  //? round, so the ceiling is twenty times that count, at 1,500 characters a tool.
+  static readonly maxClientTools = 128;
+  static readonly maxClientToolChars = 200_000;
+  //? A schema nests two levels a property; past a few thousand, `JSON.stringify` overflows the stack, here or in a dialect.
+  static readonly maxClientToolDepth = 64;
 
   static assertValid(request: AgentLoopRequest) {
     const { allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask, remotes, approve } = request;
@@ -78,6 +84,33 @@ export class LoopRequest {
         (parameters === undefined || (typeof parameters === "object" && parameters !== null));
       if (!valid) LoopRequest.#refuse("clientTools");
     }
+    if (clientTools.length > LoopRequest.maxClientTools)
+      LoopRequest.#refuseClientTools("tools", LoopRequest.maxClientTools, clientTools.length);
+    const depth = LoopRequest.#depthOf(clientTools, LoopRequest.maxClientToolDepth + 1);
+    if (depth > LoopRequest.maxClientToolDepth)
+      LoopRequest.#refuseClientTools("depth", LoopRequest.maxClientToolDepth, depth);
+    const chars = JSON.stringify(clientTools).length;
+    if (chars > LoopRequest.maxClientToolChars)
+      LoopRequest.#refuseClientTools("chars", LoopRequest.maxClientToolChars, chars);
+  }
+
+  //? Level by level, as a recursive walk would overflow where `JSON.stringify` does. A level of more values than the
+  //? character ceiling is past it already, a character a value at least, and is refused before the levels under it.
+  static #depthOf(value: unknown, stopAt: number): number {
+    let level: unknown[] = [value];
+    let depth = 0;
+    while (depth < stopAt) {
+      level = level.flatMap((item) => (item && typeof item === "object" ? Object.values(item) : []));
+      if (level.length > LoopRequest.maxClientToolChars)
+        LoopRequest.#refuseClientTools("chars", LoopRequest.maxClientToolChars, level.length);
+      if (!level.length) break;
+      depth += 1;
+    }
+    return depth;
+  }
+
+  static #refuseClientTools(limit: "tools" | "chars" | "depth", max: number, sent: number): never {
+    throw new Err("agent.error.clientToolsRefused", { limit, max, sent }, { statusCode: 413 });
   }
 
   static #assertCount(name: string, value: number | undefined) {

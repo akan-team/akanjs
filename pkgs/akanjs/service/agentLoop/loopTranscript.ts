@@ -121,10 +121,26 @@ export class LoopTranscript {
     return last.toolCalls.filter((call) => !LoopTranscript.#take(answers, call.id));
   }
 
-  //? Security: a summary replaced the results `untrusted` would judge, so an unmarked one counts as tainted to a run that
-  //? judges; a tool message's mark stands for what clipping took from the results it stores.
-  static markedTainted(messages: readonly AgentWireMessage[], judging: boolean): boolean {
-    return messages.some(({ summary, tainted }) => tainted ?? (!!summary && judging));
+  //? Security: a summary replaced the results a run would judge, so an unmarked one counts as tainted; a tool message's
+  //? mark stands for what clipping took from the results it stores.
+  static markedTainted(messages: readonly AgentWireMessage[]): boolean {
+    return messages.some(({ summary, tainted }) => tainted ?? !!summary);
+  }
+
+  //? Paired as `sanitize` pairs them, a result with the nearest call before it by that id; one no call is owed has none.
+  static answered(messages: readonly AgentWireMessage[]): [AgentWireToolResult, AgentWireToolCall | undefined][] {
+    const owed = new Map<string, AgentWireToolCall[]>();
+    const pairs: [AgentWireToolResult, AgentWireToolCall | undefined][] = [];
+    for (const message of messages) {
+      if (message.role === "tool") {
+        for (const result of message.toolResults ?? []) pairs.push([result, owed.get(result.id)?.shift()]);
+        continue;
+      }
+      const calls = message.toolCalls ?? [];
+      for (const call of calls) owed.delete(call.id);
+      for (const call of calls) owed.set(call.id, [...(owed.get(call.id) ?? []), call]);
+    }
+    return pairs;
   }
 
   static results(messages: readonly AgentWireMessage[]): AgentWireToolResult[] {

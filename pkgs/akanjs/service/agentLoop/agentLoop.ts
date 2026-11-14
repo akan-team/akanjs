@@ -12,12 +12,20 @@ import type {
   LlmTurnRequest,
   LlmUsage,
 } from "../predefinedAdaptor/llm.adaptor";
-import type { AgentLoopApproval, AgentLoopEvent, AgentLoopRequest, AgentLoopStop } from "./agentLoopTypes";
+import type {
+  AgentLoopApproval,
+  AgentLoopCallAnswer,
+  AgentLoopEvent,
+  AgentLoopRequest,
+  AgentLoopStop,
+} from "./agentLoopTypes";
 import { DeltaStream } from "./deltaStream";
+import { LoopAnswer, type LoopPark } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
 import { LoopRemotes } from "./loopRemotes";
 import { LoopRequest } from "./loopRequest";
+import { LoopStored } from "./loopStored";
 import { LoopToolkits } from "./loopToolkits";
 import { LoopToolOutput } from "./loopToolOutput";
 import { LoopTranscript } from "./loopTranscript";
@@ -46,6 +54,8 @@ export class AgentLoop {
   static readonly needsPerson = "Not run: this tool needs a person's confirmation, and none is available to this run.";
   static readonly taintedWrite =
     "Not run: this tool changes data, and this run has read untrusted content, so it may not change anything without a person's approval.";
+  static readonly writeAfterRead =
+    "Not run: this tool changes data, and this run has already read a tool result. agentService.loop was given no `untrusted`, so everything a tool returns counts as untrusted, and no `approve`, so nothing may change data after it. For the app's developer: pass `approve` to decide such calls, or `untrusted` to say which results are not the app's own data. Do not call it again; tell the user what was left undone.";
   static readonly taintedRemote =
     "Not run: this tool is another server's, and this run has read text another party wrote, that server's tool list included, so nothing is sent there without approval. None is available: this run's request has no `approve`.";
   static readonly unjudged = "Not run: the approval check returned no verdict.";
@@ -73,6 +83,7 @@ export class AgentLoop {
   #tokens = 0;
   #toolCalls = 0;
   #tainted: boolean = false;
+  #storedJudged: boolean = false;
   #compactFloor = 0;
   #overflowAt = Number.POSITIVE_INFINITY;
 
@@ -113,14 +124,13 @@ export class AgentLoop {
   async *#drive(): Events<AgentLoopStop> {
     //? Security: a remote the stored messages opened is listed again, and its listing is that party's text.
     const reopened = this.#toolkits.restore(this.#messages);
-    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages, !!this.#request.untrusted);
-    //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it.
-    for (const result of LoopTranscript.results(this.#messages))
-      if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
-    const pending = LoopTranscript.pending(this.#messages);
-    if (pending.length) {
+    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages);
+    const { answer } = this.#request;
+    if (answer !== undefined || LoopTranscript.pending(this.#messages).length) {
       if (!(await this.#authorize())) return "unauthorized";
-      const stop = yield* this.#runCalls(pending, await this.#listTools());
+      const tools = await this.#listTools();
+      if (answer !== undefined) yield* this.#accept(answer);
+      const stop = yield* this.#runCalls(LoopTranscript.pending(this.#messages), tools);
       if (stop) return stop;
     }
     for (;;) {
@@ -175,15 +185,39 @@ export class AgentLoop {
       return true;
     });
     this.#clientNames = new Set(client.map((tool) => tool.name));
+    this.#judgeStored(visible);
     return [...listed, ...remote.tools, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
   }
 
-  static #clientTool({ name, description, parameters, readOnly, needsConfirm }: AgentTool): AgentTool {
+  //? Security: once, at the first listing, which is what says whose result a stored one is. A person's answer is their
+  //? own input, and `untrusted` never sees it.
+  #judgeStored(endpoints: AgentTool[]) {
+    if (this.#storedJudged) return;
+    this.#storedJudged = true;
+    const listed = new Set(endpoints.map((tool) => tool.name));
+    const lent = new Set((this.#request.clientTools ?? []).map((tool) => tool.name));
+    //? A page that lends the name may have answered it in a run that had not turned `ask` or `toolkits` on. An open
+    //? that names a remote is answered with that party's text, its tool list or the error of an open that failed,
+    //? unless the person refused the connection.
+    const own = (call: AgentWireToolCall, result: AgentWireToolResult) => {
+      if (lent.has(call.name)) return false;
+      const kit = this.#toolkits.externalOf(call);
+      if (kit) return LoopStored.says(result, LoopRemotes.declined(kit));
+      return this.#askUser.isMeta(call.name) || this.#toolkits.isMeta(call.name);
+    };
+    for (const result of LoopStored.read(this.#messages, listed, own)) {
+      if (result) this.#taintBy(result);
+      else this.#tainted = true;
+    }
+  }
+
+  //? Security: `readOnly` is the page's own claim, and it lifts the write rules, so a client tool always counts as a write.
+  static #clientTool({ name, description, parameters, needsConfirm }: AgentTool): AgentTool {
     return {
       name,
       ...(description ? { description } : {}),
       ...(parameters ? { parameters } : {}),
-      readOnly: readOnly === true,
+      readOnly: false,
       needsConfirm: needsConfirm === true,
     };
   }
@@ -224,10 +258,15 @@ export class AgentLoop {
   }
 
   async *#metered(request: LlmTurnRequest, preamble: string | false, streamed: boolean): Events<AgentLoopAnswer> {
-    const { meta } = this.#request;
+    const { meta, clientTools, remotes } = this.#request;
     const turn: AgentTurnContext = {
       ...AgentMeter.turnOf(this.#account),
-      loop: { id: this.#id, round: this.#round },
+      loop: {
+        id: this.#id,
+        round: this.#round,
+        ...(clientTools?.length ? { client: true } : {}),
+        ...(remotes?.length ? { remote: true } : {}),
+      },
       ...(meta ? { meta: { ...meta } } : {}),
     };
     const prepared = await AgentRelayPolicy.apply(request, turn);
@@ -255,7 +294,7 @@ export class AgentLoop {
   }
 
   async *#compact(forced = false): Events<boolean> {
-    const { compact, model, untrusted } = this.#request;
+    const { compact, model } = this.#request;
     if (!compact) return false;
     const threshold = Math.min(compact.at, this.#overflowAt);
     if (!forced && LoopCompaction.tokensOf(this.#messages) < Math.max(threshold, this.#compactFloor)) return false;
@@ -279,11 +318,7 @@ export class AgentLoop {
       return false;
     }
     if (!text) return false;
-    const summary = LoopCompaction.message(
-      text,
-      this.#tainted || untrusted ? this.#tainted : undefined,
-      this.#toolkits.opened,
-    );
+    const summary = LoopCompaction.message(text, this.#tainted, this.#toolkits.opened);
     this.#messages.splice(0, at, summary);
     const after = LoopCompaction.tokensOf(this.#messages);
     //? Still over after summarizing: one kept message is that large, so wait for another threshold's growth.
@@ -342,7 +377,7 @@ export class AgentLoop {
         //? Security: an opened remote's tool names, or the error it answered the open with, are that party's text.
         if (opened) this.#tainted = true;
         //? Security: clipping turns a large object into a string, which a predicate reading its fields no longer matches.
-        if (!meta) this.#taintBy(whole);
+        if (!meta) this.#taintBy(whole, verdict === "allow");
         await this.#record(results);
         const view = this.#remotes.takeView(call.id);
         yield { type: "toolResult", result, round, ...(view ? { view } : {}) };
@@ -352,6 +387,25 @@ export class AgentLoop {
       await this.#record(results);
     }
     return stop;
+  }
+
+  //? Security: stored before the calls it left are judged. A page's answer taints whatever `untrusted` makes of it: a
+  //? client tool may carry the name of an endpoint this run does not list, which a predicate reading names would trust.
+  //? A person's reply, and their refusal to connect a remote, are their own input.
+  async *#accept(answer: AgentLoopCallAnswer): Events<void> {
+    const whole = LoopAnswer.resultOf(answer, this.#messages, (call) => this.#parks(call));
+    const result = LoopToolOutput.clipped(whole);
+    if (this.#clientNames.has(whole.name)) this.#tainted = true;
+    await this.#record([result]);
+    yield { type: "toolResult", result, round: this.#round };
+  }
+
+  #parks(call: AgentWireToolCall): LoopPark | null {
+    if (call.argsError) return null;
+    const kit = this.#toolkits.externalOf(call);
+    if (kit) return { refusal: LoopRemotes.declined(kit), code: LoopRemotes.declinedCode };
+    const parked = this.#askUser.isMeta(call.name) ? !LoopAsk.refusalOf(call) : this.#clientNames.has(call.name);
+    return parked ? "answer" : null;
   }
 
   //? Per call, not per batch: a run killed mid-batch reaches no `finally`, and its resume would run a landed write again.
@@ -380,17 +434,30 @@ export class AgentLoop {
       const closed = this.#toolkits.refusalOf(call.name);
       return closed
         ? { deny: closed, code: "toolkitClosed" }
-        : { deny: `Unknown tool: ${call.name}.`, code: "unknownTool" };
+        : { deny: LoopStored.unknownTool(call.name), code: "unknownTool" };
     }
     const { approve } = this.#request;
     const remote = this.#remotes.ownerOf(call.name);
-    const state = { tainted: this.#tainted, tool, ...(remote ? { remote } : {}) };
+    const state = {
+      tainted: this.#tainted,
+      tool,
+      ...(this.#clientNames.has(call.name) ? { client: true as const } : {}),
+      ...(remote ? { remote } : {}),
+    };
     if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, state)));
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
     //? Security: a call's arguments leave for the remote, and "read-only" is the remote's own word for its tool.
     if (this.#tainted && remote) return { deny: AgentLoop.taintedRemote };
+    if (this.#tainted && !tool.readOnly && !this.#request.untrusted) return this.#writeAfterRead(call);
     if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
     return "allow";
+  }
+
+  #writeAfterRead({ name }: AgentWireToolCall): Verdict {
+    AgentLoop.#logger.warn(
+      `agent loop refused ${name}: it changes data after a read, and the run has neither \`approve\` nor \`untrusted\``,
+    );
+    return { deny: AgentLoop.writeAfterRead, code: "writeAfterRead" };
   }
 
   //? Fails closed: an approver returning anything else, `true` from an older contract included, runs nothing.
@@ -443,15 +510,21 @@ export class AgentLoop {
     return this.#toolkits.openExternal(call, kit, answer.tools, answer.omitted);
   }
 
-  #taintBy(result: AgentWireToolResult) {
+  #taintBy(result: AgentWireToolResult, ran = true) {
     if (this.#tainted) return;
-    //? Security: a remote's result is another party's text, whatever `untrusted` makes of it.
+    //? Security: a remote's result is another party's text, whatever `untrusted` makes of it and with none given.
     if (this.#remotes.ownerOf(result.name)) {
       this.#tainted = true;
       return;
     }
+    const { untrusted } = this.#request;
+    //? Security: fails closed. Nothing says whose text a tool returned, so whatever a call that ran returned is untrusted.
+    if (!untrusted) {
+      this.#tainted = ran;
+      return;
+    }
     try {
-      this.#tainted = !!this.#request.untrusted?.(result);
+      this.#tainted = !!untrusted(result);
     } catch (error) {
       //? Security: fails closed, and before the batch's `finally` stores this result with its mark.
       this.#tainted = true;

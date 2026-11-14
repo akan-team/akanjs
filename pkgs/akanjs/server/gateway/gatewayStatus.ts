@@ -48,7 +48,13 @@ export class GatewayStatus {
     return {
       ready: this.#isReady(),
       pid: process.pid,
-      children: [...this.#children.values()].map(({ idx, role, status, ready }) => ({ idx, role, status, ready })),
+      children: [...this.#children.values()].map(({ idx, role, status, ready, rscWorker }) => ({
+        idx,
+        role,
+        status,
+        ready,
+        rscWorker,
+      })),
     };
   }
 
@@ -56,7 +62,7 @@ export class GatewayStatus {
   #isReady() {
     if (this.#children.stopping) return false;
     if (this.#config.replica.federation + this.#config.replica.all > 0)
-      return this.#children.federationCandidates().length > 0;
+      return this.#children.renderingCandidates().length > 0;
     return [...this.#children.values()].some((child) => child.ready && !this.#children.isUnavailable(child));
   }
 

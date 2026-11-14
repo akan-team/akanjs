@@ -18,34 +18,79 @@ at every event.
   lists the toolkits. An opened toolkit's tools are listed from the next round on; `openToolkit` never reaches
   `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
-  (`akanjs/ui`), sent over your own transport. It is client input, and a name an endpoint holds is dropped. The run
-  never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`,
-  append its result — or your own error when no page answers — and resume.
+  (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
+  counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or
+  64 levels of nesting the run ends with `agent.error.clientToolsRefused` (413, `data.limit` `"tools"`, `"chars"` or
+  `"depth"`). Which of them may run after a read is the app's to say, in `approve`, by name. The run never runs one:
+  `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)` and resume with
+  what it returned as `answer` — or `answer: { id, error }` when no page answers. The page keeps its own rule beside
+  the run's: `run(call)` asks the member through `host.approve` when a call that changes something follows a `taint:
+  "source"` read. The run's rule below is the wider one, counting every result, the page's included, so with no
+  `approve` a client call is refused once the run has read anything; an `approve` that allows a client call leaves
+  that question to the page.
 - **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
-  A call ends the run `awaiting` with `question: true`; put the question to the member, append
-  `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
-  counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
+  A call ends the run `awaiting` with `question: true`; put the question to the member and resume with
+  `answer: { id, result }` — or `{ id, error }` when they dismiss it. It never reaches `approve`, counts as no tool
+  call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
+- **Answering a parked call.** `answer` is the only way in for what a client sends, and `messages` holds only your
+  own user messages and what `onMessage` handed over: never append a client's result to them. Never take `messages`
+  from a request either: store what `onMessage` hands out, and pass from the client only `answer`, as a tool message
+  a client wrote reads exactly like one the run stored. Pass `answer` only after an `awaiting` event with `client`
+  or `question` named that call. `approve` is not asked about an answered call, as nothing runs on the server, so an
+  answer given for a call `approve` deferred, or for one a run died before parking on, is stored as it stands. A run
+  parks on one call, the first of its last batch that nothing answered, so `answer` is accepted for that call alone
+  and only when it is a client tool's or `askUser`'s. The run names the result after the call, whatever name was
+  sent, hands it to `onMessage`, emits it as a `toolResult` and runs the calls the batch has left. Every part of it
+  is bounded: `result`, `error` and `changes` as one value are clipped at 20,000 characters like a tool's result,
+  `code` is kept only when it is a failure code, and of its `attachments` the first four carrying `data` or `text`
+  are kept, never a `url`. An endpoint tool's call is answered only by running it: an `answer` naming one, a call
+  the run has not reached, or a call already answered ends the run with `agent.error.answerRefused` before anything
+  runs, and a resume without it carries on. Only `askUser`'s answer is the member's own word; a client tool's always
+  taints the run, by the rule below. A call parked with `connect` takes one answer only, the user's refusal as
+  `{ id, error }`; see "Calling Another Server".
 - **Other servers.** `remotes` takes other MCP servers, each a toolkit named after it: none is listed or contacted
   until the model opens it, and its tools then read `<name>.<tool>`. See "Calling Another Server" below.
-- **Writes after untrusted input.** `untrusted(result)` marks a result third parties wrote, and every later call
-  reaches `approve(call, { tainted, tool })` with `tainted` set. A batch is judged before it runs, since the model
-  wrote it before reading its results. Without `approve`, a `needsConfirm` tool — on this catalogue, a mutation
-  with the `destructive` hint above — is refused, and so is every write once tainted. `"defer"` holds the whole batch, emits
-  `awaiting` and ends the run as `"awaiting"`.
-- **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
-  and call `loop` again with them. Trailing calls nothing answered go to `approve` again before any model call, and
-  the taint is rebuilt from the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result
-  whole during the run and clipped on a resume. Store every message whole, marks included. `compacted` says the first
-  `replaced` messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary
-  with no marker counts as tainted to a run with `untrusted`. A batch's results
-  reach `onMessage` one tool message a call, as each call finishes, so a resume runs only the calls that had not
-  finished, even after a crash mid-batch. It cannot tell a call that was running when the run died from one that
-  never started: both go to `approve` again and run again, so a write that must not land twice needs an idempotent
-  endpoint or an `approve` that defers it. A stored result of that batch which `untrusted` marks taints them too: a
-  resume judges on everything stored, where an uninterrupted run judges a batch before any of it runs.
+- **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
+  result of a call that ran — an endpoint tool's or a client tool's, an error included — and every later call
+  reaches `approve(call, { tainted, tool, client })` with `tainted` set, and `client: true` when the call is to a
+  page's tool. `askUser`'s answer, `openToolkit`'s and a call the run refused without running taint nothing. A
+  remote is the exception on each count: opening one taints the run, and so does any call into one, refused or not,
+  whatever `untrusted` returns and with none given. A batch is judged before it runs, since the model wrote it
+  before reading its results. Without `approve`, a `needsConfirm`
+  tool — on this catalogue, a mutation with the `destructive` hint above — is refused, and so is every write once
+  tainted: such a run writes only in the batch written before any result, and a later write is answered with the
+  code `writeAfterRead` and a sentence naming the two ways on. Pass `approve` to decide those calls, or pass
+  `untrusted(result)` to say which endpoint results carry another party's text: `(result) => !own.has(result.name)`
+  trusts the endpoints you name, and `() => false` trusts every endpoint result, which is right only when nothing
+  they return was written by anyone but the app and the member. No endpoint option says whose text a tool returns —
+  `readOnly` says only that it changes nothing — so the predicate is where that is declared. It is never asked about
+  a client tool's answer, which taints the run whatever it is named: a page may lend a tool under the name of an
+  endpoint this run does not list, and a predicate reading names would trust it. Only `approve` lets a write follow
+  a page's answer. `"defer"` holds the whole batch, emits `awaiting` and ends the run as `"awaiting"`.
+- **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice
+  — and call `loop` again with them. A stored result is read as the answer to the call its id names, under that
+  call's name. It is judged as an endpoint's only when that call names an endpoint this run lists: any other, a
+  page's tool, a remote's, the open of a remote or a tool this run no longer has, taints the run without asking
+  `untrusted`, whatever mark it was stored with. The run's own answer to a tool name the model made up,
+  `Unknown tool: <name>.` with nothing beside it, taints nothing, and neither does its own sentence for a connection
+  the user refused. Keep `ask`, `toolkits` and `remotes` the same for
+  the life of a transcript: a stored `askUser` or `openToolkit` answer is the run's own only under the options it
+  was given with, and one whose name the page lends taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
+  the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the run
+  and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal included, as a resume
+  cannot tell one from a result. Store every message whole, marks included. `compacted` says the first `replaced`
+  messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary with no
+  marker counts as tainted. A batch's results reach `onMessage` one tool message a call, as each call finishes, so a
+  resume runs only the calls that had not finished, even after a crash mid-batch. It cannot tell a call that was
+  running when the run died from one that never started: both go to `approve` again and run again, so a write that
+  must not land twice needs an idempotent endpoint or an `approve` that defers it. A stored result of that batch
+  which `untrusted` marks taints them too: a resume judges on everything stored, where an uninterrupted run judges a
+  batch before any of it runs.
 - **Metering.** Each model call, compactions included, is its own turn for the request policy, the quota and the
   usage hook. It gets a fresh `id`, `loop { id, round }`, a copy of the request's `meta` — server-set, so it may key
-  billing — empty headers and no ip. The relay's default size caps skip loop rounds; a refused quota ends the run as
+  billing — empty headers and no ip. The relay's default size caps skip loop rounds, except in a run that lists
+  `clientTools` or names `remotes`: its turns carry `loop.client` or `loop.remote`, and one past
+  `AgentRelayPolicy.defaultLimits` ends the run with `agent.error.requestRefused`. A refused quota ends the run as
   `"quota"`.
 - **Limits.** `maxRounds` (12), `budget { tokens, toolCalls, wallMs }` (`"budget"`), `signal` (`"aborted"`) and a
   provider cut (`"length"`). A limit that is not a valid number is an `error` before any model call. `wallMs` and
@@ -85,11 +130,20 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
 - **Connecting happens in the chat.** Opening a remote the account has no connection to ends the run `awaiting` with
   `connect: "<name>"` and leaves the call unanswered. Render `<Remote.Util.Connect url={…} onConnected={resume} />`:
   it opens the other server's sign-in in a window and calls back once `page/remote/callback` finished the exchange.
-  Resume with the stored messages and the run opens the toolkit itself. When the user declines, append
-  `{ id, name: "openToolkit", error }` for that call and resume.
+  Resume with the stored messages and no `answer`, and the run opens the toolkit itself. When the user declines,
+  resume with `answer: { id, error }` for that call. The `error` only says that they refused: the run stores a
+  sentence of its own naming the remote, coded `remoteDeclined`, as the open's result and goes on, and none of your
+  text reaches the model or `onMessage`. That sentence taints neither this run nor a later resume, while the error
+  of an open that failed still does. The stored messages do not say why a run stopped at an open, so a refusal is
+  taken for any first unanswered open of a remote, one in a batch `approve` deferred included: all it does is keep
+  that open from running, and the rest of the batch is judged as usual. An `answer` carrying a `result` for an open
+  is refused with
+  `agent.error.answerRefused`, as only the server sees whether a connection exists.
 - **What a remote lists and returns is another party's text.** Opening a remote taints the run, whatever `untrusted`
-  says: its tools' names, descriptions and schemas reach the model with the open, and so does the error of an open
-  that failed. An open that only asks the user to connect taints nothing. A call's arguments leave for that server,
+  says and with none given: its tools' names, descriptions and schemas reach the model with the open, and so does
+  the error of an open that failed. A resume reads it off the stored call, mark or no mark: a stored result of a
+  `<name>.<tool>` call, or of an `openToolkit` call that names a remote, taints unasked. An open that only asks the
+  user to connect taints nothing. A call's arguments leave for that server,
   and `readOnly` is the remote's own word for its tool, so a request with `remotes` and no `approve` is refused
   before any model call, as `base.error.requiredArgument` naming `approve`: pass one with `remotes`. It is told the
   target as `state.remote`, and hears a tool the remote does not call read-only as a `needsConfirm` one. Show the
@@ -99,14 +153,17 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   characters a provider refuses is listed under a shortened alias and still called by its real name. A run takes
   at most 120 tools from one remote, a description to 1,000 characters and a parameter schema to 8,000, and stops
   listing at 120,000 characters in all; the open's result counts the tools left out as `omitted`. Pass `allow` in
-  the remote's entry to choose which tools those are.
+  the remote's entry to choose which tools those are. A run keeps at most four remotes open, as each listing rides
+  every later round: the open of a fifth is answered with an error and that server is not contacted. Of a call's
+  result the run keeps `result`, `error`, `code`, `changes` and `attachments`, each bounded as the parts of an
+  `answer` are, and nothing else the remote sent; the run's rounds meet the relay's size caps (see Metering).
 - **Addresses.** `url` is the server's address or its MCP endpoint; a bare origin means `/mcp`. Every request goes
   through `RemoteFetch`: https only, no private address, no redirect, the checked address pinned. A local run
   (`operationMode: "local"`) reaches loopback over http, so two dev servers can connect; `remote.allowUrl` narrows
   the addresses an app accepts.
 - **A screen in the result.** When the called tool is a `page().app()`, the `toolResult` event carries `view`
-  (`{ remote, tool, args, href?, static?, resourceUri? }`) beside the result. It never reaches the model or
-  `onMessage`; store it yourself and draw `<Remote.Zone.Screen url tool={view.tool} args={view.args} href={view.href}
+  (`{ remote, tool, args, href?, static?, resourceUri? }`) beside the result, without an `href` or `resourceUri`
+  longer than 2,048 characters. It never reaches the model or `onMessage`; store it yourself and draw `<Remote.Zone.Screen url tool={view.tool} args={view.args} href={view.href}
   drawn={view.static} />`. For an app the other server declared `{ static: true }` the card asks `remoteScreen` for
   that server's script-less HTML when it scrolls into view and shows it in a frame that runs no script; for any other
   app, draw `<Remote.Zone.View url tool args uri={view.resourceUri} href />`: it frames that server's view (its

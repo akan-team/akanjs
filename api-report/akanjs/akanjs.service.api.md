@@ -32,6 +32,7 @@ export type AgentLoopApproval = "allow" | "defer" | {
 export type AgentLoopApprove = (call: AgentWireToolCall, state: {
     tainted: boolean;
     tool: AgentTool;
+    client?: true;
     remote?: string;
 }) => PromiseOrObject<AgentLoopApproval>;
 
@@ -40,6 +41,8 @@ export interface AgentLoopBudget {
     toolCalls?: number;
     wallMs?: number;
 }
+
+export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
 
 export type AgentLoopEvent = {
     type: "awaiting";
@@ -92,6 +95,7 @@ export interface AgentLoopOptions {
     remotes?: readonly AgentLoopRemote[];
     clientTools?: AgentTool[];
     ask?: boolean;
+    answer?: AgentLoopCallAnswer;
     compact?: {
         at: number;
         keep?: number;
@@ -237,6 +241,8 @@ export interface AgentTurnContext {
     loop?: {
         id: string;
         round: number;
+        client?: true;
+        remote?: true;
     };
     meta?: Record<string, string>;
 }
@@ -353,6 +359,7 @@ export type AkanIpcMessage = {
     nonce: string;
     sentAt: number;
     pid?: number;
+    rscWorker?: AkanRscWorkerStatus;
 } | {
     type: "live.change";
     change: LiveChange;
@@ -427,6 +434,7 @@ export type AkanIpcMessage = {
         allowedOrigins: string[];
         enabled: boolean;
     };
+    rscWorker?: AkanRscWorkerStatus;
 } | {
     type: "secret.answer";
     id: string;
@@ -585,6 +593,8 @@ export interface AkanMetricsReport {
     gcDurationMs?: number;
     trace?: unknown;
 }
+
+export type AkanRscWorkerStatus = "ready" | "restarting" | "starting" | "stopped" | null;
 
 export interface AkanSqlClient {
     execute(sql: string, params?: Record<string, unknown> | unknown[]): Promise<unknown>;

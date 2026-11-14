@@ -433,6 +433,7 @@ export class AkanServer {
       wsUpstream: typeof wsPort === "number" ? { type: "tcp", host: "127.0.0.1", port: wsPort } : undefined,
       healthPath: "/_akan/app/child-health",
       crossSite: CrossSiteGuard.option(),
+      rscWorker: this.#webRouter?.rscWorkerStatus ?? null,
     });
     if (this.#schedules && this.status === "running") await this.#di.runSchedulerInit();
     ShutdownManager.register(this.logger, () => this.stop());

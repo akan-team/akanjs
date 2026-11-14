@@ -3,7 +3,7 @@ import { AkanError, LIBS_REMOVE_HOOK } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { type CascadeWithPath, type ConstantModel, ConstantRegistry } from "akanjs/constant";
 import { type DocumentSchema, documentQueryHelper } from "akanjs/document";
-import type { DatabaseService, ServiceCls } from "akanjs/service";
+import type { DatabaseService, Service, ServiceCls } from "akanjs/service";
 
 /** A relation the removed document owns: the ids it holds name documents to remove. */
 interface RefEdge {
@@ -44,14 +44,14 @@ export class CascadeRunner {
   readonly #bulk = new Set<string>();
   readonly #context = new AsyncLocalStorage<CascadeContext>();
   readonly #logger = new Logger("Cascade");
-  #getService: ((refName: string) => DatabaseService) | null = null;
+  #getService: ((refName: string) => DatabaseService & Service) | null = null;
 
   register(constant: ConstantModel, schema: DocumentSchema, srvRef: ServiceCls) {
     this.#modules.set(constant.refName, { constant, schema, srvRef });
   }
 
   // Only once every service is live: a boot-time `_postRemove` or `listenPost("remove")` also rules out bulk removal.
-  seal(getService: (refName: string) => DatabaseService) {
+  seal(getService: (refName: string) => DatabaseService & Service) {
     this.#getService = getService;
     for (const [refName, mod] of this.#modules) {
       this.#plans.set(refName, { refEdges: this.#collectRefEdges(refName, mod), withEdges: [] });
@@ -92,7 +92,13 @@ export class CascadeRunner {
     if (!ids.length) return;
     const service = this.#service(edge.refName);
     if (this.#bulk.has(edge.refName)) {
-      await service.__removeMany({ id: documentQueryHelper.oneOf(ids) });
+      const removeChunks = async () => {
+        for (let start = 0; start < ids.length; start += drainSize)
+          await service.__removeMany({ id: documentQueryHelper.oneOf(ids.slice(start, start + drainSize)) });
+      };
+      // One transaction keeps the chunks all-or-none; an open one is joined.
+      if (ids.length > drainSize) await service.transaction(removeChunks);
+      else await removeChunks();
       return;
     }
     // Two owners can hold one deduped File: a target an earlier, separate cascade removed has no live row to remove.

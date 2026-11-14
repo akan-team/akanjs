@@ -1316,6 +1316,39 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await store.find({})).toHaveLength(0);
     });
 
+    test("bulkWrite applies none of its operations when one in the middle fails", async () => {
+      const first = await store.create({ title: "first", score: 0 });
+      const last = await store.create({ title: "last", score: 0 });
+      const bulk = store.bulkWrite([
+        { updateOne: { filter: { id: first.id }, update: { score: 1 } } },
+        { updateOne: { filter: { title: "fresh" }, update: { score: 1 }, upsert: true } },
+        { updateOne: { filter: { status: { tier: "gold" } as unknown as string }, update: { score: 1 } } },
+        { updateOne: { filter: { id: last.id }, update: { score: 1 } } },
+      ]);
+      await expect(bulk).rejects.toThrow('Query value at "status"');
+      const rows = await store.find({});
+      expect(titlesOf(rows).sort((a, b) => a.localeCompare(b))).toEqual(["first", "last"]);
+      expect(rows.map((row) => row.score)).toEqual([0, 0]);
+    });
+
+    test("bulkWrite inside an open transaction joins it, committing and rolling back with it", async () => {
+      const { id } = await store.create({ title: "row", score: 0 });
+      const result = await driver.database.transaction(async () => {
+        await store.create({ title: "beside" });
+        return await store.bulkWrite([{ updateOne: { filter: { id }, update: { score: 1 } } }]);
+      });
+      expect(result).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null });
+      const rolledBack = driver.database.transaction(async () => {
+        await store.bulkWrite([{ updateOne: { filter: { id }, update: { score: 2 } } }]);
+        throw new Error("rollback-probe");
+      });
+      await expect(rolledBack).rejects.toThrow("rollback-probe");
+      expect((await store.find({})).map((row) => [row.title, row.score]).sort()).toEqual([
+        ["beside", 0],
+        ["row", 1],
+      ]);
+    });
+
     test("a service's transaction commits its writes to two models together, or neither, rethrowing the error", async () => {
       const ledger = ledgerOn(driver);
       const other = await storeOf(driver, uniqueConstant, uniqueDatabase);
