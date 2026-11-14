@@ -195,7 +195,7 @@ export class RscWorker {
       timer = setTimeout(
         () =>
           reject(new AkanError("rscWorkerFailed", `static app "${input.name}" passed its ${deadlineMs} ms deadline`)),
-        deadlineMs,
+        Math.max(0, deadlineMs),
       );
     });
     const drawn = this.#requests.call<RscPagePromptDrawn>((requestId) => ({

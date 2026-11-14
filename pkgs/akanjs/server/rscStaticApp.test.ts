@@ -1,9 +1,11 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
-import { Logger } from "akanjs/common";
+import { Logger, logSeverity } from "akanjs/common";
 import { RscWorker } from "./rscWorkerHost";
 import { SsrStaticApp } from "./ssrStaticApp";
 import type { BaseBuildArtifact } from "./types";
+import type { WebRouteContext } from "./webRouteContext";
+import { WebStaticApp } from "./webStaticApp";
 
 interface Drawn {
   ok: boolean;
@@ -25,7 +27,10 @@ const ssrManifest = {
 const signedIn: [string, string][] = [["authorization", "Bearer u1"]];
 
 const withStaticAppWorker = async (
-  run: (draw: (name: string, headers?: [string, string][], deadlineMs?: number) => Promise<Drawn>) => Promise<void>,
+  run: (
+    draw: (name: string, headers?: [string, string][], deadlineMs?: number) => Promise<Drawn>,
+    seen: { logs: string[]; warnings: string[] },
+  ) => Promise<void>,
 ) => {
   const vars: Record<string, string> = {
     AKAN_RSC_WORKER_PATH: path.join(import.meta.dir, "rscWorker.tsx"),
@@ -42,9 +47,16 @@ const withStaticAppWorker = async (
       clientNames.map((name) => [`${clientId}#${name}`, { id: clientId, chunks: [], name }]),
     ),
   } as unknown as BaseBuildArtifact);
-  const ssr = new SsrStaticApp(new Logger("SsrStaticAppTest"));
+  const seen = { logs: [] as string[], warnings: [] as string[] };
+  rsc.onLogRecords = (records) => {
+    for (const record of records) seen.logs.push(JSON.stringify(record));
+  };
+  const logger = new Logger("SsrStaticAppTest");
+  logger.warn = (message: string) => void seen.warnings.push(message);
+  const ssr = new SsrStaticApp(logger);
   try {
     await rsc.ready;
+    rsc.setLogLevel(logSeverity.warn);
     await run(async (name, headers = signedIn, deadlineMs = SsrStaticApp.deadlineMs) => {
       const deadlineAt = Date.now() + deadlineMs;
       const { run: page, drawn } = await rsc.drawPagePrompt({ name, arguments: {}, headers }, undefined, deadlineMs);
@@ -63,7 +75,7 @@ const withStaticAppWorker = async (
         deadlineAt - Date.now(),
       );
       return { ok: true, drawn: true, html };
-    });
+    }, seen);
   } finally {
     rsc.kill();
     for (const [key, value] of Object.entries(saved)) {
@@ -131,28 +143,96 @@ describe("a static app drawn as HTML", () => {
     });
   }, 20_000);
 
-  test("is refused once its deadline passes, whether the load or a component never ends", async () => {
-    await withStaticAppWorker(async (draw) => {
+  test("stops the worker's draw at its deadline, aborting a component that never ends", async () => {
+    await withStaticAppWorker(async (draw, { logs }) => {
       for (const name of ["showHung", "showUnsettled"]) {
         const startedAt = Date.now();
         await expect(draw(name, signedIn, 300)).rejects.toMatchObject({ code: "rscWorkerFailed" });
         expect(Date.now() - startedAt).toBeLessThan(3_000);
       }
+      for (let tries = 0; tries < 50 && !logs.some((log) => log.includes("at /slow drew no HTML")); tries++)
+        await Bun.sleep(50);
+      expect(logs.some((log) => log.includes("at /slow drew no HTML: its render ended in error"))).toBe(true);
+      expect((await draw("showBoard")).html).toContain("<h1>Board</h1>");
+    });
+  }, 20_000);
+
+  test("answers at its deadline while the worker is too busy to read its own", async () => {
+    await withStaticAppWorker(async (draw) => {
+      const startedAt = Date.now();
+      await expect(draw("showBusy", signedIn, 300)).rejects.toMatchObject({ code: "rscWorkerFailed" });
+      expect(Date.now() - startedAt).toBeLessThan(1_500);
       expect((await draw("showBoard")).html).toContain("<h1>Board</h1>");
     });
   }, 20_000);
 
   test("is not sent with a Suspense fallback when a boundary does not resolve in time", async () => {
-    await withStaticAppWorker(async (draw) => {
+    await withStaticAppWorker(async (draw, { warnings }) => {
       expect(await draw("showNeverReady", signedIn, 1_000)).toEqual({ ok: true, drawn: true, html: null });
+      expect(warnings).toEqual([
+        'static app "showNeverReady" sent no HTML: its render failed: The operation was aborted.',
+      ]);
     });
   }, 20_000);
 
   test("is not sent when a component throws on either side of the wire, or the document passes its size cap", async () => {
-    await withStaticAppWorker(async (draw) => {
+    await withStaticAppWorker(async (draw, { warnings }) => {
       expect(await draw("showServerThrows")).toEqual({ ok: true, drawn: false, html: null });
       expect(await draw("showClientThrows")).toEqual({ ok: true, drawn: true, html: null });
       expect(await draw("showHuge")).toEqual({ ok: true, drawn: true, html: null });
+      expect(warnings.at(-1)).toBe(
+        `static app "showHuge" sent no HTML: its HTML passed ${SsrStaticApp.maxBytes} bytes`,
+      );
     });
   }, 20_000);
+
+  test("starts no guard or load for a draw whose deadline had already passed when the worker took it", async () => {
+    await withStaticAppWorker(async (draw) => {
+      await expect(draw("showBusy", signedIn, 0)).rejects.toMatchObject({ code: "rscWorkerFailed" });
+      const startedAt = Date.now();
+      expect((await draw("showBoard")).html).toContain("<h1>Board</h1>");
+      expect(Date.now() - startedAt).toBeLessThan(1_500);
+    });
+  }, 20_000);
+});
+
+describe("a static app's HTML step", () => {
+  test("is skipped, leaving the HTML out, when the draw used up the deadline", async () => {
+    const warnings: string[] = [];
+    const run = {
+      ok: true as const,
+      url: "http://127.0.0.1/en/board",
+      records: [],
+      route: { params: {}, searchParams: {} },
+    };
+    const realNow = Date.now;
+    const context = {
+      logger: { warn: (message: string) => void warnings.push(message) },
+      artifact: { i18n: { defaultLocale: "en" } },
+      ensureRoute: async () => ({ clientManifest: {}, ssrManifest }),
+      stylesheetHref: () => null,
+    } as unknown as WebRouteContext;
+    const rsc = {
+      listPagePrompts: async () => [{ kind: "app", name: "showBoard", pattern: "/:lang/board", static: true }],
+      drawPagePrompt: async () => {
+        Date.now = () => realNow() + SsrStaticApp.deadlineMs + 1;
+        return { run, drawn: { flight: new Uint8Array(), needsBrowser: false } };
+      },
+    } as unknown as RscWorker;
+    const html = spyOn(SsrStaticApp.prototype, "render");
+    try {
+      const rendered = await new WebStaticApp(context, () => rsc).render({
+        name: "showBoard",
+        arguments: {},
+        headers: [],
+        origin: "https://board.example.com",
+      });
+      expect(rendered).toEqual({ run, html: null });
+      expect(html).not.toHaveBeenCalled();
+      expect(warnings).toEqual(['static app "showBoard" sent no HTML: its draw used up the deadline']);
+    } finally {
+      Date.now = realNow;
+      html.mockRestore();
+    }
+  });
 });

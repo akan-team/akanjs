@@ -32,6 +32,10 @@ export class WebStaticApp {
       deadlineAt - Date.now(),
     );
     if (!run.ok || !drawn) return { run, html: null };
+    if (deadlineAt <= Date.now()) {
+      this.#context.logger.warn(`static app "${input.name}" sent no HTML: its draw used up the deadline`);
+      return { run, html: null };
+    }
     try {
       const request = new Request(run.url, { headers: input.headers });
       const html = await this.#ssr.render(

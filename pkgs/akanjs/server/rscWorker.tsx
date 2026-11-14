@@ -252,12 +252,13 @@ export class RscRenderer {
 
   //? A load that never settles cannot be stopped, only no longer waited on; the render it would feed is aborted.
   async #drawPagePrompt({ input, clientManifest = this.#clientManifest, deadlineMs }: PagePromptDrawMsg) {
+    const passed = () => new AkanError("rscWorkerFailed", `static app "${input.name}" passed its deadline`);
+    //? Queued behind a restart, the host has already answered this call: its guards and load must not start.
+    if (deadlineMs <= 0) throw passed();
     const deadline = new AbortController();
     const timer = setTimeout(() => deadline.abort(), deadlineMs);
     const expired = new Promise<never>((_, reject) =>
-      deadline.signal.addEventListener("abort", () =>
-        reject(new AkanError("rscWorkerFailed", `static app "${input.name}" passed its ${deadlineMs} ms deadline`)),
-      ),
+      deadline.signal.addEventListener("abort", () => reject(passed())),
     );
     try {
       return await Promise.race([

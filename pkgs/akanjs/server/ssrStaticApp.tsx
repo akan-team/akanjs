@@ -42,7 +42,7 @@ export class SsrStaticApp {
     const root = await inScope(() => createFromNodeStream<ReactNode>(flight, input.ssrManifest));
     //? Aborting settles every boundary still waiting as one React leaves to a client, which the refusal reads.
     const deadline = new AbortController();
-    const timer = setTimeout(() => deadline.abort(), deadlineMs);
+    const timer = setTimeout(() => deadline.abort(), Math.max(0, deadlineMs));
     let html: string | null = null;
     try {
       const stream = await inScope(async () => {

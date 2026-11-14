@@ -162,6 +162,16 @@ export const pages: PagesContext = {
   }),
   "./slow.tsx": async () => ({
     default: page()
+      .app(
+        "showBusy",
+        "Show a board whose load holds the worker.",
+        () => {
+          const until = Date.now() + 2_000;
+          while (Date.now() < until);
+          return <h1>Busy</h1>;
+        },
+        { static: true },
+      )
       .app("showHung", "Show a board whose load never ends.", () => new Promise<ReactNode>(() => undefined), {
         static: true,
       })
