@@ -155,3 +155,53 @@ jobs:
         run: bun test --isolate ./frontendBuild/nativeCore.test.ts
         env:
           REQUIRE_SYNCED_LIBS: "1"
+
+  conformance:
+    name: Conformance (Postgres ${{ matrix.postgres }}, Redis ${{ matrix.redis }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - postgres: "15"
+            redis: "7.2"
+          - postgres: "18"
+            redis: "8"
+    services:
+      postgres:
+        image: postgres:${{ matrix.postgres }}
+        env:
+          POSTGRES_USER: akan
+          POSTGRES_PASSWORD: akan
+          POSTGRES_DB: akan
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U akan -d akan"
+          --health-interval 1s
+          --health-timeout 3s
+          --health-retries 60
+      redis:
+        image: redis:${{ matrix.redis }}
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 1s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      AKAN_TEST_POSTGRES_URL: postgres://akan:akan@localhost:5432/akan
+      AKAN_TEST_REDIS_URL: redis://localhost:6379
+      AKAN_TEST_REQUIRE_BACKENDS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup
+      # A service container cannot mount infra/test/postgres-init.sql, so the same file is piped into the container.
+      - name: Create the Postgres extensions the search engine needs
+        run: docker exec -i ${{ job.services.postgres.id }} psql -U akan -d akan -v ON_ERROR_STOP=1 < infra/test/postgres-init.sql
+      # The suites and their order mirror ConformanceRun in infra/test/runConformance.ts.
+      - name: Framework conformance suites
+        working-directory: pkgs/akanjs
+        run: bun test --isolate conformance queryEvaluatorParity insightQuery server/di/predefinedAdaptor

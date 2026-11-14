@@ -1,3 +1,4 @@
+import { test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -75,15 +76,24 @@ export class ConformanceEnv {
     return process.env[backendEnvNames[backend]]?.trim() || null;
   }
 
+  static get requireBackends() {
+    return process.env.AKAN_TEST_REQUIRE_BACKENDS?.trim() === "1";
+  }
+
   /** Says once per suite and backend when it is missing: a skipped suite must never read as a passing one. */
   static has(suite: string, backend: ConformanceBackend): boolean {
     if (ConformanceEnv.url(backend)) return true;
     const key = `${suite}:${backend}`;
     if (!ConformanceEnv.#announced.has(key)) {
       ConformanceEnv.#announced.add(key);
-      console.info(
-        `[conformance] ${suite}: ${backend} cases skipped — set ${backendEnvNames[backend]}, or run \`bun run testConformance\``,
-      );
+      if (ConformanceEnv.requireBackends)
+        test(`${suite}: ${backend} backend is required`, () => {
+          throw new Error(`${suite}: ${backendEnvNames[backend]} is not set while AKAN_TEST_REQUIRE_BACKENDS=1`);
+        });
+      else
+        console.info(
+          `[conformance] ${suite}: ${backend} cases skipped — set ${backendEnvNames[backend]}, or run \`bun run testConformance\``,
+        );
     }
     return false;
   }
