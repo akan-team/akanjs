@@ -72,7 +72,8 @@ at every event.
   call's name. It is judged as an endpoint's only when that call names an endpoint this run lists: any other, a
   page's tool, a remote's, the open of a remote or a tool this run no longer has, taints the run without asking
   `untrusted`, whatever mark it was stored with. The run's own answer to a tool name the model made up,
-  `Unknown tool: <name>.` with nothing beside it, taints nothing. Keep `ask`, `toolkits` and `remotes` the same for
+  `Unknown tool: <name>.` with nothing beside it, taints nothing, and neither does its own sentence for a connection
+  the user refused. Keep `ask`, `toolkits` and `remotes` the same for
   the life of a transcript: a stored `askUser` or `openToolkit` answer is the run's own only under the options it
   was given with, and one whose name the page lends taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
   the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the run
@@ -130,9 +131,10 @@ for await (const event of this.agentService.loop({ account, allow, messages, rem
   `connect: "<name>"` and leaves the call unanswered. Render `<Remote.Util.Connect url={…} onConnected={resume} />`:
   it opens the other server's sign-in in a window and calls back once `page/remote/callback` finished the exchange.
   Resume with the stored messages and no `answer`, and the run opens the toolkit itself. When the user declines,
-  resume with `answer: { id, error }` for that call: the run stores your sentence as the open's result and goes on.
-  It is the user's own word, so it taints nothing in that run; a later resume cannot tell the stored refusal from
-  the error of an open that failed, and starts tainted. An `answer` carrying a `result` for an open is refused with
+  resume with `answer: { id, error }` for that call. The `error` only says that they refused: the run stores a
+  sentence of its own naming the remote, coded `remoteDeclined`, as the open's result and goes on, and none of your
+  text reaches the model or `onMessage`. That sentence taints neither this run nor a later resume, while the error
+  of an open that failed still does. An `answer` carrying a `result` for an open is refused with
   `agent.error.answerRefused`, as only the server sees whether a connection exists.
 - **What a remote lists and returns is another party's text.** Opening a remote taints the run, whatever `untrusted`
   says and with none given: its tools' names, descriptions and schemas reach the model with the open, and so does

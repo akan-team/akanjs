@@ -197,10 +197,14 @@ export class AgentLoop {
     const listed = new Set(endpoints.map((tool) => tool.name));
     const lent = new Set((this.#request.clientTools ?? []).map((tool) => tool.name));
     //? A page that lends the name may have answered it in a run that had not turned `ask` or `toolkits` on. An open
-    //? that names a remote is answered with that party's text: its tool list, or the error of an open that failed.
-    const own = (call: AgentWireToolCall) =>
-      !lent.has(call.name) &&
-      (this.#askUser.isMeta(call.name) || (this.#toolkits.isMeta(call.name) && !this.#toolkits.externalOf(call)));
+    //? that names a remote is answered with that party's text, its tool list or the error of an open that failed,
+    //? unless the person refused the connection.
+    const own = (call: AgentWireToolCall, result: AgentWireToolResult) => {
+      if (lent.has(call.name)) return false;
+      const kit = this.#toolkits.externalOf(call);
+      if (kit) return LoopStored.says(result, LoopRemotes.declined(kit));
+      return this.#askUser.isMeta(call.name) || this.#toolkits.isMeta(call.name);
+    };
     for (const result of LoopStored.read(this.#messages, listed, own)) {
       if (result) this.#taintBy(result);
       else this.#tainted = true;
@@ -398,7 +402,8 @@ export class AgentLoop {
 
   #parks(call: AgentWireToolCall): LoopPark | null {
     if (call.argsError) return null;
-    if (this.#toolkits.externalOf(call)) return "refusal";
+    const kit = this.#toolkits.externalOf(call);
+    if (kit) return { refusal: LoopRemotes.declined(kit), code: LoopRemotes.declinedCode };
     const parked = this.#askUser.isMeta(call.name) ? !LoopAsk.refusalOf(call) : this.#clientNames.has(call.name);
     return parked ? "answer" : null;
   }

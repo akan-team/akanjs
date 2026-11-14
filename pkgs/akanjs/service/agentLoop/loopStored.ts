@@ -13,19 +13,19 @@ export class LoopStored {
   static read(
     messages: readonly AgentWireMessage[],
     listed: ReadonlySet<string>,
-    own: (call: AgentWireToolCall) => boolean,
+    own: (call: AgentWireToolCall, result: AgentWireToolResult) => boolean,
   ): (AgentWireToolResult | null)[] {
     return LoopTranscript.answered(messages).flatMap(([result, call]) => {
-      if (call && (own(call) || LoopStored.#isUnknownRefusal(result, call))) return [];
+      if (call && (own(call, result) || LoopStored.says(result, LoopStored.unknownTool(call.name)))) return [];
       return [call && listed.has(call.name) ? { ...result, name: call.name } : null];
     });
   }
 
-  //? Security: this run's own answer to a name the model made up carries nothing read, as the call fixes its every
-  //? character. `code` alone would not say so, and anything stored beside the sentence is not this run's.
-  static #isUnknownRefusal(stored: AgentWireToolResult, call: AgentWireToolCall) {
+  //? Security: a sentence of this run's own, to a name the model made up or to a connection the person refused,
+  //? carries nothing read, as the call fixes its every character. `code` alone would not say so, and anything stored
+  //? beside the sentence is not this run's.
+  static says(stored: AgentWireToolResult, sentence: string) {
     const { error, result, changes, attachments } = stored;
-    if (error !== LoopStored.unknownTool(call.name)) return false;
-    return result === undefined && changes === undefined && attachments === undefined;
+    return error === sentence && result === undefined && changes === undefined && attachments === undefined;
   }
 }

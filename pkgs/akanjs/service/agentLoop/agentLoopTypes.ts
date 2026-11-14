@@ -22,8 +22,8 @@ export type AgentLoopApprove = (
 ) => PromiseOrObject<AgentLoopApproval>;
 
 /**
- * What answers a parked call: a page's `run(call)` result, the member's reply, or their refusal to connect a remote.
- * Its `name` is the call's, never sent.
+ * What answers a parked call: a page's `run(call)` result, the member's reply, or their refusal to connect a remote,
+ * of which only the fact is taken: its `error` text is not stored. Its `name` is the call's, never sent.
  */
 export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
 
@@ -119,7 +119,8 @@ export interface AgentLoopOptions {
   /**
    * Other servers, each a toolkit the model opens with `openToolkit({ name })`; none is listed or contacted before.
    * Opening one the account has no live connection to ends the run as `awaiting` with `connect` naming it: connect
-   * and resume with the stored messages, or with `answer: { id, error }` for that call when the person declines.
+   * and resume with the stored messages, or with `answer: { id, error }` for that call when the person declines,
+   * for which the run stores a sentence of its own, not the `error` sent.
    * Security: what a remote lists and returns is another party's text, so opening one taints the run, and a call's
    * arguments leave for that server, so a request with `remotes` and no `approve` is refused. `approve` hears a tool
    * the remote does not call read-only as a `needsConfirm` one. A `clientTools` entry named `<remote>.…` is dropped.
@@ -152,9 +153,10 @@ export interface AgentLoopOptions {
    * failure code, and of its `attachments` the first four carrying `data` or `text` are kept, never a `url`. Pass it
    * only after an `awaiting` event with `client` or `question` named that call: `approve` is not asked about an
    * answered call, as nothing runs here, so one given for a call `approve` deferred, or for one a run died before
-   * parking on, is stored as it stands. A call parked with `connect` takes only the person's refusal, `{ id, error }`,
-   * which taints nothing: with a `result`, or for an `openToolkit` call that names no remote, it is refused the same
-   * way, as a connected remote is opened by resuming without `answer`.
+   * parking on, is stored as it stands. A call parked with `connect` takes only the person's refusal, `{ id, error }`:
+   * the run stores a sentence of its own naming the remote, coded `remoteDeclined`, and none of the `error` text, so
+   * it taints neither that run nor a later resume. With a `result`, or for an `openToolkit` call that names no
+   * remote, it is refused the same way, as a connected remote is opened by resuming without `answer`.
    */
   answer?: AgentLoopCallAnswer;
   /**
@@ -179,10 +181,9 @@ export interface AgentLoopOptions {
    * result, a refusal included, and also reads the `tainted` mark on stored messages, so store each message
    * `onMessage` hands over whole. A stored result whose call names no endpoint the resumed run lists, a page's tool,
    * a remote's, the open of a remote or a tool the run no longer has, taints without it; the run's own
-   * `Unknown tool: <name>.` taints nothing. A stored refusal to connect reads as the error of an open that failed, so
-   * it taints a later resume. Keep `ask`, `toolkits` and `remotes` the same for the life of a transcript: a stored
-   * `askUser` or `openToolkit` answer is the run's own only under the options it was given with, and one whose name
-   * the page lends taints.
+   * `Unknown tool: <name>.`, and its own sentence for a connection the person refused, taint nothing. Keep `ask`,
+   * `toolkits` and `remotes` the same for the life of a transcript: a stored `askUser` or `openToolkit` answer is the
+   * run's own only under the options it was given with, and one whose name the page lends taints.
    */
   untrusted?: (result: AgentWireToolResult) => boolean;
   meta?: Record<string, string>;

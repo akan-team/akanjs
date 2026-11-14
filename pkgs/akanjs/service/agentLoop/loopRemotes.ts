@@ -27,6 +27,7 @@ export class LoopRemotes {
   static readonly unavailable = "remoteUnavailable";
   /** A remote answers a call with this code once its connection is gone, so the run offers the toolkit again. */
   static readonly disconnected = "remoteDisconnected";
+  static readonly declinedCode = "remoteDeclined";
   static readonly #wireSafe = /^[A-Za-z0-9_-]+$/;
 
   readonly #remotes: ReadonlyMap<string, AgentLoopRemote>;
@@ -47,6 +48,12 @@ export class LoopRemotes {
       typeof list === "function" &&
       typeof call === "function"
     );
+  }
+
+  //? Security: the run's own sentence, fixed by the remote's name. A stored refusal to connect then holds nothing a
+  //? client wrote, so a resume reads it as the run's own.
+  static declined(name: string): string {
+    return `Not opened: the user declined to connect "${name}". Do not open it again unless they ask for it.`;
   }
 
   get kits(): ReadonlyMap<string, string> {

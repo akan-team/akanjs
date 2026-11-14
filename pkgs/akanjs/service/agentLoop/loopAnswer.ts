@@ -10,7 +10,7 @@ import type { AgentLoopCallAnswer } from "./agentLoopTypes";
 import { LoopToolOutput } from "./loopToolOutput";
 import { LoopTranscript } from "./loopTranscript";
 
-export type LoopPark = "answer" | "refusal";
+export type LoopPark = "answer" | { refusal: string; code: string };
 
 export class LoopAnswer {
   //? A screen tool returns one picture; a file's name and type are labels, bounded as a file system bounds a name.
@@ -19,23 +19,22 @@ export class LoopAnswer {
 
   //? Security: client input. A run parks on the first call of its last batch nothing answered, so only that call takes
   //? an answer from outside, and the result is named by the call, never by what was sent. Whether a remote is connected
-  //? is the server's to see, so the open of one takes only the person's refusal.
+  //? is the server's to see, so the open of one takes only the person's refusal, and stores the run's own sentence for
+  //? it: the `error` sent says that they refused, and none of its text is kept.
   static resultOf(
     answer: AgentLoopCallAnswer,
     messages: readonly AgentWireMessage[],
     parks: (call: AgentWireToolCall) => LoopPark | null,
   ): AgentWireToolResult {
     const sent = (answer as Partial<AgentLoopCallAnswer> | null) ?? {};
-    const { id, result, error, code } = sent;
+    const { id, result, error } = sent;
     if (typeof id !== "string" || !id) throw new Err("base.error.invalidArgument", { name: "answer" });
     const [parked] = LoopTranscript.pending(messages);
     const park = parked?.id === id ? parks(parked) : null;
-    const refused = typeof error === "string" && error ? { error } : {};
-    const whole = park === "answer";
-    if (!parked || !(whole || (park === "refusal" && result === undefined && refused.error)))
-      throw new Err("agent.error.answerRefused", { id });
-    if (whole) return LoopAnswer.bounded(parked, sent);
-    return { id: parked.id, name: parked.name, ...refused, ...(FailureCode.is(code) ? { code } : {}) };
+    if (!parked || !park) throw new Err("agent.error.answerRefused", { id });
+    if (park === "answer") return LoopAnswer.bounded(parked, sent);
+    if (result !== undefined || typeof error !== "string" || !error) throw new Err("agent.error.answerRefused", { id });
+    return { id: parked.id, name: parked.name, error: park.refusal, code: park.code };
   }
 
   //? Security: what another party sent as a call's result, a page or a remote. Only the fields a result declares pass,
