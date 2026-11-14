@@ -37,6 +37,7 @@ export interface AkanRequestStore {
     dynamicUsage: AkanDynamicUsage;
     needsBrowser?: boolean;
     renderSearch?: string;
+    scriptHashes?: Set<string>;
 }
 
 export type AkanTheme = "css" | "system" | (string & {});
@@ -335,6 +336,8 @@ export interface RestoredError extends Error {
     toJSON?: () => ErrorResponsePayload;
 }
 
+export declare const SCRIPT_NONCE_HEADER = "x-akan-script-nonce";
+
 export type ServerEdit<RefName extends string, Model> = {
     refName: RefName;
 } & {
@@ -429,6 +432,8 @@ export interface WsClientReconnectOptions extends BackoffPolicy {
 
 export type WsClientState = "closed" | "connecting" | "gaveUp" | "open";
 
+export declare function addRequestScriptHashes(hashes: string[]): void;
+
 export declare const agentTurnConstant: import("akanjs/constant").ScalarConstantModel<"agentTurn", AgentTurn, import("akanjs/constant").DefaultOf<AgentTurn>, {
     text: string;
     toolCalls: unknown[];
@@ -471,6 +476,8 @@ export declare function getRequestPolicy(): AkanRequestPolicy | undefined;
 
 export declare function getRequestRenderSearch(): string | undefined;
 
+export declare function getRequestScriptHashes(): string[] | undefined;
+
 export declare function getRequestStore(): AkanRequestStore | undefined;
 
 export declare function getRequestTheme(): AkanTheme | undefined;
@@ -489,6 +496,8 @@ export declare function recordRequestQuery(record: RequestQueryRecord): void;
 export declare const requestStorage: RequestStorage | null;
 
 export declare const restoreRemoteError: (body: unknown, fallbackStatusCode: number, ErrorCls?: ErrorConstructor) => RestoredError;
+
+export declare function scriptNonce(): string | undefined;
 
 export declare function setRequestFrameState(frameState: unknown): void;
 

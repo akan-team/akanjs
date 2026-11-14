@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { applySecurityHeaders } from "./assetHeaders";
+import { ScriptPolicy, type ScriptPolicySources } from "./scriptPolicy";
 import {
   createSubRouteIndexDocument,
   createSystemPageDocument,
@@ -21,10 +22,12 @@ export interface SubRouteIndexResponseOptions extends SubRouteIndexOptions {
 export { getSystemPageHomeHref } from "./systemPageDocument";
 
 export async function createSystemPageResponse(options: SystemPageResponseOptions): Promise<Response> {
+  const scriptNonce = options.script ? ScriptPolicy.createNonce() : undefined;
   return await renderDocumentResponse({
     status: SYSTEM_PAGE_STATUS_COPY[options.kind].status,
     method: options.method,
-    document: () => createSystemPageDocument(options),
+    scripts: { nonce: scriptNonce },
+    document: () => createSystemPageDocument({ ...options, scriptNonce }),
     fallbackText: () => createSystemPageFallbackText(options.kind),
   });
 }
@@ -38,13 +41,13 @@ export async function createSubRouteIndexResponse(options: SubRouteIndexResponse
   });
 }
 
-export function createSystemPageHeaders(): Headers {
+export function createSystemPageHeaders(scripts?: ScriptPolicySources): Headers {
   return applySecurityHeaders(
     new Headers({
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
     }),
-    { html: true },
+    { html: true, scripts },
   );
 }
 
@@ -56,15 +59,17 @@ export function createSystemPageFallbackText(kind: SystemPageKind): string {
 async function renderDocumentResponse({
   status,
   method,
+  scripts,
   document,
   fallbackText,
 }: {
   status: number;
   method?: string;
+  scripts?: ScriptPolicySources;
   document: () => ReactNode;
   fallbackText: () => string;
 }): Promise<Response> {
-  const headers = createSystemPageHeaders();
+  const headers = createSystemPageHeaders(scripts);
   if (method === "HEAD") return new Response(null, { status, headers });
 
   try {

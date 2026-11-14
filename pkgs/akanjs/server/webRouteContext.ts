@@ -13,6 +13,7 @@ import { encodedFileResponse, isCompressibleContentType, matchesIfNoneMatch, var
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { HmrWsHub } from "./hmr/wsHub";
 import { normalizeHost } from "./proxy/hostBasePathWebProxy";
+import type { ScriptPolicySources } from "./scriptPolicy";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
 import type { BaseBuildArtifact, RenderState } from "./types";
@@ -118,7 +119,7 @@ export class WebRouteContext {
 
   //? Dev: a back/forward navigation replays a document from the HTTP cache without asking, which would boot a tab onto
   //? the RSC payload and registry config of a build the server no longer runs.
-  htmlResponseHeaders(status: number, req: Request): Headers {
+  htmlResponseHeaders(status: number, req: Request, scripts?: ScriptPolicySources): Headers {
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
     if (status >= 400 || !this.prodMode) headers.set("Cache-Control", "no-store");
     else {
@@ -127,7 +128,7 @@ export class WebRouteContext {
     }
     const hsts = this.prodMode ? strictTransportSecurity() : null;
     if (hsts && getClientFacingOrigin(req).startsWith("https:")) headers.set("Strict-Transport-Security", hsts);
-    return applySecurityHeaders(headers, { html: true });
+    return applySecurityHeaders(headers, { html: true, scripts });
   }
 
   stylesheetHref(req: Request, pathname: string): string | null {

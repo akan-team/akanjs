@@ -260,10 +260,12 @@ export class StudioDocument {
     );
   }
 
+  static readonly runtimeScript = `(${studioRuntime.toString()})();`;
+
   static #runtime() {
     return (
       // biome-ignore lint/security/noDangerouslySetInnerHtml: the Studio runtime, a function the server owns
-      <script dangerouslySetInnerHTML={{ __html: `(${studioRuntime.toString()})();` }} />
+      <script dangerouslySetInnerHTML={{ __html: StudioDocument.runtimeScript }} />
     );
   }
 

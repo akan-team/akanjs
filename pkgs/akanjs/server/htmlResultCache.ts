@@ -16,6 +16,7 @@ import {
 import { type EncodedBody, encodeBody } from "./contentEncoding";
 import { canonicalRouteCacheUrl, type RouteCacheQueryForm } from "./routeCacheQuery";
 import { type RouteCacheLookupReason, RouteCacheTally } from "./routeCacheTally";
+import { MAX_RESPONSE_SCRIPT_HASHES, ScriptPolicy, type ScriptPolicySources } from "./scriptPolicy";
 import type { SsrLateControl } from "./ssrTypes";
 import { WebRouteContext } from "./webRouteContext";
 
@@ -93,8 +94,13 @@ export function resolveHtmlRouteCacheStoreTtl(input: {
   return resolveRouteCacheStoreTtl(workerTtl, hostCacheState);
 }
 
-interface CachedHtmlResult {
+export interface CachedHtmlPage {
   body: EncodedBody;
+  /** Every hash source the stored page's scripts need: a replay has no nonce of its own to name them by. */
+  scriptHashes: string[];
+}
+
+interface CachedHtmlResult extends CachedHtmlPage {
   pathname: string;
   routeId?: string;
   tags?: string[];
@@ -118,6 +124,7 @@ interface HtmlStoreInput {
   cacheState: Promise<RouteCacheRenderState>;
   hostRequestStore: AkanRequestStore;
   logger: Logger;
+  scripts?: ScriptPolicySources;
 }
 
 export class HtmlResultCache {
@@ -172,7 +179,7 @@ export class HtmlResultCache {
     return { entry: { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) } };
   }
 
-  get(entry: HtmlCacheEntry): EncodedBody | null {
+  get(entry: HtmlCacheEntry): CachedHtmlPage | null {
     const cached = this.#lookup(entry);
     if (!cached) {
       this.#misses += 1;
@@ -180,7 +187,14 @@ export class HtmlResultCache {
     }
     this.#hits += 1;
     RouteCacheTally.lookup("html", true, HtmlResultCache.#lookupReason(entry, cached.queryForm));
-    return cached.body;
+    return cached;
+  }
+
+  //? The scripts React wrote under the render's nonce are named by hash in a replay's policy. Past the cap the page is
+  //? not stored: its policy header would outgrow what a proxy in front reads.
+  static #scriptHashesOf(body: Uint8Array, { nonce, hashes = [] }: ScriptPolicySources = {}): string[] | null {
+    const all = [...new Set([...hashes, ...(nonce ? ScriptPolicy.hashesOfNonced(body, nonce) : [])])];
+    return all.length > MAX_RESPONSE_SCRIPT_HASHES ? null : all;
   }
 
   static #lookupReason({ key, exactKey }: HtmlCacheEntry, queryForm: RouteCacheQueryForm): RouteCacheLookupReason {
@@ -198,7 +212,7 @@ export class HtmlResultCache {
     const { entry, pathname, hostRequestStore, logger } = input;
     let htmlStoreTtl = entry.ttl;
     let htmlStoreKey = entry.exactKey;
-    let htmlCacheMetadata: Omit<CachedHtmlResult, "body"> = { pathname, queryForm: "exact" };
+    let htmlCacheMetadata: Omit<CachedHtmlResult, keyof CachedHtmlPage> = { pathname, queryForm: "exact" };
     const shouldCacheHtml = Promise.all([input.lateControl, input.cacheState]).then(([control, cacheState]) => {
       const queryForm = cacheState.queryForm ?? "exact";
       //? The host learns how a route is keyed only from its render, so a miss is counted here rather than at lookup.
@@ -223,8 +237,13 @@ export class HtmlResultCache {
     return cacheHtmlWhileStreaming(
       htmlStream,
       (bytes) => {
+        const scriptHashes = HtmlResultCache.#scriptHashesOf(bytes, input.scripts);
+        if (!scriptHashes) {
+          logger.verbose(`html cache store skipped pathname=${pathname} reason=script-hashes`);
+          return;
+        }
         void encodeBody(bytes).then((body) =>
-          this.#cache.set(htmlStoreKey, { body, ...htmlCacheMetadata }, htmlStoreTtl),
+          this.#cache.set(htmlStoreKey, { body, scriptHashes, ...htmlCacheMetadata }, htmlStoreTtl),
         );
       },
       {

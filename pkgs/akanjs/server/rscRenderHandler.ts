@@ -4,6 +4,7 @@ import {
   getRequestDynamicUsage,
   getRequestFrameState,
   getRequestPolicy,
+  getRequestScriptHashes,
   getRequestTheme,
   setRequestRenderSearch,
   updateRequestPolicy,
@@ -79,6 +80,7 @@ interface RscRenderedRoute {
   effectivePatchDecision: AkanRscPatchDecision;
   routeHeadKey: string | undefined;
   ssrBlocking: boolean;
+  scriptHashes: string[] | undefined;
 }
 
 interface RscRenderHandlerProps {
@@ -216,10 +218,13 @@ export class RscRenderHandler {
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
         const ssrBlocking = getRequestFrameState<PageState>()?.ssr === "block";
+        //? Read once the heads have resolved, which is before the stream starts: the host sends them as a header.
+        const scriptHashes = getRequestScriptHashes();
         const trace: RscTraceMetadata = {
           ...plan.createTraceBase(effectivePatchDecision, traceCacheKey),
           cache: cacheEntry ? "miss" : "bypass",
           ssrBlocking,
+          ...(scriptHashes ? { scriptHashes } : {}),
         };
         //? Only the matched render shows the route head; an error or not-found render sent in its place has none.
         const renderedRouteState = RscPatchPlanner.routeStateWith(plan.targetRouterState, routeHeadKey);
@@ -239,7 +244,12 @@ export class RscRenderHandler {
           notFoundProbe,
           gate,
           onComplete: (rendered) =>
-            this.#storeResult(target, plan, { effectivePatchDecision, routeHeadKey, ssrBlocking }, rendered),
+            this.#storeResult(
+              target,
+              plan,
+              { effectivePatchDecision, routeHeadKey, ssrBlocking, scriptHashes },
+              rendered,
+            ),
         });
         if (result.cancelled) return;
         const control = result.control;
@@ -369,6 +379,7 @@ export class RscRenderHandler {
       patchHeadSafe: undefined,
       patchHeadSnapshot: undefined,
       ssrBlocking: cached.ssrBlocking,
+      ...(cached.scriptHashes ? { scriptHashes: cached.scriptHashes } : {}),
     });
     return true;
   }
@@ -394,7 +405,7 @@ export class RscRenderHandler {
   #storeResult(
     { url: urlObj, routeId }: RscRenderTarget,
     { cacheEntry, targetRouterState, patchCacheEntry, queryForm }: RscRenderPlan,
-    { effectivePatchDecision, routeHeadKey, ssrBlocking }: RscRenderedRoute,
+    { effectivePatchDecision, routeHeadKey, ssrBlocking, scriptHashes }: RscRenderedRoute,
     { chunks, chunksCount, control, lateControlSent }: Omit<FlightRenderResult, "cancelled">,
   ): RouteCacheRenderState {
     const cacheState: RouteCacheRenderState = {
@@ -415,6 +426,7 @@ export class RscRenderHandler {
       tags: cacheState.tags,
       theme: getRequestTheme(),
       ssrBlocking,
+      scriptHashes,
       cacheState,
       routeHeadKey,
     });

@@ -34,6 +34,7 @@ export interface AkanRequestStore {
   dynamicUsage: AkanDynamicUsage;
   needsBrowser?: boolean;
   renderSearch?: string;
+  scriptHashes?: Set<string>;
 }
 
 export interface RequestStorage {
@@ -95,6 +96,26 @@ export function setRequestTheme(theme: AkanTheme | undefined): void {
 
 export function getRequestTheme(): AkanTheme | undefined {
   return getRequestStore()?.theme;
+}
+
+/** The request header a document render carries the response's script nonce in; a navigation's render has none. */
+export const SCRIPT_NONCE_HEADER = "x-akan-script-nonce";
+
+//? A tracked header read, so the render counts as dynamic: a cached page would replay another response's nonce.
+export function scriptNonce(): string | undefined {
+  return headers().get(SCRIPT_NONCE_HEADER);
+}
+
+export function addRequestScriptHashes(hashes: string[]): void {
+  const store = getRequestStore();
+  if (!store) return;
+  store.scriptHashes ??= new Set();
+  for (const hash of hashes) store.scriptHashes.add(hash);
+}
+
+export function getRequestScriptHashes(): string[] | undefined {
+  const hashes = getRequestStore()?.scriptHashes;
+  return hashes?.size ? [...hashes] : undefined;
 }
 
 export function setRequestRenderSearch(search: string): void {

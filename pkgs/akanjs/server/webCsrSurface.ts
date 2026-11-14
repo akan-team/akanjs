@@ -6,6 +6,7 @@ import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import { CSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import type { CsrDevShell } from "./hmr/csrDevShell";
 import { DevRoutes } from "./routing/devRoutes";
+import { ScriptPolicy } from "./scriptPolicy";
 import { resolveStaticPath } from "./staticPath";
 import type { BaseBuildArtifact, HttpRoutes } from "./types";
 import { WebRouteContext } from "./webRouteContext";
@@ -21,6 +22,8 @@ export class WebCsrSurface {
   readonly #builderRpc: () => BuilderRpc | null;
   #armed = false;
   readonly #builds = new Map<string, Promise<unknown>>();
+  //? Keyed on mtime: a CSR document inlines its whole bundle, and hashing a megabyte on every request costs a millisecond.
+  readonly #fileHashes = new Map<string, { stamp: number; hashes: string[] }>();
 
   constructor(context: WebRouteContext, { devShell, builderRpc }: WebCsrSurfaceOptions) {
     this.#context = context;
@@ -36,10 +39,10 @@ export class WebCsrSurface {
         if (this.devShell) return await this.#serveDevShell(req, "/", this.devShell);
         const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, "/");
         const csrFile = csrHtml ? Bun.file(csrHtml) : null;
-        const htmlText =
-          csrFile && (await csrFile.exists())
-            ? await csrFile.text()
-            : `<!doctype html>
+        if (csrHtml && csrFile && (await csrFile.exists()))
+          return this.#htmlResponse(req, await csrFile.text(), { filePath: csrHtml });
+        const nonce = ScriptPolicy.createNonce();
+        const htmlText = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
@@ -49,10 +52,10 @@ export class WebCsrSurface {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/csr.js"></script>
+    <script type="module" nonce="${nonce}" src="/csr.js"></script>
   </body>
 </html>`;
-        return new Response(this.#withCsrHmr(htmlText), { headers: this.#context.htmlResponseHeaders(200, req) });
+        return this.#htmlResponse(req, htmlText, { nonce });
       },
       ...(this.devShell
         ? DevRoutes.mount({
@@ -73,8 +76,7 @@ export class WebCsrSurface {
       if (this.devShell) return await this.#serveDevShell(req, url.pathname, this.devShell);
       const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, url.pathname);
       if (!csrHtml) return this.#unavailableResponse(url.pathname);
-      const html = await Bun.file(csrHtml).text();
-      return new Response(this.#withCsrHmr(html), { headers: this.#context.htmlResponseHeaders(200, req) });
+      return this.#htmlResponse(req, await Bun.file(csrHtml).text(), { filePath: csrHtml });
     }
 
     const csrAssetPath = path.extname(url.pathname) ? resolveStaticPath(csrOutputDir, url.pathname) : null;
@@ -88,25 +90,47 @@ export class WebCsrSurface {
     return null;
   }
 
-  #withCsrHmr(html: string): string {
-    if (this.#context.prodMode) return html;
+  //? A built document's scripts are named by hash, as it is the same file for every request. What dev adds (the HMR
+  //? client, which imports modules itself) and what a dev shell loads by URL run under a nonce of the response.
+  #htmlResponse(req: Request, html: string, { filePath, nonce }: { filePath?: string; nonce?: string } = {}): Response {
+    const hashes = filePath ? this.#hashesOf(filePath, html) : [];
+    const devNonce = this.#context.prodMode ? nonce : (nonce ?? ScriptPolicy.createNonce());
+    const body = this.#context.prodMode ? html : this.#withCsrHmr(html, devNonce);
+    return new Response(body, {
+      headers: this.#context.htmlResponseHeaders(200, req, { nonce: devNonce, hashes }),
+    });
+  }
+
+  #hashesOf(filePath: string, html: string): string[] {
+    const stamp = Bun.file(filePath).lastModified;
+    const held = this.#fileHashes.get(filePath);
+    if (held?.stamp === stamp) return held.hashes;
+    const hashes = ScriptPolicy.hashesOf(html);
+    this.#fileHashes.set(filePath, { stamp, hashes });
+    return hashes;
+  }
+
+  #withCsrHmr(html: string, nonce: string | undefined): string {
     const csrGeneration = this.#context.renderState.csrGeneration ?? null;
     const flags = `self.__AKAN_HMR_CLIENT__="csr";self.__AKAN_CSR_GENERATION__=${csrGeneration};`;
-    return WebCsrSurface.#injectBeforeBodyEnd(html, `<script>${flags}${HMR_CLIENT_SCRIPT}</script>`);
+    const nonceAttr = nonce ? ` nonce="${nonce}"` : "";
+    return WebCsrSurface.#injectBeforeBodyEnd(html, `<script${nonceAttr}>${flags}${HMR_CLIENT_SCRIPT}</script>`);
   }
   // Armed before the first render: the builder keeps the registry bundle current only after something asked for it.
   async #serveDevShell(req: Request, pathname: string, shell: CsrDevShell): Promise<Response> {
     await this.#armFor(req, pathname);
     const { artifact } = this.#context;
     const basePath = getBasePathFromPathname(pathname, { basePaths: artifact.basePaths, i18n: artifact.i18n }) ?? "";
+    const nonce = ScriptPolicy.createNonce();
     const html = await shell.render({
       basePath,
       lang: "en",
       title: process.env.AKAN_PUBLIC_APP_NAME ?? "akan",
       cssHref: this.#context.stylesheetHref(req, pathname),
+      nonce,
     });
     if (!html) return this.#unavailableResponse(pathname);
-    return new Response(this.#withCsrHmr(html), { headers: this.#context.htmlResponseHeaders(200, req) });
+    return this.#htmlResponse(req, html, { nonce });
   }
   async #resolveCsrHtml(req: Request, csrOutputDir: string, pathname: string): Promise<string | null> {
     const resolved = WebCsrSurface.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#context.artifact);

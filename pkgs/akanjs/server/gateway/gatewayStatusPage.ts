@@ -1,10 +1,26 @@
 // styleguard-disable inline-color — the standalone status page renders before any theme CSS exists.
 import { applySecurityHeaders } from "../assetHeaders";
+import { ScriptPolicy } from "../scriptPolicy";
 
 export class GatewayStatusPage {
+  static readonly #pollScript = `
+  const poll = async () => {
+    try {
+      const res = await fetch(location.href, { cache: "no-store" });
+      if (res.ok) { location.reload(); return; }
+    } catch {}
+    setTimeout(poll, 1000);
+  };
+  setTimeout(poll, 1000);
+`;
+  static readonly #scripts = { hashes: [ScriptPolicy.hashOf(GatewayStatusPage.#pollScript)] };
+
   static headers(contentType: string): Headers {
     const headers = new Headers({ "content-type": contentType, "cache-control": "no-store" });
-    return applySecurityHeaders(headers, { html: contentType.startsWith("text/html") });
+    return applySecurityHeaders(headers, {
+      html: contentType.startsWith("text/html"),
+      scripts: GatewayStatusPage.#scripts,
+    });
   }
 
   static html({ heading, detail, note }: { heading: string; detail: string; note: string }) {
@@ -27,16 +43,7 @@ export class GatewayStatusPage {
 <pre>${GatewayStatusPage.#escapeHtml(detail)}</pre>
 <p>${GatewayStatusPage.#escapeHtml(note)}</p>
 </main>
-<script>
-  const poll = async () => {
-    try {
-      const res = await fetch(location.href, { cache: "no-store" });
-      if (res.ok) { location.reload(); return; }
-    } catch {}
-    setTimeout(poll, 1000);
-  };
-  setTimeout(poll, 1000);
-</script>
+<script>${GatewayStatusPage.#pollScript}</script>
 </body>
 </html>`;
   }
