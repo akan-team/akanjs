@@ -18,8 +18,8 @@ export interface AkanConsoleOptions {
   runtimeDir?: string;
 }
 
-/** @internal `level=warn grep="payment failed" endpoint=mutation:*` → a query object the socket parses. */
-export const parseAkanConsoleQuery = (args: string): Record<string, string> => {
+/** `level=warn grep="payment failed" endpoint=mutation:*` → a query object the socket parses. */
+const parseAkanConsoleQuery = (args: string): Record<string, string> => {
   const query: Record<string, string> = {};
   for (const match of args.matchAll(/(?<![A-Za-z])([A-Za-z]+)=(?:"([^"]*)"|'([^']*)'|(\S+))/g)) {
     const [, key, doubleQuoted, singleQuoted, bare] = match;
@@ -28,11 +28,8 @@ export const parseAkanConsoleQuery = (args: string): Record<string, string> => {
   return query;
 };
 
-/** @internal Attaches to the running server's control socket, not the console's own `listen: false` server. */
-export const createAkanConsoleLogCommands = (
-  appName: string,
-  runtimeDir: string,
-): Record<string, AkanConsoleCommand> => {
+/** Attaches to the running server's control socket, not the console's own `listen: false` server. */
+const createAkanConsoleLogCommands = (appName: string, runtimeDir: string): Record<string, AkanConsoleCommand> => {
   const socketPath = LogTailClient.socketPath(runtimeDir);
   let tail: { client: LogTailClient; id: string; summary: string } | null = null;
   const connect = async (
@@ -165,11 +162,7 @@ export const getAkanConsoleMethods = (value: unknown): string[] => {
   return [...names].sort((a, b) => a.localeCompare(b));
 };
 
-/** @internal */
-export const createAkanConsoleContext = (
-  server: AkanServer,
-  globals: Record<string, unknown> = {},
-): AkanConsoleContext => {
+const createAkanConsoleContext = (server: AkanServer, globals: Record<string, unknown> = {}): AkanConsoleContext => {
   return {
     server,
     env: server.env,

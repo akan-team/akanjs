@@ -116,6 +116,19 @@ pages declaring one name never clash, and a registry kept outside the surface re
   blocks, the results ride in a *user* turn, roles must alternate — so two wire turns that map to one role are
   merged — and `max_tokens` is required. **Both require `model`**: a default would age into a 404, and worse, it
   would decide the vision claim for the app.
+- **A turn's context is data in a user turn, never part of the system prompt.** Both adaptors send
+  `request.context` as a `<turn-context …>` block that ends the turn's last user-role content, after that turn's
+  tool results, so the system prompt is the instructions alone and stays the same text from turn to turn. The
+  block closes on a delimiter chosen so its content cannot contain it. A block marked `untrusted: true` holds text
+  someone other than the developer or the user may have written; it goes in a `<page-content …>` block of its own,
+  the one a `readScreen` result arrives in, and the turn counts as an untrusted read. A compaction summary is
+  history the model wrote, so it too rides a user turn, in a `<conversation-summary …>` block, never the system
+  role. `LlmContext.of(context)` and `LlmContext.summary(text)` (`akanjs/service`) build them. An adaptor of the
+  app's own that does not go through `OpenaiDialect.requestBody` appends the context text to its last user-role
+  content, maps a `summary` message to a user turn, and writes neither into its system prompt — `systemPrompt`
+  returns the instructions alone, so pairing it with hand-built messages sends no context. A dialect added to the
+  framework is a class with a static `requestBody`; `llmDialect.conformance.test.ts` finds it by that and fails
+  until it passes the same checks.
 - **`OpenaiLlm` claims vision for its default host and for nothing else.** OpenAI's own endpoint takes image
   parts, so that is what it answers with no `host` set. A `host` the app named is a gateway the class knows
   nothing about, and it stays text-only until `option.setLlm({ accepts })` says otherwise — handing bytes to a
@@ -233,7 +246,13 @@ pages declaring one name never clash, and a registry kept outside the surface re
   pointed at — leaving a live reference showing the result with no record of what it was changed from.
   `refName`/`refId`/`path` travel so a tool can read the current value when the answer needs it, and
   `AgentService.referenced` folds the whole lot into the message text in one place, so every provider carries a
-  reference without either adaptor knowing the word. **The value is masked on the way in and nowhere else**: masking
+  reference without either adaptor knowing the word. **A reference is the record's own text, not the user's**: its
+  pointer, label, value and note reach the model together in one `<page-content …>` block under a heading, the
+  token in the user's words is sent as `@[pointer](mention:pointer)` so the title is in that block only — or as
+  `@[ref-1a2b3c4d](mention:ref-1a2b3c4d)`, with the pointer spelled in the block, when the id or path is not a
+  token, as a slug is not — and a
+  message that carries one counts as a page read, so the first change after a mention asks the user first, as after
+  `readScreen`. **The value is masked on the way in and nowhere else**: masking
   needs the model class, which no wire carries, so the model a host names when it stages the reference is the whole
   of the decision about what leaves the browser — name the class that actually holds the field, because a `Light`
   one usually does not. **The ceiling is 20,000 characters per reference**, applied as it is staged and again on
@@ -342,7 +361,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `AgentConfirm.set({ byName })` moves that default app-wide. After a tool marked `taint: "source"` (`readScreen`,
   `readState`, `viewImage`) returns text the user did not write, the next call that changes something asks once,
   whatever its own `confirm` says, until the user approves a call; `taint: "exempt"` marks a tool that only moves the
-  view, and `AgentConfirm.set({ afterScreenRead: false })` turns the rule off. `st.tool("x", { label:
+  view, and `AgentConfirm.set({ afterScreenRead: false })` turns the rule off. A message that points at a record
+  with an `@` mention counts as such a read, and so does a turn whose context holds a block marked `untrusted`. `st.tool("x", { label:
   l("ticket.archive") })` gives the action a name a person reads — `Agent.useScreenActions()` hands it to a command
   palette, and the model never sees it. Reach a store action
   from the body — `.exec((id) => st.do.removeX(id))` — which is how an agent gets CRUD; `st.do` on its own
@@ -552,7 +572,25 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `st.useState(name, Type, { set: true }).desc("…").init(initial)` local state, read-only without `set`. Both
   end in a hook, so a conditional surface withholds the name rather than skipping the chain. A subscribed store key is listed in
   the state context block by name and pulled with `readState(key)`, masked by the model that key declares — while
-  a key the screen does not read stays unreadable even when a sibling key of the same store is live. **There is no
+  a key the screen does not read stays unreadable even when a sibling key of the same store is live. **The block
+  carries a value only when it is an id, an enum member, a number or a boolean**: a string rides inline when it is
+  one token of up to 40 letters, digits, `.`, `_` or `-`, of at most three words — a word ends at a separator or
+  at a lower-to-upper case change, so `created-at-desc` and `createdAtDesc` pass and four joined words are a
+  sentence; more parts pass only as an id's, each hex with a digit or eight characters long, as in a UUID; a run of
+  over sixteen letters with no digit never passes — and any other string is listed by key and type alone, because
+  free text is whatever the record's author wrote and the model reads that through `readState`, where it arrives as
+  page content. The route block follows the same rule for each path segment and path param, up to twelve words of
+  each. **A search param rides inline when a store declares its key with `search("key", …)`** and its value is a
+  token; of the others at most four ride, key and value both tokens, and the rest are left out, key and value, with
+  their count in `searchParamsWithheld`. A page's own typed `search` is read on the server and does not count, so
+  declare the params an agent should see in a store. What is left out is named in `withheld` as `pathname`,
+  `params` or `searchParams`, and `readState` answers those three whether or not a component subscribes them. The
+  screen block applies the rule to a `Load` scope's label, which is its record's title, and to the ids and labels
+  of a list scope's `items` — a row whose id is not a token, a slug or a mixed-case random id, is left out — and
+  then says to read the scope with `readScreen`. So instructions never say "the query is in the route context";
+  they say to read `searchParams`. **Three things still ride whole, because no read returns them**: an
+  `Agent.Zone`'s `label` and a value published with `st.expose`, `st.useState` or `useAgentResource`. Publish an
+  id, a count or an enum member there, never text a user wrote. **There is no
   store-level exposure declaration**: a store class says nothing about agents, and `st.use.x({ agent: false })` is
   how the component that subscribes a value keeps it off the surface. Base-store plumbing does the same at the
   call site — `st.use.path({ agent: false })`, `st.use.tryJwt({ agent: false })` — so routing and the caller's
@@ -624,8 +662,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   have, and the next one asks again — a summarizer that was momentarily unreachable says nothing about whether
   this transcript can shrink. One that *landed* and shrank nothing does, so that one is not retried until another
   threshold's worth has been added. On the
-  wire a summary wears the user's role because the wire has no other, so a provider mapping frames it as a system
-  message and `/retry` steps over it — replaying it would send the notes back as a question. **While a summary is
+  wire a summary wears the user's role because the wire has no other, so a provider mapping frames it as fenced
+  history in a user turn and `/retry` steps over it — replaying it would send the notes back as a question. **While a summary is
   being written the transcript says so** (`session.isCompacting`, distinct from `isRunning`, which an
   auto-compaction runs inside): that turn takes as long as any other and answers nothing the user asked, so a chat
   that only shows the running dot reads as a question being ignored.
@@ -664,7 +702,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   not with prose), `readScreen` (the rendered DOM as compact text — headings, links, control values, and `(disabled)`
   on a control or button that has it; the chat's own UI is skipped via `data-agent-ui`, and a password value is never
   read), `readState(key)` (one masked store key — a key that is unknown or that this screen does not read is refused
-  *with the keys it can* read, the way `readScreen` names its sections), `highlight(target)`, and `viewImage(src)` (one
+  *with the keys it can* read, the way `readScreen` names its sections; the route's own `pathname`, `params` and
+  `searchParams` are always readable), `highlight(target)`, and `viewImage(src)` (one
   `<img>` on screen, redrawn as a JPEG at most 1568px long and attached to the result — `src` must be one this view
   shows, as `readScreen({ images: true })` printed it, so the agent cannot have the browser fetch an address of its
   own, and a `data:` one is refused). Declaring a hook tool under one of those names shadows the built-in, so reuse
@@ -760,7 +799,7 @@ pages declaring one name never clash, and a registry kept outside the surface re
   above the cut and a result this large arrives below it. Clipped rather than dropped, because a model handed a
   value it cannot see the end of asks a narrower question, where one handed nothing answers from the field names.
   The cap is a safety rail, not the design: a tool should return what answers the question — an id, a count, the
-  three fields the agent asked about — and `AgentContext` inlines only small primitives for the same reason.
+  three fields the agent asked about — and `AgentContext` inlines only numbers, booleans and one-token strings.
 - **A slow tool reports its own progress with `AgentProgress.report(message, { done, total })`** from wherever the
   work is — a store action, an upload loop, an adapter — reached through a module slot rather than a parameter, and
   a no-op when nobody is rendering it. The chat shows it on that call's row until the row resolves. It is the

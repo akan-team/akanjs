@@ -16,6 +16,18 @@ describe("akanjs/client/native/<plugin>", () => {
     expect(shimmed).toEqual(withApi);
   });
 
+  test("names every plugin path in the package's exports, which hold no wildcard", async () => {
+    const { exports } = (await Bun.file(path.join(import.meta.dir, "../package.json")).json()) as {
+      exports: Record<string, { import?: string }>;
+    };
+    const unnamed = readdirSync(shims)
+      .map((file) => [`./client/native/${file.replace(/\.ts$/, "")}`, `./client/native/${file}`])
+      .filter(([subpath, target]) => exports[subpath]?.import !== target)
+      .map(([subpath]) => subpath);
+    expect(unnamed).toEqual([]);
+    expect(Object.keys(exports).filter((subpath) => subpath.includes("*"))).toEqual([]);
+  });
+
   test("resolves through the package's exports to the plugin's page API", async () => {
     const window = await import("akanjs/client/native/window");
     const shortcut = await import("akanjs/client/native/global-shortcut");

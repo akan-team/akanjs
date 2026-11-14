@@ -78,8 +78,8 @@ CI fails when the reports no longer match the source, and on a pull request it c
   cannot tell it is compatible. Add the `minor` changeset anyway and say that no upgrade step is needed.
 - Mark an export `/** @deprecated <what instead> */` and release that before removing it. The report shows the tag,
   and adding or removing it is not a change.
-- The wildcard subpaths (`akanjs/server/*` and the others in `akanjs.wildcards.api.md`) are listed, but the files
-  under them are not reported one by one.
+- `exports` names every public subpath and holds no wildcard: a file reachable only through `akanjs/server/*` was
+  public without anyone choosing it. Add a named entry for a file a consumer must import.
 
 ## Coding Style
 

@@ -117,7 +117,7 @@ describe("AgentLoop rounds", () => {
     expect(stored).toEqual([
       { role: "assistant", toolCalls: [callOf("c1", "readPage", { page: 1 })] },
       { role: "tool", toolResults: [{ id: "c1", name: "readPage", result: "readPage:ok" }], tainted: true },
-      { role: "assistant", text: "Done." },
+      { role: "assistant", text: "Done.", tainted: true },
     ]);
     expect(called.map(({ account, caller }) => [account, caller?.allow])).toEqual([
       [ann, catalogue.map((t) => t.name)],
@@ -177,8 +177,11 @@ describe("AgentLoop rounds", () => {
     for await (const _event of service.loop(ask("hi")));
     const [request] = seenByLlm as [LlmTurnRequest];
     expect(request.instructions).toBe(AgentLoop.noInstructions);
-    expect(AnthropicLlm.systemPrompt(request)).not.toContain("in-page");
-    expect(OpenaiDialect.systemPrompt(request)).not.toContain("in-page");
+    expect(AnthropicLlm.requestBody("claude-opus-5", request).system).toBe(AgentLoop.noInstructions);
+    expect(OpenaiDialect.requestBody("deepseek-v4-flash", request).messages[0]).toEqual({
+      role: "system",
+      content: AgentLoop.noInstructions,
+    });
   });
 
   test("ends on a length cut with only its text kept, and at maxRounds before another model call", async () => {

@@ -1,6 +1,12 @@
 import type { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
 
+//? For the host alone, never relayed: the boot artifact is on disk, and `builder-ready` follows once the watcher is up.
+export interface BaseBuiltMessage {
+  type: "base-built";
+  phaseMs: Record<string, number>;
+}
+
 // `process.exit` drops an ipc write that has not flushed (a natural exit does not), and whether one survives
 // depends on the message's shape as well as its size — so every send reports its flush and `shutdown` drains.
 export class BuilderChannel {
@@ -8,7 +14,7 @@ export class BuilderChannel {
   static readonly #flushTimeoutMs = 5_000;
   static readonly #flushing = new Set<Promise<void>>();
 
-  static send(message: BuilderMessage): Promise<void> {
+  static send(message: BuilderMessage | BaseBuiltMessage): Promise<void> {
     const send = process.send;
     if (!send) return Promise.resolve();
     const flushed = new Promise<void>((resolve) => {
@@ -25,7 +31,7 @@ export class BuilderChannel {
   }
 
   // Tracked like `send`: for an event nobody awaits, `drain` is all that stands between it and the exit.
-  static emit(message: BuilderMessage): void {
+  static emit(message: BuilderMessage | BaseBuiltMessage): void {
     void BuilderChannel.send(message);
   }
 

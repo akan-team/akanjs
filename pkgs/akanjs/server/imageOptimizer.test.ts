@@ -131,6 +131,53 @@ describe("ImageOptimizer", () => {
     expect(res.status).toBe(400);
   });
 
+  test("every image response carries nosniff, a sandboxing policy and a download name", async () => {
+    const optimized = await optimizer.handle(request("/photo.png", 48, "image/webp"));
+    const cached = await optimizer.handle(request("/photo.png", 48, "image/webp"));
+    const passthrough = await optimizer.handle(request("/loop.gif", 48, "image/webp"));
+    const revalidate = request("/photo.png", 48, "image/webp");
+    revalidate.headers.set("if-none-match", cached.headers.get("ETag") ?? "");
+    const notModified = await optimizer.handle(revalidate);
+    const refused = await optimizer.handle(request("/logo.svg", 48, "image/webp"));
+    const missing = await optimizer.handle(request("/missing.png", 48, "image/webp"));
+    const malformed = await optimizer.handle(new Request("http://local.akan/_akan/image"));
+
+    expect([optimized, cached, passthrough, notModified, refused, missing, malformed].map((res) => res.status)).toEqual(
+      [200, 200, 200, 304, 400, 404, 400],
+    );
+    for (const res of [optimized, cached, passthrough, notModified, refused, missing, malformed]) {
+      expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+      expect(res.headers.get("Content-Security-Policy")).toBe("script-src 'none'; frame-src 'none'; sandbox;");
+    }
+    expect(optimized.headers.get("Content-Disposition")).toBe('attachment; filename="photo.webp"');
+    expect(cached.headers.get("Content-Disposition")).toBe('attachment; filename="photo.webp"');
+    expect(notModified.headers.get("Content-Disposition")).toBe('attachment; filename="photo.webp"');
+    expect(passthrough.headers.get("Content-Disposition")).toBe('attachment; filename="loop.gif"');
+  });
+
+  test("an svg the app allowed is served as it is, under a sandboxing policy", async () => {
+    const svg = optimizerFor("cache-svg", { dangerouslyAllowSVG: true });
+    const res = await svg.handle(request("/logo.svg", 48, "image/webp"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Type")).toBe("image/svg+xml");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    expect(res.headers.get("Content-Security-Policy")).toBe("script-src 'none'; frame-src 'none'; sandbox;");
+    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="logo.svg"');
+    expect(await res.text()).toBe('<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  });
+
+  test("names the download after the source file, in plain ASCII", async () => {
+    await Bun.write(
+      path.join(root, "public/my photo.png"),
+      await Bun.file(path.join(root, "public/photo.png")).bytes(),
+    );
+    const res = await optimizer.handle(request("/my photo.png", 48, "image/webp"));
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Content-Disposition")).toBe('attachment; filename="my_photo.webp"');
+  });
+
   test("answers 304 for a matching if-none-match", async () => {
     const first = await optimizer.handle(request("/photo.png", 32, "image/webp"));
     const etag = first.headers.get("ETag") ?? "";

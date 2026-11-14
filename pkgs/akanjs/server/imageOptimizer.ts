@@ -5,6 +5,7 @@ import { isIP } from "node:net";
 import path from "node:path";
 import { Logger, TrustedProxy } from "akanjs/common";
 import { isAnimatedImage } from "./animatedImage";
+import { assetHeaders } from "./assetHeaders";
 import { matchesIfNoneMatch } from "./contentEncoding";
 import { ImageOptimizerError } from "./imageOptimizerError";
 import { Semaphore } from "./semaphore";
@@ -67,6 +68,8 @@ export class ImageOptimizer {
   static readonly #heic = "image/heic";
   static readonly #bypassTypes = new Set(["image/x-icon", "image/x-icns", "image/bmp", "image/jxl", "image/heic"]);
   static readonly #encodableTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
+  //? Security: the sandbox keeps an SVG opened at its own URL from running script; an <img> shows it unchanged.
+  static readonly #contentSecurityPolicy = "script-src 'none'; frame-src 'none'; sandbox;";
 
   #publicDir: string;
   #cacheDir: string;
@@ -123,15 +126,27 @@ export class ImageOptimizer {
 
   async handle(req: Request): Promise<Response> {
     const parsed = this.#parseRequest(req);
-    if ("error" in parsed) return new Response(parsed.error, { status: 400 });
+    if ("error" in parsed) return ImageOptimizer.#errorResponse(parsed.error, 400);
 
     try {
-      return this.#imageResponse(req, await this.#loadOptimizedImage(parsed));
+      return this.#imageResponse(req, parsed.href, await this.#loadOptimizedImage(parsed));
     } catch (error) {
       const message = error instanceof ImageOptimizerError ? error.message : "Unable to optimize image";
       const status = error instanceof ImageOptimizerError ? error.statusCode : 500;
-      return new Response(message, { status, headers: status === 503 ? { "retry-after": "1" } : undefined });
+      return ImageOptimizer.#errorResponse(message, status);
     }
+  }
+
+  static #headers(contentType: string, cacheControl?: string): Headers {
+    const headers = assetHeaders({ contentType, cacheControl });
+    headers.set("Content-Security-Policy", ImageOptimizer.#contentSecurityPolicy);
+    return headers;
+  }
+
+  static #errorResponse(message: string, status: number): Response {
+    const headers = ImageOptimizer.#headers("text/plain; charset=utf-8");
+    if (status === 503) headers.set("Retry-After", "1");
+    return new Response(message, { status, headers });
   }
 
   // A cold srcSet requests one width several times before its cache file exists: identical requests join one run.
@@ -466,15 +481,14 @@ export class ImageOptimizer {
     );
   }
 
-  #imageResponse(req: Request, image: OptimizedImage) {
-    const headers = new Headers({
-      "Content-Type": image.contentType,
-      "Cache-Control": this.#prodMode
-        ? `public, max-age=${image.maxAge}, must-revalidate`
-        : "public, max-age=0, must-revalidate",
-      ETag: image.etag,
-      Vary: "Accept",
-    });
+  #imageResponse(req: Request, href: string, image: OptimizedImage) {
+    const headers = ImageOptimizer.#headers(
+      image.contentType,
+      this.#prodMode ? `public, max-age=${image.maxAge}, must-revalidate` : "public, max-age=0, must-revalidate",
+    );
+    headers.set("Content-Disposition", `attachment; filename="${ImageOptimizer.#fileName(href, image.contentType)}"`);
+    headers.set("ETag", image.etag);
+    headers.set("Vary", "Accept");
     if (matchesIfNoneMatch(req.headers.get("if-none-match"), image.etag))
       return new Response(null, { status: 304, headers });
     return new Response(ImageOptimizer.#toArrayBuffer(image.buffer), { headers });
@@ -534,6 +548,12 @@ export class ImageOptimizer {
       .replace(/\*/g, "[^/]*")
       .replace(/__AKAN_DOUBLE_STAR__/g, ".*");
     return new RegExp(`^${escaped}$`).test(value);
+  }
+
+  static #fileName(href: string, contentType: string): string {
+    const base = ImageOptimizer.#safeDecodePathname(href)?.split("/").pop() ?? "";
+    const stem = base.replace(/\.[^.]*$/, "").replace(/[^\w.-]+/g, "_");
+    return `${/[a-z0-9]/i.test(stem) ? stem : "image"}.${ImageOptimizer.#getExtension(contentType)}`;
   }
 
   static #safeDecodePathname(href: string): string | null {
@@ -604,6 +624,18 @@ export class ImageOptimizer {
         return "gif";
       case ImageOptimizer.#svg:
         return "svg";
+      case ImageOptimizer.#heic:
+        return "heic";
+      case "image/x-icon":
+        return "ico";
+      case "image/x-icns":
+        return "icns";
+      case "image/bmp":
+        return "bmp";
+      case "image/jxl":
+        return "jxl";
+      case "image/tiff":
+        return "tiff";
     }
     return "jpg";
   }

@@ -1,5 +1,5 @@
-import type { FontOptimizer } from "@akanjs/devkit/frontendBuild";
 import type { BaseBuildArtifact, CssPayload, HmrTrace, PagesBundlePayload } from "akanjs/server";
+import type { FontOptimizer } from "../frontendBuild";
 
 export type OptimizedFonts = Awaited<ReturnType<FontOptimizer["optimize"]>>;
 
@@ -32,6 +32,7 @@ export interface BuildBatchResult {
   cssAssets?: PagesBatchCssAssets;
   optimizedFonts?: OptimizedFonts;
   artifact?: BaseBuildArtifact; // `base` batches only
+  basePhaseMs?: Record<string, number>;
   errors: Partial<Record<BuildBatchNeed, string>>;
   crashed?: boolean; // died before reporting its result
   /** Of a crashed batch, the needs it died before reporting: the others streamed their build-status first. */

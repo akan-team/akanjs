@@ -405,6 +405,7 @@ export interface ConstantSchemaOptions {
 
 export interface ContextBlock {
     kind: string;
+    untrusted?: boolean;
     [key: string]: unknown;
 }
 
@@ -2835,10 +2836,6 @@ interface RootProps {
     children: ReactNode;
     st: unknown;
 }
-
-type SSRProviderProps = ProviderProps & {
-    fonts?: ReactFont[];
-};
 
 interface ScalarProps {
     refName?: string;
