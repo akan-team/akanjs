@@ -168,7 +168,7 @@ export const ownerOf = (relativePath: string) => {
   return (root === "apps" || root === "libs") && name ? `${root}/${name}` : null;
 };
 
-export const createFactReader = (ts: Ts, ast: AkanAst) => {
+const syntaxReaderOf = (ts: Ts, ast: AkanAst) => {
   const spanOf = (source: TS.SourceFile, node: TS.Node): AkanSpan => {
     const start = node.getStart(source);
     const end = node.getEnd();
@@ -255,6 +255,99 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       return name && node ? [{ name, span: spanOf(source, node), extent: extentOf(source, property) }] : [];
     });
 
+  const verbReaderOf = (parameter: TS.ParameterDeclaration | undefined) => {
+    const verbs = new Map<string, string>();
+    if (parameter && ts.isObjectBindingPattern(parameter.name))
+      for (const element of parameter.name.elements) {
+        const verb = element.propertyName ?? element.name;
+        if (ts.isIdentifier(verb) && ts.isIdentifier(element.name)) verbs.set(element.name.text, verb.text);
+      }
+    const holder = parameter && ts.isIdentifier(parameter.name) ? parameter.name.text : null;
+    return (callee: TS.Expression | undefined) => {
+      if (callee && ts.isIdentifier(callee)) return verbs.get(callee.text) ?? null;
+      if (
+        callee &&
+        ts.isPropertyAccessExpression(callee) &&
+        ts.isIdentifier(callee.expression) &&
+        callee.expression.text === holder
+      )
+        return callee.name.text;
+      return null;
+    };
+  };
+
+  return {
+    spanOf,
+    extentOf,
+    unwrap,
+    moduleRefOf,
+    returnedObject,
+    builderOf,
+    guardNameOf,
+    optionObjectOf,
+    chainOf,
+    keyName,
+    objectKeys,
+    verbReaderOf,
+  };
+};
+
+type SyntaxReader = ReturnType<typeof syntaxReaderOf>;
+
+const sourceReaderOf = (ts: Ts) => {
+  const importsOf = (statement: TS.ImportDeclaration): ImportFact[] => {
+    const { importClause, moduleSpecifier } = statement;
+    if (!importClause || !ts.isStringLiteral(moduleSpecifier)) return [];
+    const from = moduleSpecifier.text;
+    const bindings = importClause.namedBindings;
+    return [
+      ...(importClause.name ? [{ name: importClause.name.text, imported: "default", from }] : []),
+      ...(bindings && ts.isNamespaceImport(bindings) ? [{ name: bindings.name.text, imported: "*", from }] : []),
+      ...(bindings && ts.isNamedImports(bindings)
+        ? bindings.elements.map((element) => ({
+            name: element.name.text,
+            imported: (element.propertyName ?? element.name).text,
+            from,
+          }))
+        : []),
+    ];
+  };
+
+  const docOf = (source: TS.SourceFile, node: TS.Node) => {
+    const { text } = source;
+    const ranges = ts.getLeadingCommentRanges(text, node.getFullStart()) ?? [];
+    const comments: string[] = [];
+    let end = node.getStart(source);
+    for (const range of [...ranges].reverse()) {
+      if ((text.slice(range.end, end).match(/\n/g)?.length ?? 0) > 1) break;
+      comments.unshift(text.slice(range.pos, range.end));
+      end = range.pos;
+    }
+    const lines = comments
+      .flatMap((comment) => comment.split("\n"))
+      .map((line) =>
+        line
+          .trim()
+          .replace(/^\/\*\*?|\*\/$/g, "")
+          .replace(/^(?:\/\/[?*!]?|\*)/, "")
+          .replace(/\{@link\s+([^}\s|]+)[^}]*\}/g, "$1")
+          .trim(),
+      )
+      .filter((line) => line && !/^(?:biome-ignore|eslint-|@ts-)/.test(line));
+    return lines.length ? lines.join(" ") : null;
+  };
+
+  const importsIn = (source: TS.SourceFile) => source.statements.filter(ts.isImportDeclaration).flatMap(importsOf);
+
+  return { docOf, importsIn };
+};
+
+const signalKeyReaderOf = (
+  ts: Ts,
+  ast: AkanAst,
+  { spanOf, extentOf, returnedObject, optionObjectOf, chainOf, verbReaderOf }: SyntaxReader,
+  guardsIn: ReturnType<typeof createGuardFactReader>["guardsIn"],
+) => {
   const sliceKeysOf = (
     source: TS.SourceFile,
     builder: TS.ArrowFunction | TS.FunctionExpression | undefined,
@@ -278,27 +371,39 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
       ];
     });
 
-  const verbReaderOf = (parameter: TS.ParameterDeclaration | undefined) => {
-    const verbs = new Map<string, string>();
-    if (parameter && ts.isObjectBindingPattern(parameter.name))
-      for (const element of parameter.name.elements) {
-        const verb = element.propertyName ?? element.name;
-        if (ts.isIdentifier(verb) && ts.isIdentifier(element.name)) verbs.set(element.name.text, verb.text);
-      }
-    const holder = parameter && ts.isIdentifier(parameter.name) ? parameter.name.text : null;
-    return (callee: TS.Expression | undefined) => {
-      if (callee && ts.isIdentifier(callee)) return verbs.get(callee.text) ?? null;
-      if (
-        callee &&
-        ts.isPropertyAccessExpression(callee) &&
-        ts.isIdentifier(callee.expression) &&
-        callee.expression.text === holder
-      )
-        return callee.name.text;
-      return null;
-    };
+  const endpointKeysOf = (
+    source: TS.SourceFile,
+    builder: TS.ArrowFunction | TS.FunctionExpression | undefined,
+    made: InPlaceGuard[],
+    model: string,
+  ) => {
+    const verbOf = verbReaderOf(builder?.parameters[0]);
+    return (returnedObject(builder)?.properties ?? []).flatMap((property): EndpointKeyFact[] => {
+      if (!ts.isPropertyAssignment(property)) return [];
+      const name = ast.nodeName(property.name);
+      if (!name) return [];
+      const { root, methods } = chainOf(property.initializer);
+      return [
+        {
+          name,
+          span: spanOf(source, property.name),
+          extent: extentOf(source, property),
+          verb: root ? verbOf(root.expression) : null,
+          guards: root ? guardsIn(source, optionObjectOf(root), made, `${model}.${name}`) : [],
+          argCount: methods.filter((method) => argMethods.has(method)).length,
+        },
+      ];
+    });
   };
 
+  return { sliceKeysOf, endpointKeysOf };
+};
+
+const jobKeyReaderOf = (
+  ts: Ts,
+  ast: AkanAst,
+  { spanOf, extentOf, unwrap, returnedObject, chainOf, verbReaderOf }: SyntaxReader,
+) => {
   const numberOf = (expression: TS.Expression): number | null => {
     const value = unwrap(expression);
     if (ts.isNumericLiteral(value)) return Number(value.text.replace(/_/g, ""));
@@ -373,6 +478,14 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     });
   };
 
+  return { internalKeysOf };
+};
+
+const serviceReaderOf = (
+  ts: Ts,
+  ast: AkanAst,
+  { spanOf, extentOf, returnedObject, guardNameOf, chainOf, verbReaderOf }: SyntaxReader,
+) => {
   const plugsOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) => {
     const verbOf = verbReaderOf(builder?.parameters[0]);
     return (returnedObject(builder)?.properties ?? []).flatMap((property): PlugFact[] => {
@@ -402,31 +515,22 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return bindings;
   };
 
-  const endpointKeysOf = (
-    source: TS.SourceFile,
-    builder: TS.ArrowFunction | TS.FunctionExpression | undefined,
-    made: InPlaceGuard[],
-    model: string,
-  ) => {
-    const verbOf = verbReaderOf(builder?.parameters[0]);
-    return (returnedObject(builder)?.properties ?? []).flatMap((property): EndpointKeyFact[] => {
-      if (!ts.isPropertyAssignment(property)) return [];
-      const name = ast.nodeName(property.name);
-      if (!name) return [];
-      const { root, methods } = chainOf(property.initializer);
-      return [
-        {
-          name,
-          span: spanOf(source, property.name),
-          extent: extentOf(source, property),
-          verb: root ? verbOf(root.expression) : null,
-          guards: root ? guardsIn(source, optionObjectOf(root), made, `${model}.${name}`) : [],
-          argCount: methods.filter((method) => argMethods.has(method)).length,
-        },
-      ];
+  const methodsOf = (source: TS.SourceFile, statement: TS.ClassDeclaration) =>
+    statement.members.flatMap((member): MemberFact[] => {
+      if (!ts.isMethodDeclaration(member) || !member.body) return [];
+      const name = ast.nodeName(member.name);
+      if (!name || ts.getModifiers(member)?.some(({ kind }) => kind === ts.SyntaxKind.StaticKeyword)) return [];
+      return [{ name, span: spanOf(source, member.name), extent: extentOf(source, member) }];
     });
-  };
 
+  return { plugsOf, adaptorBindingsIn, methodsOf };
+};
+
+const constantReaderOf = (
+  ts: Ts,
+  ast: AkanAst,
+  { spanOf, extentOf, unwrap, returnedObject, chainOf, keyName, objectKeys }: SyntaxReader,
+) => {
   const filterQueriesOf = (source: TS.SourceFile, builder: TS.ArrowFunction | TS.FunctionExpression | undefined) => {
     const query = returnedObject(builder)?.properties.find(
       (property): property is TS.PropertyAssignment =>
@@ -476,61 +580,20 @@ export const createFactReader = (ts: Ts, ast: AkanAst) => {
     return list.elements.flatMap((element) => (ts.isStringLiteralLike(element) ? [element.text] : []));
   };
 
-  const methodsOf = (source: TS.SourceFile, statement: TS.ClassDeclaration) =>
-    statement.members.flatMap((member): MemberFact[] => {
-      if (!ts.isMethodDeclaration(member) || !member.body) return [];
-      const name = ast.nodeName(member.name);
-      if (!name || ts.getModifiers(member)?.some(({ kind }) => kind === ts.SyntaxKind.StaticKeyword)) return [];
-      return [{ name, span: spanOf(source, member.name), extent: extentOf(source, member) }];
-    });
+  return { constantOf, enumValuesOf, filterQueriesOf };
+};
 
-  const importsOf = (statement: TS.ImportDeclaration): ImportFact[] => {
-    const { importClause, moduleSpecifier } = statement;
-    if (!importClause || !ts.isStringLiteral(moduleSpecifier)) return [];
-    const from = moduleSpecifier.text;
-    const bindings = importClause.namedBindings;
-    return [
-      ...(importClause.name ? [{ name: importClause.name.text, imported: "default", from }] : []),
-      ...(bindings && ts.isNamespaceImport(bindings) ? [{ name: bindings.name.text, imported: "*", from }] : []),
-      ...(bindings && ts.isNamedImports(bindings)
-        ? bindings.elements.map((element) => ({
-            name: element.name.text,
-            imported: (element.propertyName ?? element.name).text,
-            from,
-          }))
-        : []),
-    ];
-  };
-
-  const docOf = (source: TS.SourceFile, node: TS.Node) => {
-    const { text } = source;
-    const ranges = ts.getLeadingCommentRanges(text, node.getFullStart()) ?? [];
-    const comments: string[] = [];
-    let end = node.getStart(source);
-    for (const range of [...ranges].reverse()) {
-      if ((text.slice(range.end, end).match(/\n/g)?.length ?? 0) > 1) break;
-      comments.unshift(text.slice(range.pos, range.end));
-      end = range.pos;
-    }
-    const lines = comments
-      .flatMap((comment) => comment.split("\n"))
-      .map((line) =>
-        line
-          .trim()
-          .replace(/^\/\*\*?|\*\/$/g, "")
-          .replace(/^(?:\/\/[?*!]?|\*)/, "")
-          .replace(/\{@link\s+([^}\s|]+)[^}]*\}/g, "$1")
-          .trim(),
-      )
-      .filter((line) => line && !/^(?:biome-ignore|eslint-|@ts-)/.test(line));
-    return lines.length ? lines.join(" ") : null;
-  };
-
+export const createFactReader = (ts: Ts, ast: AkanAst) => {
+  const syntax = syntaxReaderOf(ts, ast);
+  const { spanOf, extentOf, unwrap, moduleRefOf, returnedObject, builderOf, chainOf, objectKeys } = syntax;
+  const { docOf, importsIn } = sourceReaderOf(ts);
   const { guardsIn, guardsOf } = createGuardFactReader(ts, ast, { spanOf, extentOf, unwrap, docOf });
+  const { sliceKeysOf, endpointKeysOf } = signalKeyReaderOf(ts, ast, syntax, guardsIn);
+  const { internalKeysOf } = jobKeyReaderOf(ts, ast, syntax);
+  const { plugsOf, adaptorBindingsIn, methodsOf } = serviceReaderOf(ts, ast, syntax);
+  const { constantOf, enumValuesOf, filterQueriesOf } = constantReaderOf(ts, ast, syntax);
 
   const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
-
-  const importsIn = (source: TS.SourceFile) => source.statements.filter(ts.isImportDeclaration).flatMap(importsOf);
 
   const read = (source: TS.SourceFile, owner: string | null): FileFacts => {
     const imports = importsIn(source);

@@ -77,4 +77,73 @@ describe("WorkspaceVersionCheck", () => {
     expect(WorkspaceVersionCheck.installedAkanVersion(root)).toBeNull();
     expect(WorkspaceVersionCheck.warning("3.1.0", argv("sync", "demo"), root)).toBeNull();
   });
+
+  describe("refusal", () => {
+    test("refuses another major.minor, naming both versions, akan update and the variable that overrides it", async () => {
+      const root = await makeWorkspace({ akanjs: "3.1.4" });
+
+      const refusal = WorkspaceVersionCheck.refusal("3.2.0", argv("sync", "demo"), root, {});
+
+      expect(refusal).toContain("@akanjs/cli 3.2.0, but this workspace has akanjs 3.1.4, another major.minor");
+      expect(refusal).toContain("`akan sync` is refused");
+      expect(refusal).toContain("Move the workspace and this CLI to one release together: akan update\n");
+      expect(refusal).toContain("Or run the matching CLI once: bunx -p @akanjs/cli@3.1.4 akan sync demo");
+      expect(refusal).toEndWith("Or set AKAN_ALLOW_VERSION_MISMATCH=1 to run it anyway.");
+      expect(WorkspaceVersionCheck.refusal("4.0.0-rc.1", argv("sync"), root, {})).toContain("akan update --tag rc");
+    });
+
+    test("tells a CLI older than the workspace to install the matching one, not to run akan update", async () => {
+      const refusal = WorkspaceVersionCheck.refusal(
+        "3.1.4",
+        argv("sync", "demo"),
+        await makeWorkspace({ akanjs: "3.2.0" }),
+        {},
+      );
+
+      expect(refusal).toContain("Install the CLI this workspace was moved to: bun add -g @akanjs/cli@3.2.0");
+      expect(refusal).not.toContain("akan update");
+    });
+
+    test("passes the same major.minor, prereleases of it included, leaving the warning", async () => {
+      for (const [cli, akanjs] of [
+        ["3.2.0-rc.5", "3.2.0-rc.3"],
+        ["3.2.1", "3.2.0"],
+        ["3.2.0", "3.2.0-rc.9"],
+      ] as const) {
+        const root = await makeWorkspace({ akanjs });
+        expect(WorkspaceVersionCheck.refusal(cli, argv("sync"), root, {})).toBeNull();
+        expect(WorkspaceVersionCheck.warning(cli, argv("sync"), root)).toContain(`akanjs ${akanjs}`);
+      }
+    });
+
+    test("never refuses update, create-workspace, help or version, nor with the override set", async () => {
+      const root = await makeWorkspace({ akanjs: "3.1.4" });
+      for (const args of [["update"], ["create-workspace", "next"], ["--version"], ["sync", "--help"]])
+        expect(WorkspaceVersionCheck.refusal("3.2.0", argv(...args), root, {})).toBeNull();
+      for (const value of ["1", "true"])
+        expect(
+          WorkspaceVersionCheck.refusal("3.2.0", argv("sync"), root, { AKAN_ALLOW_VERSION_MISMATCH: value }),
+        ).toBeNull();
+      expect(
+        WorkspaceVersionCheck.refusal("3.2.0", argv("sync"), root, { AKAN_ALLOW_VERSION_MISMATCH: "0" }),
+      ).not.toBeNull();
+    });
+
+    test("never refuses a workspace that links akanjs from its own source", async () => {
+      const root = await makeWorkspace({});
+      await writeJson(path.join(root, "pkgs/akanjs/package.json"), { name: "akanjs", version: "2.0.0" });
+      await mkdir(path.join(root, "node_modules"), { recursive: true });
+      await symlink(path.join(root, "pkgs/akanjs"), path.join(root, "node_modules/akanjs"), "dir");
+
+      expect(WorkspaceVersionCheck.refusal("3.2.0", argv("sync", "demo"), root, {})).toBeNull();
+    });
+
+    test("counts a command as writing unless it is marked read-only, for the values it was given", () => {
+      expect(WorkspaceVersionCheck.readsOnly({ type: "public" }, {})).toBe(false);
+      expect(WorkspaceVersionCheck.readsOnly({ type: "public", readOnly: true }, {})).toBe(true);
+      const lint = { type: "public", readOnly: ({ fix }: { [name: string]: unknown }) => fix === false } as const;
+      expect(WorkspaceVersionCheck.readsOnly(lint, { fix: true })).toBe(false);
+      expect(WorkspaceVersionCheck.readsOnly(lint, { fix: false })).toBe(true);
+    });
+  });
 });

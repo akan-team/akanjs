@@ -187,6 +187,9 @@ describe("httpRunner streaming", () => {
     expect(named).toEqual({ type: "error", message: "too long", code: "badRequest", overflow: { limit: 65_536 } });
     const [bare] = await collect(httpRunner({ url: "/t", fetcher: refused(true) }).run(request()));
     expect(bare).toEqual({ type: "error", message: "too long", code: "badRequest", overflow: {} });
+    const measured = refused({ limit: 400_000, requested: 412_000 });
+    const [both] = await collect(httpRunner({ url: "/t", fetcher: measured }).run(request()));
+    expect(both).toMatchObject({ overflow: { limit: 400_000, requested: 412_000 } });
   });
 
   test("a body with no message falls back to the status, and a nested data is not forwarded", async () => {
@@ -196,6 +199,18 @@ describe("httpRunner streaming", () => {
       })) as unknown as typeof fetch;
     const events = await collect(httpRunner({ url: "/x", fetcher }).run(request()));
     expect(events).toEqual([{ type: "error", message: "Agent turn failed: 502", code: "badGateway" }]);
+  });
+
+  test("a body with no message is still named by its code, as the stream names it", async () => {
+    const answering = (status: number, body: unknown) =>
+      (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+    const turn = (fetcher: typeof fetch) => collect(httpRunner({ url: "/x", fetcher }).run(request()));
+    expect(await turn(answering(503, { code: "vendorQuota", statusCode: 503 }))).toEqual([
+      { type: "error", message: "Agent turn failed: 503", code: "vendorQuota" },
+    ]);
+    expect(await turn(answering(403, { error: "", code: "fileGrantRefused", statusCode: 403 }))).toEqual([
+      { type: "error", message: "Agent turn failed: 403", code: "fileGrantRefused" },
+    ]);
   });
 
   test("a refusal answered before the stream opens is named by its own code, else by its status", async () => {

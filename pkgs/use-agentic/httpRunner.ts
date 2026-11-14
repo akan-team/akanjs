@@ -1,5 +1,5 @@
 import { codeOfAnswer, codeOfStatus, isFailureCode } from "./failureCode";
-import type { AgentRunner, RunnerEvent, ToolCallRequest, TurnLimits, TurnUsage } from "./types";
+import type { AgentRunner, RunnerEvent, ToolCallRequest, TurnLimits, TurnOverflow, TurnUsage } from "./types";
 
 export interface HttpRunnerOptions {
   url: string;
@@ -79,11 +79,14 @@ const interpolations = (value: unknown): Record<string, string | number> | undef
   return entries.length ? Object.fromEntries(entries) : undefined;
 };
 
-const overflowOf = (value: unknown): { limit?: number } | undefined => {
+const overflowOf = (value: unknown): TurnOverflow | undefined => {
   if (!value) return undefined;
   if (typeof value !== "object") return {};
-  const { limit } = value as { limit?: unknown };
-  return typeof limit === "number" ? { limit } : {};
+  const { limit, requested } = value as { limit?: unknown; requested?: unknown };
+  return {
+    ...(typeof limit === "number" ? { limit } : {}),
+    ...(typeof requested === "number" ? { requested } : {}),
+  };
 };
 
 /**
@@ -97,7 +100,7 @@ const turnError = async (response: Response): Promise<RunnerEvent> => {
   try {
     const body = (await response.json()) as { message?: unknown; error?: unknown; data?: unknown; overflow?: unknown };
     const message = typeof body.message === "string" ? body.message : typeof body.error === "string" ? body.error : "";
-    if (!message) return fallback;
+    if (!message) return { ...fallback, code: codeOfAnswer(response.status, body) };
     const data = interpolations(body.data);
     const overflow = overflowOf(body.overflow);
     return {

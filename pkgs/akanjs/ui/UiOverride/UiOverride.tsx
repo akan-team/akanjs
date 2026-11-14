@@ -13,6 +13,7 @@ import type { QuestionProps as AgentQuestionProps } from "../Agent/Question";
 import type { QueuedProps as AgentQueuedProps } from "../Agent/Queued";
 import type { StepsProps as AgentStepsProps } from "../Agent/Steps";
 import type { ToolCardProps as AgentToolCardProps } from "../Agent/ToolCard";
+import type { ToolRowProps as AgentToolRowProps } from "../Agent/ToolRow";
 import type { BadgeProps } from "../Badge";
 import type { ButtonProps } from "../Button";
 import type { DatePickerProps, RangePickerProps, TimePickerProps } from "../DatePicker";
@@ -62,6 +63,7 @@ export interface AkanUiOverrides {
   AgentMenu: ComponentType<AgentMenuProps>;
   AgentMarkdown: ComponentType<AgentMarkdownProps>;
   AgentToolCard: ComponentType<AgentToolCardProps>;
+  AgentToolRow: ComponentType<AgentToolRowProps>;
   AgentCode: ComponentType<AgentCodeProps>;
 
   // Generic components: the slot stores the widest instantiation; the public export keeps its generics.

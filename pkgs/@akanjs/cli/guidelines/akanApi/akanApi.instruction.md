@@ -120,7 +120,7 @@ Only on `page()`:
 
 ```ts
 .prompt(name: string, description: string)
-.app<Name extends string>(name: Name & FreeName<Name, Record<never, never>>, description: string, load: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>)
+.app<Name extends string>(name: Name & FreeName<Name, Record<never, never>>, description: string, load: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>, option?: { static?: boolean; })
 ```
 
 On `layout()` and `rootLayout()`, where a line replaces its shared form above:
@@ -235,8 +235,8 @@ globalPrefix?: false;
 /** HTTP verb of a `mutation`, `POST` unless named; every other endpoint type ignores it. */
 method?: HttpMutationMethod;
 fileUpload?: boolean;
-/** `false` keeps it out of the MCP catalogue (default `true`); curation, not authorization — HTTP still serves it. */
-mcp?: boolean;
+/** `false` keeps it out of the MCP catalogue (default `true`), and `"agent"` keeps it off `/mcp` while the in-process agent (`AgentToolsRole`, `agentService.loop`) still lists it; curation, not authorization — HTTP still serves it. */
+mcp?: McpShelf;
 /** Overrides what the key implies for a `mutation`'s MCP `destructiveHint`: `true` for one no verb gives away, such as `archiveOrder`, `false` for a `drop…` that loses nothing. */
 destructive?: boolean;
 /** The errors this endpoint throws on purpose, by status. */

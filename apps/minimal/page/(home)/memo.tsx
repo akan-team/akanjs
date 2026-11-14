@@ -8,10 +8,15 @@ export default page()
   .guard(async () => {
     if (!(await fetch.isMemoOpen())) router.notFound();
   })
-  .app("showTripNotes", "Show the notes shared with everyone on this trip.", () => {
-    const { memoInitInPublic } = fetch.initMemoInPublic();
-    return <Memo.Zone.Card className="flex flex-col gap-3" init={memoInitInPublic} />;
-  })
+  .app(
+    "showTripNotes",
+    "Show the notes shared with everyone on this trip.",
+    () => {
+      const { memoInitInPublic } = fetch.initMemoInPublic();
+      return <Memo.Zone.Card className="flex flex-col gap-3" init={memoInitInPublic} />;
+    },
+    { static: true },
+  )
   .render(({ showTripNotes }) => {
     const { l } = usePage();
     return (

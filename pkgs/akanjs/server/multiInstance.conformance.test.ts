@@ -12,6 +12,8 @@ interface Instance {
 interface Received {
   type: string;
   roomId?: string;
+  requestRoomId?: string;
+  subscribe?: boolean;
   data?: { op?: string; id?: string };
 }
 
@@ -82,8 +84,10 @@ const subscribe = async (instance: Instance, key: string, args: unknown[]) => {
     }
     return null;
   };
-  await next("sub");
-  return { next, close: () => socket.close() };
+  while (!received.length) await Bun.sleep(20);
+  const ack = received.shift() as Received;
+  if (ack.type !== "sub" || !ack.subscribe) throw new Error(`${key} was not subscribed: ${JSON.stringify(ack)}`);
+  return { ack, next, close: () => socket.close() };
 };
 
 const modes = [
@@ -145,9 +149,10 @@ for (const mode of modes)
       const [holder, writer] = instances;
       const list = await subscribe(holder, "crossItemLiveInCategory", ["news"]);
       try {
+        expect(list.ack.requestRoomId).toBe("crossItemLiveInCategory-news");
         const created = await call(writer, "createCrossItem", { data: { title: "Scoop", category: "news", score: 1 } });
         expect(await list.next("pub")).toMatchObject({
-          roomId: "crossItemLiveInCategory-news",
+          roomId: list.ack.roomId,
           data: { op: "enter", id: created.id },
         });
         await call(writer, `updateCrossItem/${created.id}`, {

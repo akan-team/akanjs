@@ -137,7 +137,9 @@
   keeps a free-text row either way, because the model wrote the options and only the user knows whether the answer
   is among them. The loop parks on the question exactly as it parks on an approval, a dismissal is the tool's
   error result rather than a silent empty answer, and the settled exchange renders as question-and-answer instead
-  of a tool row. **Never re-implement it per screen** — a `st.tool("askAboutX")` that opens a modal is the same
+  of a tool row. A restored transcript that ends on an unanswered `askUser` — a server run that parked on it while
+  no chat was open, or a reload mid-question — opens on that question, and settling it runs the turn on through the
+  runner; a turn started first closes it as unanswered instead. **Never re-implement it per screen** — a `st.tool("askAboutX")` that opens a modal is the same
   thing with a worse transcript — and a hook tool named `askUser` shadows it like any other built-in. The line
   between it and a `.card()` tool is what the answer *is*: a sentence or a pick off a list is `askUser` and belongs
   to the conversation, while a shape the model must not invent — fields, a form, a signature — is a card the screen

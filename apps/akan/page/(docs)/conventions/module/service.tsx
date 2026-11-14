@@ -1725,16 +1725,20 @@ export class FileService extends serve(db.file, ({ use, plug }) => ({
                     <span>
                       <strong>A transaction covers every model</strong>, since a server has one database. A call inside
                       another joins it, and the error that rolls it back reaches you unchanged. Cache,{" "}
-                      <code>memory</code> and outside calls are not in it, and on SQLite it holds the only write turn,
-                      so keep it short and never wait on the network inside.
+                      <code>memory</code> and outside calls are not in it. On SQLite it holds the only write turn: a
+                      write from another request waits until it ends, while a read from another request does not wait
+                      and sees the last commit. So keep it short, never wait on the network inside, and never await
+                      inside it a write that was started outside it.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>transaction은 모든 model을 덮습니다.</strong> 서버의 DB는 하나이기 때문입니다. 안에서 또
                       부르면 바깥 transaction에 합류하고, rollback을 일으킨 에러는 그대로 전달됩니다. cache,{" "}
-                      <code>memory</code>, 외부 호출은 들어가지 않습니다. SQLite에서는 하나뿐인 쓰기 차례를 잡고 있으니
-                      짧게 끝내고, 안에서 네트워크를 기다리지 마세요.
+                      <code>memory</code>, 외부 호출은 들어가지 않습니다. SQLite에서는 하나뿐인 쓰기 차례를 잡고
+                      있습니다. 다른 요청의 쓰기는 transaction이 끝날 때까지 기다리고, 다른 요청의 읽기는 기다리지 않고
+                      마지막 commit을 봅니다. 그러니 짧게 끝내고, 안에서 네트워크를 기다리지 말고, 밖에서 시작한 쓰기를
+                      안에서 await하지 마세요.
                     </span>
                   ),
                 })}

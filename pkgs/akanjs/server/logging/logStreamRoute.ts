@@ -6,12 +6,20 @@ import type { LogHub, LogHubEntry } from "./logHub";
 import { LogQueryMatcher } from "./logQuery";
 import { LogStdoutWriter } from "./logStdoutWriter";
 
+interface ReplayFrame {
+  message: object;
+  id?: number;
+}
+
 // A resume past the ring gets an explicit gap event: a monitor would read a silent skip as a quiet interval.
 // Never log from a stream: one logging its own subscriptions at the level it delivers would feed on itself.
 export class LogStreamRoute {
   static readonly path = "/_akan/app/logs";
   static readonly retryMs = 2_000;
   static readonly heartbeatMs = 15_000;
+  //? Live records past a resume's replay: the replay is queued before the reader takes a byte, so the bound grows by it.
+  static readonly maxQueuedBytes = 4 * 1024 * 1024;
+  static readonly maxDropped = 10_000;
 
   readonly #hub: () => LogHub | null;
   readonly #digest: Buffer;
@@ -42,18 +50,27 @@ export class LogStreamRoute {
     const hub = this.#hub();
     if (!hub) return new Response("Log hub is not running", { status: 503 });
     const query = LogQueryMatcher.parse(new URL(req.url).searchParams);
-    const matcher = new LogQueryMatcher(query);
+    const lastEventId = req.headers.get("last-event-id")?.trim();
+    const replay =
+      lastEventId && /^\d+$/.test(lastEventId)
+        ? LogStreamRoute.#replay(hub, new LogQueryMatcher(query), Number(lastEventId))
+        : [];
+    const replayBytes = replay.reduce((sum, { message }) => sum + Buffer.byteLength(JSON.stringify(message)) + 32, 0);
     let subscription: { unsubscribe(): void } | null = null;
     const stream = new EventStream(
       () => {
         subscription?.unsubscribe();
         subscription = null;
       },
-      { keepAliveMs: LogStreamRoute.heartbeatMs, keepAliveChunk: ": heartbeat\n\n" },
+      {
+        keepAliveMs: LogStreamRoute.heartbeatMs,
+        keepAliveChunk: ": heartbeat\n\n",
+        maxQueuedBytes: LogStreamRoute.maxQueuedBytes + replayBytes,
+        maxDropped: LogStreamRoute.maxDropped,
+      },
     );
     stream.retry(LogStreamRoute.retryMs);
-    const lastEventId = req.headers.get("last-event-id")?.trim();
-    if (lastEventId && /^\d+$/.test(lastEventId)) LogStreamRoute.#resume(hub, stream, matcher, Number(lastEventId));
+    for (const { message, id } of replay) stream.write(message, id);
     subscription = hub.subscribe(query, (entry) => LogStreamRoute.#send(stream, entry));
     return stream.response();
   }
@@ -66,15 +83,15 @@ export class LogStreamRoute {
     return matched;
   }
 
-  static #resume(hub: LogHub, stream: EventStream, matcher: LogQueryMatcher, lastEventId: number) {
-    if (lastEventId > hub.seq) {
+  static #replay(hub: LogHub, matcher: LogQueryMatcher, lastEventId: number): ReplayFrame[] {
+    if (lastEventId > hub.seq)
       // The sequence restarted — a new process is answering — so nothing after that id can exist here.
-      stream.write({ type: "gap", reason: "sequence-reset", lastEventId, currentSeq: hub.seq });
-      return;
-    }
+      return [{ message: { type: "gap", reason: "sequence-reset", lastEventId, currentSeq: hub.seq } }];
     const { entries, gap } = hub.since(lastEventId);
-    if (gap) stream.write({ type: "gap", reason: "ring-buffer-evicted", ...gap });
-    for (const entry of entries) if (matcher.matches(entry.record)) LogStreamRoute.#send(stream, entry);
+    const frames: ReplayFrame[] = gap ? [{ message: { type: "gap", reason: "ring-buffer-evicted", ...gap } }] : [];
+    for (const entry of entries)
+      if (matcher.matches(entry.record)) frames.push({ message: LogStdoutWriter.json(entry), id: entry.seq });
+    return frames;
   }
 
   static #send(stream: EventStream, entry: LogHubEntry) {

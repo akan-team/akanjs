@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.json",
+  "files": [],
+  "include": [
+    "pkgs/akanjs/**/*.ts",
+    "pkgs/akanjs/**/*.tsx",
+    "pkgs/@akanjs/devkit/**/*.ts",
+    "pkgs/@akanjs/devkit/**/*.tsx",
+    "pkgs/@akanjs/cli/**/*.ts",
+    "pkgs/@akanjs/cli/**/*.tsx"
+  ],
+  "exclude": ["pkgs/@akanjs/devkit/lint/__fixtures__"]
+}

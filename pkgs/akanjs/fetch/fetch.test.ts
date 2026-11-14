@@ -342,6 +342,11 @@ const setFakeWebSocket = () => {
   });
 };
 
+const subscribeTokenOf = (ws: FakeWebSocket, data: unknown[]) =>
+  ws.sent
+    .map((frame) => JSON.parse(frame) as { data?: unknown[]; subscribe?: boolean; token?: number })
+    .findLast((frame) => frame.subscribe && JSON.stringify(frame.data) === JSON.stringify(data))?.token;
+
 const FetchTestNested = via((f) => ({
   label: f(String),
 }));
@@ -1376,6 +1381,21 @@ describe("FetchClient over a bridge", () => {
     }
   });
 
+  test("opens no socket for a room or a message in a bridged tab, even on a socket that opens on use", () => {
+    setFakeWebSocket();
+    FetchClient.setBridge({ call: async () => null });
+    try {
+      const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+      client.ws.connectOnUse();
+      const unsubscribe = client.handler.subscribeRoomThing("room-1", () => undefined) as () => void;
+      client.handler.sendThing("hello");
+      unsubscribe();
+      expect(FakeWebSocket.instances).toEqual([]);
+    } finally {
+      FetchClient.setBridge(null);
+    }
+  });
+
   test("hands the bridge each call's budget in the HTTP order: the call's, the endpoint's, then the client's", async () => {
     const budgets: unknown[] = [];
     FetchClient.setBridge({
@@ -2087,6 +2107,76 @@ describe("FetchClient HTTP generation", () => {
     });
   });
 
+  test("in a request, a page's capped query keeps its deadline beside a layout's uncapped one, and alike calls share", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const ask = (policy?: { timeout?: number; retry?: { attempts: number } | false }) =>
+      client.handler.getThing("1234567890abcdef12345678", [], null, policy) as Promise<string>;
+    await memo.run(new Request("https://example.test"), async () => {
+      const layout = ask();
+      const page = ask({ timeout: 20 }).catch((error: unknown) => error) as Promise<TestErr>;
+      const pageAgain = ask({ timeout: 20 }).catch((error: unknown) => error) as Promise<TestErr>;
+      const layoutAgain = ask();
+      const unretried = ask({ retry: false });
+      const retried = ask({ retry: { attempts: 2 } });
+      expect(requests).toHaveLength(3);
+
+      expect((await page).error).toBe("base.error.gatewayTimeout");
+      expect((await pageAgain).error).toBe("base.error.gatewayTimeout");
+      expect(requests[0]?.signal?.aborted).toBe(false);
+      requests[0]?.answer("layout");
+      requests[2]?.answer("retried");
+      const answers = await Promise.all([layout, layoutAgain, unretried, retried]);
+      expect(answers).toEqual(["layout", "layout", "layout", "retried"]);
+      expect(requests).toHaveLength(3);
+    });
+  });
+
+  test("in a request, a query naming the default timeout, or a retry with its fields in another order, shares", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const ask = (policy?: { timeout?: number; retry?: { attempts: number; min: number } }) =>
+      client.handler.getThing("1234567890abcdef12345678", [], null, policy) as Promise<string>;
+    await memo.run(new Request("https://example.test"), async () => {
+      const answers = [
+        ask(),
+        ask({ timeout: 30_000 }),
+        ask({ retry: { attempts: 2, min: 100 } }),
+        ask({ retry: { min: 100, attempts: 2 } }),
+      ];
+      expect(requests).toHaveLength(2);
+      requests[0]?.answer("plain");
+      requests[1]?.answer("retried");
+      expect(await Promise.all(answers)).toEqual(["plain", "plain", "retried", "retried"]);
+    });
+  });
+
+  test("in a request, a retry field left undefined shares as if absent, and one set to null does not", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal }, TestErr);
+    const ask = (retry: { attempts?: number | null; min?: number }) =>
+      client.handler.getThing("1234567890abcdef12345678", [], null, { retry }) as Promise<string>;
+    await memo.run(new Request("https://example.test"), async () => {
+      const answers = [
+        ask({ attempts: 2 }),
+        ask({ attempts: 2, min: undefined }),
+        ask({ attempts: undefined }),
+        ask({ attempts: null }),
+      ];
+      expect(requests).toHaveLength(3);
+      requests[0]?.answer("twice");
+      requests[1]?.answer("default");
+      requests[2]?.answer("once");
+      expect(await Promise.all(answers)).toEqual(["twice", "twice", "default", "once"]);
+    });
+  });
+
   test("hands a joiner its copy as the answer lands, before the starter's caller can change it", async () => {
     const requests = setGatedFetch();
     const blobSignal: SerializedSignal = {
@@ -2166,6 +2256,33 @@ describe("FetchClient HTTP generation", () => {
     const forwarded = (idx: number) => new Headers(fetchCalls[idx]?.init?.headers as HeadersInit).get("x-real-ip");
     expect(forwarded(0)).toBe("203.0.113.5");
     expect(forwarded(1)).toBeNull();
+  });
+
+  test("sends a forwardVisitor: false query made while rendering without the visitor, leaving the page cacheable", async () => {
+    if (!requestStorage) return;
+    setMockFetch();
+    jsonResponses.push("stranger", "visitor");
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const page = createRequestStore(
+      new Request("https://example.test", {
+        headers: { authorization: "Bearer visitor", cookie: "jwt=session", "x-real-ip": "203.0.113.5" },
+      }),
+    );
+    const id = "abcdefabcdefabcdefabcdef";
+
+    const usageAfterStrangerCall = await requestStorage.run(page, async () => {
+      setAkanPublicEnv();
+      await client.handler.getThing(id, [], null, { forwardVisitor: false });
+      const usage = { ...page.dynamicUsage };
+      await client.handler.getThing(id, [], null);
+      return usage;
+    });
+
+    const sent = (idx: number) => new Headers(fetchCalls[idx]?.init?.headers as HeadersInit);
+    expect([sent(0).get("authorization"), sent(0).get("x-real-ip")]).toEqual([null, null]);
+    expect(usageAfterStrangerCall).toEqual({ headers: false, cookies: false });
+    expect([sent(1).get("authorization"), sent(1).get("x-real-ip")]).toEqual(["Bearer visitor", "203.0.113.5"]);
+    expect(page.dynamicUsage).toEqual({ headers: true, cookies: false });
   });
 
   test("hands the visitor's credential only to this server: another origin gets the token its caller gave or none", async () => {
@@ -2344,6 +2461,28 @@ describe("FetchClient HTTP generation", () => {
     ]);
   });
 
+  test("in a request, a same-origin clone with its own retry or budget queries alone, and a plain clone shares", async () => {
+    if (!requestStorage) return;
+    const memo = requestStorage;
+    const requests = setGatedFetch();
+    type Getter = { getThing: (id: string, tags: string[], empty: null) => Promise<string> };
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+    const plain = client.clone({ connect: false });
+    const retrying = client.clone({ connect: false, retry: { attempts: 4 } });
+    const budgeted = client.clone({ connect: false });
+    budgeted.setTimeout(12_345);
+    await memo.run(new Request("https://example.test"), async () => {
+      const answers = [client.handler, plain, retrying, budgeted].map((fetch) =>
+        (fetch as unknown as Getter).getThing("1234567890abcdef12345678", [], null),
+      );
+      expect(requests).toHaveLength(3);
+      requests[0]?.answer("layout");
+      requests[1]?.answer("retrying");
+      requests[2]?.answer("budgeted");
+      expect(await Promise.all(answers)).toEqual(["layout", "layout", "retrying", "budgeted"]);
+    });
+  });
+
   test("materializes handlers lazily from local and shared serialized signals", async () => {
     setMockFetch();
     jsonResponses.push("local", "shared");
@@ -2502,7 +2641,12 @@ describe("FetchClient HTTP generation", () => {
       const ws = FakeWebSocket.instances[0];
       ws.open();
       (lib.fetch as Record<string, (...args: unknown[]) => unknown>).subscribeLibRoom("r1", () => undefined);
-      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "libRoom", data: ["r1"], subscribe: true });
+      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({
+        key: "libRoom",
+        data: ["r1"],
+        subscribe: true,
+        token: expect.any(Number),
+      });
     } finally {
       Reflect.deleteProperty(globalThis, "window");
     }
@@ -2937,7 +3081,12 @@ describe("WsClient", () => {
       const second = FakeWebSocket.instances[1];
       second.open();
       expect(client.state).toBe("open");
-      expect(JSON.parse(second.sent[0] ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+      expect(JSON.parse(second.sent[0] ?? "{}")).toEqual({
+        key: "roomKey",
+        data: ["r1"],
+        subscribe: true,
+        token: expect.any(Number),
+      });
       client.emit("send", ["hello"]);
       expect(JSON.parse(second.sent.at(-1) ?? "{}")).toEqual({ key: "send", data: ["hello"] });
       reconnecting = false;
@@ -3073,7 +3222,12 @@ describe("WsClient", () => {
       const ws = FakeWebSocket.instances[0];
       ws.open();
 
-      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+      expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({
+        key: "roomKey",
+        data: ["r1"],
+        subscribe: true,
+        token: expect.any(Number),
+      });
       ws.receive({ type: "pub", roomId: "roomKey-r1", data: { title: "event" } });
       expect(events).toEqual([{ title: "event" }]);
       await new Promise((resolve) => originalSetTimeout(resolve, 5));
@@ -3114,7 +3268,7 @@ describe("WsClient", () => {
       ws.open();
 
       expect(ws.sent.map((frame) => JSON.parse(frame))).toEqual([
-        { key: "roomKey", data: ["r1"], subscribe: true },
+        { key: "roomKey", data: ["r1"], subscribe: true, token: expect.any(Number) },
         { key: "send", data: ["m3"] },
         { key: "send", data: ["m4"] },
         { key: "send", data: ["m5"] },
@@ -3127,7 +3281,7 @@ describe("WsClient", () => {
       client.emit("send", ["after"]);
       next.open();
       expect(next.sent.map((frame) => JSON.parse(frame))).toEqual([
-        { key: "roomKey", data: ["r1"], subscribe: true },
+        { key: "roomKey", data: ["r1"], subscribe: true, token: expect.any(Number) },
         { key: "send", data: ["after"] },
       ]);
       expect(warnings).toHaveLength(1);
@@ -3211,6 +3365,7 @@ describe("WsClient", () => {
       key: "roomKey",
       data: ["r1"],
       subscribe: true,
+      token: expect.any(Number),
     });
     onUse.destroy();
 
@@ -3251,6 +3406,53 @@ describe("WsClient", () => {
       await new Promise((resolve) => originalSetTimeout(resolve, 5));
       expect(warnings).toEqual([]);
     });
+  });
+
+  test("tells a room to resync when the server says it may have missed events, by the id the server names", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    let resyncs = 0;
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    client.subscribe({
+      key: "taskLiveInOrg",
+      data: ["o1"],
+      handleEvent: () => undefined,
+      handleResync: () => {
+        resyncs += 1;
+      },
+    });
+    ws.receive({ type: "sub", roomId: "taskLiveInOrg-o1::u1", requestRoomId: "taskLiveInOrg-o1", subscribe: true });
+    ws.receive({ type: "resync", roomId: "taskLiveInOrg-o1::u1" });
+    expect(resyncs).toBe(1);
+    ws.receive({ type: "resync", roomId: "someoneElse-o1::u2" });
+    expect(resyncs).toBe(1);
+    client.destroy();
+  });
+
+  test("counts a numbered resync among the room's frames, so the next frame finds no hole and a repeat runs nothing", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    let resyncs = 0;
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    client.subscribe({
+      key: "roomChat",
+      data: ["c1"],
+      handleEvent: () => undefined,
+      handleResync: () => {
+        resyncs += 1;
+      },
+    });
+    ws.receive({ type: "pub", roomId: "roomChat-c1", data: { n: 1 }, seq: 1 });
+    ws.receive({ type: "resync", roomId: "roomChat-c1", seq: 2 });
+    ws.receive({ type: "pub", roomId: "roomChat-c1", data: { n: 2 }, seq: 3 });
+    expect(resyncs).toBe(1);
+    ws.receive({ type: "resync", roomId: "roomChat-c1", seq: 2 });
+    expect(resyncs).toBe(1);
+    client.destroy();
   });
 
   test("re-keys a live room to the id the server names and matches its frames", () => {
@@ -3353,6 +3555,7 @@ describe("WsClient", () => {
       key: "commandOfPc",
       data: ["pc-7"],
       subscribe: true,
+      token: expect.any(Number),
       since: { epoch: "e1", seq: 5 },
     });
     second.receive({ type: "pub", roomId, data: { n: 6 }, seq: 6 });
@@ -3431,6 +3634,187 @@ describe("WsClient", () => {
     client.destroy();
   });
 
+  test("drops a room the server refused with 429 and tells its subscriber once, so a reconnect does not send it again", async () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 1, jitter: 0 } });
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    const refusals: unknown[] = [];
+    const refusedRoom = {
+      key: "commandOfPc",
+      data: ["pc-7"],
+      handleEvent: () => undefined,
+      handleRefused: (error: unknown) => refusals.push(error),
+    };
+    client.subscribe(refusedRoom);
+    client.subscribe({ key: "commandOfPc", data: ["pc-8"], handleEvent: () => undefined });
+    client.subscribe({ key: "commandOfPc", data: ["pc-9"], handleEvent: () => undefined });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    ws.receive({
+      error: "base.error.liveRoomLimit",
+      code: "liveRoomLimit",
+      statusCode: 429,
+      data: { limit: 2, per: "socket" },
+      key: "commandOfPc",
+      requestRoomId: "commandOfPc-pc-7",
+      token: subscribeTokenOf(ws, ["pc-7"]),
+    });
+    ws.receive({
+      error: "Access denied",
+      statusCode: 403,
+      key: "commandOfPc",
+      requestRoomId: "commandOfPc-pc-9",
+      token: subscribeTokenOf(ws, ["pc-9"]),
+    });
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({ code: "liveRoomLimit", statusCode: 429, data: { limit: 2, per: "socket" } });
+
+    setSystemTime(new Date(Date.now() + WsClient.stableMs));
+    ws.close();
+    await waitUntil(() => FakeWebSocket.instances.length > 1);
+    const reconnected = FakeWebSocket.instances[1];
+    reconnected.open();
+    const resubscribed = reconnected.sent.map(
+      (frame) => JSON.parse(frame) as { data?: unknown[]; subscribe?: boolean },
+    );
+    expect(resubscribed.filter((frame) => frame.subscribe).map((frame) => frame.data)).toEqual([["pc-8"], ["pc-9"]]);
+
+    client.subscribe(refusedRoom);
+    expect(JSON.parse(reconnected.sent.at(-1) ?? "{}")).toMatchObject({ data: ["pc-7"], subscribe: true });
+    client.unsubscribe(refusedRoom);
+    client.destroy();
+    setSystemTime();
+  });
+
+  test("sends a subscribe refused for a budget again after the wait the server named, and drops it past five tries", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    const refusals: unknown[] = [];
+    client.subscribe({
+      key: "commandOfPc",
+      data: ["pc-7"],
+      handleEvent: () => undefined,
+      handleRefused: (error: unknown) => refusals.push(error),
+    });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const timers: { run: () => void; ms: number }[] = [];
+    const timeout = spyOn(globalThis, "setTimeout").mockImplementation(((run: () => void, ms: number) => {
+      timers.push({ run, ms });
+      return { unref: () => undefined };
+    }) as never);
+    const random = spyOn(Math, "random").mockReturnValue(0.5);
+    try {
+      const refuse = () =>
+        ws.receive({
+          error: "base.error.tooManyRequests",
+          statusCode: 429,
+          data: { seconds: 3 },
+          key: "commandOfPc",
+          requestRoomId: "commandOfPc-pc-7",
+          token: subscribeTokenOf(ws, ["pc-7"]),
+        });
+      const subscribes = () => ws.sent.filter((frame) => (JSON.parse(frame) as { subscribe?: boolean }).subscribe);
+      for (let attempt = 1; attempt <= 5; attempt++) {
+        refuse();
+        expect(timers.at(-1)?.ms).toBe(3_000 + 500 * attempt);
+        expect(refusals).toEqual([]);
+        timers.at(-1)?.run();
+        expect(subscribes()).toHaveLength(1 + attempt);
+      }
+      refuse();
+      expect(timers).toHaveLength(5);
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toMatchObject({ statusCode: 429 });
+    } finally {
+      timeout.mockRestore();
+      random.mockRestore();
+      client.destroy();
+    }
+  });
+
+  test("resyncs a room accepted only on a retry after a budget refusal, so a row written meanwhile reaches the list", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    const stored = ["row-1"];
+    let list: string[] = [];
+    const load = () => {
+      list = [...stored];
+    };
+    client.subscribe({ key: "commandOfPc", data: ["pc-7"], handleEvent: () => undefined, handleResync: load });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    load();
+    const timers: { run: () => void }[] = [];
+    const timeout = spyOn(globalThis, "setTimeout").mockImplementation(((run: () => void) => {
+      timers.push({ run });
+      return { unref: () => undefined };
+    }) as never);
+    try {
+      ws.receive({
+        error: "base.error.tooManyRequests",
+        statusCode: 429,
+        data: { seconds: 1 },
+        key: "commandOfPc",
+        requestRoomId: "commandOfPc-pc-7",
+        token: subscribeTokenOf(ws, ["pc-7"]),
+      });
+      stored.push("row-2");
+      timers.at(-1)?.run();
+      ws.receive({ type: "sub", roomId: "commandOfPc-pc-7", requestRoomId: "commandOfPc-pc-7", subscribe: true });
+      expect(list).toEqual(["row-1", "row-2"]);
+    } finally {
+      timeout.mockRestore();
+      client.destroy();
+    }
+  });
+
+  test("ignores a refusal answering an earlier subscribe of a room since subscribed again", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    const refusals: unknown[] = [];
+    const room = {
+      key: "commandOfPc",
+      data: ["pc-7"],
+      handleEvent: () => undefined,
+      handleRefused: (error: unknown) => refusals.push(error),
+    };
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    const refuse = (token: number | undefined) =>
+      ws.receive({
+        error: "base.error.liveRoomLimit",
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 256, per: "socket" },
+        key: "commandOfPc",
+        requestRoomId: "commandOfPc-pc-7",
+        token,
+      });
+    client.subscribe(room);
+    const earlier = subscribeTokenOf(ws, ["pc-7"]);
+    client.unsubscribe(room);
+    client.subscribe(room);
+    expect(subscribeTokenOf(ws, ["pc-7"])).not.toBe(earlier);
+
+    refuse(earlier);
+    expect(refusals).toEqual([]);
+    client.unsubscribe(room);
+    expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "commandOfPc", data: ["pc-7"], subscribe: false });
+
+    client.subscribe(room);
+    refuse(subscribeTokenOf(ws, ["pc-7"]));
+    expect(refusals).toHaveLength(1);
+    client.destroy();
+  });
+
   test("a server-side client sends its headers and its token with the upgrade", () => {
     setFakeWebSocket();
     const client = new WsClient("wss://cloud.example/ws").configure({ headers: { "x-edge-version": "3" } });
@@ -3471,7 +3855,12 @@ describe("WsClient", () => {
 
     const handlePubsub = (data: unknown) => pubsubMessages.push(data);
     client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: handlePubsub });
-    expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+    expect(JSON.parse(ws.sent.at(-1) ?? "{}")).toEqual({
+      key: "roomKey",
+      data: ["r1"],
+      subscribe: true,
+      token: expect.any(Number),
+    });
     ws.receive({ type: "pub", roomId: "roomKey-r1", data: { title: "event" } });
     expect(pubsubMessages).toEqual([{ title: "event" }]);
     expect(client.hasListeners("roomKey-r1")).toBe(true);
@@ -3579,7 +3968,12 @@ describe("WsClient", () => {
       const reconnected = FakeWebSocket.instances[1];
       expect(reconnected).toBeDefined();
       reconnected.open();
-      expect(JSON.parse(reconnected.sent[0] ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+      expect(JSON.parse(reconnected.sent[0] ?? "{}")).toEqual({
+        key: "roomKey",
+        data: ["r1"],
+        subscribe: true,
+        token: expect.any(Number),
+      });
     } finally {
       client.destroy();
     }
@@ -3617,6 +4011,30 @@ describe("WsClient", () => {
     }
   });
 
+  test("keeps a socket the server is still talking on, however long ago it opened", async () => {
+    setFakeWebSocket();
+    setSystemTime(new Date("2026-10-23T00:00:00Z"));
+    globalThis.setInterval = ((handler: TimerHandler, _interval?: number, ...args: unknown[]) =>
+      originalSetInterval(handler, 1, ...args)) as typeof setInterval;
+    const client = new WsClient("ws://example/ws");
+    try {
+      client.connect();
+      const ws = FakeWebSocket.instances[0];
+      ws.open();
+
+      setSystemTime(new Date("2026-10-23T00:10:00Z"));
+      ws.receive({ type: "pong" });
+      const sent = ws.sent.length;
+      await waitUntil(() => ws.sent.length > sent || ws.readyState !== FakeWebSocket.OPEN);
+
+      expect(ws.readyState).toBe(FakeWebSocket.OPEN);
+      expect((JSON.parse(ws.sent.at(-1) ?? "{}") as { key?: string }).key).toBe("__ping");
+      expect(FakeWebSocket.instances).toHaveLength(1);
+    } finally {
+      client.destroy();
+    }
+  });
+
   test("resubscribes rooms on reconnect and destroy prevents reconnect", async () => {
     setFakeWebSocket();
     globalThis.setTimeout = ((handler: TimerHandler, _timeout?: number, ...args: unknown[]) =>
@@ -3632,7 +4050,12 @@ describe("WsClient", () => {
     await new Promise((resolve) => originalSetTimeout(resolve, 5));
     const secondWs = FakeWebSocket.instances[1];
     secondWs.open();
-    expect(JSON.parse(secondWs.sent[0] ?? "{}")).toEqual({ key: "roomKey", data: ["r1"], subscribe: true });
+    expect(JSON.parse(secondWs.sent[0] ?? "{}")).toEqual({
+      key: "roomKey",
+      data: ["r1"],
+      subscribe: true,
+      token: expect.any(Number),
+    });
 
     client.destroy();
     const instanceCount = FakeWebSocket.instances.length;
@@ -3665,6 +4088,7 @@ describe("FetchClient websocket generation", () => {
       key: "fetchTestItemLiveInRoot",
       data: ["1234567890abcdef12345678"],
       subscribe: true,
+      token: expect.any(Number),
     });
 
     // The envelope rides `Any`, so it must arrive exactly as published rather than crystalized into a model.
@@ -3722,7 +4146,12 @@ describe("FetchClient websocket generation", () => {
     const cleanupPubsub = (await client.handler.subscribeRoomThing("room-1", (data: unknown) => published.push(data), {
       origin: "http://localhost:8282",
     })) as () => void;
-    expect(JSON.parse(remote.sent.at(-1) ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: true });
+    expect(JSON.parse(remote.sent.at(-1) ?? "{}")).toEqual({
+      key: "roomThing",
+      data: ["room-1"],
+      subscribe: true,
+      token: expect.any(Number),
+    });
     remote.receive({ type: "pub", roomId: "roomThing-room-1", data: { title: "Published" } });
     expect((published[0] as InstanceType<typeof FetchTestLight>).title).toBe("Published");
     cleanupPubsub();
@@ -3762,7 +4191,12 @@ describe("FetchClient websocket generation", () => {
 
     expect(JSON.parse(ws.sent[0] ?? "{}")).toEqual({ key: "sendThing", data: ["hello"] });
     expect(listened).toEqual(["server-message"]);
-    expect(JSON.parse(ws.sent[1] ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: true });
+    expect(JSON.parse(ws.sent[1] ?? "{}")).toEqual({
+      key: "roomThing",
+      data: ["room-1"],
+      subscribe: true,
+      token: expect.any(Number),
+    });
     expect(published[0]).toBeInstanceOf(FetchTestLight);
     expect((published[0] as InstanceType<typeof FetchTestLight>).title).toBe("Published");
     expect(JSON.parse(ws.sent[2] ?? "{}")).toEqual({ key: "roomThing", data: ["room-1"], subscribe: false });

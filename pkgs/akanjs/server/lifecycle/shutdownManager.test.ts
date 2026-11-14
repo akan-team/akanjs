@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Logger } from "akanjs/common";
 
 import { ShutdownManager } from "./shutdownManager";
+import { StartGuard } from "./startGuard";
 
 type ProcessEvent = "SIGTERM" | "SIGINT" | "uncaughtException" | "unhandledRejection";
 const events: ProcessEvent[] = ["SIGTERM", "SIGINT", "uncaughtException", "unhandledRejection"];
@@ -87,6 +88,26 @@ describe("ShutdownManager", () => {
 
     expect(errors[0]).toContain("corrupt state");
     expect(shutdowns).toBe(1);
+    expect(exitCalls).toEqual([1]);
+  });
+
+  test("an uncaught exception raised inside a start step exits only once that step has torn down", async () => {
+    const { logger } = loggerStub();
+    const order: string[] = [];
+    const guard = new StartGuard(logger, async () => {
+      order.push("teardown");
+    });
+    ShutdownManager.register(logger, () => guard.stop(() => true));
+    let handled: unknown;
+
+    await guard.stoppedDuring(async () => {
+      handled = added("uncaughtException")(new Error("timer thrown in an init hook"));
+      await new Promise((resolve) => setImmediate(resolve));
+      order.push(`step ended, exits ${JSON.stringify(exitCalls)}`);
+    });
+    await handled;
+
+    expect(order).toEqual(["step ended, exits []", "teardown"]);
     expect(exitCalls).toEqual([1]);
   });
 });

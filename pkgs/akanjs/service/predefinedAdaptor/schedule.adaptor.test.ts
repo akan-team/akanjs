@@ -1,12 +1,33 @@
 import { describe, expect, test } from "bun:test";
+import { markFailureLogged } from "../../common/loggedFailure";
 import { Scheduler } from "./schedule.adaptor";
 
 const createScheduler = () => {
   const warnings: string[] = [];
+  const errors: string[] = [];
   const scheduler = new Scheduler();
-  Object.assign(scheduler, { logger: { warn: (m: string) => warnings.push(m), debug: () => {}, error: () => {} } });
-  return { scheduler, warnings };
+  Object.assign(scheduler, {
+    logger: { warn: (m: string) => warnings.push(m), debug: () => {}, error: (m: string) => errors.push(m) },
+  });
+  return { scheduler, warnings, errors };
 };
+
+describe("Scheduler failures", () => {
+  test("logs a job's failure even when an earlier request line already logged the same error object", async () => {
+    const { scheduler, errors } = createScheduler();
+    const memoized = new Error("connect refused");
+    markFailureLogged(memoized);
+    scheduler.registerInit("warmup", async () => Promise.reject(memoized));
+    scheduler.registerDestroy("flush", async () => Promise.reject(memoized));
+    await scheduler._runInit();
+    await scheduler._runDestroy();
+
+    expect(errors).toEqual([
+      "Schedule init warmup error: Error: connect refused",
+      "Schedule destroy flush error: Error: connect refused",
+    ]);
+  });
+});
 
 describe("Scheduler cron", () => {
   test("registers a job, exposes it by key, and reports its expression", () => {

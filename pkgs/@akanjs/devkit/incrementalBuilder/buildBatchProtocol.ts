@@ -22,6 +22,8 @@ export interface BuildBatchRequest {
   trace?: HmrTrace;
 }
 
+export type BatchWork = Pick<BuildBatchRequest, "generation" | "needs" | "changedFiles" | "trace">;
+
 export type PagesBatchCssAssets = CssPayload["cssAssets"];
 
 // Browser payloads stream as each need finishes; only state the next batch needs travels back here.

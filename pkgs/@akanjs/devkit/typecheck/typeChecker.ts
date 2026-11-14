@@ -167,12 +167,13 @@ export class TypeChecker {
     }
   }
 
-  static checkProject(configPath: string): ProjectTypecheckResult {
+  static checkProject(configPath: string, overrides: ts.CompilerOptions = {}): ProjectTypecheckResult {
     const parsedConfig = TypeChecker.parseConfig(configPath);
-    const host = ts.createIncrementalCompilerHost(parsedConfig.options);
+    const options = { ...parsedConfig.options, ...overrides };
+    const host = ts.createIncrementalCompilerHost(options);
     const builderProgram = ts.createIncrementalProgram({
       rootNames: parsedConfig.fileNames,
-      options: parsedConfig.options,
+      options,
       projectReferences: parsedConfig.projectReferences,
       configFileParsingDiagnostics: parsedConfig.errors,
       host,

@@ -107,6 +107,7 @@ export class ChildSupervisor {
   }
 
   #handleChildExit(idx: number, proc: Bun.Subprocess<"ignore", "pipe", "pipe">, code: number | null) {
+    this.#host.dropChild(proc);
     const child = this.#children.get(idx);
     if (!child || child.proc !== proc) return;
     if (child.status === "crashed") return;
@@ -247,6 +248,7 @@ export class ChildSupervisor {
     child.upstream = message.upstream;
     child.wsUpstream = message.wsUpstream;
     child.healthPath = message.healthPath;
+    child.rscWorker = message.rscWorker;
     if (message.crossSite) CrossSiteGuard.configure(message.crossSite);
     child.lastPongAtMono = performance.now();
     child.restart.reset();
@@ -267,10 +269,11 @@ export class ChildSupervisor {
     }
   }
 
-  markHealthy(idx: number) {
+  markHealthy(idx: number, message: Extract<AkanIpcMessage, { type: "health.pong" }>) {
     const child = this.#children.get(idx);
     if (!child) return;
     child.status = "healthy";
+    child.rscWorker = message.rscWorker;
     child.lastPongAtMono = performance.now();
     this.#children.invalidateFederation();
   }

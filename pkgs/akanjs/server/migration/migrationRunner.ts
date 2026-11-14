@@ -1,6 +1,13 @@
 import { Logger } from "akanjs/common";
 import { createDocumentId, sanitizeJson } from "akanjs/document";
-import { type DatabaseAdaptor, descriptorHash, stableJson } from "akanjs/service";
+import {
+  type DatabaseAdaptor,
+  descriptorHash,
+  type PrunedIndex,
+  type SqlDocumentStore,
+  stableJson,
+  type UndeclaredIndex,
+} from "akanjs/service";
 import { MigrationChangeLog } from "./migrationChangeLog";
 import { MigrationChanges, type MigrationSkip } from "./migrationChanges";
 import { MigrationContext, type MigrationGet } from "./migrationContext";
@@ -79,6 +86,11 @@ export interface MigrationRollbackResult {
   runs: MigrationRollbackRun[];
 }
 
+export interface MigrationPruneResult {
+  dropped: UndeclaredIndex[];
+  failed: PrunedIndex[];
+}
+
 export class MigrationRunner {
   static readonly defaultItemNum = 100;
   readonly #entries: MigrationEntry[];
@@ -127,6 +139,29 @@ export class MigrationRunner {
         return item;
       }),
     );
+  }
+
+  async undeclaredIndexes(): Promise<UndeclaredIndex[]> {
+    const indexes: UndeclaredIndex[] = [];
+    for (const store of this.#stores()) indexes.push(...(await store.undeclaredIndexes()));
+    return indexes;
+  }
+
+  async pruneIndexes({ actor = null }: { actor?: string | null } = {}): Promise<MigrationPruneResult> {
+    const pruned: PrunedIndex[] = [];
+    for (const store of this.#stores()) pruned.push(...(await store.pruneUndeclaredIndexes()));
+    const failed = pruned.filter(({ error }) => error !== undefined);
+    const dropped = pruned.filter(({ error }) => error === undefined);
+    this.#logger.info(
+      `prune-indexes${actor ? ` for ${actor}` : ""}: ${dropped.length} dropped, ${failed.length} failed to drop`,
+    );
+    return { dropped, failed };
+  }
+
+  #stores(): SqlDocumentStore[] {
+    const stores = this.#database.stores?.();
+    if (!stores) throw new MigrationError("failed", "This database adaptor keeps no model stores to read indexes from");
+    return stores;
   }
 
   async plan(

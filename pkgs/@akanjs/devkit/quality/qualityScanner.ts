@@ -1,8 +1,7 @@
 import { createHash } from "node:crypto";
-import { readdir, readFile, stat } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { RESERVED_ROUTE_CONFIG_EXPORTS } from "akanjs/common";
-import ignore from "ignore";
 import ts from "typescript";
 import {
   facetIndexShadowOf,
@@ -20,6 +19,7 @@ import { KindBranchScanner } from "./kindBranchScanner";
 import { MaintainabilityExceptionScanner } from "./maintainabilityExceptionScanner";
 import { fileWarning, formatSsrBalance, type SsrBalanceEntry, SsrScanner } from "./ssrScanner";
 import { TestOnlyExportScanner } from "./testOnlyExportScanner";
+import { WorkspaceSourceFiles } from "./workspaceSourceFiles";
 
 type QualitySeverity = "warning";
 type QualityScope = "global" | "file" | "convention" | "layout" | "ssr" | "agent" | "comment";
@@ -184,11 +184,10 @@ function getRuleFix(rule: string): string | undefined {
 
 export class AkanQualityScanner {
   async scan(workspaceRoot: string): Promise<QualityScanResult> {
-    const targetFiles = await this.#collectTargetFiles(workspaceRoot);
+    const workspaceFiles = new WorkspaceSourceFiles(workspaceRoot);
+    const targetFiles = await workspaceFiles.collect();
     const sourceFiles = await Promise.all(
-      targetFiles
-        .filter((file) => !AbstractDoc.isAbstractPath(file))
-        .map((file) => this.#readSourceFile(workspaceRoot, file)),
+      targetFiles.filter((file) => !AbstractDoc.isAbstractPath(file)).map((file) => workspaceFiles.read(file)),
     );
     const abstractFiles = await Promise.all(
       targetFiles
@@ -221,56 +220,18 @@ export class AkanQualityScanner {
     };
   }
 
-  async #collectTargetFiles(workspaceRoot: string) {
-    const ignoreFilter = ignore().add(await this.#readGitIgnore(workspaceRoot));
-    const files: string[] = [];
-    for (const targetRoot of ["apps", "libs"]) {
-      const absoluteTargetRoot = path.join(workspaceRoot, targetRoot);
-      if (!(await isDirectory(absoluteTargetRoot))) continue;
-      await this.#walkTargetFiles(workspaceRoot, absoluteTargetRoot, ignoreFilter, files);
-    }
-    return files.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  }
-
-  async #readGitIgnore(workspaceRoot: string) {
-    const gitIgnorePath = path.join(workspaceRoot, ".gitignore");
-    if (!(await Bun.file(gitIgnorePath).exists())) return [];
-    return (await readFile(gitIgnorePath, "utf8")).split(/\r?\n/);
-  }
-
-  async #walkTargetFiles(
-    workspaceRoot: string,
-    currentPath: string,
-    ignoreFilter: ReturnType<typeof ignore>,
-    files: string[],
-  ) {
-    const entries = await readdir(currentPath, { withFileTypes: true });
-    for (const entry of entries) {
-      const absolutePath = path.join(currentPath, entry.name);
-      const relativePath = toPosix(path.relative(workspaceRoot, absolutePath));
-      if (shouldSkipPath(relativePath, entry.isDirectory(), ignoreFilter)) continue;
-
-      if (entry.isDirectory()) {
-        await this.#walkTargetFiles(workspaceRoot, absolutePath, ignoreFilter, files);
-        continue;
-      }
-      if ((relativePath.endsWith(".ts") || relativePath.endsWith(".tsx")) && !relativePath.endsWith(".d.ts")) {
-        files.push(relativePath);
-      } else if (AbstractDoc.isAbstractPath(relativePath)) {
-        files.push(relativePath);
-      }
-    }
-  }
-
-  async #readSourceFile(workspaceRoot: string, file: string): Promise<SourceFileInfo> {
-    const absolutePath = path.join(workspaceRoot, file);
-    const content = await readFile(absolutePath, "utf8");
-    return {
-      file,
-      absolutePath,
-      content,
-      sourceFile: ts.createSourceFile(file, content, ts.ScriptTarget.Latest, true, getScriptKind(file)),
-    };
+  //? An SSR rule reads the file, its module folder and the signals its fetch calls name, which sit in its own app or
+  //? lib or under libs/, so no other file can change a warning on a file under `dirs`.
+  async scanSsr(workspaceRoot: string, dirs: string[]): Promise<QualityWarning[]> {
+    const workspaceFiles = new WorkspaceSourceFiles(workspaceRoot);
+    const read = (file: string) =>
+      !AbstractDoc.isAbstractPath(file) &&
+      (dirs.some((dir) => file.startsWith(`${dir}/`)) || /^libs\/[^/]+\/lib\/.+\.signal\.ts$/.test(file));
+    const files = (await workspaceFiles.collect([...dirs, "libs"])).filter(read);
+    const { warnings } = new SsrScanner().scan(await Promise.all(files.map((file) => workspaceFiles.read(file))));
+    return warnings
+      .map((warning) => ({ ...warning, fix: warning.fix ?? getRuleFix(warning.rule) }))
+      .sort(compareWarnings);
   }
 
   async #readTextFile(workspaceRoot: string, file: string): Promise<TextFileInfo> {
@@ -918,29 +879,6 @@ function getBodyFingerprint(sourceFile: ts.SourceFile, node: ts.Node | undefined
   return createHash("sha256").update(normalizedBody).digest("hex");
 }
 
-function shouldSkipPath(relativePath: string, isDirectory: boolean, ignoreFilter: ReturnType<typeof ignore>) {
-  const ignorePath = isDirectory ? `${relativePath}/` : relativePath;
-  return (
-    relativePath === ".git" ||
-    relativePath.includes("/.git/") ||
-    relativePath.includes("/node_modules/") ||
-    ignoreFilter.ignores(relativePath) ||
-    ignoreFilter.ignores(ignorePath)
-  );
-}
-
-async function isDirectory(absolutePath: string) {
-  try {
-    return (await stat(absolutePath)).isDirectory();
-  } catch {
-    return false;
-  }
-}
-
-function getScriptKind(file: string) {
-  return file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-}
-
 function getLine(sourceFile: ts.SourceFile, node: ts.Node) {
   return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
 }
@@ -958,10 +896,6 @@ function findPatternLines(content: string, pattern: RegExp) {
 
 function toPascalCase(value: string) {
   return value.replace(/(^|[-_./])([a-zA-Z0-9])/g, (_, __, char: string) => char.toUpperCase()).replace(/[-_./]/g, "");
-}
-
-function toPosix(value: string) {
-  return value.split(path.sep).join("/");
 }
 
 function groupBy<T>(items: T[], getKey: (item: T) => string) {

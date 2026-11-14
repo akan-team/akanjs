@@ -47,7 +47,7 @@ class BuildBatch {
     return this.#result;
   }
 
-  // A bare `process.send` is safe only because this process exits by returning from `main`, which flushes ipc;
+  // A bare `process.send` is safe only because `main` exits once the runner has read the result sent after it;
   // an explicit `process.exit` after an emit would silently drop payloads (route through BuilderChannel then).
   #emit(message: BuilderMessage): void {
     process.send?.(message);
@@ -294,6 +294,16 @@ class BuildBatch {
     });
   }
 
+  // Bounded, so a runner that never releases this process cannot keep the bundler arenas alive.
+  static #report(result: BuildBatchResult): Promise<void> {
+    if (!process.send) return Promise.resolve();
+    return new Promise((resolve) => {
+      process.once("disconnect", () => resolve());
+      process.send?.({ type: "build-batch-result", data: result });
+      setTimeout(() => process.disconnect?.(), 5_000).unref();
+    });
+  }
+
   static async main(): Promise<void> {
     const raw = process.argv[2];
     if (!raw) throw new Error("[build-batch] missing request argument");
@@ -312,12 +322,12 @@ class BuildBatch {
     // Seeded, not rediscovered: route discovery would be the largest cost of spawning this process.
     if (request.pageKeys) app.setPageKeys(request.pageKeys);
     //? Exits with the builder that spawned it (a kill, a crash, a restart for a metadata save): left running, it would
-    //? write a registry its replacement is rebuilding. Removed before returning, since the listener keeps Bun's IPC open.
+    //? write a registry its replacement is rebuilding. Removed before reporting, as the runner's release is a disconnect.
     const orphaned = () => process.exit(1);
     process.on("disconnect", orphaned);
     const result = await new BuildBatch(request, app).run();
-    process.send?.({ type: "build-batch-result", data: result });
     process.off("disconnect", orphaned);
+    await BuildBatch.#report(result);
   }
 }
 

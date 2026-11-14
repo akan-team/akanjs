@@ -1,5 +1,5 @@
 import type { Database, Statement } from "bun:sqlite";
-import { getEnv } from "akanjs/base";
+import { AkanError, getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
 import { type AkanJob, type AkanJobOptions, type AkanWorker, sendAkanIpc } from "../ipcTypes";
 import type { ProcessWorkerOptions, QueueAdaptor } from "./queue.adaptor";
@@ -232,7 +232,7 @@ export class SolidQueue
     for (const row of rows) {
       const payload = JSON.parse(row.payload) as { args: unknown[]; opts?: AkanJobOptions };
       const job = { id: row.id, name: row.name, data: payload.args, attemptsMade: row.attempts, opts: payload.opts };
-      await this.#fail(job, new Error(message), message, onFailed);
+      await this.#fail(job, new AkanError("jobStalled", message), message, onFailed);
     }
   }
 

@@ -8,6 +8,8 @@ export interface PagePromptEntry {
   arguments: McpPromptArgument[];
   /** The matched route pattern, e.g. `/:lang/project/:projectId`. */
   pattern: string;
+  /** An app declared `{ static: true }`, whose call can also answer with its element as script-less HTML. */
+  static?: boolean;
 }
 
 export interface PagePromptRecord {
@@ -40,6 +42,17 @@ export interface PagePromptRunInput {
   language?: string;
 }
 
+export interface PagePromptRenderInput extends PagePromptRunInput {
+  /** The public web origin the HTML's `<base>` names, so its links, images and stylesheet resolve off this server. */
+  origin: string;
+}
+
+export interface PagePromptRender {
+  run: PagePromptRun;
+  /** `null` for a refused run, an app not declared static, or an element that cannot stand without a browser. */
+  html: string | null;
+}
+
 export interface PagePromptVisibleInput {
   names: string[];
   /** The caller's credential, which the route guards read as a browser's would be. */
@@ -53,4 +66,6 @@ export interface PagePromptSource {
   /** The listed names whose route guards admit the caller; one that needs an argument is left to the call. */
   visible(input: PagePromptVisibleInput): Promise<string[]>;
   run(input: PagePromptRunInput): Promise<PagePromptRun>;
+  /** `run`, drawing a static app's element as HTML too; absent where no server rendering runs. */
+  render?(input: PagePromptRenderInput): Promise<PagePromptRender>;
 }

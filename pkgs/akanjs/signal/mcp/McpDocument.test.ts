@@ -169,6 +169,38 @@ describe("McpDocument", () => {
     expect(names(doc)).toContain("countMcpPosts");
   });
 
+  test('lists an `mcp: "agent"` entry only in the agent catalogue, at every altitude, and charges /mcp nothing', () => {
+    const agentSignal = () => {
+      const served = signal();
+      const post = served.mcpPost as SerializedSignal;
+      post.mcp = { remove: "agent" };
+      post.endpoint.pingMcpPost = {
+        type: "query",
+        args: [],
+        returns: { refName: "String" },
+        guards: ["Public"],
+        mcp: "agent",
+      };
+      if (post.slice) post.slice.agentSlice = { args: [], guards: ["Public"], mcp: "agent" };
+      return served;
+    };
+    const agentOnly = ["pingMcpPost", "removeMcpPost", "mcpPostListAgentSlice", "mcpPostInsightAgentSlice"];
+    const listing = new McpDocument(agentSignal());
+    const catalogue = new McpDocument(agentSignal(), { agent: true });
+    for (const name of agentOnly) {
+      expect(names(listing)).not.toContain(name);
+      expect(listing.findTool(name)).toBeUndefined();
+      expect(names(catalogue)).toContain(name);
+    }
+    expect(listing.refusals.find(({ key }) => key === "pingMcpPost")?.reason).toContain("only the in-process agent");
+    const removeOff = signal();
+    (removeOff.mcpPost as SerializedSignal).mcp = { remove: false };
+    expect(listing.listingCost.bytes).toBe(new McpDocument(removeOff).listingCost.bytes);
+    expect(names(catalogue)).not.toContain("requestMcpPostCode");
+    expect(names(catalogue)).not.toContain("signMcpPost");
+    expect(new McpDocument(agentSignal(), { apps: true }).appTools.map((tool) => tool.name)).toContain("pingMcpPost");
+  });
+
   test("with MCP Apps, publishes an `mcp: false` endpoint to rendered views only, and nothing else it refused", () => {
     const doc = new McpDocument(signal(), { apps: true });
     const appNames = doc.appTools.map((tool) => tool.name);

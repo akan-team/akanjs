@@ -160,12 +160,13 @@ export default page()
           "DefaultQueued",
           "DefaultSteps",
           "DefaultToolCard",
+          "DefaultToolRow",
           "DefaultToast",
           "DefaultToastItem",
         ],
         desc: l.trans({
-          en: "The shipped defaults of the eleven chat-part slots and both Toast slots, to wrap instead of rewrite.",
-          ko: "채팅 부품 슬롯 열한 개와 Toast 슬롯 두 개의 기본 구현입니다. 다시 쓰지 않고 감싸서 쓸 수 있습니다.",
+          en: "The shipped defaults of the twelve chat-part slots and both Toast slots, to wrap instead of rewrite.",
+          ko: "채팅 부품 슬롯 열두 개와 Toast 슬롯 두 개의 기본 구현입니다. 다시 쓰지 않고 감싸서 쓸 수 있습니다.",
         }),
       },
       {
@@ -305,11 +306,12 @@ export default page()
           "AgentMenu",
           "AgentMarkdown",
           "AgentToolCard",
+          "AgentToolRow",
           "AgentCode",
         ],
         desc: l.trans({
-          en: "The in-page chat. `AgentChat` swaps the whole panel; the other eleven each swap one part.",
-          ko: "인페이지 채팅입니다. `AgentChat`은 패널 전체를, 나머지 열한 개는 각자 한 부분을 바꿉니다.",
+          en: "The in-page chat. `AgentChat` swaps the whole panel; the other twelve each swap one part.",
+          ko: "인페이지 채팅입니다. `AgentChat`은 패널 전체를, 나머지 열두 개는 각자 한 부분을 바꿉니다.",
         }),
       },
     ];
@@ -397,8 +399,8 @@ export default page()
         href: "/cheatsheet/interface/agent-chat#slots",
         title: l.trans({ en: "Agent Chat Slots", ko: "Agent Chat 슬롯" }),
         desc: l.trans({
-          en: "The twelve chat slots, and what each part of the panel receives.",
-          ko: "채팅 슬롯 열두 개와, 패널의 각 부분이 받는 값입니다.",
+          en: "The thirteen chat slots, and what each part of the panel receives.",
+          ko: "채팅 슬롯 열세 개와, 패널의 각 부분이 받는 값입니다.",
         }),
       },
     ];

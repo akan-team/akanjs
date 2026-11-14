@@ -86,11 +86,23 @@ const makeSignal = () => {
     storeTestItemInsightByTitle: mock(async () => new StoreTestInsight({ count: 2 })),
   };
   const sortValueMap = new Map([["storeTestItem", { latest: { createdAt: -1 as const } }]]);
-  const rooms: { args: unknown[]; handleEvent: (event: unknown) => void; onResync?: () => void; open: boolean }[] = [];
+  const rooms: {
+    args: unknown[];
+    handleEvent: (event: unknown) => void;
+    onResync?: () => void;
+    onRefused?: (error: unknown) => void;
+    open: boolean;
+  }[] = [];
   const recordRoom = (...argData: unknown[]) => {
     const handleEvent = argData.at(-2) as (event: unknown) => void;
-    const policy = argData.at(-1) as { onResync?: () => void };
-    const room = { args: argData.slice(0, -2), handleEvent, onResync: policy?.onResync, open: true };
+    const policy = argData.at(-1) as { onResync?: () => void; onRefused?: (error: unknown) => void };
+    const room = {
+      args: argData.slice(0, -2),
+      handleEvent,
+      onResync: policy?.onResync,
+      onRefused: policy?.onRefused,
+      open: true,
+    };
     rooms.push(room);
     return () => {
       room.open = false;
@@ -2120,6 +2132,40 @@ describe("live sync store action", () => {
     await instance.do.watchLiveStoreTestItemBySearch(["Ada", "lovelace"]);
     expect(signal.rooms[0].open).toBe(false);
     expect(signal.rooms).toHaveLength(1);
+  });
+
+  test("a room the server refused shows why, marks the list stale, and is subscribed again only by the next watch", async () => {
+    setupEnv();
+    Translator.seed("en", { base: { error: { liveRoomLimit: { t: "Live updates stopped" } } } });
+    Translator.setActiveLocale("en");
+    const signal = makeSignal();
+    class LiveStore extends store(signal, () => ({})) {}
+    class LiveRefusalMessageStore extends store("liveRefusalMessage" as const, () => ({
+      messages: [] as { content: string; type: string; key: string; duration: number }[],
+    })) {
+      showMessage(message: { content: string; type: string; key: string; duration: number }) {
+        this.set({ messages: [...this.get().messages, message] });
+      }
+    }
+    StoreRegistry.register(LiveStore);
+    StoreRegistry.register(LiveRefusalMessageStore);
+    const instance = new StoreInstance(makeRoot(`liveRefusalRoot${Math.random()}`, LiveStore, LiveRefusalMessageStore));
+    await instance.do.initStoreTestItemByTitle("Ada");
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+
+    signal.rooms[0].onRefused?.({ error: "base.error.liveRoomLimit", statusCode: 429, data: { limit: 256 } });
+    expect((instance.get() as { messages: unknown[] }).messages).toEqual([
+      { type: "error", key: "watchLiveStoreTestItemByTitle", duration: 5, content: "Live updates stopped" },
+    ]);
+    expect(liveState(instance).staleAt).toBeGreaterThan(0);
+    expect(signal.rooms).toHaveLength(1);
+
+    await instance.do.watchLiveStoreTestItemByTitle(null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(signal.rooms).toHaveLength(1);
+    await instance.do.watchLiveStoreTestItemByTitle(["Ada"]);
+    expect(signal.rooms).toHaveLength(2);
+    expect(signal.rooms[1].open).toBe(true);
   });
 
   test("a room that comes back after a drop reloads the list", async () => {

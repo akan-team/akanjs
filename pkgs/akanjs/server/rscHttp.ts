@@ -1,4 +1,4 @@
-import { mapFlightLineRows } from "./flightRowReader";
+import type { FlightLineRowHandler } from "./flightRowReader";
 
 export const RSC_CONTENT_TYPE = "text/x-component; charset=utf-8";
 const RSC_REDIRECT_ROW_RE = /^([0-9a-z]+):E(\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\})(\n?)$/;
@@ -58,10 +58,9 @@ export function concatBytes(left: Uint8Array, right: Uint8Array): Uint8Array<Arr
   return combined;
 }
 
-export function guardRscRedirectRows(
-  stream: ReadableStream<Uint8Array>,
+export function rscRedirectRowGuard(
   options: { onRedirect?: (redirect: RscRedirectRow) => void } = {},
-): ReadableStream<Uint8Array> {
+): FlightLineRowHandler {
   const decoder = new TextDecoder("utf-8", { fatal: true });
   const encoder = new TextEncoder();
   let redirected = false;
@@ -84,7 +83,7 @@ export function guardRscRedirectRows(
     }
   };
 
-  return mapFlightLineRows(stream, (row, tag) => {
+  return (row, tag) => {
     const redirect = tag === "E" ? getRedirectRow(row) : null;
     if (!redirect) return row;
     if (!redirected) {
@@ -92,18 +91,18 @@ export function guardRscRedirectRows(
       options.onRedirect?.(redirect);
     }
     return encoder.encode(`${redirect.rowId}:null${row[row.byteLength - 1] === 10 ? "\n" : ""}`);
-  });
+  };
 }
 
 //? A not-found or a redirect digest is the route's own answer, and an empty one is React's dev-only debug row (a
 //? rejected promise a component caught) or a cancelled task's; any other error row is a render that failed.
-export function watchRscErrorRows(stream: ReadableStream<Uint8Array>, onError: () => void): ReadableStream<Uint8Array> {
+export function rscErrorRowWatcher(onError: () => void): FlightLineRowHandler {
   const decoder = new TextDecoder();
   let failed = false;
-  return mapFlightLineRows(stream, (row, tag) => {
+  return (row, tag) => {
     if (tag !== "E" || failed || RSC_UNFAILED_ERROR_ROW_RE.test(decoder.decode(row))) return row;
     failed = true;
     onError();
     return row;
-  });
+  };
 }

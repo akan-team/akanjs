@@ -98,7 +98,7 @@ Option
 
 - voice: A press-to-talk microphone, and spoken replies to questions asked by voice.
 
-The panel itself (its controlled `open` pair, the twelve `_overrides.tsx` slots, card tools, the `@` menu, the queue and the transcript store) is covered on Agent Chat.
+The panel itself (its controlled `open` pair, the thirteen `_overrides.tsx` slots, card tools, the `@` menu, the queue and the transcript store) is covered on Agent Chat.
 
 Attachments
 

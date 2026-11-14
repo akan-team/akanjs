@@ -62,7 +62,7 @@ export class Transcript {
     return message.usage ? { ...message, usage: undefined } : message;
   }
 
-  static sanitize(messages: readonly ChatMessage[]): ChatMessage[] {
+  static sanitize(messages: readonly ChatMessage[], openCallId?: string): ChatMessage[] {
     const answered = new Set(messages.flatMap((message) => (message.toolResults ?? []).map((result) => result.id)));
     const called = new Set<string>();
     const kept: ChatMessage[] = [];
@@ -76,7 +76,7 @@ export class Transcript {
       kept.push(message);
       const calls = message.toolCalls ?? [];
       for (const call of calls) called.add(call.id);
-      const unanswered = calls.filter((call) => !answered.has(call.id));
+      const unanswered = calls.filter((call) => !answered.has(call.id) && call.id !== openCallId);
       // Answered rather than erased: what the agent tried to do is the transcript's, and a model told the call
       // was stopped asks again, where one shown no call at all answers as if it had the result.
       if (unanswered.length)

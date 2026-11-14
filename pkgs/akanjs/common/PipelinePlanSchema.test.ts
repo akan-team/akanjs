@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import path from "node:path";
 import { PipelinePlanSchema } from "./PipelinePlanSchema";
 import type {
   PipelineActionName,
@@ -316,5 +317,26 @@ describe("PipelinePlanSchema", () => {
       const source = plan.sources.apps.api;
       if (source) source.sha256 = "<sha256 of the file>";
     }, "lowercase sha256");
+  });
+
+  test("stays out of a web page that reads another akanjs/common helper", async () => {
+    const barrel = JSON.stringify(path.join(import.meta.dir, "index.ts"));
+    const built = await Bun.build({
+      entrypoints: ["/entry.ts"],
+      files: { "/entry.ts": `import { capitalize } from ${barrel};\nconsole.info(capitalize("akan"));\n` },
+      target: "browser",
+      format: "esm",
+      throw: true,
+    });
+    const output = (await Promise.all(built.outputs.map((artifact) => artifact.text()))).join("\n");
+
+    const pipelineNames = [
+      "PipelinePlanSchema",
+      "PipelinePattern",
+      "PipelineNames",
+      "PipelineValueReader",
+      "pipelineActions",
+    ];
+    expect(pipelineNames.filter((name) => output.includes(name))).toEqual([]);
   });
 });

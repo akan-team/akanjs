@@ -80,11 +80,15 @@ class ServerResolverTestDoc extends by(ServerResolverTestFull) {}
 
 export class ServerResolverTestModelMixin {
   static schemaTouched = false;
+  static afterUpdate: ((doc: unknown) => Promise<void>) | null = null;
   static _onSchema(schema: SchemaOf) {
     ServerResolverTestModelMixin.schemaTouched = true;
     schema.index({ category: 1 });
     schema.pre("create", () => {
       //
+    });
+    schema.post("update", async function (this: unknown) {
+      await ServerResolverTestModelMixin.afterUpdate?.(this);
     });
   }
   static modelKind() {
@@ -100,6 +104,9 @@ class ServerResolverTestModel extends into(
     byOwner: loader.byField("ownerId", { removedAt: { kind: "op", op: "empty" } }),
     byTag: loader.byArrayField("tags"),
     byOwnerCategory: loader.byQuery(["ownerId", "category"] as const),
+    keptByTitle: loader.byField("title", {}, { cache: true }),
+    keptByTag: loader.byArrayField("tags", {}, { cache: true }),
+    keptByTitleCategory: loader.byQuery(["title", "category"] as const, {}, { cache: true }),
   }),
   ServerResolverTestModelMixin as unknown as ModelCls,
 ) {}

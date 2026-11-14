@@ -44,6 +44,10 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "Too many requests. Please try again in {seconds} seconds.",
       "요청이 너무 많습니다. {seconds}초 후 다시 시도해주세요.",
     ],
+    liveRoomLimit: [
+      "This list stopped updating live: the server follows as many live lists as it allows. Reload to see the latest.",
+      "이 목록의 실시간 갱신이 멈췄습니다. 서버가 허용하는 실시간 목록 수를 넘었습니다. 새로고침하면 최신 내용을 볼 수 있습니다.",
+    ],
     payloadTooLarge: [
       "The request is too large for the server to accept.",
       "요청이 너무 커서 서버가 받을 수 없습니다.",
@@ -95,6 +99,13 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
     cameraPromptPhoto: ["Choose from library", "앨범에서 선택하기"],
     cameraPromptPicture: ["Take a photo", "사진 찍기"],
     cameraPromptCancel: ["Cancel", "취소"],
+    cameraDeniedTitle: ["Camera access is off", "카메라 접근이 꺼져 있어요"],
+    cameraDeniedMessage: [
+      "To take a photo, allow camera access for this app in Settings.",
+      "사진을 찍으려면 설정에서 이 앱의 카메라 접근을 허용해 주세요.",
+    ],
+    cameraDeniedSettings: ["Open Settings", "설정 열기"],
+    cameraDeniedLater: ["Not now", "나중에"],
     success: ["Success", "성공"],
     failed: ["Failed", "실패"],
     processing: ["Processing...", "처리중..."],

@@ -48,6 +48,17 @@ describe(".app() stage", () => {
     expect(page().render(() => null).appMetas).toEqual([]);
   });
 
+  test("carries { static: true } onto its listing, and leaves an app without it unmarked", () => {
+    const definition = page()
+      .app("showTickets", "Show the tickets.", () => null, { static: true })
+      .app("showBoard", "Show the board.", () => null)
+      .render(() => null);
+    expect(definition.appMetas).toEqual([
+      { name: "showTickets", description: "Show the tickets.", arguments: [], static: true },
+      { name: "showBoard", description: "Show the board.", arguments: [] },
+    ]);
+  });
+
   test("loads one app alone, inside its own scope through an await, and names an app the page lacks", async () => {
     const scopes: (string | undefined)[] = [];
     const definition = page()

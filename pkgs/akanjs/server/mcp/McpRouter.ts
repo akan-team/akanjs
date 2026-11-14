@@ -114,7 +114,9 @@ export class McpRouter {
     this.#dispatcher = new McpDispatcher({ ...props, legacyTextBlock, language: props.language ?? defaultLanguage });
     this.#auth = new McpAuth({ ...props.auth, path: props.path ?? "/mcp" });
     this.#apps =
-      props.apps && props.pagePrompts ? new McpApps(props.appShell ?? null, { readOnly: props.readOnly }) : null;
+      props.apps && props.pagePrompts
+        ? new McpApps(props.appShell ?? null, { readOnly: props.readOnly, staticHtml: !!props.pagePrompts.render })
+        : null;
     const cache = props.registry.adaptor.get(CacheAdaptorRole) as (McpSharedCounter & McpUiSessionStore) | undefined;
     this.#pages = new McpPages({
       source: props.pagePrompts,
@@ -421,7 +423,7 @@ export class McpRouter {
       };
       const body = (await (await this.#dispatch(call)).json()) as McpJsonRpcResponse;
       const result = body.result as Record<string, unknown> | undefined;
-      if (!result) throw new Error(`MCP ${method} failed: ${body.error?.message ?? "no result"}`);
+      if (!result) throw new AkanError("listFailed", `MCP ${method} failed: ${body.error?.message ?? "no result"}`);
       items.push(...((result[key] as unknown[] | undefined) ?? []));
       cursor = typeof result.nextCursor === "string" ? result.nextCursor : undefined;
     } while (cursor);

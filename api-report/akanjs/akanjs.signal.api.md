@@ -132,6 +132,8 @@ export interface AgentTurnContext {
     loop?: {
         id: string;
         round: number;
+        client?: true;
+        remote?: true;
     };
     meta?: Record<string, string>;
 }
@@ -149,8 +151,10 @@ export declare class AgentTurnStream {
         data?: Record<string, number | string>;
         overflow?: {
             limit?: number;
+            requested?: number;
         };
     };
+    static relayable<Turn extends StreamedTurn>(turn: Turn): Turn;
     static response(run: RunTurn): Response;
 }
 
@@ -490,11 +494,15 @@ export type EndpointInfoParts<E> = E extends EndpointInfo<infer ReqType, infer S
 } : EndpointInfoEmptyParts;
 
 export declare class EndpointRateLimit {
+    static readonly defaultSubscribePerSocket: WindowBudget;
+    static readonly defaultSubscribePerCaller: WindowBudget;
     static configure(setting: RateLimitSetting | false): void;
     static applyEnv(value: string | undefined, environment: string): void;
     static reset(): void;
+    static subscribeBudgetOf(per: keyof SubscribeRateSetting): WindowBudget | null;
     static budgetOf(key: string, endpointInfo: EndpointInfo): ResolvedBudget | null;
     static admit(context: SignalContext, phase: "account" | "ip"): Promise<void> | undefined;
+    static callerOf(context: SignalContext): null | string;
 }
 
 export type EndpointType = "message" | "mutation" | "pubsub" | "query";
@@ -799,6 +807,11 @@ export declare const MCP_SCREEN_REFUSAL: {
     readonly failed: "The page failed to load.";
 };
 
+export declare const MCP_STATIC_APP_META: {
+    readonly static: "akanjs/static";
+    readonly render: "akanjs/render";
+};
+
 export declare const MCP_SUPPORTED_VERSIONS: readonly [
     "2026-07-28",
     "2025-11-25",
@@ -859,6 +872,7 @@ export interface McpDocumentOptions {
     readOnly?: boolean;
     outputSchema?: McpOutputSchemaMode;
     apps?: boolean;
+    agent?: boolean;
 }
 
 export type McpEra = "legacy" | "modern";
@@ -1003,6 +1017,7 @@ export interface McpTool {
     _meta?: {
         ui?: McpToolUiMeta;
         [MCP_UI_LEGACY_RESOURCE_URI]?: string;
+        [MCP_STATIC_APP_META.static]?: boolean;
     };
 }
 
@@ -1106,6 +1121,7 @@ export interface PagePromptEntry {
     description: string;
     arguments: McpPromptArgument[];
     pattern: string;
+    static?: boolean;
 }
 
 export interface PagePromptRecord {
@@ -1122,6 +1138,15 @@ export interface PagePromptRecord {
 }
 
 export type PagePromptRefusal = "argument" | "error" | "forbidden" | "not-found" | "redirect" | "unknown";
+
+export interface PagePromptRender {
+    run: PagePromptRun;
+    html: null | string;
+}
+
+export interface PagePromptRenderInput extends PagePromptRunInput {
+    origin: string;
+}
 
 export interface PagePromptRoute {
     params: Record<string, string>;
@@ -1153,6 +1178,7 @@ export interface PagePromptSource {
     list(): Promise<PagePromptEntry[]>;
     visible(input: PagePromptVisibleInput): Promise<string[]>;
     run(input: PagePromptRunInput): Promise<PagePromptRun>;
+    render?(input: PagePromptRenderInput): Promise<PagePromptRender>;
 }
 
 export interface PagePromptVisibleInput {
@@ -1246,6 +1272,7 @@ export interface RateLimitSetting {
         [key: string]: Partial<RateLimitBudget> | false;
     };
     accountKey?: (account: unknown) => null | string | undefined;
+    subscribe?: SubscribeRateSetting | false;
 }
 
 export declare class Req implements InternalArg {
@@ -1290,10 +1317,10 @@ export interface ResolvedSliceCrud {
 }
 
 export interface ResolvedSliceMcp {
-    get: boolean;
-    create: boolean;
-    update: boolean;
-    remove: boolean;
+    get: McpShelf;
+    create: McpShelf;
+    update: McpShelf;
+    remove: McpShelf;
 }
 
 export interface ReturnInfo<Returns extends ConstantFieldTypeInput = any, Nullable extends boolean = false> {
@@ -1358,7 +1385,7 @@ export interface SerializedSignal {
     createGuards?: string[];
     updateGuards?: string[];
     removeGuards?: string[];
-    mcp?: SerializedSignalMcp;
+    mcp?: SerializedSignalShelf;
     crud?: SerializedSignalMcp;
     agents?: SerializedSignalMcp;
     origin?: string[];
@@ -1369,6 +1396,13 @@ export interface SerializedSignalMcp {
     create?: false;
     update?: false;
     remove?: false;
+}
+
+export interface SerializedSignalShelf {
+    get?: "agent" | false;
+    create?: "agent" | false;
+    update?: "agent" | false;
+    remove?: "agent" | false;
 }
 
 export interface SerializedSlice extends SerializedSignalOption {
@@ -1477,6 +1511,8 @@ export declare class SignalFailure {
     static readonly message = "Internal Server Error";
     static get detailed(): boolean;
     static reset(): void;
+    static statusOf(error: unknown): number;
+    static logAttrs(error: unknown): LogAttrs;
     static generalized(error: unknown): {
         error: string;
         statusCode: number;
@@ -1511,7 +1547,7 @@ export interface SignalOption<Response = any, Nullable extends boolean = false, 
     globalPrefix?: false;
     method?: HttpMutationMethod;
     fileUpload?: boolean;
-    mcp?: boolean;
+    mcp?: McpShelf;
     destructive?: boolean;
     errors?: EndpointErrors;
     backpressure?: "coalesce" | "queue";
@@ -1762,6 +1798,11 @@ export interface StatusException {
     is(error: unknown, ...codes: string[]): error is Exception;
 }
 
+export interface SubscribeRateSetting {
+    perSocket?: Omit<RateLimitBudget, "by"> | false;
+    perCaller?: Omit<RateLimitBudget, "by"> | false;
+}
+
 export declare class Timeout extends Timeout_base {
     use(): Promise<(context: SignalContext, next: () => Promise<unknown>) => Promise<unknown>>;
 }
@@ -1815,9 +1856,16 @@ export type WebsocketReqData = {
     data: unknown[];
     subscribe?: boolean;
     since?: WebsocketRoomCursor;
+    token?: number;
 };
 
-export type WebsocketResData = WebsocketAuthAck | WebsocketMessageData | WebsocketPublishData | WebsocketSubscribeAck;
+export type WebsocketResData = WebsocketAuthAck | WebsocketMessageData | WebsocketPublishData | WebsocketResyncData | WebsocketSubscribeAck;
+
+export type WebsocketResyncData = {
+    type: "resync";
+    roomId: string;
+    seq?: number;
+};
 
 export type WebsocketRoomCursor = {
     epoch: string;
@@ -2671,13 +2719,13 @@ interface RootSliceOption {
         update?: GuardCls | GuardCls[] | false;
         remove?: GuardCls | GuardCls[] | false;
     };
-    mcp?: boolean | {
-        root?: boolean;
-        get?: boolean;
-        cru?: boolean;
-        create?: boolean;
-        update?: boolean;
-        remove?: boolean;
+    mcp?: McpShelf | {
+        root?: McpShelf;
+        get?: McpShelf;
+        cru?: McpShelf;
+        create?: McpShelf;
+        update?: McpShelf;
+        remove?: McpShelf;
     };
     prefix?: string;
 }
@@ -2696,7 +2744,7 @@ interface SerializedSignalOption {
     guards?: string[];
     method?: HttpMutationMethod;
     fileUpload?: boolean;
-    mcp?: false;
+    mcp?: "agent" | false;
     agents?: false;
 }
 
@@ -2788,4 +2836,6 @@ interface WebSocketRequest {
     data: unknown[];
     eventType: WebSocketEventType;
 }
+
+type WindowBudget = Omit<ResolvedBudget, "by">;
 ```

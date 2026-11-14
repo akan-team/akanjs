@@ -76,7 +76,7 @@ test("a stop that lands while a crashed replica's socket is removed leaves the r
   const app = new AkanApp(serverPath, {
     replica: 1,
     runtimeDir: path.join(root, "runtime"),
-    port: 24_000 + Math.floor(Math.random() * 10_000),
+    port: 0,
   });
   const running = app.start();
   try {

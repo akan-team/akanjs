@@ -1,0 +1,110 @@
+import { Account, Every, Person } from "@libs/shared/srvkit";
+import { endpoint, internal } from "akanjs/signal";
+
+import * as cnst from "../cnst";
+import * as srv from "../srv";
+
+export class RemoteInternal extends internal(srv.remote, () => ({})) {}
+
+// Every one is `mcp: false` and takes `Person`: connecting a server hands this app's agent the account's access there,
+// which is a person's decision and never a tool a model may call, least of all one reached through another connection.
+export class RemoteEndpoint extends endpoint(srv.remote, ({ query, mutation }) => ({
+  connectRemote: mutation(String, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 10, by: "account" },
+    errors: {
+      400: ["remote.error.urlRejected"],
+      401: ["remote.error.notSignedIn"],
+      404: ["remote.error.disabled"],
+      502: ["remote.error.unreachable", "remote.error.signInRefused"],
+    },
+  })
+    .body("url", String)
+    .with(Account)
+    .exec(async function (url, account) {
+      return await this.remoteService.connect(account, url);
+    }),
+
+  completeRemoteConnection: mutation(cnst.RemoteConnection, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 10, by: "account" },
+    errors: {
+      400: ["remote.error.authorizationNotFound", "remote.error.issuerMismatch", "remote.error.authorizationRefused"],
+      403: ["remote.error.authorizationBoundToAnotherAccount"],
+      502: ["remote.error.unreachable", "remote.error.signInRefused"],
+    },
+  })
+    .body("state", String)
+    .body("code", String)
+    .body("iss", String, { nullable: true })
+    .with(Account)
+    .exec(async function (state, code, iss, account) {
+      return await this.remoteService.complete(account, { state, code, iss });
+    }),
+
+  disconnectRemote: mutation(Boolean, { guards: [Every, Person], mcp: false, rateLimit: { calls: 20, by: "account" } })
+    .body("url", String)
+    .with(Account)
+    .exec(async function (url, account) {
+      return await this.remoteService.disconnect(account, url);
+    }),
+
+  //? Draws what a run already showed: the service calls only a tool the remote lists as a read-only static app.
+  remoteScreen: query(String, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 60, by: "account" },
+    errors: { 400: ["remote.error.urlRejected", "remote.error.badArguments"], 404: ["remote.error.disabled"] },
+  })
+    .search("url", String)
+    .search("tool", String)
+    .search("args", String)
+    .with(Account)
+    .exec(async function (url, tool, args, account) {
+      return await this.remoteService.screen(account, url ?? "", tool ?? "", args ?? "{}");
+    }),
+
+  remoteView: query(String, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 60, by: "account" },
+    errors: { 400: ["remote.error.urlRejected"], 404: ["remote.error.disabled"] },
+  })
+    .search("url", String)
+    .search("uri", String)
+    .with(Account)
+    .exec(async function (url, uri, account) {
+      return await this.remoteService.view(account, url ?? "", uri ?? "");
+    }),
+
+  //? Security: it goes to the one server whose view asked, for a tool that server lists to this user, and its answer
+  //? is handed to that view's frame alone; nothing here reaches a model.
+  callRemoteView: mutation(String, {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 120, by: "account" },
+    errors: {
+      400: ["remote.error.urlRejected", "remote.error.badArguments", "remote.error.viewCallRefused"],
+      404: ["remote.error.disabled"],
+    },
+  })
+    .body("url", String)
+    .body("tool", String)
+    .body("args", String)
+    .with(Account)
+    .exec(async function (url, tool, args, account) {
+      return await this.remoteService.viewCall(account, url, tool, args);
+    }),
+
+  listRemoteConnections: query([cnst.RemoteConnection], {
+    guards: [Every, Person],
+    mcp: false,
+    rateLimit: { calls: 60, by: "account" },
+  })
+    .with(Account)
+    .exec(async function (account) {
+      return await this.remoteService.listConnections(account);
+    }),
+})) {}

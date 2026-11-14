@@ -3,18 +3,23 @@
 //! desktop.ts asks for through GTK, a visible view also holds the keyboard focus for the user's own keys, and frames are
 //! told apart at their responses, as navigation.rs does for the page.
 
-use std::{cell::RefCell, rc::Rc};
+use std::{
+  cell::{Cell, RefCell},
+  collections::HashMap,
+  rc::Rc,
+};
 
-use gtk::{gdk, glib, prelude::*};
+use gtk::{gdk, gio, glib, prelude::*};
+use javascriptcore::{ContextExt, ValueExt};
 use webkit2gtk::{
-  LoadEvent, NavigationPolicyDecision, NavigationPolicyDecisionExt, NetworkError, PolicyDecisionExt, PolicyDecisionType, PolicyError, ResponsePolicyDecision,
+  JavascriptError, LoadEvent, NavigationPolicyDecision, NavigationPolicyDecisionExt, NetworkError, PolicyDecisionExt, PolicyDecisionType, PolicyError, ResponsePolicyDecision,
   ResponsePolicyDecisionExt, SettingsExt, SnapshotOptions, SnapshotRegion, URIRequestExt, URIResponseExt, WebContextExt, WebProcessTerminationReason, WebResourceExt,
   WebViewExt, WebsiteDataManagerExtManual, WebsiteDataTypes,
 };
 use wry::{WebView, WebViewBuilder, WebViewBuilderExtUnix, WebViewExtUnix};
 
 use crate::{
-  external::{admits, event, Bounds, Reply},
+  external::{admits, event, json_answer, Bounds, Reply},
   json,
   navigation::{scheme, shown},
   push_event, send, UserEvent,
@@ -123,8 +128,15 @@ pub(crate) fn set_visible(webview: &WebView, visible: bool) {
   }
 }
 
-/// Off the overlay; wry destroys the webview itself when it is dropped.
+/// Off the overlay, its calls answered CANCELLED; wry destroys the webview itself when it is dropped.
 pub(crate) fn discard(webview: &WebView) {
+  // SAFETY: only `calls` sets CALLS, always to a Calls.
+  if let Some(calls) = unsafe { webview.webview().data::<Calls>(CALLS) } {
+    let pending = std::mem::take(&mut *unsafe { calls.as_ref() }.pending.borrow_mut());
+    for reply in pending.into_values() {
+      reply.send(Err("CANCELLED: the view was closed or built again before its page answered".into()));
+    }
+  }
   let Some(holder) = holder_of(webview) else { return };
   if let Some(overlay) = holder.parent().and_then(|parent| parent.downcast::<gtk::Container>().ok()) {
     overlay.remove(&holder);
@@ -150,6 +162,75 @@ pub(crate) fn clear_data(webview: &WebView, reply: Reply) {
   manager.clear(WebsiteDataTypes::ALL, glib::TimeSpan::from_seconds(0), None::<&gtk::gio::Cancellable>, move |done| {
     reply.send(done.map(|()| "null".into()).map_err(|e| format!("clearData: {e}")));
   });
+}
+
+const CALLS: &str = "akan-calls";
+
+//? Not wry's evaluate_script_with_callback: before the first navigation commits it queues the script, runs it at the
+//? commit and drops the callback, and it answers "" for a value JSON has no form for.
+pub(crate) fn evaluate(webview: &WebView, script: &str, reply: Reply) {
+  let wv = webview.webview();
+  let calls = calls(&wv);
+  let id = calls.next.get();
+  calls.next.set(id + 1);
+  calls.pending.borrow_mut().insert(id, reply);
+  let (pending, before, ends) = (Rc::downgrade(&calls.pending), calls.ends.get(), calls.ends);
+  wv.evaluate_javascript(script, None, None, None::<&gio::Cancellable>, move |result| {
+    //? WebKit answers a call its web process ended under before it emits web-process-terminated.
+    glib::idle_add_local_once(move || {
+      let reply = pending.upgrade().and_then(|pending| pending.borrow_mut().remove(&id));
+      if let Some(reply) = reply {
+        reply.send(answer(result, ends.get() != before));
+      }
+    });
+  });
+}
+
+/// A view's evaluate calls not yet answered, and the times its web process ended.
+#[derive(Clone)]
+struct Calls {
+  //? WebKit never answers a call whose page loops, even once the view is closed: discard answers them instead.
+  pending: Rc<RefCell<HashMap<u64, Reply>>>,
+  next: Rc<Cell<u64>>,
+  //? WebKit answers a call its web process ended under as it answers a script that threw: null, where macOS errs.
+  ends: Rc<Cell<u64>>,
+}
+
+fn calls(wv: &webkit2gtk::WebView) -> Calls {
+  // SAFETY: only `calls` sets CALLS, always to a Calls.
+  if let Some(calls) = unsafe { wv.data::<Calls>(CALLS) } {
+    return unsafe { calls.as_ref() }.clone();
+  }
+  let calls = Calls { pending: Rc::default(), next: Rc::default(), ends: Rc::default() };
+  let ends = calls.ends.clone();
+  wv.connect_web_process_terminated(move |_, _| ends.set(ends.get() + 1));
+  unsafe { wv.set_data(CALLS, calls.clone()) };
+  calls
+}
+
+/// The answer mac::evaluate gives: null for an exception or a value WebKit passes no result for, an error for a call
+/// its web process ended under.
+fn answer(result: Result<javascriptcore::Value, glib::Error>, ended: bool) -> Result<String, String> {
+  if ended {
+    return Err("INTERNAL: the view's web process ended before its page answered".into());
+  }
+  let error = match result {
+    Ok(value) => {
+      let text = value.to_json(0);
+      //? jsc_value_to_json leaves JSON.stringify's TypeError (a cycle, a BigInt) on WebKit's shared result context.
+      if text.is_none() {
+        if let Some(context) = value.context() {
+          context.clear_exception();
+        }
+      }
+      return Ok(json_answer(text.as_deref()));
+    }
+    Err(error) => error,
+  };
+  match error.kind::<JavascriptError>() {
+    Some(JavascriptError::ScriptFailed | JavascriptError::InvalidResult) => Ok("null".into()),
+    _ => Err(format!("INTERNAL: {error}")),
+  }
 }
 
 /// The top level stays on `allow`, checked once its response says it is the top-level document; frames load web
@@ -267,7 +348,22 @@ fn error_name(error: &glib::Error) -> String {
 pub(crate) fn cdp(webview: &WebView, method: &str, params: &str, reply: Reply) {
   match method {
     "Page.captureScreenshot" => capture(webview, reply),
-    "Input.dispatchKeyEvent" => reply.send(json::parse(params).and_then(|params| send_key(webview, &params)).map(|()| "{}".into())),
+    "Input.dispatchKeyEvent" => match json::parse(params).and_then(|params| send_key(webview, &params)) {
+      //? Answered once a script sent after the key has run: WebKit gives the page a key only after its answer to the one
+      //? before, so no sent key waits behind another, and a Tab's take-focus reaches GTK before its hold ends.
+      Ok(hold) => {
+        let hold = glib::thread_guard::ThreadGuard::new(hold);
+        evaluate(
+          webview,
+          "0",
+          Reply::new(move |answered| {
+            drop(hold);
+            reply.send(answered.map(|_| "{}".into()));
+          }),
+        );
+      }
+      Err(error) => reply.send(Err(error)),
+    },
     _ => reply.send(Err(format!("UNSUPPORTED: {method} reaches no view on Linux"))),
   }
 }
@@ -364,12 +460,16 @@ pub(crate) fn evdev(code: &str) -> Option<u16> {
   })
 }
 
-/// The keysym the page reads `key` off: `code`'s own when it types the same text (a numpad digit), else `key`'s.
+/// The keysym the page reads `key` off: `code`'s own when it types the same text (a numpad digit) or is the same key on
+/// the keypad (NumpadEnter), else `key`'s.
 fn keyval(key: &str, code: &str) -> Option<u32> {
   let named = |name: &str| keysym(name).map(|sym| gdk::keys::Key::from_name(&sym));
   let mut chars = key.chars();
   let sym = match (chars.next(), chars.next()) {
     (Some(c), None) => named(code).filter(|sym| sym.to_unicode() == Some(c)).unwrap_or_else(|| gdk::keys::Key::from_unicode(c)),
+    _ if code.strip_prefix("Numpad") == Some(key) => named(code)?,
+    //? WebKitGTK names a keysym it has no name or text for "Unidentified".
+    _ if key == "Unidentified" => gdk::keys::constants::VoidSymbol,
     _ => named(key)?,
   };
   Some(*sym)
@@ -381,7 +481,7 @@ const IM_PASS_THROUGH: u32 = 1 << 25;
 const KEY_WINDOW: &str = "akan-key-window";
 
 //? Sent to the view's widget, not the display: it reaches that view alone, focused, hidden or not, and counts as trusted.
-fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
+fn send_key(webview: &WebView, params: &json::V) -> Result<Option<FocusHold>, String> {
   let field = |k: &str| params.get(k).and_then(|v| v.as_str()).unwrap_or("");
   let kind = match field("type") {
     "keyDown" | "rawKeyDown" => gdk::EventType::KeyPress,
@@ -389,6 +489,11 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
     other => return Err(format!("INVALID_ARGS: no key event of type {other}")),
   };
   let (key, code) = (field("key"), field("code"));
+  //? GTK's input method takes a dead keysym as the start of a compose: the page sees a composition keydown, not
+  //? "Dead", and the next key typed as one character with it.
+  if key == "Dead" {
+    return Err("INVALID_ARGS: key Dead is not one sendKey sends on Linux, whose input method composes it with the next key".into());
+  }
   let keyval = keyval(key, code).ok_or_else(|| format!("INVALID_ARGS: key {key} is not one sendKey sends on Linux"))?;
   let keycode = evdev(code).ok_or_else(|| format!("INVALID_ARGS: code {code} is not a key sendKey knows"))? + 8;
   //? GTK's key bindings read a key off its keycode and state: a numpad digit without NumLock (Mod2) is Home, End, ….
@@ -413,8 +518,63 @@ fn send_key(webview: &WebView, params: &json::V) -> Result<(), String> {
     (*raw).keyval = keyval;
     (*raw).hardware_keycode = keycode;
   }
+  let hold = (kind == gdk::EventType::KeyPress && keyval == *gdk::keys::constants::Tab).then(|| FocusHold::new(&wv));
   wv.event(&native);
-  Ok(())
+  Ok(hold)
+}
+
+const FOCUS_HOLDS: &str = "akan-focus-holds";
+
+/// A sent Tab on its way through a view's page, which keeps the window's keyboard focus where it is meanwhile.
+struct FocusHold {
+  view: Rc<Cell<u32>>,
+  window: Option<Rc<Cell<u32>>>,
+}
+
+//? A Tab past a page's last element ends in WebKit's take-focus, which grabs the GTK focus for a view without it, and
+//? from a view with it moves the focus on through the window (the toplevel's `focus`).
+impl FocusHold {
+  fn new(wv: &webkit2gtk::WebView) -> Self {
+    let window = wv.toplevel().and_then(|top| top.downcast::<gtk::Window>().ok()).map(|top| {
+      holds_of(&top, |top, moves| {
+        top.connect_focus(move |_, _| if moves.get() > 0 { glib::Propagation::Stop } else { glib::Propagation::Proceed });
+      })
+    });
+    let hold = Self { view: focus_holds(wv), window };
+    for holds in [Some(&hold.view), hold.window.as_ref()].into_iter().flatten() {
+      holds.set(holds.get() + 1);
+    }
+    hold
+  }
+}
+
+impl Drop for FocusHold {
+  fn drop(&mut self) {
+    for holds in [Some(&self.view), self.window.as_ref()].into_iter().flatten() {
+      holds.set(holds.get() - 1);
+    }
+  }
+}
+
+fn focus_holds(wv: &webkit2gtk::WebView) -> Rc<Cell<u32>> {
+  holds_of(wv, |wv, grabs| {
+    wv.connect_grab_focus(move |wv| {
+      if grabs.get() > 0 && !wv.is_focus() {
+        wv.stop_signal_emission_by_name("grab-focus");
+      }
+    });
+  })
+}
+
+fn holds_of<O: ObjectExt>(object: &O, arm: impl FnOnce(&O, Rc<Cell<u32>>)) -> Rc<Cell<u32>> {
+  // SAFETY: only holds_of sets FOCUS_HOLDS, always to an Rc<Cell<u32>>.
+  if let Some(holds) = unsafe { object.data::<Rc<Cell<u32>>>(FOCUS_HOLDS) } {
+    return unsafe { holds.as_ref() }.clone();
+  }
+  let holds = Rc::new(Cell::new(0));
+  arm(object, holds.clone());
+  unsafe { object.set_data(FOCUS_HOLDS, holds.clone()) };
+  holds
 }
 
 //? GTK drops a key press on a window not viewable, a hidden view's own: keys go through an off-screen one routed to it.
@@ -448,7 +608,12 @@ fn key_window(wv: &webkit2gtk::WebView) -> Result<gdk::Window, String> {
 
 //? A visible view takes the user's own keys too: their way to a view is the keyboard focus.
 pub(crate) fn focus(webview: &WebView) {
-  webview.webview().grab_focus();
+  let wv = webview.webview();
+  //? A sent Tab's hold stops WebKit's take-focus, not the app's own moves of the keyboard.
+  let holds = focus_holds(&wv);
+  let held = holds.replace(0);
+  wv.grab_focus();
+  holds.set(held);
 }
 
 /// The page of the window `any` (the page itself or a view over it) takes the keyboard back.
@@ -461,8 +626,27 @@ pub(crate) fn focus_page(any: &WebView) {
 
 #[cfg(test)]
 mod tests {
-  use super::{evdev, keysym, keyval};
-  use gtk::gdk::keys::constants as k;
+  use super::{answer, evdev, keysym, keyval};
+  use gtk::{gdk::keys::constants as k, glib};
+  use javascriptcore::ContextExt;
+  use webkit2gtk::JavascriptError;
+
+  #[test]
+  fn what_json_has_no_form_for_and_an_exception_answer_null_as_on_macos() {
+    let context = javascriptcore::Context::new();
+    let run = |script: &str| answer(Ok(context.evaluate(script).expect("a value")), false);
+    for script in ["undefined", "(function () {})", "Symbol('s')", "1n", "NaN", "(() => { const a = {}; a.a = a; return a; })()"] {
+      assert_eq!(run(script), Ok("null".to_string()), "{script}");
+    }
+    assert!(context.exception().is_none());
+    assert_eq!(run("({ a: undefined, d: new Date(0), s: 'A\\ud800B', n: [1, 2.5, true, null] })"), Ok("{\"d\":\"1970-01-01T00:00:00.000Z\",\"s\":\"A\u{fffd}B\",\"n\":[1,2.5,true,null]}".to_string()));
+    for kind in [JavascriptError::ScriptFailed, JavascriptError::InvalidResult] {
+      assert_eq!(answer(Err(glib::Error::new(kind, "x")), false), Ok("null".to_string()));
+      assert!(answer(Err(glib::Error::new(kind, "x")), true).is_err_and(|e| e.starts_with("INTERNAL: ")));
+    }
+    assert!(answer(Ok(context.evaluate("undefined").expect("a value")), true).is_err_and(|e| e.starts_with("INTERNAL: ")));
+    assert!(answer(Err(glib::Error::new(JavascriptError::InvalidParameter, "x")), false).is_err_and(|e| e.starts_with("INTERNAL: ")));
+  }
 
   #[test]
   fn the_page_reads_key_and_a_numpad_digit_keeps_its_place() {
@@ -472,9 +656,12 @@ mod tests {
     assert_eq!(keyval("7", "Numpad7"), Some(*k::KP_7));
     assert_eq!(keyval("7", "Digit7"), Some(*k::_7));
     assert_eq!(keyval("ArrowLeft", "Numpad4"), Some(*k::Left));
-    assert_eq!(keyval("Enter", "NumpadEnter"), Some(*k::Return));
+    assert_eq!(keyval("Enter", "NumpadEnter"), Some(*k::KP_Enter));
+    assert_eq!(keyval("Enter", "Enter"), Some(*k::Return));
     assert_eq!(keyval("F5", "F5"), Some(*k::F5));
-    assert_eq!(keyval("Unidentified", "KeyA"), None);
+    assert_eq!(keyval("Unidentified", "KeyA"), Some(*k::VoidSymbol));
+    assert_eq!(keyval("Process", "KeyA"), None);
+    assert_eq!(keyval("Dead", "Quote"), None);
   }
 
   #[test]

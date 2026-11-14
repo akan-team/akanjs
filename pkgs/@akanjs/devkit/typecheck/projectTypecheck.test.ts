@@ -31,6 +31,28 @@ describe("ProjectTypecheck", () => {
     expect((error as Error).message).not.toContain("old.test.ts");
   }, 60_000);
 
+  test("checks a package whose tsconfig names no include, caching outside it", async () => {
+    const root = await makeTempRoot();
+    const dir = path.join(root, "pkgs/tool");
+    await write(
+      path.join(dir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { strict: true, types: [], target: "esnext", module: "esnext" } }),
+    );
+    await write(path.join(dir, "index.ts"), 'export const port: number = "8282";\n');
+    const cacheDir = path.join(root, ".akan/typecheck/pkgs/tool");
+
+    const error = await new ProjectTypecheck(dir, root, { ...process.env })
+      .checkIncremental(path.join(dir, "tsconfig.json"), cacheDir, "records")
+      .catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(TypecheckFailure);
+    expect((error as TypecheckFailure).records.map(({ file, code }) => [file, code])).toEqual([
+      ["pkgs/tool/index.ts", "TS2322"],
+    ]);
+    expect(await Bun.file(path.join(cacheDir, "tsconfig.tsbuildinfo")).exists()).toBe(true);
+    expect(await Bun.file(path.join(dir, "tsconfig.tsbuildinfo")).exists()).toBe(false);
+  }, 60_000);
+
   test("hands back one record per diagnostic when asked for records", async () => {
     const { root, dir } = await project();
     const error = await new ProjectTypecheck(dir, root, { ...process.env })

@@ -53,9 +53,9 @@ export class SubspaceClone {
     if (!(await FileSys.dirExists(path.join(this.#clonePath, ".git")))) {
       await rm(this.#clonePath, { recursive: true, force: true });
       await mkdir(path.dirname(this.#clonePath), { recursive: true });
-      await this.#workspace.spawn("git", ["clone", "--quiet", this.#declaration.repo, this.#clonePath]);
+      await this.#workspace.spawn("git", ["clone", "--quiet", "--", this.#declaration.repo, this.#clonePath]);
     }
-    await this.#clone.spawn("git", ["fetch", "--quiet", "origin", branch]);
+    await this.#clone.spawn("git", ["fetch", "--quiet", "--", "origin", branch]);
     await this.#clone.spawn("git", ["checkout", "--quiet", "-f", "-B", branch, `origin/${branch}`]);
     await this.#clone.spawn("git", ["clean", "-qfd"]);
   }
@@ -116,7 +116,7 @@ export class SubspaceClone {
     const message = `${SubspaceClone.syncSubjectPrefix}${this.#workspace.repoName}@${sha}`;
     await this.#clone.spawn("git", ["commit", "--quiet", "-m", message]);
     //* Never force: a diverged subspace holds customer commits, and `pull` is how those come back.
-    await this.#clone.spawn("git", ["push", "--quiet", "origin", branch]);
+    await this.#clone.spawn("git", ["push", "--quiet", "--", "origin", branch]);
     return (await this.#clone.spawn("git", ["rev-parse", "--short", "HEAD"])).trim();
   }
 

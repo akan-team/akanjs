@@ -1343,6 +1343,103 @@ describe("rscClient patch cache", () => {
     });
   };
 
+  test("a navigation's stream and a patch's each go through one Flight row pass", async () => {
+    framed("/pass/a", "pass");
+    framed("/pass/b", "pass");
+    const passesOf = async (href: string) => {
+      let passes = 0;
+      Object.assign(globalThis, {
+        TransformStream: class extends TransformStream {
+          constructor(...args: ConstructorParameters<typeof TransformStream>) {
+            super(...args);
+            passes += 1;
+          }
+        },
+      });
+      try {
+        await navigate(href);
+      } finally {
+        Object.assign(globalThis, { TransformStream });
+      }
+      return passes;
+    };
+
+    expect(await passesOf("/pass/a")).toBe(1);
+    expect(shown()).toBe("/pass/a");
+    expect(await passesOf("/pass/b")).toBe(1);
+    expect(shown()).toBe("/pass/b patched");
+  });
+
+  test.each([
+    ["a redirect", "redirect", { digest: "AKAN_REDIRECT;push;307;%2Flogin", name: "Error" }],
+    ["an error", "error", { digest: "AKAN_RENDER_ERROR", name: "Error", message: "Boom" }],
+  ])("a patch whose stream carries %s row is fetched again whole, not laid", async (_, kind, error) => {
+    const base = `/ctl-${kind}`;
+    framed(`${base}/a`, base);
+    framed(`${base}/b`, base);
+    const framedB = served.get(`${base}/b`);
+    served.set(`${base}/b`, async (headers) => {
+      const response = (await framedB?.(headers)) ?? responseOf(base);
+      if (response.headers.get("X-Akan-Rsc-Partial") !== "patch") return response;
+      return new Response(`${await response.text()}1:E${JSON.stringify(error)}\n`, { headers: response.headers });
+    });
+    await navigate(`${base}/a`);
+
+    await navigate(`${base}/b`);
+
+    const requests = fetched.filter(({ pathname }) => pathname === `${base}/b`);
+    expect(requests.map(({ sentRouterState }) => sentRouterState)).toEqual([true, false]);
+    expect(shown()).toBe(`${base}/b`);
+  });
+
+  test("a patch whose redirect row comes while its dictionary loads is fetched again whole, not laid", async () => {
+    const dictionaryDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-patch-dict-"));
+    const dictionary = path.join(dictionaryDir, "fr.js");
+    fs.writeFileSync(dictionary, 'await globalThis.__patchDictGate;\nexport const lang = "fr";\nexport default {};');
+    let openDictionary = () => {};
+    Object.assign(globalThis, { __patchDictGate: new Promise<void>((resolve) => (openDictionary = resolve)) });
+    let sendRedirect = () => {};
+    framed("/held/a", "held");
+    framed("/held/b", "held");
+    const framedB = served.get("/held/b");
+    served.set("/held/b", async (headers) => {
+      const response = (await framedB?.(headers)) ?? responseOf("/held");
+      if (response.headers.get("X-Akan-Rsc-Partial") !== "patch") return response;
+      const encoder = new TextEncoder();
+      const [root, redirect] = [await response.text(), '1:E{"digest":"AKAN_REDIRECT;push;307;%2Flogin"}\n'];
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(encoder.encode(root));
+          sendRedirect = () => {
+            controller.enqueue(encoder.encode(redirect));
+            controller.close();
+          };
+        },
+      });
+      response.headers.set(AKAN_RSC_DICTIONARY_HEADER, dictionary);
+      return new Response(body, { headers: response.headers });
+    });
+    await navigate("/held/a");
+    let navigation: Promise<void> | undefined;
+    await act(async () => {
+      navigation = globalThis.__AKAN_RSC_NAVIGATE__?.("/held/b");
+      await sleep(30);
+    });
+    expect(shown()).toBe("/held/a");
+
+    await act(async () => {
+      sendRedirect();
+      await sleep(10);
+      openDictionary();
+      await navigation;
+    });
+
+    fs.rmSync(dictionaryDir, { recursive: true, force: true });
+    const requests = fetched.filter(({ pathname }) => pathname === "/held/b");
+    expect(requests.map(({ sentRouterState }) => sentRouterState)).toEqual([true, false]);
+    expect(shown()).toBe("/held/b");
+  });
+
   test("a patch is replayed once a full commit brings back the page it went under, with its own title", async () => {
     framed("/deck/a", "deck");
     framed("/deck/b", "deck");
@@ -1385,40 +1482,158 @@ describe("rscClient patch cache", () => {
     expect(globalThis.__AKAN_RSC_IS_FROM_CACHE__?.()).toBe(true);
   });
 
-  test("a patch whose stream carried a server error after it was laid is asked for again, not replayed", async () => {
-    framed("/err/a", "err");
-    framed("/err/off", "erroff");
+  const lateRow = (digest: string) => ({
+    digest,
+    name: "Error",
+    message: "late",
+    stack: [],
+    env: "Server",
+    owner: null,
+  });
+  const servedWithLateRows = (base: string, rows: object[], whole?: () => Response) => {
     let release = () => {};
-    served.set("/err/b", () => {
-      const state = stateOf("/err/b", "err layouts");
-      if (fetchCountOf("/err/b") > 1) return patchResponseOf("/err/b", state);
+    framed(`/${base}/a`, base);
+    framed(`/${base}/off`, `${base}off`);
+    served.set(`/${base}/b`, (headers) => {
+      const state = stateOf(`/${base}/b`, `${base} layouts`);
+      if (!headers.has(AKAN_RSC_CURRENT_ROUTE_HEADER)) return whole?.() ?? wholeResponseOf(`/${base}/b`, base, state);
+      if (fetchCountOf(`/${base}/b`) > 1) return patchResponseOf(`/${base}/b`, state);
       const encoder = new TextEncoder();
-      const error = { digest: "5c6d7e8f", name: "Error", message: "broke", stack: [], env: "Server", owner: null };
       const body = new ReadableStream<Uint8Array>({
         async start(controller) {
-          controller.enqueue(encoder.encode(flight("/err/b patched")));
+          controller.enqueue(encoder.encode(flight(`/${base}/b patched`)));
           await new Promise<void>((resolve) => (release = resolve));
-          controller.enqueue(encoder.encode(`1:E${JSON.stringify(error)}\n`));
+          controller.enqueue(encoder.encode(rows.map((row, i) => `${i + 1}:E${JSON.stringify(row)}\n`).join("")));
           controller.close();
         },
       });
-      return new Response(body, { headers: patchResponseOf("/err/b", state).headers });
+      return new Response(body, { headers: patchResponseOf(`/${base}/b`, state).headers });
     });
-    await navigate("/err/a");
-    await navigate("/err/b");
-    expect(shown()).toBe("/err/b patched");
-    release();
+    return () => release();
+  };
+  const requestsOf = (pathname: string) =>
+    fetched.filter((request) => request.pathname === pathname).map(({ sentRouterState }) => sentRouterState);
+
+  test("a redirect a patch's stream carries after it was laid is followed, through the whole page's render", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Flrd%2Flogin");
+    const release = servedWithLateRows("lrd", [redirect], preStreamRedirectTo("/lrd/login"));
+    await navigate("/lrd/a");
+    await navigate("/lrd/b");
+    expect(shown()).toBe("/lrd/b patched");
+
+    await act(async () => release());
+    await waitFor(() => shown() === "/lrd/login");
+
+    expect(window.location.pathname).toBe("/lrd/login");
+    expect(requestsOf("/lrd/b")).toEqual([true, false]);
+  });
+
+  test("errors a patch's stream carries after it was laid load the whole page once", async () => {
+    const release = servedWithLateRows("ler", [lateRow("5c6d7e8f"), lateRow("6d7e8f90")]);
+    await navigate("/ler/a");
+    await navigate("/ler/b");
+    expect(shown()).toBe("/ler/b patched");
+
+    await act(async () => release());
+    await waitFor(() => shown() === "/ler/b");
+
+    expect(window.location.pathname).toBe("/ler/b");
+    expect(requestsOf("/ler/b")).toEqual([true, false]);
+  });
+
+  test("a redirect a patch's stream carries after a shallow change of its query is still followed", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Flsh%2Flogin");
+    const release = servedWithLateRows("lsh", [redirect], preStreamRedirectTo("/lsh/login"));
+    await navigate("/lsh/a");
+    await navigate("/lsh/b");
+    await navigate("/lsh/b?tab=2", { shallow: true });
+
+    await act(async () => release());
+    await waitFor(() => shown() === "/lsh/login");
+
+    expect(window.location.pathname).toBe("/lsh/login");
+    expect(requestsOf("/lsh/b")).toEqual([true, false]);
+  });
+
+  test("a redirect a patch's stream carries after it was laid moves nothing while a document load takes over", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Fldf%2Flogin");
+    const release = servedWithLateRows("ldf", [redirect], preStreamRedirectTo("/ldf/login"));
+    served.set("/ldf/broken", () => new Response("down", { status: 500 }));
+    const assign = spyOn(window.location, "assign").mockImplementation(() => undefined);
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      await navigate("/ldf/a");
+      await navigate("/ldf/b");
+      await navigate("/ldf/broken");
+      expect(assign).toHaveBeenCalledWith(`${origin}/ldf/broken`);
+
+      await act(async () => {
+        release();
+        await sleep(10);
+      });
+
+      expect(requestsOf("/ldf/b")).toEqual([true]);
+      expect(window.location.pathname).toBe("/ldf/b");
+    } finally {
+      assign.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
+  test("React's dev-only error row a patch's stream carries after it was laid reloads nothing", async () => {
+    const release = servedWithLateRows("ldb", [lateRow("")]);
+    await navigate("/ldb/a");
+    await navigate("/ldb/b");
+
     await act(async () => {
+      release();
       await sleep(10);
     });
-    await navigate("/err/off");
-    await navigate("/err/a");
 
-    await navigate("/err/b");
-
-    expect(fetchCountOf("/err/b")).toBe(2);
-    expect(shown()).toBe("/err/b patched");
+    expect(requestsOf("/ldb/b")).toEqual([true]);
+    expect(shown()).toBe("/ldb/b patched");
   });
+
+  test("a redirect a replayed patch's stream carries after it was laid again is followed", async () => {
+    const redirect = lateRow("AKAN_REDIRECT;replace;307;%2Flrp%2Flogin");
+    const release = servedWithLateRows("lrp", [redirect], preStreamRedirectTo("/lrp/login"));
+    await navigate("/lrp/a");
+    await navigate("/lrp/b");
+    await navigate("/lrp/off");
+    await navigate("/lrp/a");
+    await navigate("/lrp/b");
+    expect(requestsOf("/lrp/b")).toEqual([true]);
+
+    await act(async () => release());
+    await waitFor(() => shown() === "/lrp/login");
+
+    expect(window.location.pathname).toBe("/lrp/login");
+  });
+
+  test.each([
+    ["a server error", "lse", "5c6d7e8f"],
+    ["a redirect", "lsr", "AKAN_REDIRECT;replace;307;%2Flogin"],
+  ])(
+    "a patch whose stream carried %s after a newer page replaced it moves nothing, and is not replayed",
+    async (_, base, digest) => {
+      const release = servedWithLateRows(base, [lateRow(digest)]);
+      await navigate(`/${base}/a`);
+      await navigate(`/${base}/b`);
+      await navigate(`/${base}/off`);
+
+      await act(async () => {
+        release();
+        await sleep(10);
+      });
+      expect(window.location.pathname).toBe(`/${base}/off`);
+      expect(fetchCountOf(`/${base}/off`)).toBe(1);
+      await navigate(`/${base}/a`);
+      await navigate(`/${base}/b`);
+
+      expect(requestsOf(`/${base}/b`)).toEqual([true, true]);
+      expect(shown()).toBe(`/${base}/b patched`);
+    },
+  );
 
   test("a patch laid on a patch is replayed straight under its base, and the next request names it", async () => {
     framed("/ch/a", "ch");
@@ -1842,5 +2057,86 @@ describe("rscClient patch cache", () => {
       expect(navigationCountOf("/gd/y")).toBe(1);
       expect(shown()).toBe("/gd/y");
     });
+  });
+});
+
+describe("rscClient newly mounted route level", () => {
+  const encoder = new TextEncoder();
+  const stateOf = (pathname: string, layout: string): AkanRouterStateV1 => ({
+    version: 1,
+    href: `${origin}${pathname}`,
+    routeId: pathname,
+    segments: [
+      { key: "root", path: "/", kind: "root-layout" },
+      { key: `layout:${layout}`, path: layout, kind: "layout" },
+      { key: `page:${pathname}`, path: pathname, kind: "page" },
+    ],
+  });
+  const headersOf = (state: AkanRouterStateV1) => ({
+    "Content-Type": "text/x-component",
+    [AKAN_RSC_RESPONSE_STATE_HEADER]: encodeAkanRouterState(state),
+  });
+  const documentRowOf = (main: unknown) =>
+    `0:${JSON.stringify([
+      "$",
+      "html",
+      null,
+      {
+        children: [
+          ["$", "head", "h", {}],
+          ["$", "body", "b", { children: ["$", "main", null, { children: main }] }],
+        ],
+      },
+    ])}\n`;
+  //? `<section>` replaces the text under `<main>`, so the level's boundary inside it mounts showing its null fallback.
+  const levelOf = (pathname: string, layout: string, streamed: () => Promise<unknown>) => () => {
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const boundary = ["$", "$Sreact.suspense", null, { fallback: null, children: "$L1" }];
+        controller.enqueue(encoder.encode(documentRowOf(["$", "section", null, { children: boundary }])));
+        await streamed();
+        controller.enqueue(encoder.encode(`1:${JSON.stringify(pathname)}\n`));
+        controller.close();
+      },
+    });
+    return new Response(stream, { headers: headersOf(stateOf(pathname, layout)) });
+  };
+  const leaveFor = async (pathname: string, layout: string) => {
+    served.set(pathname, () => new Response(rowOf(pathname), { headers: headersOf(stateOf(pathname, layout)) }));
+    await navigate(pathname);
+    expect(shown()).toBe(pathname);
+  };
+
+  test("a navigation into another layout commits once the new level streams in, never showing it blank", async () => {
+    await leaveFor("/levels/a", "(a)");
+    served.set(
+      "/levels/b",
+      levelOf("/levels/b", "(b)", () => sleep(30)),
+    );
+
+    await navigate("/levels/b");
+
+    expect(window.location.pathname).toBe("/levels/b");
+    expect(shown()).toBe("/levels/b");
+  });
+
+  test("the wait is capped, so a level still streaming commits blank and fills in when its rows land", async () => {
+    await leaveFor("/levels/c", "(a)");
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    served.set(
+      "/levels/d",
+      levelOf("/levels/d", "(d)", () => held),
+    );
+
+    await navigate("/levels/d");
+
+    expect(window.location.pathname).toBe("/levels/d");
+    expect(shown()).toBe("");
+    await act(async () => release());
+    await waitFor(() => shown() === "/levels/d");
+    expect(shown()).toBe("/levels/d");
   });
 });

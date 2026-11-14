@@ -1,6 +1,6 @@
 import { type ReactNode, startTransition } from "react";
 import { AkanError } from "../base/akanError";
-import { mapFlightLineRows } from "./flightRowReader";
+import { type FlightLineRowHandler, type FlightRowPass, flightRowPassOf } from "./flightRowReader";
 import { type AkanHeadSnapshotV1, type AkanRscPatchMetadata, readAkanRouterStateResponseHeader } from "./routeState";
 import {
   commitPreparedAkanHeadSnapshotPatch,
@@ -17,7 +17,10 @@ import {
 import { commitAkanSegmentOutletPatch, hasAkanSegmentOutlet, resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 
 const RSC_PATCH_REDIRECT_ROW_RE = /^[0-9a-z]+:E\{[^\n]*"digest":"AKAN_REDIRECT(?:;[^"]*)?"[^\n]*\}\n?$/;
-const RSC_PATCH_ERROR_ROW_RE = /^[0-9a-z]+:E\{[^\n]*\}\n?$/;
+//? An empty digest is React's dev-only debug row (a rejected promise a component caught), not a failed render.
+const RSC_PATCH_ERROR_ROW_RE = /^[0-9a-z]+:E\{(?![^\n]*"digest":"")[^\n]*\}\n?$/;
+const patchesWithControlRows = new WeakSet<PromiseLike<unknown>>();
+const lateControlHandlers = new WeakMap<PromiseLike<unknown>, () => void>();
 
 export interface RscPatchedResult<T> {
   type: "patched";
@@ -33,16 +36,15 @@ interface ValidateRscSegmentPatchInput<T extends PromiseLike<unknown>> {
   response: Response;
   patch: AkanRscPatchMetadata;
   currentTree: AkanSegmentCacheNode<T> | null;
-  createThenable: (stream: ReadableStream<Uint8Array>) => T;
+  createThenable: (rows: FlightRowPass) => T;
   navId?: number;
   getCurrentNavId?: () => number;
   getHeadSnapshotPatchFailureReason?: (snapshot: AkanHeadSnapshotV1) => AkanSegmentPatchFailureReason | null;
 }
 
-function guardRscPatchControlRows(
-  stream: ReadableStream<Uint8Array>,
+function patchControlRowGuard(
   onControl: (reason: Extract<AkanSegmentPatchFailureReason, "redirect-in-patch" | "error-in-patch">) => void,
-): ReadableStream<Uint8Array> {
+): FlightLineRowHandler {
   const decoder = new TextDecoder("utf-8", { fatal: true });
 
   const inspectRow = (row: Uint8Array): void => {
@@ -55,10 +57,10 @@ function guardRscPatchControlRows(
     }
   };
 
-  return mapFlightLineRows(stream, (row, tag) => {
+  return (row, tag) => {
     if (tag === "E") inspectRow(row);
     return row;
-  });
+  };
 }
 
 export async function validateRscPatchAndRequestFullFallback<T extends PromiseLike<unknown>>(
@@ -78,17 +80,26 @@ export async function validateRscSegmentPatch<T extends PromiseLike<unknown>>({
 }: ValidateRscSegmentPatchInput<T>): Promise<AkanSegmentPatchResult<T>> {
   const patchStream = getRscPayloadStream(response);
   let patchControlReason: Extract<AkanSegmentPatchFailureReason, "redirect-in-patch" | "error-in-patch"> | undefined;
-  const guardedPatchStream = patchStream
-    ? guardRscPatchControlRows(patchStream, (reason) => {
-        patchControlReason ??= reason;
-      })
-    : null;
-  const patchThenable = guardedPatchStream ? createThenable(guardedPatchStream) : undefined;
+  const patchThenable = patchStream
+    ? createThenable(
+        flightRowPassOf(
+          patchStream,
+          patchControlRowGuard((reason) => {
+            patchControlReason ??= reason;
+            if (!patchThenable) return;
+            patchesWithControlRows.add(patchThenable);
+            lateControlHandlers.get(patchThenable)?.();
+          }),
+        ),
+      )
+    : undefined;
   let decodeFailed = !patchThenable;
 
   if (patchThenable) {
     try {
       await patchThenable;
+      //? RSDW resolves on the root row; the chunks after it that have already arrived are read before the next task.
+      await new Promise((resolve) => setTimeout(resolve));
     } catch {
       decodeFailed = true;
     }
@@ -132,10 +143,12 @@ export function commitRscPatch<T extends PromiseLike<ReactNode>>(
   target: string,
   patch: RscPatchedResult<T>,
   onCommitted: () => void,
+  onLateControl: () => void,
 ): boolean {
   const patchThenable = patch.patchedNode.thenable;
   if (!patchThenable)
     throw new AkanError("invalidRscResponse", "[rscClient] validated RSC patch is missing a thenable");
+  if (patchesWithControlRows.has(patchThenable)) return false;
   const preparedHeadPatch = prepareAkanHeadSnapshotPatch(patch.headSnapshot, target);
   if (!preparedHeadPatch) return false;
 
@@ -151,6 +164,7 @@ export function commitRscPatch<T extends PromiseLike<ReactNode>>(
         return;
       }
       onCommitted();
+      lateControlHandlers.set(patchThenable, onLateControl);
     } catch {
       if (headApplied) rollbackPreparedAkanHeadSnapshotPatch(preparedHeadPatch);
       if (outletCommitted) resetAkanSegmentOutletPatches();

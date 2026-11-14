@@ -210,7 +210,9 @@ Description and default export
 
 - AgentToolCard: The frame around a card tool's own component. — DefaultToolCard
 
-**Compose the default.** Eleven slots export their default beside them, so a replacement can wrap the one it replaces instead of rewriting it.
+- AgentToolRow: One tool call, given `name`, `args`, and its `result` or running `progress`; `askUser` draws as its question. — DefaultToolRow
+
+**Compose the default.** Twelve slots export their default beside them, so a replacement can wrap the one it replaces instead of rewriting it.
 
 **`AgentChat` is the last resort.** It replaces the whole panel and has no exported default to compose.
 

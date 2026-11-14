@@ -3,6 +3,7 @@ import type { ComponentType, ReactNode } from "react";
 // import crashes RSC worker evaluation, so they are read off the namespace only when a wrapper using them renders.
 import * as React from "react";
 import { forwardRef, lazy as reactLazy } from "react";
+import { needsBrowser } from "./needsBrowser";
 
 const isServer = typeof window === "undefined";
 
@@ -23,7 +24,10 @@ export const lazy = <Loaded,>(loader: () => Promise<Loaded>, option?: LazyOption
   const ssrFalse = option?.ssr === false;
   const renderFallback = (): ReactNode => (option?.loading ? option.loading() : null);
   if (isServer && ssrFalse) {
-    const Stub = forwardRef<unknown, LazyProps>(() => <>{renderFallback()}</>);
+    const Stub = forwardRef<unknown, LazyProps>(() => {
+      needsBrowser();
+      return <>{renderFallback()}</>;
+    });
     Stub.displayName = "LazySsrFalseStub";
     return Stub as unknown as LoadedOf<Loaded>;
   }

@@ -1,8 +1,9 @@
 import { afterAll, afterEach, describe, expect, test } from "bun:test";
 import { brotliDecompressSync } from "node:zlib";
 import { Logger, type LogRecord, SessionCookies } from "akanjs/common";
-import { getDefaultInjectRegistry } from "akanjs/service";
+import { getDefaultInjectRegistry, LiveRoomLimitError } from "akanjs/service";
 import { SignalContext } from "akanjs/signal";
+import { websocketRoomContract } from "../../common/websocketContract";
 import { AkanResponse, WebProxyRunner } from "../proxy";
 import type { HttpRoutes, WebsocketRoutes } from "../types";
 import type { ApiRouter as ApiRouterType } from "./apiRouter";
@@ -294,6 +295,33 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
       { error: "Not Found", statusCode: 404, code: "routeNotFound" },
     ]);
     expect(loggerErrors).toEqual([]);
+  });
+
+  test("names a refused subscribe's room and token on its error frame, as the client sent them", async () => {
+    const sent: string[] = [];
+    const ws = fakeWs({}, (message) => sent.push(message));
+    const handlers = await buildWebsocketHandlers({
+      wsRoutes: {
+        feed: async () => {
+          throw new LiveRoomLimitError("socket", 256);
+        },
+      } as WebsocketRoutes,
+      logger: { error: () => undefined, warn: () => undefined } as never,
+    });
+
+    await handlers.message?.(ws, JSON.stringify({ key: "feed", data: ["news"], subscribe: true, token: 7 }));
+    await handlers.message?.(ws, JSON.stringify({ key: "feed", data: ["news"] }));
+
+    expect(JSON.parse(sent[0] ?? "{}")).toMatchObject({
+      error: "base.error.liveRoomLimit",
+      code: "liveRoomLimit",
+      statusCode: 429,
+      data: { limit: 256, per: "socket" },
+      key: "feed",
+      requestRoomId: websocketRoomContract.idOf("feed", ["news"]),
+      token: 7,
+    });
+    expect(JSON.parse(sent[1] ?? "{}")).not.toHaveProperty("requestRoomId");
   });
 
   test("answers a missing document over the socket as a 404 frame with its key, and logs no crash", async () => {

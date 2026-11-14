@@ -354,8 +354,8 @@ export default page()
         key: "load<Model>Many(ids)",
         type: "Promise<Doc[]>",
         desc: l.trans({
-          en: "Loads several ids in one batched query.",
-          ko: "여러 id를 쿼리 한 번에 묶어 불러옵니다.",
+          en: "Loads several ids in one batched query for every 500 distinct ids.",
+          ko: "여러 id를 서로 다른 id 500개마다 쿼리 한 번에 묶어 불러옵니다.",
         }),
       },
       {
@@ -1870,16 +1870,16 @@ export class UserModel extends into(
               {l.trans({
                 en: (
                   <span>
-                    A loader collects the lookups made in the same tick and answers them with one query, so a hundred{" "}
-                    <code>load()</code> calls cost one round-trip. Declare one in the fourth argument of{" "}
-                    <code>into()</code> for a lookup key you use often.
+                    A loader collects the lookups made in the same tick and answers them with one query for every 500
+                    distinct keys, so a hundred <code>load()</code> calls cost one round-trip. Declare one in the fourth
+                    argument of <code>into()</code> for a lookup key you use often.
                   </span>
                 ),
                 ko: (
                   <span>
-                    로더는 같은 틱에 들어온 조회를 모아 쿼리 한 번으로 답합니다. <code>load()</code>를 백 번 불러도
-                    왕복은 한 번입니다. 자주 쓰는 조회 키가 있으면 <code>into()</code>의 네 번째 인자에 로더를
-                    선언합니다.
+                    로더는 같은 틱에 들어온 조회를 모아 서로 다른 키 500개마다 쿼리 한 번으로 답합니다.{" "}
+                    <code>load()</code>를 백 번 불러도 왕복은 한 번입니다. 자주 쓰는 조회 키가 있으면{" "}
+                    <code>into()</code>의 네 번째 인자에 로더를 선언합니다.
                   </span>
                 ),
               })}
@@ -2055,8 +2055,8 @@ export class UserModel extends into(
                 {
                   value: "true",
                   meaning: l.trans({
-                    en: "For as long as the process runs.",
-                    ko: "프로세스가 도는 동안 계속 기억합니다.",
+                    en: "For as long as the process runs, up to the 10,000 keys used most recently.",
+                    ko: "프로세스가 도는 동안 계속 기억합니다. 가장 최근에 쓴 키 10,000개까지입니다.",
                   }),
                 },
               ]}
@@ -2066,14 +2066,38 @@ export class UserModel extends into(
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A kept key serves a stale document.</strong> Loaders live as long as the process, so a
-                      document changed after it was loaded is still answered in its old shape until the key expires.
+                      <strong>A write through the model drops kept keys.</strong> A create, a <code>save()</code>, an
+                      update or a remove drops that document's keys, and a write by query such as{" "}
+                      <code>updateMany</code> drops every kept key of the model, once it commits, so a model that is
+                      often written by query gets little from <code>cache</code>. Another instance keeps its own keys,
+                      so there a changed document is still answered in its old shape until the key expires.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>기억해 둔 키는 오래된 document를 돌려줍니다.</strong> 로더는 프로세스와 수명이 같아서,
-                      불러온 뒤에 바뀐 document도 키가 만료될 때까지 예전 모습으로 답합니다.
+                      <strong>model을 거친 쓰기는 기억해 둔 키를 지웁니다.</strong> create, <code>save()</code>, update,
+                      remove는 그 document의 키를, <code>updateMany</code> 같은 쿼리 쓰기는 그 model의 키를 모두
+                      commit될 때 지웁니다. 그래서 쿼리 쓰기가 잦은 model은 <code>cache</code>로 얻는 것이 적습니다.
+                      다른 인스턴스는 자기 키를 따로 기억하므로, 거기서는 바뀐 document도 키가 만료될 때까지 예전
+                      모습으로 답합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A transaction reads past the cache.</strong> A load inside <code>this.transaction()</code>{" "}
+                      always asks the database, so it sees its own writes, and what it reads is not kept, since it may
+                      be rolled back.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>transaction은 캐시를 거치지 않습니다.</strong> <code>this.transaction()</code> 안의 load는
+                      항상 데이터베이스에 물어서 자기가 쓴 내용을 읽습니다. rollback될 수 있으므로 읽은 결과도 기억하지
+                      않습니다.
                     </span>
                   ),
                 })}
@@ -2219,8 +2243,10 @@ export class StoryModel extends into(
                   <span>
                     <strong>A changed index is rebuilt.</strong> Change a shipped index, even <code>-1</code> to{" "}
                     <code>1</code> or adding <code>unique</code>, and the next boot builds the new one and drops the
-                    old: a full index build on a large table. Adding or removing another index renames none of them, and
-                    an index you delete from <code>_onSchema</code> is dropped on the next boot.
+                    old: a full index build on a large table. Adding or removing another index renames none of them. An
+                    index you delete from <code>_onSchema</code>, or whose fields you reorder, stays until{" "}
+                    <code>akan migrate &lt;app&gt; prune-indexes</code> drops it, run once no instance of the earlier
+                    release is serving; a unique one keeps refusing duplicates until then.
                   </span>
                 ),
                 ko: (
@@ -2228,7 +2254,9 @@ export class StoryModel extends into(
                     <strong>바꾼 인덱스는 다시 만들어집니다.</strong> 배포된 인덱스를 바꾸면, <code>-1</code>을{" "}
                     <code>1</code>로 바꾸거나 <code>unique</code>를 더하기만 해도, 다음 부팅에서 새 인덱스를 만들고 옛
                     인덱스를 삭제합니다. 큰 테이블에서는 인덱스 전체를 새로 만드는 작업입니다. 다른 인덱스를 더하거나
-                    빼도 이름은 바뀌지 않으며, <code>_onSchema</code>에서 지운 인덱스는 다음 부팅에서 삭제됩니다.
+                    빼도 이름은 바뀌지 않습니다. <code>_onSchema</code>에서 지우거나 필드 순서를 바꾼 인덱스는 이전
+                    릴리스 인스턴스가 모두 내려간 뒤 <code>akan migrate &lt;app&gt; prune-indexes</code>로 삭제할 때까지
+                    남으며, unique 인덱스는 그때까지 중복을 계속 거부합니다.
                   </span>
                 ),
               })}

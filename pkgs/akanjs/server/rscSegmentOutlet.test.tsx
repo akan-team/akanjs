@@ -94,6 +94,37 @@ describe("AkanRouteHead", () => {
     expect(headState()).toEqual({ title: "", titles: 0, description: [], icons: 0 });
   });
 
+  test("a patch to a page with its own theme-color replaces the viewport's, and the viewport's returns after it", () => {
+    const viewportColor = {
+      tag: "meta" as const,
+      attrs: { name: "theme-color", content: "#fff", "data-akan-viewport": "" },
+    };
+    const themed: AkanHeadSnapshotV1 = {
+      version: 1,
+      nodes: [{ tag: "meta", attrs: { name: "theme-color", content: "#123456" } }],
+    };
+    const colors = () =>
+      [...document.head.querySelectorAll('meta[name="theme-color"]')].map((m) => m.getAttribute("content"));
+    const { unmount } = mount(
+      <AkanRouteHead
+        layouts={{ version: 1, nodes: [viewportColor, ...layouts.nodes] }}
+        page={pageOf("Intro", "intro")}
+      />,
+    );
+    expect(colors()).toEqual(["#fff"]);
+
+    act(() => {
+      applyAkanHeadSnapshotPatch(themed, "/en/themed");
+    });
+    expect(colors()).toEqual(["#123456"]);
+
+    act(() => {
+      applyAkanHeadSnapshotPatch(pageOf("Routing", "routes"), "/en/docs/routing");
+    });
+    expect(colors()).toEqual(["#fff"]);
+    unmount();
+  });
+
   test("a full commit after a patch goes straight to the new head, never back through the last full one", async () => {
     const { root, unmount } = mount(<AkanRouteHead layouts={layouts} page={pageOf("Intro", "intro")} />);
     act(() => {

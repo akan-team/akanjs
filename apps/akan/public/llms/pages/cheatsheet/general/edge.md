@@ -58,7 +58,7 @@ Options for a remote call
 
 - token (string, query · mutation): Sent as `Authorization: Bearer <token>`, so the remote guards judge that account.
 
-- onResync (() => void, pubsub): Runs after the room is subscribed again following a dropped connection.
+- onResync (() => void, pubsub): Runs when the room may have missed events: after a dropped connection, a dropped frame, or the server's link to the app's other servers returning.
 
 Send Commands
 

@@ -32,6 +32,12 @@ export const MCP_APP_META = {
   error: "akanjs/error",
 } as const;
 
+//? A host that runs no view asks a `static` app's call for HTML with `_meta[render]: "html"`, embedded as a resource.
+export const MCP_STATIC_APP_META = {
+  static: "akanjs/static",
+  render: "akanjs/render",
+} as const;
+
 //? Said by a screen's call the server refuses and by its view when a read fails the same way, so the two never differ.
 export const MCP_SCREEN_REFUSAL = {
   gated: "This screen is not available to the signed-in account.",
@@ -98,7 +104,7 @@ export interface McpTool {
   inputSchema: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
   annotations?: McpToolAnnotations;
-  _meta?: { ui?: McpToolUiMeta; [MCP_UI_LEGACY_RESOURCE_URI]?: string };
+  _meta?: { ui?: McpToolUiMeta; [MCP_UI_LEGACY_RESOURCE_URI]?: string; [MCP_STATIC_APP_META.static]?: boolean };
 }
 
 export interface McpResourceTemplate {

@@ -127,9 +127,9 @@ export default page().render(() => {
               src="/logo.png"
               width={80}
             />
-            <div className="leading-tight">
-              <p className="font-black text-lg tracking-tight">{appName}</p>
-              <p className="text-foreground/50 text-xs">
+            <div>
+              <p className="font-black text-lg leading-auto">{appName}</p>
+              <p className="text-foreground/50 text-xs leading-auto">
                 {l.trans({ en: "Built with Akan.js", ko: "Akan.js로 만든 앱" })}
               </p>
             </div>
@@ -164,14 +164,14 @@ export default page().render(() => {
           </div>
 
           <div className="flex flex-col items-center text-center lg:items-start lg:text-left">
-            <p className="intro-rise jelly-glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 font-bold text-foreground/75 text-sm [--intro-delay:40ms]">
+            <p className="intro-rise jelly-glass inline-flex items-center gap-2 rounded-full px-4 py-1.5 font-bold text-foreground/75 text-sm leading-auto [--intro-delay:40ms]">
               <span className="size-2 rounded-full bg-success ring-4 ring-success/20" />
               {l.trans({ en: "Your app is running", ko: "앱이 실행 중입니다" })}
             </p>
-            <h1 className="intro-rise wrap-anywhere mt-6 max-w-full font-black text-[clamp(3.5rem,12vw,8.5rem)] leading-[0.85] tracking-[-0.06em] [--intro-delay:80ms]">
+            <h1 className="intro-rise wrap-anywhere mt-6 max-w-full font-black text-6xl leading-auto [--intro-delay:80ms] sm:text-7xl md:text-8xl xl:text-9xl">
               {appName}
             </h1>
-            <p className="intro-rise mt-6 max-w-xl font-bold text-foreground/60 text-lg leading-8 [--intro-delay:160ms]">
+            <p className="intro-rise mt-6 max-w-xl font-bold text-foreground/60 text-lg [--intro-delay:160ms]">
               {l.trans({
                 en: "Built on Akan.js — the TypeScript framework, agents included.",
                 ko: "에이전트까지 들어 있는 TypeScript 프레임워크, Akan.js로 만들었습니다.",
@@ -192,7 +192,7 @@ export default page().render(() => {
                       />
                     </span>
                   </span>
-                  <span className="whitespace-nowrap rounded-full bg-foreground/6 px-2.5 py-0.5 font-bold text-[11px] text-foreground/60">
+                  <span className="whitespace-nowrap rounded-full bg-foreground/6 px-2.5 py-0.5 font-bold text-foreground/60 text-xs leading-auto">
                     {friend.role}
                   </span>
                 </li>
@@ -230,7 +230,7 @@ export default page().render(() => {
                   {chapter.numeral}
                 </span>
                 <h3 className="mt-5 font-bold text-lg">{chapter.title}</h3>
-                <p className="mt-2 text-foreground/60 text-sm leading-6">{chapter.body}</p>
+                <p className="mt-2 text-foreground/60 text-sm">{chapter.body}</p>
               </article>
             ))}
           </div>
@@ -249,7 +249,7 @@ export default page().render(() => {
                 </span>
                 <div className="min-w-0 flex-1">
                   <h3 className="font-bold">{step.title}</h3>
-                  <p className="mt-1 text-foreground/60 text-sm leading-6">{step.body}</p>
+                  <p className="mt-1 text-foreground/60 text-sm">{step.body}</p>
                   <code className="mt-2 inline-block rounded-full bg-foreground/6 px-3 py-1 font-mono text-foreground/75 text-xs">
                     {step.code}
                   </code>

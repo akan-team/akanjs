@@ -29,7 +29,7 @@ export class ConventionSet {
     const match: RegExpExecArray | null = /^---\n([\s\S]*?)\n---\n/.exec(text);
     if (!match) throw new Error(`Convention rule ${name} has no frontmatter`);
     const front = match[1] ?? "";
-    const described: RegExpExecArray | null = /^description:\s*(.+)$/m.exec(front);
+    const described: RegExpExecArray | null = /^description:(.*)$/m.exec(front);
     const description = described?.[1]?.trim() ?? "";
     const paths = [...front.matchAll(/^\s+-\s+"([^"]+)"$/gm)].map((entry) => entry[1] ?? "");
     if (!description || paths.length === 0) throw new Error(`Convention rule ${name} needs a description and paths`);

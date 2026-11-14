@@ -29,6 +29,18 @@ const loadForPhotos = async () => {
   return { camera, core };
 };
 
+//? App Review 5.1.1(iv) rejects opening Settings after "Don't Allow", so only a camera denied before the tap links there.
+const offerSettings = async () => {
+  const { dialog } = await import("akanjs/client/native/dialog");
+  const { value } = await dialog.confirm({
+    title: promptLabel("base.cameraDeniedTitle"),
+    message: promptLabel("base.cameraDeniedMessage"),
+    okButtonTitle: promptLabel("base.cameraDeniedSettings"),
+    cancelButtonTitle: promptLabel("base.cameraDeniedLater"),
+  });
+  if (value) await openSettings();
+};
+
 //* The runtime serves a photo from memory until it is released, so it is read once and let go.
 const toDataUrl = async ({ fileBlob, releaseFile }: NativeCore, photo: Photo) => {
   try {
@@ -39,16 +51,16 @@ const toDataUrl = async ({ fileBlob, releaseFile }: NativeCore, photo: Photo) =>
   }
 };
 
-/** Photos arrive as upright JPEG data URLs; a denied camera opens the app settings instead of resolving. */
+/** Photos arrive as upright JPEG data URLs. A denial resolves `undefined`; a camera denied earlier offers Settings. */
 export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLabels } = {}) => {
   const [permissions, setPermissions] = useState<{ camera: PermissionState }>({ camera: "prompt" });
 
-  const openSettingsWhenDenied = async ({ AkanNativeError }: NativeCore, error: unknown) => {
+  const recordDenial = ({ AkanNativeError }: NativeCore, error: unknown) => {
     const code = AkanNativeError.from(error).code;
-    if (code === "CANCELLED") return;
+    if (code === "CANCELLED") return false;
     if (code !== "PERMISSION_DENIED") throw error;
     setPermissions({ camera: "denied" });
-    await openSettings();
+    return true;
   };
 
   const checkPermission = async () => {
@@ -56,7 +68,6 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
     const { camera } = await loadCamera();
     const { camera: state } = await camera.requestPermission();
     setPermissions({ camera: state });
-    if (state === "denied") await openSettings();
     return state;
   };
 
@@ -77,10 +88,11 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
     const source = !isNativeApp() || src === "photos" ? "library" : src === "camera" ? "camera" : await chooseSource();
     if (!source) return;
     const { camera, core } = await loadForPhotos();
+    const deniedBefore = source === "camera" && (await camera.checkPermission()).camera === "denied";
     try {
       return await toDataUrl(core, await camera.takePhoto({ source }));
     } catch (error) {
-      await openSettingsWhenDenied(core, error);
+      if (recordDenial(core, error) && deniedBefore) await offerSettings();
     }
   };
 
@@ -90,7 +102,7 @@ export const useCamera = ({ promptLabels = {} }: { promptLabels?: CameraPromptLa
       const { photos } = await camera.pickImages(limit ? { limit } : {});
       return await Promise.all(photos.map((photo) => toDataUrl(core, photo)));
     } catch (error) {
-      await openSettingsWhenDenied(core, error);
+      recordDenial(core, error);
     }
   };
 

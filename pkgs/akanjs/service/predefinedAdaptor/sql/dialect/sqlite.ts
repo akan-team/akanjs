@@ -97,7 +97,7 @@ export class SqliteDialect implements SqlDialect {
   // An index SQLite makes for a UNIQUE or PRIMARY KEY constraint has no `sql`.
   indexesOf(table: string): SqlFrag {
     return {
-      sql: `SELECT "name", 1 AS "valid", "sql" AS "definition" FROM "sqlite_master" WHERE "type" = 'index' AND "tbl_name" = ? AND "sql" IS NOT NULL`,
+      sql: `SELECT "name", 1 AS "valid", "sql" AS "definition", upper(substr("sql", 1, 14)) = 'CREATE UNIQUE ' AS "unique" FROM "sqlite_master" WHERE "type" = 'index' AND "tbl_name" = ? AND "sql" IS NOT NULL`,
       params: [table],
     };
   }

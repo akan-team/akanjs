@@ -6,6 +6,7 @@ export class PipelineCommand extends command("pipeline", [PipelineScript], ({ pu
   pipeline: target({
     desc: "Plan the build pipeline declared in akan.config.ts (the workspace root's and each app's) without running it",
     failureExitCode: 2,
+    readOnly: true,
   })
     .arg("action", String, {
       desc: "plan: the JSON plan an executor runs · validate: check the definitions · dry-run: show the plan",

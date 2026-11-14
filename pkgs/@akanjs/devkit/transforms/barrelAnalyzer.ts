@@ -36,6 +36,9 @@ const REEXPORT_RE =
 // cannot also match `export type { X } from "./y"`.
 const LOCAL_NAMED_RE = /(?:^|\n)\s*export\s+\{\s*([^}]*?)\s*\}(?!\s*from)/g;
 
+// `Transpiler.scan` has no file path to resolve a macro import from, so a module calling one fails as "Parse error".
+const MACRO_ATTR_RE = /\swith\s*\{\s*type\s*:\s*["']macro["']\s*\}/g;
+
 const CANDIDATE_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 
 interface BarrelWalk {
@@ -197,10 +200,10 @@ export class BarrelAnalyzer {
   #scanExports(source: string, absFile: string): Set<string> {
     try {
       const transpiler = [".tsx", ".jsx"].includes(path.extname(absFile)) ? this.#tsxTranspiler : this.#tsTranspiler;
-      const { exports } = transpiler.scan(source);
+      const { exports } = transpiler.scan(source.replaceAll(MACRO_ATTR_RE, ""));
       return new Set(exports);
     } catch (err) {
-      this.#logger.error(`scan failed: ${(err as Error).message}`);
+      this.#logger.error(`scan failed for ${absFile}: ${(err as Error).message}`);
       return new Set();
     }
   }

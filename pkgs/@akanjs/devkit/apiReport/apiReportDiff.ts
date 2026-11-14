@@ -1,3 +1,4 @@
+import ts from "typescript";
 import { ApiReport } from "./apiReport";
 
 export interface ApiBreak {
@@ -22,6 +23,7 @@ export class ApiReportDiff {
   static readonly #reexportPattern = /^export \{ (\S+)(?: as (\S+))? \} from /;
   static readonly #namespaceReexportPattern = /^export \* as (\S+) from /;
   static readonly #tagLine = /^\/\*\* (?:@\w+ ?)+\*\/$/;
+  static readonly #printer = ts.createPrinter({ removeComments: true, newLine: ts.NewLineKind.LineFeed });
   static readonly #subpathPattern = /^- `(\S+)`$/gm;
   static readonly #referencedSuffix = " (referenced)";
   static readonly #referencedMark = " (referenced";
@@ -113,7 +115,39 @@ export class ApiReportDiff {
   }
 
   static #sameDeclaration(a: string, b: string) {
-    return ApiReportDiff.#declarationOf(a) === ApiReportDiff.#declarationOf(b);
+    const [left, right] = [ApiReportDiff.#declarationOf(a), ApiReportDiff.#declarationOf(b)];
+    return left === right || ApiReportDiff.#unorderedOf(left) === ApiReportDiff.#unorderedOf(right);
+  }
+
+  //? The checker orders union members and mapped keys by first sight, so checking files in another order moves them.
+  static #unorderedOf(declaration: string) {
+    const source = ts.createSourceFile("block.d.ts", declaration, ts.ScriptTarget.Latest, false, ts.ScriptKind.TS);
+    //? `parseDiagnostics` is internal: parser recovery can drop tokens, so a block that failed to parse stays as text.
+    if ("parseDiagnostics" in source && Array.isArray(source.parseDiagnostics) && source.parseDiagnostics.length)
+      return declaration;
+    const textOf = (node: ts.Node) => ApiReportDiff.#printer.printNode(ts.EmitHint.Unspecified, node, source);
+    const byText = (a: ts.Node, b: ts.Node) => ApiReport.compare(textOf(a), textOf(b));
+    const byName = (a: ts.TypeElement, b: ts.TypeElement) =>
+      ApiReport.compare(a.name ? textOf(a.name) : "", b.name ? textOf(b.name) : "");
+    const sortMembers: ts.TransformerFactory<ts.SourceFile> = (context) => {
+      const visit = (node: ts.Node): ts.Node => {
+        const next = ts.visitEachChild(node, visit, context);
+        if (ts.isUnionTypeNode(next))
+          return context.factory.updateUnionTypeNode(
+            next,
+            context.factory.createNodeArray([...next.types].sort(byText)),
+          );
+        if (ts.isTypeLiteralNode(next))
+          return context.factory.updateTypeLiteralNode(
+            next,
+            context.factory.createNodeArray([...next.members].sort(byName)),
+          );
+        return next;
+      };
+      return (file) => ts.visitEachChild(file, visit, context);
+    };
+    const [sorted = source] = ts.transform(source, [sortMembers]).transformed;
+    return ApiReportDiff.#printer.printFile(sorted);
   }
 
   static #declarationOf(block: string) {

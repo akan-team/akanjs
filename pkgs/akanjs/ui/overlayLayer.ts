@@ -12,10 +12,10 @@ export const OVERLAY_LAYER_ATTR = "data-akan-overlay";
 // A tooltip labels whichever of those it sits on, so it tops them all and stays under a modal. An agent's approval
 // card tops even a modal: the call it asks about may be one of the modal's own controls.
 // The agent's launcher floats over the page but under every menu and modal it would otherwise cover.
-// A toast tops a modal: it reports what the modal's own controls did.
 // The open agent panel drives every overlay a page opens, so it tops them all; one opened from the panel tops it,
 // unless the panel's turn waits on an answer and that overlay's scrim would cover the card. One a card opens tops both.
-// Reconnect blocks the whole app on purpose, so nothing tops it.
+// A toast tops every one of them, the panel included: it reports what that overlay's own controls did, and it passes
+// clicks through around its cards. Reconnect blocks the whole app on purpose, so nothing tops it.
 export const overlayZ = {
   agentLauncher: 80,
   select: 90,
@@ -25,21 +25,23 @@ export const overlayZ = {
   tooltip: 115,
   modal: 120,
   approval: 130,
-  toast: 140,
   agentPanelOverlaySunk: 145,
   agentPanel: 150,
   agentPanelOverlay: 160,
   agentPanelCardOverlay: 170,
+  toast: 180,
   reconnect: 200,
 } as const;
 
 const OVERLAY_SCRIM_ATTR = "data-akan-scrim";
 
+export const holdsScrim = (layer: HTMLElement | null) => !!layer?.querySelector(`[${OVERLAY_SCRIM_ATTR}]`);
+
 export const useHoldsScrim = (layer: HTMLElement | null) => {
   const [holds, setHolds] = useState(false);
   useEffect(() => {
     if (!layer) return;
-    const read = () => setHolds(!!layer.querySelector(`[${OVERLAY_SCRIM_ATTR}]`));
+    const read = () => setHolds(holdsScrim(layer));
     read();
     const observer = new MutationObserver(read);
     observer.observe(layer, { childList: true, subtree: true });

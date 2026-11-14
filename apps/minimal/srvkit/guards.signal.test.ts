@@ -1,6 +1,7 @@
 import { afterEach, beforeAll, describe, expect, it, mock, spyOn } from "bun:test";
-import { AkanNotFoundError, RouteGuards } from "akanjs/client";
+import { AkanNotFoundError, RouteGuards, router } from "akanjs/client";
 import { Logger } from "akanjs/common";
+import { createRequestStore, requestStorage } from "akanjs/fetch";
 import { getOrSetupSignalTestFetch } from "akanjs/test";
 
 import type { fetch as minimalFetch } from "../lib/useServer";
@@ -62,13 +63,16 @@ describe("LocalOrEdge", () => {
     mock.restore();
   });
 
-  it("lets the memo pages open on a server it admits, and answers a missing memo not-found", async () => {
+  it("lets the memo pages open on a server it admits, and answers a missing memo not-found without an error line", async () => {
     expect(await fetch.memo(memoId)).toMatchObject({ id: memoId });
     await guardsOf(memoPage, {});
     await guardsOf(memoViewPage, { memoId });
-    await expect(guardsOf(memoViewPage, { memoId: "000000000000000000000000" })).rejects.toBeInstanceOf(
-      AkanNotFoundError,
-    );
+    const errors = await errorsLoggedBy(async () => {
+      await expect(guardsOf(memoViewPage, { memoId: "000000000000000000000000" })).rejects.toBeInstanceOf(
+        AkanNotFoundError,
+      );
+    });
+    expect(errors).toEqual([]);
   });
 
   it("answers the memo pages not-found on a server it refuses, as a built server does, without a refused call", async () => {
@@ -78,6 +82,18 @@ describe("LocalOrEdge", () => {
       await expect(guardsOf(memoPage, {})).rejects.toBeInstanceOf(AkanNotFoundError);
       await expect(guardsOf(memoViewPage, { memoId })).rejects.toBeInstanceOf(AkanNotFoundError);
     });
+    expect(errors).toEqual([]);
+  });
+
+  it("stops the memo detail guard at not-found where the router moves rather than throws, as in a CSR shell", async () => {
+    spyOn(LocalOrEdge.prototype, "canPass").mockReturnValue(false);
+    //? `router` is a proxy binding each method to a per-side instance, so only the class prototype reaches its calls.
+    const routerProto = Object.getPrototypeOf(new (router.constructor as new () => object)()) as typeof router;
+    const notFound = spyOn(routerProto, "notFound").mockImplementation(() => undefined as never);
+    const errors = await errorsLoggedBy(async () => {
+      await guardsOf(memoViewPage, { memoId });
+    });
+    expect(notFound).toHaveBeenCalledTimes(1);
     expect(errors).toEqual([]);
   });
 
@@ -99,4 +115,28 @@ describe("LocalOrEdge", () => {
     expect(await fetch.isMemoOpen()).toBe(false);
     expect(await tripsLinks()).toEqual(["/trips/detail"]);
   });
+
+  it("renders the trips page without reading the visitor's request, so the route result cache can keep it", async () => {
+    const headers = { authorization: "Bearer visitor", cookie: "jwt=session", "x-real-ip": "203.0.113.5" };
+    const store = createRequestStore(new Request("http://localhost/en/trips", { headers }));
+    const links = await requestStorage?.run(store, tripsLinks);
+    expect(links).toContain("/memo");
+    expect(store.dynamicUsage).toEqual({ headers: false, cookies: false });
+  });
+
+  it("links the trips page to the trip notes when the memo check fails", async () => {
+    spyOn(LocalOrEdge.prototype, "canPass").mockImplementation(() => {
+      throw new Error("operation mode unreadable");
+    });
+    await expect(fetch.isMemoOpen()).rejects.toThrow();
+    expect(await tripsLinks()).toContain("/memo");
+  });
+
+  it("links the trips page to the trip notes when the memo check outlasts its 3 s deadline", async () => {
+    const answersLate = () => new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 4_000));
+    spyOn(LocalOrEdge.prototype, "canPass").mockImplementation(answersLate as unknown as () => boolean);
+    const startedAt = performance.now();
+    expect(await tripsLinks()).toContain("/memo");
+    expect(performance.now() - startedAt).toBeGreaterThanOrEqual(2_500);
+  }, 10_000);
 });

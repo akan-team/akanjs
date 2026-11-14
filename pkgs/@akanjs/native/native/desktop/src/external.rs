@@ -10,9 +10,10 @@ use std::{
   collections::HashMap,
   path::Path,
   rc::Rc,
-  sync::{Arc, Mutex},
   time::{Duration, Instant},
 };
+#[cfg(target_os = "windows")]
+use std::sync::{Arc, Mutex};
 
 use tao::dpi::{LogicalPosition, LogicalSize};
 use wry::{Rect, WebView, RGBA};
@@ -355,7 +356,14 @@ impl Drop for Reply {
   }
 }
 
-#[cfg_attr(target_os = "macos", allow(dead_code))]
+/// What the engine wrote as JSON for a script's value, None where JSON has no form for it, read and written again as
+/// mac::json_of answers: a lone surrogate is U+FFFD, and nesting past json's limit is null.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+pub(crate) fn json_answer(text: Option<&str>) -> String {
+  text.and_then(|text| json::parse(text).ok()).map_or_else(|| "null".into(), |value| json::stringify(&value))
+}
+
+#[cfg(target_os = "windows")]
 fn wry_evaluate(webview: &WebView, script: &str, reply: Reply) {
   //? wry takes an `Fn` that is Send; the engine calls it once.
   let reply = Arc::new(Mutex::new(Some(reply)));
@@ -554,7 +562,9 @@ impl Views {
     let webview = &self.get(view)?.webview;
     #[cfg(target_os = "macos")]
     mac::evaluate(webview, script, Reply::new(done));
-    #[cfg(not(target_os = "macos"))]
+    #[cfg(target_os = "linux")]
+    platform::evaluate(webview, script, Reply::new(done));
+    #[cfg(target_os = "windows")]
     wry_evaluate(webview, script, Reply::new(done));
     Ok(())
   }
@@ -1065,6 +1075,8 @@ mod mac {
 
 #[cfg(test)]
 mod tests {
+  use std::sync::{Arc, Mutex};
+
   use super::*;
 
   #[test]
@@ -1153,6 +1165,18 @@ mod tests {
     assert_eq!(answers.len(), 2);
     assert_eq!(answers[0], Ok("1".to_string()));
     assert!(answers[1].as_ref().is_err_and(|e| e.starts_with("CANCELLED: ")));
+  }
+
+  #[test]
+  fn a_value_json_has_no_form_for_is_null_and_the_rest_reads_as_on_macos() {
+    assert_eq!(json_answer(None), "null");
+    assert_eq!(json_answer(Some("")), "null");
+    assert_eq!(json_answer(Some(r#"{"at":"2024-10-14T13:25:45.678Z","n":[1,2.5,null,true]}"#)), r#"{"at":"2024-10-14T13:25:45.678Z","n":[1,2.5,null,true]}"#);
+    assert_eq!(json_answer(Some(r#""A\ud800B""#)), "\"A\u{fffd}B\"");
+    assert_eq!(json_answer(Some(r#"["\ud800A"]"#)), "[\"\u{fffd}A\"]");
+    let deep = |levels: usize| format!("{}{}", "[".repeat(levels), "]".repeat(levels));
+    assert!(json_answer(Some(&deep(128))).starts_with("[[[["));
+    assert_eq!(json_answer(Some(&deep(129))), "null");
   }
 
   #[test]

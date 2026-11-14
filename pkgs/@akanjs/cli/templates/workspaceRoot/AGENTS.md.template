@@ -7,7 +7,8 @@ the framework generate the repeated surfaces.
 
 If you hit an Akan.js bug, or a fix that one framework change would solve more easily than app-level workarounds,
 draft a GitHub issue for <https://github.com/akan-team/akanjs/issues> (version, repro, expected vs actual) and ask
-the user before filing it. Keep any interim workaround small and marked `// TODO: <issue url>`.
+the user before filing it, since an issue is public. Meanwhile finish the task with a small interim workaround marked
+`// TODO: <issue url>`.
 
 ## Generated Context
 

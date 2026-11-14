@@ -55,6 +55,10 @@ What it does
 
 - rollback <id> — Undoes the apply from its change log.
 
+- indexes — Lists the indexes an earlier release built that this one no longer declares. A boot keeps them for the instances still running that release, and a unique one keeps refusing duplicates.
+
+- prune-indexes — Drops what `indexes` lists. Run it once every instance runs this release: an older one builds its index again when it restarts.
+
 **Rerun one while you write it** by rolling it back, editing, and applying it again.
 
 Write One

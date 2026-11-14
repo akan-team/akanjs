@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { type LogRecord, logSeverity } from "akanjs/common";
-import { watchRscErrorRows } from "./rscHttp";
+import { mapFlightLineRows } from "./flightRowReader";
+import { rscErrorRowWatcher } from "./rscHttp";
 import { RscWorker } from "./rscWorkerHost";
 import type { SsrLateControl } from "./ssrTypes";
 import type { BaseBuildArtifact } from "./types";
@@ -26,7 +27,13 @@ const errorRowDigest = (body: string): unknown => {
 
 const readsAsFailed = async (body: string): Promise<boolean> => {
   let failed = false;
-  await new Response(watchRscErrorRows(new Response(body).body ?? new ReadableStream(), () => (failed = true))).text();
+  const stream = new Response(body).body ?? new ReadableStream();
+  await new Response(
+    mapFlightLineRows(
+      stream,
+      rscErrorRowWatcher(() => (failed = true)),
+    ),
+  ).text();
   return failed;
 };
 

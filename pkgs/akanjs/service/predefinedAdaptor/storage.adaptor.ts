@@ -172,7 +172,8 @@ export class BlobStorage
   async deleteData(url: string) {
     try {
       const basePath = this.#localPathToUrl("");
-      if (!url.startsWith(basePath)) throw new Error("Invalid Base URL, Unable to delete data");
+      if (!url.startsWith(basePath))
+        throw new AkanError("invalidStorageKey", "Invalid Base URL, Unable to delete data", { statusCode: 400 });
       const path = url.replace(basePath, "");
       await this.deleteDataByPath(path);
       return true;

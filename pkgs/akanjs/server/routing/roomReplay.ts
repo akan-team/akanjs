@@ -1,6 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { SolidPubSub, type WebsocketAdaptor } from "akanjs/service";
-import type { WebsocketPublishData, WebsocketRoomCursor } from "akanjs/signal";
+import type { WebsocketPublishData, WebsocketResyncData, WebsocketRoomCursor } from "akanjs/signal";
 import { RecencyList } from "./recencyList";
 
 interface RoomLog {
@@ -114,7 +114,7 @@ export class RoomReplay {
   }
 
   /** The frame to send for one publish; numbered while the room is watched, and kept when this process vouches. */
-  frameOf(publishData: WebsocketPublishData, subscribed: boolean, now = Date.now()): string {
+  frameOf(publishData: WebsocketPublishData | WebsocketResyncData, subscribed: boolean, now = Date.now()): string {
     const { roomId } = publishData;
     this.#sweep(now);
     const room = this.#rooms.get(roomId);

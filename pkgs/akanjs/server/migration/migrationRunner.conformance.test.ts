@@ -6,6 +6,7 @@ import { searchConfConstant, searchConfDatabase } from "../../service/predefined
 import { ConformanceEnv, type SqlDriver, type SqlDriverKind } from "../../test/conformance";
 import { MigrationChangeLog } from "./migrationChangeLog";
 import { MigrationChanges } from "./migrationChanges";
+import { MigrationCommand } from "./migrationCommand";
 import { migration } from "./migrationDefinition";
 import { MigrationError } from "./migrationError";
 import { MigrationLedger } from "./migrationLedger";
@@ -391,6 +392,37 @@ const describeDriver = (kind: SqlDriverKind) => {
       await runner.apply("m1");
       expect(await table.get("a1")).toMatchObject({ _doc: { name: "Kenny", org: "o9" } });
       expect(await store.count({})).toBe(1);
+    });
+
+    test("indexes lists what the boot kept of an earlier release's indexes, and prune-indexes drops it", async () => {
+      const { driver, runnerOf } = await open();
+      const earlier = driver.database.getStore(
+        searchConfConstant,
+        searchConfDatabase,
+        new DocumentSchema().index({ rank: 1 }).index({ scope: 1 }, { unique: true }),
+      );
+      await earlier.ensure();
+      const next = await driver.sibling();
+      opened.unshift(next);
+      await next.database
+        .getStore(searchConfConstant, searchConfDatabase, new DocumentSchema().index({ rank: 1 }))
+        .ensure();
+      const runner = new MigrationRunner([], { database: next.database });
+
+      const undeclared = [{ table: "searchConf", name: "searchConf_scope_unique", unique: true }];
+      expect(await MigrationCommand.run(runner, MigrationCommand.parse(["indexes"]))).toEqual({
+        ok: true,
+        action: "indexes",
+        indexes: undeclared,
+      });
+      expect(await MigrationCommand.run(runner, MigrationCommand.parse(["prune-indexes", "--actor", "u1"]))).toEqual({
+        ok: true,
+        action: "prune-indexes",
+        dropped: undeclared,
+        failed: [],
+      });
+      expect(await runner.undeclaredIndexes()).toEqual([]);
+      expect(await runnerOf([]).pruneIndexes()).toEqual({ dropped: [], failed: [] });
     });
 
     test("a lease renews in band, and the run that lost it stops without deleting the new holder's lease", async () => {

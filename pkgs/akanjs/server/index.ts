@@ -109,6 +109,7 @@ export {
   type SliceNode,
   type Unserializable,
 } from "./devtools";
+export { StageFailedError } from "./di/stageFailedError";
 export type { ChangeBatch, ChangeKind } from "./hmr/wsHub";
 export {
   MachineAccount,
@@ -147,6 +148,7 @@ export {
   type MigrationPatch,
   type MigrationPlan,
   type MigrationPlanResult,
+  type MigrationPruneResult,
   MigrationPulse,
   type MigrationRevertOutcome,
   type MigrationRewriteOption,
@@ -222,6 +224,28 @@ export {
   WebProxyRunner,
   type WebProxyRunResult,
 } from "./proxy";
+export {
+  type RemoteAccess,
+  type RemoteAddressLookup,
+  type RemoteAuthServer,
+  type RemoteClient,
+  RemoteError,
+  type RemoteErrorCode,
+  RemoteFetch,
+  type RemoteFetchOptions,
+  RemoteMcp,
+  type RemoteMcpCallResult,
+  type RemoteMcpContent,
+  type RemoteMcpOptions,
+  type RemoteMcpTool,
+  RemoteOAuth,
+  type RemoteRequest,
+  type RemoteResponse,
+  type RemoteScreen,
+  RemoteSource,
+  type RemoteSourceProps,
+  type RemoteTokens,
+} from "./remote";
 export type { SessionRefreshHook } from "./sessionRefresh";
 // `routeElementComposer`/`routeTreeBuilder` stay out: they would pull React into every process that loads this barrel.
 export {

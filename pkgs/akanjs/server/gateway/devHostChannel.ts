@@ -1,12 +1,13 @@
 import type { Logger } from "akanjs/common";
 import type { BuilderMessage, BuilderRequest, BuilderResponse } from "../artifact";
-import type { GatewayChildren } from "./gatewayChildren";
+import type { ChildState, GatewayChildren } from "./gatewayChildren";
 
 export class DevHostChannel {
   readonly #children: GatewayChildren;
   readonly #logger: Logger;
   #nextBuilderReqId = 1;
-  readonly #builderReqMap = new Map<number, { childIdx: number; childLocalId: number }>();
+  //? Holds the spawn's state, not its index: a respawned replica restarts its BuilderRpc ids at 1.
+  readonly #builderReqMap = new Map<number, { child: ChildState; childLocalId: number }>();
 
   constructor(children: GatewayChildren, logger: Logger) {
     this.#children = children;
@@ -20,21 +21,27 @@ export class DevHostChannel {
     } satisfies BuilderMessage);
   }
 
-  forwardBuilderReq(childIdx: number, message: BuilderRequest) {
+  forwardBuilderReq(child: ChildState, message: BuilderRequest) {
+    if (this.#children.isUnavailable(child)) return;
     const gatewayReqId = this.#nextBuilderReqId++;
-    this.#builderReqMap.set(gatewayReqId, { childIdx, childLocalId: message.id });
+    this.#builderReqMap.set(gatewayReqId, { child, childLocalId: message.id });
     process.send?.({ ...message, id: gatewayReqId } satisfies BuilderRequest);
   }
 
   forwardBuilderRes(message: BuilderResponse) {
     const request = this.#builderReqMap.get(message.id);
     if (!request) {
-      this.#logger.warn(`No child found for ${message.type} id=${message.id}`);
+      this.#logger.verbose(`No child found for ${message.type} id=${message.id}`);
       return;
     }
     this.#builderReqMap.delete(message.id);
-    const child = this.#children.get(request.childIdx);
-    if (!child || child.proc.killed) return;
-    this.#children.send(child, { ...message, id: request.childLocalId } satisfies BuilderResponse);
+    const { child, childLocalId } = request;
+    if (this.#children.get(child.idx) !== child) return;
+    this.#children.send(child, { ...message, id: childLocalId } satisfies BuilderResponse);
+  }
+
+  dropChild(proc: ChildState["proc"]) {
+    for (const [gatewayReqId, request] of this.#builderReqMap)
+      if (request.child.proc === proc) this.#builderReqMap.delete(gatewayReqId);
   }
 }

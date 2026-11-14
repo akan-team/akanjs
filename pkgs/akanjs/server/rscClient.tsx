@@ -6,6 +6,12 @@ import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import type {} from "../client/rscNavigation";
 import {
+  type FlightLineRowHandler,
+  type FlightRowPass,
+  flightRowPassOf,
+  flightRowsEndWatcher,
+} from "./flightRowReader";
+import {
   AKAN_RSC_DICTIONARY_HEADER,
   type AkanRouterStateV1,
   decodeAkanRouterState,
@@ -15,6 +21,7 @@ import {
 import { normalizeHref, pageKeyOf, RscClientCache, withoutHash } from "./rscClientCache";
 import {
   type ChunkNavigation,
+  chunkRecorderOf,
   claimChunkReload,
   ifLazyChunkGone,
   isBuildBundle,
@@ -22,13 +29,12 @@ import {
   lazyLinkFailureKeyOf,
   navigationOfChunk,
   noteChunkLoadFailure,
-  recordChunksOf,
   reportingRootErrors,
 } from "./rscClientChunks";
 import { fetchRscNavigationResponse } from "./rscClientFetch";
 import { commitRscPatch, type RscPatchedResult, validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import { getAkanHeadSnapshotPatchFailureReason } from "./rscHeadPatch";
-import { getRscPayloadStream, guardRscRedirectRows, type RscRedirectRow, watchRscErrorRows } from "./rscHttp";
+import { getRscPayloadStream, type RscRedirectRow, rscErrorRowWatcher, rscRedirectRowGuard } from "./rscHttp";
 import { createInitialRscStream } from "./rscInlineStream";
 import {
   type AkanSegmentCacheNode,
@@ -36,8 +42,11 @@ import {
   createAkanSegmentCacheTree,
   createRscNavigationCacheNode,
   deleteRscCacheEntryIfCurrent,
+  mountsNewRouteLevels,
+  NEW_ROUTE_LEVEL_WAIT_MS,
   observeRscNavigationNode,
   type RscNavigationCacheNode,
+  settledOrAfter,
 } from "./rscNavigationState";
 import { RscParkedRedirect } from "./rscParkedRedirect";
 import { RscScrollRestoration } from "./rscScrollRestoration";
@@ -102,8 +111,11 @@ function trackRscThenable(thenable: RscThenable): RscThenable {
   return thenable;
 }
 
-function createRscThenable(stream: ReadableStream<Uint8Array>): RscThenable {
-  const watched = watchRscErrorRows(stream, () => caches.noteFailedRender(thenable));
+function createRscThenable(rows: FlightRowPass, ...onLineRows: FlightLineRowHandler[]): RscThenable {
+  const watched = rows(
+    ...onLineRows,
+    rscErrorRowWatcher(() => caches.noteFailedRender(thenable)),
+  );
   const thenable = trackRscThenable(createFromReadableStream<ReactNode>(watched) as RscThenable);
   return thenable;
 }
@@ -148,12 +160,21 @@ function commitRscPatchNavigation({
   replace?: boolean;
   requestScroll?: () => void;
 }): boolean {
-  const committed = commitRscPatch(target, patch, () => {
-    commitHistory(target, replace);
-    shownNode = null;
-    parkedRedirect.clear();
-    requestScroll?.();
-  });
+  const committed = commitRscPatch(
+    target,
+    patch,
+    () => {
+      commitHistory(target, replace);
+      shownNode = null;
+      parkedRedirect.clear();
+      requestScroll?.();
+    },
+    //? Not a navigation, which the server answers with a patch again, laid before the same late row arrives.
+    () => {
+      if (currentSegmentTree === patch.tree && !pendingRequest && !documentNavigationFallbackInFlight)
+        void globalThis.__AKAN_RSC_REFRESH__?.();
+    },
+  );
   if (!committed) return false;
   currentCommitFromCache = fromCache;
   rememberPatchedRouteState(patch.tree, patch.patchedNode);
@@ -202,8 +223,8 @@ async function fetchRsc(
     options.navId === undefined
       ? undefined
       : { navId: options.navId, href, replace: options.replaceOnRedirect ?? (() => true) };
-  const thenableOf = (stream: ReadableStream<Uint8Array>) =>
-    createRscThenable(navigation ? recordChunksOf(stream, navigation) : stream);
+  const thenableOf = (rows: FlightRowPass) =>
+    navigation ? createRscThenable(rows, chunkRecorderOf(navigation)) : createRscThenable(rows);
   const responseResult = await fetchRscNavigationResponse(href, {
     buildId: options.buildId,
     currentRouterState,
@@ -270,14 +291,18 @@ async function fetchRsc(
     if (!applies && node && pendingRequest) parkedRedirect.park({ node, location, replace });
     else navigateAfterRscRedirect(location, replace);
   };
-  const guardedStream = guardRscRedirectRows(stream, {
-    onRedirect: handleRedirect,
+  let endStream = () => {};
+  const streamed = new Promise<void>((resolve) => {
+    endStream = resolve;
   });
-  const thenable = thenableOf(guardedStream);
+  const thenable = thenableOf(
+    flightRowPassOf(stream, rscRedirectRowGuard({ onRedirect: handleRedirect }), flightRowsEndWatcher(endStream)),
+  );
   const node = createRscNavigationCacheNode({
     href,
     thenable,
     routerState: responseResult.notFound ? null : readAkanRouterStateResponseHeader(res.headers),
+    streamed,
   });
   nodeRef.current = node;
   await dictionaryReady;
@@ -295,7 +320,7 @@ const caches = new RscClientCache<RscThenable>({
   navId: () => navigationSeq,
   pendingTarget: () => pendingRequest?.target,
 });
-const initialThenable = createRscThenable(createInitialRscStream());
+const initialThenable = createRscThenable(flightRowPassOf(createInitialRscStream()));
 const initialRouterState = decodeAkanRouterState(globalThis.__AKAN_RSC_INITIAL_STATE__);
 const initialNode = createRscNavigationCacheNode({
   href: normalizeHref(window.location.href),
@@ -605,6 +630,8 @@ function installNavigate(
       });
       // Awaited before committing so use() never suspends the root transition (see trackRscThenable).
       await nextNode.thenable;
+      if (!notFound && mountsNewRouteLevels(currentRouterState, nextNode.routerState))
+        await settledOrAfter(nextNode.streamed, NEW_ROUTE_LEVEL_WAIT_MS);
       //? A replay stays keyed by its own href alone, where a redirect or a failure deletes it, never by the fragment it serves.
       const committed = commitLatestRscNavigation({
         cache: notFound || replayed ? undefined : caches.pages,

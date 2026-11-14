@@ -1,5 +1,6 @@
 import { lowerlize } from "akanjs/common";
-import { bilingualLabelForField, moduleComponentName, titleize } from "./source";
+import { bilingualLabelForField, titleize } from "./fieldLabel";
+import { moduleComponentName } from "./modulePaths";
 
 export interface MutationCall {
   ref: string;

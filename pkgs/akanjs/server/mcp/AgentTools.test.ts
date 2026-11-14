@@ -167,6 +167,8 @@ class ToolsEndpoint extends endpoint(serverResolverTestServiceModel, (builder) =
       return "ran";
     }),
   quietTitle: builder.query(String, { guards: [HasAccount], mcp: false }).exec(() => "quiet"),
+  agentTitle: builder.query(String, { guards: [HasAccount], mcp: "agent" }).exec(() => "agent only"),
+  agentPersonTitle: builder.query(String, { guards: [HasAccount, PersonOnly], mcp: "agent" }).exec(() => "person"),
   personTitle: builder.query(String, { guards: [HasAccount, PersonOnly] }).exec(() => "person"),
   unguardedTitle: builder.query(String).exec(() => "unguarded"),
 })) {}
@@ -328,10 +330,27 @@ describe("AgentTools", () => {
   test("lists for an account exactly what /mcp lists for a bearer of it", async () => {
     const listed = async (account: unknown) =>
       (await tools.listAs(account)).map((tool) => tool.name).sort((a, b) => a.localeCompare(b));
-    expect(await listed(ann)).toEqual(await mcpToolNames("ann"));
+    expect((await listed(ann)).filter((name) => name !== "agentTitle")).toEqual(await mcpToolNames("ann"));
     expect(await listed(null)).toEqual(await mcpToolNames(null));
     expect(await listed(ann)).toContain("whoAmI");
     expect(await listed(null)).not.toContain("whoAmI");
+  });
+
+  test('lists and runs an `mcp: "agent"` endpoint that /mcp neither lists nor runs', async () => {
+    const names = (await tools.listAs(ann)).map((tool) => tool.name);
+    expect(names).toContain("agentTitle");
+    expect(names).not.toContain("agentPersonTitle");
+    expect(await mcpToolNames("ann")).not.toContain("agentTitle");
+    expect(await call(ann, "agentTitle")).toEqual({ id: "call-1", name: "agentTitle", result: "agent only" });
+    const body = { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "agentTitle", arguments: {} } };
+    const routes = mcp().createRoutes() as unknown as { "/mcp": { POST: (req: Request) => Promise<Response> } };
+    const answer = (await (await routes["/mcp"].POST(mcpRequest("ann", body))).json()) as {
+      error?: { message: string };
+    };
+    expect(answer.error?.message).toBe("Unknown tool: agentTitle.");
+    expect((await call(ann, "agentTitle", {}, { allow: ["echoTitle"] })).code).toBe("unknownTool");
+    expect((await call(null, "agentTitle")).code).toBe("forbidden");
+    expect((await call(ann, "agentPersonTitle")).code).toBe("unknownTool");
   });
 
   test("hands a provider the input schema as parameters and marks queries read-only", async () => {
@@ -438,11 +457,12 @@ describe("AgentTools", () => {
       middleware: di.modules.middleware,
       endpointsBuilt: () => true,
       readOnly: true,
-      excludeEndpoints: ["echoTitle"],
+      excludeEndpoints: ["echoTitle", "agentTitle"],
     });
     const names = (await narrowed.listAs(ann)).map((tool) => tool.name);
     expect(names).toContain("whoAmI");
     expect(names).not.toContain("echoTitle");
+    expect(names).not.toContain("agentTitle");
     expect(names).not.toContain("renameTitle");
     expect((await narrowed.callAs(ann, { id: "c", name: "renameTitle", args: {} })).error).toBe(
       "Unknown tool: renameTitle.",

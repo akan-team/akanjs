@@ -1,5 +1,5 @@
 import type { DatabaseMode } from "akanjs";
-import { DatabaseModes } from "akanjs/base";
+import { AkanError, DatabaseModes, getEnv } from "akanjs/base";
 import {
   type AdaptorCls,
   BlobStorage,
@@ -87,4 +87,28 @@ export const getPredefinedAdaptor = (mode: DatabaseMode = "single"): PredefinedA
     queue: BullQueue,
     websocket: WebSocketRedisAdaptor,
   };
+};
+
+// Fails the boot with what to fix, instead of an import error inside an adaptor's init.
+export const resolveDatabaseMode = (): DatabaseMode => {
+  const { environment, operationMode } = getEnv();
+  const mode = DatabaseModes.resolve({
+    requested: process.env.AKAN_DATABASE_MODE,
+    declared: process.env.AKAN_DATABASE_MODES,
+    local: environment === "local" || operationMode === "local",
+  });
+  const missing = DatabaseModes.drivers[mode].filter((driver) => {
+    try {
+      import.meta.resolve(driver);
+      return false;
+    } catch {
+      return true;
+    }
+  });
+  if (missing.length)
+    throw new AkanError(
+      "invalidConfig",
+      `The ${mode} database mode imports ${missing.join(", ")}, which this build does not carry. Declare "${mode}" in database.modes of akan.config.ts: akan build bundles the drivers of every declared mode, and akan start installs them.`,
+    );
+  return mode;
 };

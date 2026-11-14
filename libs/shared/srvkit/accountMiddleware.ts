@@ -26,11 +26,11 @@ export class AccountMiddleware implements Middleware {
   //? the revocation check below is not cached, so a revoked session still loses the next frame.
   static readonly #verifiedBySocket = new WeakMap<object, VerifiedToken>();
 
-  // `mcp: false` and `setMcp({ excludeEndpoints })` (handed in as `offShelfEndpoints`) keep an endpoint off the MCP shelf
-  // only; without this an MCP client's OAuth token sent straight over HTTP or a socket would still reach it. A call
-  // `/mcp` dispatches runs in-process with origin `mcp`, so it is never one; a guard that refuses agents (`Person`)
-  // keeps its own refusal; a token an app mints for its own client (angelo's runner) answers to that app's policy,
-  // which may grant an off-shelf endpoint.
+  // `mcp: false`, `mcp: "agent"` and `setMcp({ excludeEndpoints })` (handed in as `offShelfEndpoints`) keep an endpoint
+  // off the MCP shelf only; without this an MCP client's OAuth token sent straight over HTTP or a socket would still
+  // reach it. A call `/mcp` dispatches runs in-process with origin `mcp`, so it is never one; a guard that refuses
+  // agents (`Person`) keeps its own refusal; a token an app mints for its own client (angelo's runner) answers to that
+  // app's policy, which may grant an off-shelf endpoint.
   static #assertOnShelf(
     context: SignalContext,
     account: Account,
@@ -41,7 +41,7 @@ export class AccountMiddleware implements Middleware {
     if (typeof clientId !== "string" || !isOauthServerClientId(clientId, oauthClients)) return;
     if (context.origin === "mcp") return;
     const signalOption = context.endpointInfo?.signalOption;
-    if (signalOption?.mcp !== false && !offShelfEndpoints.has(context.key)) return;
+    if ((signalOption?.mcp ?? true) === true && !offShelfEndpoints.has(context.key)) return;
     if ((signalOption?.guards ?? []).some((guard) => (guard as { agents?: boolean }).agents === false)) return;
     AccountMiddleware.#logger.warn(`OAuth token of client ${clientId} refused at ${context.key}`);
     throw new Err.Forbidden("shared.error.agentTokenNotAllowed");

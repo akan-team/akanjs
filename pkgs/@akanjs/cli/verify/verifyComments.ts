@@ -19,6 +19,7 @@ export class VerifyComments {
   static readonly #codeFile = /\.[cm]?[jt]sx?$/;
   static readonly #directive =
     /^(\/\/\/?|\/\*+)\s*(biome-ignore|@ts-|eslint-|prettier-ignore|#region|#endregion|<reference|[#@]__PURE__|@__NO_SIDE_EFFECTS__)/;
+  static readonly #trackedTodo = /^(\/\/|\/\*+)\s*TODO:?\s*https?:\/\/\S[^\n]*$/;
   static #typescriptLoad: Promise<TypeScript> | undefined;
   static #templateCommentsLoad: Promise<Set<string>> | undefined;
 
@@ -42,6 +43,7 @@ export class VerifyComments {
       const text = await Bun.file(path.join(root, file)).text();
       for (const comment of VerifyComments.commentsOf(typescript, file, text)) {
         if (VerifyComments.#directive.test(comment.text)) continue;
+        if (VerifyComments.#trackedTodo.test(comment.text)) continue;
         if (VerifyComments.#scaffolded(comment, templateComments)) continue;
         if (lines && !VerifyComments.#touches(comment, lines)) continue;
         diagnostics.push({

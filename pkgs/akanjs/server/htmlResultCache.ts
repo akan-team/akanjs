@@ -20,19 +20,20 @@ export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Well above any sensible TTL: this only has to reclaim a cache nobody is reading, not track expiry closely. */
 const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
 
+interface HtmlCacheStreamOptions {
+  shouldCache?: () => boolean | Promise<boolean>;
+  maxBodyBytes?: number | null;
+  onSkip?: (reason: "body-too-large" | "store-skip") => void;
+}
+
 export function cacheHtmlWhileStreaming(
   stream: ReadableStream<Uint8Array>,
-  onComplete: (html: string) => void,
-  options: {
-    shouldCache?: () => boolean | Promise<boolean>;
-    maxBodyBytes?: number | null;
-    onSkip?: (reason: "body-too-large" | "store-skip") => void;
-  } = {},
+  onComplete: (body: Uint8Array<ArrayBuffer>) => void,
+  options: HtmlCacheStreamOptions = {},
 ): ReadableStream<Uint8Array> {
   const chunks: Uint8Array[] = [];
   let byteLength = 0;
   let exceededMaxBodyBytes = false;
-  const decoder = new TextDecoder();
 
   return stream.pipeThrough(
     new TransformStream<Uint8Array, Uint8Array>({
@@ -64,7 +65,7 @@ export function cacheHtmlWhileStreaming(
             options.onSkip?.("store-skip");
             return;
           }
-          onComplete(decoder.decode(body));
+          onComplete(body);
         } catch {
           // Cache writes must not fail the already completed response stream.
         }
@@ -187,8 +188,8 @@ export class HtmlResultCache {
     });
     return cacheHtmlWhileStreaming(
       htmlStream,
-      (html) => {
-        void encodeBody(html).then((body) => this.#cache.set(entry.key, { body, ...htmlCacheMetadata }, htmlStoreTtl));
+      (bytes) => {
+        void encodeBody(bytes).then((body) => this.#cache.set(entry.key, { body, ...htmlCacheMetadata }, htmlStoreTtl));
       },
       {
         shouldCache: () => shouldCacheHtml,

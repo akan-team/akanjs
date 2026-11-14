@@ -15,7 +15,10 @@ const state = {
   sheetTitles: [] as string[],
   sources: [] as string[],
   photoError: null as AkanNativeError | null,
+  pickError: null as AkanNativeError | null,
   permission: "granted" as "granted" | "denied" | "prompt",
+  confirms: [] as string[][],
+  confirmOk: false,
   settingsOpened: 0,
   positionError: null as AkanNativeError | null,
 };
@@ -48,6 +51,10 @@ const installNativeHost = () => {
             state.sheetTitles = [title, ...options.map((option) => option.title)];
             return { index: state.sheetIndex, cancelled: state.sheetIndex < 0 };
           },
+          confirm: (options: { title: string; message: string; okButtonTitle: string; cancelButtonTitle: string }) => {
+            state.confirms.push([options.title, options.message, options.okButtonTitle, options.cancelButtonTitle]);
+            return { value: state.confirmOk };
+          },
         },
       },
       camera: {
@@ -57,7 +64,10 @@ const installNativeHost = () => {
             if (state.photoError) throw state.photoError;
             return { url: photoUrl, mime: "image/jpeg", size: 3 };
           },
-          pickImages: () => ({ photos: [{ url: photoUrl, mime: "image/jpeg", size: 3 }] }),
+          pickImages: () => {
+            if (state.pickError) throw state.pickError;
+            return { photos: [{ url: photoUrl, mime: "image/jpeg", size: 3 }] };
+          },
           checkPermission: () => ({ camera: state.permission }),
           requestPermission: () => ({ camera: state.permission }),
         },
@@ -105,7 +115,10 @@ afterEach(() => {
     sheetTitles: [],
     sources: [],
     photoError: null,
+    pickError: null,
     permission: "granted",
+    confirms: [],
+    confirmOk: false,
     settingsOpened: 0,
     positionError: null,
   });
@@ -143,30 +156,64 @@ describe("native hooks", () => {
     hook.unmount();
   });
 
-  test("useCamera treats a cancelled capture as no photo and a denied one as a trip to the settings", async () => {
+  test("useCamera treats a cancelled capture as no photo and rethrows any other failure", async () => {
     const nativeHost = installNativeHost();
     const { useCamera } = await import("./useCamera");
     const hook = renderHook(() => useCamera());
 
     state.photoError = new AkanNativeError("CANCELLED", "cancelled");
     expect(await hook.current.getPhoto("camera")).toBeUndefined();
-    expect(state.settingsOpened).toBe(0);
-
-    state.photoError = new AkanNativeError("PERMISSION_DENIED", "camera access was denied");
-    expect(await hook.current.getPhoto("camera")).toBeUndefined();
-    expect(state.settingsOpened).toBe(1);
 
     state.photoError = new AkanNativeError("INTERNAL", "boom");
     await expect(hook.current.getPhoto("camera")).rejects.toMatchObject({ code: "INTERNAL" });
-    expect(state.settingsOpened).toBe(1);
-
-    state.photoError = null;
-    state.permission = "denied";
-    expect(await hook.current.checkPermission()).toBe("denied");
-    expect(state.settingsOpened).toBe(2);
 
     expect(await hook.current.pickImage()).toEqual([{ dataUrl: photoUrl }]);
     expect(nativeHost.releases).toEqual([photoUrl]);
+    expect(state.confirms).toEqual([]);
+    expect(state.settingsOpened).toBe(0);
+    hook.unmount();
+  });
+
+  test("useCamera opens nothing when the user has just refused the camera on the system prompt", async () => {
+    installNativeHost();
+    const { useCamera } = await import("./useCamera");
+    const hook = renderHook(() => useCamera());
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    state.permission = "prompt";
+    state.photoError = new AkanNativeError("PERMISSION_DENIED", "camera access was denied");
+    expect(await hook.current.getPhoto("camera")).toBeUndefined();
+    expect(hooks.states[0]).toEqual({ camera: "denied" });
+
+    state.permission = "denied";
+    expect(await hook.current.checkPermission()).toBe("denied");
+
+    state.pickError = new AkanNativeError("PERMISSION_DENIED", "photos access was denied");
+    expect(await hook.current.getPhoto("photos")).toBeUndefined();
+    expect(await hook.current.pickImage()).toBeUndefined();
+
+    expect(state.confirms).toEqual([]);
+    expect(state.settingsOpened).toBe(0);
+    hook.unmount();
+  });
+
+  test("useCamera links a camera denied before the tap to Settings, opening them only on the OK button", async () => {
+    installNativeHost();
+    const { useCamera } = await import("./useCamera");
+    const hook = renderHook(() => useCamera());
+
+    state.permission = "denied";
+    state.photoError = new AkanNativeError("PERMISSION_DENIED", "camera access was denied");
+    expect(await hook.current.getPhoto("camera")).toBeUndefined();
+    expect(state.confirms).toEqual([
+      ["base.cameraDeniedTitle", "base.cameraDeniedMessage", "base.cameraDeniedSettings", "base.cameraDeniedLater"],
+    ]);
+    expect(state.settingsOpened).toBe(0);
+
+    state.confirmOk = true;
+    expect(await hook.current.getPhoto("camera")).toBeUndefined();
+    expect(state.confirms).toHaveLength(2);
+    expect(state.settingsOpened).toBe(1);
     hook.unmount();
   });
 
@@ -180,7 +227,7 @@ describe("native hooks", () => {
     expect(hooks.states[0]).toEqual({ camera: "denied" });
   });
 
-  test("useGeoLocation answers the position or opens the settings when location is denied", async () => {
+  test("useGeoLocation answers the position, or undefined without opening the settings when location is denied", async () => {
     installNativeHost();
     const { useGeoLocation } = await import("./useGeoLocation");
     const hook = renderHook(() => useGeoLocation());
@@ -190,7 +237,7 @@ describe("native hooks", () => {
 
     state.positionError = new AkanNativeError("PERMISSION_DENIED", "denied");
     expect(await hook.current.getPosition()).toBeUndefined();
-    expect(state.settingsOpened).toBe(1);
+    expect(state.settingsOpened).toBe(0);
 
     state.positionError = new AkanNativeError("NOT_FOUND", "no fix");
     await expect(hook.current.getPosition()).rejects.toThrow("no fix");

@@ -17,6 +17,7 @@ import {
 } from "akanjs/client";
 import { isNativeApp, openExternalUrl } from "akanjs/client/native";
 import { useCallback, useMemo, useState } from "react";
+import { CsrRefresh } from "./csrRefresh";
 import { useCsrKeyboard } from "./useCsrKeyboard";
 import { type CsrLocationState, useCsrLocationState } from "./useCsrLocationState";
 import { type CsrNavigation, useCsrNavigation } from "./useCsrNavigation";
@@ -77,7 +78,9 @@ const useCsrRouter = ({
       push: forward("push"),
       replace: forward("replace"),
       refresh: () => {
-        csrLocation.reload();
+        const location = getCurrentLocation();
+        debugFrame("router.refresh", { href: location.href });
+        CsrRefresh.request(location);
       },
       back: async ({ scrollToTop }: RouteOptions = {}) => {
         waitingNavigation.current = null;

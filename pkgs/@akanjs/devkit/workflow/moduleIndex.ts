@@ -3,7 +3,7 @@ import path from "node:path";
 import ts from "typescript";
 import type { Workspace } from "../commandDecorators";
 import type { AkanModuleContext } from "../context/akanContext";
-import { moduleComponentName, moduleSourcePaths } from "./source";
+import { moduleComponentName, moduleSourcePaths } from "./modulePaths";
 import {
   callExpressionName,
   expressionName,

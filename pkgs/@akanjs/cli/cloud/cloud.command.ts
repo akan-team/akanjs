@@ -22,15 +22,18 @@ const pushUpdateDesc =
   "Pack an over-the-air update of a phone's web bundle, or take the folder `akan pack-update` wrote, and upload it to the Akan Cloud project, which signs and publishes it; or upload the desktop release `akan publish-update` signed, as it is. Exits 2 when the pack needs a new store build or the project rejects it, 1 on any other failure";
 const registerBinaryDesc =
   "Register the store build of a phone app with the Akan Cloud project, with a pack of the same commit as its embedded bundle. Exits 2 when the store build differs natively from this commit's pack, 1 on any other failure";
+const uploadSecretDesc =
+  "Upload a named pipeline secret to the Akan Cloud project; write-only, it can never be read back";
+const listSecretsDesc = "List the pipeline secrets of the Akan Cloud project: names and scopes, never values";
 
 export class CloudCommand extends command("cloud", [CloudScript], ({ public: target }) => ({
-  login: target({ desc: "Login to Akan Cloud services" })
+  login: target({ desc: "Login to Akan Cloud services", readOnly: true })
     .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (host, workspace) {
       await this.cloudScript.login(workspace, host);
     }),
-  logout: target({ desc: "Logout from Akan Cloud services" })
+  logout: target({ desc: "Logout from Akan Cloud services", readOnly: true })
     .option("host", String, hostOption)
     .with(Workspace)
     .exec(async function (host, workspace) {
@@ -230,9 +233,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
         });
       },
     ),
-  uploadSecret: target({
-    desc: "Upload a named pipeline secret to the Akan Cloud project; write-only, it can never be read back",
-  })
+  uploadSecret: target({ desc: uploadSecretDesc, readOnly: true })
     .arg("name", String, { desc: "secret name, e.g. DISCORD_WEBHOOK" })
     .option("branch", String, {
       desc: "only builds of this branch use it: debug, develop or main (default: every branch)",
@@ -248,7 +249,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .exec(async function (name, branch, file, subspace, host, workspace) {
       await this.cloudScript.uploadSecret(workspace, { name, branch, file, subspace, host });
     }),
-  listSecrets: target({ desc: "List the pipeline secrets of the Akan Cloud project: names and scopes, never values" })
+  listSecrets: target({ desc: listSecretsDesc, readOnly: true })
     .option("branch", String, {
       desc: "only the secrets builds of this branch use: debug, develop or main",
       nullable: true,
@@ -259,7 +260,7 @@ export class CloudCommand extends command("cloud", [CloudScript], ({ public: tar
     .exec(async function (branch, subspace, host, workspace) {
       await this.cloudScript.listSecrets(workspace, { branch, subspace, host });
     }),
-  removeSecret: target({ desc: "Remove a named pipeline secret from the Akan Cloud project" })
+  removeSecret: target({ desc: "Remove a named pipeline secret from the Akan Cloud project", readOnly: true })
     .arg("name", String, { desc: "secret name" })
     .option("branch", String, {
       desc: "the branch override to remove: debug, develop or main (default: the every-branch value)",

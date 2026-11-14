@@ -1,7 +1,8 @@
 // The instance lock. macOS and Linux: an flock(2) on a lock file per app and user decides who runs;
 // the holder keeps it open until it exits (the kernel releases it even after a crash), removes a
 // stale socket and binds it; the socket only carries the second launch's message. Windows: a named
-// pipe, which is both (node:net listens on pipes only, and a pipe disappears with its server).
+// pipe, which is both (node:net listens on pipes only, and a pipe disappears with its server); a
+// launch that finds the name taken sends only to a pipe its own account owns, and runs otherwise.
 //
 // Differences from tauri-plugins-workspace/plugins/single-instance/src/platform_impl/macos.rs:
 // - the files live in the per-user temporary folder ($TMPDIR on macOS, $XDG_RUNTIME_DIR on
@@ -73,8 +74,10 @@ export function tokenSid(query: (info: Uint8Array) => boolean = queryTokenUser):
 
 /**
  * sun_path is 104 bytes on macOS, so the name is a short hash, not the app id. Windows pipe names
- * are one namespace for the whole PC, so the user is part of the hash there; other users cannot
- * write to a pipe they did not create (its default security), so they cannot pose as it either.
+ * are one namespace for the whole PC, so the user is part of the hash there. The hash is no secret:
+ * another account can work the name out and create the pipe first. The pipe's default security only
+ * keeps others from writing to a pipe this account created, so a launch reads who owns the pipe
+ * before it sends (claimPipe).
  */
 export function socketPath(
   appId: string,
@@ -96,6 +99,81 @@ export function socketPath(
 
 /** A named pipe disappears with its server: there is no file to protect or clean up. */
 const isPipe = (path: string) => path.startsWith("\\\\.\\pipe\\");
+
+const GENERIC_READ = 0x80000000;
+const OPEN_EXISTING = 3;
+//? Alone it is SECURITY_ANONYMOUS: a pipe's server may otherwise act as whoever connects, and this one is unknown yet.
+const SECURITY_SQOS_PRESENT = 0x00100000;
+const OWNER_SECURITY_INFORMATION = 1;
+const SE_SELF_RELATIVE = 0x8000;
+const INVALID_HANDLE_VALUE = -1n;
+//? An elevated launch's pipe is owned by this group, and Windows lets no account outside it name it as an owner.
+const ADMINISTRATORS = "S-1-5-32-544";
+
+export interface PipeCalls {
+  open(name: Uint8Array): bigint;
+  security(handle: bigint, descriptor: Uint8Array): boolean;
+  close(handle: bigint): void;
+}
+
+export interface HeldPipe {
+  owner: string | null;
+  close(): void;
+}
+
+let win32: PipeCalls | null = null;
+
+const win32PipeCalls = (): PipeCalls => {
+  if (win32) return win32;
+  const kernel = dlopen("kernel32.dll", {
+    CreateFileW: {
+      args: [FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.ptr, FFIType.u32, FFIType.u32, FFIType.i64],
+      returns: FFIType.i64,
+    },
+    CloseHandle: { args: [FFIType.i64], returns: FFIType.i32 },
+  }).symbols;
+  const advapi = dlopen("advapi32.dll", {
+    GetKernelObjectSecurity: {
+      args: [FFIType.i64, FFIType.u32, FFIType.ptr, FFIType.u32, FFIType.ptr],
+      returns: FFIType.i32,
+    },
+  }).symbols;
+  win32 = {
+    //? Read access is what a pipe's default security gives every account, and it covers reading the owner.
+    open: (name) => kernel.CreateFileW(name, GENERIC_READ, 0, null, OPEN_EXISTING, SECURITY_SQOS_PRESENT, 0),
+    security: (handle, descriptor) =>
+      advapi.GetKernelObjectSecurity(
+        handle,
+        OWNER_SECURITY_INFORMATION,
+        descriptor,
+        descriptor.length,
+        new Uint32Array(1),
+      ) !== 0,
+    close: (handle) => void kernel.CloseHandle(handle),
+  };
+  return win32;
+};
+
+//? The owner is what another account cannot fake: Windows lets an account name only itself as an object's owner.
+//? Until close the name keeps meaning this pipe: a pipe lives until its last handle closes, the client's included.
+export function heldPipe(path: string, calls?: PipeCalls): HeldPipe | null {
+  try {
+    const pipe = calls ?? win32PipeCalls();
+    const handle = pipe.open(Buffer.from(`${path}\0`, "utf16le"));
+    if (handle === INVALID_HANDLE_VALUE) return null;
+    const descriptor = new Uint8Array(new ArrayBuffer(256));
+    let owner: string | null = null;
+    if (pipe.security(handle, descriptor)) {
+      //? SECURITY_DESCRIPTOR_RELATIVE: revision, a zero byte, control (u16), then the owner SID's offset in the buffer.
+      const view = new DataView(descriptor.buffer);
+      const at = view.getUint32(4, true);
+      if (view.getUint16(2, true) & SE_SELF_RELATIVE && at >= 20) owner = sidText(descriptor.subarray(at));
+    }
+    return { owner, close: () => pipe.close(handle) };
+  } catch {
+    return null;
+  }
+}
 
 export function encodeMessage(message: SecondInstance): string {
   return `${JSON.stringify({ format: FORMAT, args: message.args, cwd: message.cwd })}\n`;
@@ -230,36 +308,50 @@ export async function claim(
   onMessage: (m: SecondInstance) => void,
   timeoutMs = 1500,
 ): Promise<Claim> {
-  if (!isPipe(path)) return claimLocked(path, message, onMessage, timeoutMs);
-  for (let attempt = 0; attempt < 3; attempt++) {
+  return isPipe(path)
+    ? claimPipe(path, message, onMessage, timeoutMs)
+    : claimLocked(path, message, onMessage, timeoutMs);
+}
+
+//? A pipe that is not this account's makes the launch run, not exit: exiting lets whoever took the name stop the app.
+export async function claimPipe(
+  path: string,
+  message: SecondInstance,
+  onMessage: (m: SecondInstance) => void,
+  timeoutMs: number,
+  hold: (path: string) => HeldPipe | null = heldPipe,
+  account: () => string | null = tokenSid,
+): Promise<Claim> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
     try {
       const server = await listen(path, onMessage);
-      try {
-        if (!isPipe(path)) chmodSync(path, 0o600); // the folder is private already; /tmp fallbacks are not
-      } catch {}
-      return {
-        kind: "primary",
-        close() {
-          server.close();
-          if (!isPipe(path)) rmSync(path, { force: true });
-        },
-      };
+      return { kind: "primary", close: () => void server.close() };
     } catch (error) {
       if (errno(error) !== "EADDRINUSE") return { kind: "failed", error: error as Error };
     }
-    try {
-      const heard = await send(path, message, timeoutMs);
-      if (!heard) console.warn("[akan-native] single-instance: the running instance did not answer; exiting anyway");
-      return { kind: "forwarded" };
-    } catch (error) {
-      const code = errno(error);
-      // ECONNREFUSED: a stale socket file from a crashed instance. ENOTSOCK: some other file
-      // took our private name. ENOENT: the running instance just quit.
-      if ((code === "ECONNREFUSED" || code === "ENOTSOCK") && !isPipe(path)) rmSync(path, { force: true });
-      else if (code !== "ENOENT") return { kind: "failed", error: error as Error };
+    const held = hold(path);
+    if (held) {
+      try {
+        if (held.owner === null || (held.owner !== account() && held.owner !== ADMINISTRATORS)) {
+          const owner = held.owner ?? "an owner that cannot be read";
+          return { kind: "failed", error: new Error(`${path} belongs to another account (${owner})`) };
+        }
+        const heard = await send(path, message, timeoutMs);
+        if (!heard) console.warn("[akan-native] single-instance: the running instance did not answer; exiting anyway");
+        return { kind: "forwarded" };
+      } catch (error) {
+        if (errno(error) !== "ENOENT") return { kind: "failed", error: error as Error };
+      } finally {
+        held.close();
+      }
     }
+    //? Not opened: the instance just quit (the next listen succeeds), or every instance of its pipe is taken for now.
+    if (Date.now() >= deadline) {
+      return { kind: "failed", error: new Error(`${path} is taken and cannot be opened to see whose it is`) };
+    }
+    await Bun.sleep(20);
   }
-  return { kind: "failed", error: new Error(`could not claim ${path}`) };
 }
 
 /** The lock and socket need a folder of this user's alone: another user's could block the app or read its arguments. */

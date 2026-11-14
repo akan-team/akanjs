@@ -3,6 +3,7 @@ import {
   type AkanRouterStateV1,
   type AkanRouteSegmentState,
   type AkanRscPatchMetadata,
+  countCommonRouteSegments,
   createAkanSegmentOutletKey,
 } from "./routeState";
 
@@ -18,6 +19,7 @@ export interface RscNavigationCacheNode<T> {
   href: string;
   thenable: T;
   routerState: AkanRouterStateV1 | null;
+  streamed?: PromiseLike<void>;
 }
 
 export interface RscPatchNavigationCacheNode<T> {
@@ -85,8 +87,32 @@ export function createRscNavigationCacheNode<T>({
   href,
   thenable,
   routerState,
+  streamed,
 }: RscNavigationCacheNode<T>): RscNavigationCacheNode<T> {
-  return { href, thenable, routerState };
+  return streamed ? { href, thenable, routerState, streamed } : { href, thenable, routerState };
+}
+
+//? React reveals a boundary that mounted showing its fallback no sooner than 300ms after that commit, so a level whose
+//? rows land just after it stays blank that long; past half of that, waiting costs a slow level more than it saves.
+export const NEW_ROUTE_LEVEL_WAIT_MS = 150;
+
+//? A changed level's own boundary sits in the kept layout above it and holds the transition; those below it mount.
+export function mountsNewRouteLevels(current: AkanRouterStateV1 | null, next: AkanRouterStateV1 | null): boolean {
+  if (!next) return false;
+  const kept = current ? countCommonRouteSegments(current.segments, next.segments) : 0;
+  return kept < next.segments.length - 1;
+}
+
+export function settledOrAfter(promise: PromiseLike<unknown> | undefined, ms: number): Promise<void> {
+  if (!promise) return Promise.resolve();
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    promise.then(done, done);
+  });
 }
 
 export function createRscPatchNavigationCacheNode<T>({

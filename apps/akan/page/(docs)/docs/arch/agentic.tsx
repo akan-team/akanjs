@@ -1403,7 +1403,7 @@ export const option = new AkanOption<ModulesOptions>()
               {l.trans({
                 en: (
                   <span>
-                    The panel itself (its controlled <code>open</code> pair, the twelve <code>_overrides.tsx</code>{" "}
+                    The panel itself (its controlled <code>open</code> pair, the thirteen <code>_overrides.tsx</code>{" "}
                     slots, card tools, the <code>@</code> menu, the queue and the transcript store) is covered on{" "}
                     <Link href="/cheatsheet/interface/agent-chat" className="text-primary">
                       Agent Chat
@@ -1413,7 +1413,7 @@ export const option = new AkanOption<ModulesOptions>()
                 ),
                 ko: (
                   <span>
-                    패널 자체(controlled <code>open</code> 쌍, <code>_overrides.tsx</code> 슬롯 열두 개, card 툴,{" "}
+                    패널 자체(controlled <code>open</code> 쌍, <code>_overrides.tsx</code> 슬롯 열세 개, card 툴,{" "}
                     <code>@</code> 메뉴, 대기열, 대화 보관)는{" "}
                     <Link href="/cheatsheet/interface/agent-chat" className="text-primary">
                       Agent Chat

@@ -98,6 +98,16 @@ export interface DocumentStore {
   serialize(doc: DocumentRecord): string;
   deserialize(text: string): any;
   rehydrate<Doc extends DocumentRecord>(doc: Doc): Doc;
+  /** Hears of every write once it commits, before any post hook or `afterCommit` callback; returns the way to stop. */
+  onWrite?(listener: DocumentWriteListener): () => void;
+}
+
+/** `written` names the document a write stored and the one it replaced; a write by query names neither. */
+export type DocumentWriteListener = (written?: { doc: DocumentRecord; previous?: DocumentRecord }) => void;
+
+export interface AfterCommitOptions {
+  /** Runs ahead of every callback queued without it, so none of them finds its work undone. */
+  first?: boolean;
 }
 
 export interface SqlResultRows<Row = Record<string, unknown>> {
@@ -129,7 +139,9 @@ export interface DatabaseAdaptor {
   /** Every model table this process has opened a store for. */
   stores?(): SqlDocumentStore[];
   transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-  afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+  afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
+  /** The open transaction the caller runs in, as an identity: work batched across callers must not cross it. */
+  transactionKey?(): object | undefined;
   // `null` without text search; declared so a service can `suspend`/`resume` around a bulk import without casting.
   getSearchIndex(): SearchIndex | null;
   openInsight?(): Promise<InsightSession>;
@@ -151,6 +163,8 @@ export interface SqliteEnv {
 
 export interface TransactionContext {
   afterCommit: (() => PromiseOrObject<void>)[];
+  /** The callbacks queued to run ahead of `afterCommit`. */
+  first?: (() => PromiseOrObject<void>)[];
   closed?: boolean;
 }
 
@@ -198,6 +212,16 @@ export interface ConcurrentIndexBuild {
   replace: boolean;
 }
 
+export interface UndeclaredIndex {
+  table: string;
+  name: string;
+  unique: boolean;
+}
+
+export interface PrunedIndex extends UndeclaredIndex {
+  error?: string;
+}
+
 export interface DocumentDatabaseOwner {
   getConnection(): AkanSqlClient;
   getSearchIndex(): SearchIndex | null;
@@ -205,7 +229,7 @@ export interface DocumentDatabaseOwner {
   setMeta(key: string, value: string): Promise<void>;
   listMeta(prefix: string): Promise<{ key: string; value: string }[]> | { key: string; value: string }[];
   deleteMeta(key: string): Promise<void>;
-  afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+  afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
   transaction?<T>(fn: () => PromiseOrObject<T>): Promise<T>;
   /** Runs `fn` as the only schema change: Postgres races two `CREATE … IF NOT EXISTS` into a duplicate-key error. */
   lockSchema?<T>(fn: () => Promise<T>): Promise<T>;
@@ -296,8 +320,8 @@ export interface SqlDialect {
   indexName(name: string): string;
   createIndex(props: CreateIndexProps): string;
   /**
-   * Rows `{ name, valid, definition }`, one per index on `table` besides its primary key; `definition` is the index as
-   * the database holds it, its fields in order.
+   * Rows `{ name, valid, definition, unique }`, one per index on `table` besides its primary key; `definition` is the
+   * index as the database holds it, its fields in order.
    */
   indexesOf(table: string): SqlFrag;
   /** The `definition` `indexesOf` reads back for `createIndex(props)`; absent where only the database can tell. */

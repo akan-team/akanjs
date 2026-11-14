@@ -12,6 +12,7 @@ import {
 } from "akanjs/client";
 import { Activity, act, type ReactNode, StrictMode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { CsrRefresh } from "./csrRefresh";
 import { RenderLayer } from "./RenderLayer";
 
 class UnreachableErr extends Error {
@@ -114,6 +115,20 @@ const stackOf = (renders: RouteRender[], pathRoute: { path: string }) => {
     await settle();
   };
   return { container, show };
+};
+const refreshAt = async (pathRoute: { path: string }, entryId = "e1") => {
+  const pathname = `/en${pathRoute.path}`;
+  const location = {
+    href: pathname,
+    entryId,
+    pathname,
+    search: "",
+    hash: "",
+    params: { lang: "en" },
+    searchParams: {},
+  };
+  await act(async () => CsrRefresh.request({ ...location, pathRoute } as never));
+  await settle();
 };
 const guardedLayoutOf = (guard: () => void): RouteRender => {
   const shell = layout()
@@ -793,5 +808,130 @@ describe("RenderLayer", () => {
     await show({ isStrict: true });
     expect(container.textContent).toBe("home");
     expect(guardRuns).toBe(1);
+  });
+
+  test("reruns the page in front on a refresh, keeping what it drew until the new render settles", async () => {
+    routerOf();
+    let runs = 0;
+    let instances = 0;
+    let release: (() => void) | null = null;
+    const Deck = ({ card }: { card: string }) => {
+      useState(() => ++instances);
+      return <p>{card}</p>;
+    };
+    const deck: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: (async () => {
+        const run = ++runs;
+        if (run > 1) await new Promise<void>((resolve) => (release = resolve));
+        return <Deck card={`card ${run}`} />;
+      }) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/deck", renderRootLayouts: [], renderLayouts: [], renderPage: deck };
+    const { container, show } = stackOf([deck], pathRoute);
+
+    await show({});
+    expect(container.textContent).toBe("card 1");
+    await refreshAt(pathRoute);
+    expect(runs).toBe(2);
+    expect(container.textContent).toBe("card 1");
+
+    await act(async () => release?.());
+    await settle();
+    expect(container.textContent).toBe("card 2");
+    expect(instances).toBe(1);
+  });
+
+  test("leaves a parked page alone on a refresh of another entry", async () => {
+    routerOf();
+    let runs = 0;
+    const list: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: (async () => <p>list {++runs}</p>) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/list", renderRootLayouts: [], renderLayouts: [], renderPage: list };
+    const { container, show } = stackOf([list], pathRoute);
+
+    await show({});
+    await show({ activity: "hidden" });
+    await refreshAt(pathRoute, "e2");
+    await show({});
+    expect(runs).toBe(1);
+    expect(container.textContent).toBe("list 1");
+
+    await refreshAt(pathRoute);
+    expect(runs).toBe(2);
+    expect(container.textContent).toBe("list 2");
+  });
+
+  test("reruns the root layouts on a refresh of any page, since every page draws under them", async () => {
+    let runs = 0;
+    const shell = layoutOf(
+      ({ children }) => (
+        <div>
+          shell {++runs}
+          {children}
+        </div>
+      ),
+      true,
+    );
+    const container = await mount([shell]);
+    await settle();
+    expect(container.textContent).toBe("shell 1");
+
+    await refreshAt({ path: "/anywhere", renderRootLayouts: [shell], renderLayouts: [], renderPage: null } as never);
+    expect(container.textContent).toBe("shell 2");
+  });
+
+  test("asks the guards again on a refresh, and a refusal moves the router as a navigation's would", async () => {
+    const replaced = routerOf();
+    const session = { isSignedIn: true };
+    let guardRuns = 0;
+    const shell = guardedLayoutOf(() => {
+      guardRuns += 1;
+      if (!session.isSignedIn) router.replace("/signin");
+    });
+    const home = page()
+      .render(() => <p>home</p>)
+      .toRouteModule();
+    const homeRender: RouteRender = { kind: "page", isAsync: true, render: home.default as never };
+    const pathRoute = { path: "/home", renderRootLayouts: [], renderLayouts: [shell], renderPage: homeRender };
+    const { container, show } = stackOf([shell, homeRender], pathRoute);
+
+    await show({});
+    await refreshAt(pathRoute);
+    expect([guardRuns, container.textContent]).toEqual([2, "home"]);
+
+    session.isSignedIn = false;
+    await refreshAt(pathRoute);
+    expect(guardRuns).toBe(3);
+    expect(replaced).toEqual(["/en/signin"]);
+    expect(container.textContent).toBe("");
+  });
+
+  test("shows a refresh whose render fails as a failed render in place, with a retry", async () => {
+    routerOf();
+    let runs = 0;
+    const feed: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: (async () => {
+        runs += 1;
+        if (runs === 2) throw new UnreachableErr();
+        return <p>feed {runs}</p>;
+      }) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/feed", renderRootLayouts: [], renderLayouts: [], renderPage: feed };
+    const { container, show } = stackOf([feed], pathRoute);
+
+    await show({});
+    await refreshAt(pathRoute);
+    expect(container.querySelector("[role=alert]")?.textContent).toContain("base.error.serverUnreachable");
+
+    await act(async () => container.querySelector("button")?.click());
+    await settle();
+    expect(container.textContent).toBe("feed 3");
   });
 });

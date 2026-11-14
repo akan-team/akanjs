@@ -67,14 +67,16 @@ export interface ExternalViewApi {
   setBounds(args: { id: string; bounds: ExternalViewBounds }): Promise<void>;
   /**
    * The script's completion value as JSON has it (a Date as its ISO string, a lone surrogate as U+FFFD), and `null`
-   * for undefined, NaN, a cycle or an exception: catch it in the script. macOS answers `null` past 128 levels of
-   * nesting too. A promise is not awaited. CANCELLED: a close or a rebuild of the view cut the call off. TIMEOUT: no
+   * for undefined, NaN, a cycle or an exception: catch it in the script. macOS and Linux answer `null` past 128 levels
+   * of nesting too. A promise is not awaited. CANCELLED: a close or a rebuild of the view cut the call off. TIMEOUT: no
    * answer within 30 s, as from a page busy in a loop; `sendKey` and `capture` time out the same way.
    */
   evaluate(args: { id: string; script: string }): Promise<{ value: unknown }>;
   /**
    * A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Not on macOS; on Linux
-   * UNSUPPORTED while the view's window is hidden.
+   * UNSUPPORTED while the view's window is hidden. On Linux a Tab past the page's last element takes the page's focus
+   * out of it, as in a browser, but the keyboard stays with the view or the app's page, whichever had it; `Dead` is
+   * INVALID_ARGS there, since GTK's input method would compose it with the next key into one character.
    */
   sendKey(args: { id: string; key: string; code: string }): Promise<void>;
   /** The view's own sound only; the system volume is the volume plugin's. Not on macOS. */

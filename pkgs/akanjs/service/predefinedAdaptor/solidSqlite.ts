@@ -1,7 +1,7 @@
 import { Database } from "bun:sqlite";
 import { mkdir } from "node:fs/promises";
 import path from "node:path";
-import type { Dayjs } from "akanjs/base";
+import { AkanError, type Dayjs } from "akanjs/base";
 import { defaultSqliteFile } from "./sqlitePath";
 
 export interface SolidConfig {
@@ -55,7 +55,8 @@ export const openSolidDatabase = async (config: Required<SolidConfig>) => {
       await wait(50 * (attempt + 1));
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError));
+  const message = lastError instanceof Error ? lastError.message : String(lastError);
+  throw new AkanError("databaseLocked", message, { cause: lastError });
 };
 
 export const encodeSolidValue = (value: unknown): { type: SolidValueType; value: string | Buffer } => {

@@ -122,7 +122,7 @@ Export
 
 - DatePicker: The browser's native date field, plus `RangePicker` and `TimePicker`.
 
-- DefaultApproval, DefaultBubble, DefaultCode, DefaultComposer, DefaultLauncher, DefaultMarkdown, DefaultAgentMenu, DefaultQuestion, DefaultQueued, DefaultSteps, DefaultToolCard, DefaultToast, DefaultToastItem: The shipped default behind each matching slot, public so a replacement can compose it.
+- DefaultApproval, DefaultBubble, DefaultCode, DefaultComposer, DefaultLauncher, DefaultMarkdown, DefaultAgentMenu, DefaultQuestion, DefaultQueued, DefaultSteps, DefaultToolCard, DefaultToolRow, DefaultToast, DefaultToastItem: The shipped default behind each matching slot, public so a replacement can compose it.
 
 - Dialog: The headless dialog namespace that `Modal` is built on.
 

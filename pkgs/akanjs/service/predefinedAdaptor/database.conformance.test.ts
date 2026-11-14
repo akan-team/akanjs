@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Any, dayjs, Int } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { type ConstantModel, ConstantRegistry, InputParser, via } from "akanjs/constant";
@@ -10,11 +11,12 @@ import {
   type DatabaseCls,
   type DatabaseModel,
   DatabaseRegistry,
+  DataLoader,
   DocumentSchema,
   from,
   into,
 } from "akanjs/document";
-import { ConformanceEnv, type SqlDriver, type SqlDriverKind } from "../../test/conformance";
+import { ConformanceEnv, type SqlDriver, type SqlDriverKind, type SqlDriverOptions } from "../../test/conformance";
 import type { Adaptor, AdaptorCls } from "../adapt";
 import { getDefaultInjectRegistry, InjectInfo } from "../injectInfo";
 import { serve } from "../serve";
@@ -249,6 +251,49 @@ const lockWaitersBehind = async (driver: SqlDriver, pid: number, expected: numbe
     await Bun.sleep(10);
   }
 };
+
+class Gate {
+  open!: () => void;
+  readonly opened = new Promise<void>((resolve) => {
+    this.open = resolve;
+  });
+}
+
+const isolationStorages = (kind: SqlDriverKind): [string, SqlDriverOptions][] =>
+  kind === "postgres"
+    ? [["a pool", {}]]
+    : [
+        ["a WAL file", {}],
+        ["in memory", { memory: true }],
+        ["a rollback-journal file", { sqlite: { journalMode: "DELETE" } }],
+      ];
+
+const holdingTransaction = (driver: SqlDriver, store: SqlDocumentStore, title: string) => {
+  const entered = new Gate();
+  const release = new Gate();
+  const done = driver.database.transaction(async () => {
+    await store.create({ title });
+    entered.open();
+    await release.opened;
+    throw new Error("rollback-probe");
+  });
+  return { entered: Promise.race([entered.opened, done.catch(() => undefined)]), release: release.open, done };
+};
+
+const idLoaderOn = (
+  driver: SqlDriver,
+  store: SqlDocumentStore,
+  { cache = false, onBatch }: { cache?: boolean; onBatch?: (size: number) => void } = {},
+) =>
+  new DataLoader<string, { title?: unknown } | null>(
+    async (ids) => {
+      onBatch?.(ids.length);
+      const docs = await store.find({ id: q.oneOf([...ids]) });
+      const byId = new Map(docs.map((doc) => [String(doc.id), doc]));
+      return ids.map((id) => byId.get(id) ?? null);
+    },
+    { cache, scopeFn: () => driver.database.transactionKey() },
+  );
 
 const describeDriver = (kind: SqlDriverKind) => {
   const onPostgres = kind === "postgres";
@@ -775,7 +820,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
-    test("the B-tree an earlier boot built from a text index is dropped, and an index without a meta key is kept", async () => {
+    test("the B-tree an earlier boot built from a text index is kept until pruned, and one without a meta key is kept", async () => {
       const legacy = await storeOf(driver, confConstant, confDatabase);
       const connection = driver.database.getConnection();
       const legacyIndex = (name: string, path: string) =>
@@ -797,16 +842,26 @@ const describeDriver = (kind: SqlDriverKind) => {
       const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
       const textIndexes = () => new DocumentSchema().index({ note: "text" }).index({ title: "text" });
       try {
-        await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
+        const booted = await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
+        expect((await validIndexNamesOf(driver, "dialectConf")).sort()).toEqual([
+          "dialectConf_note_0",
+          "dialectConf_title_1",
+        ]);
+        expect(
+          warnings.filter((message) => message.includes("dialectConf_note_0 on dialectConf is no longer declared")),
+        ).toHaveLength(1);
+        expect(warnings.filter((message) => message.includes("dialectConf_title_1"))).toHaveLength(0);
+
+        expect(await booted.pruneUndeclaredIndexes()).toEqual([
+          { table: "dialectConf", name: "dialectConf_note_0", unique: false },
+        ]);
         expect(await validIndexNamesOf(driver, "dialectConf")).toEqual(["dialectConf_title_1"]);
         expect(await driver.database.getMeta("index:dialectConf:dialectConf_note_0")).toBeUndefined();
-        expect(warnings.filter((message) => message.includes("Dropped index dialectConf_note_0"))).toHaveLength(1);
-        expect(warnings.filter((message) => message.includes("Dropped index dialectConf_title_1"))).toHaveLength(0);
 
         warnings.length = 0;
         await storeOf(await sibling(), confConstant, confDatabase, textIndexes());
         expect(warnings.filter((message) => message.includes("MongoDB's text index"))).toHaveLength(2);
-        expect(warnings.filter((message) => message.includes("Dropped"))).toHaveLength(0);
+        expect(warnings.filter((message) => message.includes("no longer declared"))).toHaveLength(0);
 
         await storeOf(await sibling(), confConstant, confDatabase, new DocumentSchema().index({ note: 1 }));
         expect((await validIndexNamesOf(driver, "dialectConf")).sort()).toEqual([
@@ -833,7 +888,7 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
-    test("[DDL-6] an index no declaration builds any more is dropped, and one made by hand is kept", async () => {
+    test("[DDL-6] an index no declaration builds any more is kept at boot and dropped by a prune, and one made by hand by neither", async () => {
       const store = await storeOf(
         driver,
         uniqueConstant,
@@ -848,12 +903,28 @@ const describeDriver = (kind: SqlDriverKind) => {
           columns: [{ path: "label", expr: store.compiler.fieldExpr("label"), isArray: false }],
         }),
       );
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1 }));
+      const narrowed = () => new DocumentSchema().index({ code: 1 });
+      const booted = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, narrowed());
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+        "uniqueConf_byHand",
+        "uniqueConf_code",
+        "uniqueConf_label",
+      ]);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label")).toBeDefined();
+      const undeclared = [{ table: "uniqueConf", name: "uniqueConf_label", unique: false }];
+      expect(await booted.undeclaredIndexes()).toEqual(undeclared);
+
+      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, narrowed());
+      expect(await validIndexNamesOf(driver, "uniqueConf")).toHaveLength(3);
+
+      expect(await booted.pruneUndeclaredIndexes()).toEqual(undeclared);
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(["uniqueConf_byHand", "uniqueConf_code"]);
       expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label")).toBeUndefined();
+      expect(await booted.undeclaredIndexes()).toEqual([]);
+      expect(await booted.pruneUndeclaredIndexes()).toEqual([]);
     });
 
-    test("[DDL-6] the positional copies an earlier release built serve on, and their duplicates are dropped", async () => {
+    test("[DDL-6] the positional copies an earlier release built serve on, and their duplicates wait for a prune", async () => {
       const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
       const legacyIndex = async (name: string, path: string) => {
         await driver.database.getConnection().execute(
@@ -877,25 +948,121 @@ const describeDriver = (kind: SqlDriverKind) => {
 
       const current = () => new DocumentSchema().index({ code: 1 }).index({ label: 1 });
       await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      const everyCopy = ["uniqueConf_code_0", "uniqueConf_code_2", "uniqueConf_label_1"];
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_2")).toBeDefined();
+      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label_3")).toBeUndefined();
+
+      const booted = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+      expect((await booted.pruneUndeclaredIndexes()).map(({ name }) => name)).toEqual(["uniqueConf_code_2"]);
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
         "uniqueConf_code_0",
         "uniqueConf_label_1",
       ]);
       expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_2")).toBeUndefined();
-      expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_label_3")).toBeUndefined();
 
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+      const changed = new DocumentSchema().index({ code: 1 }).index({ label: 1 }, { unique: true });
+      const rebuilt = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, changed);
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
         "uniqueConf_code_0",
         "uniqueConf_label_1",
+        "uniqueConf_label_unique",
       ]);
-
-      const changed = new DocumentSchema().index({ code: 1 }).index({ label: 1 }, { unique: true });
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, changed);
+      await rebuilt.pruneUndeclaredIndexes();
       expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
         "uniqueConf_code_0",
         "uniqueConf_label_unique",
       ]);
+    });
+
+    test("[DDL-6] an upgrade keeps the copy older replicas declare, so none rebuilds it and no later boot drops it", async () => {
+      const legacy = await storeOf(driver, uniqueConstant, uniqueDatabase);
+      const labelUnique = new DocumentSchema().index({ label: 1 }, { unique: true }).indexes[0];
+      const legacyIndex = async (name: string, path: string, unique: boolean) => {
+        await driver.database.getConnection().execute(
+          driver.dialect.createIndex({
+            name,
+            table: "uniqueConf",
+            unique,
+            columns: [{ path, expr: legacy.compiler.fieldExpr(path), isArray: false }],
+          }),
+        );
+        const descriptor = unique ? labelUnique : { fields: { [path]: 1 } };
+        await driver.database.setMeta(`index:uniqueConf:${name}`, await descriptorHash(descriptor));
+      };
+      // What #192 left: an orphan from before `code` was declared in front of `label`, and the two copies 3.0.2 declares.
+      await legacyIndex("uniqueConf_label_0", "label", true);
+      await legacyIndex("uniqueConf_code_0", "code", false);
+      await legacyIndex("uniqueConf_label_1", "label", true);
+      const everyCopy = ["uniqueConf_code_0", "uniqueConf_label_0", "uniqueConf_label_1"];
+      // A 3.0.2 replica builds an index again unless it finds both its meta row and the index under its name.
+      const olderReplicaFinds = async (name: string) =>
+        !!(await driver.database.getMeta(`index:uniqueConf:${name}`)) &&
+        (await validIndexNamesOf(driver, "uniqueConf")).includes(name);
+
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "info" });
+      try {
+        const current = () => new DocumentSchema().index({ code: 1 }).index({ label: 1 }, { unique: true });
+        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+        expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+        expect(await olderReplicaFinds("uniqueConf_label_1")).toBe(true);
+        expect(await olderReplicaFinds("uniqueConf_code_0")).toBe(true);
+
+        const booted = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, current());
+        expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual(everyCopy);
+        expect(await olderReplicaFinds("uniqueConf_label_1")).toBe(true);
+        expect(warnings.filter((message) => message.includes("Dropped"))).toEqual([]);
+        const undeclared = warnings.filter((message) => message.includes("no longer declared"));
+        expect(undeclared).toHaveLength(2);
+        expect(undeclared[0]).toContain("Unique index uniqueConf_label_1 on uniqueConf");
+
+        expect(await booted.pruneUndeclaredIndexes()).toEqual([
+          { table: "uniqueConf", name: "uniqueConf_label_1", unique: true },
+        ]);
+        expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+          "uniqueConf_code_0",
+          "uniqueConf_label_0",
+        ]);
+        await booted.create({ label: "first", code: "A" });
+        await expect(booted.create({ label: "first", code: "B" })).rejects.toThrow();
+      } finally {
+        removeSink();
+      }
+    });
+
+    test("[DDL-6] a unique index no longer declared refuses a duplicate until pruned, and boot says so", async () => {
+      const strict = await storeOf(
+        driver,
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ code: 1 }, { unique: true }),
+      );
+      await strict.create({ label: "first", code: "A" });
+      const warnings: string[] = [];
+      const removeSink = Logger.addSink((entry) => void warnings.push(entry.plainMessage), { minLevel: "warn" });
+      try {
+        const relaxed = await storeOf(
+          await sibling(),
+          uniqueConstant,
+          uniqueDatabase,
+          new DocumentSchema().index({ code: 1 }),
+        );
+        const stale = [{ table: "uniqueConf", name: "uniqueConf_code_unique", unique: true }];
+        expect(await relaxed.undeclaredIndexes()).toEqual(stale);
+        expect(
+          warnings.filter((message) =>
+            message.includes("Unique index uniqueConf_code_unique on uniqueConf is no longer declared"),
+          ),
+        ).toHaveLength(1);
+        await expect(relaxed.create({ label: "repeat", code: "A" })).rejects.toThrow();
+
+        expect(await relaxed.pruneUndeclaredIndexes()).toEqual(stale);
+        await relaxed.create({ label: "repeat", code: "A" });
+      } finally {
+        removeSink();
+      }
     });
 
     test("[DDL-6] two declarations of one index build it once, and one a named index differs from takes a suffix", async () => {
@@ -930,9 +1097,19 @@ const describeDriver = (kind: SqlDriverKind) => {
       }
     });
 
-    test("[DDL-6] reordering the fields of an index builds it in the new order", async () => {
+    test("[DDL-6] reordering the fields of an index builds it in the new order, and a prune drops the old one", async () => {
       await storeOf(driver, uniqueConstant, uniqueDatabase, new DocumentSchema().index({ code: 1, label: 1 }));
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      const reordered = await storeOf(
+        await sibling(),
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ label: 1, code: 1 }),
+      );
+      expect((await validIndexNamesOf(driver, "uniqueConf")).sort()).toEqual([
+        "uniqueConf_code_label",
+        "uniqueConf_label_code",
+      ]);
+      await reordered.pruneUndeclaredIndexes();
       expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code"]);
     });
 
@@ -954,7 +1131,16 @@ const describeDriver = (kind: SqlDriverKind) => {
       await legacyIndex("uniqueConf_code_label_0", ["code", "label"]);
       await legacyIndex("uniqueConf_label_code_0", ["label", "code"]);
 
-      await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema().index({ label: 1, code: 1 }));
+      const booted = await storeOf(
+        await sibling(),
+        uniqueConstant,
+        uniqueDatabase,
+        new DocumentSchema().index({ label: 1, code: 1 }),
+      );
+      expect(await booted.undeclaredIndexes()).toEqual([
+        { table: "uniqueConf", name: "uniqueConf_code_label_0", unique: false },
+      ]);
+      await booted.pruneUndeclaredIndexes();
       expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label_code_0"]);
       expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code_label_0")).toBeUndefined();
     });
@@ -986,7 +1172,9 @@ const describeDriver = (kind: SqlDriverKind) => {
         expect(await driver.database.getMeta("index:uniqueConf:uniqueConf_code")).toBeDefined();
         expect(warnings.filter((message) => message.includes("Index uniqueConf_label on uniqueConf"))).toHaveLength(2);
 
-        await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema());
+        const emptied = await storeOf(await sibling(), uniqueConstant, uniqueDatabase, new DocumentSchema());
+        expect(await validIndexNamesOf(driver, "uniqueConf")).toHaveLength(3);
+        await emptied.pruneUndeclaredIndexes();
         expect(await validIndexNamesOf(driver, "uniqueConf")).toEqual(["uniqueConf_label"]);
       } finally {
         removeSink();
@@ -1128,102 +1316,37 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await store.find({})).toHaveLength(0);
     });
 
-    test("[SQ-1] two concurrent transactions both commit", async () => {
-      const write = (title: string) =>
-        driver.database.transaction(async () => {
-          await store.create({ title });
-          await Bun.sleep(10);
-          await store.create({ title: `${title}-2` });
-        });
-      await Promise.all([write("first"), write("second")]);
-      expect(titlesOf(await store.find({})).sort((a, b) => a.localeCompare(b))).toEqual([
-        "first",
-        "first-2",
-        "second",
-        "second-2",
+    test("bulkWrite applies none of its operations when one in the middle fails", async () => {
+      const first = await store.create({ title: "first", score: 0 });
+      const last = await store.create({ title: "last", score: 0 });
+      const bulk = store.bulkWrite([
+        { updateOne: { filter: { id: first.id }, update: { score: 1 } } },
+        { updateOne: { filter: { title: "fresh" }, update: { score: 1 }, upsert: true } },
+        { updateOne: { filter: { status: { tier: "gold" } as unknown as string }, update: { score: 1 } } },
+        { updateOne: { filter: { id: last.id }, update: { score: 1 } } },
       ]);
+      await expect(bulk).rejects.toThrow('Query value at "status"');
+      const rows = await store.find({});
+      expect(titlesOf(rows).sort((a, b) => a.localeCompare(b))).toEqual(["first", "last"]);
+      expect(rows.map((row) => row.score)).toEqual([0, 0]);
     });
 
-    test("[SQ-2] a write from another request is not rolled back with a transaction", async () => {
-      let entered!: () => void;
-      const inside = new Promise<void>((resolve) => {
-        entered = resolve;
+    test("bulkWrite inside an open transaction joins it, committing and rolling back with it", async () => {
+      const { id } = await store.create({ title: "row", score: 0 });
+      const result = await driver.database.transaction(async () => {
+        await store.create({ title: "beside" });
+        return await store.bulkWrite([{ updateOne: { filter: { id }, update: { score: 1 } } }]);
       });
-      const transaction = driver.database.transaction(async () => {
-        await store.create({ title: "transaction-write" });
-        entered();
-        await Bun.sleep(20);
+      expect(result).toEqual({ acknowledged: true, matchedCount: 1, modifiedCount: 1, upsertedId: null });
+      const rolledBack = driver.database.transaction(async () => {
+        await store.bulkWrite([{ updateOne: { filter: { id }, update: { score: 2 } } }]);
         throw new Error("rollback-probe");
       });
-      await Promise.race([inside, transaction.catch(() => undefined)]);
-      const outside = store.create({ title: "outside-write" });
-      await expect(transaction).rejects.toThrow("rollback-probe");
-      await outside;
-      expect(titlesOf(await store.find({}))).toEqual(["outside-write"]);
-    });
-
-    test("[SQ-2] a write that waited out one transaction is not taken into the next and rolled back with it", async () => {
-      let firstEntered!: () => void;
-      const firstInside = new Promise<void>((resolve) => {
-        firstEntered = resolve;
-      });
-      let releaseFirst!: () => void;
-      const firstReleased = new Promise<void>((resolve) => {
-        releaseFirst = resolve;
-      });
-      const first = driver.database.transaction(async () => {
-        await store.create({ title: "first" });
-        firstEntered();
-        await firstReleased;
-      });
-      await firstInside;
-      const outside = store.create({ title: "outside-write" });
-      await Bun.sleep(10);
-      let secondEntered!: () => void;
-      const secondInside = new Promise<void>((resolve) => {
-        secondEntered = resolve;
-      });
-      const second = driver.database.transaction(async () => {
-        await store.create({ title: "second" });
-        secondEntered();
-        await Bun.sleep(20);
-        throw new Error("rollback-probe");
-      });
-      releaseFirst();
-      await first;
-      await Promise.race([secondInside, second.catch(() => undefined)]);
-      await outside;
-      await expect(second).rejects.toThrow("rollback-probe");
-      expect(titlesOf(await store.find({})).sort((a, b) => a.localeCompare(b))).toEqual(["first", "outside-write"]);
-    });
-
-    test("a read from another request sees what is committed, not the rows an open transaction wrote", async () => {
-      await store.create({ title: "committed" });
-      let entered!: () => void;
-      const inside = new Promise<void>((resolve) => {
-        entered = resolve;
-      });
-      let release!: () => void;
-      const released = new Promise<void>((resolve) => {
-        release = resolve;
-      });
-      let readInside: string[] = [];
-      const transaction = driver.database.transaction(async () => {
-        await store.create({ title: "uncommitted" });
-        readInside = titlesOf(await store.find({}));
-        entered();
-        await released;
-        throw new Error("rollback-probe");
-      });
-      await Promise.race([inside, transaction.catch(() => undefined)]);
-      const readOutside = titlesOf(await store.find({}));
-      const countedOutside = await store.count({});
-      release();
-      await expect(transaction).rejects.toThrow("rollback-probe");
-      expect(readInside.sort((a, b) => a.localeCompare(b))).toEqual(["committed", "uncommitted"]);
-      expect(readOutside).toEqual(["committed"]);
-      expect(countedOutside).toBe(1);
-      expect(titlesOf(await store.find({}))).toEqual(["committed"]);
+      await expect(rolledBack).rejects.toThrow("rollback-probe");
+      expect((await store.find({})).map((row) => [row.title, row.score]).sort()).toEqual([
+        ["beside", 0],
+        ["row", 1],
+      ]);
     });
 
     test("a service's transaction commits its writes to two models together, or neither, rethrowing the error", async () => {
@@ -1280,6 +1403,75 @@ const describeDriver = (kind: SqlDriverKind) => {
         seen.push("now");
       });
       expect(seen).toEqual(["body", "after:1", "now"]);
+    });
+
+    test("an afterCommit callback asked for first runs ahead of the others, and at once outside a transaction", async () => {
+      const seen: string[] = [];
+      const note = (name: string, first?: boolean) =>
+        driver.database.afterCommit(() => void seen.push(name), { first });
+      await driver.database.transaction(async () => {
+        await note("a");
+        await note("b", true);
+        await note("c");
+        await note("d", true);
+        expect(seen).toEqual([]);
+      });
+      await note("now", true);
+      expect(seen).toEqual(["b", "d", "a", "c", "now"]);
+    });
+
+    test("a write listener hears every committed write ahead of the afterCommit callbacks, and none that rolled back", async () => {
+      const heard: string[] = [];
+      const stop = store.onWrite((written) =>
+        heard.push(written ? `${String(written.doc.title)}<${String(written.previous?.title ?? "")}` : "query"),
+      );
+      const write = async (fail: boolean) =>
+        await driver.database.transaction(async () => {
+          await driver.database.afterCommit(() => void heard.push("callback"));
+          const { id } = await store.create({ title: "a" });
+          await store.update(id, { title: "b" });
+          await store.updateManyByQuery({ id }, { note: "many" });
+          await store.bulkWrite([{ updateOne: { filter: { id }, update: { note: "bulk" } } }]);
+          await store.upsertById({ id, title: "c" });
+          expect(heard).toEqual([]);
+          if (fail) throw new Error("rollback-probe");
+        });
+      await expect(write(true)).rejects.toThrow("rollback-probe");
+      expect(heard).toEqual([]);
+      await write(false);
+      expect(heard).toEqual(["a<", "b<a", "query", "query", "query", "callback"]);
+      stop();
+      await store.create({ title: "unheard" });
+      expect(heard).toHaveLength(6);
+    });
+
+    test("a write listener that throws is logged: the write, its post hooks and the listeners after it go on", async () => {
+      const errors = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+      const heard: string[] = [];
+      const schema = new DocumentSchema();
+      schema.post("create", () => void heard.push("post hook"));
+      const hooked = await storeOf(driver, confConstant, confDatabase, schema);
+      const stops = [
+        hooked.onWrite(() => {
+          throw new Error("listener-failed");
+        }),
+        hooked.onWrite(() => void heard.push("second listener")),
+      ];
+      try {
+        const created = await hooked.create({ title: "outside" });
+        await driver.database.transaction(async () => {
+          await hooked.create({ title: "inside" });
+          await hooked.updateManyByQuery({ id: created.id }, { note: "n" });
+        });
+        expect(titlesOf(await hooked.find({})).sort((a, b) => a.localeCompare(b))).toEqual(["inside", "outside"]);
+        expect(heard).toEqual(["second listener", "post hook", "second listener", "second listener", "post hook"]);
+        expect(errors.mock.calls.map(([message]) => String(message))).toEqual(
+          Array(3).fill(expect.stringContaining("listener-failed")),
+        );
+      } finally {
+        for (const stop of stops) stop();
+        errors.mockRestore();
+      }
     });
 
     test("a task the transaction left running neither joins it after the commit nor loses its afterCommit", async () => {
@@ -1414,6 +1606,240 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await store.pickById(id)).toMatchObject({ title: "lease", status: "b" });
     });
   });
+
+  for (const [storage, options] of isolationStorages(kind))
+    describe(`sql isolation (${kind}, ${storage})`, () => {
+      let driver: SqlDriver;
+      let store: SqlDocumentStore;
+
+      beforeEach(async () => {
+        driver = await ConformanceEnv.openSqlDriver(kind, options);
+        store = await storeOf(driver, confConstant, confDatabase);
+      });
+      afterEach(async () => {
+        await driver?.close();
+      });
+
+      test("[SQ-1] two concurrent transactions both commit", async () => {
+        const write = (title: string) =>
+          driver.database.transaction(async () => {
+            await store.create({ title });
+            await Bun.sleep(10);
+            await store.create({ title: `${title}-2` });
+          });
+        await Promise.all([write("first"), write("second")]);
+        expect(titlesOf(await store.find({})).sort((a, b) => a.localeCompare(b))).toEqual([
+          "first",
+          "first-2",
+          "second",
+          "second-2",
+        ]);
+      });
+
+      test("[SQ-2] a write from another request is not rolled back with a transaction", async () => {
+        let entered!: () => void;
+        const inside = new Promise<void>((resolve) => {
+          entered = resolve;
+        });
+        const transaction = driver.database.transaction(async () => {
+          await store.create({ title: "transaction-write" });
+          entered();
+          await Bun.sleep(20);
+          throw new Error("rollback-probe");
+        });
+        await Promise.race([inside, transaction.catch(() => undefined)]);
+        const outside = store.create({ title: "outside-write" });
+        await expect(transaction).rejects.toThrow("rollback-probe");
+        await outside;
+        expect(titlesOf(await store.find({}))).toEqual(["outside-write"]);
+      });
+
+      test("[SQ-2] a write that waited out one transaction is not taken into the next and rolled back with it", async () => {
+        let firstEntered!: () => void;
+        const firstInside = new Promise<void>((resolve) => {
+          firstEntered = resolve;
+        });
+        let releaseFirst!: () => void;
+        const firstReleased = new Promise<void>((resolve) => {
+          releaseFirst = resolve;
+        });
+        const first = driver.database.transaction(async () => {
+          await store.create({ title: "first" });
+          firstEntered();
+          await firstReleased;
+        });
+        await firstInside;
+        const outside = store.create({ title: "outside-write" });
+        await Bun.sleep(10);
+        let secondEntered!: () => void;
+        const secondInside = new Promise<void>((resolve) => {
+          secondEntered = resolve;
+        });
+        const second = driver.database.transaction(async () => {
+          await store.create({ title: "second" });
+          secondEntered();
+          await Bun.sleep(20);
+          throw new Error("rollback-probe");
+        });
+        const secondSettled = second.catch(() => undefined);
+        releaseFirst();
+        await first;
+        await Promise.race([secondInside, secondSettled]);
+        await outside;
+        await expect(second).rejects.toThrow("rollback-probe");
+        expect(titlesOf(await store.find({})).sort((a, b) => a.localeCompare(b))).toEqual(["first", "outside-write"]);
+      });
+
+      test("[SQ-2] a read from another request sees what is committed, not the rows an open transaction wrote", async () => {
+        await store.create({ title: "committed" });
+        const entered = new Gate();
+        const release = new Gate();
+        let readInside: string[] = [];
+        const transaction = driver.database.transaction(async () => {
+          await store.create({ title: "uncommitted" });
+          readInside = titlesOf(await store.find({}));
+          entered.open();
+          await release.opened;
+          throw new Error("rollback-probe");
+        });
+        await Promise.race([entered.opened, transaction.catch(() => undefined)]);
+        const outside = [titlesOf(await store.find({})), await store.count({})];
+        release.open();
+        await expect(transaction).rejects.toThrow("rollback-probe");
+        expect(readInside.sort((a, b) => a.localeCompare(b))).toEqual(["committed", "uncommitted"]);
+        expect(outside).toEqual([["committed"], 1]);
+        expect(titlesOf(await store.find({}))).toEqual(["committed"]);
+      });
+
+      test("[SQ-2] a read beside one transaction, then beside the next, sees the rows of neither", async () => {
+        const first = holdingTransaction(driver, store, "first");
+        await first.entered;
+        const second = holdingTransaction(driver, store, "second");
+        const besideFirst = titlesOf(await store.find({}));
+        first.release();
+        await expect(first.done).rejects.toThrow("rollback-probe");
+        await second.entered;
+        const besideSecond = titlesOf(await store.find({}));
+        second.release();
+        await expect(second.done).rejects.toThrow("rollback-probe");
+        expect([besideFirst, besideSecond]).toEqual([[], []]);
+      });
+
+      test("[SQ-2] a read beside a transaction sees what the one before it committed", async () => {
+        await driver.database.transaction(async () => {
+          await store.create({ title: "first" });
+        });
+        const second = holdingTransaction(driver, store, "second");
+        await second.entered;
+        const beside = titlesOf(await store.find({}));
+        second.release();
+        await expect(second.done).rejects.toThrow("rollback-probe");
+        expect(beside).toEqual(["first"]);
+      });
+
+      test("[SQ-2] a transaction that awaits reads begun outside it finishes", async () => {
+        await store.create({ title: "committed" });
+        const begun = new Gate();
+        const helper = (async () => {
+          const before = titlesOf(await store.find({}));
+          await begun.opened;
+          return [before, titlesOf(await store.find({}))];
+        })();
+        const read = await driver.database.transaction(async () => {
+          await store.create({ title: "uncommitted" });
+          begun.open();
+          return await helper;
+        });
+        expect(read).toEqual([["committed"], ["committed"]]);
+        expect(await store.count({})).toBe(2);
+      }, 3000);
+
+      test("[SQ-2] two requests sharing one memoized read both finish when one awaits it inside a transaction", async () => {
+        await store.create({ title: "committed" });
+        const begun = new Gate();
+        let memo: Promise<string[]> | undefined;
+        const shared = () => {
+          memo ??= begun.opened.then(async () => titlesOf(await store.find({})));
+          return memo;
+        };
+        const plain = shared();
+        const transacting = driver.database.transaction(async () => {
+          await store.create({ title: "uncommitted" });
+          begun.open();
+          return await shared();
+        });
+        expect(await Promise.all([plain, transacting])).toEqual([["committed"], ["committed"]]);
+      }, 3000);
+
+      test("[SQ-2] a transaction whose callback never settles holds up no read from another request", async () => {
+        await store.create({ title: "committed" });
+        const stuck = holdingTransaction(driver, store, "uncommitted");
+        await stuck.entered;
+        for (let request = 0; request < 3; request++) expect(titlesOf(await store.find({}))).toEqual(["committed"]);
+        expect(await store.count({})).toBe(1);
+        stuck.release();
+        await expect(stuck.done).rejects.toThrow("rollback-probe");
+      }, 3000);
+
+      test("[SQ-2] a transaction that rolls back lets the writes behind it through", async () => {
+        const failing = holdingTransaction(driver, store, "rolled-back");
+        await failing.entered;
+        const write = store.create({ title: "outside-write" });
+        failing.release();
+        await expect(failing.done).rejects.toThrow("rollback-probe");
+        await write;
+        expect(titlesOf(await store.find({}))).toEqual(["outside-write"]);
+      });
+
+      test("loads of one tick are batched apart: inside a transaction they read its writes, outside none of them", async () => {
+        const { id } = await store.create({ title: "committed" });
+        const batches: number[] = [];
+        const loader = idLoaderOn(driver, store, { onBatch: (size) => batches.push(size) });
+        for (const insideFirst of [false, true]) {
+          // Bound here, so the load the transaction makes in its own turn still comes from outside it.
+          const loadOutside = AsyncLocalStorage.bind(() => loader.load(id));
+          const entered = new Gate();
+          const resume = new Gate();
+          let outside!: Promise<{ title?: unknown } | null>;
+          let inside: unknown[] = [];
+          const transaction = driver.database.transaction(async () => {
+            await store.updateOneByQuery({ id }, { title: "uncommitted" });
+            entered.open();
+            await resume.opened;
+            const mine = [loader.load(id), loader.load(id)];
+            if (insideFirst) outside = loadOutside();
+            inside = (await Promise.all(mine)).map((doc) => doc?.title);
+            throw new Error("rollback-probe");
+          });
+          await entered.opened;
+          resume.open();
+          if (!insideFirst) outside = loader.load(id);
+          await expect(transaction).rejects.toThrow("rollback-probe");
+          expect([insideFirst, inside, (await outside)?.title]).toEqual([
+            insideFirst,
+            ["uncommitted", "uncommitted"],
+            "committed",
+          ]);
+        }
+        expect(batches.sort((a, b) => a - b)).toEqual([1, 1, 1, 1]);
+      });
+
+      test("a loader that keeps its keys keeps none a transaction read, so a rolled-back row reaches no later caller", async () => {
+        const { id } = await store.create({ title: "committed" });
+        const loader = idLoaderOn(driver, store, { cache: true });
+        const transaction = driver.database.transaction(async () => {
+          const created = await store.create({ title: "rolled-back" });
+          await store.updateOneByQuery({ id }, { title: "uncommitted" });
+          const read = await loader.loadMany([id, created.id]);
+          throw Object.assign(new Error("rollback-probe"), { created: created.id, read });
+        });
+        const failure = await transaction.catch(
+          (error: Error & { created: string; read: { title?: unknown }[] }) => error,
+        );
+        expect(failure.read.map((doc) => doc.title)).toEqual(["uncommitted", "rolled-back"]);
+        expect(await loader.loadMany([id, failure.created])).toMatchObject([{ title: "committed" }, null]);
+      });
+    });
 
   // Two requests — or two processes — holding the same document each change a different field.
   describe(`sql saves (${kind})`, () => {

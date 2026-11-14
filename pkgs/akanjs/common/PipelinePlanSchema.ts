@@ -35,7 +35,7 @@ export class PipelinePlanSchema {
   static readonly #sha256Pattern = /^[0-9a-f]{64}$/;
   static readonly #idChars = 256;
   static readonly #maxSeconds = 86_400;
-  static readonly #shellKeys = Object.keys({
+  static readonly #shellKeys = /* @__PURE__ */ Object.keys({
     id: true,
     name: true,
     timeoutSeconds: true,
@@ -48,7 +48,7 @@ export class PipelinePlanSchema {
     secrets: true,
     skipExitCodes: true,
   } satisfies { [key in keyof PipelinePlanShellStep]: true });
-  static readonly #actionKeys = Object.keys({
+  static readonly #actionKeys = /* @__PURE__ */ Object.keys({
     id: true,
     name: true,
     timeoutSeconds: true,

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import type { App } from "../commandDecorators";
+import { precompressArtifacts } from "../frontendBuild/precompressArtifacts";
 import { tempDirs, writeText as write } from "../test/testHelpers";
 import { RouteJsBudget, type RouteJsSize } from "./routeJsBudget";
 
@@ -29,6 +31,20 @@ describe("RouteJsBudget", () => {
       { routeId: "/:lang/memo", files: 3, rawBytes: 8200, brotliBytes: 2300 },
       { routeId: "/:lang", files: 2, rawBytes: 3200, brotliBytes: 1100 },
     ]);
+  });
+
+  test("sizes a file without its sidecar as precompressArtifacts compresses it, for a build that skips that step", async () => {
+    const distPath = await makeTempRoot();
+    const artifactDir = path.join(distPath, ".akan/artifact");
+    await write(path.join(artifactDir, "client/page.js"), `export const x = ${JSON.stringify("page ".repeat(900))};`);
+    await write(path.join(artifactDir, "client/tiny.js"), "t".repeat(200));
+    const modulesByRoute = { "/:lang": ["/_akan/client/page.js", "/_akan/client/tiny.js"] };
+
+    const inMemory = await RouteJsBudget.measure(artifactDir, modulesByRoute, { precompressed: false });
+    await precompressArtifacts({ dist: { cwdPath: distPath }, verbose: () => undefined } as unknown as App);
+
+    expect(inMemory).toEqual(await RouteJsBudget.measure(artifactDir, modulesByRoute));
+    expect(inMemory[0]?.brotliBytes).toBeLessThan(inMemory[0]?.rawBytes ?? 0);
   });
 
   test("fails only a route past its entry plus the larger of 1% and 4KB, and leaves a route without one to the report", () => {

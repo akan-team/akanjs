@@ -40,6 +40,8 @@ export declare const migrationActions: readonly [
     "plan",
     "apply",
     "verify",
-    "rollback"
+    "rollback",
+    "indexes",
+    "prune-indexes"
 ];
 ```

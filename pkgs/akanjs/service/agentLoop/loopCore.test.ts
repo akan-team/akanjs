@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentWireMessage } from "../predefinedAdaptor/llm.adaptor";
+import { OpenaiDialect } from "../predefinedAdaptor/openaiDialect";
 import { LoopCompaction } from "./loopCompaction";
 import { LoopToolOutput } from "./loopToolOutput";
 import { LoopTranscript } from "./loopTranscript";
@@ -55,6 +56,60 @@ describe("LoopTranscript.sanitize", () => {
   test("a call id a later round reuses keeps its own result", () => {
     const messages = [call("c1"), answer("c1"), call("c1"), answer("c1")];
     expect(LoopTranscript.sanitize(messages)).toEqual(messages);
+  });
+
+  test("a reused call id whose later call went unanswered is answered there, not by the earlier call's result", () => {
+    const stopped = { id: "c1", name: "bump", error: LoopTranscript.unanswered };
+    const later = LoopTranscript.sanitize([user("go"), call("c1"), answer("c1"), call("c1"), user("never mind")]);
+    expect(later.map((message) => message.role)).toEqual(["user", "assistant", "tool", "assistant", "tool", "user"]);
+    expect(later[2]).toEqual(answer("c1"));
+    expect(later[4]?.toolResults).toEqual([stopped]);
+
+    const earlier = LoopTranscript.sanitize([call("c1"), user("again"), call("c1"), answer("c1")]);
+    expect(earlier.map((message) => message.role)).toEqual(["assistant", "tool", "user", "assistant", "tool"]);
+    expect(earlier[1]?.toolResults).toEqual([stopped]);
+    expect(earlier[4]).toEqual(answer("c1"));
+
+    const body = OpenaiDialect.requestBody("m1", { messages: later, tools: [], context: [] }, {});
+    expect(body.messages.map((message) => message.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool",
+      "assistant",
+      "tool",
+      "user",
+    ]);
+  });
+
+  test("two calls sharing an id in one batch keep a result each, stored a message a call", () => {
+    const twice: AgentWireMessage = {
+      role: "assistant",
+      toolCalls: [
+        { id: "c1", name: "first", args: {} },
+        { id: "c1", name: "second", args: {} },
+      ],
+    };
+    const one: AgentWireMessage = { role: "tool", toolResults: [{ id: "c1", name: "first", result: "one" }] };
+    const two: AgentWireMessage = { role: "tool", toolResults: [{ id: "c1", name: "second", result: "two" }] };
+    const whole = LoopTranscript.sanitize([twice, one, two]);
+    expect(whole.map((message) => message.role)).toEqual(["assistant", "tool"]);
+    expect(whole[1]?.toolResults?.map((result) => result.result)).toEqual(["one", "two"]);
+    expect(LoopTranscript.pending([twice, one, two])).toEqual([]);
+
+    expect(LoopTranscript.pending([twice, one])).toEqual([{ id: "c1", name: "second", args: {} }]);
+    const half = LoopTranscript.sanitize([twice, one]);
+    expect(half[1]?.toolResults).toEqual([
+      { id: "c1", name: "second", error: LoopTranscript.unanswered },
+      { id: "c1", name: "first", result: "one" },
+    ]);
+    expect(LoopTranscript.sanitize([twice, one, two, two])[1]?.toolResults).toHaveLength(2);
+  });
+
+  test("a result stored ahead of its call answers nothing", () => {
+    const repaired = LoopTranscript.sanitize([answer("c1"), call("c1")]);
+    expect(repaired.map((message) => message.role)).toEqual(["assistant", "tool"]);
+    expect(repaired[1]?.toolResults?.[0]?.error).toBe(LoopTranscript.unanswered);
   });
 
   test("a batch split over two tool messages reaches the provider as one", () => {
@@ -212,6 +267,23 @@ describe("LoopCompaction", () => {
     expect(LoopCompaction.cutAt([user("a"), assistant("b")], 0)).toBe(2);
     expect(LoopCompaction.cutAt([], 0)).toBe(-1);
     expect(LoopCompaction.cutAt([user("a")], 4)).toBe(-1);
+  });
+
+  test("keeps a batch stored one tool message a call as the one message a batch used to be", () => {
+    const batch = (...ids: string[]): AgentWireMessage => ({
+      role: "assistant",
+      toolCalls: ids.map((id) => ({ id, name: "bump", args: {} })),
+    });
+    const whole: AgentWireMessage = {
+      role: "tool",
+      toolResults: [answer("c3"), answer("c4"), answer("c5")].flatMap((m) => m.toolResults ?? []),
+    };
+    const perBatch = [user("go"), call("c1"), answer("c1"), call("c2"), answer("c2"), batch("c3", "c4", "c5"), whole];
+    const perCall = [...perBatch.slice(0, 6), answer("c3"), answer("c4"), answer("c5")];
+    expect(LoopCompaction.cutAt(perBatch, 4)).toBe(3);
+    expect(LoopCompaction.cutAt(perCall, 4)).toBe(3);
+    expect(LoopCompaction.cutAt(perCall, 1)).toBe(5);
+    expect(LoopCompaction.cutAt(perCall, 7)).toBe(-1);
   });
 
   test("estimates four characters a token, and an inlined picture at its billed rate", () => {

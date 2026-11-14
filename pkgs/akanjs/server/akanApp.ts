@@ -1,5 +1,6 @@
 //? First: the modules below may read the env as they load, so the build's defaults must be in it by then.
 import "./lifecycle/loadBuildEnv";
+import { AkanError } from "akanjs/base";
 import { Logger, TrustedProxy } from "akanjs/common";
 import type { AkanIpcMessage } from "akanjs/service";
 import { resetEnvCache } from "../base/baseEnv";
@@ -13,6 +14,7 @@ import { GatewayLogging } from "./gateway/gatewayLogging";
 import { GatewayRooms } from "./gateway/gatewayRooms";
 import { GatewayStatus } from "./gateway/gatewayStatus";
 import { GatewayWebSocketRelay, type GatewayWsData } from "./gateway/gatewayWebSocketRelay";
+import { ListeningPort } from "./gateway/listeningPort";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { AppInfo } from "./ops/appInfo";
@@ -93,7 +95,8 @@ export class AkanApp {
     }
     if (this.#config.solo) return await this.#startSolo();
     if (SelfExec.carried)
-      throw new Error(
+      throw new AkanError(
+        "invalidConfig",
         "A desktop app's server runs in one process, and this one was asked for a gateway and replicas, which would start with the `bun` on the user's PATH: by `replica` or `solo: false` in main.ts, or by AKAN_SOLO=false, an AKAN_REPLICA other than one traffic replica, or AKAN_COMMAND_TYPE=start in its env. Leave them out of the app the desktop build carries.",
       );
     Logger.role = "gateway";
@@ -146,7 +149,7 @@ export class AkanApp {
     this.logger.info(`Starting ${role} replica in this process (solo); set AKAN_SOLO=false for the gateway`);
     const mod = (await import(this.#config.serverPath)) as { server?: SoloServer; app?: SoloServer };
     const server = mod.server ?? mod.app;
-    if (!server?.start) throw new Error("server.ts must export server or app with start()");
+    if (!server?.start) throw new AkanError("invalidArtifact", "server.ts must export server or app with start()");
     await server.start({ listen: true });
   }
 
@@ -159,6 +162,7 @@ export class AkanApp {
     this.#metricsTimer = null;
     this.#server?.stop(true);
     this.#server = null;
+    ListeningPort.record(this, undefined);
     await this.#supervisor.stopAll(signal);
     await this.#logging.stop();
     this.#resolveStopped?.();
@@ -214,7 +218,8 @@ export class AkanApp {
         data: {} as GatewayWsData,
       },
     });
-    this.logger.info(`AkanApp gateway is running on port http://localhost:${this.#config.port}`);
+    ListeningPort.record(this, this.#server.port);
+    this.logger.info(`AkanApp gateway is running on port http://localhost:${this.#server.port}`);
   }
 
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {
@@ -283,7 +288,7 @@ export class AkanApp {
         if (message.dropped) this.logger.warn(`Child ${idx} dropped ${message.dropped} log records (ipc backpressure)`);
         return;
       case "health.pong":
-        this.#supervisor.markHealthy(idx);
+        this.#supervisor.markHealthy(idx, message);
         return;
       case "queue.enqueued":
         this.#children.fanoutToBatch({ type: "queue.wake", queue: message.queue, name: message.name });
@@ -296,7 +301,7 @@ export class AkanApp {
       case "build-route":
       case "build-csr":
       case "build-graph":
-        this.#host.forwardBuilderReq(idx, message);
+        if (child) this.#host.forwardBuilderReq(child, message);
         return;
     }
   }

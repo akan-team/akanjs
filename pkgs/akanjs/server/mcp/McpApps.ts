@@ -3,6 +3,7 @@ import { bearerTokenOf, decodeJwtPayload } from "akanjs/common";
 import type { PromptContent, PromptMessage } from "../../signal/mcp/Msg";
 import {
   MCP_APP_META,
+  MCP_STATIC_APP_META,
   MCP_UI_EXTENSION,
   MCP_UI_LEGACY_RESOURCE_URI,
   MCP_UI_MIME_TYPE,
@@ -23,6 +24,8 @@ export interface McpAppShellSource {
 interface McpAppsOption {
   /** Every write the view sends is refused before it leaves, as the deployment lists no write to relay it to. */
   readOnly?: boolean;
+  /** The page source draws a `{ static: true }` app as HTML, so its tool says so and answers a host that asks. */
+  staticHtml?: boolean;
 }
 
 // MCP Apps: each `.app()` is a read-only tool, and a host that speaks the extension draws its result with that app's
@@ -36,14 +39,24 @@ export class McpApps {
 
   readonly #shell: McpAppShellSource | null;
   readonly #readOnly: boolean;
+  readonly #staticHtml: boolean;
 
-  constructor(shell: McpAppShellSource | null, { readOnly = false }: McpAppsOption = {}) {
+  constructor(shell: McpAppShellSource | null, { readOnly = false, staticHtml = false }: McpAppsOption = {}) {
     this.#shell = shell;
     this.#readOnly = readOnly;
+    this.#staticHtml = staticHtml;
   }
 
   get rendersUi() {
     return this.#shell !== null;
+  }
+
+  drawsHtml(entry: PagePromptEntry, params: Record<string, unknown>) {
+    if (!this.#staticHtml || entry.kind !== "app" || !entry.static) return false;
+    const meta = params._meta;
+    return (
+      !!meta && typeof meta === "object" && (meta as Record<string, unknown>)[MCP_STATIC_APP_META.render] === "html"
+    );
   }
 
   static declaresUi(capabilities: unknown) {
@@ -71,10 +84,14 @@ export class McpApps {
     const tool = { name: entry.name, description: entry.description, inputSchema };
     // A prompt's run renders the whole page, whose own `fetch.*` calls may write; an app's load may only query.
     if (entry.kind === "prompt") return { ...tool, annotations: { readOnlyHint: false, openWorldHint: false } };
+    const _meta = {
+      ...(this.#shell ? this.#toolMetaOf(this.uriOf(entry.name)) : {}),
+      ...(this.#staticHtml && entry.static ? { [MCP_STATIC_APP_META.static]: true } : {}),
+    };
     return {
       ...tool,
       annotations: { readOnlyHint: true, openWorldHint: false },
-      ...(this.#shell ? { _meta: this.#toolMetaOf(this.uriOf(entry.name)) } : {}),
+      ...(Object.keys(_meta).length ? { _meta } : {}),
     };
   }
 
@@ -99,6 +116,10 @@ export class McpApps {
     return `${McpApps.scheme}${getEnv().appName.toLowerCase()}/apps/${app}`;
   }
 
+  staticUriOf(app: string) {
+    return `${McpApps.scheme}${getEnv().appName.toLowerCase()}/static/${app}`;
+  }
+
   async read(uri: string, origin: string): Promise<McpResourceContents | null> {
     const match = McpApps.#appUri.exec(uri);
     const app = match?.[1]?.toLowerCase() === getEnv().appName.toLowerCase() ? match[2] : undefined;
@@ -117,12 +138,21 @@ export class McpApps {
     messages: PromptMessage[],
     webOrigin: string,
     forView: { account: Record<string, unknown> | null } | null,
+    html: string | null = null,
   ) {
     const url = new URL(run.url);
     const href = `${url.pathname}${url.search}`;
     const content: PromptContent[] = [
       ...messages.map((message) => message.content),
       { type: "text", text: `Open the full screen: ${webOrigin}${href}` },
+      ...(html === null
+        ? []
+        : [
+            {
+              type: "resource" as const,
+              resource: { uri: this.staticUriOf(entry.name), mimeType: "text/html", text: html },
+            },
+          ]),
     ];
     if (entry.kind === "prompt" || !this.#shell || !forView) return { content, isError: false };
     const _meta = {

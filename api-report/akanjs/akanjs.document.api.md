@@ -504,7 +504,13 @@ export type ModelCls<Statics = Record<never, never>, LoaderMap extends {
 
 export declare class NoDocumentError extends AkanError<"documentNotFound"> {
     readonly error = "base.error.documentNotFound";
-    constructor(message?: string, options?: ErrorOptions);
+    readonly lookup?: {
+        readonly refName: string;
+        readonly id: string;
+    };
+    constructor(message?: string, options?: ErrorOptions & {
+        lookup?: NoDocumentError["lookup"];
+    });
     get forwarded(): boolean;
     toJSON(): {
         error: string;
@@ -769,10 +775,12 @@ type ConstantModelCls = DocumentConstantModelRef<unknown>;
 
 interface DataLoaderOptions<Key, Value, CacheKey> {
     cache?: boolean | number;
+    maxCacheSize?: number;
     cacheKeyFn?: (key: Key) => CacheKey;
     copy?: (value: Value) => Value;
     batch?: boolean;
     batchScheduleFn?: (callback: () => void) => void;
+    scopeFn?: () => object | undefined;
     maxBatchSize?: number;
     name?: string;
 }

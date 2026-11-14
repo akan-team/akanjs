@@ -8,7 +8,7 @@ export class LoopToolOutput {
   static clipped(result: AgentWireToolResult): AgentWireToolResult {
     return {
       ...result,
-      ...(result.result !== undefined ? { result: LoopToolOutput.#within(result.result) } : {}),
+      ...(result.result !== undefined ? { result: LoopToolOutput.within(result.result) } : {}),
       ...(result.changes?.length ? { changes: result.changes.map((change) => LoopToolOutput.#change(change)) } : {}),
       ...(result.error ? { error: LoopToolOutput.#text(result.error) } : {}),
       ...(result.attachments?.length
@@ -31,10 +31,10 @@ export class LoopToolOutput {
 
   static #change(change: unknown): unknown {
     if (!change || typeof change !== "object" || !("value" in change) || change.value === undefined) return change;
-    return { ...change, value: LoopToolOutput.#within(change.value) };
+    return { ...change, value: LoopToolOutput.within(change.value) };
   }
 
-  static #within(value: unknown): unknown {
+  static within(value: unknown): unknown {
     const json = JSON.stringify(value) ?? "";
     if (json.length <= LoopToolOutput.limit) return value;
     return `${LoopToolOutput.#note(json.length)}\n${json.slice(0, LoopToolOutput.limit)}…`;

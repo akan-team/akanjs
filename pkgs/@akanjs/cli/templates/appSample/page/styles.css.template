@@ -96,6 +96,46 @@
   --radius-field: 0.875rem;
 }
 
+/* Typography: Pretendard, the layout's default font, at -3% tracking. Font sizes are even and at least 12px —
+   Tailwind's steps from text-xs (12px) to text-9xl (128px) all are, so an arbitrary text-[…] keeps the same rule.
+   Text that may wrap takes 150% leading, every size's default; a single line takes the font's own (leading-auto). */
+@theme {
+  --leading-auto: normal;
+  --text-xs--line-height: 1.5;
+  --text-xs--letter-spacing: -0.03em;
+  --text-sm--line-height: 1.5;
+  --text-sm--letter-spacing: -0.03em;
+  --text-base--line-height: 1.5;
+  --text-base--letter-spacing: -0.03em;
+  --text-lg--line-height: 1.5;
+  --text-lg--letter-spacing: -0.03em;
+  --text-xl--line-height: 1.5;
+  --text-xl--letter-spacing: -0.03em;
+  --text-2xl--line-height: 1.5;
+  --text-2xl--letter-spacing: -0.03em;
+  --text-3xl--line-height: 1.5;
+  --text-3xl--letter-spacing: -0.03em;
+  --text-4xl--line-height: 1.5;
+  --text-4xl--letter-spacing: -0.03em;
+  --text-5xl--line-height: 1.5;
+  --text-5xl--letter-spacing: -0.03em;
+  --text-6xl--line-height: 1.5;
+  --text-6xl--letter-spacing: -0.03em;
+  --text-7xl--line-height: 1.5;
+  --text-7xl--letter-spacing: -0.03em;
+  --text-8xl--line-height: 1.5;
+  --text-8xl--letter-spacing: -0.03em;
+  --text-9xl--line-height: 1.5;
+  --text-9xl--letter-spacing: -0.03em;
+}
+
+/* letter-spacing inherits as a length, not a ratio: text sized without a text-* class keeps -3% of the root's 16px. */
+@layer base {
+  html {
+    letter-spacing: -0.03em;
+  }
+}
+
 /* A sampled damped spring: overshoots the target by 18%, wobbles twice and settles. */
 @theme {
   --ease-jelly: linear(0, 0.42 6%, 0.86 13%, 1.12 21%, 1.18 26%, 1.13 32%, 1 41%, 0.95 48%, 0.97 56%, 1.01 66%, 1.005 78%, 1);
@@ -126,11 +166,6 @@
   [data-theme="dark"] body::before {
     opacity: 0.1;
     mix-blend-mode: overlay;
-  }
-
-  h1,
-  h2 {
-    letter-spacing: -0.035em;
   }
 
   ::selection {

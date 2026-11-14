@@ -84,6 +84,28 @@ describe("useCsrValues", () => {
     unmount();
   });
 
+  test("a refresh asks the page on screen to render again instead of reloading the document", async () => {
+    const { CsrRefresh } = await import("./csrRefresh");
+    const { seen, unmount } = mountCsr("/en/a");
+    const router = seen.first?.router;
+    if (!router) throw new Error("the frame did not render");
+    act(() => void router.push("/en/b"));
+    const reload = spyOn(client.csrLocation, "reload").mockImplementation(() => undefined);
+    const before = CsrRefresh.current().epoch;
+
+    act(() => router.refresh());
+
+    expect(reload).not.toHaveBeenCalled();
+    expect(CsrRefresh.current()).toEqual({
+      epoch: before + 1,
+      locationId: CsrRefresh.idOf(seen.latest?.location ?? { href: "" }),
+    });
+    expect(CsrRefresh.current().locationId).toEndWith(" /en/b");
+    expect(seen.latest?.location.pathname).toBe("/en/b");
+    reload.mockRestore();
+    unmount();
+  });
+
   test("a back slides the page off by the width the frame has now, not the width it mounted at", () => {
     Object.defineProperty(window, "innerWidth", { value: 400, configurable: true });
     const { seen, unmount } = mountCsr("/en/b", "stack");

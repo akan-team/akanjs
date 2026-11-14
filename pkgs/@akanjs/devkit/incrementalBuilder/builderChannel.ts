@@ -1,3 +1,4 @@
+import type { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
 
 // `process.exit` drops an ipc write that has not flushed (a natural exit does not), and whether one survives
@@ -26,6 +27,16 @@ export class BuilderChannel {
   // Tracked like `send`: for an event nobody awaits, `drain` is all that stands between it and the exit.
   static emit(message: BuilderMessage): void {
     void BuilderChannel.send(message);
+  }
+
+  //? `AKAN_DEV_BUILDER_READY_GATE` is a test hook: the dev-stability suite holds a replacement short of ready.
+  static async announceReady(logger: Logger): Promise<void> {
+    const gate = process.env.AKAN_DEV_BUILDER_READY_GATE;
+    if (gate && !(await Bun.file(gate).exists())) {
+      logger.warn(`AKAN_DEV_BUILDER_READY_GATE is set: holding builder-ready until ${gate} exists`);
+      while (!(await Bun.file(gate).exists())) await Bun.sleep(100);
+    }
+    BuilderChannel.emit({ type: "builder-ready" });
   }
 
   // Loops because `#reportMetrics` can send from a work item's `finally` after the drain has begun.

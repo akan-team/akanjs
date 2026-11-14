@@ -137,7 +137,7 @@ class TargetBuilder<Deps extends readonly DependencyCls[], Params extends unknow
 }
 
 type TargetDefinition = ReturnType<TargetBuilder<readonly DependencyCls[], unknown[]>["exec"]>;
-type CommandBuilderContext<Deps extends readonly DependencyCls[]> = {
+export type CommandBuilderContext<Deps extends readonly DependencyCls[]> = {
   public: (targetOption?: Omit<TargetOption, "type">) => TargetBuilder<Deps>;
   cloud: (targetOption?: Omit<TargetOption, "type">) => TargetBuilder<Deps>;
   dev: (targetOption?: Omit<TargetOption, "type">) => TargetBuilder<Deps>;

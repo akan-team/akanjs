@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AkanError } from "akanjs/base";
 import type { AkanMetricsReport } from "akanjs/service";
 import { LruTtlCache } from "./cachePolicy";
 import { akanHeadSnapshotKey } from "./head";
@@ -287,7 +288,7 @@ describe("RscWorker host render stream", () => {
     harness.pending().onChunk(new Uint8Array([3]));
 
     const closedError = await closed;
-    expect(closedError).toBeInstanceOf(Error);
+    expect(AkanError.is(closedError, "rscQueueOverflow")).toBe(true);
     expect((closedError as Error).message).toBe("rsc worker host queue exceeded 1 pending chunks");
     expect(harness.deletePendingCount()).toBe(1);
     expect(harness.cancelReasons).toHaveLength(1);
@@ -342,6 +343,53 @@ describe("RscWorker host render stream", () => {
 
     expect(decoder.decode(await new Response(result.stream).arrayBuffer())).toBe("shell");
     await expect(result.lateControl).resolves.toEqual({ type: "not-found" });
+  });
+
+  test("rejects a request aborted for a reason that is no Error as renderAborted, still named AbortError", async () => {
+    const controller = new AbortController();
+    const harness = createHostRenderHarness({ signal: controller.signal });
+
+    controller.abort("client went away");
+    const failure = await harness.result.catch((error: unknown) => error);
+
+    expect(AkanError.is(failure, "renderAborted")).toBe(true);
+    expect(failure).toMatchObject({ name: "AbortError", message: "client went away", statusCode: 499 });
+    expect(harness.cancelReasons).toEqual([failure]);
+  });
+
+  test("fails a render the worker answers with an error as rscWorkerFailed, before and after the stream starts", async () => {
+    const early = createHostRenderHarness();
+    early.pending().onError("page threw");
+    const rejected = await early.result.catch((error: unknown) => error);
+
+    const late = createHostRenderHarness();
+    late.pending().onChunk(new TextEncoder().encode("shell"));
+    const closed = (await streamResultOf(late)).stream.getReader().closed.catch((error: unknown) => error);
+    late.pending().onError("layout threw");
+
+    expect(AkanError.is(rejected, "rscWorkerFailed")).toBe(true);
+    expect(rejected).toMatchObject({ statusCode: 500, message: "page threw" });
+    const streamError = await closed;
+    expect(AkanError.is(streamError, "rscWorkerFailed")).toBe(true);
+    expect(streamError).toMatchObject({ statusCode: 500, message: "layout threw" });
+  });
+
+  test("errors a started stream the worker sends a redirect or a not-found as invalidRscResponse", async () => {
+    const errorOf = async (send: (pending: RscPending) => void) => {
+      const harness = createHostRenderHarness();
+      harness.pending().onChunk(new TextEncoder().encode("shell"));
+      const closed = (await streamResultOf(harness)).stream.getReader().closed.catch((error: unknown) => error);
+      send(harness.pending());
+      return await closed;
+    };
+
+    const redirect = await errorOf((pending) => pending.onRedirect?.("/login", "replace", 307));
+    const notFound = await errorOf((pending) => pending.onNotFound?.());
+
+    expect(AkanError.is(redirect, "invalidRscResponse")).toBe(true);
+    expect(redirect).toMatchObject({ statusCode: 500, message: "redirect after stream started: /login" });
+    expect(AkanError.is(notFound, "invalidRscResponse")).toBe(true);
+    expect(notFound).toMatchObject({ statusCode: 500, message: "not-found after stream started" });
   });
 
   test("preserves worker cache state that arrives before stream end", async () => {
@@ -545,8 +593,7 @@ describe("RscWorker cache invalidation", () => {
     const targetRouterState = makePatchRouterState();
     const patch = makeHeadSafePatch();
     const cacheValue: CachedRscResult = {
-      chunks: [new Uint8Array([1])],
-      bytes: 1,
+      body: new Uint8Array([1]),
       chunksCount: 1,
       pathname: "/docs",
       routeId: "/docs",
@@ -590,8 +637,7 @@ describe("RscWorker cache invalidation", () => {
 
   test("invalidates cached RSC results by tag and path scope", () => {
     const makeResult = (pathname: string, tags: string[]): CachedRscResult => ({
-      chunks: [],
-      bytes: 0,
+      body: new Uint8Array(0),
       chunksCount: 0,
       pathname,
       routeId: pathname,
@@ -621,8 +667,7 @@ describe("RscWorker cache invalidation", () => {
     cache.set(
       "patch-docs",
       {
-        chunks: [new Uint8Array([1])],
-        bytes: 1,
+        body: new Uint8Array([1]),
         chunksCount: 1,
         pathname: "/docs",
         routeId: "/docs",
@@ -634,8 +679,7 @@ describe("RscWorker cache invalidation", () => {
     cache.set(
       "patch-blog",
       {
-        chunks: [new Uint8Array([2])],
-        bytes: 1,
+        body: new Uint8Array([2]),
         chunksCount: 1,
         pathname: "/blog",
         routeId: "/blog",
@@ -653,40 +697,51 @@ describe("RscWorker cache invalidation", () => {
 });
 
 describe("RscWorker cached result replay", () => {
-  test("stops replaying cached chunks when cancellation is observed", async () => {
+  test("replays a cached result as one chunk message between its cache state and its end", () => {
     const messages: CachedRscReplayMessage[] = [];
-    let cancelled = false;
+    const body = new Uint8Array([1, 2]);
 
-    const completed = await replayCachedRscResult({
+    const completed = replayCachedRscResult({
       requestId: "request-1",
-      chunks: [new Uint8Array([1]), new Uint8Array([2])],
+      body,
       theme: "dark",
       cacheState: { cacheable: true, revalidate: 30 },
       send: (message) => {
         messages.push(message);
       },
-      isCancelled: () => cancelled,
-      yieldToHost: async () => {
-        cancelled = true;
+      isCancelled: () => false,
+    });
+
+    expect(completed).toBe(true);
+    expect(messages).toEqual([
+      { type: "meta", requestId: "request-1", theme: "dark" },
+      { type: "cache-state", requestId: "request-1", state: { cacheable: true, revalidate: 30 } },
+      { type: "chunk", requestId: "request-1", data: body },
+      { type: "end", requestId: "request-1" },
+    ]);
+  });
+
+  test("sends nothing for a cached result whose render was cancelled", () => {
+    const messages: CachedRscReplayMessage[] = [];
+
+    const completed = replayCachedRscResult({
+      requestId: "request-1",
+      body: new Uint8Array([1, 2]),
+      send: (message) => {
+        messages.push(message);
       },
+      isCancelled: () => true,
     });
 
     expect(completed).toBe(false);
-    expect(messages.map((message) => message.type)).toEqual(["meta", "cache-state", "chunk"]);
-    expect(messages[0]).toEqual({ type: "meta", requestId: "request-1", theme: "dark", status: undefined });
-    expect(messages[1]).toEqual({
-      type: "cache-state",
-      requestId: "request-1",
-      state: { cacheable: true, revalidate: 30 },
-    });
-    expect(messages[2]).toEqual({ type: "chunk", requestId: "request-1", data: new Uint8Array([1]) });
+    expect(messages).toEqual([]);
   });
 
-  test("forwards cached replay trace metadata in the meta message", async () => {
+  test("forwards cached replay trace metadata in the meta message", () => {
     const messages: CachedRscReplayMessage[] = [];
-    const completed = await replayCachedRscResult({
+    const completed = replayCachedRscResult({
       requestId: "request-2",
-      chunks: [],
+      body: new Uint8Array(0),
       trace: {
         navId: "9",
         pathname: "/en/docs",
@@ -716,12 +771,12 @@ describe("RscWorker cached result replay", () => {
     });
   });
 
-  test("keeps replay cache state separate from patch cache hit trace metadata", async () => {
+  test("keeps replay cache state separate from patch cache hit trace metadata", () => {
     const messages: CachedRscReplayMessage[] = [];
     const cacheState = { cacheable: true, routeId: "/docs", tags: ["docs"], revalidate: 10 };
-    const completed = await replayCachedRscResult({
+    const completed = replayCachedRscResult({
       requestId: "request-3",
-      chunks: [],
+      body: new Uint8Array(0),
       cacheState,
       trace: {
         navId: "10",
@@ -1152,6 +1207,7 @@ export const pages = {
         adopted: { pagesBundlePath: a, buildId: 1 },
         failed: { pagesBundlePath: broken, buildId: 2 },
       });
+      expect(AkanError.is(failed, "rscWorkerFailed")).toBe(true);
       expect(await body()).toBe("A");
       expect(await rsc.reload({ clientManifest: {}, buildId: 3 })).toEqual({ pagesBundlePath: a, buildId: 3 });
       expect(await body()).toBe("A");
@@ -1288,9 +1344,31 @@ export const pages = {
     process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
     const rsc = new RscWorker({ pagesBundlePath: exiting, pagesBundleBuildId: 1 } as unknown as BaseBuildArtifact);
     try {
+      const queued = rsc.listPagePrompts().catch((e) => e);
       const failed = await rsc.ready.catch((e) => e);
       expect(String(failed)).toContain("while loading the pages bundle");
+      expect(AkanError.is(failed, "rscWorkerFailed")).toBe(true);
+      expect(AkanError.is(await queued, "rscWorkerFailed")).toBe(true);
       expect(rsc.getMetrics()).toMatchObject({ rscWorkerStatus: "stopped", rscWorkerRestartCount: 0 });
+    } finally {
+      rsc.kill();
+      if (saved === undefined) delete process.env.AKAN_RSC_WORKER_PATH;
+      else process.env.AKAN_RSC_WORKER_PATH = saved;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  }, 20_000);
+
+  test("a first boot whose bundle throws while it imports fails ready as rscWorkerFailed", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-first-throw-"));
+    const broken = path.join(dir, "broken.ts");
+    fs.writeFileSync(broken, bundleSource("never", 'throw new Error("broken at import");'));
+    const saved = process.env.AKAN_RSC_WORKER_PATH;
+    process.env.AKAN_RSC_WORKER_PATH = path.join(import.meta.dir, "rscWorker.tsx");
+    const rsc = new RscWorker({ pagesBundlePath: broken, pagesBundleBuildId: 1 } as unknown as BaseBuildArtifact);
+    try {
+      const failed = await rsc.ready.catch((e) => e);
+      expect(AkanError.is(failed, "rscWorkerFailed")).toBe(true);
+      expect(failed).toMatchObject({ statusCode: 500, message: "broken at import" });
     } finally {
       rsc.kill();
       if (saved === undefined) delete process.env.AKAN_RSC_WORKER_PATH;
@@ -1354,7 +1432,9 @@ export const pages = {
   test("a reload after kill() rejects at once", async () => {
     await withBundles(async (rsc) => {
       rsc.kill();
-      expect(String(await rsc.reload({ clientManifest: {}, buildId: 2 }).catch((e) => e))).toContain("stopped");
+      const failed = await rsc.reload({ clientManifest: {}, buildId: 2 }).catch((e) => e);
+      expect(String(failed)).toContain("stopped");
+      expect(AkanError.is(failed, "rscWorkerStopped")).toBe(true);
     });
   }, 20_000);
 
@@ -1485,6 +1565,15 @@ describe("RscWorker late theme", () => {
       const lightBody = await render("http://localhost/en/viewport", { cookie: "theme=light" });
       expect(lightBody).toContain("#fafafa");
       expect(lightBody).not.toContain("#0b1020");
+      expect(body).toContain("/root.jpg");
+      expect(body).toContain("og:image:width");
+      const ownTheme = await render("http://localhost/en/own-theme");
+      expect(ownTheme).toContain("#123456");
+      expect(ownTheme).not.toContain("#0b1020");
+      expect(ownTheme).not.toContain("#fafafa");
+      expect(ownTheme).toContain("/own.jpg");
+      expect(ownTheme).not.toContain("/root.jpg");
+      expect(ownTheme).not.toContain("og:image:width");
       const ownManifest = await render("http://localhost/en/own-manifest");
       expect(ownManifest).toContain('"rel":"manifest","href":"/fixture.webmanifest"');
       expect(ownManifest).not.toContain("/manifest.webmanifest");

@@ -387,19 +387,25 @@ export default page()
         en: "The frame around a card tool's own component.",
         ko: "card 툴이 그리는 앱 컴포넌트를 감싸는 틀입니다.",
       },
+      {
+        name: "AgentToolRow",
+        fallback: "DefaultToolRow",
+        en: "One tool call, given `name`, `args`, and its `result` or running `progress`; `askUser` draws as its question.",
+        ko: "툴 호출 한 줄로 `name`, `args`와 `result` 또는 실행 중 `progress`를 받으며, `askUser`는 질문으로 그립니다.",
+      },
     ];
 
     const slotNotes = [
       l.trans({
         en: (
           <>
-            <strong>Compose the default.</strong> Eleven slots export their default beside them, so a replacement can
+            <strong>Compose the default.</strong> Twelve slots export their default beside them, so a replacement can
             wrap the one it replaces instead of rewriting it.
           </>
         ),
         ko: (
           <>
-            <strong>기본 구현을 겹쳐 쓰세요.</strong> 슬롯 열한 개는 기본 구현을 함께 내보내므로, 교체본은 원본을 다시
+            <strong>기본 구현을 겹쳐 쓰세요.</strong> 슬롯 열두 개는 기본 구현을 함께 내보내므로, 교체본은 원본을 다시
             쓰지 않고 감싸서 쓸 수 있습니다.
           </>
         ),

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Any, dayjs, FIELD_META, ID, Int, LOADER_META, type PrimitiveScalar } from "akanjs/base";
 import { ConstantRegistry, type DocumentModel, type FieldToValue, InputParser, via } from "akanjs/constant";
 import {
@@ -998,6 +999,181 @@ describe("data loaders", () => {
     expect(batches).toEqual([["a", "b"]]);
   });
 
+  test("DataLoader asks for a key once per batch, and answers each caller of it in the order they asked", async () => {
+    const batches: string[][] = [];
+    const loader = new DataLoader<string, { key: string }>(async (keys) => {
+      batches.push([...keys]);
+      return keys.map((key) => ({ key }));
+    });
+    const settled: string[] = [];
+    const loadOf = (key: string, caller: string) =>
+      loader.load(key).then((value) => {
+        settled.push(caller);
+        return value;
+      });
+
+    const [a, b, aAgain, c, bAgain] = await Promise.all([
+      loadOf("a", "first"),
+      loadOf("b", "second"),
+      loadOf("a", "third"),
+      loadOf("c", "fourth"),
+      loadOf("b", "fifth"),
+    ]);
+
+    expect(batches).toEqual([["a", "b", "c"]]);
+    expect([a, b, aAgain, c, bAgain]).toEqual([{ key: "a" }, { key: "b" }, { key: "a" }, { key: "c" }, { key: "b" }]);
+    expect([aAgain, bAgain]).toEqual([a, b]);
+    expect(aAgain).toBe(a);
+    expect(settled).toEqual(["first", "second", "third", "fourth", "fifth"]);
+  });
+
+  test("DataLoader takes two keys for one when cacheKeyFn names them alike, and sends the first of them", async () => {
+    const batches: object[][] = [];
+    const answer = async (keys: readonly { owner: string; title?: string }[]) => {
+      batches.push([...keys]);
+      return keys.map(({ owner }) => `loaded:${owner}`);
+    };
+    const byOwner = new DataLoader<{ owner: string; title?: string }, string, string>(answer, {
+      cacheKeyFn: ({ owner }) => owner,
+    });
+    expect(
+      await byOwner.loadMany([{ owner: "a", title: "first" }, { owner: "b" }, { owner: "a", title: "second" }]),
+    ).toEqual(["loaded:a", "loaded:b", "loaded:a"]);
+    expect(batches).toEqual([[{ owner: "a", title: "first" }, { owner: "b" }]]);
+
+    batches.length = 0;
+    const byIdentity = new DataLoader<{ owner: string }, string>(answer);
+    const key = { owner: "a" };
+    expect(await byIdentity.loadMany([key, { owner: "a" }, key])).toEqual(["loaded:a", "loaded:a", "loaded:a"]);
+    expect(batches).toEqual([[{ owner: "a" }, { owner: "a" }]]);
+  });
+
+  test("DataLoader fails every caller of a failed key and no caller of another key", async () => {
+    const copy = (value: { key: string }) => {
+      if (value.key === "uncopyable") throw new Error("copy failed");
+      return { ...value };
+    };
+    const loader = new DataLoader<string, { key: string }>(
+      async (keys) => keys.map((key) => (key === "bad" ? new Error("bad key") : { key })),
+      { copy },
+    );
+
+    const [ok, bad, badAgain, okAgain, uncopyable, uncopyableAgain] = await Promise.allSettled(
+      ["ok", "bad", "bad", "ok", "uncopyable", "uncopyable"].map((key) => loader.load(key)),
+    );
+
+    expect([ok, okAgain, uncopyable]).toEqual([
+      { status: "fulfilled", value: { key: "ok" } },
+      { status: "fulfilled", value: { key: "ok" } },
+      { status: "fulfilled", value: { key: "uncopyable" } },
+    ]);
+    expect((ok as PromiseFulfilledResult<object>).value).not.toBe((okAgain as PromiseFulfilledResult<object>).value);
+    expect([bad, badAgain, uncopyableAgain].map((result) => (result as PromiseRejectedResult).reason?.message)).toEqual(
+      ["bad key", "bad key", "copy failed"],
+    );
+  });
+
+  test("DataLoader rejects every caller of a batch that fails, once each, whether it rejects, throws or miscounts", async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const failures: Record<string, (keys: readonly string[]) => Promise<string[]> | string[]> = {
+        rejects: async () => {
+          throw new Error("store down");
+        },
+        throws: () => {
+          throw new Error("store down");
+        },
+        miscounts: (keys) => keys.slice(1),
+      };
+      for (const [name, fail] of Object.entries(failures)) {
+        let calls = 0;
+        const loader = new DataLoader<string, string>((keys) => {
+          calls++;
+          return fail(keys);
+        });
+        const rejections: string[] = [];
+        const settled = await Promise.allSettled(
+          ["a", "b", "a"].map((key) =>
+            loader.load(key).catch((error: Error) => {
+              rejections.push(key);
+              throw error;
+            }),
+          ),
+        );
+        expect([name, calls, rejections, settled.map(({ status }) => status)]).toEqual([
+          name,
+          1,
+          ["a", "b", "a"],
+          ["rejected", "rejected", "rejected"],
+        ]);
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(unhandled).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+  });
+
+  test("DataLoader rejects every caller of a batch function that answers with something other than an array", async () => {
+    for (const answer of [null, { a: "loaded:a" }, "ab"]) {
+      const loader = new DataLoader<string, string>(async () => answer as unknown as string[]);
+      const settled = await Promise.allSettled(["a", "b", "a"].map((key) => loader.load(key)));
+      expect(settled.map((result) => (result as PromiseRejectedResult).reason?.message)).toEqual(
+        Array.from({ length: 3 }, () => "DataLoader expected 2 values, received no array"),
+      );
+    }
+  });
+
+  test("createArrayLoader gives two callers of one field equal lists of their own", async () => {
+    const fake = createFakeModel();
+    const loader = createArrayLoader<string, TestLoaderItem[]>(fake.model, "ownerId");
+
+    const [first, second] = await Promise.all([loader.load("owner-a"), loader.load("owner-a")]);
+
+    expect(fake.queries).toEqual([{ ownerId: { kind: "op", op: "has", value: ["owner-a"] } }]);
+    expect(first).toEqual([items[0], items[2]]);
+    expect(second).toEqual(first);
+    expect(second).not.toBe(first);
+  });
+
+  test("DataLoader sends 500 distinct keys a batch unless told otherwise, and answers each caller its own key", async () => {
+    const sizes: number[] = [];
+    const answer = async (keys: readonly string[]) => {
+      sizes.push(keys.length);
+      if (keys.includes("fails")) throw new Error("store down");
+      return keys.map((key) => ({ key }));
+    };
+    const keys = Array.from({ length: 1201 }, (_, index) => `k${index}`);
+    const asked = keys.flatMap((key, index) =>
+      index % 4 ? [key] : [key, keys[(index * 7 + 650) % keys.length] ?? key],
+    );
+
+    const loaded = (await new DataLoader(answer).loadMany(asked)) as { key: string }[];
+
+    expect(sizes).toEqual([500, 500, 201]);
+    expect(loaded.map(({ key }) => key)).toEqual(asked);
+    expect(new Set(loaded).size).toBe(keys.length);
+
+    sizes.length = 0;
+    const split = await new DataLoader(answer, { maxBatchSize: 2 }).loadMany(["a", "b", "a", "fails", "c", "d", "b"]);
+    expect(sizes).toEqual([2, 2, 1]);
+    expect(split.map((value) => (value instanceof Error ? value.message : value.key))).toEqual([
+      "a",
+      "b",
+      "a",
+      "store down",
+      "store down",
+      "d",
+      "b",
+    ]);
+
+    sizes.length = 0;
+    await new DataLoader(answer, { maxBatchSize: Number.POSITIVE_INFINITY }).loadMany(keys);
+    expect(sizes).toEqual([keys.length]);
+  });
+
   test("DataLoader remembers nothing past its own batch unless a cache is declared", async () => {
     let calls = 0;
     const loader = new DataLoader<string, string>(async (keys) => {
@@ -1056,6 +1232,109 @@ describe("data loaders", () => {
     loader.clearAll();
     await expect(loader.load("a")).resolves.toBe("loaded:a");
     expect(calls).toBe(2);
+  });
+
+  test("DataLoader batches the loads of each scope apart, and runs each batch in the scope that asked", async () => {
+    const scopes = new AsyncLocalStorage<object>();
+    const batches: [object | undefined, string[]][] = [];
+    const loader = new DataLoader<string, string>(
+      async (keys) => {
+        batches.push([scopes.getStore(), [...keys]]);
+        return keys.map((key) => `${scopes.getStore() ? "scoped" : "shared"}:${key}`);
+      },
+      { scopeFn: () => scopes.getStore(), maxBatchSize: 2 },
+    );
+    const scope = { name: "transaction" };
+
+    const outside = loader.load("a");
+    const inside = scopes.run(scope, () => [loader.load("a"), loader.load("b"), loader.load("c")]);
+    const outsideAgain = loader.load("d");
+
+    expect(await Promise.all([outside, ...inside, outsideAgain])).toEqual([
+      "shared:a",
+      "scoped:a",
+      "scoped:b",
+      "scoped:c",
+      "shared:d",
+    ]);
+    expect(batches).toEqual([
+      [undefined, ["a", "d"]],
+      [scope, ["a", "b"]],
+      [scope, ["c"]],
+    ]);
+  });
+
+  test("DataLoader on a macrotask schedule batches what each scope loads across the turns of that task, each apart", async () => {
+    const scopes = new AsyncLocalStorage<{ name: string }>();
+    const batches: [string, string[]][] = [];
+    const loader = new DataLoader<string, string>(
+      async (keys) => {
+        const name = scopes.getStore()?.name ?? "shared";
+        batches.push([name, [...keys]]);
+        return keys.map((key) => `${name}:${key}`);
+      },
+      { scopeFn: () => scopes.getStore(), batchScheduleFn: (callback) => setImmediate(callback) },
+    );
+    const request = async (keys: string[]) => {
+      const loads: Promise<string>[] = [];
+      for (const key of keys) {
+        await null;
+        loads.push(loader.load(key));
+      }
+      return await Promise.all(loads);
+    };
+
+    const answers = await Promise.all([
+      scopes.run({ name: "first" }, () => request(["a", "b", "a"])),
+      scopes.run({ name: "second" }, () => request(["a", "c"])),
+      request(["a", "d"]),
+    ]);
+
+    expect(answers).toEqual([
+      ["first:a", "first:b", "first:a"],
+      ["second:a", "second:c"],
+      ["shared:a", "shared:d"],
+    ]);
+    expect(batches).toEqual([
+      ["first", ["a", "b"]],
+      ["second", ["a", "c"]],
+      ["shared", ["a", "d"]],
+    ]);
+  });
+
+  test("DataLoader neither answers a scoped load from its cache nor keeps what that load read", async () => {
+    const scopes = new AsyncLocalStorage<object>();
+    let version = "committed";
+    const loader = new DataLoader<string, string>(async (keys) => keys.map((key) => `${version}:${key}`), {
+      cache: true,
+      scopeFn: () => scopes.getStore(),
+    });
+
+    await expect(loader.load("a")).resolves.toBe("committed:a");
+    version = "uncommitted";
+    await scopes.run({}, async () => {
+      await expect(loader.load("a")).resolves.toBe("uncommitted:a");
+      await expect(loader.load("b")).resolves.toBe("uncommitted:b");
+      loader.prime("c", "uncommitted:c");
+    });
+    version = "committed";
+    expect(await loader.loadMany(["a", "b", "c"])).toEqual(["committed:a", "committed:b", "committed:c"]);
+  });
+
+  test("DataLoader with cache: true keeps its most recently used keys, and a timed cache every key of its window", async () => {
+    const loaded: string[] = [];
+    const batch = async (keys: readonly string[]) => {
+      loaded.push(...keys);
+      return keys.map((key) => `loaded:${key}`);
+    };
+    const kept = new DataLoader<string, string>(batch, { cache: true, maxCacheSize: 2 });
+    for (const key of ["a", "b", "a", "c", "a", "b"]) await kept.load(key);
+    expect(loaded).toEqual(["a", "b", "c", "b"]);
+
+    loaded.length = 0;
+    const timed = new DataLoader<string, string>(batch, { cache: 60_000, maxCacheSize: 2 });
+    for (const key of ["a", "b", "c", "a", "b", "c"]) await timed.load(key);
+    expect(loaded).toEqual(["a", "b", "c"]);
   });
 
   test("DataLoader loadMany resolves per-key errors", async () => {

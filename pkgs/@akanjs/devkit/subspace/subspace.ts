@@ -146,7 +146,7 @@ export class Subspace {
     if (remotes.includes(this.#remote)) await this.#git(["remote", "set-url", this.#remote, this.#declaration.repo]);
     else await this.#git(["remote", "add", this.#remote, this.#declaration.repo]);
     try {
-      await this.#git(["fetch", "--quiet", this.#remote, branch]);
+      await this.#git(["fetch", "--quiet", "--", this.#remote, branch]);
       return true;
     } catch {
       //? A subspace that has never had this branch is not an error here — `push` refuses it by name.

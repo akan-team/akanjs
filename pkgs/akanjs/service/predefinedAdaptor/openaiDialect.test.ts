@@ -231,6 +231,34 @@ describe("OpenaiDialect", () => {
     ).toBe("length");
   });
 
+  test("a whole answer's malformed arguments mark the call with why, so it is answered rather than run", () => {
+    const answer = OpenaiDialect.turnAnswer({
+      choices: [
+        {
+          message: { tool_calls: [{ id: "c1", function: { name: "submitTask", arguments: "{'title': 'x'}" } }] },
+          finish_reason: "tool_calls",
+        },
+      ],
+    });
+    expect(answer.stop).toBe("toolUse");
+    expect(answer.toolCalls?.[0]).toMatchObject({ id: "c1", name: "submitTask", args: {} });
+    expect(answer.toolCalls?.[0]?.argsError).toContain("Call the tool again");
+  });
+
+  test("a whole answer's malformed arguments behind a filter or no finish reason end the turn as cut", () => {
+    const answered = (finish_reason?: string) =>
+      OpenaiDialect.turnAnswer({
+        choices: [
+          {
+            message: { tool_calls: [{ id: "c1", function: { name: "submitTask", arguments: '{"title": "x' } }] },
+            ...(finish_reason ? { finish_reason } : {}),
+          },
+        ],
+      }).stop;
+    expect(["content_filter", "length", undefined].map(answered)).toEqual(["length", "length", "length"]);
+    expect(["tool_calls", "stop"].map(answered)).toEqual(["toolUse", "toolUse"]);
+  });
+
   test("an unparsable arguments string becomes an empty call rather than a crash", () => {
     expect(OpenaiDialect.parsedArgs("not json")).toEqual({});
     expect(OpenaiDialect.parsedArgs('["array"]')).toEqual({});

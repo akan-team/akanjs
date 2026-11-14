@@ -65,11 +65,13 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `panelClassName="[&_[data-slot=agent-running]]:bg-accent"` restyles one without leaning on the markup. A modal,
   menu or popconfirm opened from inside the floating panel, `header` included, stacks above the panel, while
   one the page opens stays under it. While the turn waits on an approval, card or question, a scrim the panel
-  opened sinks under the panel so the answer stays reachable, and it comes back once answered. `chrome={false}` drops the header bar whole, for an `inline` chat inside a
+  opened sinks under the panel so the answer stays reachable, and it comes back once answered. A question
+  arriving leaves focus in an overlay the person is typing in, and Escape in the composer closes a modal the panel
+  or a card opened through the modal's own close, `confirmClose` included, before it closes the panel. `chrome={false}` drops the header bar whole, for an `inline` chat inside a
   panel the app already titles, and `defaultDraft` opens the composer with text in it without sending it. A panel driven by a
   controlled `open` with **no** `onOpenChange` draws no close button at all rather than an inert one. Then the
   slots: `AgentLauncher`, `AgentSteps`, `AgentBubble`, `AgentComposer`, `AgentApproval`,
-  `AgentQuestion`, `AgentToolCard`, `AgentQueued`, `AgentMenu`, `AgentMarkdown` and `AgentCode` each replace one part in `_overrides.tsx`, and
+  `AgentQuestion`, `AgentToolCard`, `AgentToolRow`, `AgentQueued`, `AgentMenu`, `AgentMarkdown` and `AgentCode` each replace one part in `_overrides.tsx`, and
   `akanjs/ui` exports every default beside them (`DefaultBubble`, `DefaultComposer`, …) so a skin composes the
   one it is replacing. **`AgentSteps` is one agent turn** — the messages between the user message that opened it
   and the next one, with `isRunning` saying whether more are still coming — which is the grain a chat needs to
@@ -126,9 +128,10 @@ pages declaring one name never clash, and a registry kept outside the surface re
   carries `{ provider, status }`, the hostname and the HTTP status; the provider's own sentence goes to the server
   log only, because it can quote an account id or part of a key and `Err` data reaches the browser.
   `LlmOverflow.refusal(host, status, reason)` builds it, and reads the one refusal a chat can undo — a prompt past
-  the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` it
-  named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
-  translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add.
+  the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` and
+  `requested` it named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
+  translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add. An
+  adaptor's own size cap throws that error with `{ limit, requested }` in its own unit, bytes included.
 - **`accepts` is answered per model, through `option.setLlm({ accepts })`.** An adaptor answers for an API and one
   API serves models that differ, so the override rides beside the `model` it is a fact about. It is not a table
   the framework keeps: a table is a claim about models that ship after it, and getting this wrong is the worst
@@ -603,8 +606,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `window − answer ceiling (8,192 when unreported) − compact.buffer (13,000, the margin Claude Code leaves)` —
   measured by the provider's own count of the last turn (`done.usage`, kept on that assistant message) plus the
   four-character estimate for what arrived since, so a Korean transcript the character rule reads as small is
-  still caught. The window comes from `option.setLlm({ contextWindow })` or from the first refusal that names it;
-  with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
+  still caught. The window comes from `option.setLlm({ contextWindow })` or from a refusal that names it, scaled by
+  its `limit / requested` to this estimate when it gives both; with neither, only the ceiling runs. **A refusal for length is answered once**: a relay flags it `overflow` on
   the wire, and the session compacts and sends the same turn again, and a second refusal in the same send fails
   with `agent.error.contextOverflow`. Either way the history above the last `keep` messages
   becomes one message standing in for it, flagged `summary` on the wire — `<Agent.Chat compact={{ at, keep, buffer }} />`
@@ -643,10 +646,11 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `text` and drops it; `AgentService.explained` folds it into the text before any adaptor sees it, because an
   assistant turn that says nothing is one the model repeats.
 - **A failed turn keeps its code for the host.** The relay's `error` event carries `code`: the `Err`'s key, else
-  an `AkanError`'s own code, else the status's name. A refusal (401/403) is named by its status alone, whether it is
-  answered before the stream opens or inside it, unless the server kept it under its own code. The chat keeps it
-  on that assistant message as `errorCode` after translating the text, so a host branches on `message.errorCode`,
-  never on the sentence. It is never sent back to the relay.
+  an `AkanError`'s own code when its JSON carries it, else the status's name, so a custom `toJSON()` keeps `code`
+  in what it returns or the failure reads as its status. It is one code whether the failure is answered before the
+  stream opens or inside it, a 5xx included. A refusal (401/403) is named by its status alone, unless the server
+  kept it under its own code. The chat keeps it on that assistant message as `errorCode` after translating the
+  text, so a host branches on `message.errorCode`, never on the sentence. It is never sent back to the relay.
 - **↑ and ↓ in the composer walk what was sent**, seeded from the transcript so a persisted chat does not lose
   only what was just typed. A single-line input has nothing of its own on the vertical arrows, and the
   half-written draft they were walked away from comes back at the bottom of the walk. **The `/` menu takes those
@@ -790,7 +794,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   keeps a free-text row either way, because the model wrote the options and only the user knows whether the answer
   is among them. The loop parks on the question exactly as it parks on an approval, a dismissal is the tool's
   error result rather than a silent empty answer, and the settled exchange renders as question-and-answer instead
-  of a tool row. **Never re-implement it per screen** — a `st.tool("askAboutX")` that opens a modal is the same
+  of a tool row. A restored transcript that ends on an unanswered `askUser` — a server run that parked on it while
+  no chat was open, or a reload mid-question — opens on that question, and settling it runs the turn on through the
+  runner; a turn started first closes it as unanswered instead. **Never re-implement it per screen** — a `st.tool("askAboutX")` that opens a modal is the same
   thing with a worse transcript — and a hook tool named `askUser` shadows it like any other built-in. The line
   between it and a `.card()` tool is what the answer *is*: a sentence or a pick off a list is `askUser` and belongs
   to the conversation, while a shape the model must not invent — fields, a form, a signature — is a card the screen

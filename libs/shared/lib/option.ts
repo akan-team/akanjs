@@ -5,7 +5,9 @@ import {
   AccountMiddleware,
   type CallerAccount,
   type OAuthOptions,
+  type RemoteOptions,
   resolveOAuthOptions,
+  resolveRemoteOptions,
   SsoProvider,
   verifyAkanAccessToken,
 } from "../srvkit";
@@ -48,6 +50,7 @@ export type ModulesOptions = LibOptions & {
   // Boot only creates a missing root admin; set this to also put its configured password and superAdmin roles back.
   resetRootAdmin?: boolean;
   oauth?: OAuthOptions;
+  remote?: RemoteOptions;
   // The app's `setMcp({ excludeEndpoints })`, which the server keeps private; an OAuth client's token is refused there.
   offShelfEndpoints?: string[];
   signup?: SignupOptions;
@@ -61,6 +64,7 @@ export const option = new AkanOption<ModulesOptions>()
       rootAdminInfo: options.rootAdminInfo,
       resetRootAdmin: options.resetRootAdmin ?? false,
       oauthOption: resolveOAuthOptions(options),
+      remoteOption: resolveRemoteOptions(options),
       signupPolicy: {
         activateVerifies:
           options.signup?.activateVerifies ??

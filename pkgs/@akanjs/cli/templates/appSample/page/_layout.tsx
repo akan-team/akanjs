@@ -24,6 +24,7 @@ export default rootLayout()
     {
       name: "pretendard",
       default: true,
+      subsets: ["latin", "ks-x-1001"],
       paths: [
         { src: "/fonts/Pretendard-Thin.woff2", weight: 100 },
         { src: "/fonts/Pretendard-ExtraLight.woff2", weight: 200 },

@@ -22,6 +22,7 @@ export declare class ConformanceEnv {
     ];
     static isolatedProcessEnv(): Record<string, string | undefined>;
     static url(backend: ConformanceBackend): null | string;
+    static get requireBackends(): boolean;
     static has(suite: string, backend: ConformanceBackend): boolean;
     static uniqueName(prefix: string): string;
     static tempDir(prefix: string): Promise<{
@@ -185,6 +186,7 @@ type SampleOf<Model> = DocumentModel<{
 interface SqlDriverOptions {
     insight?: boolean;
     memory?: boolean;
+    sqlite?: SqliteDatabaseConfig;
     search?: SearchConfig;
 }
 

@@ -59,8 +59,12 @@ export class BuilderRpc {
         if (!waiter) return;
         this.#pending.delete(res.id);
         if (!res.ok) {
-          const error = new Error(`[builder] ${res.type} failed: ${res.error}`);
-          waiter.reject(res.kind === "unavailable" ? Object.assign(error, { kind: res.kind }) : error);
+          const message = `[builder] ${res.type} failed: ${res.error}`;
+          waiter.reject(
+            res.kind === "unavailable"
+              ? Object.assign(new AkanError("builderUnavailable", message, { statusCode: 503 }), { kind: res.kind })
+              : new AkanError("buildFailed", message),
+          );
         } else waiter.resolve(res.type === "build-csr-res" ? undefined : res.data);
         return;
       }
@@ -169,7 +173,7 @@ export class BuilderRpc {
       const timer = setTimeout(() => {
         this.#pending.delete(id);
         const message = `[builder] ${label} got no answer in ${timeoutMs}ms; the builder was likely recycled or restarted mid-request — reload to retry`;
-        reject(Object.assign(new Error(message), { timeoutMs }));
+        reject(Object.assign(new AkanError("builderUnavailable", message, { statusCode: 503 }), { timeoutMs }));
       }, timeoutMs);
       // `unref` so a pending request cannot by itself keep the process alive during shutdown.
       timer.unref?.();
@@ -191,7 +195,7 @@ export class BuilderRpc {
     if (this.#disposed) return;
     this.#disposed = true;
     this.#offMessage();
-    for (const [, waiter] of this.#pending) waiter.reject(new Error("[builder] rpc disposed"));
+    for (const [, waiter] of this.#pending) waiter.reject(new AkanError("rpcDisposed", "[builder] rpc disposed"));
     this.#pending.clear();
   }
 

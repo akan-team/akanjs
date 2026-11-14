@@ -27,7 +27,7 @@ export class AgentTurnStream {
     message: string;
     code: string;
     data?: Record<string, string | number>;
-    overflow?: { limit?: number };
+    overflow?: { limit?: number; requested?: number };
   } {
     const status = isExceptionLike(error) ? error.statusCode : SignalFailure.generalized(error).statusCode;
     const code = SignalFailure.codeOf(error, status);
@@ -42,8 +42,19 @@ export class AgentTurnStream {
       raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, string | number>) : null;
     // A wire flag, since a non-akan client cannot be expected to know `agent.error.contextOverflow`.
     const overflow =
-      message === "agent.error.contextOverflow" ? (typeof data?.limit === "number" ? { limit: data.limit } : {}) : null;
+      message === "agent.error.contextOverflow"
+        ? {
+            ...(typeof data?.limit === "number" ? { limit: data.limit } : {}),
+            ...(typeof data?.requested === "number" ? { requested: data.requested } : {}),
+          }
+        : null;
     return { message, code, ...(data ? { data } : {}), ...(overflow ? { overflow } : {}) };
+  }
+
+  //? The wire cannot answer a call with its own error, and a browser would run one whose arguments did not parse with
+  //? `{}`, so such a turn is relayed as one cut short.
+  static relayable<Turn extends StreamedTurn>(turn: Turn): Turn {
+    return turn.toolCalls?.some((call) => call.argsError) ? { ...turn, stop: "length" } : turn;
   }
 
   static response(run: RunTurn): Response {
@@ -56,11 +67,13 @@ export class AgentTurnStream {
   static async #deliver(stream: EventStream, run: RunTurn, signal: AbortSignal) {
     try {
       let streamed = 0;
-      const turn = await run((delta) => {
-        if (!delta) return;
-        streamed += delta.length;
-        stream.write({ type: "text", delta });
-      }, signal);
+      const turn = AgentTurnStream.relayable(
+        await run((delta) => {
+          if (!delta) return;
+          streamed += delta.length;
+          stream.write({ type: "text", delta });
+        }, signal),
+      );
       // An adapter that ignores onDelta still resolves the whole text; deliver it as one late delta.
       if (!streamed && turn.text) stream.write({ type: "text", delta: turn.text });
       const toolCalls = turn.toolCalls ?? [];

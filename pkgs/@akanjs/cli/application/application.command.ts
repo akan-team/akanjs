@@ -1,6 +1,16 @@
 import type { DatabaseMode } from "@akanjs/devkit/akanConfig";
 import { RouteJsBudget } from "@akanjs/devkit/app/routeJsBudget";
-import { App, Apps, CliError, command, Exec, Sys, SysOrOnlyApp, Workspace } from "@akanjs/devkit/commandDecorators";
+import {
+  App,
+  Apps,
+  CliError,
+  type CommandBuilderContext,
+  command,
+  Exec,
+  Sys,
+  SysOrOnlyApp,
+  Workspace,
+} from "@akanjs/devkit/commandDecorators";
 import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
 import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";
@@ -37,7 +47,9 @@ const listOf = (value: string | null) =>
     .map((entry) => entry.trim())
     .filter(Boolean);
 
-export class ApplicationCommand extends command("application", [ApplicationScript], ({ public: target }) => ({
+type ApplicationBuilderContext = CommandBuilderContext<[typeof ApplicationScript]>;
+
+const workspaceTargets = ({ public: target }: ApplicationBuilderContext) => ({
   createApplication: target({ desc: "Create a new application in the workspace" })
     .arg("appName", String, { desc: "name of application" })
     .option("start", Boolean, { desc: "start application", default: false })
@@ -50,7 +62,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app) {
       await this.applicationScript.removeApplication(app);
     }),
-  planSlice: target({ desc: "List the exact files an app needs to live in a workspace of its own" })
+  planSlice: target({ desc: "List the exact files an app needs to live in a workspace of its own", readOnly: true })
     .with(App)
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .exec(async function (app, format) {
@@ -67,10 +79,14 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, filename) {
       await this.applicationScript.script(app, filename);
     }),
+});
+
+const migrationTargets = ({ public: target }: ApplicationBuilderContext) => ({
   migrate: target({
-    desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration",
+    desc: "List, plan, apply, verify or roll back the app's data migrations in script/migration, or list and prune the indexes it no longer declares",
     stdio: true,
     usageExitCode: 2,
+    readOnly: ({ action }) => ["list", "plan", "verify", "indexes"].includes(String(action)),
     //? A `--json` caller parses the last line, so a failure before the app ran answers in the app's shape too.
     onFailure: async (error, { usage, given }) => {
       if (given.json !== true) return;
@@ -78,7 +94,10 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     },
   })
     .with(App)
-    .arg("action", String, { desc: "list, plan, apply, verify or rollback", default: "list" })
+    .arg("action", String, {
+      desc: "list, plan, apply, verify, rollback, indexes or prune-indexes",
+      default: "list",
+    })
     .arg("target", String, { desc: "migration id; for rollback, an apply's run id too", nullable: true })
     .option("param", String, { desc: "a param the migration declares, as name=value", multiple: true })
     .option("expect", String, { desc: "the plan hash an apply must still match", nullable: true })
@@ -102,6 +121,9 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (migrationName, app) {
       await this.applicationScript.createMigration(app, migrationName);
     }),
+});
+
+const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
   preview: target({
     desc: "Open pages of the app's dev server in a headless browser and print what broke, starting a server if none runs",
     stdio: true,
@@ -146,6 +168,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     }),
   studio: target({
     desc: "Print the Akan Studio URL of the app's running dev server: its ERD, each module's signals, the Change Map, the live DI graph and jobs, and the framework map",
+    readOnly: true,
   })
     .with(App)
     .option("module", String, { desc: "the module to show", nullable: true })
@@ -181,7 +204,10 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app) {
       await this.applicationScript.console(app);
     }),
-  logs: target({ desc: "Tail the running application's logs, filtered (attaches to akan-control.sock)" })
+  logs: target({
+    desc: "Tail the running application's logs, filtered (attaches to akan-control.sock)",
+    readOnly: true,
+  })
     .with(App)
     .option("level", String, { desc: "minimum level: trace, verbose, debug, info, warn, error", nullable: true })
     .option("grep", String, { desc: "substring the message must contain", nullable: true })
@@ -227,6 +253,9 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         });
       },
     ),
+});
+
+const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => ({
   build: target({ short: true, desc: "Build the application for production (frontend + backend)" })
     .with(App)
     .option("write", Boolean, writeOption)
@@ -254,7 +283,11 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
       });
     }),
-  typecheck: target({ short: true, desc: "Typecheck an app or a library, its tests and specs included" })
+  typecheck: target({
+    short: true,
+    desc: "Typecheck an app or a library, its tests and specs included",
+    readOnly: ({ write }) => write === false,
+  })
     .with(SysOrOnlyApp)
     .option("write", Boolean, writeOption)
     .option("clean", Boolean, { desc: "clear typecheck cache before running", default: false })
@@ -263,7 +296,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (sys, write, clean, incremental, tests) {
       await this.applicationScript.typecheck(sys, { write, clean, incremental, tests });
     }),
-  test: target({ desc: "Prepare and test an app, library, or package" })
+  test: target({ desc: "Prepare and test an app, library, or package", readOnly: ({ write }) => write === false })
     .with(Exec)
     .arg("files", String, {
       desc: "test files or folders to run, relative to the target or the workspace root, comma-separated (default: all)",
@@ -272,9 +305,17 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     })
     .option("write", Boolean, writeOption)
     .option("coverage", Boolean, { desc: "measure coverage; lcov goes under local/coverage/<target>", default: false })
-    .exec(async function (exec, files, write, coverage) {
-      await this.applicationScript.test(exec, { write, files: listOf(files), coverage });
+    .option("parallel", Number, {
+      desc: "bun processes to spread the test files over, balanced by the timings under local/test-timings/<target>",
+      default: 1,
+    })
+    .option("junit", String, { desc: "also write a JUnit XML report to this path", nullable: true })
+    .exec(async function (exec, files, write, coverage, parallel, junit) {
+      await this.applicationScript.test(exec, { write, files: listOf(files), coverage, parallel, junit });
     }),
+});
+
+const nativeBuildTargets = ({ public: target }: ApplicationBuilderContext) => ({
   buildIos: target({ short: true, desc: "Build the iOS app on the native runtime" })
     .with(App)
     .option("target", String, nativeTargetOption)
@@ -322,6 +363,9 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         ...(arch ? { arch } : {}),
       });
     }),
+});
+
+const startTargets = ({ public: target }: ApplicationBuilderContext) => ({
   start: target({ short: true, desc: "Start development server(s) (frontend SSR + backend)" })
     .with(Apps)
     .option("plain", Boolean, { desc: "print prefixed lines instead of the full-screen view", default: false })
@@ -391,6 +435,9 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         write,
       });
     }),
+});
+
+const releaseTargets = ({ public: target }: ApplicationBuilderContext) => ({
   releaseIos: target({ desc: "Build and sign the iOS app for the App Store (.ipa)" })
     .with(App)
     .option("target", String, nativeTargetOption)
@@ -428,6 +475,9 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         publicEnv: publicEnv ?? undefined,
       });
     }),
+});
+
+const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
   packUpdate: target({ desc: packUpdateDesc, usageExitCode: 1 })
     .with(App)
     .option("platform", String, { enum: ["ios", "android"], desc: "the app it updates" })
@@ -539,7 +589,10 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
         });
       },
     ),
-  dbup: target({ desc: "Start local database services for a database mode" })
+});
+
+const databaseTargets = ({ public: target }: ApplicationBuilderContext) => ({
+  dbup: target({ desc: "Start local database services for a database mode", readOnly: true })
     .with(Workspace)
     .option("mode", String, {
       desc: "database mode; left out, every mode the workspace's apps declare",
@@ -561,9 +614,21 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
     .exec(async function (app, dir) {
       await this.applicationScript.transferDatabase(app, "import", dir);
     }),
-  dbdown: target({ desc: "Stop local database services" })
+  dbdown: target({ desc: "Stop local database services", readOnly: true })
     .with(Workspace)
     .exec(async function (workspace) {
       await this.applicationScript.dbdown(workspace);
     }),
+});
+
+export class ApplicationCommand extends command("application", [ApplicationScript], (context) => ({
+  ...workspaceTargets(context),
+  ...migrationTargets(context),
+  ...inspectTargets(context),
+  ...buildAndTestTargets(context),
+  ...nativeBuildTargets(context),
+  ...startTargets(context),
+  ...releaseTargets(context),
+  ...updateTargets(context),
+  ...databaseTargets(context),
 })) {}

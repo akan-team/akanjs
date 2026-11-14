@@ -85,8 +85,8 @@ export default page()
         type: "() => void",
         tags: ["pubsub"],
         desc: l.trans({
-          en: "Runs after the room is subscribed again following a dropped connection.",
-          ko: "끊긴 연결이 복구되어 room을 다시 구독한 뒤에 실행됩니다.",
+          en: "Runs when the room may have missed events: after a dropped connection, a dropped frame, or the server's link to the app's other servers returning.",
+          ko: "room이 이벤트를 놓쳤을 수 있을 때 실행됩니다: 끊긴 연결이나 누락된 프레임 뒤, 또는 서버와 앱의 다른 서버 사이 연결이 복구된 뒤.",
         }),
       },
     ];

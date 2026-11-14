@@ -2,6 +2,7 @@ import { AkanError } from "akanjs/base";
 import type { PageDefinition, PathRoute, RoutePromptMeta } from "akanjs/client";
 import { isGuardRefusal, Logger, parseSearchParams } from "akanjs/common";
 import { AppScope, getRequestStore, RenderScope } from "akanjs/fetch";
+import type { ReactNode } from "react";
 import { RouteGuards } from "../client/route/RouteGuards";
 import type {
   PagePromptEntry,
@@ -10,6 +11,15 @@ import type {
   PagePromptRunInput,
   PagePromptVisibleInput,
 } from "../signal/mcp/pagePrompt";
+
+export interface PagePromptDrawInput {
+  element: ReactNode;
+  route: PathRoute;
+  url: string;
+  lang: string;
+}
+
+export type PagePromptDraw<T> = (input: PagePromptDrawInput) => Promise<T | null>;
 
 interface RscPagePromptsProps {
   routes: () => PathRoute[];
@@ -39,12 +49,28 @@ export class RscPagePrompts {
   }
 
   async run(input: PagePromptRunInput): Promise<PagePromptRun> {
+    return (await this.#run(input, null)).run;
+  }
+
+  async draw<T>(input: PagePromptRunInput, draw: PagePromptDraw<T>): Promise<{ run: PagePromptRun; drawn: T | null }> {
+    return await this.#run(input, draw);
+  }
+
+  async #run<T>(
+    input: PagePromptRunInput,
+    draw: PagePromptDraw<T> | null,
+  ): Promise<{ run: PagePromptRun; drawn: T | null }> {
+    const refused = (run: PagePromptRun) => ({ run, drawn: null });
     const entry = (await this.list()).find((candidate) => candidate.name === input.name);
-    if (!entry) return { ok: false, reason: "unknown", message: `Unknown prompt: ${input.name}.` };
+    if (!entry) return refused({ ok: false, reason: "unknown", message: `Unknown prompt: ${input.name}.` });
     const route = this.#props.routes().find((candidate) => candidate.path === entry.pattern);
     const definition = await route?.renderPage.getRouteDefinition?.();
     if (!route || !definition)
-      return { ok: false, reason: "error", message: `Prompt "${input.name}" lost its route between listing and run.` };
+      return refused({
+        ok: false,
+        reason: "error",
+        message: `Prompt "${input.name}" lost its route between listing and run.`,
+      });
     const params = Object.fromEntries(
       RscPagePrompts.#pathParams(entry.pattern).flatMap((name) =>
         input.arguments[name] === undefined ? [] : [[name, input.arguments[name]]],
@@ -59,10 +85,14 @@ export class RscPagePrompts {
     try {
       resolved = definition.resolveArgs({ params, searchParams }, { strict: true });
     } catch (error) {
-      return { ok: false, reason: "argument", message: error instanceof Error ? error.message : String(error) };
+      return refused({
+        ok: false,
+        reason: "argument",
+        message: error instanceof Error ? error.message : String(error),
+      });
     }
     const lang = input.language ?? this.#props.defaultLocale();
-    const url = RscPagePrompts.#urlOf(entry.pattern, { ...params, lang }, searchParams);
+    const url = RscPagePrompts.urlOf(entry.pattern, { ...params, lang }, searchParams);
     const request = new Request(url, { headers: input.headers });
     return await this.#render(request, route.path, async () => {
       const props = {
@@ -72,20 +102,36 @@ export class RscPagePrompts {
       const renders = RscPagePrompts.#rendersOf(route);
       //? A guard's own reads decide who may see the screen and are no part of it, so the records start after them.
       let guardReads = 0;
+      let element: ReactNode = null;
       try {
         await RscPagePrompts.#scoped(entry, () => RouteGuards.run(renders, props));
         guardReads = getRequestStore()?.queryLog.length ?? 0;
         //? An app runs its load alone: no layout body and no `.render()`, so the snapshot holds only what it draws.
-        if (entry.kind === "app") await (definition as PageDefinition).loadApp(entry.name, { lang, ...resolved });
+        if (entry.kind === "app")
+          element = await (definition as PageDefinition).loadApp(entry.name, { lang, ...resolved });
         else for (const render of renders) await render.render({ ...props, children: null } as never);
       } catch (error) {
-        return RscPagePrompts.#refusal(error);
+        return refused(RscPagePrompts.#refusal(error));
       }
       const records = await Promise.all(
         (getRequestStore()?.queryLog ?? []).slice(guardReads).map(RscPagePrompts.#settle),
       );
-      return { ok: true, url, records, route: props };
+      const run: PagePromptRun = { ok: true, url, records, route: props };
+      if (!draw || entry.kind !== "app" || !entry.static) return { run, drawn: null };
+      return { run, drawn: await RscPagePrompts.#drawn(entry, () => draw({ element, route, url, lang })) };
     });
+  }
+
+  //? The tool call stands whatever the drawing does: a failure only leaves the HTML out.
+  static async #drawn<T>(entry: PagePromptEntry, draw: () => Promise<T | null>): Promise<T | null> {
+    try {
+      return await AppScope.run(entry.name, draw);
+    } catch (error) {
+      RscPagePrompts.logger.warn(
+        `static app "${entry.name}" failed to draw: ${error instanceof Error ? (error.stack ?? error.message) : error}`,
+      );
+      return null;
+    }
   }
 
   /** The names whose route guards let this caller see the screen, read with no arguments as a listing has none. */
@@ -97,7 +143,7 @@ export class RscPagePrompts {
       entries.map(async (entry) => {
         const route = routes.find((candidate) => candidate.path === entry.pattern);
         if (!route) return false;
-        const request = new Request(RscPagePrompts.#urlOf(entry.pattern, { lang }, {}), { headers });
+        const request = new Request(RscPagePrompts.urlOf(entry.pattern, { lang }, {}), { headers });
         return await this.#render(request, route.path, () =>
           RscPagePrompts.#scoped(entry, () =>
             RouteGuards.admits(RscPagePrompts.#rendersOf(route), { params: { lang }, searchParams: {} }),
@@ -164,7 +210,7 @@ export class RscPagePrompts {
       .filter(Boolean);
   }
 
-  static #urlOf(pattern: string, params: Record<string, string>, searchParams: Record<string, string | string[]>) {
+  static urlOf(pattern: string, params: Record<string, string>, searchParams: Record<string, string | string[]>) {
     const pathname = pattern
       .split("/")
       .map((part) => (part.startsWith(":") ? encodeURIComponent(params[part.slice(1)] ?? "") : part))

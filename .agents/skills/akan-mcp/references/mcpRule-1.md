@@ -48,6 +48,12 @@ export class FileSlice extends slice(srv.file, {
 - **A view keeps reaching it.** To a host that renders MCP Apps views, an endpoint refused for `mcp: false` alone
   is published with `visibility: ["app"]`: an app's view may call it, the model is never shown it (below). Every
   other refusal still holds there.
+- **`mcp: "agent"` keeps it off `/mcp` and on the in-process agent.** It goes wherever `mcp: false` goes, a slice
+  map key included. `/mcp` neither lists nor runs it and `listingCost` leaves it out, while `AgentToolsRole` and
+  `agentService.loop` list it under the same guards and exclusions. Use it when the listing's size, not the step,
+  keeps an entry off. A lib's slice and the app's keep the narrowest: `false`, then `"agent"`, then listed. Code
+  that reads `signalOption.mcp` to tell whether an entry is listed tests `(mcp ?? true) === true`, never
+  `mcp !== false`.
 - **`mcp: true` is the default and is a no-op**; write it only to say out loud that an entry is deliberately on
   the shelf. It does not override a shape refusal (an `Any` return stays refused) and it cannot publish something
   the guard rules keep out.
@@ -262,8 +268,10 @@ export default page()
   refusal, beside `tooManyRequests` and `internalError`. The code is the one an HTTP caller gets: a domain `Err`'s
   dictionary key (what `Err.is` matches), else the `AkanError`'s own code; a guard's 401 or 403 by its status alone
   (`unauthorized`, `forbidden`), since a guard's own code names its rule as its message does; a crash, or a 5xx whose
-  code this server did not name, by its status (`internalError`). A code is a bounded key or camelCase token, never
-  prose. No host hands `_meta` to the model, so what the model must act on belongs in the dictionary sentence.
+  answer names no bounded code, by its status (`internalError`). A 5xx's text is redacted but its code token is not,
+  and it comes from the error's own JSON when that carries one, which can be a third-party library's. A code is a
+  bounded key or camelCase token, never prose. No host hands `_meta` to the model, so what the model must act on
+  belongs in the dictionary sentence.
 - **Three revisions are spoken**: the modern `2026-07-28` and the legacy `2025-11-25` / `2025-06-18`, which are
   wire-identical over the POST-only surface this implements — a client whose proposal is not listed is told to
   disconnect. An unknown proposal is answered at whichever end of that list it is closer to, and an unimplemented

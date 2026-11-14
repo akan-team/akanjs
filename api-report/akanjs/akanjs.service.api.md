@@ -14,6 +14,10 @@ export type AdaptorCls<Methods = any, InjectMap extends Record<string, InjectInf
     readonly refName: string;
 }>;
 
+export interface AfterCommitOptions {
+    first?: boolean;
+}
+
 export type AgentAccountResolver = (principal: string) => PromiseOrObject<unknown>;
 
 export declare class AgentAccounts {
@@ -28,6 +32,8 @@ export type AgentLoopApproval = "allow" | "defer" | {
 export type AgentLoopApprove = (call: AgentWireToolCall, state: {
     tainted: boolean;
     tool: AgentTool;
+    client?: true;
+    remote?: string;
 }) => PromiseOrObject<AgentLoopApproval>;
 
 export interface AgentLoopBudget {
@@ -36,9 +42,14 @@ export interface AgentLoopBudget {
     wallMs?: number;
 }
 
+export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
+
 export type AgentLoopEvent = {
     type: "awaiting";
     call: AgentWireToolCall;
+    client?: true;
+    question?: true;
+    connect?: string;
 } | {
     type: "compacted";
     replaced: number;
@@ -63,6 +74,7 @@ export type AgentLoopEvent = {
     type: "toolResult";
     result: AgentWireToolResult;
     round: number;
+    view?: AgentLoopView;
 } | {
     type: "usage";
     usage: LlmUsage;
@@ -79,6 +91,11 @@ export interface AgentLoopOptions {
     model?: string;
     maxRounds?: number;
     budget?: AgentLoopBudget;
+    toolkits?: Record<string, AgentLoopToolkit>;
+    remotes?: readonly AgentLoopRemote[];
+    clientTools?: AgentTool[];
+    ask?: boolean;
+    answer?: AgentLoopCallAnswer;
     compact?: {
         at: number;
         keep?: number;
@@ -90,6 +107,17 @@ export interface AgentLoopOptions {
     onMessage?: (message: AgentWireMessage) => PromiseOrObject<void>;
 }
 
+export interface AgentLoopRemote {
+    name: string;
+    description: string;
+    list(): Promise<AgentTool[] | null>;
+    call(tool: string, args: Record<string, unknown>): Promise<AgentLoopRemoteResult>;
+}
+
+export interface AgentLoopRemoteResult extends Omit<AgentWireToolResult, "id" | "name"> {
+    view?: Omit<AgentLoopView, "args" | "remote" | "tool">;
+}
+
 export type AgentLoopRequest = AgentLoopOptions & ({
     account: unknown;
     principal?: undefined;
@@ -99,6 +127,20 @@ export type AgentLoopRequest = AgentLoopOptions & ({
 });
 
 export type AgentLoopStop = "aborted" | "awaiting" | "budget" | "end" | "length" | "maxRounds" | "quota" | "unauthorized";
+
+export interface AgentLoopToolkit {
+    description: string;
+    tools: readonly string[];
+}
+
+export interface AgentLoopView {
+    remote: string;
+    tool: string;
+    args: Record<string, unknown>;
+    href?: string;
+    static?: boolean;
+    resourceUri?: string;
+}
 
 export declare class AgentMeter {
     static usageTimeoutMs: number;
@@ -199,6 +241,8 @@ export interface AgentTurnContext {
     loop?: {
         id: string;
         round: number;
+        client?: true;
+        remote?: true;
     };
     meta?: Record<string, string>;
 }
@@ -246,6 +290,7 @@ export interface AgentWireMessage {
     error?: string;
     summary?: boolean;
     tainted?: boolean;
+    toolkits?: string[];
 }
 
 export interface AgentWireReference {
@@ -268,6 +313,7 @@ export interface AgentWireToolCall {
     id: string;
     name: string;
     args: Record<string, unknown>;
+    argsError?: string;
 }
 
 export interface AgentWireToolResult {
@@ -313,6 +359,7 @@ export type AkanIpcMessage = {
     nonce: string;
     sentAt: number;
     pid?: number;
+    rscWorker?: AkanRscWorkerStatus;
 } | {
     type: "live.change";
     change: LiveChange;
@@ -387,6 +434,7 @@ export type AkanIpcMessage = {
         allowedOrigins: string[];
         enabled: boolean;
     };
+    rscWorker?: AkanRscWorkerStatus;
 } | {
     type: "secret.answer";
     id: string;
@@ -546,6 +594,8 @@ export interface AkanMetricsReport {
     trace?: unknown;
 }
 
+export type AkanRscWorkerStatus = "ready" | "restarting" | "starting" | "stopped" | null;
+
 export interface AkanSqlClient {
     execute(sql: string, params?: Record<string, unknown> | unknown[]): Promise<unknown>;
     prepare(sql: string): AkanSqlStatement;
@@ -607,7 +657,7 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static turnAnswer(answer: AnthropicAnswer): LlmTurnAnswer;
     static usageOf(usage: AnthropicUsage): LlmUsage;
     static stopOf(reason: null | string | undefined, calls: number): LlmTurnAnswer["stop"];
-    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string): Promise<LlmTurnAnswer>;
+    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string, tools?: AgentWireTool[]): Promise<LlmTurnAnswer>;
     static parsedArgs(raw: string): Record<string, unknown>;
 }
 
@@ -721,7 +771,8 @@ export interface DatabaseAdaptor {
     getStore(constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema): DocumentStore;
     stores?(): SqlDocumentStore[];
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
+    transactionKey?(): object | undefined;
     getSearchIndex(): SearchIndex | null;
     openInsight?(): Promise<InsightSession>;
 }
@@ -825,7 +876,7 @@ export interface DocumentDatabaseOwner {
         value: string;
     }[];
     deleteMeta(key: string): Promise<void>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
     transaction?<T>(fn: () => PromiseOrObject<T>): Promise<T>;
     lockSchema?<T>(fn: () => Promise<T>): Promise<T>;
     hasTable?(table: string): Promise<boolean>;
@@ -898,6 +949,7 @@ export interface DocumentStore {
     serialize(doc: DocumentRecord): string;
     deserialize(text: string): any;
     rehydrate<Doc extends DocumentRecord>(doc: Doc): Doc;
+    onWrite?(listener: DocumentWriteListener): () => void;
 }
 
 export declare class DocumentStoreError extends AkanError<DocumentStoreErrorCode> {
@@ -913,6 +965,11 @@ export declare class DocumentTransfer {
     exportTo(dir: string): Promise<TransferReport[]>;
     importFrom(dir: string): Promise<TransferReport[]>;
 }
+
+export type DocumentWriteListener = (written?: {
+    doc: DocumentRecord;
+    previous?: DocumentRecord;
+}) => void;
 
 export interface DownloadRequest {
     path: string;
@@ -1085,6 +1142,34 @@ export interface LiveRegistry {
     sliceCls: Map<string, SliceCls>;
     endpointCls: Map<string, EndpointCls>;
     syncHub: LiveSyncHub;
+}
+
+export declare class LiveRoomLimit {
+    static readonly defaultRoomsPerSocket = 256;
+    static readonly defaultRoomsPerCaller = 2000;
+    static readonly defaultRoomsPerModel = 50000;
+    static configure(setting: LiveRoomLimitSetting): void;
+    static applyEnv(env?: Env): void;
+    static reset(): void;
+    static get roomsPerSocket(): null | number;
+    static get roomsPerCaller(): null | number;
+    static get roomsPerModel(): null | number;
+}
+
+export interface LiveRoomLimitData {
+    limit: number;
+    per: "caller" | "model" | "socket";
+}
+
+export declare class LiveRoomLimitError extends AkanError<"liveRoomLimit", LiveRoomLimitData> {
+    constructor(per: LiveRoomLimitData["per"], limit: number);
+    get forwarded(): boolean;
+}
+
+export interface LiveRoomLimitSetting {
+    roomsPerSocket?: false | number;
+    roomsPerCaller?: false | number;
+    roomsPerModel?: false | number;
 }
 
 export interface LiveRoomRegistration {
@@ -1277,7 +1362,7 @@ export declare class OpenaiDialect {
             part: OpenaiImagePart;
         }[];
     };
-    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string): Promise<LlmTurnAnswer>;
+    static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string, tools?: AgentWireTool[]): Promise<LlmTurnAnswer>;
     static usageOf(usage: OpenaiUsage): LlmUsage;
     static stopOf(finish: null | string | undefined, calls: number): LlmTurnAnswer["stop"];
     static turnAnswer(answer: OpenaiAnswer): LlmTurnAnswer;
@@ -1334,7 +1419,8 @@ export declare class PostgresDatabase extends PostgresDatabase_base implements D
     }[]>;
     deleteMeta(key: string): Promise<void>;
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
+    transactionKey(): object | undefined;
     lockSchema<T>(fn: () => Promise<T>): Promise<T>;
     hasTable(table: string): Promise<boolean>;
     hasValidIndex(name: string): Promise<boolean>;
@@ -1438,6 +1524,10 @@ export declare class ProtobufCompressor extends ProtobufCompressor_base implemen
     decode<T = unknown>(ref: Cls, arrDepth: number, buffer: Buffer, { raw }?: {
         raw?: boolean;
     }): T;
+}
+
+export interface PrunedIndex extends UndeclaredIndex {
+    error?: string;
 }
 
 export interface QueueAdaptor {
@@ -1845,6 +1935,9 @@ export declare class SqlDocumentStore {
     readonly updateCompiler: UpdateCompiler;
     constructor(owner: DocumentDatabaseOwner, constant: ConstantModel, database: DatabaseModel, schema: DocumentSchema, dialect?: SqlDialect);
     ensure(): Promise<void>;
+    onWrite(listener: DocumentWriteListener): () => void;
+    undeclaredIndexes(): Promise<UndeclaredIndex[]>;
+    pruneUndeclaredIndexes(): Promise<PrunedIndex[]>;
     create(data: DocumentRecord, { runSaveHooks }?: WriteHookOptions): Promise<any>;
     createMany(data: DocumentRecord[]): Promise<any[]>;
     clone(data: DocumentRecord & {
@@ -1923,15 +2016,16 @@ export declare class SqliteDatabase extends SqliteDatabase_base implements Datab
     openInsight(): Promise<InsightSession>;
     stores(): SqlDocumentStore[];
     getStore(constant: ConstantModel, database: DatabaseModel, schema: SchemaOf): SqlDocumentStore;
-    getMeta(key: string): string | undefined;
+    getMeta(key: string): Promise<string | undefined>;
     setMeta(key: string, value: string): Promise<void>;
-    listMeta(prefix: string): {
+    listMeta(prefix: string): Promise<{
         key: string;
         value: string;
-    }[];
+    }[]>;
     deleteMeta(key: string): Promise<void>;
     transaction<T>(fn: () => PromiseOrObject<T>): Promise<T>;
-    afterCommit(fn: () => PromiseOrObject<void>): Promise<void>;
+    afterCommit(fn: () => PromiseOrObject<void>, options?: AfterCommitOptions): Promise<void>;
+    transactionKey(): object | undefined;
     checkpoint(mode?: "FULL" | "PASSIVE" | "RESTART" | "TRUNCATE"): void;
     vacuum(): void;
 }
@@ -2009,6 +2103,12 @@ export interface TransferRow {
     _doc: Record<string, unknown>;
 }
 
+export interface UndeclaredIndex {
+    table: string;
+    name: string;
+    unique: boolean;
+}
+
 export interface UploadFromStreamRequest {
     path: string;
     body: ReadableStream;
@@ -2053,7 +2153,7 @@ export declare class WebSocketRedisAdaptor extends WebSocketRedisAdaptor_base im
     onChange(handler: LiveChangeHandler): void;
     setEventHandler(handler: WsRedisEventHandler): void;
     clearEventHandler(): void;
-    onRecovered(handler: () => void): void;
+    onRecovered(handler: (rooms: string[]) => void): void;
     joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, { live }?: WebsocketJoinOption): Promise<void>;
     leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
     leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
@@ -2065,7 +2165,7 @@ export interface WebsocketAdaptor {
     publish(roomId: string, data: unknown, option?: WebsocketPublishOption): void;
     setEventHandler(handler: WsRedisEventHandler): void;
     clearEventHandler(): void;
-    onRecovered?(handler: () => void): void;
+    onRecovered?(handler: (rooms: string[]) => void): void;
     publishChange?(change: LiveChange): void;
     onChange?(handler: LiveChangeHandler): void;
     reportLiveModels?(models: string[]): void;
@@ -2371,7 +2471,7 @@ declare const BullQueue_base: import("..").AdaptorCls<{}, {
 
 declare class BunSqliteClient implements AkanSqlClient {
     readonly db: Database;
-    constructor(db: Database, writeTurn?: SqliteWriteTurn, readerOf?: SqliteReader);
+    constructor(db: Database, writeTurn?: SqliteWriteTurn, readerOf?: SqliteReader, readerLasts?: boolean);
     execute(sql: string, params?: Record<string, unknown> | unknown[]): Promise<unknown>;
     prepare(sql: string): AkanSqlStatement;
     close(): Promise<void>;
@@ -2415,6 +2515,8 @@ type DocumentRecord = Record<string, unknown>;
 declare const EndpointCacheControl_base: import("..").AdaptorCls<{}, {
     cache: import("..").InjectInfo<"plug", import("./cache.adaptor").CacheAdaptor, never, never>;
 }>;
+
+type Env = Record<string, string | undefined>;
 
 type FieldMap = Record<string, {
     getProps: () => Record<string, unknown>;

@@ -1,0 +1,13 @@
+---
+"@akanjs/language": patch
+---
+
+The Akan Graph walks a plug's `export *` chain with its own stack, so a chain thousands of modules deep resolves where it used to throw `Maximum call stack size exceeded` out of the whole graph (Bun at about 10,000 modules, Node at about 1,400). A walk runs once per import path and name in a build. It is skipped when no file along the import path's `export *`s mentions the name, and a package `export *` is checked against the chain's declarations only when there is one. 3,000 plugs of names no module exports, imported from a 300-file `srvkit`, take about 50 ms where they took 1.5 s, and 4,000 through an 8,000-file `srvkit` take about 0.4 s where they took over a minute. A barrel's `export *` targets are deduplicated in linear rather than quadratic time, so 3,000 names, each mentioned in an export of one module of a 3,000-module barrel, take about 8 s where they took 50 s.
+
+A module's own top-level export of a name now binds that name on the walk, so its `export *`s no longer supply it. That counts `export class`, `export function`, `export enum`, `export namespace`, `export import … =`, an exported variable in any declarator or binding pattern (`export const { Stripe } = …`), a local `export { Inner as Stripe }`, and `export { Stripe }` of a default or namespace import. A comment, a string, a namespace's member and `export default` do not count. This matters only when the walk runs: a lib that declares exactly one adaptor of the name still takes that adaptor before any walk, as before.
+
+Ids that change for a saved graph or a Change Map base, where the lib holds no adaptor of the name, or several:
+
+- A plug whose import reaches a module's own export of the name beside an `export *` that would supply it is the unlocated `adaptor:<lib>:<Name>`. It was the id of what the `export *` reached: a package (`adaptor:stripe-sdk:Stripe`), a lib's adaptor, its own or another visible lib's (`adaptor:libs/util:Stripe`, `adaptor:libs/shared:vendor/stripe.ts#Stripe`), or, for a class the graph does not read as an adaptor, the visible same-name adaptor it fell back to.
+- A plug whose name one `export *` of a barrel reaches as a module's own export and another as a package re-export is the unlocated `adaptor:<lib>:<Name>`, where it was `adaptor:<package>:<Name>`: ES modules drop a name two `export *` share, and tsc rejects it.
+- A plug whose import reaches a local binding exported under the plug's name (`class Inner {}` and `export { Inner as Stripe }`) is the unlocated `adaptor:<lib>:<Name>`. The walk used to look for `Inner` through the module's `export *`s, and could name a package's `Inner`.

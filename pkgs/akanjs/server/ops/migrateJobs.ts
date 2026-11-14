@@ -55,7 +55,7 @@ export class MigrateJobs {
       return `id must match ${MigrateJobs.idPattern.source}`;
     if (typeof action !== "string" || !migrationActions.includes(action as MigrationAction))
       return `action must be one of ${migrationActions.join(", ")}`;
-    if ((action === "apply" || action === "rollback") && !actor)
+    if ((action === "apply" || action === "rollback" || action === "prune-indexes") && !actor)
       return `${action} needs the token's sub, the person it runs for`;
     if (target !== undefined && (typeof target !== "string" || !MigrateJobs.targetPattern.test(target)))
       return `target must match ${MigrateJobs.targetPattern.source}`;
@@ -73,7 +73,7 @@ export class MigrateJobs {
       ...entries.map(([name, value]) => `--param=${name}=${value as string}`),
       ...(expect ? [`--expect=${expect}`] : []),
       ...(items === undefined ? [] : [`--items=${items}`]),
-      ...(actor && action !== "list" ? [`--actor=${actor}`] : []),
+      ...(actor && action !== "list" && action !== "indexes" ? [`--actor=${actor}`] : []),
       "--json",
     ];
     return { id, action: action as MigrationAction, argv };

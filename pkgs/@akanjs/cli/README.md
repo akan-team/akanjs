@@ -26,6 +26,13 @@ bun install -g @akanjs/cli
 akan --help
 ```
 
+For a workspace that already exists, install the CLI at the version of `akanjs` it depends on. A CLI of another
+major or minor version refuses to write to it until `akan update` moves both:
+
+```bash
+v="$(bun -e "const p=require('./package.json'),v=p.dependencies?.akanjs??p.devDependencies?.akanjs;if(!v){console.error('package.json lists no akanjs in dependencies or devDependencies');process.exit(1)}console.log(v)")" && bun install -g "@akanjs/cli@$v"
+```
+
 ## Everyday Commands
 
 ```bash

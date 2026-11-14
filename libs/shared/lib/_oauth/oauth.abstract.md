@@ -31,11 +31,12 @@ metadata, authorization with PKCE and a consent page, client registration, token
   stateless token dies early. A denylist entry's expiry only grows: a later, shorter mark never ends a longer one.
   When the denylist cannot answer, a user's token lives and an admin's (`me`) is refused, with a warning each time. Revocation answers 200 whether or not the token was live, so it cannot be used to probe tokens.
 - A token this server minted names its client and the MCP resource; a browser session names neither. That difference is
-  what `isAgentCall` / `Person` read to keep an act a person may take from being taken on a model's say-so. Off `/mcp`, a
-  token of a client this server registers (dynamic, metadata-document or configured) is refused 403
-  `shared.error.agentTokenNotAllowed` at an `mcp: false` endpoint, or one the app names in `offShelfEndpoints` (the
-  same list it hands `setMcp({ excludeEndpoints })`, which the server keeps private), unless a `Person`-style guard
-  already refuses it; a token an app mints for its own client (angelo's runner) is left to that app's policy.
+  what `isAgentCall` / `Person` read to keep an act a person may take from being taken on a model's say-so. Off `/mcp`,
+  a token of a client this server registers (dynamic, metadata-document or configured) is refused 403
+  `shared.error.agentTokenNotAllowed` at an `mcp: false` or `mcp: "agent"` endpoint (a slice's per-verb value included),
+  or one the app names in `offShelfEndpoints` (the same list it hands `setMcp({ excludeEndpoints })`, which the server
+  keeps private), unless a `Person`-style guard already refuses it; a token an app mints for its own client (angelo's
+  runner) is left to that app's policy.
 - Approving, denying, viewing a consent request and disconnecting an app take `Person`: an agent's own token can never
   grant itself, or another client, access.
 - None of these endpoints is published to MCP: they are the protocol and the account's own controls, not tools.

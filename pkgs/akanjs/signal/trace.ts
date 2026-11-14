@@ -9,6 +9,8 @@ import {
   registerLogContextReader,
   round,
 } from "akanjs/common";
+import { markFailureLogged } from "../common/loggedFailure";
+import { SignalFailure } from "./SignalFailure";
 
 let traceEnabledCache: boolean | null = null;
 let logContextEnabledCache: boolean | null = null;
@@ -99,6 +101,19 @@ export type TraceOutcome = "ok" | "error";
 const MAX_SPANS_PER_TRACE = 64;
 const FLIGHT_RING_SIZE = 64;
 const CANONICAL_ERROR_CHARS = 200;
+
+const requestLineName = "Signal";
+
+export const isRequestLine = (record: LogRecord): boolean =>
+  record.name === requestLineName && typeof record.attrs?.status === "number";
+
+//? A page's `redirect()` and `notFound()` arrive as throws, but the host answers them with a 3xx and a 404.
+const routeControlStatus = (error: unknown): number | null => {
+  const { digest, status } = (error ?? {}) as { digest?: unknown; status?: unknown };
+  if (digest === "AKAN_NOT_FOUND") return 404;
+  if (typeof digest !== "string" || !digest.startsWith("AKAN_REDIRECT")) return null;
+  return typeof status === "number" ? status : 307;
+};
 
 interface FlightEntry {
   record: LogRecord;
@@ -229,10 +244,9 @@ export class SignalTrace {
   }
 
   fail(error: unknown): void {
-    this.outcome = "error";
     this.error = error;
-    const statusCode = (error as { statusCode?: unknown } | null)?.statusCode;
-    this.status = typeof statusCode === "number" ? statusCode : 500;
+    this.status = (this.origin === "page" ? routeControlStatus(error) : null) ?? SignalFailure.statusOf(error);
+    this.outcome = this.status < 400 ? "ok" : "error";
   }
 
   finalize(): void {
@@ -283,10 +297,15 @@ export class SignalTrace {
       const lookups = this.cacheHits + this.cacheMisses;
       if (lookups) attrs.cacheHit = Math.round((this.cacheHits / lookups) * 100) / 100;
     }
+    const crashed = failed && (this.status ?? 200) >= 500;
     if (failed) attrs.err = SignalTrace.#describeError(this.error);
+    if (crashed) {
+      Object.assign(attrs, SignalFailure.logAttrs(this.error));
+      markFailureLogged(this.error);
+    }
     Logger.emit({
-      level: failed ? "warn" : "info",
-      name: "Signal",
+      level: crashed ? "error" : failed ? "warn" : "info",
+      name: requestLineName,
       message: `${this.outcome} ${this.endpoint}`,
       attrs,
     });
@@ -310,6 +329,24 @@ traceProcessStore.__akanTraceAls ??= new AsyncLocalStorage<SignalTrace>();
 const als = traceProcessStore.__akanTraceAls;
 
 export const getCurrentTrace = (): SignalTrace | undefined => als.getStore();
+
+interface CrashLine {
+  name: string;
+  label: string;
+  error: unknown;
+  status: number;
+}
+//? A failed call always writes its canonical line when the mode is on, so a 5xx is told there and only there.
+export const logCrash = (trace: SignalTrace | null, { name, label, error, status }: CrashLine): void => {
+  if (trace && getCanonicalLineMode() !== "off") return;
+  const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
+  Logger.emit({
+    level: "error",
+    name,
+    message: `Error ${label}: ${message}`,
+    attrs: { status, ...SignalFailure.logAttrs(error) },
+  });
+};
 
 /** Finalizes `trace` after the caller's own catch has run, which is what lets an error log carry the traceId. */
 export const runTraced = async <T>(trace: SignalTrace | null, fn: () => Promise<T>): Promise<T> => {

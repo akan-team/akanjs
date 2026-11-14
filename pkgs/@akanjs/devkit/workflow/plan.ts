@@ -2,12 +2,13 @@ import { capitalize } from "akanjs/common";
 import type { Sys, Workspace } from "../commandDecorators";
 import { withoutApplyHints, workflowPlanApproval } from "./artifacts";
 import { resolveWorkflowSys } from "./executor";
+import { coerceFieldDefault, normalizeFieldType } from "./fieldExpression";
 import { fieldTypeSource } from "./fieldType";
 import { InteractionScaffold } from "./interactionScaffold";
 import { KeyRename } from "./keyRename";
+import { getSysRoot, moduleSourcePaths } from "./modulePaths";
 import { MutationScaffold } from "./mutationScaffold";
 import { identifierPattern, sysNamePattern } from "./plainName";
-import { coerceFieldDefault, getSysRoot, moduleSourcePaths, normalizeFieldType } from "./source";
 import type {
   WorkflowDiagnostic,
   WorkflowInputSpec,

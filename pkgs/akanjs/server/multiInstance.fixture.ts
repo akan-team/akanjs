@@ -55,7 +55,7 @@ class CrossItemSlice extends slice(
   crossItemServiceModel,
   { guards: { root: Public, get: Public, cru: Public } },
   (init) => ({
-    inCategory: init()
+    inCategory: init({ guards: [Public] })
       .param("category", String)
       .live()
       .exec(function (category) {

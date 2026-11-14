@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { joinBytes, rowShapedText, textRow } from "./flightRows.fixture";
+import { joinBytes, rowShapedText, streamOfChunks, textRow } from "./flightRows.fixture";
 import {
   AKAN_RSC_RESPONSE_STATE_HEADER,
   type AkanHeadSnapshotV1,
@@ -9,6 +9,10 @@ import {
 import { validateRscPatchAndRequestFullFallback, validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import { RSC_CONTENT_TYPE } from "./rscHttp";
 import { makePatch, makeRouterState, makeTreeOf } from "./rscNavigation.fixture";
+
+//? RSDW's browser client reads `__webpack_require__.u` as its module loads.
+Object.assign(globalThis, { __webpack_require__: Object.assign(() => ({}), { u: () => "" }) });
+const { createFromReadableStream } = await import("react-server-dom-webpack/client.browser");
 
 function makeHeadSnapshot(title = "API"): AkanHeadSnapshotV1 {
   return { version: 1, nodes: [{ tag: "title", text: title }] };
@@ -43,8 +47,8 @@ describe("rscClient patch fallback flow", () => {
       currentTree,
       navId: 7,
       getCurrentNavId: () => 7,
-      createThenable: (stream) =>
-        new Response(stream).text().then((text) => {
+      createThenable: (rows) =>
+        new Response(rows()).text().then((text) => {
           decodedPatchPayload = text;
           return "api";
         }),
@@ -85,8 +89,8 @@ describe("rscClient patch fallback flow", () => {
       response: new Response(textStream("patch flight"), { headers: { "Content-Type": RSC_CONTENT_TYPE } }),
       patch: makePatch("/docs/api"),
       currentTree: null,
-      createThenable: (stream) =>
-        new Response(stream).text().then((text) => {
+      createThenable: (rows) =>
+        new Response(rows()).text().then((text) => {
           decodedPatchPayload = text;
           return "api";
         }),
@@ -108,7 +112,7 @@ describe("rscClient patch fallback flow", () => {
       response,
       patch: { ...makePatch("/docs/api"), headSafe: true, headSnapshot: makeHeadSnapshot() },
       currentTree,
-      createThenable: (stream) => new Response(stream).text().then(() => "api"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
     });
 
     expect(result).toEqual({ status: "rejected", reason: "outlet-missing" });
@@ -131,7 +135,7 @@ describe("rscClient patch fallback flow", () => {
         response,
         patch: { ...makePatch("/docs/api"), headSafe: true, headSnapshot: makeHeadSnapshot() },
         currentTree,
-        createThenable: (stream) => new Response(stream).text().then(() => "api"),
+        createThenable: (rows) => new Response(rows()).text().then(() => "api"),
       });
 
       expect(result.status).toBe("patched");
@@ -162,7 +166,7 @@ describe("rscClient patch fallback flow", () => {
         response,
         patch: { ...makePatch("/docs"), headSafe: true, headSnapshot: makeHeadSnapshot("Docs page 2") },
         currentTree,
-        createThenable: (stream) => new Response(stream).text().then(() => "page 2"),
+        createThenable: (rows) => new Response(rows()).text().then(() => "page 2"),
       });
 
       expect(result.status).toBe("patched");
@@ -185,8 +189,8 @@ describe("rscClient patch fallback flow", () => {
       response: new Response(textStream("patch flight"), { headers: { "Content-Type": RSC_CONTENT_TYPE } }),
       patch: makePatch("/docs/api"),
       currentTree: null,
-      createThenable: (stream) =>
-        new Response(stream).text().then((text) => {
+      createThenable: (rows) =>
+        new Response(rows()).text().then((text) => {
           decodedPatchPayload = text;
           return "api";
         }),
@@ -203,7 +207,7 @@ describe("rscClient patch fallback flow", () => {
       response: new Response(textStream("patch flight"), { headers: { "Content-Type": RSC_CONTENT_TYPE } }),
       patch: { ...makePatch("/docs/api"), headSafe: true },
       currentTree: null,
-      createThenable: (stream) => new Response(stream).text().then(() => "api"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
     });
     const invalidResult = await validateRscPatchForGuardedCommit({
       partialCommitEnabled: true,
@@ -211,7 +215,7 @@ describe("rscClient patch fallback flow", () => {
       response: new Response(textStream("patch flight"), { headers: { "Content-Type": RSC_CONTENT_TYPE } }),
       patch: { ...makePatch("/docs/api"), headSafe: true, headSnapshotFailure: "head-invalid" },
       currentTree: null,
-      createThenable: (stream) => new Response(stream).text().then(() => "api"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
     });
 
     expect(missingResult).toEqual({ status: "rejected", reason: "head-missing" });
@@ -229,7 +233,7 @@ describe("rscClient patch fallback flow", () => {
       response: patchResponse('a:E{"digest":"AKAN_REDIRECT;push;307;%2Flogin","name":"Error"}\n', targetState),
       patch: { ...makePatch("/docs/api"), headSafe: true, headSnapshot: makeHeadSnapshot() },
       currentTree,
-      createThenable: (stream) => new Response(stream).text().then(() => "api"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
     });
     const errorResult = await validateRscPatchForGuardedCommit({
       partialCommitEnabled: true,
@@ -237,11 +241,49 @@ describe("rscClient patch fallback flow", () => {
       response: patchResponse('b:E{"digest":"AKAN_RENDER_ERROR","name":"Error","message":"Boom"}\n', targetState),
       patch: { ...makePatch("/docs/api"), headSafe: true, headSnapshot: makeHeadSnapshot() },
       currentTree,
-      createThenable: (stream) => new Response(stream).text().then(() => "api"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
     });
 
     expect(redirectResult).toEqual({ status: "rejected", reason: "redirect-in-patch" });
     expect(errorResult).toEqual({ status: "rejected", reason: "error-in-patch" });
+  });
+
+  test.each([
+    ["redirect", "redirect-in-patch" as const, { digest: "AKAN_REDIRECT;push;307;%2Flogin", name: "Error" }],
+    ["error", "error-in-patch" as const, { digest: "AKAN_RENDER_ERROR", name: "Error", message: "Boom" }],
+  ])("rejects a patch whose %s row comes in a chunk after its root row's", async (_, reason, error) => {
+    const currentState = makeRouterState("https://example.test/docs/intro", "/docs/intro");
+    const targetState = makeRouterState("https://example.test/docs/api", "/docs/api");
+    const chunks = ['0:["$","main",null,{"children":"$L1"}]\n', `1:E${JSON.stringify(error)}\n`];
+
+    const result = await validateRscPatchForGuardedCommit({
+      partialCommitEnabled: true,
+      href: targetState.href,
+      response: new Response(streamOfChunks(chunks.map((rows) => new TextEncoder().encode(rows))), {
+        headers: patchResponse("", targetState).headers,
+      }),
+      patch: { ...makePatch("/docs/api"), headSafe: true, headSnapshot: makeHeadSnapshot() },
+      currentTree: makeTreeOf(currentState, "intro"),
+      createThenable: (rows) => createFromReadableStream(rows()),
+    });
+
+    expect(result).toEqual({ status: "rejected", reason });
+  });
+
+  test("keeps a patch whose stream carries React's dev-only error row with an empty digest", async () => {
+    const currentState = makeRouterState("https://example.test/docs/intro", "/docs/intro");
+    const targetState = makeRouterState("https://example.test/docs/api", "/docs/api");
+    const debugRow = { digest: "", name: "Error", message: "caught", stack: [], env: "Server", owner: null };
+
+    const result = await validateRscPatchAndRequestFullFallback({
+      href: targetState.href,
+      response: patchResponse(`0:"api"\n1:E${JSON.stringify(debugRow)}\n`, targetState),
+      patch: makePatch("/docs/api"),
+      currentTree: makeTreeOf(currentState, "intro"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
+    });
+
+    expect(result.patchResult.status).toBe("patched");
   });
 
   test("keeps a patch whose long text holds lines shaped like redirect or error rows", async () => {
@@ -254,7 +296,7 @@ describe("rscClient patch fallback flow", () => {
       response: patchResponse(body, targetState),
       patch: makePatch("/docs/api"),
       currentTree: makeTreeOf(currentState, "intro"),
-      createThenable: (stream) => new Response(stream).text().then(() => "api"),
+      createThenable: (rows) => new Response(rows()).text().then(() => "api"),
     });
 
     expect(result.patchResult.status).toBe("patched");

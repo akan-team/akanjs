@@ -57,9 +57,8 @@ export class BuilderRequestRelay {
     // A returning builder is a gap, not a failure: hold the request (`BuilderRpc`'s timeout still bounds it).
     if (shouldHoldForReturningBuilder({ status, heldCount: this.#held.length })) {
       this.#held.push(message);
-      this.#logger.verbose(
-        `[builder] holding ${message.type} until the builder is ready (${this.#held.length} waiting)`,
-      );
+      const request = message.type === "build-route" ? `build-route ${message.routeId}` : message.type;
+      this.#logger.verbose(`[builder] holding ${request} until the builder is ready (${this.#held.length} waiting)`);
       return;
     }
     if (this.#failRequest(message, `builder is ${status}; reload after the builder is ready`)) return;

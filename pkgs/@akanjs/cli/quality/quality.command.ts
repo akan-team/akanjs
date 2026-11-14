@@ -2,7 +2,10 @@ import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { QualityScript } from "./quality.script";
 
 export class QualityCommand extends command("quality", [QualityScript], ({ public: target }) => ({
-  quality: target({ desc: "Scan apps and libs for Akan code quality warnings" })
+  quality: target({
+    desc: "Scan apps and libs for Akan code quality warnings",
+    readOnly: ({ action }) => action !== "baseline",
+  })
     .arg("action", String, { desc: "quality action", default: "scan", enum: ["scan", "ssr", "baseline"] })
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .option("force", Boolean, { flag: "F", desc: "baseline: rewrite an existing akan.baseline.json", default: false })

@@ -47,6 +47,7 @@ export interface RoutePromptMeta {
   name: string;
   description: string;
   arguments: RoutePromptArgument[];
+  static?: boolean;
 }
 
 export class RouteArgError extends Error {

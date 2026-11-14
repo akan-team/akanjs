@@ -29,6 +29,7 @@ export class HmrWatcher {
   readonly #hinted = new Set<string>();
   readonly #classifier = new HmrChangeClassifier();
   readonly #index: SourceMtimeIndex;
+  readonly #scans = new Set<Promise<void>>();
   #timer: ReturnType<typeof setTimeout> | null = null;
   #verifyTimer: ReturnType<typeof setTimeout> | null = null;
   #windowStartedAt: number | null = null;
@@ -98,6 +99,18 @@ export class HmrWatcher {
     }
   }
 
+  //? A scan stop() interrupts keeps its finds unreported, and the scan has already moved their mtime baseline.
+  async close(): Promise<ChangeBatch | null> {
+    this.stop();
+    await Promise.all(this.#scans);
+    await this.#mergeDetectedChanges();
+    if (this.#pending.size === 0) return null;
+    const batch = { files: Array.from(this.#pending.keys()), kinds: new Set(this.#pending.values()) };
+    this.#pending.clear();
+    this.#hinted.clear();
+    return batch;
+  }
+
   /** Baseline the batch handler's own writes so the verification scan does not rebuild them a second time. */
   async absorb(paths: string[]): Promise<void> {
     if (paths.length === 0) return;
@@ -143,6 +156,8 @@ export class HmrWatcher {
     try {
       while (!this.#stopped) {
         await this.#mergeDetectedChanges();
+        //? stop() can land while the scan runs; a batch handed over after it reaches an owner that has moved on.
+        if (this.#stopped) break;
         if (this.#pending.size === 0) {
           this.#windowStartedAt = null;
           break;
@@ -167,7 +182,13 @@ export class HmrWatcher {
     }
   }
 
-  async #mergeDetectedChanges(): Promise<void> {
+  #mergeDetectedChanges(): Promise<void> {
+    const scan = this.#collectDetectedChanges().finally(() => this.#scans.delete(scan));
+    this.#scans.add(scan);
+    return scan;
+  }
+
+  async #collectDetectedChanges(): Promise<void> {
     const detected = await this.#index.collectChanges().catch((err) => {
       this.#logger.error(`[hmr] mtime scan failed: ${(err as Error).message}`);
       return [] as string[];

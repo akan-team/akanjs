@@ -1,6 +1,8 @@
 // `use-agentic` is re-exported because an app may not import that package directly (no-import-external-library).
 export { type AgentReferenceInput, useAgentReference } from "akanjs/store";
 export {
+  type AgentClientToolDefinition,
+  AgentClientTools,
   AgentProvider,
   type AgentProviderProps,
   type AgentRunner,
@@ -19,6 +21,8 @@ export {
   SessionContext,
   type SessionHistory,
   type SurfaceView,
+  type ToolApprovalRequest,
+  type ToolRunnerHost,
   useAgent,
 } from "use-agentic";
 export { Agent } from "./Agent";
@@ -55,6 +59,7 @@ export {
 } from "./Agent/Refer";
 export { DefaultSteps, type StepsProps } from "./Agent/Steps";
 export { DefaultToolCard, type ToolCardProps } from "./Agent/ToolCard";
+export { DefaultToolRow, type ToolRowProps } from "./Agent/ToolRow";
 export { tokenCount } from "./Agent/tokenCount";
 export type { QueuedMessage } from "./Agent/useChatQueue";
 export type { ReferenceCandidate, ReferenceSource } from "./Agent/useReferenceMenu";

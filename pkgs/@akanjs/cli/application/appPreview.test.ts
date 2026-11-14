@@ -1,14 +1,29 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { App } from "@akanjs/devkit/commandDecorators";
 import type { AppRouteSource } from "@akanjs/devkit/executors";
 import { PreviewView } from "@akanjs/devkit/preview";
-import type { LogRecord } from "akanjs/common";
+import type { AkanLocalePrefix, LogRecord } from "akanjs/common";
 import { AppPreview, type AppPreviewPage, type AppPreviewReport } from "./appPreview";
 
 const i18n = { defaultLocale: "en", locales: ["en", "ko"] };
+const dev = "http://localhost:8282";
+
+type I18n = typeof i18n & { localePrefix?: AkanLocalePrefix };
+
+const appOf = (cwdPath: string, config: I18n = i18n, prefix = "/api") =>
+  ({
+    name: "demo",
+    cwdPath,
+    getConfig: async () => ({ i18n: config, api: { prefix } }),
+  }) as unknown as App;
+
+const pathsOf = async (
+  paths: string[],
+  { csr = false, config = i18n, prefix = "/api", root = "/nowhere", pages = [] as string[] } = {},
+) => (await AppPreview.planOf(appOf(root, config, prefix), { paths, csr }, { paths: pages, skipped: [] }, dev)).paths;
 
 const pageOf = (overrides: Partial<AppPreviewPage> = {}): AppPreviewPage => ({
   path: "/en/board",
@@ -33,47 +48,46 @@ const pageOf = (overrides: Partial<AppPreviewPage> = {}): AppPreviewPage => ({
 const recordOf = (name: string, message: string, attrs: Record<string, unknown> = {}) =>
   ({ name, message, attrs, level: "error" }) as unknown as LogRecord;
 
-describe("AppPreview.pagePaths", () => {
-  test("adds the default locale where a path has none and keeps one that does", () => {
-    expect(AppPreview.pagePaths([], i18n, { csr: false })).toEqual(["/en/"]);
-    expect(AppPreview.pagePaths(["/board", "ko/board", "/en/board?tab=2", "/board"], i18n, { csr: false })).toEqual([
+describe("AppPreview path rules", () => {
+  test("adds the default locale where a path has none and keeps one that does", async () => {
+    expect(await pathsOf([])).toEqual(["/en/"]);
+    expect(await pathsOf(["/board", "ko/board", "/en/board?tab=2", "/board"])).toEqual([
       "/en/board",
       "/ko/board",
       "/en/board?tab=2",
     ]);
   });
 
-  test('keeps an unprefixed path under localePrefix "as-needed", which serves the default locale there', () => {
-    const asNeeded = { ...i18n, localePrefix: "as-needed" as const };
-    expect(AppPreview.pagePaths([], asNeeded, { csr: false })).toEqual(["/"]);
-    expect(AppPreview.pagePaths(["/board", "/ko/board"], asNeeded, { csr: false })).toEqual(["/board", "/ko/board"]);
-    expect(AppPreview.pagePaths(["/board"], asNeeded, { csr: true })).toEqual([
-      "/en/board?csr=true&akanMobileTarget=preview",
+  test('keeps an unprefixed path under localePrefix "as-needed", which serves the default locale there', async () => {
+    const config = { ...i18n, localePrefix: "as-needed" as const };
+    expect(await pathsOf([], { config })).toEqual(["/"]);
+    expect(await pathsOf(["/board", "/ko/board"], { config })).toEqual(["/board", "/ko/board"]);
+    expect(await pathsOf(["/board"], { config, csr: true })).toEqual(["/en/board?csr=true&akanMobileTarget=preview"]);
+  });
+
+  test("opens a full URL's path exactly as written, the way to reach a route the rules do not know", async () => {
+    expect(await pathsOf([`${dev}/oauth/authorize?client_id=a`, `${dev}/board`], { csr: true })).toEqual([
+      "/oauth/authorize?client_id=a",
+      "/board",
+    ]);
+    expect(await pathsOf(["HTTP://localhost:8282/oauth/token", "Https://localhost:8282/x"])).toEqual([
+      "/oauth/token",
+      "/x",
     ]);
   });
 
-  test("opens a full URL's path exactly as written, the way to reach a route the rules do not know", () => {
-    expect(
-      AppPreview.pagePaths(["http://localhost:8282/oauth/authorize?client_id=a", "http://localhost:8282/board"], i18n, {
-        csr: true,
-      }),
-    ).toEqual(["/oauth/authorize?client_id=a", "/board"]);
-  });
-
-  test("keeps a path that starts with // on the dev server instead of reading it as another host", () => {
-    expect(
-      AppPreview.pagePaths(["http://localhost:8282//example.com/x?a=1", "//example.com/board"], i18n, { csr: false }),
-    ).toEqual(["/example.com/x?a=1", "/en/example.com/board"]);
+  test("keeps a path that starts with // on the dev server instead of reading it as another host", async () => {
+    expect(await pathsOf([`${dev}//example.com/x?a=1`, "//example.com/board"])).toEqual([
+      "/example.com/x?a=1",
+      "/en/example.com/board",
+    ]);
     expect(AppPreview.probeUrlOf("http://localhost:8282", "//example.com/x").origin).toBe("http://localhost:8282");
     expect(AppPreview.probeUrlOf("http://localhost:8282", "board").href).toBe("http://localhost:8282/board");
   });
 
-  test("gives every route-derived page the locale, even one that shares a server route's path", () => {
-    expect(AppPreview.pagePaths([], i18n, { csr: false, pages: ["/openapi.json", "/board"] })).toEqual([
-      "/en/openapi.json",
-      "/en/board",
-    ]);
-    expect(AppPreview.pagePaths(["/openapi.json"], i18n, { csr: true, pages: ["/openapi.json"] })).toEqual([
+  test("gives every route-derived page the locale, even one that shares a server route's path", async () => {
+    expect(await pathsOf([], { pages: ["/openapi.json", "/board"] })).toEqual(["/en/openapi.json", "/en/board"]);
+    expect(await pathsOf(["/openapi.json"], { csr: true, pages: ["/openapi.json"] })).toEqual([
       "/openapi.json",
       "/en/openapi.json?csr=true&akanMobileTarget=preview",
     ]);
@@ -101,8 +115,7 @@ describe("AppPreview.pagePaths", () => {
         "/_akanish",
         "/board",
       ];
-      const opts = { csr: true, apiPrefix: "/backend", publicDir: path.join(root, "public") };
-      expect(AppPreview.pagePaths(paths, i18n, opts)).toEqual([
+      expect(await pathsOf(paths, { csr: true, prefix: "/backend", root })).toEqual([
         "/_akan/studio",
         "/_akan/studio?view=runtime",
         "/__rsc/board",
@@ -123,14 +136,48 @@ describe("AppPreview.pagePaths", () => {
     } finally {
       await rm(root, { recursive: true, force: true });
     }
-    expect(AppPreview.pagePaths(["/api/memo", "/apidocs"], i18n, { csr: false })).toEqual(["/api/memo", "/en/apidocs"]);
+    expect(await pathsOf(["/api/memo", "/apidocs"])).toEqual(["/api/memo", "/en/apidocs"]);
   });
 
-  test("keeps a page whose last segment has a dot a page", () => {
-    expect(AppPreview.pagePaths(["/release/1.2.3", "/user/a@b.com", "/docs/robots.txt"], i18n, { csr: false })).toEqual(
-      ["/en/release/1.2.3", "/en/user/a@b.com", "/en/docs/robots.txt"],
-    );
-    expect(AppPreview.pagePaths(["/en/release/1.2.3", "/en/favicon.ico"], i18n, { csr: true })).toEqual([
+  test("reads a path that ends in a slash as a page outside the framework prefixes, as the server does", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-preview-slash-"));
+    try {
+      await Bun.write(path.join(root, "public/logo.png"), "png");
+      const paths = [
+        "/openapi.json/",
+        "/mcp/",
+        "/favicon.ico/",
+        "/robots.txt/",
+        "/shop/manifest.webmanifest/",
+        "/logo.png/",
+        "/_akan/studio/",
+        "/api/memo/",
+        "/board/",
+      ];
+      const boot = "?csr=true&akanMobileTarget=preview";
+      expect(await pathsOf(paths, { csr: true, root })).toEqual([
+        `/en/openapi.json/${boot}`,
+        `/en/mcp/${boot}`,
+        `/en/favicon.ico/${boot}`,
+        `/en/robots.txt/${boot}`,
+        `/en/shop/manifest.webmanifest/${boot}`,
+        `/en/logo.png/${boot}`,
+        "/_akan/studio/",
+        "/api/memo/",
+        `/en/board/${boot}`,
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("keeps a page whose last segment has a dot a page", async () => {
+    expect(await pathsOf(["/release/1.2.3", "/user/a@b.com", "/docs/robots.txt"])).toEqual([
+      "/en/release/1.2.3",
+      "/en/user/a@b.com",
+      "/en/docs/robots.txt",
+    ]);
+    expect(await pathsOf(["/en/release/1.2.3", "/en/favicon.ico"], { csr: true })).toEqual([
       "/en/release/1.2.3?csr=true&akanMobileTarget=preview",
       "/en/favicon.ico?csr=true&akanMobileTarget=preview",
     ]);
@@ -148,7 +195,8 @@ describe("AppPreview.pagePaths", () => {
     expect(AppPreview.screenshotName("/en/board?tab=a/b&csr=true&akanMobileTarget=preview")).toMatch(
       /^en-board\.tab-a_b-\w{1,6}\.csr\.png$/,
     );
-    const queries = ["", "?csr=1", "?csr=true", "?a=b+c", "?a=b%20c", "?view=runtime", "?view=signals", "?a=b&c=d"];
+    const boot = ["?csr=true&akanMobileTarget=preview", "?akanMobileTarget=preview", "?csr=true", "?csr=1"];
+    const queries = ["", ...boot, "?a=b+c", "?a=b%20c", "?view=runtime", "?view=signals", "?a=b&c=d"];
     const names = [...queries, "?a=b-c-d", "?a-b=c-d", "?q=사과", "?q=포도"].map((query) =>
       AppPreview.screenshotName(`/x${query}`),
     );
@@ -163,16 +211,12 @@ describe("AppPreview.pagePaths", () => {
 });
 
 describe("AppPreview.planOf", () => {
-  const dev = "http://localhost:8282";
-  const appOf = (cwdPath: string, config: Parameters<typeof AppPreview.pagePaths>[1] = i18n) =>
-    ({
-      name: "demo",
-      cwdPath,
-      getConfig: async () => ({ i18n: config, api: { prefix: "/backend" } }),
-    }) as unknown as App;
   const none = { paths: [] as string[], skipped: [] as string[] };
-  const planOf = (options: Parameters<typeof AppPreview.planOf>[1], changed = none, app = appOf("/nowhere")) =>
-    AppPreview.planOf(app, options, changed, dev);
+  const planOf = (
+    options: Parameters<typeof AppPreview.planOf>[1],
+    changed = none,
+    app = appOf("/nowhere", i18n, "/backend"),
+  ) => AppPreview.planOf(app, options, changed, dev);
 
   test("reads the app's API prefix and public/ for the paths it opens as written", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akan-preview-app-"));
@@ -181,7 +225,7 @@ describe("AppPreview.planOf", () => {
       const plan = await planOf(
         { paths: ["/backend/memo", "/logo.png", "/board", "/mcp"], changed: true },
         { paths: ["/openapi.json"], skipped: [] },
-        appOf(root),
+        appOf(root, i18n, "/backend"),
       );
       expect(plan).toEqual({
         paths: ["/backend/memo", "/logo.png", "/en/board", "/mcp", "/en/openapi.json"],
@@ -194,7 +238,7 @@ describe("AppPreview.planOf", () => {
 
   test("opens a page --changed finds as a page, unprefixed only under as-needed without --csr", async () => {
     const changed = { paths: ["/board"], skipped: [] };
-    const asNeeded = appOf("/nowhere", { ...i18n, localePrefix: "as-needed" as const });
+    const asNeeded = appOf("/nowhere", { ...i18n, localePrefix: "as-needed" as const }, "/backend");
     expect((await planOf({ changed: true }, changed)).paths).toEqual(["/en/board"]);
     expect((await planOf({ changed: true }, changed, asNeeded)).paths).toEqual(["/board"]);
     expect((await planOf({ changed: true, csr: true }, changed, asNeeded)).paths).toEqual([
@@ -209,6 +253,33 @@ describe("AppPreview.planOf", () => {
       "/en/board",
       "/en/board?tab=2",
     ]);
+  });
+
+  test("opens once two paths that would write one screenshot, and names the one that folded", async () => {
+    const booted = "/en/board?akanMobileTarget=preview&csr=true";
+    expect(await planOf({ paths: ["/board?akanMobileTarget=preview", "/board"], csr: true })).toEqual({
+      paths: [booted],
+      notes: [`/board opens as ${booted}, which writes the same screenshot.`],
+    });
+    expect(await planOf({ paths: ["/x?a=1&&b=2", "/x?a=1&b=2", "/x?b=2&a=1"] })).toEqual({
+      paths: ["/en/x?a=1&&b=2", "/en/x?b=2&a=1"],
+      notes: ["/x?a=1&b=2 opens as /en/x?a=1&&b=2, which writes the same screenshot."],
+    });
+    expect(await planOf({ paths: ["/board", "/en/board", "/board"] })).toEqual({ paths: ["/en/board"], notes: [] });
+    expect(await planOf({ paths: ["/openapi.json", "/openapi.json/"] })).toEqual({
+      paths: ["/openapi.json", "/en/openapi.json/"],
+      notes: [],
+    });
+  });
+
+  test("names in the --csr note only the rows it opens, not a path that folded into one", async () => {
+    expect(await planOf({ paths: ["/backend/memo", "/backend/memo/", "/board"], csr: true })).toEqual({
+      paths: ["/backend/memo", "/en/board?csr=true&akanMobileTarget=preview"],
+      notes: [
+        "--csr does not apply to /backend/memo: it opens without the CSR boot.",
+        "/backend/memo/ opens as /backend/memo, which writes the same screenshot.",
+      ],
+    });
   });
 
   test("says which paths --csr does not apply to instead of dropping it silently", async () => {
@@ -231,6 +302,37 @@ describe("AppPreview.planOf", () => {
       notes: [`https://staging.example.com/board names another server: its path opens on ${dev}.`],
     });
     const others = ["http://localhost:3000/a", "https://localhost:8282/b"];
+    expect((await planOf({ paths: others })).notes).toEqual([
+      `${others.join(", ")} name other servers: their paths open on ${dev}.`,
+    ]);
+  });
+
+  test("takes only a host the dev server binds on its port for the dev server, and notes any other", async () => {
+    const local = [
+      "http://localhost:8282/a",
+      "http://localhost.:8282/b",
+      "http://LOCALHOST:8282/c",
+      "http://127.0.0.1:8282/d",
+      "http://127.1:8282/e",
+      "http://0.0.0.0:8282/f",
+    ];
+    for (const url of local) expect((await planOf({ paths: [url] })).notes).toEqual([]);
+    const others = [
+      "http://demo.localhost:8282/a",
+      "http://admin.localhost:8282/b",
+      "http://127.0.0.2:8282/c",
+      "http://[::1]:8282/d",
+      "http://[::]:8282/e",
+      "http://10.0.0.5:8282/f",
+      "http://localhost:3000/g",
+      "https://127.0.0.1:8282/h",
+      "http://localhost/i",
+      "http://notlocalhost:8282/j",
+    ];
+    for (const url of others)
+      expect((await planOf({ paths: [url] })).notes).toEqual([
+        `${url} names another server: its path opens on ${dev}.`,
+      ]);
     expect((await planOf({ paths: others })).notes).toEqual([
       `${others.join(", ")} name other servers: their paths open on ${dev}.`,
     ]);
@@ -332,6 +434,78 @@ describe("AppPreview.render", () => {
 });
 
 describe("AppPreview.run", () => {
+  const devServerOf = (root: string) =>
+    Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        const { pathname } = new URL(req.url);
+        if (pathname === "/_akan/app/health") return Response.json({ status: "running" });
+        if (pathname === "/_akan/app/info") return Response.json({ appName: "demo", workspaceRoot: root });
+        return new Response("missing", { status: 404 });
+      },
+    });
+
+  test("opens the pages --changed reaches from git and reports what it skipped and why --csr did not apply", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-preview-changed-"));
+    const server = devServerOf(root);
+    const pageDir = path.join(root, "apps/demo/page");
+    const files = ["about.tsx", "admin/_layout.tsx", "admin/users.tsx", "admin/[userId].tsx"];
+    const opened: string[] = [];
+    const runtimeDir = process.env.AKAN_RUNTIME_DIR;
+    process.env.AKAN_RUNTIME_DIR = path.join(root, "runtime");
+    const unavailable = spyOn(PreviewView, "unavailableReason").mockReturnValue(undefined);
+    const probe = spyOn(PreviewView, "probe").mockImplementation(async (url) => {
+      opened.push(url);
+      const empty: string[] = [];
+      return {
+        url,
+        finalUrl: url,
+        status: 200,
+        title: "",
+        text: "",
+        pageErrors: empty,
+        consoleErrors: empty,
+        consoleWarnings: empty,
+        domFindings: empty,
+      };
+    });
+    try {
+      for (const file of files) await Bun.write(path.join(pageDir, file), "export default null;\n");
+      const git = (...args: string[]) =>
+        Bun.$`git -c user.name=akan -c user.email=akan@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null ${args}`
+          .cwd(root)
+          .quiet();
+      await git("init", "-q");
+      await git("add", "apps/demo/page/about.tsx");
+      await git("commit", "-q", "--no-verify", "-m", "base");
+      const app = {
+        name: "demo",
+        cwdPath: path.join(root, "apps/demo"),
+        workspace: { workspaceRoot: root },
+        getDevPort: async () => server.port,
+        getConfig: async () => ({ i18n, api: { prefix: "/api" } }),
+        getRouteSources: async () =>
+          files.map((file) => ({ key: `./${file}`, absPath: path.join(pageDir, file), info: { devOnly: false } })),
+      } as unknown as App;
+      const report = await AppPreview.run(app, { changed: true, csr: true, paths: ["/openapi.json"] });
+      const origin = `http://localhost:${server.port}`;
+      expect(report.skipped).toEqual(["/admin/:userId needs a concrete path"]);
+      expect(report.notes).toEqual(["--csr does not apply to /openapi.json: it opens without the CSR boot."]);
+      expect(opened).toEqual([`${origin}/openapi.json`, `${origin}/en/admin/users?csr=true&akanMobileTarget=preview`]);
+      expect(report.pages.map((page) => [page.path, page.failed])).toEqual([
+        ["/openapi.json", false],
+        ["/en/admin/users?csr=true&akanMobileTarget=preview", false],
+      ]);
+    } finally {
+      if (runtimeDir === undefined) delete process.env.AKAN_RUNTIME_DIR;
+      else process.env.AKAN_RUNTIME_DIR = runtimeDir;
+      unavailable.mockRestore();
+      probe.mockRestore();
+      server.stop(true);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test.skipIf(!PreviewView.available)(
     "uses the dev server that answers as this app and probes its pages without starting another",
     async () => {

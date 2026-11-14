@@ -243,7 +243,7 @@ Instrumentation points (all no-op when `AKAN_TRACE` is unset):
 - `pkgs/akanjs/signal/signalContext.ts` — `argParse`, `guards`, `handler`, `resolveReturn`, `serialize`, `total`
 - `libs/shared/srvkit/accountMiddleware.ts` — `jwtVerify`
 - `pkgs/akanjs/signal/middleware.ts` — cache hit/miss
-- `pkgs/akanjs/server/resolver/database.resolver.ts` — queries/request + DataLoader batches
+- `pkgs/akanjs/server/resolver/timedQuery.ts` — queries/request; `modelLoaders.ts` beside it — DataLoader batches
 - `pkgs/akanjs/server/processMetricsCollector.ts` — event-loop lag + GC duration
 - `pkgs/akanjs/server/gateway/gatewayHttpProxy.ts` — gateway proxy-hop timing
 

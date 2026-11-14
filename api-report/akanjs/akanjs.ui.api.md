@@ -34,6 +34,16 @@ export interface AgentAttachmentsProps {
 
 export type AgentBuiltin = (typeof StoreSurfaceSource.builtins)[number];
 
+export interface AgentClientToolDefinition extends PublishedTool {
+    readOnly: false;
+}
+
+export declare class AgentClientTools {
+    constructor(surface?: SurfaceView, host?: ToolRunnerHost);
+    list(): AgentClientToolDefinition[];
+    run(call: ToolCallRequest, signal?: AbortSignal): Promise<ToolCallResult>;
+}
+
 export interface AgentHistoryProps {
     load: SessionHistory["load"];
     save: SessionHistory["save"];
@@ -186,6 +196,7 @@ export interface AkanUiOverrides {
     AgentMenu: ComponentType<AgentMenuProps>;
     AgentMarkdown: ComponentType<AgentMarkdownProps>;
     AgentToolCard: ComponentType<AgentToolCardProps>;
+    AgentToolRow: ComponentType<AgentToolRowProps>;
     AgentCode: ComponentType<AgentCodeProps>;
     Button: ComponentType<ButtonProps<unknown>>;
     Select: ComponentType<SelectProps<boolean | null | number | string | undefined>>;
@@ -453,6 +464,8 @@ export declare const DefaultToast: ({ className, messages, topSafeArea, onClose,
 export declare const DefaultToastItem: ({ className, message, onClose, onClosed }: ToastItemProps) => import("react").JSX.Element;
 
 export declare const DefaultToolCard: ({ className, card }: ToolCardProps) => import("react").JSX.Element;
+
+export declare const DefaultToolRow: ({ className, name, args, result, progress }: ToolRowProps) => import("react").JSX.Element;
 
 export declare const DevModeToggle: () => import("react").JSX.Element;
 
@@ -799,9 +812,7 @@ export type RunnerEvent = {
     message: string;
     code?: string;
     data?: Record<string, number | string>;
-    overflow?: {
-        limit?: number;
-    };
+    overflow?: TurnOverflow;
 } | {
     type: "text";
     delta: string;
@@ -975,9 +986,34 @@ export declare const ToggleSelect: (<I extends boolean | null | number | string>
     Multi: ComponentType<MultiProps>;
 };
 
+export interface ToolApprovalRequest {
+    callId: string;
+    name: string;
+    args: Record<string, unknown>;
+    message: string;
+}
+
 export interface ToolCardProps {
     className?: string;
     card: PendingCard;
+}
+
+export interface ToolRowProps {
+    className?: string;
+    name: string;
+    args?: Record<string, unknown>;
+    result?: ToolCallResult;
+    progress?: AgentProgressReport | null;
+}
+
+export interface ToolRunnerHost {
+    approve?: (request: ToolApprovalRequest, signal: AbortSignal) => Promise<string | true>;
+    askAfterUntrusted?: boolean;
+    card?: (request: ToolCardRequest, signal: AbortSignal) => Promise<ToolCardAnswer>;
+    settle?: () => Promise<void> | void;
+    progress?: (progress: ToolProgress) => void;
+    activity?: (event: ToolActivity) => Promise<void> | void;
+    fallback?: (call: ToolCallRequest, signal: AbortSignal) => Promise<ToolCallResult> | ToolCallResult;
 }
 
 export declare const Tooltip: import("react").ComponentType<TooltipProps>;
@@ -1055,15 +1091,15 @@ export declare const animated: {
 
 export declare const badgeRecipe: (variants?: Omit<({
     size?: "lg" | "md" | "sm" | "xs" | undefined;
-    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
 } & {
     class?: import("tailwind-variants/lite").ClassValue;
     className?: never;
 }) | ({
     size?: "lg" | "md" | "sm" | "xs" | undefined;
-    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "error" | "info" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
 } & {
     class?: never;
     className?: import("tailwind-variants/lite").ClassValue;
@@ -1071,16 +1107,16 @@ export declare const badgeRecipe: (variants?: Omit<({
 
 export declare const buttonRecipe: (variants?: Omit<({
     size?: "icon" | "lg" | "md" | "sm" | "xl" | "xs" | undefined;
-    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     shape?: "circle" | "default" | "square" | undefined;
 } & {
     class?: import("tailwind-variants/lite").ClassValue;
     className?: never;
 }) | ({
     size?: "icon" | "lg" | "md" | "sm" | "xl" | "xs" | undefined;
-    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     outline?: boolean | undefined;
+    variant?: "accent" | "default" | "destructive" | "ghost" | "info" | "link" | "neutral" | "outline" | "primary" | "secondary" | "success" | "warning" | undefined;
     shape?: "circle" | "default" | "square" | undefined;
 } & {
     class?: never;
@@ -3197,6 +3233,12 @@ interface ToolCallResult {
 
 type ToolCard = (control: ToolCardControl) => ReactNode;
 
+type ToolCardAnswer = {
+    error: string;
+} | {
+    result: unknown;
+};
+
 interface ToolCardControl {
     args: Record<string, unknown>;
     submit: (value: unknown) => void;
@@ -3206,6 +3248,13 @@ interface ToolCardControl {
 interface ToolCardEntry extends ToolEntryBase {
     card: ToolCard;
     run?: never;
+}
+
+interface ToolCardRequest {
+    callId: string;
+    name: string;
+    args: Record<string, unknown>;
+    render: ToolCard;
 }
 
 type ToolConfirm = ((args: Record<string, unknown>) => boolean | string) | boolean | string;
@@ -3224,6 +3273,11 @@ interface ToolEntryBase {
 }
 
 type ToolGuard = (args: Record<string, unknown>) => string | true;
+
+interface ToolProgress {
+    callId: string;
+    report: AgentProgressReport | null;
+}
 
 interface ToolProps {
     className?: string;
@@ -3266,6 +3320,11 @@ interface TriggerSlotOptions {
 interface TurnLimits {
     window?: number;
     output?: number;
+}
+
+interface TurnOverflow {
+    limit?: number;
+    requested?: number;
 }
 
 type TurnStop = "end" | "length" | "toolUse";

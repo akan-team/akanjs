@@ -1,6 +1,9 @@
 import { dayjs } from "akanjs/base";
 import type { CacheAdaptor } from "./predefinedAdaptor/cache.adaptor";
 
+//? The map is shared with signal/endpointCache.ts through `process`, as trace.ts shares its store: a facet cannot import a sibling's file.
+const flightStore = process as unknown as { __akanEndpointCacheFlights?: Map<string, { stale: boolean }> };
+
 // A random per-endpoint token, replaced on invalidation and never reused, so a lost generation revives no entries.
 export class EndpointCacheKeys {
   static readonly topic = "cache";
@@ -16,9 +19,19 @@ export class EndpointCacheKeys {
     endpoint: string,
     args?: unknown[],
   ) {
-    if (args) await cache.delete(EndpointCacheKeys.topic, await EndpointCacheKeys.entryKey(cache, endpoint, args));
-    else
+    if (args) {
+      const key = await EndpointCacheKeys.entryKey(cache, endpoint, args);
+      EndpointCacheKeys.#staleFlights((flightKey) => flightKey === key);
+      await cache.delete(EndpointCacheKeys.topic, key);
+    } else {
+      EndpointCacheKeys.#staleFlights((flightKey) => flightKey.startsWith(`${endpoint}:`));
       await cache.set(EndpointCacheKeys.#generationTopic, endpoint, crypto.randomUUID(), EndpointCacheKeys.#expiry());
+    }
+  }
+
+  static #staleFlights(matches: (flightKey: string) => boolean) {
+    for (const [flightKey, flight] of flightStore.__akanEndpointCacheFlights ?? [])
+      if (matches(flightKey)) flight.stale = true;
   }
 
   static async #generation(cache: Pick<CacheAdaptor, "get" | "setIfAbsent">, endpoint: string) {

@@ -847,10 +847,10 @@ akan script myapp seed.ts`,
             type: "String",
             required: "no",
             defaultValue: "list",
-            enumOrFlag: "list | plan | apply | verify | rollback",
+            enumOrFlag: "list | plan | apply | verify | rollback | indexes | prune-indexes",
             desc: l.trans({
-              en: "What to do; every action but `list` takes a target.",
-              ko: "할 일입니다. `list`를 뺀 모든 동작은 대상을 받습니다.",
+              en: "What to do; `plan`, `apply`, `verify` and `rollback` take a target. `indexes` lists the indexes an earlier release built that this one no longer declares, which a boot keeps; `prune-indexes` drops them.",
+              ko: "할 일입니다. `plan`, `apply`, `verify`, `rollback`은 대상을 받습니다. `indexes`는 이전 릴리스가 만들었지만 이번 릴리스가 더는 선언하지 않아 부팅이 남겨 둔 인덱스를 보여 주고, `prune-indexes`는 그 인덱스를 삭제합니다.",
             }),
           },
           {
@@ -930,11 +930,20 @@ akan script myapp seed.ts`,
               ko: "실행마다 그 기록과 바꾼 값이 앱의 데이터베이스에 남습니다.",
             }),
           },
+          {
+            name: l.trans({ en: "prune-indexes", ko: "prune-indexes" }),
+            desc: l.trans({
+              en: "Run it once no instance of an earlier release is serving: one still declaring an index builds it again when it restarts. A unique index it lists keeps refusing duplicates until then.",
+              ko: "이전 릴리스 인스턴스가 하나도 남지 않았을 때 실행합니다. 그 인덱스를 아직 선언하는 인스턴스는 재시작할 때 인덱스를 다시 만듭니다. 목록의 unique 인덱스는 그때까지 중복을 계속 거부합니다.",
+            }),
+          },
         ],
         examples: `akan migrate myapp
 akan migrate myapp plan 202610211000_orderToppings
 akan migrate myapp apply 202610211000_orderToppings --expect <planHash>
 akan migrate myapp rollback 202610211000_orderToppings
+akan migrate myapp indexes
+akan migrate myapp prune-indexes
 kubectl exec -n myapp-main deploy/app-deployment -c app -- \\
   bun main.js ops migrate list --json`,
       },

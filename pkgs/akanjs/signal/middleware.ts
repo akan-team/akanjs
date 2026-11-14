@@ -1,5 +1,6 @@
 import type { BackendEnv, Cls, PromiseOrObject } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import { ByIdRead } from "./byIdRead";
 import { EndpointErrorContract } from "./endpointErrorContract";
 import { Exception, isExceptionLike } from "./exception";
 import { SignalFailure } from "./SignalFailure";
@@ -38,14 +39,20 @@ export class Logging extends middleware("logging") {
       } catch (error) {
         //? A body the caller could not deliver is its own 400, unlogged as when the body was read before the chain.
         if (context.isBodyReadFailure(error)) throw error;
+        const status = SignalFailure.statusOf(error);
+        //? `SignalContext.run` writes a 5xx once, with its type and stack; a line here would be its second record.
+        if (status >= 500) throw error;
         const cause = error instanceof Error && error.cause !== undefined ? ` (cause: ${String(error.cause)})` : "";
         const line = `Error ${context.endpointInfo.type}-${context.key} / ${Date.now() - start}ms: ${String(error)}${cause}`;
-        const status = isExceptionLike(error) ? error.statusCode : SignalFailure.generalized(error).statusCode;
         // A refused flood would write a line per call; `EndpointRateLimit` already warned once for the endpoint.
         //? A declared error is an answer the endpoint documents, so probes of a public one must not reach error alerts.
-        if (status === 429 || (isExceptionLike(error) && EndpointErrorContract.promised(context.endpointInfo, error))) {
+        if (
+          status === 429 ||
+          ByIdRead.missed(context, error) ||
+          (isExceptionLike(error) && EndpointErrorContract.promised(context.endpointInfo, error))
+        ) {
           if (debug) context.adaptor.logger.debug(line);
-        } else context.adaptor.logger.error(line);
+        } else context.adaptor.logger.warn(line);
         throw error;
       }
     };

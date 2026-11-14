@@ -227,9 +227,14 @@ impl P<'_> {
               };
               let mut cp = hex(self)?;
               if (0xD800..0xDC00).contains(&cp) && self.b.get(self.i..self.i + 2) == Some(b"\\u") {
+                let at = self.i;
                 self.i += 2;
                 let lo = hex(self)?;
-                cp = 0x10000 + ((cp - 0xD800) << 10) + (lo.wrapping_sub(0xDC00) & 0x3ff);
+                if (0xDC00..0xE000).contains(&lo) {
+                  cp = 0x10000 + ((cp - 0xD800) << 10) + (lo - 0xDC00);
+                } else {
+                  self.i = at;
+                }
               }
               out.push(char::from_u32(cp).unwrap_or('\u{fffd}'));
             }
@@ -291,5 +296,13 @@ mod tests {
     assert!(matches!(parse(r#""é""#), Ok(V::Str(s)) if s == "é"));
     assert!(parse(r#""\u+0e9""#).is_err());
     assert!(parse(r#""\u00g9""#).is_err());
+  }
+
+  #[test]
+  fn a_lone_surrogate_is_u_fffd_and_keeps_the_escape_after_it() {
+    assert!(matches!(parse(r#""😀""#), Ok(V::Str(s)) if s == "😀"));
+    assert!(matches!(parse(r#""\ud800A""#), Ok(V::Str(s)) if s == "\u{fffd}A"));
+    assert!(matches!(parse(r#""\ud800𐀀""#), Ok(V::Str(s)) if s == "\u{fffd}𐀀"));
+    assert!(matches!(parse(r#""\udc00x""#), Ok(V::Str(s)) if s == "\u{fffd}x"));
   }
 }

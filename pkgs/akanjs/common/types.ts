@@ -23,8 +23,16 @@ export interface FetchPolicy<_Returns = unknown> {
    * A mutation ignores it, since one already sent may have run.
    */
   signal?: AbortSignal;
-  /** `pubsub` only: called after a resubscribe, since whatever was published while the socket was down is gone. */
+  /**
+   * `pubsub` only: called when the room may have missed events — after a resubscribe, at a frame the server dropped
+   * for this socket, or once the server's link to the app's other servers returns — so refetch what the room shows.
+   */
   onResync?: () => void;
+  /**
+   * `pubsub` only: called once when the server refused the room for a limit (429), with the error it sent; the room is
+   * dropped, so a reconnect does not send it again, and subscribing anew tries again.
+   */
+  onRefused?: (error: unknown) => void;
   /**
    * Tries again when the server is unreachable, restarting (502/503), too slow (504) or limiting (429, after its
    * Retry-After). A mutation retries under one `Idempotency-Key`, which the server runs once; `false` turns a client's
@@ -43,6 +51,15 @@ export interface FetchPolicy<_Returns = unknown> {
    * pages a link prefetched survive it, where any other write sends them again.
    */
   keepsReads?: boolean;
+  /**
+   * `false` sends a call made while the server renders a page without the visitor's session or address, so it answers
+   * as to a stranger and the render can stay in the route result cache. An explicit `token` and the client's own `jwt`
+   * and `clientIp` still go, and a browser's call is unchanged. Only for an endpoint that answers every caller alike:
+   * every visitor's render then shares one budget under the server's own address, so give that endpoint
+   * `rateLimit: false` (or exempt it) rather than an address budget, or one client forcing renders spends it for
+   * everyone.
+   */
+  forwardVisitor?: boolean;
 }
 
 export type SnakeCase<S extends string> = S extends `${infer T}_${infer U}` ? `${Lowercase<T>}_${SnakeCase<U>}` : S;

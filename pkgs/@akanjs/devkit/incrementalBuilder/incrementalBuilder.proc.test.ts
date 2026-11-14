@@ -7,6 +7,8 @@ const track = tempRoots();
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const crashWindowMs = 2_000;
+
 const until = async (proc: Bun.Subprocess, what: string, condition: () => boolean, timeoutMs = 20_000) => {
   const deadline = Date.now() + timeoutMs;
   while (!condition()) {
@@ -20,9 +22,11 @@ describe("incremental builder process", () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");
     // The batch runner looks under the workspace root first: a stand-in for the boot build, which needs a whole app.
+    // Each stand-in waits for the runner's release, as the real worker does: one exiting at once can lose all it sent.
     await writeText(
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -90,6 +94,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation, needs } = JSON.parse(process.argv[2]);
 const errors = needs.includes("base") ? {} : { shell: "handed " + needs.join(",") };
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -135,6 +140,7 @@ process.send({ type: "build-batch-result", data: { generation, errors, artifact:
     await writeText(
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -237,6 +243,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     await writeText(
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -299,6 +306,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation, needs } = JSON.parse(process.argv[2]);
 require("node:fs").appendFileSync(${JSON.stringify(ledger)}, needs.join(",") + "\\n");
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -357,6 +365,7 @@ process.on("disconnect", orphaned);
 const deadline = Date.now() + 15_000;
 if (needs.includes("ssr")) while (!fs.existsSync(${JSON.stringify(gate)}) && Date.now() < deadline) await Bun.sleep(20);
 const css = needs.includes("ssr") ? { cssAssets: ${JSON.stringify(landed)} } : {};
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] }, ...css } });
 process.off("disconnect", orphaned);
 `,
@@ -417,6 +426,7 @@ if (needs.includes("ssr")) {
   fs.appendFileSync(${JSON.stringify(runs)}, Date.now() + "\\n");
   if (fs.readFileSync(${JSON.stringify(runs)}, "utf8").trim().split("\\n").length <= 2) process.exit(1);
 }
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -435,6 +445,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
         AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
         AKAN_PUBLIC_ENV: "local",
         AKAN_WATCH: "0",
+        AKAN_DEV_SSR_CRASH_RETRY_MS: String(crashWindowMs),
       },
       stdio: ["ignore", "ignore", "ignore"],
       serialization: "advanced",
@@ -445,11 +456,10 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
     const ssrRuns = async () =>
       (await Bun.file(runs).exists()) ? (await Bun.file(runs).text()).trim().split("\n").map(Number) : [];
     try {
-      //? boot-armed waits out the 10s crash window first, so 20s left a loaded machine too little for the rest.
-      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"), 30_000);
+      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
       const [first = 0, second = 0] = await ssrRuns();
       expect(await ssrRuns()).toHaveLength(2);
-      expect(second - first).toBeGreaterThanOrEqual(9_500);
+      expect(second - first).toBeGreaterThanOrEqual(crashWindowMs - 500);
       proc.send({
         type: "build-route",
         id: 1,
@@ -463,7 +473,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       const deadline = Date.now() + 15_000;
       while ((await ssrRuns()).length < 3 && Date.now() < deadline) await wait(100);
       const [, retried = 0, third = 0] = await ssrRuns();
-      expect(third - retried).toBeGreaterThanOrEqual(9_500);
+      expect(third - retried).toBeGreaterThanOrEqual(crashWindowMs - 500);
     } finally {
       proc.kill();
       await proc.exited;
@@ -483,6 +493,7 @@ if (needs.includes("ssr")) {
   fs.appendFileSync(${JSON.stringify(runs)}, Date.now() + "\\n");
   if (fs.readFileSync(${JSON.stringify(runs)}, "utf8").trim().split("\\n").length === 2) process.exit(1);
 }
+process.once("disconnect", () => {});
 process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
 `,
     );
@@ -501,6 +512,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
         AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
         AKAN_PUBLIC_ENV: "local",
         AKAN_WATCH: "0",
+        AKAN_DEV_SSR_CRASH_RETRY_MS: String(crashWindowMs),
       },
       stdio: ["ignore", "ignore", "ignore"],
       serialization: "advanced",
@@ -524,7 +536,7 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       const deadline = Date.now() + 20_000;
       while ((await ssrRuns()).length < 3 && Date.now() < deadline) await wait(100);
       const [, killed = 0, retried = 0] = await ssrRuns();
-      expect(retried - killed).toBeGreaterThanOrEqual(9_500);
+      expect(retried - killed).toBeGreaterThanOrEqual(crashWindowMs - 500);
     } finally {
       proc.kill();
       await proc.exited;
@@ -539,7 +551,10 @@ process.send({ type: "build-batch-result", data: { generation, errors: {}, artif
       path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
       `const { generation, needs } = JSON.parse(process.argv[2]);
 if (needs.includes("ssr")) await import(${JSON.stringify(path.join(import.meta.dir, "buildBatch.proc.ts"))});
-else process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+else {
+  process.once("disconnect", () => {});
+  process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+}
 `,
     );
     await writeText(path.join(appDir, "env/env.client.ts"), "export const env = {} as const;\n");
@@ -587,5 +602,84 @@ else process.send({ type: "build-batch-result", data: { generation, errors: {}, 
       proc.kill();
       await proc.exited;
     }
+  }, 60_000);
+
+  test("a failed boot build waits for the save that fixes it, and the builder it recovers continues the generation and watches", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    const ledger = path.join(root, "batches.log");
+    const fixed = path.join(root, "boot-fixed");
+    // A stand-in batch: the boot build fails until the fix lands, and every batch logs its needs and generation.
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `import fs from "node:fs";
+const { generation, needs } = JSON.parse(process.argv[2]);
+fs.appendFileSync(${JSON.stringify(ledger)}, needs.join(",") + " " + generation + "\\n");
+const errors = needs.includes("base") && !fs.existsSync(${JSON.stringify(fixed)}) ? { base: "the boot is broken" } : {};
+process.once("disconnect", () => {});
+process.send({ type: "build-batch-result", data: { generation, errors, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    const page = path.join(appDir, "page/_index.tsx");
+    await writeText(page, "export default () => null;\n");
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_BUILDER_INITIAL_GENERATION: "5",
+        AKAN_DEV_CSR_PATCHER: "off",
+        AKAN_LOG_STDOUT_LEVEL: "info",
+      },
+      stdio: ["ignore", "pipe", "ignore"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    let stdout = "";
+    const decoder = new TextDecoder();
+    const reading = (async () => {
+      for await (const chunk of proc.stdout) stdout += decoder.decode(chunk, { stream: true });
+    })();
+    const sent = (type: BuilderMessage["type"]) => messages.filter((message) => message.type === type);
+    try {
+      await until(proc, "boot-armed", () => sent("boot-armed").length === 1);
+      proc.send({ type: "build-graph", id: 1 } satisfies BuilderMessage);
+      await until(proc, "build-graph-res", () => sent("build-graph-res").length === 1);
+      //? Degraded mode sends boot-armed before its watcher starts, and a save made before then is never seen.
+      await until(proc, "the degraded watcher's log line", () => stdout.includes("[degraded] watching"));
+      await writeText(fixed, "");
+      await writeText(page, "export default () => 1;\n");
+      await until(proc, "the recovered builder's boot-armed", () => sent("boot-armed").length === 2);
+      await writeText(page, "export default () => 2;\n");
+      await until(proc, "the recovered builder's invalidate", () =>
+        messages.some((message) => message.type === "invalidate" && message.generation === 9),
+      );
+    } finally {
+      proc.kill();
+      await proc.exited;
+      await reading;
+    }
+    expect(sent("build-status")[0]).toMatchObject({
+      data: { generation: 6, phase: "pages", ok: false, message: "Boot build failed: the boot is broken" },
+    });
+    expect(sent("build-graph-res")[0]).toMatchObject({
+      id: 1,
+      ok: false,
+      error: expect.stringContaining("recovering from a failed boot build"),
+    });
+    expect(sent("builder-ready")).toHaveLength(2);
+    expect((await Bun.file(ledger).text()).trim().split("\n").slice(0, 4)).toEqual([
+      "base 0",
+      "base 0",
+      "pages,css 8",
+      "ssr 8",
+    ]);
   }, 60_000);
 });

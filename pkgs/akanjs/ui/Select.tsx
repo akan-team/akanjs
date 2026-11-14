@@ -68,6 +68,26 @@ export interface SelectProps<
   renderSelected?: (value: T) => ReactNode;
 }
 
+const labelOptionsOf = <T,>(options: Options<T>, l: ReturnType<typeof usePage>["l"]): LabelOption<T>[] => {
+  if (isEnum(options as Cls)) {
+    const { refName, values } = options as EnumInstance<string, T>;
+    return values.map((v) => {
+      if (typeof v === "object") return { label: JSON.stringify(v), value: v };
+      const key = `${refName}.${String(v)}`;
+      const label = l._(key);
+      // A value its dictionary does not name comes back as the dotted key, which reads worse than the value.
+      return { label: label === key ? String(v) : label, value: v };
+    });
+  }
+  const list = options as (T | LabelOption<T>)[];
+  const first = list[0];
+  // Keyed, not truthy: a `{ label: "-", value: null }` row is still a pair, and T is never an object.
+  const isLabeled = typeof first === "object" && first !== null && "label" in first && "value" in first;
+  return isLabeled
+    ? (list as LabelOption<T>[])
+    : (list as T[]).map((v) => ({ label: v as string | boolean | number, value: v }));
+};
+
 const DefaultSelect = <
   T extends string | number | boolean | null | undefined,
   Multiple extends boolean = false,
@@ -99,25 +119,7 @@ const DefaultSelect = <
   useFieldTool(onChange, { disabled });
   const { l, lang } = usePage();
   const [isOpen, setIsOpen] = useState(false);
-  const labeledOptions: LabelOption<T>[] = useMemo(() => {
-    if (isEnum(options as Cls)) {
-      const { refName, values } = options as EnumInstance<string, T>;
-      return values.map((v) => {
-        if (typeof v === "object") return { label: JSON.stringify(v), value: v };
-        const key = `${refName}.${String(v)}`;
-        const label = l._(key);
-        // A value its dictionary does not name comes back as the dotted key, which reads worse than the value.
-        return { label: label === key ? String(v) : label, value: v };
-      });
-    }
-    const list = options as (T | LabelOption<T>)[];
-    const first = list[0];
-    // Keyed, not truthy: a `{ label: "-", value: null }` row is still a pair, and T is never an object.
-    const isLabeled = typeof first === "object" && first !== null && "label" in first && "value" in first;
-    return isLabeled
-      ? (list as LabelOption<T>[])
-      : (list as T[]).map((v) => ({ label: v as string | boolean | number, value: v }));
-  }, [options, lang]);
+  const labeledOptions = useMemo(() => labelOptionsOf(options as Options<T>, l), [options, lang]);
 
   const [searchText, setSearchText] = useState("");
   const portal = useOverlayPortal();
@@ -146,6 +148,10 @@ const DefaultSelect = <
   );
 
   const selected = (v: T) => (multiple ? selectedValues.includes(v) : v === selectedValues[0]);
+  // Off the value: options can lag behind it or never carry it, and dropping the chip blanks the field.
+  // Off the whole list, not the filtered one: typing a search must not blank out what is selected.
+  const selectedLabel = (v: T) =>
+    renderSelected ? renderSelected(v) : (labeledOptions.find((option) => option.value === v)?.label ?? String(v));
 
   const resetSearch = () => {
     setSearchText("");
@@ -281,40 +287,27 @@ const DefaultSelect = <
       >
         <span className="flex w-full flex-wrap items-center gap-1">
           {multiple
-            ? selectedValues.map((v, index) => {
-                // Off the value: options can lag behind it or never carry it, and dropping the chip blanks the field.
-                const optionValue = labeledOptions.find((option) => option.value === v);
-                return (
-                  <div
-                    key={index}
-                    className="flex items-center gap-2 rounded-field bg-primary px-2 py-1 text-primary-foreground text-xs"
+            ? selectedValues.map((v, index) => (
+                <div
+                  key={index}
+                  className="flex items-center gap-2 rounded-field bg-primary px-2 py-1 text-primary-foreground text-xs"
+                >
+                  {selectedLabel(v)}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onSelect(v);
+                    }}
+                    className="opacity-50 duration-300 hover:opacity-100"
                   >
-                    {renderSelected ? renderSelected(v) : (optionValue?.label ?? String(v))}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        e.preventDefault();
-                        onSelect(v);
-                      }}
-                      className="opacity-50 duration-300 hover:opacity-100"
-                    >
-                      <BiX className="text-base" />
-                    </button>
-                  </div>
-                );
-              })
+                    <BiX className="text-base" />
+                  </button>
+                </div>
+              ))
             : null}
-          {!multiple && hasSelection ? (
-            <div className="px-2 py-1">
-              {(() => {
-                // Off the whole list, not the filtered one: typing a search must not blank out what is selected.
-                const optionValue = labeledOptions.find((option) => selected(option.value));
-                const v = selectedValues[0] as T;
-                return renderSelected ? renderSelected(v) : (optionValue?.label ?? String(v));
-              })()}
-            </div>
-          ) : null}
+          {!multiple && hasSelection ? <div className="px-2 py-1">{selectedLabel(selectedValues[0] as T)}</div> : null}
           {!hasSelection && !searchable && placeholder ? (
             <span className="px-2 py-1 text-muted-foreground">{placeholder}</span>
           ) : null}

@@ -1,4 +1,4 @@
-import type { AgentWireAttachment, AgentWireMessage } from "../predefinedAdaptor/llm.adaptor";
+import type { AgentWireAttachment, AgentWireMessage, LlmTurnRequest } from "../predefinedAdaptor/llm.adaptor";
 import { LoopTranscript } from "./loopTranscript";
 
 //? A server twin of use-agentic's Compaction; keep the estimate, the cut and the digest in step with it.
@@ -19,6 +19,10 @@ export class LoopCompaction {
     let chars = 0;
     for (const message of LoopTranscript.seen(messages)) chars += LoopCompaction.#charsOf(message);
     return Math.ceil(chars / 4);
+  }
+
+  static frameTokensOf({ messages: _messages, ...frame }: LlmTurnRequest): number {
+    return Math.ceil(JSON.stringify(frame).length / 4);
   }
 
   static #charsOf(message: AgentWireMessage): number {
@@ -55,7 +59,7 @@ export class LoopCompaction {
   static cutAt(messages: readonly AgentWireMessage[], keep: number): number {
     if (!messages.length) return -1;
     if (keep <= 0) return messages.length;
-    const target = messages.length - keep;
+    const target = LoopCompaction.#keptFrom(messages, keep);
     if (target <= 0) return -1;
     let boundary = -1;
     for (let at = target; at < messages.length; at += 1) {
@@ -65,6 +69,14 @@ export class LoopCompaction {
     if (boundary >= 0) return boundary;
     for (let at = target - 1; at > 0; at -= 1) if (messages[at]?.role !== "tool") return at;
     return -1;
+  }
+
+  //? The loop stores a batch's results one tool message a call, which `keep` counts as the one message they answer as.
+  static #keptFrom(messages: readonly AgentWireMessage[], keep: number): number {
+    let at = messages.length;
+    for (let kept = 0; at > 0 && kept < keep; at -= 1)
+      if (messages[at - 1]?.role !== "tool" || messages[at - 2]?.role !== "tool") kept += 1;
+    return at;
   }
 
   //? A previous summary is carried whole: it is the only record of what it replaced, and it is not the user's words.
@@ -101,8 +113,14 @@ export class LoopCompaction {
     return [...head, `[... ${high - low + 1} messages omitted ...]`, ...tail].join("\n");
   }
 
-  static message(summary: string, tainted?: boolean): AgentWireMessage {
-    return { role: "user", text: summary, summary: true, ...(tainted === undefined ? {} : { tainted }) };
+  static message(summary: string, tainted?: boolean, toolkits: string[] = []): AgentWireMessage {
+    return {
+      role: "user",
+      text: summary,
+      summary: true,
+      ...(tainted === undefined ? {} : { tainted }),
+      ...(toolkits.length ? { toolkits } : {}),
+    };
   }
 
   //? Attachments and references are named as gone: a model shown only a filename answers about the file from it.

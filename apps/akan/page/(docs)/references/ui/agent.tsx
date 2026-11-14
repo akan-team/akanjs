@@ -626,6 +626,7 @@ export default page()
       "AgentMenu",
       "AgentMarkdown",
       "AgentToolCard",
+      "AgentToolRow",
       "AgentCode",
     ];
 
@@ -1481,13 +1482,13 @@ export default layout().render(({ children }) => (
               {l.trans({
                 en: (
                   <>
-                    Eleven of the chat's own parts are override slots, so an app re-skins the transcript or the composer
+                    Twelve of the chat's own parts are override slots, so an app re-skins the transcript or the composer
                     without re-implementing the loop. <code>AgentChat</code> replaces the whole panel.
                   </>
                 ),
                 ko: (
                   <>
-                    채팅을 이루는 부품 중 11개가 교체 슬롯이라, 앱은 루프를 다시 만들지 않고 대화창이나 입력창만 바꿀 수
+                    채팅을 이루는 부품 중 12개가 교체 슬롯이라, 앱은 루프를 다시 만들지 않고 대화창이나 입력창만 바꿀 수
                     있습니다. <code>AgentChat</code> 슬롯은 패널 전체를 바꿉니다.
                   </>
                 ),

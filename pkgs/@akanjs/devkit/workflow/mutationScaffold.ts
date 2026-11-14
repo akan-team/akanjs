@@ -1,22 +1,14 @@
 import { lowerlize, modelNames } from "akanjs/common";
 import type { Sys } from "../commandDecorators";
+import { hasDictionaryEndpointEntry, insertDictionaryEndpointEntry } from "./dictionarySource";
 import { GuardCatalog } from "./guardCatalog";
+import { moduleComponentName, moduleSourcePaths } from "./modulePaths";
 import { type MutationActingUser, type MutationCall, MutationSource } from "./mutationSource";
-import {
-  appendTopLevelTestCases,
-  classMethodParameters,
-  ensureImportDeclaration,
-  ensureNamedImport,
-  hasClassMethod,
-  hasDictionaryEndpointEntry,
-  hasSignalFactoryEntry,
-  hasSourceParseErrors,
-  insertClassMethod,
-  insertDictionaryEndpointEntry,
-  insertSignalFactoryEntry,
-  moduleComponentName,
-  moduleSourcePaths,
-} from "./source";
+import { classMethodParameters, hasClassMethod, insertClassMethod } from "./serviceSource";
+import { hasSignalFactoryEntry, insertSignalFactoryEntry } from "./signalSource";
+import { hasSourceParseErrors } from "./sourceAst";
+import { ensureImportDeclaration, ensureNamedImport } from "./sourceImports";
+import { appendTopLevelTestCases } from "./testSource";
 import type { ScaffoldFile, WorkflowDiagnostic, WorkflowRecommendation } from "./types";
 
 export interface MutationScaffoldInput {

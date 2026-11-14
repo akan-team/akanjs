@@ -16,6 +16,8 @@ export const pages: PagesContext = {
       <>
         <title>fixture-root-title</title>
         <link rel="icon" href="/fixture.ico" />
+        <meta property="og:image" content="/root.jpg" />
+        <meta property="og:image:width" content="1200" />
       </>
     ),
   }),
@@ -23,6 +25,16 @@ export const pages: PagesContext = {
     default: page()
       .head(<title>fixture-page-title</title>)
       .render(() => <p>viewport body</p>),
+  }),
+  "./own-theme.tsx": async () => ({
+    default: page()
+      .head(
+        <>
+          <meta name="theme-color" content="#123456" />
+          <meta property="og:image" content="/own.jpg" />
+        </>,
+      )
+      .render(() => <p>own theme body</p>),
   }),
   "./own-manifest.tsx": async () => ({
     default: page()

@@ -2,7 +2,10 @@ import { command, Workspace } from "@akanjs/devkit/commandDecorators";
 import { SubspaceScript } from "./subspace.script";
 
 export class SubspaceCommand extends command("subspace", [SubspaceScript], ({ public: target }) => ({
-  subspace: target({ desc: "Mirror apps and libraries between this workspace and the customer repos it serves" })
+  subspace: target({
+    desc: "Mirror apps and libraries between this workspace and the customer repos it serves",
+    readOnly: ({ action }) => ["status", "status-all", "plan", "diff"].includes(String(action)),
+  })
     .arg("action", String, {
       desc: "subspace action; plan reads this checkout alone, status-all and push-all take every declared subspace",
       default: "status",

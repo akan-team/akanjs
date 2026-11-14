@@ -4,10 +4,12 @@ import { createConnection, type Socket } from "node:net";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync, constants, gunzipSync } from "node:zlib";
+import { AkanError } from "../base/akanError";
 import { resetEnvCache } from "../base/baseEnv";
 import { TrustedProxy } from "../common/TrustedProxy";
 import { AkanApp } from "./akanApp";
 import { AKAN_CHILD_HOST, makeAkanChildProxyHeaders } from "./akanAppHeaders";
+import { ListeningPort } from "./gateway/listeningPort";
 import { HostAllowlist } from "./routing/hostAllowlist";
 
 const tempRoots: string[] = [];
@@ -47,8 +49,6 @@ const withTimeout = async <T>(promise: Promise<T>, message: string, timeoutMs = 
   }
 };
 
-const randomPort = () => 24_000 + Math.floor(Math.random() * 10_000);
-
 const withEnvSet = <T>(vars: Record<string, string>, run: () => T): T => {
   const previous = Object.fromEntries(Object.keys(vars).map((key) => [key, process.env[key]]));
   Object.assign(process.env, vars);
@@ -65,7 +65,7 @@ const withEnvSet = <T>(vars: Record<string, string>, run: () => T): T => {
 const makeRoot = async (name: string, runtime = "runtime") => {
   const root = await mkdtemp(path.join(tmpdir(), name));
   tempRoots.push(root);
-  return { root, serverPath: path.join(root, "server.ts"), runtimeDir: path.join(root, runtime), port: randomPort() };
+  return { root, serverPath: path.join(root, "server.ts"), runtimeDir: path.join(root, runtime) };
 };
 
 interface ChildHealth {
@@ -95,15 +95,18 @@ const waitForRestart = (port: number) =>
     return child?.ready && child.restartCount > 0 && !child.restartPending ? body : null;
   }, 6_000);
 
+const portOf = (app: AkanApp) =>
+  waitFor(async () => ListeningPort.of(app) ?? null, 5_000, "the gateway never started listening");
+
 const withApp = async (
   serverPath: string,
-  options: ConstructorParameters<typeof AkanApp>[1],
-  run: (app: AkanApp) => Promise<unknown>,
+  options: Omit<NonNullable<ConstructorParameters<typeof AkanApp>[1]>, "port">,
+  run: (port: number) => Promise<unknown>,
 ) => {
-  const app = new AkanApp(serverPath, options);
+  const app = new AkanApp(serverPath, { ...options, port: 0 });
   const running = app.start();
   try {
-    return await run(app);
+    return await run(await portOf(app));
   } finally {
     await app.stop();
     await Promise.race([running, wait(1_000)]);
@@ -612,7 +615,7 @@ describe("makeAkanChildProxyHeaders", () => {
 
 describe("AkanApp", () => {
   test("restarts only the crashed replica", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-restart-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-restart-");
     const counterPath = path.join(root, "counter.txt");
 
     await Bun.write(
@@ -644,7 +647,7 @@ describe("AkanApp", () => {
       `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       const health = await waitForRestart(port);
 
       expect(health.children[0]?.restartCount).toBeGreaterThanOrEqual(1);
@@ -653,7 +656,7 @@ describe("AkanApp", () => {
   });
 
   test("restarts a replica that stops answering health pings, and leaves one that answers", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-health-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-health-");
     const counterPath = path.join(root, "counter.txt");
 
     await Bun.write(
@@ -684,7 +687,7 @@ describe("AkanApp", () => {
     );
 
     await withEnvSet({ AKAN_HEALTH_TIMEOUT_MS: "3000" }, () =>
-      withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
         const restarted = await waitFor(async () => {
           const body = await readHealth(port);
           const child = body?.children[0];
@@ -700,7 +703,7 @@ describe("AkanApp", () => {
   }, 25_000);
 
   test("restarts a ready child when its unix upstream stops accepting connections", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-upstream-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-upstream-");
     const counterPath = path.join(root, "counter.txt");
 
     await Bun.write(
@@ -745,7 +748,7 @@ describe("AkanApp", () => {
       `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir, wsBasePort: 0 }, async (port) => {
       await waitForReady(port);
 
       await expect(fetch(`http://127.0.0.1:${port}/stop-http`).then((res) => res.text())).resolves.toBe("stopping");
@@ -764,7 +767,7 @@ describe("AkanApp", () => {
   });
 
   test("abandons a dev-hosted child that never boots and marks it crashed", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-crashloop-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-crashloop-");
 
     await Bun.write(
       serverPath,
@@ -779,13 +782,14 @@ describe("AkanApp", () => {
     process.env.AKAN_COMMAND_TYPE = "start";
     let app: AkanApp;
     try {
-      app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+      app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
     } finally {
       if (originalCommandType === undefined) delete process.env.AKAN_COMMAND_TYPE;
       else process.env.AKAN_COMMAND_TYPE = originalCommandType;
     }
     const running = app.start();
     try {
+      const port = await portOf(app);
       const fetchChild = async () => (await readHealth(port))?.children[0] ?? null;
       const crashed = await waitFor(async () => {
         const child = await fetchChild();
@@ -819,7 +823,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("holds a request until a booting replica reports ready", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-boot-wait-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-boot-wait-");
 
     await Bun.write(
       serverPath,
@@ -846,7 +850,7 @@ describe("AkanApp", () => {
       `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       const health = await waitFor(() => readHealth(port));
       expect(health.children[0]?.ready).toBe(false);
 
@@ -857,7 +861,7 @@ describe("AkanApp", () => {
   }, 15_000);
 
   test("serves a self-reloading page once the upstream wait budget runs out", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-boot-page-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-boot-page-");
 
     await Bun.write(
       serverPath,
@@ -878,13 +882,14 @@ describe("AkanApp", () => {
     process.env.AKAN_UPSTREAM_WAIT_MS = "200";
     let app: AkanApp;
     try {
-      app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+      app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
     } finally {
       if (originalWait === undefined) delete process.env.AKAN_UPSTREAM_WAIT_MS;
       else process.env.AKAN_UPSTREAM_WAIT_MS = originalWait;
     }
     const running = app.start();
     try {
+      const port = await portOf(app);
       const htmlRes = await waitFor(async () =>
         fetch(`http://127.0.0.1:${port}/`, { headers: { accept: "text/html" } }).catch(() => null),
       );
@@ -914,9 +919,9 @@ describe("AkanApp", () => {
   }, 15_000);
 
   test("a stop while start is still preparing leaves no child, listener or log socket behind", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-stop-in-start-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-stop-in-start-");
     await writeOkChild(serverPath, "ok");
-    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
     const running = app.start();
     await app.stop();
 
@@ -924,15 +929,15 @@ describe("AkanApp", () => {
       "returned",
     );
     await wait(300);
-    expect(await fetch(`http://127.0.0.1:${port}/`).catch(() => null)).toBeNull();
+    expect(ListeningPort.of(app)).toBeUndefined();
     expect((await readdir(runtimeDir).catch(() => [])).filter((name) => name.endsWith(".sock"))).toEqual([]);
   }, 20_000);
 
   test("honors an explicitly configured runtimeDir for child sockets", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-rtdir-", "custom-runtime");
+    const { serverPath, runtimeDir } = await makeRoot("akan-rtdir-", "custom-runtime");
     await writeOkChild(serverPath, "ok");
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
 
       const entries = await readdir(runtimeDir);
@@ -941,7 +946,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("tells a spawned child the gateway hides its stderr, where its Logger would put error lines", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-child-stderr-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-child-stderr-");
     await writeOkChild(serverPath, "ok");
     await Bun.write(
       serverPath,
@@ -951,20 +956,20 @@ describe("AkanApp", () => {
       ),
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toBe("1");
     });
   }, 20_000);
 
   test("prints a child's raw stderr on its own stderr when it writes no log file", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-child-raw-stderr-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-child-raw-stderr-");
     await writeNoisyChild(serverPath);
     const logToFile = process.env.AKAN_LOG_TO_FILE;
     process.env.AKAN_LOG_TO_FILE = "0";
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
     try {
-      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
         await waitForReady(port);
         await waitFor(async () =>
           writtenTo(stderr).includes("[child:0 federation] [stderr] boot noise\n") ? true : null,
@@ -990,10 +995,10 @@ describe("AkanApp", () => {
     resetEnvCache();
     const stderr = spyOn(process.stderr, "write").mockImplementation(() => true);
     const bootUntilLogged = async (name: string) => {
-      const { serverPath, runtimeDir, port } = await makeRoot(name);
+      const { serverPath, runtimeDir } = await makeRoot(name);
       await writeNoisyChild(serverPath);
       const logDir = path.join(runtimeDir, "logs");
-      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
         await waitForReady(port);
         await waitFor(async () => {
           const childLog = (await readdir(logDir).catch(() => [])).find((file) => file.includes("-0-federation-"));
@@ -1026,12 +1031,12 @@ describe("AkanApp", () => {
 
     // `GatewayConfig.web` is read at construction, so each case needs its own gateway.
     const readAsset = async (ssr: string | undefined) => {
-      const port = randomPort();
       if (ssr === undefined) delete process.env.AKAN_SSR;
       else process.env.AKAN_SSR = ssr;
-      const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+      const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
       const running = app.start();
       try {
+        const port = await portOf(app);
         await waitForReady(port);
         return await (await fetch(`http://127.0.0.1:${port}/_akan/client/app.js`)).text();
       } finally {
@@ -1046,12 +1051,12 @@ describe("AkanApp", () => {
   }, 40_000);
 
   test("serves immutable artifacts with the asset security headers WebRouter sends", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-asset-headers-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-asset-headers-");
     await Bun.write(path.join(root, ".akan/artifact/client/app.js"), "export const x = 1;\n");
     await Bun.write(path.join(root, ".akan/artifact/fonts/brand.woff2"), "font-bytes");
     await writeOkChild(serverPath, "from-child");
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       const res = await fetch(`http://127.0.0.1:${port}/_akan/client/app.js`);
       expect(await res.text()).toContain("export const x = 1;");
@@ -1074,14 +1079,14 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("serves a dictionary asset as immutable from its brotli sidecar, and nothing outside dict/", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-dict-asset-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-dict-asset-");
     const source = 'export const lang = "en";\n';
     await Bun.write(path.join(root, ".akan/artifact/dict/en-abc.js"), source);
     await Bun.write(path.join(root, ".akan/artifact/dict/en-abc.js.br"), brotliCompressSync(source));
     await Bun.write(path.join(root, ".akan/artifact/base-artifact.json"), "{}");
     await writeOkChild(serverPath, "from-child");
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       const res = await fetch(`http://127.0.0.1:${port}/_akan/dict/en-abc.js`, {
         headers: { "accept-encoding": "br" },
@@ -1097,14 +1102,14 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("serves each artifact prefix from its own folder only", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-artifact-folders-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-artifact-folders-");
     await Bun.write(path.join(root, ".akan/artifact/base-artifact.json"), "{}");
     await Bun.write(path.join(root, ".akan/artifact/server/pages-abc.js"), "export const pages = {};");
     await Bun.write(path.join(root, ".akan/artifact/styles/root-abc.css"), "body{}");
     await Bun.write(path.join(root, ".akan/artifact/fonts/brand.woff2"), "font-bytes");
     await writeOkChild(serverPath, "from-child");
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       const statusOf = async (pathname: string) => (await fetch(`http://127.0.0.1:${port}/_akan/${pathname}`)).status;
       const escapes = ["styles", "fonts", "client", "dict"].flatMap((folder) =>
@@ -1122,7 +1127,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("force-kills a child that ignores graceful shutdown within the shutdown budget", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-slow-shutdown-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-slow-shutdown-");
 
     await Bun.write(
       serverPath,
@@ -1147,9 +1152,10 @@ describe("AkanApp", () => {
 
     const originalWait = process.env.AKAN_CHILD_SHUTDOWN_WAIT_MS;
     process.env.AKAN_CHILD_SHUTDOWN_WAIT_MS = "500";
-    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
     const running = app.start();
     try {
+      const port = await portOf(app);
       const health = await waitFor(async () => {
         const body = await readHealth(port);
         return body?.children[0]?.ready && body.children[0].pid ? body : null;
@@ -1179,7 +1185,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("routes websocket upgrades via the child-reported ws upstream, and answers a plain GET there 426", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-upstream-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-ws-upstream-");
 
     await Bun.write(
       serverPath,
@@ -1217,7 +1223,7 @@ describe("AkanApp", () => {
         `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
 
       const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws`);
@@ -1243,7 +1249,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("refuses a body over the request limit at the gateway, declared or streamed, and relays an upload", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-body-limit-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-body-limit-");
     await Bun.write(
       serverPath,
       `
@@ -1268,10 +1274,11 @@ describe("AkanApp", () => {
     );
     const app = withEnvSet(
       { AKAN_MAX_REQUEST_BODY: "1kb" },
-      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port }),
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 }),
     );
     const running = app.start();
     try {
+      const port = await portOf(app);
       await waitForReady(port);
       const url = `http://127.0.0.1:${port}/api/echo`;
       const json = { "content-type": "application/json" };
@@ -1295,7 +1302,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("closes a socket that sends too much before its replica's socket opens, and caps sockets per address", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-bounds-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-ws-bounds-");
     await Bun.write(
       serverPath,
       `
@@ -1327,9 +1334,10 @@ describe("AkanApp", () => {
     );
     const app = withEnvSet(
       { AKAN_MAX_WEBSOCKETS_PER_IP: "1" },
-      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port }),
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 }),
     );
     const running = app.start();
+    let port = 0;
     const connect = (query = "") => {
       const socket = new WebSocket(`ws://127.0.0.1:${port}/api/ws${query}`);
       const outcome = new Promise<"open" | "refused">((resolve) => {
@@ -1340,6 +1348,7 @@ describe("AkanApp", () => {
       return { socket, outcome, closed };
     };
     try {
+      port = await portOf(app);
       await waitForReady(port);
       const first = connect();
       expect(await withTimeout(first.outcome, "first socket")).toBe("open");
@@ -1365,7 +1374,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("hands a replica the client address the gateway resolved, over HTTP and websocket alike", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-client-address-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-client-address-");
     const trustedProxyPath = JSON.stringify(path.join(import.meta.dir, "..", "common", "TrustedProxy.ts"));
 
     await Bun.write(
@@ -1412,6 +1421,7 @@ describe("AkanApp", () => {
     );
 
     const forged = { "x-real-ip": "198.51.100.66", "x-forwarded-for": "198.51.100.7, 203.0.113.9" };
+    let port = 0;
     const whoami = async (headers: Record<string, string>) =>
       await (await fetch(`http://127.0.0.1:${port}/whoami`, { headers })).json();
     const wsAddress = async (headers: Record<string, string>) => {
@@ -1429,7 +1439,8 @@ describe("AkanApp", () => {
     };
 
     try {
-      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await withApp(serverPath, { replica: 1, runtimeDir }, async (bound) => {
+        port = bound;
         await waitForReady(port);
         expect(await whoami(forged)).toEqual({ address: "198.51.100.66", forwardedFor: "198.51.100.66" });
         expect(await wsAddress(forged)).toBe("198.51.100.66");
@@ -1446,16 +1457,18 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("answers health with its status alone and metrics with 401 to a caller without the token", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-status-access-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-status-access-");
     await writeOkChild(serverPath, "ok");
     const saved = { env: process.env.AKAN_PUBLIC_ENV, logToken: process.env.AKAN_LOG_STREAM_TOKEN };
     process.env.AKAN_PUBLIC_ENV = "debug";
     process.env.AKAN_LOG_STREAM_TOKEN = "akan-app-test-log-token";
+    let port = 0;
     const statusOf = (pathname: string, headers: Record<string, string> = {}) =>
       fetch(`http://127.0.0.1:${port}/_akan/app/${pathname}`, { headers });
 
     try {
-      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await withApp(serverPath, { replica: 1, runtimeDir }, async (bound) => {
+        port = bound;
         await waitForReady(port);
 
         for (const headers of [{}, { authorization: "Bearer not-the-token" }] as Record<string, string>[]) {
@@ -1495,7 +1508,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("under akan start answers loopback names, IP literals and the app's own hosts, and refuses any other Host", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-dev-hosts-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-dev-hosts-");
     await writeOkChild(serverPath, "page");
     await Bun.write(
       path.join(root, ".akan", "artifact", "base-artifact.json"),
@@ -1510,11 +1523,13 @@ describe("AkanApp", () => {
     Object.assign(process.env, identity);
     const app = withEnvSet(
       { AKAN_COMMAND_TYPE: "start" },
-      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port }),
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 }),
     );
     const running = app.start();
+    let port = 0;
     const at = (pathname: string, host: string) => fetch(`http://127.0.0.1:${port}${pathname}`, { headers: { host } });
     try {
+      port = await portOf(app);
       await waitForReady(port);
       for (const pathname of ["/", "/_akan/studio", "/_akan/devtools"]) {
         const refused = await at(pathname, `evil.test:${port}`);
@@ -1537,7 +1552,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("answers ready 503 until a replica is ready and again once the last one dies, while health stays 200", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-ready-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ready-");
     const goPath = path.join(root, "go");
     const counterPath = path.join(root, "counter.txt");
     await Bun.write(
@@ -1568,6 +1583,7 @@ describe("AkanApp", () => {
         };
       `,
     );
+    let port = 0;
     const statusOf = (pathname: string, headers: Record<string, string> = {}) =>
       fetch(`http://127.0.0.1:${port}/_akan/app/${pathname}`, { headers }).catch(() => null);
     const readyAnswering = (code: number, headers: Record<string, string> = {}) =>
@@ -1579,7 +1595,8 @@ describe("AkanApp", () => {
     process.env.AKAN_PUBLIC_ENV = "debug";
 
     try {
-      await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+      await withApp(serverPath, { replica: 1, runtimeDir }, async (bound) => {
+        port = bound;
         const booting = await readyAnswering(503, statusAuth);
         expect(await booting.json()).toMatchObject({
           status: "unavailable",
@@ -1608,7 +1625,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("is ready on a batch-only gateway once a batch replica is, since it serves no traffic to wait for", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ready-batch-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-ready-batch-");
     await Bun.write(
       serverPath,
       `
@@ -1625,7 +1642,7 @@ describe("AkanApp", () => {
       `,
     );
 
-    await withApp(serverPath, { replica: "0,1,0", runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: "0,1,0", runtimeDir }, async (port) => {
       const ready = await waitFor(async () => {
         const res = await fetch(`http://127.0.0.1:${port}/_akan/app/ready`, { headers: statusAuth }).catch(() => null);
         return res?.status === 200 ? res : null;
@@ -1634,8 +1651,57 @@ describe("AkanApp", () => {
     });
   }, 15_000);
 
+  test("answers ready 503 while a replica's RSC worker restarts, and 200 again once its pong says it is back", async () => {
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ready-rsc-");
+    let port = 0;
+    const workerPath = path.join(root, "worker.txt");
+    await Bun.write(workerPath, "starting");
+    await Bun.write(
+      serverPath,
+      `
+        export const server = {
+          async start() {
+            Bun.serve({ unix: process.env.AKAN_CHILD_SOCKET, fetch: () => new Response("ok") });
+            const worker = () => Bun.file(${JSON.stringify(workerPath)}).text();
+            process.on("message", async (message) => {
+              if (!message || typeof message !== "object") return;
+              if (message.type === "health.ping")
+                process.send?.({ type: "health.pong", nonce: message.nonce, sentAt: message.sentAt, pid: process.pid, rscWorker: await worker() });
+              if (message.type === "shutdown") process.exit(0);
+            });
+            process.send?.({ type: "ready", pid: process.pid, replicaIdx: 0, role: "all", upstream: { type: "unix", socketPath: process.env.AKAN_CHILD_SOCKET }, rscWorker: await worker() });
+          },
+        };
+      `,
+    );
+    const readyAnswering = (code: number) =>
+      waitFor(async () => {
+        const res = await fetch(`http://127.0.0.1:${port}/_akan/app/ready`, { headers: statusAuth }).catch(() => null);
+        return res?.status === code ? res : null;
+      }, 8_000);
+
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (bound) => {
+      port = bound;
+      await waitForReady(port);
+      expect(await (await readyAnswering(503)).json()).toMatchObject({
+        ready: false,
+        children: [{ ready: true, rscWorker: "starting" }],
+      });
+      await Bun.write(workerPath, "ready");
+      expect(await (await readyAnswering(200)).json()).toMatchObject({
+        ready: true,
+        children: [{ rscWorker: "ready" }],
+      });
+      await Bun.write(workerPath, "restarting");
+      expect(await (await readyAnswering(503)).json()).toMatchObject({ children: [{ rscWorker: "restarting" }] });
+      expect(await (await fetch(`http://127.0.0.1:${port}/`)).text()).toBe("ok");
+      await Bun.write(workerPath, "ready");
+      await readyAnswering(200);
+    });
+  }, 30_000);
+
   test("compresses a replica's JSON for the client, and relays one past 4 MiB as it came", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-json-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-json-");
 
     await Bun.write(
       serverPath,
@@ -1664,7 +1730,7 @@ describe("AkanApp", () => {
         `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       const small = await fetch(`http://127.0.0.1:${port}/small`, { headers: { "accept-encoding": "br" } });
       expect(small.headers.get("content-encoding")).toBe("br");
@@ -1677,7 +1743,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("relays a body the replica encoded for the client as it came", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-encoded-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-encoded-");
 
     await Bun.write(
       serverPath,
@@ -1709,7 +1775,7 @@ describe("AkanApp", () => {
         `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       const page = `<!doctype html><html><body>${"<p>cached</p>".repeat(400)}</body></html>`;
       const relayed = await fetch(`http://127.0.0.1:${port}/en`, {
@@ -1729,7 +1795,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("compresses a replica's streamed HTML for the client without holding back its shell", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-html-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-html-");
 
     await Bun.write(
       serverPath,
@@ -1770,7 +1836,7 @@ describe("AkanApp", () => {
         `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       const shell = `<!doctype html><html><body>${"<p>shell</p>".repeat(400)}`;
       const page = await fetch(`http://127.0.0.1:${port}/en`, {
@@ -1798,7 +1864,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("reaches a replica's ws port, which admits only the Host the gateway's own socket sends", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-host-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ws-host-");
     const wsPortPath = path.join(root, "ws-port");
 
     await Bun.write(
@@ -1841,7 +1907,7 @@ describe("AkanApp", () => {
         `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
       const wsPort = Number(await Bun.file(wsPortPath).text());
       expect((await fetch(`http://127.0.0.1:${wsPort}/api/ws`)).status).toBe(403);
@@ -1865,7 +1931,7 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("refuses a cross-site socket with 403 at the gateway, by the origins its replica allows", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-origin-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-ws-origin-");
 
     await Bun.write(
       serverPath,
@@ -1901,7 +1967,7 @@ describe("AkanApp", () => {
         `,
     );
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (port) => {
       await waitForReady(port);
 
       const refused = await fetch(`http://127.0.0.1:${port}/api/ws`, { headers: { origin: "https://evil.example" } });
@@ -1928,10 +1994,10 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("keeps delivering a room to a replica while another of its sockets still holds it", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-pubsub-sockets-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-pubsub-sockets-");
     await writePubsubChild(serverPath);
 
-    await withApp(serverPath, { replica: 2, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 2, runtimeDir }, async (port) => {
       await waitFor(async () => {
         const body = await readHealth(port);
         return body?.children.length === 2 && body.children.every((child) => child.ready) ? body : null;
@@ -1975,10 +2041,10 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("stops counting the sockets of a room a snapshot no longer confirms, whose unsubscribes were lost", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-snapsock-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-snapsock-");
     await writePubsubChild(serverPath);
 
-    await withApp(serverPath, { replica: 2, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 2, runtimeDir }, async (port) => {
       await waitFor(async () => {
         const body = await readHealth(port);
         return body?.children.length === 2 && body.children.every((child) => child.ready) ? body : null;
@@ -2016,10 +2082,10 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("routes a live change only to another replica that reported a live room for its model", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-live-models-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-live-models-");
     await writePubsubChild(serverPath);
 
-    await withApp(serverPath, { replica: 2, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 2, runtimeDir }, async (port) => {
       await waitFor(async () => {
         const body = await readHealth(port);
         return body?.children.length === 2 && body.children.every((child) => child.ready) ? body : null;
@@ -2069,10 +2135,10 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("answers a subscribe once its room and the live models reported before it route to the child", async () => {
-    const { serverPath, runtimeDir, port } = await makeRoot("akan-app-subscribe-ack-");
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-subscribe-ack-");
     await writePubsubChild(serverPath);
 
-    await withApp(serverPath, { replica: 2, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 2, runtimeDir }, async (port) => {
       await waitFor(async () => {
         const body = await readHealth(port);
         return body?.children.length === 2 && body.children.every((child) => child.ready) ? body : null;
@@ -2104,13 +2170,14 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("normalizes upstream close codes before relaying them to the client", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-upstream-close-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ws-upstream-close-");
     const observedPath = path.join(root, "observed.txt");
     await writeWebSocketRelayChild(serverPath, observedPath);
 
-    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
     const running = app.start();
     try {
+      const port = await portOf(app);
       await waitForReady(port);
 
       const abnormal = await connectRawWebSocket(port);
@@ -2134,13 +2201,14 @@ describe("AkanApp", () => {
   }, 20_000);
 
   test("normalizes client close codes before relaying them to the upstream", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-ws-client-close-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ws-client-close-");
     const observedPath = path.join(root, "observed.txt");
     await writeWebSocketRelayChild(serverPath, observedPath);
 
-    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port });
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
     const running = app.start();
     try {
+      const port = await portOf(app);
       await waitForReady(port);
 
       let abnormal: Socket | undefined;
@@ -2243,7 +2311,7 @@ describe("AkanApp solo", () => {
   test("runs the single environment-configured replica in this process", async () => {
     const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-");
     await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: undefined }, async () => {
-      const app = new AkanApp(serverPath, { runtimeDir, port: randomPort() });
+      const app = new AkanApp(serverPath, { runtimeDir, port: 0 });
       await app.start();
       const report = (await readReport(reportPath)) as { pid: number; listen: boolean; childSocket: string | null };
       expect(report.pid).toBe(process.pid);
@@ -2263,7 +2331,7 @@ describe("AkanApp solo", () => {
         return true;
       }) as typeof process.stdout.write;
       try {
-        const app = new AkanApp(serverPath, { runtimeDir, port: randomPort() });
+        const app = new AkanApp(serverPath, { runtimeDir, port: 0 });
         await app.start();
       } finally {
         process.stdout.write = original;
@@ -2272,10 +2340,20 @@ describe("AkanApp solo", () => {
     });
   }, 10_000);
 
+  test("refuses a server file that exports neither server nor app as invalidArtifact", async () => {
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-solo-no-export-");
+    await Bun.write(serverPath, "export const nothing = true;\n");
+    await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: undefined }, async () => {
+      const failure = await new AkanApp(serverPath, { runtimeDir, port: 0 }).start().catch((error: unknown) => error);
+      expect(AkanError.is(failure, "invalidArtifact")).toBe(true);
+      expect(failure).toMatchObject({ statusCode: 500, message: "server.ts must export server or app with start()" });
+    });
+  }, 10_000);
+
   test("spawns a child when the topology was passed explicitly", async () => {
     const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-explicit-");
     await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: undefined }, async () => {
-      await withApp(serverPath, { replica: 1, runtimeDir, port: randomPort() }, async () => {
+      await withApp(serverPath, { replica: 1, runtimeDir }, async () => {
         const report = (await readReport(reportPath)) as { pid: number; childSocket: string | null };
         expect(report.pid).not.toBe(process.pid);
         expect(report.childSocket).not.toBeNull();
@@ -2286,7 +2364,7 @@ describe("AkanApp solo", () => {
   test("spawns a child when AKAN_SOLO is off", async () => {
     const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-off-");
     await withSoloEnv({ AKAN_SOLO: "false", AKAN_REPLICA: undefined }, async () => {
-      await withApp(serverPath, { runtimeDir, port: randomPort() }, async () => {
+      await withApp(serverPath, { runtimeDir }, async () => {
         expect(((await readReport(reportPath)) as { pid: number }).pid).not.toBe(process.pid);
       });
     });
@@ -2295,7 +2373,7 @@ describe("AkanApp solo", () => {
   test("spawns a child for a batch-only replica, which would leave nothing listening", async () => {
     const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-batch-");
     await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: "0,1,0" }, async () => {
-      await withApp(serverPath, { runtimeDir, port: randomPort() }, async () => {
+      await withApp(serverPath, { runtimeDir }, async () => {
         const report = (await readReport(reportPath)) as { pid: number; role: string };
         expect(report.pid).not.toBe(process.pid);
         expect(report.role).toBe("batch");
@@ -2306,7 +2384,7 @@ describe("AkanApp solo", () => {
   // Loopback fetches from the RSC worker assume `AKAN_PUBLIC_SERVER_PORT` (default 8282) unless `PORT` says otherwise.
   test("publishes the resolved port to the replica it runs in this process", async () => {
     const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-solo-port-");
-    const port = randomPort();
+    const port = 48_282;
     await withSoloEnv({ AKAN_SOLO: undefined, AKAN_REPLICA: undefined, PORT: undefined }, async () => {
       const app = new AkanApp(serverPath, { runtimeDir, port });
       await app.start();
@@ -2316,11 +2394,19 @@ describe("AkanApp solo", () => {
 
   test("publishes the resolved port to a spawned child, which proxies its own fetches back here", async () => {
     const { serverPath, reportPath, runtimeDir } = await makeSoloRoot("akan-app-child-port-");
-    const port = randomPort();
+    //? Replicas spawn before the gateway listens and are handed the configured port, so this one needs a free port by number.
+    const probe = Bun.serve({ port: 0, fetch: () => new Response() });
+    const port = Number(probe.url.port);
+    probe.stop(true);
     await withSoloEnv({ AKAN_SOLO: "false", AKAN_REPLICA: undefined, PORT: "8282" }, async () => {
-      await withApp(serverPath, { runtimeDir, port }, async () => {
+      const app = new AkanApp(serverPath, { runtimeDir, port });
+      const running = app.start();
+      try {
         expect(((await readReport(reportPath)) as { port: string | null }).port).toBe(String(port));
-      });
+      } finally {
+        await app.stop();
+        await Promise.race([running, wait(1_000)]);
+      }
     });
   }, 10_000);
 });

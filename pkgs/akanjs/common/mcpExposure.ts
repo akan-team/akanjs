@@ -1,5 +1,11 @@
 import { modelNames } from "./akanNames";
 
+/** `"agent"` lists it to the in-process agent (`AgentToolsRole`, `agentService.loop`) and keeps it off `/mcp`. */
+export type McpShelf = boolean | "agent";
+
+export const narrowestMcpShelf = (shelves: readonly McpShelf[]): McpShelf =>
+  shelves.includes(false) ? false : shelves.includes("agent") ? "agent" : true;
+
 // Shared by the server's MCP catalogue and the browser API explorer, so the two cannot disagree.
 export interface McpExposureEndpoint {
   type: string;
@@ -7,7 +13,7 @@ export interface McpExposureEndpoint {
   args: { name: string; refName: string; type: string; arrDepth?: number; nullable?: boolean }[];
   guards?: string[];
   fileUpload?: boolean;
-  mcp?: boolean;
+  mcp?: McpShelf;
   /** `false` when a guard declares `static agents = false`: no model may ever pass, whatever else the guards say. */
   agents?: boolean;
   destructive?: boolean;
@@ -20,6 +26,8 @@ export interface McpExposureOption {
   readOnly?: boolean;
   /** MCP Apps: judges what a rendered view may call, which lifts the two refusals that only curate a model's shelf. */
   view?: boolean;
+  /** The in-process agent catalogue, which also lists an endpoint declared `mcp: "agent"`. */
+  agent?: boolean;
 }
 
 /** `Any` publishes as the empty schema, which tells a model nothing, so it is left out. */
@@ -50,10 +58,12 @@ export const mcpHintsOf = (key: string, endpoint: { type: string; destructive?: 
 
 export const mcpRefusalOf = (
   endpoint: McpExposureEndpoint,
-  { refName, key, readOnly, view }: McpExposureOption,
+  { refName, key, readOnly, view, agent }: McpExposureOption,
 ): string | null => {
   if (endpoint.mcp === false && !view)
     return "it declares `mcp: false`, so it is deliberately off the agent shelf. HTTP still serves it.";
+  if (endpoint.mcp === "agent" && !agent && !view)
+    return 'it declares `mcp: "agent"`, so only the in-process agent lists it, never `/mcp`. HTTP still serves it.';
   // Refused outright: hiding it per caller at listing time would still leave it in the document.
   if (endpoint.agents === false)
     return `its guards (${(endpoint.guards ?? []).join(", ")}) admit no agent — an act reserved for a person, so it is off the agent shelf. HTTP still serves it.`;

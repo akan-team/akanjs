@@ -1,8 +1,9 @@
-import { FIELD_META, INJECT_META } from "akanjs/base";
+import { AkanError, FIELD_META, INJECT_META } from "akanjs/base";
 import { lowerlize, toError } from "akanjs/common";
 import { ConstantRegistry, type FieldObject } from "akanjs/constant";
 import type { InjectInfo } from "akanjs/service";
 import type { DatabaseModule, ServiceModule } from "../akanLib";
+import { StageFailedError } from "./stageFailedError";
 
 interface StageTask {
   label: string;
@@ -121,7 +122,10 @@ export const assertUniqueRegistrations = (kind: string, registrations: Registrat
     else claimed.set(`${scope}\0${key}`, owner);
   }
   if (!clashes.length) return;
-  throw new Error(`[DI:${kind}] ${clashes.length} duplicate registration(s):\n${clashes.join("\n")}`);
+  throw new AkanError(
+    "duplicateRegistration",
+    `[DI:${kind}] ${clashes.length} duplicate registration(s):\n${clashes.join("\n")}`,
+  );
 };
 
 // allSettled, not Promise.all: every failing task of a stage is reported, not just the first.
@@ -142,7 +146,8 @@ export const throwStageFailures = (
   if (failures.length === 0) return;
   const summary = failures.map((f) => `  • ${f.label}: ${reasonMessage(f.reason)}`).join("\n");
   const errors = failures.map((f) => toError(f.reason));
-  throw new AggregateError(errors, `[DI:${stageLabel}] ${failures.length}/${total} task(s) failed:\n${summary}`);
+  const message = `[DI:${stageLabel}] ${failures.length}/${total} task(s) failed:\n${summary}`;
+  throw new StageFailedError(message, errors);
 };
 
 export const reasonMessage = (reason: unknown): string => {

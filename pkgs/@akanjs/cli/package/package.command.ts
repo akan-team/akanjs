@@ -2,7 +2,7 @@ import { command, Pkg, Workspace } from "@akanjs/devkit/commandDecorators";
 import { PackageScript } from "./package.script";
 
 export class PackageCommand extends command("package", [PackageScript], ({ public: target }) => ({
-  version: target({ desc: "Show version information for all packages" })
+  version: target({ desc: "Show version information for all packages", readOnly: true })
     .with(Workspace)
     .exec(async function (workspace) {
       await this.packageScript.version(workspace);
@@ -28,7 +28,7 @@ export class PackageCommand extends command("package", [PackageScript], ({ publi
     .exec(async function (pkg) {
       await this.packageScript.buildPackage(pkg);
     }),
-  verifyDistPackage: target({ desc: "Verify a built dist package with npm pack dry-run" })
+  verifyDistPackage: target({ desc: "Verify a built dist package with npm pack dry-run", readOnly: true })
     .with(Pkg)
     .exec(async function (pkg) {
       await this.packageScript.verifyDistPackage(pkg);

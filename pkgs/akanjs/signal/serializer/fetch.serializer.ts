@@ -1,5 +1,5 @@
 import { type Cls, ENDPOINT_META, PrimitiveRegistry, type PrimitiveScalar, SLICE_META } from "akanjs/base";
-import { Logger } from "akanjs/common";
+import { Logger, type McpShelf } from "akanjs/common";
 import { ConstantRegistry, type ConstantType } from "akanjs/constant";
 import { type FilterArgInfo, getFilterArgInfos, getFilterMeta } from "akanjs/document";
 import type { LiveRegistry } from "akanjs/service";
@@ -16,6 +16,7 @@ import type {
   SerializedReturns,
   SerializedSignal,
   SerializedSignalMcp,
+  SerializedSignalShelf,
   SerializedSlice,
 } from "../types";
 
@@ -74,7 +75,7 @@ export class FetchSerializer {
       ...(endpointInfo.signalOption.timeout ? { timeout: endpointInfo.signalOption.timeout } : {}),
       ...(endpointInfo.signalOption.errors ? { errors: endpointInfo.signalOption.errors } : {}),
       ...(guards?.length ? { guards } : {}),
-      ...(endpointInfo.signalOption.mcp === false ? { mcp: false as const } : {}),
+      ...FetchSerializer.#shelfOf(endpointInfo.signalOption.mcp),
       ...(refusesAgents(endpointInfo.signalOption.guards) ? { agents: false as const } : {}),
       ...(endpointInfo.signalOption.destructive !== undefined
         ? { destructive: endpointInfo.signalOption.destructive }
@@ -113,7 +114,7 @@ export class FetchSerializer {
       args: sliceInfo.args.map(FetchSerializer.#serializeArg),
       ...(sliceInfo.signalOption.path ? { path: sliceInfo.signalOption.path } : {}),
       ...(guards?.length ? { guards } : {}),
-      ...(sliceInfo.signalOption.mcp === false ? { mcp: false as const } : {}),
+      ...FetchSerializer.#shelfOf(sliceInfo.signalOption.mcp),
       ...(refusesAgents(sliceInfo.signalOption.guards) ? { agents: false as const } : {}),
       ...(sliceInfo.liveOption
         ? {
@@ -190,9 +191,15 @@ export class FetchSerializer {
     return Object.keys(agents).length ? { agents } : {};
   }
 
-  static #serializeSliceMcp(sliceCls: SliceCls): { mcp?: SerializedSignalMcp } {
-    const mcp = FetchSerializer.#offVerbs(sliceCls.mcp);
+  static #serializeSliceMcp(sliceCls: SliceCls): { mcp?: SerializedSignalShelf } {
+    const mcp = Object.fromEntries(
+      Object.entries(sliceCls.mcp).filter(([, shelf]) => shelf !== true),
+    ) as SerializedSignalShelf;
     return Object.keys(mcp).length ? { mcp } : {};
+  }
+
+  static #shelfOf(mcp: McpShelf | undefined): { mcp?: false | "agent" } {
+    return mcp === false || mcp === "agent" ? { mcp } : {};
   }
 
   static #serializeSliceCrud(sliceCls: SliceCls): { crud?: SerializedSignalMcp } {

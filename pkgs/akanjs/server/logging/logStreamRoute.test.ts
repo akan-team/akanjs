@@ -139,12 +139,41 @@ describe("LogStreamRoute stream", () => {
     expect(seen.slice(1).map((frame) => frame.id)).toEqual([3, 4, 5]);
   });
 
+  test("a resume replays a ring larger than the live bound without dropping any of it", async () => {
+    hub = new LogHub({ maxRecords: 5_000, maxBytes: 64 * 1024 * 1024 });
+    const pad = "가".repeat(1_024);
+    const count = Math.ceil((LogStreamRoute.maxQueuedBytes * 2) / (pad.length * 3));
+    for (let idx = 1; idx <= count; idx += 1) hub.ingest(record(`m${idx} ${pad}`));
+    const route = new LogStreamRoute(() => hub, "tok");
+    const text = await readUntil(
+      route.handle(request("", { "last-event-id": "1" })),
+      (t) => dataCount(t) >= count - 1,
+      5_000,
+    );
+    const seen = frames(text);
+    expect(seen.some((frame) => (frame.data as { type?: string }).type === "dropped")).toBe(false);
+    expect(seen.length).toBe(count - 1);
+    expect(seen.at(-1)?.id).toBe(count);
+  });
+
   test("a Last-Event-ID from before a restart is answered with a sequence-reset gap", async () => {
     hub = new LogHub();
     hub.ingest(record("fresh"));
     const route = new LogStreamRoute(() => hub, "tok");
     const text = await readUntil(route.handle(request("", { "last-event-id": "999" })), (t) => dataCount(t) >= 1);
     expect(frames(text)[0]?.data).toEqual({ type: "gap", reason: "sequence-reset", lastEventId: 999, currentSeq: 1 });
+  });
+
+  test("a client that never reads holds a bounded queue and is cut off past the drop limit", async () => {
+    hub = new LogHub({ maxRecords: 10 });
+    const res = new LogStreamRoute(() => hub, "tok").handle(request());
+    const pad = "x".repeat(1_024);
+    const fits = Math.ceil(LogStreamRoute.maxQueuedBytes / pad.length);
+    let sent = 0;
+    while (hub.floor !== null && sent <= fits + LogStreamRoute.maxDropped) hub.ingest(record(`m${sent++} ${pad}`));
+    expect(hub.floor).toBeNull();
+    expect(sent).toBeGreaterThan(LogStreamRoute.maxDropped + 1);
+    expect(res.body?.getReader().read()).rejects.toThrow("stalled");
   });
 
   test("delivering records writes no record of its own", async () => {

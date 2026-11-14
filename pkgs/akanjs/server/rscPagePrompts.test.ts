@@ -455,6 +455,68 @@ describe("RscPagePrompts apps", () => {
   });
 });
 
+describe("RscPagePrompts static apps", () => {
+  const board = new RouteTreeBuilder({
+    "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+    "./board.tsx": async () => ({
+      default: page()
+        .guard(() => {
+          if (untrackedHeaders().get("authorization") !== "Bearer u1")
+            throw Object.assign(new Error("redirect"), { digest: "AKAN_REDIRECT", location: "/signin" });
+        })
+        .app("showBoard", "Show the board.", () => "board", { static: true })
+        .app("showLive", "Show the live board.", () => "live")
+        .render(() => null),
+    }),
+  }).build();
+  const source = new RscPagePrompts({
+    routes: () => board,
+    run: (request, _routeId, fn) => {
+      if (!requestStorage) throw new Error("no request storage");
+      return requestStorage.run(createRequestStore(request), fn);
+    },
+    defaultLocale: () => "en",
+  });
+  const signedIn: [string, string][] = [["authorization", "Bearer u1"]];
+
+  test("lists a static app as static, and an app without the option as not", async () => {
+    const entries = await source.list();
+    expect(entries.find((entry) => entry.name === "showBoard")?.static).toBe(true);
+    expect(entries.find((entry) => entry.name === "showLive")?.static).toBeUndefined();
+  });
+
+  test("hands a static app's element to the drawing in its own app scope and the run's request", async () => {
+    const seen: unknown[] = [];
+    const { run, drawn } = await source.draw({ name: "showBoard", arguments: {}, headers: signedIn }, async (input) => {
+      seen.push(input.element, input.url, input.lang, input.route.path, AppScope.current());
+      return untrackedHeaders().get("authorization");
+    });
+    expect(run).toMatchObject({ ok: true, url: "http://127.0.0.1/en/board" });
+    expect(seen).toEqual(["board", "http://127.0.0.1/en/board", "en", "/:lang/board", "showBoard"]);
+    expect(drawn).toBe("Bearer u1");
+  });
+
+  test("draws nothing for an app that is not static, or for a caller the guards refuse", async () => {
+    let draws = 0;
+    const draw = async () => {
+      draws += 1;
+      return "html";
+    };
+    const live = await source.draw({ name: "showLive", arguments: {}, headers: signedIn }, draw);
+    expect(live).toMatchObject({ run: { ok: true }, drawn: null });
+    const refused = await source.draw({ name: "showBoard", arguments: {}, headers: [] }, draw);
+    expect(refused).toEqual({ run: expect.objectContaining({ ok: false, reason: "redirect" }), drawn: null });
+    expect(draws).toBe(0);
+  });
+
+  test("keeps the run when the drawing throws, with nothing drawn", async () => {
+    const failed = await source.draw({ name: "showBoard", arguments: {}, headers: signedIn }, async () => {
+      throw new Error("draw failed");
+    });
+    expect(failed).toMatchObject({ run: { ok: true }, drawn: null });
+  });
+});
+
 describe("RscPagePrompts with a page that writes", () => {
   const sent: string[] = [];
   const client = new FetchClient(

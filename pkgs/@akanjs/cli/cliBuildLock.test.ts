@@ -1,12 +1,16 @@
-import { afterEach, describe, expect, mock, setSystemTime, test } from "bun:test";
+import { afterEach, describe, expect, mock, setSystemTime, spyOn, test } from "bun:test";
 import * as fsPromises from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { hostname, tmpdir } from "node:os";
 import path from "node:path";
 
 const realMkdir = fsPromises.mkdir;
 const realRename = fsPromises.rename;
-const inject: { beforeMkdir?: (dir: string) => Promise<void>; beforeRename?: (from: string) => Promise<void> | void } =
-  {};
+const realRm = fsPromises.rm;
+const inject: {
+  beforeMkdir?: (dir: string) => Promise<void>;
+  beforeRename?: (from: string) => Promise<void> | void;
+  beforeRm?: (target: string) => void;
+} = {};
 mock.module("node:fs/promises", () => ({
   ...fsPromises,
   mkdir: async (...args: Parameters<typeof fsPromises.mkdir>) => {
@@ -17,14 +21,19 @@ mock.module("node:fs/promises", () => ({
     await inject.beforeRename?.(String(args[0]));
     return await realRename(...args);
   },
+  rm: async (...args: Parameters<typeof fsPromises.rm>) => {
+    inject.beforeRm?.(String(args[0]));
+    return await realRm(...args);
+  },
 }));
 const { CliBuildLock } = await import("./cliBuildLock");
 
-const { mkdir, mkdtemp, readdir, rm } = fsPromises;
+const { mkdir, mkdtemp, readdir, rm, stat } = fsPromises;
 const roots: string[] = [];
 afterEach(async () => {
   inject.beforeMkdir = undefined;
   inject.beforeRename = undefined;
+  inject.beforeRm = undefined;
   setSystemTime();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -46,7 +55,64 @@ const deadPid = async () => {
   return proc.pid;
 };
 const letItPoll = () => Bun.sleep(250);
+const fsClockProbed = () => {
+  const probed = Promise.withResolvers<void>();
+  const before = inject.beforeRm;
+  inject.beforeRm = (target) => {
+    if (target.includes(".clock-")) probed.resolve();
+    before?.(target);
+  };
+  return probed.promise;
+};
+const hostLines = [
+  ["names this host", true],
+  ["names no host, as an older CLI's does", false],
+] as const;
+const thisHost = async () => {
+  const lockDir = await lockDirIn();
+  const release = await CliBuildLock.acquire(lockDir);
+  const host = (await ownerOf(lockDir)).split("\n")[3] ?? "";
+  await release();
+  return host;
+};
+const hostLineOf = async (named: boolean) => (named ? `\n${await thisHost()}` : "");
 const refusal = (code: string) => Object.assign(new Error(`${code}: refused`), { code });
+const refuseRemovingMarkers = (codes: string[]) => {
+  const left = [...codes];
+  inject.beforeRm = (target) => {
+    const code = target.includes(".removing-") ? left.shift() : undefined;
+    if (code) throw refusal(code);
+  };
+  return left;
+};
+const mostHoldersOfTwoRacingWaiters = async (lockDir: string) => {
+  const secondRename = Promise.withResolvers<void>();
+  let renames = 0;
+  inject.beforeRename = async (from) => {
+    if (from !== lockDir) return;
+    renames++;
+    if (renames === 1) {
+      await Promise.race([secondRename.promise, letItPoll()]);
+      return;
+    }
+    if (renames > 2) return;
+    secondRename.resolve();
+    while (!(await ownerOf(lockDir).catch(() => "")).startsWith(`${process.pid}\n`)) await Bun.sleep(5);
+  };
+  let holding = 0;
+  let most = 0;
+  await Promise.all(
+    [0, 1].map(async () => {
+      const release = await CliBuildLock.acquire(lockDir);
+      holding++;
+      most = Math.max(most, holding);
+      await letItPoll();
+      holding--;
+      await release();
+    }),
+  );
+  return most;
+};
 
 describe("CliBuildLock", () => {
   test("takes over a lock whose owner is gone, and releases only its own", async () => {
@@ -83,45 +149,30 @@ describe("CliBuildLock", () => {
   test("keeps a second waiter that judged the same dead lock from moving away the lock the first one made", async () => {
     const lockDir = await lockDirIn();
     await holdAs(lockDir, `${await deadPid()}\nstale`);
-    const secondRename = Promise.withResolvers<void>();
-    let renames = 0;
-    inject.beforeRename = async (from) => {
-      if (from !== lockDir) return;
-      renames++;
-      if (renames === 1) {
-        await Promise.race([secondRename.promise, letItPoll()]);
-        return;
-      }
-      if (renames > 2) return;
-      secondRename.resolve();
-      while (!(await ownerOf(lockDir).catch(() => "")).startsWith(`${process.pid}\n`)) await Bun.sleep(5);
-    };
-    let holding = 0;
-    let most = 0;
-    await Promise.all(
-      [0, 1].map(async () => {
-        const release = await CliBuildLock.acquire(lockDir);
-        holding++;
-        most = Math.max(most, holding);
-        await letItPoll();
-        holding--;
-        await release();
-      }),
-    );
-    expect(most).toBe(1);
+    expect(await mostHoldersOfTwoRacingWaiters(lockDir)).toBe(1);
+  });
+
+  test("ages a removal marker by the filesystem's clock when it runs minutes behind this process's", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    setSystemTime(Date.now() + 200_000);
+    expect(await mostHoldersOfTwoRacingWaiters(lockDir)).toBe(1);
   });
 
   test("leaves a lock that a fresh holder took while the waiter was getting to its removal", async () => {
     const lockDir = await lockDirIn();
     await holdAs(lockDir, `${await deadPid()}\nstale`);
     const fresh = `${process.pid}\nfresh\n${Date.now()}`;
+    const replaced = Promise.withResolvers<void>();
     inject.beforeMkdir = async (dir) => {
       if (!dir.includes(".removing-")) return;
       inject.beforeMkdir = undefined;
       await rm(lockDir, { recursive: true });
       await holdAs(lockDir, fresh);
+      replaced.resolve();
     };
     const acquired = CliBuildLock.acquire(lockDir);
+    await replaced.promise;
     await letItPoll();
     expect(await ownerOf(lockDir)).toBe(fresh);
     await rm(lockDir, { recursive: true });
@@ -170,7 +221,10 @@ describe("CliBuildLock", () => {
     const taken = `${process.pid}\nbefore-the-clock-moved\n${Date.now()}`;
     await holdAs(lockDir, taken);
     setSystemTime(Date.now() - 121_000);
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
     const release = await CliBuildLock.acquire(lockDir);
+    expect(warn.mock.calls.flat().join("\n")).toContain("ms ahead of this clock");
+    warn.mockRestore();
     expect(await ownerOf(lockDir)).not.toBe(taken);
     await release();
   });
@@ -178,7 +232,9 @@ describe("CliBuildLock", () => {
   test("takes over a lock with no owner only once it has outlived the lease", async () => {
     const lockDir = await lockDirIn();
     await mkdir(lockDir);
+    const probed = fsClockProbed();
     const acquired = CliBuildLock.acquire(lockDir);
+    await probed;
     await letItPoll();
     expect(await readdir(lockDir)).toEqual([]);
     setSystemTime(Date.now() + 121_000);
@@ -193,8 +249,11 @@ describe("CliBuildLock", () => {
     await holdAs(lockDir, stale);
     await mkdir(`${lockDir}.removing-${Bun.hash(stale).toString(36)}.0`);
     await mkdir(`${lockDir}.removed-left-by-a-crash`);
+    await mkdir(`${lockDir}.clock-left-by-a-crash`);
     await mkdir(path.join(path.dirname(lockDir), "other.lock.removed-not-ours"));
+    const probed = fsClockProbed();
     const acquired = CliBuildLock.acquire(lockDir);
+    await probed;
     await letItPoll();
     expect(await ownerOf(lockDir)).toBe(stale);
     setSystemTime(Date.now() + 121_000);
@@ -234,5 +293,309 @@ describe("CliBuildLock", () => {
       if (dir.includes(".removing-")) throw refusal("ENOSPC");
     };
     await expect(CliBuildLock.acquire(lockDir)).rejects.toMatchObject({ code: "ENOSPC" });
+  });
+
+  test("leaves an ownerless lock that another ownerless lock replaced while the waiter got to its removal", async () => {
+    const lockDir = await lockDirIn();
+    await realMkdir(lockDir);
+    let freshIno = -1;
+    inject.beforeMkdir = async (dir) => {
+      if (!dir.includes(".removing-")) return;
+      inject.beforeMkdir = undefined;
+      await realRm(lockDir, { recursive: true });
+      await Bun.sleep(5);
+      await realMkdir(lockDir);
+      freshIno = (await stat(lockDir)).ino;
+      setSystemTime();
+    };
+    const probed = fsClockProbed();
+    const acquired = CliBuildLock.acquire(lockDir);
+    await probed;
+    setSystemTime(Date.now() + 121_000);
+    await letItPoll();
+    expect((await stat(lockDir)).ino).toBe(freshIno);
+    expect(await readdir(lockDir)).toEqual([]);
+    await rm(lockDir, { recursive: true });
+    await (await acquired)();
+  });
+
+  test("keys a lock whose owner file is still empty by its inode and birth time", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, "");
+    const info = await stat(lockDir);
+    const markers: string[] = [];
+    inject.beforeMkdir = async (dir) => {
+      if (dir.includes(".removing-")) markers.push(dir);
+    };
+    const probed = fsClockProbed();
+    const acquired = CliBuildLock.acquire(lockDir);
+    await probed;
+    setSystemTime(Date.now() + 121_000);
+    const release = await acquired;
+    const key = Bun.hash(`${info.ino}:${info.birthtimeMs || info.mtimeMs}`).toString(36);
+    expect(markers[0]).toBe(`${lockDir}.removing-${key}.0`);
+    await release();
+  });
+
+  test("keeps a takeover whose removal marker the OS would not delete", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    inject.beforeRm = (target) => {
+      if (!target.includes(".removing-")) return;
+      setSystemTime(Date.now() + 1_000);
+      throw refusal("EBUSY");
+    };
+    const release = await CliBuildLock.acquire(lockDir);
+    expect(await ownerPidOf(lockDir)).toBe(`${process.pid}`);
+    inject.beforeRm = undefined;
+    await release();
+  });
+
+  test("retries removing its removal marker while the OS refuses it for a moment, so a refused release still ends", async () => {
+    const lockDir = await lockDirIn();
+    const release = await CliBuildLock.acquire(lockDir);
+    let renameRefused = false;
+    inject.beforeRename = (from) => {
+      if (from !== lockDir || renameRefused) return;
+      renameRefused = true;
+      throw refusal("EBUSY");
+    };
+    const left = refuseRemovingMarkers(["EBUSY", "EPERM", "ENOTEMPTY"]);
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    await release();
+    warn.mockRestore();
+    expect(left).toEqual([]);
+    expect(await readdir(path.dirname(lockDir))).toEqual([]);
+  });
+
+  test("tries a dead remover's marker it stepped past only once, and retries only its own", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    const release = await CliBuildLock.acquire(lockDir);
+    const ownerToken = await ownerOf(lockDir);
+    const markerOf = (attempt: number) => `${lockDir}.removing-${Bun.hash(ownerToken).toString(36)}.${attempt}`;
+    await mkdir(markerOf(0));
+    setSystemTime(Date.now() + 121_000);
+    let deadTries = 0;
+    const left = ["EBUSY", "EBUSY"];
+    inject.beforeRm = (target) => {
+      if (target === markerOf(0)) {
+        deadTries++;
+        throw refusal("EPERM");
+      }
+      const code = target === markerOf(1) ? left.shift() : undefined;
+      if (code) throw refusal(code);
+    };
+    await release();
+    expect(deadTries).toBe(1);
+    expect(left).toEqual([]);
+    expect(await readdir(path.dirname(lockDir))).toEqual([path.basename(markerOf(0))]);
+  });
+
+  test("retries removing the removal marker of a takeover while the OS refuses it for a moment", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    const left = refuseRemovingMarkers(["EBUSY", "EBUSY", "EBUSY"]);
+    const release = await CliBuildLock.acquire(lockDir);
+    expect(left).toEqual([]);
+    expect(await readdir(path.dirname(lockDir))).toEqual([path.basename(lockDir)]);
+    inject.beforeRm = undefined;
+    await release();
+  });
+
+  test("waits out an EPERM from a path still pending deletion, and fails once it persists", async () => {
+    const lockDir = await lockDirIn();
+    let refusals = 3;
+    inject.beforeMkdir = async (dir) => {
+      if (dir === lockDir && refusals-- > 0) throw refusal("EPERM");
+    };
+    await (await CliBuildLock.acquire(lockDir))();
+    expect(refusals).toBeLessThan(0);
+    inject.beforeMkdir = async (dir) => {
+      if (dir !== lockDir) return;
+      setSystemTime(Date.now() + 1_000);
+      throw refusal("EPERM");
+    };
+    await expect(CliBuildLock.acquire(lockDir)).rejects.toMatchObject({ code: "EPERM" });
+  });
+
+  test("retries a refused release until the rename goes through", async () => {
+    const lockDir = await lockDirIn();
+    const release = await CliBuildLock.acquire(lockDir);
+    let refusals = 3;
+    inject.beforeRename = () => {
+      if (refusals-- > 0) throw refusal("EBUSY");
+    };
+    await release();
+    expect(await readdir(path.dirname(lockDir))).toEqual([]);
+  });
+
+  test("resolves a release that cannot make its removal marker, and keeps the lock", async () => {
+    const lockDir = await lockDirIn();
+    const release = await CliBuildLock.acquire(lockDir);
+    const token = await ownerOf(lockDir);
+    inject.beforeMkdir = async (dir) => {
+      if (dir.includes(".removing-")) throw refusal("ENOSPC");
+    };
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    expect(await release()).toBeUndefined();
+    warn.mockRestore();
+    expect(await ownerOf(lockDir)).toBe(token);
+  });
+
+  test("removes every stale marker its release stepped past", async () => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nstale`);
+    const release = await CliBuildLock.acquire(lockDir);
+    await mkdir(`${lockDir}.removing-${Bun.hash(await ownerOf(lockDir)).toString(36)}.0`);
+    setSystemTime(Date.now() + 121_000);
+    await release();
+    expect(await readdir(path.dirname(lockDir))).toEqual([]);
+  });
+
+  test("leaves a live older CLI's lock alone when the filesystem's clock runs minutes behind this process's", async () => {
+    const lockDir = await lockDirIn();
+    const older = `${process.pid}\nolder-cli`;
+    await holdAs(lockDir, older);
+    setSystemTime(Date.now() + 200_000);
+    const acquired = CliBuildLock.acquire(lockDir);
+    await letItPoll();
+    expect(await ownerOf(lockDir)).toBe(older);
+    await rm(lockDir, { recursive: true });
+    await (await acquired)();
+  });
+
+  test("keeps a fresh removal marker through the sweep when the filesystem's clock runs minutes behind", async () => {
+    const lockDir = await lockDirIn();
+    const fresh = `${lockDir}.removing-someone-else.0`;
+    await mkdir(fresh);
+    setSystemTime(Date.now() + 200_000);
+    const release = await CliBuildLock.acquire(lockDir);
+    expect(await readdir(path.dirname(lockDir))).toContain(path.basename(fresh));
+    await release();
+  });
+
+  test("probes the filesystem's clock again after a probe fails, and ages files by what it measures", async () => {
+    const lockDir = await lockDirIn();
+    const older = `${process.pid}\nolder-cli`;
+    await holdAs(lockDir, older);
+    setSystemTime(Date.now() + 200_000);
+    const secondProbe = Promise.withResolvers<void>();
+    let probes = 0;
+    inject.beforeMkdir = async (dir) => {
+      if (!dir.includes(".clock-")) return;
+      probes++;
+      if (probes === 1) throw refusal("ENOSPC");
+      secondProbe.resolve();
+    };
+    const acquired = CliBuildLock.acquire(lockDir);
+    await secondProbe.promise;
+    await letItPoll();
+    expect(probes).toBe(2);
+    expect(await ownerOf(lockDir)).toBe(older);
+    setSystemTime(Date.now() + 121_000);
+    const release = await acquired;
+    expect(await ownerOf(lockDir)).not.toBe(older);
+    await release();
+  });
+
+  test("names its pid and host in the removal marker it holds", async () => {
+    const lockDir = await lockDirIn();
+    const release = await CliBuildLock.acquire(lockDir);
+    const marker = `${lockDir}.removing-${Bun.hash(await ownerOf(lockDir)).toString(36)}.0`;
+    let named = "";
+    inject.beforeRename = async (from) => {
+      if (from === lockDir) named = await ownerOf(marker).catch(() => "");
+    };
+    await release();
+    expect(named).toBe(`${process.pid}\n${await thisHost()}`);
+  });
+
+  test("names its host by host name, platform and, on Linux, pid namespace, which WSL and a host-network container change", async () => {
+    const [name, platform, ...rest] = (await thisHost()).split(" ");
+    expect([name, platform]).toEqual([hostname(), process.platform]);
+    expect(rest).toEqual(process.platform === "linux" ? [expect.stringMatching(/^pid:\[\d+\]$/)] : []);
+  });
+
+  test.each(hostLines)(
+    "steps past a dead remover's marker that %s by its pid while the filesystem's clock cannot be probed",
+    async (_, named) => {
+      const hostLine = await hostLineOf(named);
+      const lockDir = await lockDirIn();
+      const stale = `${await deadPid()}\nstale`;
+      await holdAs(lockDir, stale);
+      const marker = `${lockDir}.removing-${Bun.hash(stale).toString(36)}.0`;
+      await holdAs(marker, `${process.pid}${hostLine}`);
+      const probed = fsClockProbed();
+      inject.beforeMkdir = async (dir) => {
+        if (dir.includes(".clock-")) throw refusal("ENOSPC");
+      };
+      const acquired = CliBuildLock.acquire(lockDir);
+      await probed;
+      await letItPoll();
+      expect(await ownerOf(lockDir)).toBe(stale);
+      await Bun.write(path.join(marker, "owner"), `${await deadPid()}${hostLine}`);
+      const release = await acquired;
+      expect(await ownerPidOf(lockDir)).toBe(`${process.pid}`);
+      await release();
+      expect(await readdir(path.dirname(lockDir))).toEqual([]);
+    },
+  );
+
+  test.each(hostLines)("takes over at once the lock of a holder that is gone and %s", async (_, named) => {
+    const lockDir = await lockDirIn();
+    await holdAs(lockDir, `${await deadPid()}\nheld\n${Date.now()}${await hostLineOf(named)}`);
+    const release = await CliBuildLock.acquire(lockDir);
+    expect(await ownerPidOf(lockDir)).toBe(`${process.pid}`);
+    await release();
+  });
+
+  test("waits out the lease of a lock whose holder names another host, though no process has its pid here", async () => {
+    const lockDir = await lockDirIn();
+    const remote = `${await deadPid()}\nremote\n${Date.now()}\nanother-host`;
+    await holdAs(lockDir, remote);
+    const acquired = CliBuildLock.acquire(lockDir);
+    await letItPoll();
+    expect(await ownerOf(lockDir)).toBe(remote);
+    setSystemTime(Date.now() + 121_000);
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    const release = await acquired;
+    warn.mockRestore();
+    expect(await ownerPidOf(lockDir)).toBe(`${process.pid}`);
+    await release();
+  });
+
+  test("waits on a remover's marker that names another host, though no process has its pid here", async () => {
+    const lockDir = await lockDirIn();
+    const stale = `${await deadPid()}\nstale`;
+    await holdAs(lockDir, stale);
+    const marker = `${lockDir}.removing-${Bun.hash(stale).toString(36)}.0`;
+    await holdAs(marker, `${await deadPid()}\nanother-host`);
+    const probed = fsClockProbed();
+    inject.beforeMkdir = async (dir) => {
+      if (dir.includes(".clock-")) throw refusal("ENOSPC");
+    };
+    const acquired = CliBuildLock.acquire(lockDir);
+    await probed;
+    await letItPoll();
+    expect(await ownerOf(lockDir)).toBe(stale);
+    await rm(marker, { recursive: true });
+    await (await acquired)();
+  });
+
+  test("spends one 3 s budget across all the tries of a release the OS keeps refusing", async () => {
+    const lockDir = await lockDirIn();
+    const release = await CliBuildLock.acquire(lockDir);
+    let refusals = 0;
+    inject.beforeMkdir = async (dir) => {
+      if (!dir.includes(".removing-")) return;
+      refusals++;
+      setSystemTime(Date.now() + 1_000);
+      throw refusal("EPERM");
+    };
+    const warn = spyOn(console, "warn").mockImplementation(() => undefined);
+    await release();
+    warn.mockRestore();
+    expect(refusals).toBeLessThan(10);
   });
 });

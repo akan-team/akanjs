@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { AkanError } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import type { CacheAdaptor } from "akanjs/service";
 
@@ -64,7 +65,7 @@ export class McpUiSession {
     if (!store) return McpUiSession.#processKey;
     await store.setIfAbsent(McpUiSession.#topic, "key", randomBytes(32).toString("base64url"));
     const key = await store.get<string>(McpUiSession.#topic, "key");
-    if (typeof key !== "string" || !key) throw new Error("the signing key it stored is gone");
+    if (typeof key !== "string" || !key) throw new AkanError("invalidKey", "the signing key it stored is gone");
     return key;
   }
 }

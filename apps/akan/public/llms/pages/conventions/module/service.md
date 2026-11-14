@@ -337,7 +337,7 @@ Writes that must land together go in one transaction, and the message about them
 
 **Load, save, then notify.** Load every document the action needs, save, and only then call signals or other services — inside a transaction, through `afterCommit`, where a callback that throws is logged, not thrown, since the writes are already in.
 
-**A transaction covers every model**, since a server has one database. A call inside another joins it, and the error that rolls it back reaches you unchanged. Cache, `memory` and outside calls are not in it, and on SQLite it holds the only write turn, so keep it short and never wait on the network inside.
+**A transaction covers every model**, since a server has one database. A call inside another joins it, and the error that rolls it back reaches you unchanged. Cache, `memory` and outside calls are not in it. On SQLite it holds the only write turn: a write from another request waits until it ends, while a read from another request does not wait and sees the last commit. So keep it short, never wait on the network inside, and never await inside it a write that was started outside it.
 
 **Write `return await` at the end.** Keep the `await` even where a bare `return` would work.
 

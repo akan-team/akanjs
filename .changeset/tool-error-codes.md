@@ -13,8 +13,8 @@ Every code is a bounded token, a dictionary key (`<module>.error.<key>`) or one 
   - A tool error carries `_meta["akanjs/failure"]: { code, statusCode }`, beside the server's own `_meta` for a 2026-07-28 client. The code is the one an HTTP caller gets:
     - a domain `Err` by its dictionary key, such as `base.error.documentNotFound`;
     - an `AkanError` by its code, such as `invalidArgument` for an argument the call got wrong;
-    - a 401 or 403 by its status alone (`unauthorized`, `forbidden`);
-    - a 5xx by a dictionary key or this server's own `AkanError` code, else by its status (`internalError`, `serviceUnavailable`), never by a code a duck-typed error put in its body.
+    - a guard's 401 or 403 by its status alone (`unauthorized`, `forbidden`);
+    - a 5xx by the dictionary key or code token its HTTP answer carries, else by its status (`internalError`, `serviceUnavailable`). Its text is redacted but its code is not, and the code comes from the error's own JSON when that carries one, which can be a third-party library's.
   - A JSON-RPC error carries `data.code`, which tells apart what `-32602` covers:
     - `unknownTool`, `unknownPrompt` (an unlisted page prompt included) and `unknownResource`;
     - `invalidArgument` for bad arguments or a missing tool name, prompt name or resource uri;

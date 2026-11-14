@@ -12,6 +12,11 @@ const MAX_BROTLI_QUALITY = 11;
 const BROTLI_QUALITY_BY_EXT = { ".css": MAX_BROTLI_QUALITY } as const;
 const DEFAULT_BROTLI_QUALITY = 9;
 const GZIP_LEVEL = 9;
+const ROOT_BROTLI_QUALITY: Record<string, number | undefined> = {
+  client: undefined,
+  styles: undefined,
+  dict: MAX_BROTLI_QUALITY,
+};
 const { formatBytes } = FontPruner;
 
 export interface PrecompressArtifactsResult {
@@ -24,11 +29,10 @@ export interface PrecompressArtifactsResult {
 export async function precompressArtifacts(app: App): Promise<PrecompressArtifactsResult> {
   //* WebRouter serves client/, styles/ and dict/ through the same sidecar-aware WebRouteContext.fileResponse.
   const artifactDir = path.join(app.dist.cwdPath, ".akan/artifact");
-  const roots = [
-    { root: path.join(artifactDir, "client") },
-    { root: path.join(artifactDir, "styles") },
-    { root: path.join(artifactDir, "dict"), brotliQuality: MAX_BROTLI_QUALITY },
-  ];
+  const roots = Object.entries(ROOT_BROTLI_QUALITY).map(([dir, brotliQuality]) => ({
+    root: path.join(artifactDir, dir),
+    brotliQuality,
+  }));
   const result: PrecompressArtifactsResult = { files: 0, inputBytes: 0, outputBytes: 0, brotliBytes: 0 };
 
   await Promise.all(roots.map(({ root, brotliQuality }) => precompressRoot(root, result, brotliQuality)));
@@ -61,6 +65,15 @@ async function precompressRoot(
     result.outputBytes += gz.byteLength;
     result.brotliBytes += br.byteLength;
   }
+}
+
+export async function servedBrotliBytesOf(artifactDir: string, filePath: string): Promise<number> {
+  const root = path.relative(artifactDir, filePath).split(path.sep)[0] ?? "";
+  if (!Object.hasOwn(ROOT_BROTLI_QUALITY, root) || !(await shouldPrecompress(filePath))) return Bun.file(filePath).size;
+  const bytes = await Bun.file(filePath).bytes();
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  const quality = ROOT_BROTLI_QUALITY[root] ?? brotliQualityOf(path.extname(filePath).toLowerCase());
+  return brotliCompress(buffer, quality).byteLength;
 }
 
 function brotliQualityOf(ext: string): number {

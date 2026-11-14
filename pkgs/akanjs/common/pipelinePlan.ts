@@ -30,7 +30,7 @@ export const pipelineActions = {
   ota: { version: 1, milestone: "deploy", name: "OTA" },
 } as const satisfies Record<string, { version: number; milestone: PipelineMilestone; name: string }>;
 export type PipelineActionName = keyof typeof pipelineActions;
-export const pipelineActionNames = Object.keys(pipelineActions) as readonly PipelineActionName[];
+export const pipelineActionNames = /* @__PURE__ */ Object.keys(pipelineActions) as readonly PipelineActionName[];
 
 /** The phones an `ota` action packs for; a desktop app updates itself whole, outside a pipeline. */
 export const pipelineOtaPlatforms = ["ios", "android"] as const;

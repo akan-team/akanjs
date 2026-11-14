@@ -4,7 +4,7 @@ import type { App } from "../commandDecorators";
 // Not via `../frontendBuild`: that barrel loads typescript and tailwind, which a suspended dev host must not hold.
 import { HmrWatcher } from "../frontendBuild/hmrWatcher";
 import { WatchRootResolver } from "../frontendBuild/watchRootResolver";
-import { decideIdleSuspend, resolveIdleSuspendMs } from "./devHostPolicy";
+import { decideIdleSuspend, type IdleSuspendDecision, resolveIdleSuspendMs } from "./devHostPolicy";
 
 interface DevIdleSuspendLinks {
   readiness: () => { builderReady: boolean; backendReady: boolean; buildFailed: boolean; restartPending: boolean };
@@ -23,6 +23,7 @@ export class DevIdleSuspend {
   #suspended = false;
   #waking = false;
   #stopped = false;
+  #activity = 0;
   #wokeAtMono: number | null = null;
   #watcher: HmrWatcher | null = null;
   #suspendedChanges: ChangeBatch | null = null;
@@ -42,6 +43,7 @@ export class DevIdleSuspend {
   }
 
   markActivity(): void {
+    this.#activity++;
     if (this.#suspended || this.#waking) return;
     this.arm();
   }
@@ -79,12 +81,18 @@ export class DevIdleSuspend {
     if (!this.#suspended || this.#waking || this.#stopped) return;
     this.#waking = true;
     this.#cancel();
-    this.#stopWatcher();
-    const batch = this.#suspendedChanges;
-    this.#suspendedChanges = null;
     const startedAtMono = performance.now();
     this.#logger.info(`[idle-suspend] waking (${reason})`);
+    const watcher = this.#watcher;
+    this.#watcher = null;
+    let batch: ChangeBatch | null = null;
     try {
+      //? Closed, not stopped: a save its last scan found, a config one included, has no other record once released.
+      const unreported = await watcher?.close();
+      if (unreported) this.#recordSuspendedChange(unreported);
+      batch = this.#suspendedChanges;
+      this.#suspendedChanges = null;
+      if (this.#stopped) return;
       await this.#links.wake(batch);
       this.#logger.info(`[idle-suspend] awake in ${Math.round(performance.now() - startedAtMono)}ms`);
     } catch (err) {
@@ -103,23 +111,42 @@ export class DevIdleSuspend {
     }
   }
 
-  async #suspendWhenIdle(idleMs: number): Promise<void> {
-    const decision = decideIdleSuspend({
+  #decide(): IdleSuspendDecision {
+    return decideIdleSuspend({
       enabled: true,
       suspended: this.#suspended,
       ...this.#links.readiness(),
       msSinceWake: this.#wokeAtMono === null ? null : performance.now() - this.#wokeAtMono,
     });
+  }
+
+  async #suspendWhenIdle(idleMs: number): Promise<void> {
+    const decision = this.#decide();
     if (decision !== "suspend") {
       this.#logger.verbose(`[idle-suspend] skipped (${decision}); re-arming`);
       this.arm();
       return;
     }
+    const activity = this.#activity;
     // Watch before stopping: an edit in the gap would be lost, and nothing would wake the dev server.
-    if (!(await this.#startWatcher())) {
+    const watcher = await this.#startWatcher();
+    if (!watcher) {
       this.arm();
       return;
     }
+    if (this.#stopped) {
+      watcher.stop();
+      return;
+    }
+    //? Decided again: a request or builder message that marked activity meanwhile is on the awake builder.
+    const recheck = this.#activity === activity ? this.#decide() : "busy";
+    if (recheck !== "suspend") {
+      this.#logger.verbose(`[idle-suspend] skipped (${recheck} while the idle watcher started); re-arming`);
+      watcher.stop();
+      this.arm();
+      return;
+    }
+    this.#watcher = watcher;
     this.#suspended = true;
     this.#links.release(`idle ${Math.round(idleMs / 1000)}s`);
     this.#logger.info(
@@ -127,10 +154,11 @@ export class DevIdleSuspend {
     );
   }
 
-  async #startWatcher(): Promise<boolean> {
+  async #startWatcher(): Promise<HmrWatcher | null> {
+    let watcher: HmrWatcher | null = null;
     try {
       const roots = await new WatchRootResolver(this.#app).resolve();
-      const watcher = new HmrWatcher({
+      watcher = new HmrWatcher({
         roots,
         logger: this.#logger,
         onBatch: (batch) => {
@@ -140,18 +168,13 @@ export class DevIdleSuspend {
       });
       // Awaited so the mtime baseline exists before the first edit; a file missing from the batch is never rebuilt.
       await watcher.start();
-      if (this.#stopped) {
-        watcher.stop();
-        return false;
-      }
-      this.#watcher = watcher;
-      return true;
+      return watcher;
     } catch (err) {
       this.#logger.warn(
         `[idle-suspend] could not install the idle watcher; staying awake: ${err instanceof Error ? err.message : String(err)}`,
       );
-      this.#stopWatcher();
-      return false;
+      watcher?.stop();
+      return null;
     }
   }
 

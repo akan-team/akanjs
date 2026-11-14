@@ -2,9 +2,12 @@ import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { AkanAppHost, type DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { DatabaseMode, NativeEnv } from "@akanjs/devkit/akanConfig";
-import type { BuildProgressReporter, BuildResult, TypecheckOptions } from "@akanjs/devkit/app/applicationBuildRunner";
+import type {
+  ApplicationBuildRunnerOptions,
+  BuildResult,
+  TypecheckOptions,
+} from "@akanjs/devkit/app/applicationBuildRunner";
 import { resolveSignalTestPreloadPath } from "@akanjs/devkit/app/applicationTestPreload";
-import type { RouteJsBudgetMode } from "@akanjs/devkit/app/routeJsBudget";
 import { type App, assertPromptable, type Exec, runner, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, CommandExecutionError, LibExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
@@ -372,24 +375,12 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
   async build(
     app: App,
     {
-      fast = false,
-      reporter,
       spinner = false,
       envProfile,
-      environment,
-      budget,
-    }: {
-      fast?: boolean;
-      reporter?: BuildProgressReporter;
-      spinner?: boolean;
-      envProfile?: string;
-      environment?: string;
-      budget?: RouteJsBudgetMode;
-    } = {},
+      ...options
+    }: Omit<ApplicationBuildRunnerOptions, "profile"> & { spinner?: boolean; envProfile?: string } = {},
   ): Promise<BuildResult> {
-    return new (await loadBuildRunner())(app, { fast, reporter, profile: envProfile, environment, budget }).build({
-      spinner,
-    });
+    return new (await loadBuildRunner())(app, { ...options, profile: envProfile }).build({ spinner });
   }
   async start(
     app: App,

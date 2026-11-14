@@ -27,6 +27,10 @@ describe("MigrateJobs", () => {
       argv: ["plan", "m1", "--items=0", "--json"],
     });
     expect(MigrateJobs.requestOf({ id: "j3", action: "list" }, "u1")).toMatchObject({ argv: ["list", "--json"] });
+    expect(MigrateJobs.requestOf({ id: "j4", action: "indexes" }, "u1")).toMatchObject({ argv: ["indexes", "--json"] });
+    expect(MigrateJobs.requestOf({ id: "j5", action: "prune-indexes" }, "u1")).toMatchObject({
+      argv: ["prune-indexes", "--actor=u1", "--json"],
+    });
   });
 
   test("refuses what could reach the command as anything but its own argument", () => {
@@ -37,6 +41,7 @@ describe("MigrateJobs", () => {
       [{ id: "-j", action: "plan", target: "m1" }, "u1", "id must match"],
       [{ id: "j", action: "drop", target: "m1" }, "u1", "action must be one of"],
       [{ id: "j", action: "rollback", target: "r1" }, undefined, "rollback needs the token's sub"],
+      [{ id: "j", action: "prune-indexes" }, undefined, "prune-indexes needs the token's sub"],
       [{ id: "j", action: "plan", target: "--expect=x" }, "u1", "target must match"],
       [{ id: "j", action: "plan", target: "m1", params: { "a b": "1" } }, "u1", "params must map names to strings"],
       [{ id: "j", action: "plan", target: "m1", params: { _a: "1" } }, "u1", "params must map names to strings"],

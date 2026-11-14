@@ -1,9 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { createTempApp, tempRoots, writeText } from "../test/testHelpers";
+import type { BuildBatchMessage, BuildBatchRequest, BuildBatchResult } from "./buildBatchProtocol";
 import { BuildBatchRunner } from "./buildBatchRunner";
 
 const track = tempRoots();
+const isAlive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 describe("BuildBatchRunner", () => {
   test("reports a boot build the bundler refuses with where each reason sits in the workspace", async () => {
@@ -61,5 +71,102 @@ setTimeout(() => process.exit(1), 50);
     expect(result.errors.ssr).toBeUndefined();
     expect(result.errors.css).toBe("css broke");
     expect(result.errors.pages).toContain("exited with code 1");
+  }, 30_000);
+
+  test("releases a worker as soon as its result arrives, so one that holds its exit for that is not left waiting", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    const released = path.join(root, "released");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `import fs from "node:fs";
+const { generation } = JSON.parse(process.argv[2]);
+process.once("disconnect", () => fs.writeFileSync(${JSON.stringify(released)}, ""));
+process.send({ type: "build-batch-result", data: { generation, errors: {} } });
+setTimeout(() => process.exit(1), 2_000).unref();
+`,
+    );
+    const result = await new BuildBatchRunner({ workspaceRoot: root, cwd: appDir }).run({
+      appName: "demo",
+      workspaceRoot: root,
+      repoName: "repo",
+      generation: 3,
+      needs: ["pages"],
+      changedFiles: [],
+      pageKeys: null,
+      optimizedFonts: null,
+      cssAssets: null,
+      artifactDir: path.join(appDir, ".akan/artifact"),
+    });
+    expect(result).toEqual({ generation: 3, errors: {} });
+    const deadline = Date.now() + 1_500;
+    while (!(await Bun.file(released).exists()) && Date.now() < deadline) await Bun.sleep(20);
+    expect(await Bun.file(released).exists()).toBe(true);
+  }, 30_000);
+
+  test("returns a result as it arrives from a worker the release never reaches, then kills that worker", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    const sent = path.join(root, "sent");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `import fs from "node:fs";
+const { generation } = JSON.parse(process.argv[2]);
+fs.writeFileSync(${JSON.stringify(sent)}, String(process.pid));
+process.send({ type: "build-batch-result", data: { generation, errors: {} } });
+setTimeout(() => process.exit(0), 5_000);
+`,
+    );
+    const result = await new BuildBatchRunner({ workspaceRoot: root, cwd: appDir }).run({
+      appName: "demo",
+      workspaceRoot: root,
+      repoName: "repo",
+      generation: 5,
+      needs: ["pages"],
+      changedFiles: [],
+      pageKeys: null,
+      optimizedFonts: null,
+      cssAssets: null,
+      artifactDir: path.join(appDir, ".akan/artifact"),
+    });
+    //? Read before any await: the kill timer cannot fire until this turn's microtasks are done.
+    const pid = Number(readFileSync(sent, "utf8"));
+    const upAtReturn = isAlive(pid);
+    expect(result).toEqual({ generation: 5, errors: {} });
+    expect(upAtReturn).toBe(true);
+    const deadline = Date.now() + 3_000;
+    while (isAlive(pid) && Date.now() < deadline) await Bun.sleep(20);
+    expect(isAlive(pid)).toBe(false);
+  }, 30_000);
+
+  test("the build worker stays up after reporting its result until its runner releases it", async () => {
+    const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));
+    const appDir = path.join(root, "apps/demo");
+    const request = {
+      appName: "demo",
+      workspaceRoot: root,
+      repoName: "repo",
+      generation: 4,
+      needs: [],
+      changedFiles: [],
+      pageKeys: [],
+      optimizedFonts: null,
+      cssAssets: null,
+      artifactDir: path.join(appDir, ".akan/artifact"),
+    } satisfies BuildBatchRequest;
+    const { promise: reported, resolve: report } = Promise.withResolvers<BuildBatchResult>();
+    const worker = Bun.spawn(["bun", path.join(import.meta.dir, "buildBatch.proc.ts"), JSON.stringify(request)], {
+      cwd: appDir,
+      stdio: ["ignore", "inherit", "inherit"],
+      serialization: "advanced",
+      ipc: (message: BuildBatchMessage) => {
+        if (message.type === "build-batch-result") report(message.data);
+      },
+    });
+    expect(await reported).toEqual({ generation: 4, errors: {} });
+    const unreleased = await Promise.race([worker.exited.then(() => "exited"), Bun.sleep(300).then(() => "running")]);
+    worker.disconnect();
+    expect(unreleased).toBe("running");
+    expect(await worker.exited).toBe(0);
   }, 30_000);
 });

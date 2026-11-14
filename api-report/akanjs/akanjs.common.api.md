@@ -648,7 +648,7 @@ export interface ErrRestoreOption {
 
 export declare class EventStream {
     static readonly defaultKeepAliveMs = 15000;
-    constructor(onCancel: () => void, { keepAliveMs, keepAliveChunk }?: EventStreamOptions);
+    constructor(onCancel: () => void, { keepAliveMs, keepAliveChunk, maxQueuedBytes, maxDropped, }?: EventStreamOptions);
     get open(): boolean;
     response(headers?: {
         [key: string]: string;
@@ -662,6 +662,8 @@ export declare class EventStream {
 export interface EventStreamOptions {
     keepAliveMs?: number;
     keepAliveChunk?: string;
+    maxQueuedBytes?: number;
+    maxDropped?: number;
 }
 
 export declare class FailureCode {
@@ -680,10 +682,12 @@ export interface FetchPolicy<_Returns = unknown> {
     timeout?: false | number;
     signal?: AbortSignal;
     onResync?: () => void;
+    onRefused?: (error: unknown) => void;
     retry?: RetryPolicy | false;
     idempotencyKey?: string;
     duringRender?: boolean;
     keepsReads?: boolean;
+    forwardVisitor?: boolean;
 }
 
 export interface FileUploadCapability {
@@ -973,7 +977,7 @@ export interface McpExposureEndpoint {
     }[];
     guards?: string[];
     fileUpload?: boolean;
-    mcp?: boolean;
+    mcp?: McpShelf;
     agents?: boolean;
     destructive?: boolean;
 }
@@ -983,12 +987,15 @@ export interface McpExposureOption {
     key: string;
     readOnly?: boolean;
     view?: boolean;
+    agent?: boolean;
 }
 
 export interface McpFailure {
     code: string;
     statusCode?: number;
 }
+
+export type McpShelf = "agent" | boolean;
 
 export declare const PAGE_ROUTE_EXPORTS: ReadonlySet<string>;
 
@@ -1474,6 +1481,8 @@ export interface WebsocketHeartbeatRequest {
     ];
 }
 
+export declare const addressBlockOf: (address: string) => string;
+
 export declare const akanLocalePrefixes: readonly [
     "always",
     "as-needed"
@@ -1714,7 +1723,7 @@ export declare const mcpHintsOf: (key: string, endpoint: {
     openWorldHint: boolean;
 };
 
-export declare const mcpRefusalOf: (endpoint: McpExposureEndpoint, { refName, key, readOnly, view }: McpExposureOption) => null | string;
+export declare const mcpRefusalOf: (endpoint: McpExposureEndpoint, { refName, key, readOnly, view, agent }: McpExposureOption) => null | string;
 
 export declare const mergeVersion: (major: number, minor: number, patch: number) => string;
 
@@ -1780,6 +1789,8 @@ export declare const moduleNames: (refName: string) => {
     InternalClass: string;
     EndpointClass: string;
 };
+
+export declare const narrowestMcpShelf: (shelves: readonly McpShelf[]) => McpShelf;
 
 export declare const normalizeIpAddress: (address: string) => string;
 

@@ -4,7 +4,7 @@ import { AkanIndex, type AkanRenameEdit } from "@akanjs/language";
 import ts from "typescript";
 import type { Workspace } from "../commandDecorators";
 import { resolveWorkflowSys } from "./executor";
-import { getSysRoot, moduleSourcePaths } from "./source";
+import { getSysRoot, moduleSourcePaths } from "./modulePaths";
 import type { RenameKeyInput, ScaffoldFile, WorkflowDiagnostic } from "./types";
 
 const indexedPath = /^(apps|libs)\/(?!(?:.*\/)?(?:node_modules|dist|\.akan)\/).*\.tsx?$/;

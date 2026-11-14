@@ -86,7 +86,7 @@ Export
 
 - Dialog: Headless parts (`.Modal`, `.Title`, `.Content`, `.Action`, `.Trigger`) to build a `Modal` from.
 
-- DefaultApproval, DefaultBubble, DefaultCode, DefaultComposer, DefaultLauncher, DefaultMarkdown, DefaultAgentMenu, DefaultQuestion, DefaultQueued, DefaultSteps, DefaultToolCard, DefaultToast, DefaultToastItem: The shipped defaults of the eleven chat-part slots and both Toast slots, to wrap instead of rewrite.
+- DefaultApproval, DefaultBubble, DefaultCode, DefaultComposer, DefaultLauncher, DefaultMarkdown, DefaultAgentMenu, DefaultQuestion, DefaultQueued, DefaultSteps, DefaultToolCard, DefaultToolRow, DefaultToast, DefaultToastItem: The shipped defaults of the twelve chat-part slots and both Toast slots, to wrap instead of rewrite.
 
 - agentAttrs: The `data-akan-*` attributes a default control carries for the agent; spread them on a replacement.
 
@@ -146,7 +146,7 @@ Slot
 
 - DraftBar: The banner an edit shell shows for a recovered form. Restore and discard stay wired.
 
-- AgentChat, AgentLauncher, AgentBubble, AgentSteps, AgentComposer, AgentApproval, AgentQuestion, AgentQueued, AgentMenu, AgentMarkdown, AgentToolCard, AgentCode: The in-page chat. `AgentChat` swaps the whole panel; the other eleven each swap one part.
+- AgentChat, AgentLauncher, AgentBubble, AgentSteps, AgentComposer, AgentApproval, AgentQuestion, AgentQueued, AgentMenu, AgentMarkdown, AgentToolCard, AgentToolRow, AgentCode: The in-page chat. `AgentChat` swaps the whole panel; the other twelve each swap one part.
 
 Not slots
 
@@ -230,7 +230,7 @@ Related pages
 
 - Overlays — Modal, and the Dialog parts a Modal replacement is built from.
 
-- Agent Chat Slots — The twelve chat slots, and what each part of the panel receives.
+- Agent Chat Slots — The thirteen chat slots, and what each part of the panel receives.
 
 ## Code Examples
 
