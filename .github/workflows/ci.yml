@@ -111,6 +111,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
+      # A test that calls sync(1), as the native updates plugin does on Linux, would otherwise wait for the node_modules the setup just wrote.
+      - run: sync
       - run: bun run runAkan test "$PACKAGE" --coverage --junit local/junit/report.xml
         env:
           PACKAGE: ${{ matrix.package }}
