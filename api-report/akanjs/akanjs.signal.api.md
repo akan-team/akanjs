@@ -1589,6 +1589,7 @@ export declare class SignalTrace {
     debugSev: null | number;
     flight: LogFlightRecorder | null;
     link: null | string;
+    exported: boolean;
     constructor(endpointKey: string, endpointType: string, { mode, origin, parent, }?: {
         mode?: TraceMode;
         origin?: TraceOrigin;
