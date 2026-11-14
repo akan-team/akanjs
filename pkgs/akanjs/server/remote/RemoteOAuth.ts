@@ -178,11 +178,14 @@ export class RemoteOAuth {
         ...RemoteOAuth.#credentials(client),
       }).toString(),
     });
-    //? Only a refusal ends the grant: a 5xx, a 429 or an error page is a token endpoint that is down for now.
-    const refused = status >= 400 && status < 500 && status !== 429;
-    if (!refused && (status >= 400 || body === null))
+    const answer = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as TokenBody;
+    //? RFC 6749 §5.2: a 400, a 401 or a named OAuth error refuses; a 404, a 429, a 5xx or a proxy's page is an outage.
+    const refused =
+      status === 400 ||
+      status === 401 ||
+      (status > 400 && status < 500 && status !== 429 && typeof answer.error === "string");
+    if (!refused && (status >= 300 || body === null))
       throw new RemoteError("remoteUnavailable", `The token endpoint could not answer: ${status}.`, { status });
-    const answer = (body ?? {}) as TokenBody;
     if (refused || typeof answer.access_token !== "string" || !answer.access_token) {
       const reason = typeof answer.error === "string" ? clipRemoteText(answer.error) : String(status);
       throw new RemoteError("remoteOAuth", `The token request was refused: ${reason}.`, { status });
@@ -251,7 +254,7 @@ export class RemoteOAuth {
 
   //? Compared as parsed urls: a bare origin and the same origin with a slash are one issuer, a path and its slash are not.
   static #sameIssuer(named: unknown, asked: string): boolean {
-    if (typeof named !== "string") return true;
+    if (typeof named !== "string") return false;
     const parsed = URL.parse(named);
     return named === asked || (!!parsed && parsed.href === URL.parse(asked)?.href);
   }

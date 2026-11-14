@@ -177,10 +177,13 @@ export class RemoteMcp {
       return {};
     }
     if (body.id === undefined) return {};
+    const id = body.id;
     const sse = headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() === "text/event-stream";
-    const answer = sse ? RemoteMcp.#answerIn(text, body.id) : RemoteMcp.#parse(text);
+    const unmarked = text.replace(/^\uFEFF/, "");
+    const messages = (sse ? RemoteMcp.#eventsOf(unmarked) : [unmarked]).map(RemoteMcp.#parse);
+    const answer = messages.find((message) => RemoteMcp.#answers(message, id));
     if (!answer)
-      throw new RemoteError("remoteProtocol", `The remote server answered ${status} with no JSON-RPC answer.`, {
+      throw new RemoteError("remoteProtocol", `The remote server answered ${status} with no answer to the request.`, {
         status,
       });
     return answer as JsonRpcAnswer;
@@ -191,8 +194,13 @@ export class RemoteMcp {
     return RemoteMcp.#record(answer.result) ?? {};
   }
 
-  //? A stream may carry notifications and the server's own requests ahead of the answer, so it is found by its id.
-  static #answerIn(text: string, id: number): Record<string, unknown> | undefined {
+  //? Matched by id, as a stream may carry other messages first; a request the server could not read errs under id null.
+  static #answers(message: Record<string, unknown> | undefined, id: number): boolean {
+    if (!message || "method" in message) return false;
+    return message.id === id ? "result" in message || "error" in message : message.id === null && "error" in message;
+  }
+
+  static #eventsOf(text: string): string[] {
     let data: string[] = [];
     const events: string[] = [];
     for (const line of [...text.split(/\r\n|\r|\n/), ""]) {
@@ -201,9 +209,7 @@ export class RemoteMcp {
         data = [];
       } else if (line === "data" || line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
     }
-    return events
-      .map(RemoteMcp.#parse)
-      .find((message) => message?.id === id && !("method" in message) && ("result" in message || "error" in message));
+    return events;
   }
 
   static #parse(text: string): Record<string, unknown> | undefined {

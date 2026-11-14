@@ -209,6 +209,16 @@ describe("RemoteOAuth", () => {
     const server = await RemoteOAuth.discover(pathed.fetcher, "https://shop.example.com/mcp");
     expect(server).toMatchObject({ issuer: tenant, tokenEndpoint: `${tenant}/token` });
 
+    const { issuer: _issuer, ...unnamed } = metadata;
+    const nameless = fetcherOf(({ url }) =>
+      url.includes("/.well-known/oauth-protected-resource")
+        ? json({ resource: "https://shop.example.com/mcp", authorization_servers: [tenant] })
+        : url.endsWith("/.well-known/oauth-authorization-server")
+          ? json(unnamed)
+          : new Response(null, { status: 404 }),
+    );
+    expect(await codeOf(RemoteOAuth.discover(nameless.fetcher, "https://shop.example.com/mcp"))).toBe("remoteOAuth");
+
     const slashed = fetcherOf(({ url }) =>
       url.endsWith("/.well-known/oauth-authorization-server")
         ? json({ ...metadata, issuer: "https://shop.example.com/" })
@@ -273,6 +283,20 @@ describe("RemoteOAuth", () => {
       503,
     ]);
     expect(await refreshWith(() => new Response("slow down", { status: 429 }))).toEqual(["remoteUnavailable", 429]);
+    expect(await refreshWith(() => new Response("<html>not found</html>", { status: 404 }))).toEqual([
+      "remoteUnavailable",
+      404,
+    ]);
+    expect(await refreshWith(() => json({}, { status: 408 }))).toEqual(["remoteUnavailable", 408]);
+    expect(await refreshWith(() => new Response("<html>blocked</html>", { status: 403 }))).toEqual([
+      "remoteUnavailable",
+      403,
+    ]);
+    expect(await refreshWith(() => json({ error: "invalid_client" }, { status: 403 }))).toEqual(["remoteOAuth", 403]);
+    expect(await refreshWith(() => new Response("<html>bad request</html>", { status: 400 }))).toEqual([
+      "remoteOAuth",
+      400,
+    ]);
     expect(await refreshWith(() => new Response("<html>maintenance</html>", { status: 200 }))).toEqual([
       "remoteUnavailable",
       200,
@@ -393,6 +417,40 @@ describe("RemoteMcp", () => {
     const mcp = new RemoteMcp(fetcher, "https://shop.example.com/mcp", "good");
     expect(await codeOf(mcp.listTools())).toBe("remoteProtocol");
     expect((await mcp.listTools()).map((tool) => tool.name)).toEqual(["t"]);
+  });
+
+  test("takes a JSON answer only when it carries its request's id, and one the server could not read as an error", async () => {
+    const { fetcher } = fetcherOf((entry) => {
+      const { id, method, params } = rpc(entry);
+      if (id === undefined) return new Response(null, { status: 202 });
+      if (method === "initialize") return new Response(`\uFEFF${JSON.stringify({ jsonrpc: "2.0", id, result: {} })}`);
+      if (method === "tools/list") return json({ jsonrpc: "2.0", id: 999, result: { tools: [{ name: "other" }] } });
+      if (params?.name === "unread")
+        return json({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+      return json({ jsonrpc: "2.0", id: null, result: {} });
+    });
+    const mcp = new RemoteMcp(fetcher, "https://shop.example.com/mcp", "good");
+    expect(await codeOf(mcp.listTools())).toBe("remoteProtocol");
+    expect(await mcp.callTool("unread", {})).toEqual({
+      content: [{ type: "text", text: "Parse error" }],
+      isError: true,
+    });
+    expect(await codeOf(mcp.callTool("other", {}))).toBe("remoteProtocol");
+  });
+
+  test("reads an event stream that starts with a byte order mark", async () => {
+    const { fetcher } = fetcherOf((entry) => {
+      const { id } = rpc(entry);
+      if (id === undefined) return new Response(null, { status: 202 });
+      return new Response(
+        `\uFEFFdata: ${JSON.stringify({ jsonrpc: "2.0", id, result: { tools: [{ name: "t" }] } })}\n\n`,
+        {
+          headers: { "content-type": "text/event-stream" },
+        },
+      );
+    });
+    const listed = await new RemoteMcp(fetcher, "https://shop.example.com/mcp", "good").listTools();
+    expect(listed.map((tool) => tool.name)).toEqual(["t"]);
   });
 
   test("reads the answer to its own request out of an event stream", async () => {
