@@ -17,6 +17,7 @@ interface DevBuilderLinks {
   onMessage: (message: BuilderMessage) => void;
   onAway: () => void;
   onReady: () => void;
+  onBaseBuilt: (phaseMs: Record<string, number>) => void;
   onRestartReady: () => void;
   onStartFailed: () => void;
   onStop: () => void;
@@ -186,6 +187,9 @@ export class DevBuilder {
         onReady: () => {
           settle(resolve);
           this.#links.onReady();
+        },
+        onBaseBuilt: (phaseMs) => {
+          this.#links.onBaseBuilt(phaseMs);
         },
         onRestartReady: () => {
           this.#links.onRestartReady();

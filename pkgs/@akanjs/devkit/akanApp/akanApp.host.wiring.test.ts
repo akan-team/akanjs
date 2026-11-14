@@ -44,6 +44,7 @@ type Boot = "ready" | "exit" | "hold" | "starting";
 interface BuilderStartOptions {
   onExit?: () => void;
   onReady?: () => void;
+  onBaseBuilt?: (phaseMs: Record<string, number>) => void;
   onRestartReady?: () => void;
   onAway?: () => void;
 }
@@ -54,6 +55,7 @@ interface FakeBuilder {
   recycled: string[];
   stopped: number;
   toHost: (message: BuilderMessage) => void;
+  baseBuilt: (phaseMs?: Record<string, number>) => void;
   ready: () => void;
   away: () => void;
   restartReady: () => void;
@@ -100,6 +102,7 @@ const fakeBuilder = (toHost: (message: BuilderMessage) => void, boot: Boot) => {
     recycled: [],
     stopped: 0,
     toHost,
+    baseBuilt: (phaseMs = {}) => options.onBaseBuilt?.(phaseMs),
     ready: () => {
       builder.status = "ready";
       options.onReady?.();
@@ -679,6 +682,26 @@ describe("AkanAppHost start and stop", () => {
     await new Promise((resolve) => setImmediate(resolve));
 
     expect(dev.events.slice(seen)).toEqual([]);
+  });
+
+  test("says where a start's time went in one line, once the builder and the backend are both ready", async () => {
+    const dev = await devHost(["hold"]);
+    const starting = dev.host.start();
+    expect(await until(() => dev.builders.length === 1)).toBe(true);
+    dev.builder().baseBuilt({ runtime: 1, routes: 2, styles: 3, dictionary: 4, pages: 5, total: 15 });
+    dev.builder().ready();
+    await starting;
+    const timelines = () => dev.logs.filter((line) => line.startsWith("ready in "));
+    expect(timelines()).toEqual([]);
+
+    readyBackend(dev);
+
+    expect(timelines()).toHaveLength(1);
+    expect(timelines()[0]).toContain("base build 15 [runtime 1 · routes 2 · styles 3 · dictionary 4 · pages 5]");
+    expect(timelines()[0]).toMatch(/prepare \d+ · builder \d+: spawn \d+ .* · backend \d+ · first artifact at \d+\)$/);
+
+    dev.backend().say({ type: "backend-ready", pid: 1 });
+    expect(timelines()).toHaveLength(1);
   });
 
   test("a second start replaces the backend and the builder the first one started", async () => {

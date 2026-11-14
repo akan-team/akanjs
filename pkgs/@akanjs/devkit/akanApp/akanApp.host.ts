@@ -21,6 +21,7 @@ import {
 } from "./devHostPolicy";
 import { DevIdleSuspend } from "./devIdleSuspend";
 import { DevRecycler } from "./devRecycler";
+import { DevStartTimeline } from "./devStartTimeline";
 import { ProcessRss } from "./processRss";
 
 export class AkanAppHost {
@@ -41,6 +42,7 @@ export class AkanAppHost {
   readonly #builder: DevBuilder;
   readonly #idle: DevIdleSuspend;
   readonly #recycler: DevRecycler;
+  readonly #timeline: DevStartTimeline;
   constructor(
     private readonly app: App,
     {
@@ -58,13 +60,18 @@ export class AkanAppHost {
     const isStopping = () => this.#stopping;
     const statuses = new DevBuildStatusBoard(logger);
     this.#statuses = statuses;
+    this.#timeline = new DevStartTimeline(logger);
     this.#backend = new DevBackend(
       app,
       { env, stdio, logger, statuses, graph },
       {
         isStopping,
-        emit: (state, detail) => this.#emitDevEvent(state, detail),
+        emit: (state, detail) => {
+          if (state === "ready") this.#timeline.mark("backendReady");
+          this.#emitDevEvent(state, detail);
+        },
         beforeSpawn: () => {
+          this.#timeline.mark("backendSpawned");
           // Before the spawn: the new backend numbers its requests from 1 again, so old answers must not reach it.
           this.#requests.startGeneration();
           this.#requests.discard("the backend restarted while the builder was away");
@@ -99,7 +106,11 @@ export class AkanAppHost {
         isStopping,
         onMessage: (message) => this.#enqueueBuilderMessage(message),
         onAway: () => this.#gap.open("builder replacement"),
-        onReady: () => this.#requests.flush(),
+        onReady: () => {
+          this.#timeline.mark("builderReady");
+          this.#requests.flush();
+        },
+        onBaseBuilt: (phaseMs) => this.#timeline.baseBuilt(phaseMs),
         onRestartReady: () => {
           this.logger.verbose("[builder-recovery] builder ready after restart; replaying latest state");
           this.#backend.replay();
@@ -154,6 +165,7 @@ export class AkanAppHost {
   async start() {
     if (this.#backend.running) await this.#backend.stop();
     if (this.#builder.current) this.#builder.stop();
+    this.#timeline.begin();
     const [redisHost] = await Promise.all([
       this.#prepareDatabase("redis"),
       this.#backendGraph.refresh(),

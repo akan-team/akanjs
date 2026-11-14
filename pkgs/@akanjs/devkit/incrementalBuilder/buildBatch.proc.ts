@@ -84,9 +84,10 @@ class BuildBatch {
   async #buildBase(): Promise<void> {
     const started = Date.now();
     try {
-      const { artifact, optimizedFonts } = await new SsrBaseArtifactBuilder(this.#app).build();
+      const { artifact, optimizedFonts, phaseMs } = await new SsrBaseArtifactBuilder(this.#app).build();
       this.#result.artifact = artifact;
       this.#result.optimizedFonts = optimizedFonts;
+      this.#result.basePhaseMs = phaseMs;
       this.#logger.verbose(`base-artifact ok buildId=${artifact.pagesBundleBuildId} (${Date.now() - started}ms)`);
     } catch (err) {
       this.#fail("base", "base-artifact", err);

@@ -16,12 +16,15 @@ import type { RuntimeChunks } from "./routeModulePreloads";
 import { VendorNarrowing } from "./vendorNarrowing";
 import type { VendorSpecifier } from "./vendorSpecifiers";
 
+export type BaseBuildPhase = "runtime" | "routes" | "styles" | "dictionary" | "pages" | "total";
+
 export interface BuildSsrBaseArtifactResult {
   artifact: BaseBuildArtifact;
   seedIndex: RouteSeedIndex;
   cssCompiler: CssCompiler;
   optimizedFonts: Awaited<ReturnType<FontOptimizer["optimize"]>>;
   runtimeChunks: RuntimeChunks;
+  phaseMs: Record<BaseBuildPhase, number>;
 }
 
 export function prepareCssAsset(command: "build" | "start", basePath: string, cssText: string): string {
@@ -65,15 +68,31 @@ export class SsrBaseArtifactBuilder {
 
   async build(): Promise<BuildSsrBaseArtifactResult> {
     const akanConfig = await this.#app.getConfig();
-    const { rscClientUrl, rscRuntimeClientManifest, rscRuntimeSsrManifest, vendorMap, runtimeChunks } =
-      await this.#buildRuntimeClientEntries();
-    const pageKeys = await this.#app.getPageKeys();
-    this.#app.verbose(`[base-artifact] discovered ${pageKeys.length} route files under ${this.#app.cwdPath}/page`);
-
-    const pageEntries = await resolveSsrPageEntriesForApp(this.#app, pageKeys);
-    const { cssCompiler, optimizedFonts, cssAssets } = await this.#buildStyleAssets();
-    const dictAssets = await new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).build(akanConfig.i18n);
-    const pagesBundle = await new PagesBundleBuilder(this.#app, this.#command, pageEntries, this.#serverEnv).build();
+    const phaseMs = { runtime: 0, routes: 0, styles: 0, dictionary: 0, pages: 0, total: 0 };
+    const timed = async <T>(phase: BaseBuildPhase, run: () => Promise<T>): Promise<T> => {
+      const started = performance.now();
+      try {
+        return await run();
+      } finally {
+        phaseMs[phase] = Math.round(performance.now() - started);
+      }
+    };
+    const { rscClientUrl, rscRuntimeClientManifest, rscRuntimeSsrManifest, vendorMap, runtimeChunks } = await timed(
+      "runtime",
+      () => this.#buildRuntimeClientEntries(),
+    );
+    const pageEntries = await timed("routes", async () => {
+      const pageKeys = await this.#app.getPageKeys();
+      this.#app.verbose(`[base-artifact] discovered ${pageKeys.length} route files under ${this.#app.cwdPath}/page`);
+      return await resolveSsrPageEntriesForApp(this.#app, pageKeys);
+    });
+    const { cssCompiler, optimizedFonts, cssAssets } = await timed("styles", () => this.#buildStyleAssets());
+    const dictAssets = await timed("dictionary", () =>
+      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).build(akanConfig.i18n),
+    );
+    const pagesBundle = await timed("pages", () =>
+      new PagesBundleBuilder(this.#app, this.#command, pageEntries, this.#serverEnv).build(),
+    );
     this.#app.verbose(
       `[base-artifact] pages bundle -> ${pagesBundle.bundlePath} (buildId=${pagesBundle.buildId}, splitting=${pagesBundle.splitting}, entry=${pagesBundle.entryBytes} bytes, outputs=${pagesBundle.outputCount}, chunks=${pagesBundle.chunkCount}, total=${pagesBundle.outputBytes} bytes)`,
     );
@@ -119,9 +138,10 @@ export class SsrBaseArtifactBuilder {
         })),
     };
     await Bun.write(path.join(this.#absArtifactDir, "base-artifact.json"), `${JSON.stringify(artifact, null, 2)}\n`);
-    this.#app.verbose(`[base-artifact] complete in ${Date.now() - this.#started}ms`);
+    phaseMs.total = Date.now() - this.#started;
+    this.#app.verbose(`[base-artifact] complete in ${phaseMs.total}ms`);
 
-    return { artifact, seedIndex, cssCompiler, optimizedFonts, runtimeChunks };
+    return { artifact, seedIndex, cssCompiler, optimizedFonts, runtimeChunks, phaseMs };
   }
 
   async #buildRuntimeClientEntries(): Promise<

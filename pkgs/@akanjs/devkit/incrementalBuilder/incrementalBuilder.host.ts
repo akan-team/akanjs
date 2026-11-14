@@ -5,6 +5,7 @@ import type { BuilderMessage, BuilderRequest } from "akanjs/server";
 import { CSR_DEV_DIRNAME, CSR_DEV_PATCHING_MARKER, SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import { MemoryLimit } from "akanjs/server/memoryLimit";
 import type { App } from "../commandDecorators";
+import type { BaseBuiltMessage } from "./builderChannel";
 
 const builderMsgTypeSet = new Set<BuilderMessage["type"]>([
   "build-route-res",
@@ -41,6 +42,7 @@ export type IncrementalBuilderStatus = "starting" | "ready" | "recycling" | "res
 interface IncrementalBuilderStartOptions {
   onExit?: () => void;
   onReady?: () => void;
+  onBaseBuilt?: (phaseMs: Record<string, number>) => void;
   onRestartReady?: () => void;
   /** The builder is gone and a replacement is coming (unwatched until then); `onExit` means it gave up. */
   onAway?: () => void;
@@ -124,9 +126,13 @@ export class IncrementalBuilderHost {
         ...(this.#patcherOff ? { AKAN_DEV_CSR_PATCHER: "off" } : {}),
       },
       stdio: ["ignore", this.#stdio, this.#stdio],
-      ipc: (msg: BuilderMessage) => {
+      ipc: (msg: BuilderMessage | BaseBuiltMessage) => {
         if (this.#proc !== proc) return;
         if (!msg || typeof msg !== "object") return;
+        if (msg.type === "base-built") {
+          this.#startOptions.onBaseBuilt?.(msg.phaseMs);
+          return;
+        }
         if (msg.type === "build-route-res" || msg.type === "build-csr-res" || msg.type === "build-graph-res")
           this.#inFlight.delete(msg.id);
         if (builderMsgTypeSet.has(msg.type)) this.#onMessage(msg);
