@@ -17,15 +17,15 @@ runs:
           node_modules
           pkgs/*/node_modules
           pkgs/@akanjs/*/node_modules
-        key: node-modules-${{ runner.os }}-bun-${{ steps.bun-version.outputs.version }}-${{ hashFiles('bun.lock', 'package.json', 'pkgs/*/package.json', 'pkgs/@akanjs/*/package.json') }}
+        key: node-modules-${{ runner.os }}-${{ runner.arch }}-bun-${{ steps.bun-version.outputs.version }}-${{ hashFiles('bun.lock', 'bunfig.toml', 'package.json', 'pkgs/*/package.json', 'pkgs/@akanjs/*/package.json') }}
     - if: steps.node-modules.outputs.cache-hit != 'true'
       uses: actions/cache@v4
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
         restore-keys: bun-${{ runner.os }}-
-    - if: steps.node-modules.outputs.cache-hit != 'true'
-      shell: bash
+    # Also on a hit: next to nothing on a sound tree, and it repairs a restored one that is not.
+    - shell: bash
       run: bun install --frozen-lockfile
     - if: steps.node-modules.outputs.cache-hit != 'true'
       uses: actions/cache/save@v4
