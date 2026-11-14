@@ -12,7 +12,9 @@ export class LogStdoutWriter {
 
   constructor(hub: LogHub, { minSev, write }: LogStdoutWriterOptions) {
     this.#write = write ?? ((line) => void process.stdout.write(line));
-    this.#subscription = hub.subscribe({ minSev }, (entry) => this.#write(LogStdoutWriter.line(entry)));
+    this.#subscription = hub.subscribe({ minSev }, (entry) => this.#write(LogStdoutWriter.line(entry)), {
+      exact: true,
+    });
   }
 
   static json(entry: LogHubEntry) {

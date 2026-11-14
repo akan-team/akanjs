@@ -93,6 +93,28 @@ describe("LogHub suppression", () => {
     hub.close();
   });
 
+  test("a request line is never folded, while the ring still folds other repeats", () => {
+    const hub = new LogHub({ suppressPerSecond: 2, now: () => 10_000 });
+    for (let idx = 0; idx < 5; idx += 1)
+      hub.ingest(record("ok query:userList", { name: "Signal", attrs: { ms: idx, status: 200 } }));
+    for (let idx = 0; idx < 5; idx += 1) hub.ingest(record("loop warn"));
+    const messages = hub.history({}).entries.map((entry) => entry.record.message);
+    expect(messages.filter((message) => message === "ok query:userList").length).toBe(5);
+    expect(messages.filter((message) => message === "loop warn").length).toBe(2);
+    hub.close();
+  });
+
+  test("a resume across suppressed records reports no gap while the ring still holds the cursor", () => {
+    const hub = new LogHub({ suppressPerSecond: 1, now: () => 10_000 });
+    hub.ingest(record("first"));
+    for (let idx = 0; idx < 3; idx += 1) hub.ingest(record("loop warn"));
+    hub.ingest(record("after"));
+    const { entries, gap } = hub.since(2);
+    expect(gap).toBeNull();
+    expect(entries.map((entry) => entry.record.message)).toEqual(["after"]);
+    hub.close();
+  });
+
   test("raw lines are never suppressed", () => {
     const hub = new LogHub({ suppressPerSecond: 1 });
     for (let idx = 0; idx < 3; idx += 1) hub.ingest(record("banner", { level: null, sev: 0 }));

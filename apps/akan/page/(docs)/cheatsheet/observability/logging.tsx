@@ -311,13 +311,15 @@ export default page()
           en: (
             <>
               The hub owner keeps 2,000 records or 4MB (<code>AKAN_LOG_BUFFER</code>, <code>AKAN_LOG_BUFFER_MB</code>).
-              More than 20 identical lines a second fold into one &quot;suppressed&quot; line.
+              More than 20 identical lines a second fold into one &quot;suppressed&quot; line there; request lines never
+              fold, and the ndjson stdout and the log file get every record.
             </>
           ),
           ko: (
             <>
               허브 소유 프로세스는 레코드 2,000건 또는 4MB까지 보관합니다(<code>AKAN_LOG_BUFFER</code>,{" "}
-              <code>AKAN_LOG_BUFFER_MB</code>). 같은 줄이 1초에 20번을 넘으면 &quot;suppressed&quot; 한 줄로 접힙니다.
+              <code>AKAN_LOG_BUFFER_MB</code>). 같은 줄이 1초에 20번을 넘으면 링에서는 &quot;suppressed&quot; 한 줄로
+              접히지만, 요청 줄은 접히지 않고 ndjson stdout과 로그 파일에는 모든 레코드가 기록됩니다.
             </>
           ),
         }),

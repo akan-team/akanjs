@@ -14,12 +14,16 @@ export class HubFileSink {
   #subscription: { unsubscribe(): void } | null;
 
   constructor(hub: LogHub, writer: RotatingLogWriter, { minSev, json }: HubFileSinkOptions) {
-    this.#subscription = hub.subscribe({ minSev }, (entry) => {
-      writer.write(
-        HubFileSink.processKey(entry),
-        json ? LogStdoutWriter.line(entry) : Logger.stripAnsi(Logger.render(entry.record)),
-      );
-    });
+    this.#subscription = hub.subscribe(
+      { minSev },
+      (entry) => {
+        writer.write(
+          HubFileSink.processKey(entry),
+          json ? LogStdoutWriter.line(entry) : Logger.stripAnsi(Logger.render(entry.record)),
+        );
+      },
+      { exact: true },
+    );
   }
 
   static attach(writer: RotatingLogWriter, hub: LogHub | null, label: string): () => void {

@@ -101,6 +101,11 @@ const MAX_SPANS_PER_TRACE = 64;
 const FLIGHT_RING_SIZE = 64;
 const CANONICAL_ERROR_CHARS = 200;
 
+const requestLineName = "Signal";
+
+export const isRequestLine = (record: LogRecord): boolean =>
+  record.name === requestLineName && typeof record.attrs?.status === "number";
+
 interface FlightEntry {
   record: LogRecord;
   written: boolean;
@@ -287,7 +292,7 @@ export class SignalTrace {
     if (failed) attrs.err = SignalTrace.#describeError(this.error);
     Logger.emit({
       level: failed ? "warn" : "info",
-      name: "Signal",
+      name: requestLineName,
       message: `${this.outcome} ${this.endpoint}`,
       attrs,
     });
