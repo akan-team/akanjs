@@ -60,7 +60,7 @@ interface SubscribeOption {
   resync: Set<() => void>;
   /** The numbering of the frames the room delivered, while the server numbers them. */
   cursor: { epoch: string | null; seq: number | null };
-  /** Resubscribed after a drop: the ack says whether what was missed came back. */
+  /** Resubscribed after a drop or a budget refusal: the ack says whether what was missed came back. */
   recovering: boolean;
   refused: Set<(error: unknown) => void>;
   /** Subscribes sent again after a budget refusal since the room was last acked. */
@@ -657,7 +657,9 @@ const refuseSubscribe = (
   const retryInMs = subscribeRetryDelayOf(refusal, held);
   if (retryInMs !== null) {
     setTimeout(() => {
-      if (rooms.get(roomId) === held && held.token === refusal.token) resend(held);
+      if (rooms.get(roomId) !== held || held.token !== refusal.token) return;
+      held.recovering = true;
+      resend(held);
     }, retryInMs).unref?.();
     return;
   }

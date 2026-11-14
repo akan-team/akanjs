@@ -17,7 +17,7 @@ Subscribe frames now have a budget, over every pubsub endpoint: 1,000 a minute p
 
 When the server refuses a subscribe with 429, the error frame names the room it refused (`requestRoomId`) and carries back the `token` the client numbered that subscribe frame with. A refusal whose token is not the room's latest subscribe answers an earlier one, and the client ignores it.
 - Refused for a room limit (`liveRoomLimit`), the room is dropped, so a reconnect does not send it again, and the subscriber's new `onRefused(error)` fetch policy is called.
-- Refused for a budget (`tooManyRequests`), the subscribe is sent again after the `seconds` the server named (counted as 1 to 60), plus up to a second of random wait per attempt. After five such tries without an ack, the room is dropped the same way.
+- Refused for a budget (`tooManyRequests`), the subscribe is sent again after the `seconds` the server named (counted as 1 to 60), plus up to a second of random wait per attempt. The ack of a retry resyncs the room as a reconnect's does, so a list refetches what was written while the room was refused. After five such tries without an ack, the room is dropped the same way.
 - A refusal with any other status leaves the room as it was.
 
 When its room is dropped, a live slice shows the error as a message, marks its list stale so the next mount refetches, and subscribes again only on its next watch, never in a loop.

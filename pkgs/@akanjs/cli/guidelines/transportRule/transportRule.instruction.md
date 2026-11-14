@@ -251,8 +251,8 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   frame's `token`, so the client ignores a refusal that answers an earlier subscribe of the room. Refused with
   `liveRoomLimit`, the client drops that room, so a reconnect does not send it again, and calls the subscriber's
   `onRefused(error)` fetch policy once. Refused for a budget (`tooManyRequests`), it sends the subscribe again after
-  the frame's `data.seconds` (1 to 60) plus up to a second of jitter per attempt, and drops the room the same way
-  after five tries without an ack. A live slice whose room is dropped shows the error as a message, marks its list
+  the frame's `data.seconds` (1 to 60) plus up to a second of jitter per attempt, resyncs the room on the retry's
+  ack as a reconnect does, and drops the room the same way after five tries without an ack. A live slice whose room is dropped shows the error as a message, marks its list
   stale, and subscribes again only on its next watch, such as the next mount — never in a loop.
 - **Subscribe frames have a budget of their own**, over every pubsub endpoint: 1,000 a minute per websocket, counted
   before the arguments are read, and 10,000 a minute per caller (`accountKey(account)`, else the address; one whose

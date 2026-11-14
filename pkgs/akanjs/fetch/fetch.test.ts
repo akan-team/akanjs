@@ -3744,6 +3744,44 @@ describe("WsClient", () => {
     }
   });
 
+  test("resyncs a room accepted only on a retry after a budget refusal, so a row written meanwhile reaches the list", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws");
+    client.logger.warn = (() => undefined) as typeof client.logger.warn;
+    const stored = ["row-1"];
+    let list: string[] = [];
+    const load = () => {
+      list = [...stored];
+    };
+    client.subscribe({ key: "commandOfPc", data: ["pc-7"], handleEvent: () => undefined, handleResync: load });
+    client.connect();
+    const ws = FakeWebSocket.instances[0];
+    ws.open();
+    load();
+    const timers: { run: () => void }[] = [];
+    const timeout = spyOn(globalThis, "setTimeout").mockImplementation(((run: () => void) => {
+      timers.push({ run });
+      return { unref: () => undefined };
+    }) as never);
+    try {
+      ws.receive({
+        error: "base.error.tooManyRequests",
+        statusCode: 429,
+        data: { seconds: 1 },
+        key: "commandOfPc",
+        requestRoomId: "commandOfPc-pc-7",
+        token: subscribeTokenOf(ws, ["pc-7"]),
+      });
+      stored.push("row-2");
+      timers.at(-1)?.run();
+      ws.receive({ type: "sub", roomId: "commandOfPc-pc-7", requestRoomId: "commandOfPc-pc-7", subscribe: true });
+      expect(list).toEqual(["row-1", "row-2"]);
+    } finally {
+      timeout.mockRestore();
+      client.destroy();
+    }
+  });
+
   test("ignores a refusal answering an earlier subscribe of a room since subscribed again", () => {
     setFakeWebSocket();
     const client = new WsClient("ws://example/ws");
