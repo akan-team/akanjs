@@ -84,11 +84,24 @@ export const toolCallOf = (id: string, name: string, raw: string | undefined): A
   };
 };
 
+const argumentSources = ["$ref", "anyOf", "oneOf", "allOf", "patternProperties"];
+
+//? Security: fails closed. A root `$ref`, a combinator or an open `additionalProperties` describes arguments this
+//? check cannot see, so only an object schema with no properties and none of those takes no arguments.
 const takesNoArguments = (tools: AgentWireTool[], name: string | undefined): boolean => {
   const tool = tools.find((candidate) => candidate.name === name);
   if (!tool) return false;
-  const properties = tool.parameters?.properties;
-  return !properties || (typeof properties === "object" && !Object.keys(properties).length);
+  const schema = tool.parameters;
+  if (!schema) return true;
+  const { type, properties, additionalProperties, required } = schema;
+  if (type !== undefined && type !== "object") return false;
+  if (argumentSources.some((key) => key in schema)) return false;
+  if (additionalProperties !== undefined && additionalProperties !== false) return false;
+  if (Array.isArray(required) && required.length) return false;
+  if (properties === undefined) return true;
+  return (
+    !!properties && typeof properties === "object" && !Array.isArray(properties) && !Object.keys(properties).length
+  );
 };
 
 //? Security: a call that lost its arguments would otherwise run with `{}`, which every optional-argument write accepts.

@@ -49,6 +49,31 @@ describe("a stream that did not finish", () => {
     expect((await openai([opened({ name: "write", arguments: "" }), "data: [DONE]"], empty)).stop).toBe("toolUse");
   });
 
+  test("only an object schema with no properties and nothing else to supply takes no arguments", async () => {
+    const opened = `data: ${JSON.stringify({ choices: [{ delta: { tool_calls: [{ index: 0, id: "c1", function: { name: "write", arguments: "" } }] } }] })}`;
+    const stopOn = async (parameters?: Record<string, unknown>) =>
+      (await openai([opened, "data: [DONE]"], [{ name: "write", ...(parameters ? { parameters } : {}) }])).stop;
+    const supplied: Record<string, unknown>[] = [
+      { $ref: "#/$defs/Body" },
+      { anyOf: [{ type: "object", properties: { body: { type: "string" } } }] },
+      { oneOf: [{ type: "object" }] },
+      { allOf: [{ $ref: "#/$defs/Body" }] },
+      { type: "object", additionalProperties: { type: "string" } },
+      { type: "object", additionalProperties: true },
+      { type: "object", properties: {}, patternProperties: { "^x-": { type: "string" } } },
+      { type: "string" },
+      { type: "object", properties: [] },
+    ];
+    for (const parameters of supplied) expect([parameters, await stopOn(parameters)]).toEqual([parameters, "length"]);
+    const none: (Record<string, unknown> | undefined)[] = [
+      undefined,
+      {},
+      { type: "object" },
+      { type: "object", properties: {}, additionalProperties: false, required: [] },
+    ];
+    for (const parameters of none) expect([parameters, await stopOn(parameters)]).toEqual([parameters, "toolUse"]);
+  });
+
   test("an Anthropic message_stop with no stop reason after an argument-less call is cut, unless the tool takes none", async () => {
     const start = `data: ${JSON.stringify({ type: "content_block_start", index: 0, content_block: { type: "tool_use", id: "c1", name: "write", input: {} } })}`;
     const blockStop = `data: ${JSON.stringify({ type: "content_block_stop", index: 0 })}`;
