@@ -147,6 +147,18 @@ describe("LogStreamRoute stream", () => {
     expect(frames(text)[0]?.data).toEqual({ type: "gap", reason: "sequence-reset", lastEventId: 999, currentSeq: 1 });
   });
 
+  test("a client that never reads holds a bounded queue and is cut off past the drop limit", async () => {
+    hub = new LogHub({ maxRecords: 10 });
+    const res = new LogStreamRoute(() => hub, "tok").handle(request());
+    const pad = "x".repeat(1_024);
+    const fits = Math.ceil(LogStreamRoute.maxQueuedBytes / pad.length);
+    let sent = 0;
+    while (hub.floor !== null && sent <= fits + LogStreamRoute.maxDropped) hub.ingest(record(`m${sent++} ${pad}`));
+    expect(hub.floor).toBeNull();
+    expect(sent).toBeGreaterThan(LogStreamRoute.maxDropped + 1);
+    expect(res.body?.getReader().read()).rejects.toThrow("stalled");
+  });
+
   test("delivering records writes no record of its own", async () => {
     hub = new LogHub();
     const removeSink = Logger.addSink((entry) => {

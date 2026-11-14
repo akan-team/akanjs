@@ -217,7 +217,9 @@ normalized to `info` with one warning.
   solo replica) its only writer** — every other server process turns its console off and forwards from
   `AKAN_LOG_STDOUT_LEVEL` (default: the console level); a child's or the RSC worker's crash stack is wrapped as a
   `raw=true` record instead of breaking the stream. Text stays the default; turn it on in the deployment.
-- **`AKAN_LOG_STREAM_TOKEN` mounts `/_akan/app/logs`** (SSE, `Last-Event-ID` resume, explicit `gap` events);
+- **`AKAN_LOG_STREAM_TOKEN` mounts `/_akan/app/logs`** (SSE, `Last-Event-ID` resume, explicit `gap` events;
+  a client that stops reading holds at most 4 MiB, hears `{type:"dropped",count}` when it reads again, and is cut off
+  past 10,000 dropped records);
   unset, the route does not exist. The same bearer also unlocks the health detail and metrics.
 - **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call; **`AKAN_LOG_FLIGHT=1`**
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past

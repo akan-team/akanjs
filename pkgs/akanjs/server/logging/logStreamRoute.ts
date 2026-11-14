@@ -12,6 +12,9 @@ export class LogStreamRoute {
   static readonly path = "/_akan/app/logs";
   static readonly retryMs = 2_000;
   static readonly heartbeatMs = 15_000;
+  //? A resume replays the ring before the reader takes a byte, so the bound holds a default ring's worth of lines.
+  static readonly maxQueuedBytes = 4 * 1024 * 1024;
+  static readonly maxDropped = 10_000;
 
   readonly #hub: () => LogHub | null;
   readonly #digest: Buffer;
@@ -49,7 +52,12 @@ export class LogStreamRoute {
         subscription?.unsubscribe();
         subscription = null;
       },
-      { keepAliveMs: LogStreamRoute.heartbeatMs, keepAliveChunk: ": heartbeat\n\n" },
+      {
+        keepAliveMs: LogStreamRoute.heartbeatMs,
+        keepAliveChunk: ": heartbeat\n\n",
+        maxQueuedBytes: LogStreamRoute.maxQueuedBytes,
+        maxDropped: LogStreamRoute.maxDropped,
+      },
     );
     stream.retry(LogStreamRoute.retryMs);
     const lastEventId = req.headers.get("last-event-id")?.trim();

@@ -605,6 +605,13 @@ export default page()
           ko: "15초마다 heartbeat 주석을 보내고, 재연결 간격 힌트는 2초입니다.",
         }),
       },
+      {
+        name: "dropped",
+        desc: l.trans({
+          en: "A client that stops reading holds at most 4MB; what it missed arrives as one dropped event with a count when it reads again, and past 10,000 missed records the stream is closed.",
+          ko: "읽기를 멈춘 클라이언트에는 최대 4MB만 쌓입니다. 놓친 레코드는 다시 읽을 때 개수를 담은 dropped 이벤트 하나로 오고, 10,000건을 넘게 놓치면 스트림이 닫힙니다.",
+        }),
+      },
     ];
 
     const gapRows = [
