@@ -1,0 +1,92 @@
+groups:
+  - name: akan
+    rules:
+      - alert: AkanEndpointErrorRatioHigh
+        expr: |
+          (
+            sum by (job, namespace, endpoint) (rate(akan_endpoint_requests_total{status_class="5xx"}[10m]))
+              /
+            sum by (job, namespace, endpoint) (rate(akan_endpoint_requests_total[10m]))
+          ) > 0.05
+          and
+          sum by (job, namespace, endpoint) (rate(akan_endpoint_requests_total[10m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.endpoint }} answers {{ $value | humanizePercentage }} of its calls with 5xx"
+          description: >-
+            More than 5% of the calls to {{ $labels.endpoint }} in {{ $labels.namespace }} failed with a 5xx for
+            15 minutes, at six calls a minute or more. Read `akan logs` for that endpoint.
+
+      - alert: AkanPageErrorRatioHigh
+        expr: |
+          (
+            sum by (job, namespace, route) (rate(akan_page_requests_total{status_class="5xx"}[10m]))
+              /
+            sum by (job, namespace, route) (rate(akan_page_requests_total[10m]))
+          ) > 0.05
+          and
+          sum by (job, namespace, route) (rate(akan_page_requests_total[10m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.route }} answers {{ $value | humanizePercentage }} of its requests with 5xx"
+          description: >-
+            More than 5% of the page documents and RSC payloads for {{ $labels.route }} in {{ $labels.namespace }}
+            failed with a 5xx for 15 minutes, at six requests a minute or more.
+
+      - alert: AkanEndpointLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (job, namespace, endpoint, le) (rate(akan_endpoint_request_duration_seconds_bucket[10m]))
+          ) > 2.5
+          and
+          sum by (job, namespace, endpoint) (rate(akan_endpoint_request_duration_seconds_count[10m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.endpoint }} answers 5% of its calls in more than {{ $value | humanizeDuration }}"
+          description: >-
+            The 95th percentile of {{ $labels.endpoint }} in {{ $labels.namespace }} stayed above 2.5 s for
+            15 minutes, at six calls a minute or more.
+
+      - alert: AkanPageLatencyHigh
+        expr: |
+          histogram_quantile(0.95,
+            sum by (job, namespace, route, le) (rate(akan_page_request_duration_seconds_bucket[10m]))
+          ) > 2.5
+          and
+          sum by (job, namespace, route) (rate(akan_page_request_duration_seconds_count[10m])) > 0.1
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.route }} starts 5% of its responses after more than {{ $value | humanizeDuration }}"
+          description: >-
+            The 95th percentile time to start a response for {{ $labels.route }} in {{ $labels.namespace }} stayed
+            above 2.5 s for 15 minutes, at six requests a minute or more.
+
+      - alert: AkanRscWorkerUnavailable
+        expr: akan_rsc_workers_ready < akan_rsc_workers
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.instance }} has an RSC worker that has not been ready for 10 minutes"
+          description: >-
+            A process in {{ $labels.namespace }} that renders pages reported fewer ready RSC workers than it runs
+            for 10 minutes, so its page requests wait or fail. Check its restarts in `/_akan/app/health`.
+
+      - alert: AkanRscWorkerUnavailable
+        expr: akan_rsc_workers > 0 and akan_rsc_workers_ready == 0
+        for: 3m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.instance }} has no RSC worker ready to render pages"
+          description: >-
+            Every RSC worker in {{ $labels.instance }} ({{ $labels.namespace }}) stayed unready for 3 minutes, so none
+            of its pages render.

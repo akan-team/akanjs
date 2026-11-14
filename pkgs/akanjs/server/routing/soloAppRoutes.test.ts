@@ -88,6 +88,37 @@ describe("solo app routes", () => {
     expect(body.proxyHop).toBeNull();
   });
 
+  test("renders the metrics as OpenMetrics text to a scraper that asks for it, behind the same token", async () => {
+    const families = () => [
+      { name: "akan_test_calls_total", help: "Calls.", type: "counter" as const, samples: [{ labels: {}, value: 4 }] },
+    ];
+    const routes = routesOf({ ...running, rscWorker: "restarting", families });
+    const scrape = (headers: Record<string, string>) =>
+      routes["/_akan/app/metrics"].GET(new Request("http://app.example/", { headers }));
+    const openMetrics = "application/openmetrics-text;version=1.0.0,text/plain;version=0.0.4;q=0.5,*/*;q=0.1";
+
+    const text = scrape({ accept: openMetrics, authorization: `Bearer ${token}` });
+    expect(text.headers.get("content-type")).toBe("application/openmetrics-text; version=1.0.0; charset=utf-8");
+    const body = await text.text();
+    expect(body).toMatch(/^akan_build_info\{akanjs_version="[^"]+",app="[^"]+"\} 1$/m);
+    expect(body).toMatch(/^process_start_time_seconds \d+(\.\d+)?$/m);
+    for (const line of ["akan_test_calls_total 4", "akan_rsc_workers 1", "akan_rsc_workers_ready 0"])
+      expect(body.split("\n")).toContain(line);
+    expect(body.endsWith("\n# EOF\n")).toBe(true);
+    expect(scrape({ accept: openMetrics }).status).toBe(401);
+    const json = scrape({ accept: "application/json, text/plain, */*", authorization: `Bearer ${token}` });
+    expect(json.headers.get("content-type")).toContain("application/json");
+    expect(
+      ((await json.json()) as { metricFamilies: { name: string }[] }).metricFamilies.map(({ name }) => name),
+    ).toEqual([
+      "akan_build_info",
+      "process_start_time_seconds",
+      "akan_test_calls_total",
+      "akan_rsc_workers",
+      "akan_rsc_workers_ready",
+    ]);
+  });
+
   test("tells a caller without the token the status alone, and refuses it the metrics", async () => {
     const starting = { ...running, running: false, status: "starting", port: null };
     for (const routes of [routesOf(starting), routesOf(starting, new StatusAccess({ tokens: [] }))]) {

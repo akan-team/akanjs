@@ -1,3 +1,5 @@
+import type { AkanMetricFamily } from "akanjs/service";
+
 //? `rewritten-query`: the route's key took the query sorted and without tracking parameters, not as it was asked.
 const lookupReasons = ["requested-query", "rewritten-query"] as const;
 const bypassReasons = [
@@ -40,6 +42,19 @@ export class RouteCacheTally {
 
   static snapshot(): RouteCacheTallySnapshot {
     return structuredClone(RouteCacheTally.#counts);
+  }
+
+  static family(cache: RouteCacheName): AkanMetricFamily {
+    const counts = RouteCacheTally.#counts[cache];
+    const samples = (["hit", "miss", "bypass"] as const).flatMap((outcome) =>
+      Object.entries<number>(counts[outcome]).map(([reason, value]) => ({ labels: { cache, outcome, reason }, value })),
+    );
+    return {
+      name: "akan_route_cache_lookups_total",
+      help: "Route cache lookups by cache, as a hit or miss by how the key took the query, or a bypass by why it skipped the cache.",
+      type: "counter",
+      samples,
+    };
   }
 
   static #empty(): RouteCacheOutcomeCounts {

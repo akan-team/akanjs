@@ -53,8 +53,10 @@ import type {
   WebsocketSubscribeAck,
 } from "../../signal/types";
 import { MachineToken } from "../machine/machineToken";
+import { endpointRequests } from "../metrics/requestMetrics";
 import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
+import { httpEndpointHandler } from "./httpEndpointHandler";
 import { invalidSignal as invalid } from "./invalidSignal";
 import { JobTrace } from "./jobTrace";
 import { LivePause } from "./livePause";
@@ -604,19 +606,13 @@ export class SignalResolver {
       if (endpointInfo.signalOption.globalPrefix !== undefined) {
         routeOptions[path] = { globalPrefix: endpointInfo.signalOption.globalPrefix };
       }
-      const normalHttpHandler = async (req: Bun.BunRequest): Promise<Response | undefined> =>
-        await SignalContext.try(endpoint, endpointInfo, key, async () => {
-          const context = await new SignalContext(key, req, {
-            endpointInfo,
-            adaptor: endpoint,
-            registry,
-            env,
-            live,
-            middleware,
-          }).init();
-          // `exec` widened its return for the pubsub branch, which no HTTP route takes.
-          return (await context.exec()) as Response | undefined;
-        });
+      const calls = endpointRequests.of(`${endpointInfo.type}:${key}`);
+      const normalHttpHandler = httpEndpointHandler(calls, key, endpointInfo, endpoint, {
+        registry,
+        env,
+        live,
+        middleware,
+      });
       if (endpointInfo.signalOption.method && endpointInfo.type !== "mutation")
         SignalResolver.logger.warn(
           `"${key}" declares method ${endpointInfo.signalOption.method} on a ${endpointInfo.type}, which is ignored.`,
@@ -634,7 +630,7 @@ export class SignalResolver {
           );
           break;
         case "pubsub":
-          wsRoutes[key] = async (ws, message, event, request) => {
+          wsRoutes[key] = calls.tracked(async (ws, message, event, request) => {
             const subscribe = event === "subscribe";
             const arrival = SignalResolver.#pendingSubscribes.arrive(ws, subscribe);
             try {
@@ -712,21 +708,23 @@ export class SignalResolver {
             } finally {
               if (subscribe) SignalResolver.#pendingSubscribes.settle(ws);
             }
-          };
+          });
           break;
         case "message":
-          wsRoutes[key] = async (ws, message) =>
-            await SignalContext.run(endpoint, endpointInfo, key, "websocket", async () => {
-              const context = await new SignalContext(
-                key,
-                { ws, data: message, eventType: "message" },
-                { endpointInfo, adaptor: endpoint, registry, env, live, middleware },
-              ).init();
-              const result = (await context.exec()) as object | object[];
-              await SignalResolver.#retainWsContext(ws, context as SignalContext<WebSocketExecutionContext>);
-              const messageData: WebsocketMessageData = { type: "msg", key, data: result };
-              return messageData;
-            });
+          wsRoutes[key] = calls.tracked(
+            async (ws, message) =>
+              await SignalContext.run(endpoint, endpointInfo, key, "websocket", async () => {
+                const context = await new SignalContext(
+                  key,
+                  { ws, data: message, eventType: "message" },
+                  { endpointInfo, adaptor: endpoint, registry, env, live, middleware },
+                ).init();
+                const result = (await context.exec()) as object | object[];
+                await SignalResolver.#retainWsContext(ws, context as SignalContext<WebSocketExecutionContext>);
+                const messageData: WebsocketMessageData = { type: "msg", key, data: result };
+                return messageData;
+              }),
+          );
           break;
         default:
           throw invalid(`Endpoint ${key} is not a valid endpoint type`);
