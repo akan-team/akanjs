@@ -132,7 +132,10 @@ const config: AppConfig = {
   only, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is rebuilt, by itself;
   the reason is `terminated` on macOS, and `rebuildFailed` when a rebuild failed and the view is closed, to be opened
   again) / `consoleMessage` events. Every method on Windows and Linux, where a visible view also holds the keyboard
-  focus and no `consoleMessage` is sent; macOS 14+ lacks `sendKey`, `setMuted` and `capture`.
+  focus and no `consoleMessage` is sent; macOS 14+ lacks `sendKey`, `setMuted` and `capture`. A view opens only the
+  exact origins `native.desktop.externalView.allowOrigins` lists (none without it): its own `allowOrigins` narrow within
+  them, and opening an open view again never adds one. `evaluate` and `initScript` need `desktop.externalView.evaluate:
+  true`, `sendKey` needs `desktop.externalView.sendKey: true`.
 
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
