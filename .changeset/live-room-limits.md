@@ -2,12 +2,12 @@
 "akanjs": minor
 ---
 
-A websocket now holds at most 256 live rooms at once. A subscribe past that is refused with a 429 error frame coded `liveRoomLimit` (`base.error.liveRoomLimit`, `data: { limit, per: "socket" }`).
+A websocket now holds at most 256 pubsub rooms at once, live or not. A subscribe past that is refused with a 429 error frame coded `liveRoomLimit` (`base.error.liveRoomLimit`, `data: { limit, per: "socket" }`).
 - The rooms the socket already holds keep receiving their events.
 - Subscribing a room the socket already holds does not count twice.
 - Leaving a room frees its place, and closing the socket frees all of them.
 
-A page holds one live room per live slice it shows, so 256 is far above what a page uses.
+A page holds one room per live slice and per feed it shows, so 256 is far above what a page uses.
 
 A server process now holds at most 50,000 live rooms per model that every write evaluates, across every socket. These are the rooms no equality index files and the invalidating ones; a write reaches an indexed room only through its key, so indexed rooms never count. A new room of that kind past the ceiling is refused with the same frame, carrying `per: "model"`. Rooms already held keep working, and the server warns at most once a minute per model while it refuses.
 
@@ -15,6 +15,6 @@ Subscribe frames now have a budget, over every pubsub endpoint: 1,000 a minute p
 
 When the server refuses a subscribe with 429, the error frame names the room it refused (`requestRoomId`). The client drops that room, so a reconnect does not send it again, and calls the new `onRefused(error)` fetch policy of the subscriber. A live slice shows the error as a message, marks its list stale so the next mount refetches, and subscribes again only on its next watch, never in a loop.
 
-**Upgrading.** Nothing changes for an app whose sockets hold 256 live rooms or fewer, whose models hold 50,000 scanned or invalidating live rooms or fewer per server, and whose sockets subscribe less often than the budgets above.
+**Upgrading.** Nothing changes for an app whose sockets hold 256 rooms or fewer, whose models hold 50,000 scanned or invalidating live rooms or fewer per server, and whose sockets subscribe less often than the budgets above.
 - To raise or lift the room limits, call `option.setLiveRoomLimit({ roomsPerSocket: <count>, roomsPerModel: <count> })` in `lib/option.ts`. Pass `false` for either to turn it off. Libs merge in mount order, with the app last. `AKAN_LIVE_ROOMS_PER_SOCKET` and `AKAN_LIVE_ROOMS_PER_MODEL`, set to a count or `off`, override the code for one deployment.
 - To change the subscribe budgets, call `option.setRateLimit({ subscribe: { perSocket: { calls, windowMs }, perCaller: { calls, windowMs } } })`. Set either to `false` to lift it, or `subscribe: false` to lift both. Like every other budget, they are off in a `local` environment and under `AKAN_RATE_LIMIT=off`.

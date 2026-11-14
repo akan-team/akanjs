@@ -1,7 +1,7 @@
 import { Logger } from "akanjs/common";
 
 export interface LiveRoomLimitSetting {
-  /** Live rooms one websocket may hold at once, past which a subscribe is refused; `false` lifts it. */
+  /** Pubsub rooms one websocket may hold at once, live or not, past which a subscribe is refused; `false` lifts it. */
   roomsPerSocket?: number | false;
   /**
    * Live rooms on one model in this server that every write evaluates (those no equality index files, and invalidating
@@ -13,7 +13,7 @@ export interface LiveRoomLimitSetting {
 type Env = Record<string, string | undefined>;
 
 export class LiveRoomLimit {
-  //? One page holds one room per live slice it shows, so a socket nears this only by subscribing in a loop.
+  //? A page holds one room per live slice and per feed it shows, so a socket nears this only by subscribing in a loop.
   static readonly defaultRoomsPerSocket = 256;
   //? Rooms no equality index files are evaluated on every write to their model: 50,000 cost about 25 ms per write.
   static readonly defaultRoomsPerModel = 50_000;

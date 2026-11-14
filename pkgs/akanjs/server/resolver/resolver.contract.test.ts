@@ -2585,6 +2585,30 @@ describe("SignalResolver declaration contracts", () => {
     }
   });
 
+  test("counts every room a socket holds against its cap, live or not", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 2 });
+    try {
+      const { registry, route } = resolveLiveCategoryRoute();
+      resetResolverOrder();
+      const feed = resolveWith(ServerResolverTestEndpoint, makeTestEndpoint(), { registry }).wsRoutes.roomFeed;
+      const [first, second, third] = ["507f1f77bcf86cd799439012", "507f1f77bcf86cd799439013", validId];
+      const ws = makeWs();
+      await feed(ws, [first], "subscribe");
+      await feed(ws, [second], "subscribe");
+      await feed(ws, [first], "subscribe");
+      await expect(feed(ws, [third], "subscribe")).rejects.toMatchObject({
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 2, per: "socket" },
+      });
+      await expect(route(ws, ["news"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await feed(ws, [second], "unsubscribe");
+      expect(await route(ws, ["news"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
   test("reads the live room limits from the env over what option.ts set, and lifts one set off", () => {
     try {
       LiveRoomLimit.configure({ roomsPerSocket: 10, roomsPerModel: 20 });

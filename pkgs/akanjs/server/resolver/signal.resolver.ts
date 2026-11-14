@@ -58,8 +58,8 @@ import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
 import { invalidSignal as invalid } from "./invalidSignal";
 import { LivePause } from "./livePause";
-import { LiveRoomJoin } from "./liveRoomJoin";
 import { PendingSubscribes } from "./PendingSubscribes";
+import { RoomAdmission } from "./roomAdmission";
 import { SliceCrud } from "./sliceCrud";
 import { websocketOf } from "./websocketOf";
 
@@ -671,15 +671,11 @@ export class SignalResolver {
                   }
                   const roomId = liveOption ? context.getLiveRoomId(key, query) : baseRoomId;
                   const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
-                  if (liveOption && !roomCtxMap.has(roomId))
-                    LiveRoomJoin.join(live, roomCtxMap.values(), {
-                      refName: liveOption.refName,
-                      roomId,
-                      query: query as never,
-                      fallback: liveOption.fallback,
-                      payload: liveOption.payload,
-                    });
-                  roomCtxMap.set(roomId, context);
+                  const { refName, fallback, payload } = liveOption ?? {};
+                  const room = refName
+                    ? { refName, roomId, query: query as never, fallback: fallback ?? null, payload }
+                    : null;
+                  RoomAdmission.admit(roomCtxMap, roomId, context, room ? { registry: live, room } : undefined);
                   SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
                   //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
                   const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
