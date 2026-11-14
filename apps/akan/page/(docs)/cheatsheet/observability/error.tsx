@@ -218,6 +218,112 @@ export default page()
       },
     ];
 
+    const reportContextItems = [
+      {
+        name: "source",
+        desc: l.trans({
+          en: "`server` for a 5xx answer, `render` for a page that failed to render, `process` for an uncaught exception or unhandled rejection, `client` for a browser report.",
+          ko: "5xx 응답은 `server`, 렌더에 실패한 페이지는 `render`, 잡히지 않은 예외와 처리되지 않은 rejection은 `process`, 브라우저 보고는 `client`입니다.",
+        }),
+      },
+      {
+        name: "traceId",
+        desc: l.trans({
+          en: "The request id the response named as `x-request-id`. For a browser report, the id of the page view it came from.",
+          ko: "응답이 `x-request-id`로 알려 준 요청 id입니다. 브라우저 보고라면 그 보고가 나온 페이지 뷰의 id입니다.",
+        }),
+      },
+      {
+        name: "endpoint",
+        desc: l.trans({
+          en: "`<type>:<key>` of the endpoint that answered 5xx, such as `query:orderTotal`.",
+          ko: "5xx로 응답한 endpoint의 `<type>:<key>`입니다. 예: `query:orderTotal`.",
+        }),
+      },
+      {
+        name: "routeId",
+        desc: l.trans({
+          en: "The route pattern, such as `/:lang/orders/:orderId`, never the URL with its values.",
+          ko: "`/:lang/orders/:orderId` 같은 route 패턴이며, 값이 든 URL은 아닙니다.",
+        }),
+      },
+      {
+        name: "accountId",
+        desc: l.trans({
+          en: "The signed-in account's id when the request had one. Never set for a browser report, which carries no cookies.",
+          ko: "요청에 로그인한 계정이 있으면 그 id입니다. 쿠키를 싣지 않는 브라우저 보고에는 없습니다.",
+        }),
+      },
+      {
+        name: "digest",
+        desc: l.trans({
+          en: "The id a deployed build shows the browser for a render error, also on the server's log line.",
+          ko: "배포된 빌드가 렌더 에러 대신 브라우저에 보여 주는 id이며, 서버 로그 줄에도 있습니다.",
+        }),
+      },
+    ];
+
+    const browserFieldItems = [
+      {
+        name: "kind",
+        desc: l.trans({
+          en: "`uncaught`, `caught` or `recoverable` from React, `error` from `window.onerror`, `rejection` from an unhandled rejection.",
+          ko: "React가 알린 `uncaught`, `caught`, `recoverable`, `window.onerror`의 `error`, 처리되지 않은 rejection의 `rejection`입니다.",
+        }),
+      },
+      {
+        name: ["name", "message", "stack"],
+        desc: l.trans({
+          en: "What the browser's `Error` held, cut to 100, 1,000 and 4,000 characters.",
+          ko: "브라우저의 `Error`가 가진 값이며, 각각 100자, 1,000자, 4,000자로 자릅니다.",
+        }),
+      },
+      {
+        name: ["routeId", "digest"],
+        desc: l.trans({
+          en: "The page's route pattern, and the digest of a server error the page showed. Dropped unless each has its expected shape.",
+          ko: "페이지의 route 패턴과, 페이지가 보여 준 서버 에러의 digest입니다. 정해진 모양이 아니면 버립니다.",
+        }),
+      },
+      {
+        name: ["buildId", "userAgent"],
+        desc: l.trans({
+          en: "Added by the server: the build it runs, and the request's `User-Agent` cut to 300 characters.",
+          ko: "서버가 붙입니다. 서버가 실행 중인 빌드와, 300자로 자른 요청의 `User-Agent`입니다.",
+        }),
+      },
+    ];
+
+    const clientSettingItems = [
+      {
+        key: "sampleRate",
+        type: "number",
+        default: "1",
+        desc: l.trans({
+          en: "The share of page views, from 0 to 1, that send their errors, drawn from each page view's request id.",
+          ko: "에러를 보내는 페이지 뷰의 비율(0~1)이며, 페이지 뷰마다 요청 id로 정합니다.",
+        }),
+      },
+      {
+        key: "perAddress",
+        type: "number",
+        default: "10",
+        desc: l.trans({
+          en: "Reports one address may send a minute.",
+          ko: "한 주소가 1분에 보낼 수 있는 보고 수입니다.",
+        }),
+      },
+      {
+        key: "perServer",
+        type: "number",
+        default: "120",
+        desc: l.trans({
+          en: "Reports one server process takes a minute from all addresses together.",
+          ko: "서버 프로세스 하나가 모든 주소를 합쳐 1분에 받는 보고 수입니다.",
+        }),
+      },
+    ];
+
     return (
       <Scroll>
         <Scroll.Slide id="overview" title={l.trans({ en: "Error Handling", ko: "에러 처리" })}>
@@ -913,6 +1019,273 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
                 })}
               </li>
             </ul>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="report-errors" title={l.trans({ en: "Report Errors", ko: "에러 보고하기" })}>
+          <Docs.Title>{l.trans({ en: "Report Errors", ko: "에러 보고하기" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    A 500 lands in the server log, but a team usually wants it in an error tracker too, along with the
+                    errors that happen only in a user's browser. <code>option.setErrorReporter</code> hands each error
+                    to your function, and <code>option.setClientReport</code> makes pages send what their browser hit.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    500은 서버 로그에 남지만, 팀은 보통 에러 추적 서비스에서도 보고 싶어 하고, 사용자 브라우저에서만
+                    나는 에러도 알고 싶어 합니다. <code>option.setErrorReporter</code>는 에러를 하나씩 내 함수에 넘기고,{" "}
+                    <code>option.setClientReport</code>는 페이지가 브라우저에서 난 에러를 보내게 합니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="apps/myapp/srvkit/errorTracker.ts"
+              code={`import { BrowserError, type ErrorReporter } from "akanjs/signal";
+
+export const errorTracker: ErrorReporter = async (error, context) => {
+  const ingestUrl = process.env.ERROR_TRACKER_URL;
+  if (!ingestUrl) return;
+  await fetch(ingestUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...context,
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      browser: error instanceof BrowserError ? error.data : null,
+    }),
+  });
+};`}
+            />
+            <Code.Snippet
+              className="w-full"
+              title="apps/myapp/lib/option.ts"
+              code={`import { errorTracker } from "../srvkit";
+
+export const option = new AkanOption<ModulesOptions>()
+  .setErrorReporter(errorTracker)
+  .setClientReport({ sampleRate: 0.25 });`}
+            />
+            <ul className="my-4 list-disc space-y-2 pl-5">
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Once, after the response.</strong> Each error reaches the reporter at most once, after the
+                      answer has left. A reporter that throws or rejects is logged once and changes nothing else. Before
+                      a crashed process exits, it waits up to 2 seconds for the reporter.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>응답이 나간 뒤, 한 번만.</strong> 에러 하나는 응답이 나간 뒤 reporter에 많아야 한 번
+                      갑니다. reporter가 던지거나 reject하면 한 번만 로그에 남고 다른 것은 바뀌지 않습니다. 죽는
+                      프로세스는 끝나기 전에 reporter를 2초까지 기다립니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Never a 4xx.</strong> An <code>Err</code> the user can fix is an answer, not a fault, so
+                      it never reaches the reporter.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>4xx는 보내지 않습니다.</strong> 사용자가 고칠 수 있는 <code>Err</code>는 장애가 아니라
+                      응답이므로 reporter에 가지 않습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Where it runs.</strong> In the server that answers: the solo server, or each replica. A
+                      render error in the RSC worker is carried to its server and reported there. The gateway loads no{" "}
+                      <code>option.ts</code>, so its own failures stay in its log.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>실행되는 곳.</strong> 응답하는 서버, 곧 solo 서버나 각 replica에서 실행됩니다. RSC
+                      worker의 렌더 에러는 그 서버로 넘어가 거기서 보고됩니다. gateway는 <code>option.ts</code>를 읽지
+                      않으므로 gateway 자신의 장애는 그 로그에만 남습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+            <Docs.SubSubTitle>{l.trans({ en: "What the reporter gets", ko: "reporter가 받는 것" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The first argument is a real <code>Error</code> with its <code>cause</code> chain; a thrown value
+                    that is not one arrives wrapped, with the value as its <code>cause</code>. The second is the
+                    context:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    첫 인자는 <code>cause</code> 사슬을 가진 진짜 <code>Error</code>입니다. Error가 아닌 값을 던졌다면
+                    그 값을 <code>cause</code>로 감싸서 옵니다. 둘째 인자는 context입니다:
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.IntroTable type={l.trans({ en: "Field", ko: "필드" })} items={reportContextItems} />
+            <Docs.SubSubTitle>{l.trans({ en: "Errors from the browser", ko: "브라우저의 에러" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    With <code>setClientReport</code>, each page view the sample draws sends its React root's uncaught,
+                    caught and recoverable errors, <code>window.onerror</code> and unhandled rejections to{" "}
+                    <code>/_akan/client-report</code>, at most five a page view. A page loads the sending code only on
+                    its first error. Without the option the route does not exist and pages send nothing.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>setClientReport</code>를 켜면, 표본으로 뽑힌 페이지 뷰가 React root의 uncaught·caught·
+                    recoverable 에러와 <code>window.onerror</code>, 처리되지 않은 rejection을 페이지 뷰마다 다섯 개까지{" "}
+                    <code>/_akan/client-report</code>로 보냅니다. 보내는 코드는 첫 에러가 났을 때에만 불러옵니다. 옵션이
+                    없으면 그 route가 없고 페이지도 아무것도 보내지 않습니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.OptionTable items={clientSettingItems} />
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The reporter gets a <code>BrowserError</code>, with <code>source: "client"</code>, whose{" "}
+                    <code>data</code> holds:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    reporter는 <code>source: "client"</code>와 함께 <code>BrowserError</code>를 받고, 그{" "}
+                    <code>data</code>에는 다음이 들어 있습니다:
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.IntroTable type={l.trans({ en: "Field", ko: "필드" })} items={browserFieldItems} />
+            <Docs.SubSubTitle>{l.trans({ en: "What the server drops", ko: "서버가 걸러 내는 것" })}</Docs.SubSubTitle>
+            <ul className="my-4 list-disc space-y-2 pl-5">
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Reports it did not ask for.</strong> It keeps only a <code>text/plain</code> POST from the
+                      app's own origin, of 8 KB or less, within the limits above, naming a request id its sample drew.
+                      Every report, kept or not, gets the same empty 204.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>요청하지 않은 보고.</strong> 앱 자신의 origin에서 온 8 KB 이하의 <code>text/plain</code>{" "}
+                      POST로, 위 한도 안에 있고 표본으로 뽑힌 요청 id를 가진 것만 받습니다. 받든 버리든 모든 보고에 같은
+                      빈 204로 답합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Terminal escapes and control characters.</strong> They are removed, and a line break in{" "}
+                      <code>name</code> or <code>message</code> is written as <code>\n</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>터미널 escape와 제어 문자.</strong> 지우고, <code>name</code>이나 <code>message</code>의
+                      줄바꿈은 <code>\n</code>으로 적습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Query strings in the stack.</strong> A URL in the stack loses its query string and
+                      fragment, which can hold a token, and keeps its line and column.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>stack의 query string.</strong> stack 안 URL의 query string과 fragment는 token을 담을 수
+                      있으므로 지우고, 줄과 열 번호는 남깁니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+            <Docs.Alert type="info">
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>What leaves the browser.</strong> The page view's request id, the route pattern, and the
+                    error's name, message, stack and digest. No cookies, no referrer, no URL query string and no
+                    account. A message still holds whatever the code put into it, such as a value a user typed, so keep
+                    personal data out of error messages, and name the service in your privacy notice when your reporter
+                    forwards to one.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>브라우저를 떠나는 것.</strong> 페이지 뷰의 요청 id, route 패턴, 에러의 name·message·stack·
+                    digest입니다. 쿠키, referrer, URL query string, 계정은 보내지 않습니다. 다만 message에는 코드가 넣은
+                    것이 그대로 들어가므로(사용자가 입력한 값 등) 에러 메시지에 개인정보를 넣지 말고, reporter가 외부
+                    서비스로 보낸다면 개인정보 처리방침에 그 서비스를 적으세요.
+                  </span>
+                ),
+              })}
+            </Docs.Alert>
+            <Docs.Alert type="warning">
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Pages that send nothing.</strong> The browser reads the request id from the page's{" "}
+                    <code>Server-Timing</code> header, which it shows a script only over HTTPS and on{" "}
+                    <code>localhost</code>. A page served with a <code>Cache-Control</code> that lets a shared cache
+                    reuse it (<code>AKAN_HTML_CACHE_CONTROL</code> set to <code>public, max-age=…</code> or{" "}
+                    <code>off</code>) carries no id, since a stored copy would give one page view's id to the next
+                    visitor; the default <code>no-cache</code> and a signed-in page's <code>private, no-cache</code> do
+                    carry it. The CSR bundle a native app loads sends none.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>아무것도 보내지 않는 페이지.</strong> 브라우저는 페이지의 <code>Server-Timing</code>{" "}
+                    헤더에서 요청 id를 읽는데, 이 헤더는 HTTPS와 <code>localhost</code>에서만 script에 보입니다. 공유
+                    캐시가 다시 쓸 수 있는 <code>Cache-Control</code>(<code>AKAN_HTML_CACHE_CONTROL</code>을{" "}
+                    <code>public, max-age=…</code>나 <code>off</code>로 둔 경우)로 나간 페이지는 저장된 사본이 다음
+                    방문자에게 같은 id를 줄 수 있으므로 id를 싣지 않습니다. 기본값 <code>no-cache</code>와 로그인한
+                    페이지의 <code>private, no-cache</code>는 id를 싣습니다. 네이티브 앱이 불러오는 CSR 번들은 보내지
+                    않습니다.
+                  </span>
+                ),
+              })}
+            </Docs.Alert>
           </Docs.Description>
         </Scroll.Slide>
         <Divider />

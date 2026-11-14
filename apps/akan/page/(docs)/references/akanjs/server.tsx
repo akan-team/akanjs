@@ -538,6 +538,20 @@ export default page()
           ko: "페이지나 RSC 이동이 렌더되기 전에 실행되어 갱신한 세션 같은 `Set-Cookie` 값을 돌려줍니다. 렌더는 그 쿠키를 읽고 응답이 그 쿠키를 싣습니다.",
         }),
       },
+      {
+        name: "setErrorReporter(fn)",
+        desc: l.trans({
+          en: "Gets each server 5xx, render error, uncaught exception and unhandled rejection, and each browser report, once, after the response, as an `Error` with its request id.",
+          ko: "서버 5xx, 렌더 에러, 잡히지 않은 예외와 처리되지 않은 rejection, 브라우저 보고를 응답이 나간 뒤 한 번씩 요청 id와 함께 `Error`로 받습니다.",
+        }),
+      },
+      {
+        name: "setClientReport(setting?)",
+        desc: l.trans({
+          en: "Opens `/_akan/client-report` and has pages send the errors their browser hit to `setErrorReporter`. Off unless set.",
+          ko: "`/_akan/client-report`를 열고, 페이지가 브라우저에서 난 에러를 보내 `setErrorReporter`로 전하게 합니다. 설정하지 않으면 꺼져 있습니다.",
+        }),
+      },
     ];
 
     const mergeRows = [
@@ -599,6 +613,13 @@ export default page()
         }),
       },
       {
+        name: "setErrorReporter, setClientReport",
+        desc: l.trans({
+          en: "The last call wins; `null` clears a lib's reporter and `false` turns a lib's reports off.",
+          ko: "마지막 호출이 이깁니다. `null`은 lib의 reporter를 지우고, `false`는 lib이 켠 보고를 끕니다.",
+        }),
+      },
+      {
         name: "transformEnv",
         desc: l.trans({
           en: "All run, the libs' in mount order and the app's last; each gets what the one before returned.",
@@ -622,6 +643,14 @@ export default page()
         desc: l.trans({
           en: "Mounting the chat, then `setLlm` and `setAgentAccess`.",
           ko: "채팅을 마운트하고 `setLlm`, `setAgentAccess`를 설정합니다.",
+        }),
+      },
+      {
+        href: "/cheatsheet/observability/error#report-errors",
+        title: l.trans({ en: "Report Errors", ko: "에러 보고하기" }),
+        desc: l.trans({
+          en: "Sending errors to a reporting service with `setErrorReporter` and `setClientReport`.",
+          ko: "`setErrorReporter`와 `setClientReport`로 에러를 보고 서비스에 보냅니다.",
         }),
       },
       {

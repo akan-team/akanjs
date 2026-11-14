@@ -203,6 +203,11 @@ normalized to `info` with one warning.
   render message, a server-side `fetch` sends `traceparent` to the app's own server and to a `clone({ origin })`,
   every websocket frame is a span under its handshake's id, and a queued job is a trace of its own that links the
   enqueuing one.
+- **Errors to a tracker go through `option.setErrorReporter(fn)`**, never a `Logger` sink parsing lines. It gets each
+  server 5xx (never a 4xx), render error, uncaught exception and unhandled rejection as a real `Error`, once, after
+  the response, with `{ source, traceId, endpoint, routeId, accountId, digest }`, in the solo server or the replica
+  (a worker's render error is carried to it; the gateway reports none). `option.setClientReport({ sampleRate })`, off
+  unless set, adds what pages hit in the browser as a `BrowserError` through `/_akan/client-report`.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
   lines wrap the traced handler from outside; gateway lines written outside a request have none. `akan logs
