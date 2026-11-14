@@ -1,13 +1,8 @@
 import { FIELD_META } from "akanjs/base";
 import type { QueryFieldMap } from "akanjs/document";
-import { type LiveRegistry, LiveRoomLimit, LiveRoomLimitError, type LiveRoomRegistration } from "akanjs/service";
+import { type LiveRegistry, LiveRoomLimit, LiveRoomLimitError } from "akanjs/service";
 import { EndpointRateLimit } from "../../signal/endpointRateLimit";
 import type { SignalContext } from "../../signal/signalContext";
-
-export interface AdmittedLiveRoom {
-  registry: LiveRegistry;
-  room: Omit<LiveRoomRegistration, "fields">;
-}
 
 export class RoomAdmission {
   static readonly #roomsOfCaller = new Map<string, number>();
@@ -19,7 +14,8 @@ export class RoomAdmission {
     held: Map<string, SignalContext>,
     roomId: string,
     context: SignalContext,
-    live?: AdmittedLiveRoom,
+    live: LiveRegistry,
+    query: unknown,
   ) {
     if (!held.has(roomId)) {
       const perSocket = LiveRoomLimit.roomsPerSocket;
@@ -28,10 +24,15 @@ export class RoomAdmission {
       const perCaller = LiveRoomLimit.roomsPerCaller;
       if (caller && perCaller !== null && (RoomAdmission.#roomsOfCaller.get(caller) ?? 0) >= perCaller)
         throw new LiveRoomLimitError("caller", perCaller);
-      if (live)
-        live.registry.syncHub.join({
-          ...live.room,
-          fields: RoomAdmission.#queryFieldsOf(live.registry, live.room.refName),
+      const liveOption = context.endpointInfo.signalOption.live;
+      if (liveOption)
+        live.syncHub.join({
+          refName: liveOption.refName,
+          roomId,
+          query: query as never,
+          fallback: liveOption.fallback ?? null,
+          payload: liveOption.payload,
+          fields: RoomAdmission.#queryFieldsOf(live, liveOption.refName),
         });
       if (caller) RoomAdmission.#count(ws, roomId, caller);
     }

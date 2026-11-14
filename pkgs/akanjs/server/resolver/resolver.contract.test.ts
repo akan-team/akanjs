@@ -2643,6 +2643,28 @@ describe("SignalResolver declaration contracts", () => {
     }
   });
 
+  test("lets a room go when joining it fails, so it holds no place under the caps and no live room", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 1, roomsPerCaller: 1 });
+    try {
+      const { live, route, websocket } = resolveLiveCategoryRoute();
+      const { joinRoom } = websocket.instance;
+      websocket.instance.joinRoom = async () => {
+        throw new Error("pubsub unreachable");
+      };
+      const ws = Object.assign(makeWs(), { remoteAddress: "198.51.100.30", data: { account: { sid: "join-fails" } } });
+      await expect(route(ws, ["news"], "subscribe")).rejects.toThrow("pubsub unreachable");
+      expect(live.syncHub.roomIds()).toEqual([]);
+      expect(websocket.instance.calls.filter(({ method }: { method: string }) => method === "leaveRoom")).toHaveLength(
+        1,
+      );
+      websocket.instance.joinRoom = joinRoom;
+      expect(await route(ws, ["sports"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+      expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(1);
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
   test("reads the live room limits from the env over what option.ts set, and lifts one set off", () => {
     try {
       const limits = () => [LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerCaller, LiveRoomLimit.roomsPerModel];

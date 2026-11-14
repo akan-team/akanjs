@@ -671,16 +671,12 @@ export class SignalResolver {
                   }
                   const roomId = liveOption ? context.getLiveRoomId(key, query) : baseRoomId;
                   const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
-                  const { refName, fallback, payload } = liveOption ?? {};
-                  const room = refName
-                    ? { refName, roomId, query: query as never, fallback: fallback ?? null, payload }
-                    : null;
-                  RoomAdmission.admit(ws, roomCtxMap, roomId, context, room ? { registry: live, room } : undefined);
+                  RoomAdmission.admit(ws, roomCtxMap, roomId, context, live, query);
                   SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);
                   //? A binary frame goes out unnumbered, so a binary room acks no cursor and its resubscribe resyncs.
                   const isBinaryRoom = endpointInfo.returns.returnRef === Binary && !endpointInfo.returns.arrDepth;
                   const replay = isBinaryRoom ? null : SignalResolver.#roomReplay;
-                  const joined = await SignalResolver.#awaitJoin(ws, roomId, context, websocket, replay);
+                  const joined = await SignalResolver.#awaitJoin(ws, roomId, context, websocket, replay, live);
                   if (!joined) return unsubscribed;
                   ws.subscribe(roomId);
                   //? In the same turn as the subscribe: a frame published after it is queued behind these, never ahead.
@@ -812,12 +808,16 @@ export class SignalResolver {
     context: SignalContext,
     websocket: WebsocketAdaptor,
     replay: RoomReplay | null,
+    live: LiveRegistry,
   ) {
     replay?.watch(roomId);
     const cursor = replay?.cursor(roomId);
     SignalResolver.#unacked.add(context);
     try {
       await websocket.joinRoom(ws, roomId, { live: context.endpointInfo.signalOption.live?.refName });
+    } catch (error) {
+      SignalResolver.#leaveWsRoom(ws, roomId, context as SignalContext<WebSocketExecutionContext>, websocket, live);
+      throw error;
     } finally {
       SignalResolver.#unacked.delete(context);
     }
