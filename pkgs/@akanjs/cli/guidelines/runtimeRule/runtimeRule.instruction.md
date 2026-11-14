@@ -115,7 +115,8 @@ worker per web-serving replica.
   10 s) — labelled `<type>:<key>` or the route id and the process `role`, never a URL, user or query; a path no
   route matches is `unmatched`, and a label past 2,000 values is `other`. Behind a gateway each replica reports its
   own and the gateway adds them, as fresh as `AKAN_MEMORY_LOG_INTERVAL_MS`. A new series is one line,
-  `metricRegistry.counter|gauge|histogram(name, help, labels)` from `server/metrics/metricRegistry`. The
+  `metricRegistry.counter|gauge|histogram(name, help, labels)` from `server/metrics/metricRegistry`, in the server
+  or in its RSC worker, whose series reach the same scrape as fresh as that interval and survive a worker restart. The
   `infra/app` chart adds the `prometheus.io/*` scrape annotations with `<branch>.metrics.scrape: true` and reads the
   token from the Secret `<branch>.metrics.tokenSecret` names; `infra/monitoring` holds a Grafana dashboard and the
   alert rules.

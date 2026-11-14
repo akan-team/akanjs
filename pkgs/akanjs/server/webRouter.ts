@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AkanWebConfig } from "akanjs";
 import { AkanError } from "akanjs/base";
 import { AppHosts, Logger, type LogRecord, resolveSubRouteHosts } from "akanjs/common";
-import type { AkanMetricsReport } from "akanjs/service";
+import type { AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import { PageDefinition } from "../client/route/PageDefinition";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import {
@@ -269,6 +269,10 @@ export class WebRouter {
 
   get rscWorkerStatus(): RscWorkerStatus {
     return this.#rsc.status;
+  }
+
+  metricFamilies(): AkanMetricFamily[] {
+    return this.#rsc.metricFamilies();
   }
 
   getMetrics(): AkanMetricsReport {

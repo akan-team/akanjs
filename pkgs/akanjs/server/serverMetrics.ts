@@ -1,6 +1,7 @@
 import type { Logger } from "akanjs/common";
 import type { AkanIpcMessage, AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import type { AkanServer } from "./akanServer";
+import { MetricMerge } from "./metrics/metricMerge";
 import { metricRegistry } from "./metrics/metricRegistry";
 import { RuntimeFamilies } from "./metrics/runtimeFamilies";
 import { AppInfo } from "./ops/appInfo";
@@ -42,9 +43,13 @@ export class ServerMetrics {
 
   families(): AkanMetricFamily[] {
     const role = this.#owner.serverMode;
+    const webRouter = this.#webRouter();
     return [
-      ...metricRegistry.snapshot({ role }),
-      ...RuntimeFamilies.rscWorker(this.#webRouter()?.getMetrics(), { role }),
+      ...new MetricMerge()
+        .add(metricRegistry.snapshot({ role }))
+        .add(webRouter?.metricFamilies() ?? [], { labels: { role } })
+        .families(),
+      ...RuntimeFamilies.rscWorker(webRouter?.getMetrics(), { role }),
     ];
   }
 

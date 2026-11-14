@@ -7,6 +7,7 @@ import type { PagePromptRunInput, PagePromptVisibleInput } from "../signal/mcp/p
 import { runTraced, SignalTrace } from "../signal/trace";
 import type { ClientManifest } from "./artifact";
 import { LogForwarder } from "./logging/logForwarder";
+import { metricRegistry } from "./metrics/metricRegistry";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
 import { RscDocumentHead } from "./rscDocumentHead";
@@ -426,6 +427,8 @@ export class RscRenderer {
       rscResultCacheHits: this.#caches.resultCacheHits,
       rscResultCacheMisses: this.#caches.resultCacheMisses,
       rscResultCacheBypass: this.#caches.resultCacheBypass,
+      startedAt: Math.round(performance.timeOrigin),
+      metricFamilies: metricRegistry.snapshot(),
     });
     this.#send({ type: "metrics", metrics });
   }
