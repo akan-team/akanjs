@@ -1,11 +1,12 @@
+import { InlineToken } from "../../common/inlineToken";
+
 export interface InlineRecord {
   inline: { [key: string]: string | string[] };
   withheld: number;
 }
 
-//? Security: what a turn's context may carry as the app's own data. An id or an enum member is one short token; any
-//? other string is free text that whoever wrote the record or the link chose, and the model reads that through a tool,
-//? where it arrives as page content.
+//? Security: how much of a link a turn's context carries as the app's own data: tokens only, and few of them. The
+//? rest the model reads through `readState`, where it arrives as page content.
 export class AgentInline {
   static readonly maxEntries = 12;
   //? Past these a link spells a message in the count of its params or segments, however short each one is.
@@ -14,32 +15,6 @@ export class AgentInline {
   //? app's. Four others keep `?tab=…&page=…` working on a page whose stores declare none.
   static readonly maxUndeclared = 4;
   static readonly elided = "…";
-  static readonly #shape = /^[A-Za-z0-9._-]{0,40}$/;
-  static readonly #boundary = /[._-]|(?<=[a-z])(?=[A-Z])/;
-  static readonly #uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-  static readonly #hex = /^[0-9a-fA-F]+$/;
-  static readonly #digit = /[0-9]/;
-  static readonly #longestWord = 16;
-
-  static isToken(value: unknown): value is string {
-    return AgentInline.wordsOf(value) !== null;
-  }
-
-  //? A word ends at a separator or a lower-to-upper case change, so `createdAtDesc` is three words as
-  //? `created-at-desc` is. Three pass, as an enum member or a date has. More pass only as an id's parts: each hex,
-  //? with a digit or eight characters long, which words spelled with a to f are not. A run of letters longer than a
-  //? word is words written together.
-  static wordsOf(value: unknown): number | null {
-    if (typeof value !== "string" || !AgentInline.#shape.test(value)) return null;
-    if (AgentInline.#uuid.test(value)) return 1;
-    const words = value.split(AgentInline.#boundary).filter(Boolean);
-    if (words.some((word) => word.length > AgentInline.#longestWord && !AgentInline.#digit.test(word))) return null;
-    if (words.length <= 3) return words.length;
-    const idParts = words.every(
-      (word) => AgentInline.#hex.test(word) && (AgentInline.#digit.test(word) || word.length >= 8),
-    );
-    return idParts ? 1 : null;
-  }
 
   static path(pathname: string): string {
     let segments = 0;
@@ -48,7 +23,7 @@ export class AgentInline {
       .split("/")
       .map((segment) => {
         if (!segment) return segment;
-        const count = AgentInline.wordsOf(segment);
+        const count = InlineToken.wordsOf(segment);
         if (count === null || segments >= AgentInline.maxEntries || words + count > AgentInline.maxWords)
           return AgentInline.elided;
         segments += 1;
@@ -59,7 +34,7 @@ export class AgentInline {
   }
 
   static params(record: unknown): InlineRecord {
-    return AgentInline.#record(record, (key, values) => (AgentInline.isToken(key) ? values : null));
+    return AgentInline.#record(record, (key, values) => (InlineToken.is(key) ? values : null));
   }
 
   static search(record: unknown, declared: ReadonlySet<string>): InlineRecord {
@@ -91,7 +66,7 @@ export class AgentInline {
     if (!values) return null;
     let words = 0;
     for (const value of values) {
-      const count = AgentInline.wordsOf(value);
+      const count = InlineToken.wordsOf(value);
       if (count === null) return null;
       words += count;
     }

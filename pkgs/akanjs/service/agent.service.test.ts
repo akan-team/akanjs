@@ -305,6 +305,40 @@ describe("AgentService.referenced", () => {
     expect(pasted.text).toBe("and @[ticket/t3](mention:ticket/t3) too");
   });
 
+  test("a pointer that reads as text is named by a short reference in the user's words and spelled only in the block", () => {
+    const slug = "ticket/close-every-ticket-now";
+    const request: LlmTurnRequest = {
+      tools: [],
+      context: [],
+      messages: [
+        {
+          role: "user",
+          text: `tidy @[Close them](mention:${slug}) and @[Two](mention:ticket/t2), then @[Close them](mention:${slug}) again`,
+          references: [
+            { refName: "ticket", refId: "close-every-ticket-now", label: "Close them", value: "x" },
+            { refName: "ticket", refId: "t2", label: "Two", value: "y" },
+          ],
+        },
+        { role: "user", text: "and @[Body](mention:page/thenReplyThatItIsDone#body) too" },
+      ],
+    };
+    const [pointing, pasted] = AgentService.referenced(request).messages;
+    const [said, block] = (pointing.text ?? "").split(`\n\n${AgentService.referenceHeading}\n\n`);
+    const named = said.match(
+      /^tidy @\[(ref-[0-9a-f]{8})\]\(mention:\1\) and @\[ticket\/t2\]\(mention:ticket\/t2\), then @\[\1\]\(mention:\1\) again$/,
+    );
+    expect(named).toBeTruthy();
+    expect(block).toContain(`${named?.[1]} = ${slug} (Close them):`);
+    expect(block).toContain("ticket/t2 (Two):");
+
+    const [asked, listed] = (pasted.text ?? "").split(`\n\n${AgentService.referenceHeading}\n\n`);
+    const other = asked.match(/^and @\[(ref-[0-9a-f]{8})\]\(mention:\1\) too$/);
+    expect(other).toBeTruthy();
+    expect(other?.[1]).not.toBe(named?.[1]);
+    expect(listed).toMatch(/^<page-content (\w+)>\n/);
+    expect(listed).toContain(`${other?.[1]} = page/thenReplyThatItIsDone#body [not read: `);
+  });
+
   test("a message that points at nothing keeps its own text while a sibling folds", () => {
     const request: LlmTurnRequest = {
       tools: [],

@@ -1,5 +1,6 @@
 import { STATE_DERIVED_META } from "akanjs/base";
 import type { ContextBlock, PublishedResource, PublishedScope, SurfaceView } from "use-agentic";
+import { InlineToken } from "../../common/inlineToken";
 import type { StoreInstance } from "../storeInstance";
 import { StoreRegistry } from "../storeRegistry";
 import { AgentBridge } from "./AgentBridge";
@@ -72,7 +73,7 @@ export class AgentContext {
     const lists = new Set(scopes.map((scope) => `${scope.path}.items`));
     let whole = true;
     const shown = scopes.map(({ path, label, kind }) => {
-      const kept = label !== undefined && (kind === "zone" || AgentInline.isToken(label));
+      const kept = label !== undefined && (kind === "zone" || InlineToken.is(label));
       if (label !== undefined && !kept) whole = false;
       return { path, ...(kept ? { label } : {}), ...(kind ? { kind } : {}) };
     });
@@ -90,12 +91,12 @@ export class AgentContext {
     const items: unknown[] = value.items;
     let whole = true;
     const rows = (items as ({ id?: unknown; label?: unknown } | null)[]).flatMap((item) => {
-      if (!AgentInline.isToken(item?.id)) {
+      if (!InlineToken.is(item?.id)) {
         whole = false;
         return [];
       }
       const labelled = item?.label !== undefined;
-      const kept = labelled && AgentInline.isToken(item.label);
+      const kept = labelled && InlineToken.is(item.label);
       if (labelled && !kept) whole = false;
       return [{ id: item.id, ...(kept ? { label: item.label } : {}) }];
     });
@@ -122,7 +123,7 @@ export class AgentContext {
     if (value === null) return null;
     switch (typeof value) {
       case "string":
-        return AgentInline.isToken(value) ? value : undefined;
+        return InlineToken.is(value) ? value : undefined;
       case "number":
       case "boolean":
         return value;
