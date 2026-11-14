@@ -156,6 +156,24 @@ export default page()
           ko: "readiness probe가 부르는 경로입니다. 이미지의 akanjs가 `/_akan/app/ready`를 제공하면 그 경로로 바꿉니다. 그보다 오래된 이미지는 404로 답합니다.",
         }),
       },
+      {
+        key: "podSecurityContext",
+        type: "object",
+        default: "uid 1000, fsGroup 1000",
+        desc: l.trans({
+          en: "The pod's `securityContext`: it runs as uid and gid 1000 (`runAsNonRoot`), its volumes are handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp is `RuntimeDefault`. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }` with `securityContext: null` runs it as root.",
+          ko: "pod의 `securityContext`입니다. uid와 gid 1000으로 실행하고(`runAsNonRoot`), 볼륨을 그룹 1000에 넘기며(`fsGroup`, `OnRootMismatch`), seccomp는 `RuntimeDefault`입니다. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }`와 `securityContext: null`을 함께 적으면 root로 실행합니다.",
+        }),
+      },
+      {
+        key: "securityContext",
+        type: "object",
+        default: "no escalation, no capabilities",
+        desc: l.trans({
+          en: "The container's `securityContext`: `allowPrivilegeEscalation: false` and every capability dropped. The root filesystem stays writable, because the server writes `/workspace/runtime`, `/workspace/.akan` and `/tmp` inside the image. `null` drops it.",
+          ko: "컨테이너의 `securityContext`입니다. `allowPrivilegeEscalation: false`이고 모든 capability를 뺍니다. 서버가 이미지 안의 `/workspace/runtime`, `/workspace/.akan`, `/tmp`에 쓰므로 루트 파일시스템은 쓰기 가능한 채로 둡니다. `null`이면 빠집니다.",
+        }),
+      },
     ];
 
     const branchKeys = [
@@ -551,14 +569,15 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    There is no single <code>values.yaml</code>: Helm reads four files in order, and a later file
-                    overrides an earlier one. An app's own file usually holds just its name and production domains.
+                    Helm starts from the chart's own <code>infra/app/values.yaml</code>, then reads four files in order,
+                    and a later file overrides an earlier one. An app's own file usually holds just its name and
+                    production domains.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>values.yaml</code> 하나로 끝나지 않습니다. Helm이 파일 네 개를 순서대로 읽고, 뒤의 파일이 앞의
-                    값을 덮어씁니다. 그래서 앱 자신의 파일에는 보통 이름과 운영 도메인만 적습니다.
+                    Helm은 chart 자체의 <code>infra/app/values.yaml</code>에서 시작해 파일 네 개를 순서대로 읽고, 뒤의
+                    파일이 앞의 값을 덮어씁니다. 그래서 앱 자신의 파일에는 보통 이름과 운영 도메인만 적습니다.
                   </span>
                 ),
               })}

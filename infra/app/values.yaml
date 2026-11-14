@@ -1,0 +1,16 @@
+# uid and gid 1000 are oven/bun's `bun` user, which owns the generated image's files and volume mount points.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  # The kubelet hands a volume whose root another group owns to group 1000, except hostPath and NFS volumes.
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+# No readOnlyRootFilesystem: the server writes /workspace/runtime, /workspace/.akan, /workspace/data and /tmp in the image.
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL

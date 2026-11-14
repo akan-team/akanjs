@@ -33,10 +33,18 @@ spec:
       # `AkanServer` gives itself 30s to drain (`AKAN_SHUTDOWN_TIMEOUT_MS`); k8s defaults to exactly that, so
       # SIGKILL would land the instant its own budget expired. Leave it room to finish.
       terminationGracePeriodSeconds: 40
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: app
           image: {{ .Values.image.registry }}/{{ .Values.repoName }}/{{ .Values.appName }}:{{ default (printf "%s-live" $branch) .Values.image.tag }}
           imagePullPolicy: Always
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           ports:
             - containerPort: 8282
           resources:
