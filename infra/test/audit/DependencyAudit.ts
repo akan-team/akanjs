@@ -82,7 +82,7 @@ export class DependencyAudit {
       }
       for (const [id, group] of byId) {
         const ranges = group.map((advisory) => advisory.vulnerable_versions);
-        const hit = (version: string) => ranges.some((range) => Bun.semver.satisfies(version, range));
+        const hit = (version: string) => ranges.some((range) => DependencyAudit.#inRange(version, range));
         const runtimeHits = runtimeVersions.filter(hit);
         const first = group[0] as AuditAdvisory;
         findings.push({
@@ -158,6 +158,13 @@ export class DependencyAudit {
 
   static failed(verdict: AuditVerdict) {
     return verdict.failing.length > 0 || verdict.expired.length > 0;
+  }
+
+  static #inRange(version: string, range: string) {
+    const release = /^(\d+\.\d+\.\d+)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/.exec(version);
+    if (!release?.[1]) return true;
+    // Bun.semver keeps a prerelease outside every range without a prerelease bound, `*` included.
+    return Bun.semver.satisfies(version, range) || (!!release[2] && Bun.semver.satisfies(release[1], range));
   }
 
   #walk(publishedWorkspaces: string[]) {

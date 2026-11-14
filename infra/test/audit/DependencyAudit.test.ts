@@ -99,6 +99,29 @@ describe("DependencyAudit", () => {
     expect(DependencyAudit.failed(late)).toBe(true);
   });
 
+  it("counts a prerelease by its release line and a non-semver version as vulnerable", () => {
+    const odd = new DependencyAudit(
+      `{
+        "workspaces": { "pkgs/pub": { "name": "pub", "dependencies": { "pre": "^1.0.0-rc.1", "git": "github:o/git" } } },
+        "packages": {
+          "pre": ["pre@1.0.0-rc.3", "", {}, "sha512-a"],
+          "git": ["git@github:o/git#abc123", {}, "o-git-abc123"],
+        }
+      }`,
+      ["pkgs/pub"],
+    );
+    const findings = odd.findings({
+      pre: [advisory("GHSA-pre", "high", "<=1.0.0"), advisory("GHSA-later", "high", ">=1.0.1")],
+      git: [advisory("GHSA-git", "high", "<2.0.0")],
+    });
+    const sides = Object.fromEntries(findings.map((item) => [item.id, item.side]));
+    expect(sides).toEqual({ "GHSA-pre": "runtime", "GHSA-later": "dev", "GHSA-git": "runtime" });
+    expect(DependencyAudit.judge(findings, [], "2026-11-14").failing.map((item) => item.id)).toEqual([
+      "GHSA-git",
+      "GHSA-pre",
+    ]);
+  });
+
   it("names the run's outcome on its last line", () => {
     const verdict = DependencyAudit.judge(
       audit.findings({ shared: [advisory("GHSA-x", "high", "<1.0.1")] }),
