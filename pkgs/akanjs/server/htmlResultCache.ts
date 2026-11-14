@@ -26,7 +26,7 @@ interface HtmlCacheStreamOptions {
   onSkip?: (reason: "body-too-large" | "store-skip") => void;
 }
 
-function cacheHtmlBytesWhileStreaming(
+export function cacheHtmlWhileStreaming(
   stream: ReadableStream<Uint8Array>,
   onComplete: (body: Uint8Array<ArrayBuffer>) => void,
   options: HtmlCacheStreamOptions = {},
@@ -72,15 +72,6 @@ function cacheHtmlBytesWhileStreaming(
       },
     }),
   );
-}
-
-export function cacheHtmlWhileStreaming(
-  stream: ReadableStream<Uint8Array>,
-  onComplete: (html: string) => void,
-  options: HtmlCacheStreamOptions = {},
-): ReadableStream<Uint8Array> {
-  const decoder = new TextDecoder();
-  return cacheHtmlBytesWhileStreaming(stream, (body) => onComplete(decoder.decode(body)), options);
 }
 
 export function resolveHtmlRouteCacheStoreTtl(input: {
@@ -195,7 +186,7 @@ export class HtmlResultCache {
       };
       return true;
     });
-    return cacheHtmlBytesWhileStreaming(
+    return cacheHtmlWhileStreaming(
       htmlStream,
       (bytes) => {
         void encodeBody(bytes).then((body) => this.#cache.set(entry.key, { body, ...htmlCacheMetadata }, htmlStoreTtl));

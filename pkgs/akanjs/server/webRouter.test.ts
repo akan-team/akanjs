@@ -1622,7 +1622,7 @@ describe("WebRouter HTML cache streaming", () => {
         },
       }),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
       },
     );
     const reader = stream.getReader();
@@ -1648,7 +1648,7 @@ describe("WebRouter HTML cache streaming", () => {
     const stream = cacheHtmlWhileStreaming(
       streamOf("<html>redirect</html>"),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
       },
       {
         shouldCache: () => Promise.resolve(false),
@@ -1666,7 +1666,7 @@ describe("WebRouter HTML cache streaming", () => {
     const stream = cacheHtmlWhileStreaming(
       streamOf("<html>cache</html>"),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
         observedStoreTtl = storeTtl;
       },
       {
@@ -1744,7 +1744,7 @@ describe("WebRouter HTML cache streaming", () => {
     const stream = cacheHtmlWhileStreaming(
       streamOf("<html>too-large</html>"),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
       },
       {
         maxBodyBytes: 4,
