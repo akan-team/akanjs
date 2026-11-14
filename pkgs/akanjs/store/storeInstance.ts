@@ -1,12 +1,12 @@
 import { ACTION_META, ACTION_OWNER_META, STATE_DERIVED_META, STATE_INIT_META } from "akanjs/base";
-import { isNativeApp, Translator } from "akanjs/client";
-import { AbortSignals, type DynamicRecord, isRecord, Logger, parseAkanI18nEnv, stateSetterName } from "akanjs/common";
+import { isNativeApp } from "akanjs/client";
+import { AbortSignals, type DynamicRecord, Logger, stateSetterName } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
 import type { EffectCallback, RefObject } from "react";
 import { type AgentGate, useAgentGate, useScopePath } from "use-agentic";
-import { actionErrorKey } from "./actionErrorKey";
+import { actionErrorMessageOf } from "./actionErrorMessage";
 import { type ActionOwner, actionTagOf, tagAction } from "./actionTag";
 import { useFormTools } from "./agentic/useFormTools";
 import { type DraftFlushing, flushDraftsKey } from "./draftFlush";
@@ -25,17 +25,6 @@ type StoreStateRecord = Record<string, unknown>;
 
 const DRAFT_DEBOUNCE_MS = 400;
 type StoreAction = (...args: unknown[]) => unknown;
-type TranslationParam = Record<string, string | number>;
-
-const getActionErrorData = (error: unknown): TranslationParam | undefined => {
-  if (!isRecord(error) || !isRecord(error.data)) return undefined;
-  const data = Object.fromEntries(
-    Object.entries(error.data).filter((entry): entry is [string, string | number] =>
-      ["string", "number"].includes(typeof entry[1]),
-    ),
-  );
-  return Object.keys(data).length ? data : undefined;
-};
 
 export type ReactAPI = {
   useSyncExternalStore: <T>(
@@ -424,10 +413,7 @@ export class StoreInstance {
     const showMessage = this.#ctx.showMessage;
     if (typeof showMessage !== "function") return;
     try {
-      const lang = Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale;
-      const errorKey = actionErrorKey(error);
-      const content = Translator.translateByLocale(lang, errorKey, getActionErrorData(error));
-      showMessage({ type: "error", key: actionKey, duration: 3, content });
+      showMessage({ type: "error", key: actionKey, duration: 3, content: actionErrorMessageOf(error) });
     } catch (messageError) {
       Logger.warn(
         `Failed to show ${actionKey} action error message: ${

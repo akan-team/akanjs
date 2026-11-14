@@ -73,6 +73,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `listFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `liveAlreadySet` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `livePaused` | 409 | `AkanError` | no | yes | `base/akanError.ts` |
+| `liveRoomLimit` | 429 | `LiveRoomLimitError` | yes | yes | `service/liveRoomLimitError.ts` |
 | `liveRoomTaken` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `locked` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `logControlUnavailable` | 503 | `LogControlUnavailableError` | no | yes | `server/logging/logTailClient.ts` |
@@ -95,6 +96,12 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `payloadTooLarge` | 413 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
 | `planChanged` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `redisUriMissing` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `remoteOAuth` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
+| `remoteProtocol` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
+| `remoteTooLarge` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
+| `remoteUnauthorized` | 401 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
+| `remoteUnavailable` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
+| `remoteUrlRejected` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
 | `renderAborted` | 499 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeConflict` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `AkanError` | no | yes | `base/akanError.ts` |

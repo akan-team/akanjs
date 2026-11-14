@@ -54,6 +54,13 @@ export class BundleSizeGate implements Gate {
   async measure(): Promise<Measurements> {
     if (!(await Bun.file(path.join(this.#distDir, "main.js")).exists()))
       throw new Error(`${this.#distDir} has no main.js: run \`bun run akan build minimal\` first, or pass --build`);
+    const build = (await Bun.file(path.join(this.#distDir, "akan.build.json"))
+      .json()
+      .catch(() => null)) as { profile?: string } | null;
+    if (build?.profile === "verify")
+      throw new Error(
+        `${this.#distDir} is akan verify's partial output: run \`bun run akan build minimal\` first, or pass --build`,
+      );
     const measured: Measurements = {};
     for (const entry of BundleSizeGate.#entries)
       measured[entry] = await BundleSizeGate.#sizeOf(path.join(this.#distDir, entry));

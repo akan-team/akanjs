@@ -262,6 +262,22 @@ describe("Logger attrs", () => {
     );
   });
 
+  test("renders a stack attr on its own lines under the record, and keeps it a string in the record", () =>
+    withSink((entries) => {
+      Logger.setLevel("error");
+      const stack = "TypeError: driver broke\n    at handler (/app/user.service.ts:12:3)";
+      Logger.emit({
+        level: "info",
+        name: "Signal",
+        message: "error query:user",
+        attrs: { status: 500, type: "TypeError", stack },
+      });
+      expect(entries[0]?.record.attrs?.stack).toBe(stack);
+      const lines = entries[0]?.plainMessage.split("\n") ?? [];
+      expect(lines[0]).toMatch(/ error query:user status=500 type=TypeError \+\d+ms$/);
+      expect(lines.slice(1)).toEqual(["TypeError: driver broke", "    at handler (/app/user.service.ts:12:3)", ""]);
+    }));
+
   test("a record without attrs keeps the historical line", () =>
     withSink((entries) => {
       Logger.setLevel("error");

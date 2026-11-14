@@ -244,8 +244,17 @@ export type SignalType = "restapi" | "websocket";
 
 /** Where a client's copy of a room stands: the numbering it came from, and the last frame it took. */
 export type WebsocketRoomCursor = { epoch: string; seq: number };
-/** `since` asks a resubscribe to send what was published after it, if the server still can. */
-export type WebsocketReqData = { key: string; data: unknown[]; subscribe?: boolean; since?: WebsocketRoomCursor };
+/**
+ * `since` asks a resubscribe to send what was published after it, if the server still can. `token` numbers one
+ * subscribe and comes back on its error frame, so a refusal is matched to the subscribe it answers.
+ */
+export type WebsocketReqData = {
+  key: string;
+  data: unknown[];
+  subscribe?: boolean;
+  since?: WebsocketRoomCursor;
+  token?: number;
+};
 export type WebsocketMessageData = { type: "msg"; key: string; data: object | object[] };
 /**
  * `op` is relative to the room, not the database: a row edited out of a filter is `leave` there and `enter` where it

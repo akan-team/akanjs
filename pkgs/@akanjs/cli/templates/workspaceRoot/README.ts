@@ -21,12 +21,14 @@ and deployment artifacts with strict conventions.
 
 ## Quick Start
 
-Install dependencies:
+Install dependencies, and the \`akan\` CLI at the version of \`akanjs\` this workspace depends on:
 
 \`\`\`bash
 bun install
-bun install -g @akanjs/cli
+v="$(bun -e "const p=require('./package.json'),v=p.dependencies?.akanjs??p.devDependencies?.akanjs;if(!v){console.error('package.json lists no akanjs in dependencies or devDependencies');process.exit(1)}console.log(v)")" && bun install -g "@akanjs/cli@$v"
 \`\`\`
+
+A CLI of another major or minor version refuses to write to the workspace; run \`akan update\` to move both.
 
 Start the app:
 

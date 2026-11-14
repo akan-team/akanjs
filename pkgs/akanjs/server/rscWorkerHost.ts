@@ -8,10 +8,12 @@ import type {
   PagePromptRunInput,
   PagePromptVisibleInput,
 } from "../signal/mcp/pagePrompt";
+import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
 import { type RscAdoptedBundle, RscHostReloads, type RscWorkerReloadInput } from "./rscHostReloads";
 import type { RscRedirectMethod, RscRedirectStatus, RscRenderResult } from "./rscHostRenderStream";
 import { RscHostRequests } from "./rscHostRequests";
+import type { RscPagePromptDrawn } from "./rscStaticApp";
 import { type RscProcess, RscWorkerProcess, type RscWorkerStatus } from "./rscWorkerProcess";
 import { RscWorkerRecycler } from "./rscWorkerRecycler";
 import type { RscRenderOptions, RscTraceMetadata } from "./ssrTypes";
@@ -124,6 +126,7 @@ type RscInMsg =
   | { type: "log.records"; records: LogRecord[]; dropped?: number }
   | { type: "page-prompts.result"; requestId: string; result: PagePromptEntry[] }
   | { type: "page-prompt.result"; requestId: string; result: PagePromptRun }
+  | { type: "page-prompt.draw.result"; requestId: string; result: RscPagePromptDrawn }
   | { type: "page-prompts.visible.result"; requestId: string; result: string[] }
   | { type: "web-manifest.result"; requestId: string; result: unknown }
   | {
@@ -178,6 +181,35 @@ export class RscWorker {
 
   runPagePrompt(input: PagePromptRunInput): Promise<PagePromptRun> {
     return this.#requests.call<PagePromptRun>((requestId) => ({ type: "page-prompt.run", requestId, input }));
+  }
+
+  //? Raced here as well as in the worker: a worker stuck on a synchronous loop never reads its own deadline.
+  async drawPagePrompt(
+    input: PagePromptRunInput,
+    clientManifest: ClientManifest | undefined,
+    deadlineMs: number,
+  ): Promise<RscPagePromptDrawn> {
+    const deadlineAt = Date.now() + deadlineMs;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () =>
+          reject(new AkanError("rscWorkerFailed", `static app "${input.name}" passed its ${deadlineMs} ms deadline`)),
+        Math.max(0, deadlineMs),
+      );
+    });
+    const drawn = this.#requests.call<RscPagePromptDrawn>((requestId) => ({
+      type: "page-prompt.draw",
+      requestId,
+      input,
+      clientManifest,
+      deadlineMs: Math.max(0, deadlineAt - Date.now()),
+    }));
+    try {
+      return await Promise.race([drawn, expired]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   visiblePagePrompts(input: PagePromptVisibleInput): Promise<string[]> {
@@ -333,6 +365,7 @@ export class RscWorker {
         return;
       case "page-prompts.result":
       case "page-prompt.result":
+      case "page-prompt.draw.result":
       case "page-prompts.visible.result":
       case "web-manifest.result":
         this.#requests.settleCall(message.requestId, (call) => call.resolve(message.result));

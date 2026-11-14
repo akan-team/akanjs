@@ -2,6 +2,11 @@ export interface AgentWireToolCall {
   id: string;
   name: string;
   args: Record<string, unknown>;
+  /**
+   * Set by an adaptor when a finished answer's arguments were not one JSON object, and `args` is then `{}`: why, for
+   * the call to be answered with as its error, never run, so the model can write it again.
+   */
+  argsError?: string;
 }
 
 export interface AgentWireToolResult {
@@ -161,9 +166,22 @@ export interface LlmOption {
 }
 
 //? A model turn regularly outlives the usual 20s adapter budget; long tool turns finish well within this.
+//? `fetch` rejects with the abort reason as given, and `LlmSpend` keys a stopped call's counts on that object: one
+//? reason shared by every call on a controller would bill a call what another streamed, so each call gets its own.
 export const llmCallSignal = (signal?: AbortSignal): AbortSignal => {
   const timeout = AbortSignal.timeout(120_000);
-  return signal ? AbortSignal.any([timeout, signal]) : timeout;
+  if (!signal) return timeout;
+  const call = new AbortController();
+  const stop = () =>
+    call.abort(
+      Object.assign(new DOMException("The caller stopped this model call.", "AbortError"), { cause: signal.reason }),
+    );
+  if (signal.aborted) stop();
+  else {
+    signal.addEventListener("abort", stop, { once: true });
+    timeout.addEventListener("abort", () => signal.removeEventListener("abort", stop), { once: true });
+  }
+  return AbortSignal.any([timeout, call.signal]);
 };
 
 export const pageContentInstruction =

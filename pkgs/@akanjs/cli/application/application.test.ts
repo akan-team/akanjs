@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -232,6 +233,8 @@ describe("ApplicationCommand", () => {
       [1, "Argument"],
       [2, "Option"],
       [3, "Option"],
+      [4, "Option"],
+      [5, "Option"],
     ]);
 
     const command = CommandContainer.get(ApplicationCommand);
@@ -240,11 +243,14 @@ describe("ApplicationCommand", () => {
       calls.push(args);
     };
     const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "test")?.handler;
-    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false, false);
-    await handler?.call(command, { name: "demo" }, null, true, true);
+    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false, false, 1, null);
+    await handler?.call(command, { name: "demo" }, null, true, true, 2, "local/junit/demo.xml");
     expect(calls).toEqual([
-      [{ name: "demo" }, { write: false, files: ["lib/a/a.test.ts", "lib/b/b.test.ts"], coverage: false }],
-      [{ name: "demo" }, { write: true, files: [], coverage: true }],
+      [
+        { name: "demo" },
+        { write: false, files: ["lib/a/a.test.ts", "lib/b/b.test.ts"], coverage: false, parallel: 1, junit: null },
+      ],
+      [{ name: "demo" }, { write: true, files: [], coverage: true, parallel: 2, junit: "local/junit/demo.xml" }],
     ]);
   });
 
@@ -616,6 +622,82 @@ describe("ApplicationScript", () => {
       ["@sample/tool", coverageOf("pkgs", "@sample", "tool")],
       ["@sample/tool", []],
     ]);
+  });
+
+  test("with --parallel, has bun spread the files over that many processes by the target's own timings", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { root, pkg } = track(await createTempPackage());
+    pkg.scan = (async () => undefined) as never;
+    script.applicationRunner.resolveTestPaths = () => [];
+    const flagsOf: string[][] = [];
+    script.applicationRunner.test = async (_target: unknown, _paths?: string[], flags?: string[]) => {
+      flagsOf.push(flags ?? []);
+    };
+
+    await script.test(pkg, { write: false, parallel: 2 });
+    await script.test(pkg, { write: false, parallel: 1 });
+    for (const parallel of [0, 1.5, Number.NaN])
+      await expect(script.test(pkg, { write: false, parallel })).rejects.toMatchObject({
+        code: "usage",
+        exitCode: 2,
+        message: expect.stringContaining("--parallel takes a whole number"),
+      });
+
+    expect(flagsOf).toEqual([
+      [
+        "--parallel=2",
+        `--timings=${path.join(root, "local", "test-timings", "pkgs", "@sample", "tool", "timings.json")}`,
+        "--update-timings",
+      ],
+      [],
+    ]);
+  });
+
+  test("with --parallel, drops a timings file bun would refuse, so the run records it again instead of failing", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { root, pkg } = track(await createTempPackage());
+    pkg.scan = (async () => undefined) as never;
+    script.applicationRunner.resolveTestPaths = () => [];
+    script.applicationRunner.test = async () => undefined;
+    const timings = path.join(root, "local", "test-timings", "pkgs", "@sample", "tool", "timings.json");
+    await mkdir(path.dirname(timings), { recursive: true });
+    const kept = ["", '{"version":1,"files":{"./a.test.ts":120}}'];
+    const dropped = [
+      "{bad",
+      " ",
+      "[]",
+      '{"version":2,"files":{}}',
+      '{"version":1,"files":[]}',
+      '{"version":1,"files":{"a":"x"}}',
+    ];
+
+    for (const text of kept) {
+      await Bun.write(timings, text);
+      await script.test(pkg, { write: false, parallel: 2 });
+      expect(await Bun.file(timings).text()).toBe(text);
+    }
+    for (const text of dropped) {
+      await Bun.write(timings, text);
+      await script.test(pkg, { write: false, parallel: 2 });
+      expect(existsSync(timings)).toBe(false);
+    }
+  });
+
+  test("with --junit, has bun write the report to that path from the caller's folder, creating its folder", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { root, pkg } = track(await createTempPackage());
+    pkg.scan = (async () => undefined) as never;
+    script.applicationRunner.resolveTestPaths = () => [];
+    const flagsOf: string[][] = [];
+    script.applicationRunner.test = async (_target: unknown, _paths?: string[], flags?: string[]) => {
+      flagsOf.push(flags ?? []);
+    };
+    const outfile = path.join(root, "local", "junit", "tool.xml");
+
+    await script.test(pkg, { write: false, junit: path.relative(process.cwd(), outfile) });
+
+    expect(flagsOf).toEqual([["--reporter=junit", `--reporter-outfile=${outfile}`]]);
+    expect(existsSync(path.dirname(outfile))).toBe(true);
   });
 
   test("tests a library with --write false by scanning it, not syncing it", async () => {

@@ -2,6 +2,7 @@ import { FailureCode } from "akanjs/common";
 import {
   type AgentWireAttachment,
   type AgentWireMessage,
+  type AgentWireTool,
   type LlmAccepts,
   type LlmTurnAnswer,
   type LlmTurnRequest,
@@ -10,7 +11,7 @@ import {
 } from "./llm.adaptor";
 import { LlmOverflow } from "./llmOverflow";
 import { LlmSpend } from "./llmSpend";
-import { eachSseData, isStreamCut, parseToolArgs } from "./sseData";
+import { eachSseData, inBandStatus, isStreamCut, parseToolArgs, toolCallOf } from "./sseData";
 
 export interface OpenaiToolCall {
   id?: string;
@@ -26,8 +27,14 @@ export interface OpenaiAnswer {
   choices?: { message?: { content?: string | null; tool_calls?: OpenaiToolCall[] }; finish_reason?: string }[];
   usage?: OpenaiUsage | null;
 }
-interface OpenaiStreamChunk {
-  error?: { message?: unknown; code?: unknown } | string;
+interface OpenaiStreamError {
+  message?: unknown;
+  code?: unknown;
+  type?: unknown;
+}
+interface OpenaiStreamChunk extends OpenaiStreamError {
+  error?: OpenaiStreamError | string;
+  object?: string;
   usage?: OpenaiUsage | null;
   choices?: {
     delta?: {
@@ -198,6 +205,7 @@ export class OpenaiDialect {
     body: ReadableStream<Uint8Array>,
     onDelta: (delta: string) => void,
     host = "The model provider",
+    tools: AgentWireTool[] = [],
   ): Promise<LlmTurnAnswer> {
     const open = new Map<number, OpenaiStreamedCall>();
     const calls: OpenaiStreamedCall[] = [];
@@ -213,6 +221,8 @@ export class OpenaiDialect {
       }
       const chunk = JSON.parse(payload) as OpenaiStreamChunk;
       if (chunk.error) failure = OpenaiDialect.#streamFailure(host, chunk.error);
+      //? vLLM can send its error response as the frame itself, with no `error` wrapper around it.
+      else if (chunk.object === "error") failure = OpenaiDialect.#streamFailure(host, chunk);
       if (chunk.usage) usage = OpenaiDialect.usageOf(chunk.usage);
       const choice = chunk.choices?.[0];
       if (!choice) return;
@@ -234,6 +244,8 @@ export class OpenaiDialect {
         if (fragment.function?.arguments) call.args += fragment.function.arguments;
       }
       if (choice.finish_reason) finish = choice.finish_reason;
+      //? A gateway such as OpenRouter ends a stream its upstream failed with `finish_reason: "error"`.
+      if (choice.finish_reason === "error") failure ??= OpenaiDialect.#streamFailure(host, "no reason given");
     });
     //? Thrown here, as `eachSseData` swallows a throw from its callback: an error frame arrives on a 200 response.
     const failed = read.then(() => {
@@ -245,22 +257,26 @@ export class OpenaiDialect {
     });
     const toolCalls = [...calls]
       .sort((a, b) => a.index - b.index)
-      .flatMap((call) =>
-        call.id && call.name ? [{ id: call.id, name: call.name, args: OpenaiDialect.parsedArgs(call.args) }] : [],
-      );
+      .flatMap((call) => (call.id && call.name ? [toolCallOf(call.id, call.name, call.args)] : []));
     return {
       ...(text ? { text } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: isStreamCut(calls, finish !== null || done) ? "length" : OpenaiDialect.stopOf(finish, toolCalls.length),
+      stop: isStreamCut(
+        calls,
+        { ended: finish !== null || done, finished: finish !== null, byModel: OpenaiDialect.#finishedByModel(finish) },
+        tools,
+      )
+        ? "length"
+        : OpenaiDialect.stopOf(finish, toolCalls.length),
       ...(usage ? { usage } : {}),
     };
   }
 
-  static #streamFailure(host: string, error: NonNullable<OpenaiStreamChunk["error"]>): Error {
-    const { message, code } = typeof error === "string" ? { message: error, code: undefined } : error;
+  static #streamFailure(host: string, error: OpenaiStreamError | string): Error {
+    const { message, code, type } = typeof error === "string" ? { message: error } : error;
     return LlmOverflow.refusal(
       host,
-      typeof code === "number" ? code : 500,
+      inBandStatus(code, type),
       typeof message === "string" && message ? message : "no reason given",
     );
   }
@@ -280,16 +296,23 @@ export class OpenaiDialect {
     return finish === "tool_calls" || calls ? "toolUse" : "end";
   }
 
+  //? The reasons a model gives when it finished its calls; `length` and `content_filter` end an answer mid-argument.
+  static #finishedByModel(finish: string | null | undefined): boolean {
+    return finish === "tool_calls" || finish === "stop";
+  }
+
   static turnAnswer(answer: OpenaiAnswer): LlmTurnAnswer {
     const choice = answer.choices?.[0];
     const toolCalls = (choice?.message?.tool_calls ?? []).flatMap((call) => {
       if (!call.id || !call.function?.name) return [];
-      return [{ id: call.id, name: call.function.name, args: OpenaiDialect.parsedArgs(call.function.arguments) }];
+      return [toolCallOf(call.id, call.function.name, call.function.arguments)];
     });
+    const cut =
+      !OpenaiDialect.#finishedByModel(choice?.finish_reason) && toolCalls.some((call) => call.argsError !== undefined);
     return {
       ...(choice?.message?.content ? { text: choice.message.content } : {}),
       ...(toolCalls.length ? { toolCalls } : {}),
-      stop: OpenaiDialect.stopOf(choice?.finish_reason, toolCalls.length),
+      stop: cut ? "length" : OpenaiDialect.stopOf(choice?.finish_reason, toolCalls.length),
       ...(answer.usage ? { usage: OpenaiDialect.usageOf(answer.usage) } : {}),
     };
   }

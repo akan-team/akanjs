@@ -163,9 +163,11 @@ export class Logger {
     const logLevelMsg = colorizeMap[level](level.toUpperCase().padStart(7, " "));
     const contextMsg = record.context ? clc.yellow(`[${record.context}] `) : "";
     const contentMsg = colorizeMap[level](record.message);
-    const attrsMsg = record.attrs ? Logger.formatAttrs(record.attrs) : "";
+    const { stack, ...inline } = record.attrs ?? {};
+    const attrsMsg = record.attrs ? Logger.formatAttrs(typeof stack === "string" ? inline : record.attrs) : "";
+    const stackMsg = typeof stack === "string" ? `${stack}\n` : "";
     const timeDiffMsg = clc.yellow(`+${record.elapsedMs}ms`);
-    return `${processMsg} ${timestampMsg} ${logLevelMsg} ${contextMsg} ${contentMsg}${attrsMsg ? ` ${attrsMsg}` : ""} ${timeDiffMsg}\n`;
+    return `${processMsg} ${timestampMsg} ${logLevelMsg} ${contextMsg} ${contentMsg}${attrsMsg ? ` ${attrsMsg}` : ""} ${timeDiffMsg}\n${stackMsg}`;
   }
   static formatAttrs(attrs: LogAttrs): string {
     return Object.entries(attrs)

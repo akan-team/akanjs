@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { chmod, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -9,6 +9,21 @@ const serve = (html: string, status = 200) =>
   Bun.serve({ port: 0, fetch: () => new Response(html, { status, headers: { "content-type": "text/html" } }) });
 
 const browserTestMs = PreviewView.startTimeoutMs + 30_000;
+//? Chrome starts once per process and took ~35 s on a cold CI runner: one stuck past this is killed and started again.
+const browserStartDeadlineMs = 45_000;
+
+const startBrowser = async () => {
+  const open = () =>
+    PreviewView.probe("about:blank", { startTimeoutMs: browserStartDeadlineMs, timeoutMs: browserStartDeadlineMs });
+  try {
+    await open();
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.startsWith("Timed out starting")) throw error;
+    Bun.WebView.closeAll();
+    await Bun.sleep(100);
+    await open();
+  }
+};
 const slowChromeRuns = PreviewView.isAvailable("chrome") && process.platform !== "win32";
 
 const withSlowChrome = async (body: string, startSeconds = 3) => {
@@ -46,6 +61,13 @@ const withSlowChrome = async (body: string, startSeconds = 3) => {
 };
 
 describe("PreviewView", () => {
+  beforeAll(
+    async () => {
+      if (PreviewView.available) await startBrowser();
+    },
+    browserStartDeadlineMs * 2 + 5_000,
+  );
+
   test("reports whether this Bun build can drive a headless page at all", () => {
     expect(typeof PreviewView.available).toBe("boolean");
   });

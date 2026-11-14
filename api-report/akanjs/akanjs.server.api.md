@@ -107,6 +107,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     setAgentAccountResolver(resolver: AgentAccountResolver | null): this;
     setCrossSite(crossSite: CrossSiteOption): this;
     setRateLimit(settingOrFn: ((env: Env) => RateLimitSetting | false) | RateLimitSetting | false): this;
+    setLiveRoomLimit(setting: LiveRoomLimitSetting): this;
     setSessionRefresh(hook: SessionRefreshHook | null): this;
     setLlm<Option extends LlmOption>(llmOrFn: ((env: Env) => Option) | Option): this;
     transformEnv(fn: (env: Env) => Env): this;
@@ -126,6 +127,7 @@ export declare class AkanOption<Env extends BackendEnv = BackendEnv> {
     getAgentAccountResolver(): AgentAccountResolver | null | undefined;
     getCrossSite(): CrossSiteOption | undefined;
     getRateLimit(env: Env): RateLimitSetting | false | undefined;
+    getLiveRoomLimit(): LiveRoomLimitSetting | undefined;
     getSessionRefresh(): SessionRefreshHook | null | undefined;
     getLlm(env: Env): LlmOption;
 }
@@ -1645,6 +1647,201 @@ export interface RelationEdge {
     arrDepth: number;
     nullable: boolean;
     refType?: "child" | "parent" | "relation";
+}
+
+export interface RemoteAccess {
+    token(): Promise<null | string>;
+    renew(): Promise<null | string>;
+}
+
+export type RemoteAddressLookup = (hostname: string) => Promise<{
+    address: string;
+    family?: number;
+}[]>;
+
+export interface RemoteAuthServer {
+    issuer: string;
+    authorizationEndpoint: string;
+    tokenEndpoint: string;
+    registrationEndpoint?: string;
+    revocationEndpoint?: string;
+    resource: string;
+    secretPost: boolean;
+}
+
+export interface RemoteClient {
+    clientId: string;
+    clientSecret?: string;
+}
+
+export declare class RemoteError extends AkanError<RemoteErrorCode, {
+    challenge?: string;
+    status?: number;
+}> {
+    constructor(code: RemoteErrorCode, message: string, data?: {
+        challenge?: string;
+        status?: number;
+    });
+}
+
+export type RemoteErrorCode = "remoteOAuth" | "remoteProtocol" | "remoteTooLarge" | "remoteUnauthorized" | "remoteUnavailable" | "remoteUrlRejected";
+
+export declare class RemoteFetch {
+    static readonly timeoutMs = 30000;
+    static readonly maxBytes: number;
+    constructor(options?: RemoteFetchOptions);
+    get allowsPrivate(): boolean;
+    parse(input: URL | string): URL;
+    send(input: URL | string, request?: RemoteRequest): Promise<RemoteResponse>;
+    json(input: URL | string, request?: RemoteRequest): Promise<{
+        status: number;
+        body: unknown;
+    }>;
+}
+
+export interface RemoteFetchOptions {
+    allowPrivate?: boolean;
+    lookup?: RemoteAddressLookup;
+    fetchImpl?: (input: URL, init: RequestInit & {
+        tls?: {
+            serverName: string;
+        };
+    }) => Promise<Response>;
+    timeoutMs?: number;
+    maxBytes?: number;
+}
+
+export declare class RemoteMcp {
+    static readonly protocolVersion = "2025-06-18";
+    static readonly maxToolPages = 20;
+    constructor(fetcher: RemoteFetch, url: string, token: null | string, options?: RemoteMcpOptions);
+    listTools(): Promise<RemoteMcpTool[]>;
+    callTool(name: string, args: Record<string, unknown>, meta?: Record<string, unknown>): Promise<RemoteMcpCallResult>;
+    readResource(uri: string, maxBytes?: number): Promise<{
+        uri?: string;
+        mimeType?: string;
+        text?: string;
+        _meta?: unknown;
+    }[]>;
+    static textOf(content: readonly RemoteMcpContent[]): string;
+}
+
+export interface RemoteMcpCallResult {
+    content: RemoteMcpContent[];
+    structuredContent?: Record<string, unknown>;
+    _meta?: Record<string, unknown>;
+    isError: boolean;
+    code?: string;
+}
+
+export interface RemoteMcpContent {
+    type?: string;
+    text?: string;
+    resource?: {
+        uri?: string;
+        mimeType?: string;
+        text?: string;
+    };
+}
+
+export interface RemoteMcpOptions {
+    clientName?: string;
+    maxBytes?: number;
+    signal?: AbortSignal;
+}
+
+export interface RemoteMcpTool {
+    name: string;
+    description?: string;
+    inputSchema?: Record<string, unknown>;
+    annotations?: {
+        readOnlyHint?: boolean;
+        destructiveHint?: boolean;
+    };
+    _meta?: Record<string, unknown>;
+}
+
+export declare class RemoteOAuth {
+    static readonly resourceWellKnown = "/.well-known/oauth-protected-resource";
+    static readonly serverWellKnown = "/.well-known/oauth-authorization-server";
+    static readonly openidWellKnown = "/.well-known/openid-configuration";
+    static pkce(): {
+        verifier: string;
+        challenge: string;
+        state: string;
+    };
+    static discover(fetcher: RemoteFetch, mcpUrl: string, challenge?: null | string): Promise<RemoteAuthServer>;
+    static register(fetcher: RemoteFetch, server: RemoteAuthServer, { redirectUri, clientName }: {
+        redirectUri: string;
+        clientName: string;
+    }): Promise<RemoteClient>;
+    static authorizeUrl(server: RemoteAuthServer, request: {
+        clientId: string;
+        redirectUri: string;
+        state: string;
+        challenge: string;
+    }): string;
+    static exchange(fetcher: RemoteFetch, server: Pick<RemoteAuthServer, "resource" | "tokenEndpoint">, grant: {
+        code: string;
+        verifier: string;
+        redirectUri: string;
+        client: RemoteClient;
+    }): Promise<RemoteTokens>;
+    static refresh(fetcher: RemoteFetch, server: Pick<RemoteAuthServer, "resource" | "tokenEndpoint">, grant: {
+        refreshToken: string;
+        client: RemoteClient;
+    }): Promise<RemoteTokens>;
+    static revoke(fetcher: RemoteFetch, revocationEndpoint: string, token: string, client: RemoteClient): Promise<void>;
+}
+
+export interface RemoteRequest {
+    method?: "GET" | "POST";
+    headers?: Record<string, string>;
+    body?: string;
+    signal?: AbortSignal;
+    maxBytes?: number;
+}
+
+export interface RemoteResponse {
+    status: number;
+    headers: Headers;
+    text: string;
+}
+
+export interface RemoteScreen {
+    html: string;
+    href?: string;
+}
+
+export declare class RemoteSource implements AgentLoopRemote {
+    static readonly disconnected = "remoteDisconnected";
+    static readonly viewBytes: number;
+    readonly name: string;
+    readonly description: string;
+    constructor(props: RemoteSourceProps);
+    static endpointOf(fetcher: RemoteFetch, input: string): string;
+    list(): Promise<AgentTool[] | null>;
+    call(tool: string, args: Record<string, unknown>): Promise<AgentLoopRemoteResult>;
+    screen(tool: string, args: Record<string, unknown>): Promise<RemoteScreen | null>;
+    view(uri: string): Promise<null | string>;
+    viewCall(tool: string, args: Record<string, unknown>): Promise<RemoteMcpCallResult | null>;
+    static framed(html: string, origin: string): string;
+}
+
+export interface RemoteSourceProps {
+    name: string;
+    url: string;
+    description: string;
+    allow?: readonly string[];
+    access: RemoteAccess;
+    fetcher: RemoteFetch;
+    clientName?: string;
+}
+
+export interface RemoteTokens {
+    accessToken: string;
+    refreshToken?: string;
+    expiresAt?: number;
 }
 
 export interface RenderState {

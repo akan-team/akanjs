@@ -8,6 +8,7 @@ import {
   AgentService,
   type AgentTurnContext,
   type AgentUsageReport,
+  type AgentWireToolCall,
   type LlmTurnRequest,
   OpenaiLlm,
 } from "akanjs/service";
@@ -27,7 +28,10 @@ const request = (): LlmTurnRequest => ({
   instructions: "You are editing a drawing.",
 });
 
-type RunTurn = (turn: LlmTurnRequest, options: { signal?: AbortSignal }) => Promise<{ text: string; stop: "end" }>;
+type RunTurn = (
+  turn: LlmTurnRequest,
+  options: { signal?: AbortSignal },
+) => Promise<{ text: string; stop: "end" | "toolUse"; toolCalls?: AgentWireToolCall[] }>;
 
 const relay = (
   body: LlmTurnRequest,
@@ -141,6 +145,15 @@ describe("runAgentTurn under a request policy", () => {
     expect(seen).toMatchObject([{ account: { id: "u1" }, ip: "198.18.0.1" }]);
     expect(turns[0]?.instructions).toBe("Only help with this app.\n\nYou are editing a drawing.");
     expect(turns[0]?.tools.map(({ name }) => name)).toEqual(["navigate", "zone.fill"]);
+  });
+
+  test("a plain answer whose call's arguments did not parse reaches the browser as a cut turn, not a call to run", async () => {
+    const toolCalls = [
+      { id: "c1", name: "navigate", args: {}, argsError: "Not run: the arguments were not one JSON object." },
+    ];
+    const runTurn: RunTurn = async () => ({ text: "", toolCalls, stop: "toolUse" });
+    const { run } = relay(request(), "application/json", { id: "u1" }, null, { runTurn });
+    expect(await run).toMatchObject({ stop: "length" });
   });
 
   test("a refusal answers with its own Err before the quota is asked or the model is called", async () => {

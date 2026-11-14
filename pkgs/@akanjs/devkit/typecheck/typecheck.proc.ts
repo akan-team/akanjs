@@ -24,7 +24,11 @@ try {
 
   const configPath = process.env.AKAN_TYPECHECK_TSCONFIG;
   if (!configPath) throw new Error("AKAN_TYPECHECK_TSCONFIG is required");
-  const result = TypeChecker.checkProject(configPath);
+  const tsBuildInfoFile = process.env.AKAN_TYPECHECK_BUILDINFO;
+  const result = TypeChecker.checkProject(
+    configPath,
+    tsBuildInfoFile ? { noEmit: true, incremental: true, tsBuildInfoFile } : {},
+  );
   if (process.env.AKAN_TYPECHECK_FORMAT === "json") {
     //? Not process.cwd(): that is the realpath (/private/var on macOS) while TypeScript keeps the spelling it was given.
     const root = process.env.AKAN_TYPECHECK_ROOT ?? process.cwd();

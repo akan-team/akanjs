@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Any, dayjs, FIELD_META, ID, Int, LOADER_META, type PrimitiveScalar } from "akanjs/base";
 import { ConstantRegistry, type DocumentModel, type FieldToValue, InputParser, via } from "akanjs/constant";
 import {
@@ -1056,6 +1057,71 @@ describe("data loaders", () => {
     loader.clearAll();
     await expect(loader.load("a")).resolves.toBe("loaded:a");
     expect(calls).toBe(2);
+  });
+
+  test("DataLoader batches the loads of each scope apart, and runs each batch in the scope that asked", async () => {
+    const scopes = new AsyncLocalStorage<object>();
+    const batches: [object | undefined, string[]][] = [];
+    const loader = new DataLoader<string, string>(
+      async (keys) => {
+        batches.push([scopes.getStore(), [...keys]]);
+        return keys.map((key) => `${scopes.getStore() ? "scoped" : "shared"}:${key}`);
+      },
+      { scopeFn: () => scopes.getStore(), maxBatchSize: 2 },
+    );
+    const scope = { name: "transaction" };
+
+    const outside = loader.load("a");
+    const inside = scopes.run(scope, () => [loader.load("a"), loader.load("b"), loader.load("c")]);
+    const outsideAgain = loader.load("d");
+
+    expect(await Promise.all([outside, ...inside, outsideAgain])).toEqual([
+      "shared:a",
+      "scoped:a",
+      "scoped:b",
+      "scoped:c",
+      "shared:d",
+    ]);
+    expect(batches).toEqual([
+      [undefined, ["a", "d"]],
+      [scope, ["a", "b"]],
+      [scope, ["c"]],
+    ]);
+  });
+
+  test("DataLoader neither answers a scoped load from its cache nor keeps what that load read", async () => {
+    const scopes = new AsyncLocalStorage<object>();
+    let version = "committed";
+    const loader = new DataLoader<string, string>(async (keys) => keys.map((key) => `${version}:${key}`), {
+      cache: true,
+      scopeFn: () => scopes.getStore(),
+    });
+
+    await expect(loader.load("a")).resolves.toBe("committed:a");
+    version = "uncommitted";
+    await scopes.run({}, async () => {
+      await expect(loader.load("a")).resolves.toBe("uncommitted:a");
+      await expect(loader.load("b")).resolves.toBe("uncommitted:b");
+      loader.prime("c", "uncommitted:c");
+    });
+    version = "committed";
+    expect(await loader.loadMany(["a", "b", "c"])).toEqual(["committed:a", "committed:b", "committed:c"]);
+  });
+
+  test("DataLoader with cache: true keeps its most recently used keys, and a timed cache every key of its window", async () => {
+    const loaded: string[] = [];
+    const batch = async (keys: readonly string[]) => {
+      loaded.push(...keys);
+      return keys.map((key) => `loaded:${key}`);
+    };
+    const kept = new DataLoader<string, string>(batch, { cache: true, maxCacheSize: 2 });
+    for (const key of ["a", "b", "a", "c", "a", "b"]) await kept.load(key);
+    expect(loaded).toEqual(["a", "b", "c", "b"]);
+
+    loaded.length = 0;
+    const timed = new DataLoader<string, string>(batch, { cache: 60_000, maxCacheSize: 2 });
+    for (const key of ["a", "b", "c", "a", "b", "c"]) await timed.load(key);
+    expect(loaded).toEqual(["a", "b", "c"]);
   });
 
   test("DataLoader loadMany resolves per-key errors", async () => {

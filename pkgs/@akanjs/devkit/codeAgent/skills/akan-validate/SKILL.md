@@ -7,9 +7,9 @@ description: "Run the akan check loop after editing and fix each failure class t
 
 ## One call does the whole chain
 
-`akan verify` (the `akan_verify` tool in akan code) syncs, lints with fixes, typechecks, fast-builds each
-changed app, and runs the SSR check for a `.tsx` change — over everything the working tree has changed, in one
-process. It prints one line when it passes and one line per problem when it fails. **Run it after editing,
+`akan verify` (the `akan_verify` tool in akan code) syncs, lints with fixes, typechecks, builds each
+changed app's server and SSR routes, and runs the SSR check for a `.tsx` change — over everything the working tree has changed, in one
+process. A changed lib also typechecks every app and lib that uses it, so an error can name a file you did not edit. It prints one line when it passes and one line per problem when it fails. **Run it after editing,
 before you say you are done.** In akan code it also runs itself at the end of a turn that changed source.
 
 Never run `akan lint`, `akan typecheck` and `akan build` in turn: that is the same work three times over, at

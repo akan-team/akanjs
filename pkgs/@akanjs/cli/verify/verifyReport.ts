@@ -34,12 +34,12 @@ export class VerifyReport {
   static #header(result: VerifyResult) {
     const ran = result.steps.filter((step) => step.name !== "sync" || step.status === "fail");
     const fixed = result.steps.reduce((sum, step) => sum + step.fixed, 0);
-    const seconds = `${(result.ms / 1000).toFixed(1)}s`;
+    const seconds = VerifyReport.#seconds(result.ms);
     const fixedNote = fixed ? `fixed ${fixed} file${fixed === 1 ? "" : "s"}` : null;
     const steps = result.ok
       ? ran
           .filter((step) => step.status === "pass")
-          .map((step) => step.name)
+          .map((step) => `${step.name} ${VerifyReport.#seconds(step.ms)}`)
           .join(" ")
       : ran.map((step) => VerifyReport.#stepLabel(step, result.diagnostics)).join(" · ");
     return [`verify ${result.ok ? "ok" : "fail"}`, result.targets.join(", "), steps, fixedNote, seconds]
@@ -49,9 +49,13 @@ export class VerifyReport {
 
   static #stepLabel(step: VerifyStepResult, diagnostics: VerifyDiagnostic[]) {
     if (step.status === "skip") return `${step.name} skipped`;
-    if (step.status === "pass") return `${step.name} ok`;
+    if (step.status === "pass") return `${step.name} ok ${VerifyReport.#seconds(step.ms)}`;
     const errors = diagnostics.filter((entry) => entry.step === step.name && entry.severity === "error").length;
-    return `${step.name} ${errors} error${errors === 1 ? "" : "s"}`;
+    return `${step.name} ${errors} error${errors === 1 ? "" : "s"} ${VerifyReport.#seconds(step.ms)}`;
+  }
+
+  static #seconds(ms: number) {
+    return `${(ms / 1000).toFixed(1)}s`;
   }
 
   static #diagnosticLines(diagnostics: VerifyDiagnostic[], max: number) {

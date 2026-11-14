@@ -14,6 +14,7 @@ import { GatewayLogging } from "./gateway/gatewayLogging";
 import { GatewayRooms } from "./gateway/gatewayRooms";
 import { GatewayStatus } from "./gateway/gatewayStatus";
 import { GatewayWebSocketRelay, type GatewayWsData } from "./gateway/gatewayWebSocketRelay";
+import { ListeningPort } from "./gateway/listeningPort";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { AppInfo } from "./ops/appInfo";
@@ -161,6 +162,7 @@ export class AkanApp {
     this.#metricsTimer = null;
     this.#server?.stop(true);
     this.#server = null;
+    ListeningPort.record(this, undefined);
     await this.#supervisor.stopAll(signal);
     await this.#logging.stop();
     this.#resolveStopped?.();
@@ -216,7 +218,8 @@ export class AkanApp {
         data: {} as GatewayWsData,
       },
     });
-    this.logger.info(`AkanApp gateway is running on port http://localhost:${this.#config.port}`);
+    ListeningPort.record(this, this.#server.port);
+    this.logger.info(`AkanApp gateway is running on port http://localhost:${this.#server.port}`);
   }
 
   async #handleFetch(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response | undefined> {

@@ -101,7 +101,7 @@ Create a new workspace and its first app in one go. It runs these steps in order
 
 `akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>]`
 
-Check a change in one run: sync, lint with fixes, typecheck, a fast build of each changed app, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.
+Check a change in one run: sync, lint with fixes, typecheck, a build of each changed app's server and SSR routes, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.
 
 - targets (String): Apps, libraries or packages, comma-separated, checked whole. Left out, what git reports as changed.
 

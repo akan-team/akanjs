@@ -132,26 +132,55 @@ class FakeAgent {
 
 const keys = { backspace: String.fromCharCode(127) };
 
-// Ink moves the cursor "up N from the line after the last one", so the row is read from the frame of the same write.
+// Ink writes a cursor move ("up N from the line after the last") alone when no text changed, so the latest move wins.
 const caretOf = (stdout: FakeStdout) => {
   const suffix = new RegExp(`(?:${esc}\\[(\\d+)A)?${esc}\\[(\\d+)G${esc}\\[\\?25h`);
+  let move: RegExpExecArray | undefined;
   for (let at = stdout.frames.length - 1; at >= 0; at -= 1) {
     const frame = stdout.frames[at] ?? "";
     const match = suffix.exec(frame);
+    if (!match) continue;
+    move ??= match;
     const text = frame.replace(csi, "");
-    if (!match || !text.trim()) continue;
+    if (!text.trim()) continue;
     const lines = text.split("\n");
     return {
-      row: (text.endsWith("\n") ? lines.length - 1 : lines.length) - Number(match[1] ?? 0),
-      column: Number(match[2] ?? 1) - 1,
+      row: (text.endsWith("\n") ? lines.length - 1 : lines.length) - Number(move[1] ?? 0),
+      column: Number(move[2] ?? 1) - 1,
       lines,
     };
   }
   return undefined;
 };
 
-// Ink throttles frame writes to `maxFps: 30`, and the host adds its own 34ms frame timer on top.
-const settle = () => Bun.sleep(140);
+const eventually = async (assertion: () => void, timeoutMs = 2_000) => {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+    }
+    await Bun.sleep(5);
+  }
+};
+
+// Ink emits a lone ESC from a setImmediate, and useInput re-binds its handler in a passive effect React schedules on
+// one after every render, so a key written before those turns pass meets the previous mode's handler.
+const turns = async () => {
+  for (let at = 0; at < 4; at += 1) await new Promise<void>((resolve) => setImmediate(resolve));
+};
+
+const send = async (stdin: ReturnType<typeof makeStdin>, input: string) => {
+  await turns();
+  stdin.write(input);
+  while (stdin.writableLength > 0 || stdin.readableLength > 0) await turns();
+  await turns();
+};
+
+// Only for a check that something did not appear, which no frame marks: the host's 34ms frame timer, then Ink's 30fps.
+const quiet = () => Bun.sleep(CodeTui.frameMs * 3);
 
 // `/mcp add` writes the home config, so without this the suite would declare its fixtures in the runner's ~/.akan.
 beforeAll(() => {
@@ -173,19 +202,17 @@ const mount = (root = "/repo") => {
   });
   const done = tui.run();
   running.push({ tui, done });
+  const drawn = (text: string, timeoutMs?: number) =>
+    eventually(() => expect(stdout.lastFrame).toContain(text), timeoutMs);
   return {
     agent,
     stdout,
     done,
     tui,
-    press: async (input: string) => {
-      stdin.write(input);
-      await settle();
-    },
-    emit: async (body: CodeAgentEventBody) => {
-      agent.emit(body);
-      await settle();
-    },
+    drawn,
+    ready: () => drawn("DeepSeek V4 Flash"),
+    press: (input: string) => send(stdin, input),
+    emit: (body: CodeAgentEventBody) => agent.emit(body),
   };
 };
 
@@ -198,67 +225,76 @@ afterEach(async () => {
 
 describe("CodeTui", () => {
   test("announces the session and draws its line", async () => {
-    const { stdout } = mount();
-    await settle();
-    expect(stdout.lastFrame).toContain("DeepSeek V4 Flash");
-    expect(stdout.lastFrame).toContain("1000k ctx");
+    const { stdout, ready } = mount();
+    await ready();
+    await eventually(() => {
+      expect(stdout.lastFrame).toContain("DeepSeek V4 Flash");
+      expect(stdout.lastFrame).toContain("1000k ctx");
+    });
   });
 
   test("a typed prompt is echoed locally and sent once", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("hi there");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["prompt:hi there"]);
-    expect(harness.stdout.lastFrame).toContain("› hi there");
-    await harness.emit({ type: "message", turnId: "t1", role: "user", text: "hi there" });
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:hi there"]));
+    await harness.drawn("› hi there");
+    harness.emit({ type: "message", turnId: "t1", role: "user", text: "hi there" });
+    await quiet();
     expect(harness.stdout.lastFrame.split("› hi there").length - 1).toBe(1);
   });
 
   test("a streamed answer appears as it arrives and keeps one bubble", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({ type: "turn_start", turnId: "t1" });
-    await harness.emit({ type: "text_delta", turnId: "t1", text: "the answer" });
-    expect(harness.stdout.lastFrame).toContain("the answer");
-    expect(harness.stdout.lastFrame).toContain("◐");
-    await harness.emit({ type: "message", turnId: "t1", role: "assistant", text: "the whole answer" });
-    await harness.emit({ type: "turn_end", turnId: "t1", stopReason: "done" });
-    expect(harness.stdout.lastFrame).toContain("the whole answer");
-    expect(harness.stdout.lastFrame).not.toContain("◐");
+    await harness.ready();
+    harness.emit({ type: "turn_start", turnId: "t1" });
+    harness.emit({ type: "text_delta", turnId: "t1", text: "the answer" });
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("the answer");
+      expect(harness.stdout.lastFrame).toContain("◐");
+    });
+    harness.emit({ type: "message", turnId: "t1", role: "assistant", text: "the whole answer" });
+    harness.emit({ type: "turn_end", turnId: "t1", stopReason: "done" });
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("the whole answer");
+      expect(harness.stdout.lastFrame).not.toContain("◐");
+    });
   });
 
   test("a running sub-agent draws a rail under the prompt and leaves with the turn", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     const rows = harness.stdout.lastFrame.split("\n").length;
-    await harness.emit({
+    harness.emit({
       type: "subagent",
       agents: [
         { id: "c0", kind: "explore", description: "Counting desc strings", startedAt: Date.now(), tokens: 12_400 },
       ],
     });
-    expect(harness.stdout.lastFrame).toContain("◯ explore  Counting desc strings");
-    expect(harness.stdout.lastFrame).toContain("↓ 12.4k tokens");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("◯ explore  Counting desc strings");
+      expect(harness.stdout.lastFrame).toContain("↓ 12.4k tokens");
+    });
     expect(harness.stdout.lastFrame.split("\n").length).toBe(rows);
-    await harness.emit({ type: "idle" });
-    expect(harness.stdout.lastFrame).not.toContain("◯ explore");
+    harness.emit({ type: "idle" });
+    await eventually(() => expect(harness.stdout.lastFrame).not.toContain("◯ explore"));
   });
 
   test("the wheel scrolls the transcript, and the terminal is asked for it and released again", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     expect(harness.stdout.frames.join("")).toContain(CodeTuiMouse.on);
     for (let at = 0; at < 40; at += 1)
       harness.agent.emit({ type: "message", turnId: `t${at}`, role: "assistant", text: `line ${at}` });
-    await settle();
+    await harness.drawn("line 39");
     expect(harness.stdout.lastFrame).not.toContain("paused");
     await harness.press("\u001b[<64;10;5M");
-    expect(harness.stdout.lastFrame).toContain("paused");
+    await harness.drawn("paused");
     expect(harness.stdout.lastFrame).not.toContain("64;10;5");
     await harness.press("\u001b[<65;10;5M");
     await harness.press("\u001b[<65;10;5M");
-    expect(harness.stdout.lastFrame).not.toContain("paused");
+    await eventually(() => expect(harness.stdout.lastFrame).not.toContain("paused"));
     harness.tui.close();
     expect(harness.stdout.frames.join("")).toContain(CodeTuiMouse.off);
   });
@@ -268,18 +304,20 @@ describe("CodeTui", () => {
     harness.agent.mcp = [
       { name: "github", transport: "stdio", target: "npx -y server-github", tools: ["mcp__github__search"] },
     ];
-    await settle();
+    await harness.ready();
     await harness.press("/mcp");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("github");
-    expect(harness.stdout.lastFrame).toContain("1 tool");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("github");
+      expect(harness.stdout.lastFrame).toContain("1 tool");
+    });
   });
 
   test("/mcp add writes the home file and reopens this session to pick it up", async () => {
     const root = mkdtempSync(path.join(tmpdir(), "akan-tui-mcp-"));
     const harness = mount(root);
     harness.agent.stored = [{ id: "s1", opening: "hi", updatedAt: Date.now(), turns: 1 }];
-    await settle();
+    await harness.ready();
     await harness.press("/mcp add github npx -y server-github");
     await harness.press("\r");
     expect(await harness.done).toEqual({ id: "s1", notice: "added github · npx -y server-github · every repo" });
@@ -295,7 +333,7 @@ describe("CodeTui", () => {
     const root = mkdtempSync(path.join(tmpdir(), "akan-tui-mcp-"));
     const harness = mount(root);
     harness.agent.stored = [{ id: "s1", opening: "hi", updatedAt: Date.now(), turns: 1 }];
-    await settle();
+    await harness.ready();
     await harness.press("/mcp add --local repobot bun run bot.ts");
     await harness.press("\r");
     expect(await harness.done).toEqual({ id: "s1", notice: "added repobot · bun run bot.ts · this repo" });
@@ -313,7 +351,7 @@ describe("CodeTui", () => {
     McpServerConfig.add(root, "shared", ["repo"], "workspace");
     const harness = mount(root);
     harness.agent.stored = [{ id: "s1", opening: "hi", updatedAt: Date.now(), turns: 1 }];
-    await settle();
+    await harness.ready();
     await harness.press("/mcp remove shared");
     await harness.press("\r");
     const exit = await harness.done;
@@ -329,10 +367,10 @@ describe("CodeTui", () => {
     McpServerConfig.add(root, "office", ["https://office.example/mcp"], "global");
     const harness = mount(root);
     harness.agent.stored = [{ id: "s1", opening: "hi", updatedAt: Date.now(), turns: 1 }];
-    await settle();
+    await harness.ready();
     await harness.press("/mcp remove --local office");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain(`"office" is not declared in this repo's file`);
+    await harness.drawn(`"office" is not declared in this repo's file`);
     expect(McpServerConfig.declared(root).map((entry) => entry.scope)).toEqual(["global"]);
     rmSync(akanCodePaths.globalMcpFile(), { force: true });
     rmSync(root, { recursive: true, force: true });
@@ -340,10 +378,10 @@ describe("CodeTui", () => {
 
   test("a session with nothing on disk is told a reload has nothing to reopen", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/mcp reload");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("not on disk yet");
+    await harness.drawn("not on disk yet");
   });
 
   const question = {
@@ -359,65 +397,71 @@ describe("CodeTui", () => {
 
   test("a recommended option is labelled and waiting under the cursor", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({ type: "question", question });
-    expect(harness.stdout.lastFrame).toContain("SQLite (recommended)");
+    await harness.ready();
+    harness.emit({ type: "question", question });
+    await harness.drawn("SQLite (recommended)");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["1"]}']);
+    await eventually(() => expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["1"]}']));
   });
 
   test("a question offering free text grows a choice that opens the prompt", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({ type: "question", question });
-    expect(harness.stdout.lastFrame).toContain("Something else…");
+    await harness.ready();
+    harness.emit({ type: "question", question });
+    await harness.drawn("Something else…");
     await harness.press("\u001b[B");
     await harness.press("\r");
+    await harness.drawn("esc back to the choices");
     expect(harness.agent.calls).toEqual([]);
-    expect(harness.stdout.lastFrame).toContain("esc back to the choices");
     await harness.press("mysql, actually");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(['answer:q1:{"text":"mysql, actually"}']);
+    await eventually(() => expect(harness.agent.calls).toEqual(['answer:q1:{"text":"mysql, actually"}']));
   });
 
   test("escape out of typing goes back to the choices rather than skipping the question", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({ type: "question", question });
+    await harness.ready();
+    harness.emit({ type: "question", question });
+    await harness.drawn("Which database?");
     await harness.press("\u001b[B");
     await harness.press("\r");
+    await harness.drawn("esc back to the choices");
     await harness.press("\u001b");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("SQLite (recommended)");
+      expect(harness.stdout.lastFrame).not.toContain("esc back to the choices");
+    });
     expect(harness.agent.calls).toEqual([]);
-    expect(harness.stdout.lastFrame).toContain("SQLite (recommended)");
     await harness.press("\u001b[A");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["1"]}']);
+    await eventually(() => expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["1"]}']));
   });
 
   test("a question with no options is answered in prose", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({
+    await harness.ready();
+    harness.emit({
       type: "question",
       question: { questionId: "q2", prompt: "Why is it slow?", kind: "text", freeText: true },
     });
+    await harness.drawn("Why is it slow?");
     await harness.press("the index is missing");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(['answer:q2:{"text":"the index is missing"}']);
+    await eventually(() => expect(harness.agent.calls).toEqual(['answer:q2:{"text":"the index is missing"}']));
   });
 
   test("escape interrupts a running turn instead of clearing the line", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({ type: "turn_start", turnId: "t1" });
+    await harness.ready();
+    harness.emit({ type: "turn_start", turnId: "t1" });
     await harness.press(esc);
-    expect(harness.agent.calls).toEqual(["abort"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["abort"]));
   });
 
   test("a select question is answered by key, not by the label a host happened to draw", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({
+    await harness.ready();
+    harness.emit({
       type: "question",
       question: {
         questionId: "q1",
@@ -429,16 +473,16 @@ describe("CodeTui", () => {
         ],
       },
     });
-    expect(harness.stdout.lastFrame).toContain("Which app?");
+    await harness.drawn("Which app?");
     await harness.press(`${esc}[B`);
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["minimal"]}']);
+    await eventually(() => expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["minimal"]}']));
   });
 
   test("a multi-select keeps every ticked key, which is what a reconnecting client restores from", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({
+    await harness.ready();
+    harness.emit({
       type: "question",
       question: {
         questionId: "q1",
@@ -451,240 +495,280 @@ describe("CodeTui", () => {
         ],
       },
     });
+    await harness.drawn("Which apps?");
     await harness.press(" ");
     await harness.press(`${esc}[B`);
     await harness.press(" ");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["akan","minimal"]}']);
+    await eventually(() => expect(harness.agent.calls).toEqual(['answer:q1:{"keys":["akan","minimal"]}']));
   });
 
   test("an approval takes y or n and nothing else", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({
+    await harness.ready();
+    harness.emit({
       type: "approval",
       request: { approvalId: "a1", toolCallId: "c0", name: "write", summary: "write a.ts", policy: "writes" },
     });
-    expect(harness.stdout.lastFrame).toContain("approve? write a.ts");
+    await harness.drawn("approve? write a.ts");
     await harness.press("q");
     expect(harness.agent.calls).toEqual([]);
     await harness.press("n");
-    expect(harness.agent.calls).toEqual(["approve:a1:false"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["approve:a1:false"]));
   });
 
   test("slash commands reach the core rather than the model", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/compact keep the plan");
     await harness.press("\r");
     await harness.press("/model deepseek/deepseek-v4-pro");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["compact:keep the plan", "setModel:deepseek/deepseek-v4-pro"]);
+    await eventually(() =>
+      expect(harness.agent.calls).toEqual(["compact:keep the plan", "setModel:deepseek/deepseek-v4-pro"]),
+    );
   });
 
   test("what the agent refuses, from a prompt or a command, lands in the transcript as an error", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     harness.agent.refusal = "the provider is down";
     await harness.press("hi");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("the provider is down");
+    await harness.drawn("the provider is down");
     harness.agent.refusal = "no such model";
     await harness.press("/model deepseek/nope");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("no such model");
+    await harness.drawn("no such model");
   });
 
   test("an unknown slash command answers in an overlay and leaves the transcript alone", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("hello there");
     await harness.press("\r");
     await harness.press("/nope");
     await harness.press("\r");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("There is no /nope");
+      expect(harness.stdout.lastFrame).not.toContain("› hello there");
+    });
     expect(harness.agent.calls).toEqual(["prompt:hello there"]);
-    expect(harness.stdout.lastFrame).toContain("There is no /nope");
-    expect(harness.stdout.lastFrame).not.toContain("› hello there");
     await harness.press(esc);
-    expect(harness.stdout.lastFrame).toContain("› hello there");
-    expect(harness.stdout.lastFrame).not.toContain("There is no /nope");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("› hello there");
+      expect(harness.stdout.lastFrame).not.toContain("There is no /nope");
+    });
   });
 
   test("the arrows scroll an overlay longer than the pane, not the transcript under it", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     for (let at = 0; at < 40; at += 1)
       harness.agent.emit({ type: "message", turnId: `t${at}`, role: "assistant", text: `line ${at}` });
     await harness.press("/help");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("help  ▲0 ▼");
+    await harness.drawn("help  ▲0 ▼");
     await harness.press(`${esc}[B`);
-    expect(harness.stdout.lastFrame).toContain("help  ▲1 ▼");
+    await harness.drawn("help  ▲1 ▼");
     await harness.press(esc);
+    await harness.drawn("line 39");
     expect(harness.stdout.lastFrame).not.toContain("paused");
   });
 
   test("the arrows replay what was already sent", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("first");
     await harness.press("\r");
+    const promptRow = () => {
+      const caret = caretOf(harness.stdout);
+      return caret?.lines[caret.row];
+    };
+    await eventually(() => expect(promptRow()).toContain("ask for something"));
     await harness.press(`${esc}[A`);
-    expect(harness.stdout.lastFrame).toContain("› first");
+    await eventually(() => expect(promptRow()).toBe("› first"));
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["prompt:first", "prompt:first"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:first", "prompt:first"]));
   });
 
   test("a tool call is one row from start to end", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     const tool = { toolCallId: "c0", name: "read", op: "read" as const, title: "read(a.ts)" };
-    await harness.emit({ type: "tool_start", turnId: "t1", tool });
-    await harness.emit({ type: "tool_end", turnId: "t1", tool, outcome: "ok", output: "", truncated: false });
-    const frame = harness.stdout.lastFrame;
-    expect(frame.split("read(a.ts)").length - 1).toBe(1);
-    expect(frame).toContain("⏺ read(a.ts)");
+    harness.emit({ type: "tool_start", turnId: "t1", tool });
+    harness.emit({ type: "tool_end", turnId: "t1", tool, outcome: "ok", output: "", truncated: false });
+    await eventually(() => {
+      const frame = harness.stdout.lastFrame;
+      expect(frame.split("read(a.ts)").length - 1).toBe(1);
+      expect(frame).toContain("⏺ read(a.ts)");
+    });
   });
 
   test("a pasted block keeps its newlines instead of sending a fragment", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("fix this:\r  at foo (a.ts:1)\r  at bar (b.ts:2)");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("fix this:");
+      expect(harness.stdout.lastFrame).toContain("at foo (a.ts:1)");
+      expect(harness.stdout.lastFrame).toContain("at bar (b.ts:2)");
+    });
     expect(harness.agent.calls).toEqual([]);
-    expect(harness.stdout.lastFrame).toContain("fix this:");
-    expect(harness.stdout.lastFrame).toContain("at foo (a.ts:1)");
-    expect(harness.stdout.lastFrame).toContain("at bar (b.ts:2)");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["prompt:fix this:\n  at foo (a.ts:1)\n  at bar (b.ts:2)"]);
+    await eventually(() =>
+      expect(harness.agent.calls).toEqual(["prompt:fix this:\n  at foo (a.ts:1)\n  at bar (b.ts:2)"]),
+    );
   });
 
   test("typing a slash opens a menu of commands above the input", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/");
-    expect(harness.stdout.lastFrame).toContain("/compact");
-    expect(harness.stdout.lastFrame).toContain("/model");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("/compact");
+      expect(harness.stdout.lastFrame).toContain("/model");
+    });
     await harness.press("mo");
-    const frame = harness.stdout.lastFrame;
-    expect(frame).toContain("/model");
-    expect(frame).not.toContain("/compact");
+    await eventually(() => {
+      const frame = harness.stdout.lastFrame;
+      expect(frame).toContain("/model");
+      expect(frame).not.toContain("/compact");
+    });
   });
 
   test("tab completes the highlighted command, with the space its argument needs", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/mo");
     await harness.press("\t");
-    const frame = harness.stdout.lastFrame;
-    expect(frame).toContain("› /model");
-    expect(frame).not.toContain("switch model");
+    await eventually(() => {
+      const frame = harness.stdout.lastFrame;
+      expect(frame).toContain("› /model");
+      expect(frame).not.toContain("switch model");
+    });
+    await quiet();
     expect(harness.agent.calls).toEqual([]);
   });
 
   test("the arrows walk the menu while it is open, not the history", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/");
     await harness.press(`${esc}[B`);
     await harness.press("\t");
-    expect(harness.stdout.lastFrame).toContain("› /tools");
+    await harness.drawn("› /tools");
   });
 
   test("a line feed opens a second line and enter still sends the whole buffer", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("first");
     await harness.press(String.fromCharCode(10));
     await harness.press("second");
-    const frame = harness.stdout.lastFrame;
-    expect(frame).toContain("› first");
-    expect(frame).toContain("second");
+    await eventually(() => {
+      const frame = harness.stdout.lastFrame;
+      expect(frame).toContain("› first");
+      expect(frame).toContain("second");
+    });
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["prompt:first\nsecond"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:first\nsecond"]));
   });
 
   test("a shift+enter binding breaks the line without leaving its backslash behind", async () => {
     for (const ending of [String.fromCharCode(13), String.fromCharCode(10), `${esc}${String.fromCharCode(13)}`]) {
       const harness = mount();
-      await settle();
+      await harness.ready();
       await harness.press("first");
       await harness.press(`\\${ending}`);
       await harness.press("second");
+      await harness.drawn("second");
       expect(harness.stdout.lastFrame).not.toContain("\\");
       await harness.press("\r");
-      expect(harness.agent.calls).toEqual(["prompt:first\nsecond"]);
+      await eventually(() => expect(harness.agent.calls).toEqual(["prompt:first\nsecond"]));
     }
   });
 
   test("a backslash the user typed survives the line break after it", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("a\\");
     await harness.press(`\\${String.fromCharCode(13)}`);
     await harness.press("b");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["prompt:a\\\nb"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:a\\\nb"]));
   });
 
   test("the arrows move inside a multi-line prompt before they reach history", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("sent");
     await harness.press("\r");
     await harness.press("one");
     await harness.press(String.fromCharCode(10));
     await harness.press("two");
+    const promptRow = () => {
+      const caret = caretOf(harness.stdout);
+      return caret?.lines[caret.row];
+    };
+    await eventually(() => expect(promptRow()).toContain("two"));
     await harness.press(`${esc}[A`);
-    expect(harness.stdout.lastFrame).toContain("one");
+    await eventually(() => expect(promptRow()).toBe("› one"));
     await harness.press(`${esc}[A`);
-    expect(harness.stdout.lastFrame).toContain("› sent");
+    await eventually(() => expect(promptRow()).toBe("› sent"));
   });
 
   test("the terminal cursor lands on the prompt row, after what has been typed", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("hello");
-    const caret = caretOf(harness.stdout);
-    expect(caret).toBeDefined();
-    expect(caret?.lines[caret.row]).toContain("› hello");
-    expect(caret?.column).toBe("› hello".length);
+    await eventually(() => {
+      const caret = caretOf(harness.stdout);
+      expect(caret).toBeDefined();
+      expect(caret?.lines[caret.row]).toContain("› hello");
+      expect(caret?.column).toBe("› hello".length);
+    });
   });
 
   test("the prompt sits between two rules", async () => {
     const harness = mount();
-    await settle();
-    expect(harness.stdout.lastFrame.split("─").length - 1).toBeGreaterThan(2);
-    expect(harness.stdout.lastFrame).not.toContain("│");
+    await harness.ready();
+    await eventually(() => {
+      expect(harness.stdout.lastFrame.split("─").length - 1).toBeGreaterThan(2);
+      expect(harness.stdout.lastFrame).not.toContain("│");
+    });
   });
 
   test("enter runs the highlighted command, whether or not it was typed out in full", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/help");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("list these commands and the keys");
+    await harness.drawn("list these commands and the keys");
     expect(harness.agent.calls).toEqual([]);
     await harness.press(esc);
     await harness.press("/ab");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["abort"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["abort"]));
   });
 
   test("reasoning is folded to one line until it is asked for", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({ type: "turn_start", turnId: "t1" });
-    await harness.emit({ type: "thinking_delta", turnId: "t1", text: "the user said hi\nkeep it short" });
-    expect(harness.stdout.lastFrame).toContain("thinking · 2 lines");
-    expect(harness.stdout.lastFrame).not.toContain("keep it short");
+    await harness.ready();
+    harness.emit({ type: "turn_start", turnId: "t1" });
+    harness.emit({ type: "thinking_delta", turnId: "t1", text: "the user said hi\nkeep it short" });
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("thinking · 2 lines");
+      expect(harness.stdout.lastFrame).not.toContain("keep it short");
+    });
     await harness.press("/thinking");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("keep it short");
+    await harness.drawn("keep it short");
   });
 
   test("ZZ down walks history back", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("one");
     await harness.press("\r");
     await harness.press("two");
@@ -694,60 +778,62 @@ describe("CodeTui", () => {
       return caret?.lines[caret.row];
     };
     await harness.press(`${esc}[A`);
-    expect(promptRow()).toBe("› two");
+    await eventually(() => expect(promptRow()).toBe("› two"));
     await harness.press(`${esc}[A`);
-    expect(promptRow()).toBe("› one");
+    await eventually(() => expect(promptRow()).toBe("› one"));
     await harness.press(`${esc}[B`);
-    expect(promptRow()).toBe("› two");
+    await eventually(() => expect(promptRow()).toBe("› two"));
     await harness.press(`${esc}[B`);
-    expect(promptRow()).toContain("ask for something");
+    await eventually(() => expect(promptRow()).toContain("ask for something"));
   });
 
   test("model, window, profile and effort ride the prompt's lower rule", async () => {
     const harness = mount();
-    await settle();
-    await harness.emit({ type: "context", used: 250_000, max: 1_000_000 });
-    expect(harness.stdout.lastFrame).toContain("DeepSeek V4 Flash · 25% of 1000k · local · medium");
-    expect(harness.stdout.lastFrame).toContain("s1 ─");
+    await harness.ready();
+    harness.emit({ type: "context", used: 250_000, max: 1_000_000 });
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("DeepSeek V4 Flash · 25% of 1000k · local · medium");
+      expect(harness.stdout.lastFrame).toContain("s1 ─");
+    });
   });
 
   test("/effort lists what the model offers when it is given nothing it knows", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/effort");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("low · medium · high");
+    await harness.drawn("low · medium · high");
     expect(harness.agent.calls).toEqual([]);
     await harness.press(esc);
     await harness.press("/effort high");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["setEffort:high"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["setEffort:high"]));
   });
 
   test("/autocompact says where compaction starts, and the lower rule keeps a chosen share in view", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/autocompact 55");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("now: autocompact default · compacts above 967k of 1000k");
+    await harness.drawn("now: autocompact default · compacts above 967k of 1000k");
     expect(harness.agent.calls).toEqual([]);
     await harness.press(esc);
     await harness.press("/autocompact 60%");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["setAutoCompactAt:60"]);
-    expect(harness.stdout.lastFrame).toContain("autocompact 60% · compacts above 600k of 1000k");
-    await harness.emit({ type: "context", used: 250_000, max: 1_000_000 });
-    expect(harness.stdout.lastFrame).toContain("DeepSeek V4 Flash · 25% of 1000k · compacts at 60% · local · medium");
+    await eventually(() => expect(harness.agent.calls).toEqual(["setAutoCompactAt:60"]));
+    await harness.drawn("autocompact 60% · compacts above 600k of 1000k");
+    harness.emit({ type: "context", used: 250_000, max: 1_000_000 });
+    await harness.drawn("DeepSeek V4 Flash · 25% of 1000k · compacts at 60% · local · medium");
   });
 
   test("a session takes a name from what it was first asked, and /name replaces it", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press("/name refactor the store layer");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["setName:refactor the store layer"]);
-    await harness.emit({ type: "session", info: { ...info, name: "refactor-the-store-layer" } });
-    expect(harness.stdout.lastFrame).toContain("refactor-the-store-layer");
+    await eventually(() => expect(harness.agent.calls).toEqual(["setName:refactor the store layer"]));
+    harness.emit({ type: "session", info: { ...info, name: "refactor-the-store-layer" } });
+    await harness.drawn("refactor-the-store-layer");
   });
 
   test("left at the start lists stored sessions, and enter leaves for the one chosen", async () => {
@@ -756,11 +842,13 @@ describe("CodeTui", () => {
       { id: "s1", name: "current-one", opening: "fix the gateway", updatedAt: Date.now(), turns: 2 },
       { id: "s2", name: "older-one", opening: "add a comment module", updatedAt: Date.now() - 7_200_000, turns: 9 },
     ];
-    await settle();
+    await harness.ready();
     await harness.press(`${esc}[D`);
-    expect(harness.stdout.lastFrame).toContain("older-one");
-    expect(harness.stdout.lastFrame).toContain("add a comment module");
-    expect(harness.stdout.lastFrame).toContain("2h ago");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("older-one");
+      expect(harness.stdout.lastFrame).toContain("add a comment module");
+      expect(harness.stdout.lastFrame).toContain("2h ago");
+    });
     await harness.press(`${esc}[B`);
     await harness.press("\r");
     expect((await harness.done)?.id).toBe("s2");
@@ -769,16 +857,18 @@ describe("CodeTui", () => {
   test("ctrl+v says so rather than attaching when the model cannot read images", async () => {
     const harness = mount();
     harness.agent.canSeeImages = false;
-    await settle();
+    await harness.ready();
     await harness.press(String.fromCharCode(22));
-    const frame = harness.stdout.lastFrame;
-    expect(frame).toContain("declares deepseek/deepseek-v4-flash text-only");
-    expect(frame).toContain("modelOverrides");
+    await eventually(() => {
+      const frame = harness.stdout.lastFrame;
+      expect(frame).toContain("declares deepseek/deepseek-v4-flash text-only");
+      expect(frame).toContain("modelOverrides");
+    });
   });
 
   test("an empty bracketed paste attaches the picture the clipboard was holding", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     const file = path.join(tmpdir(), "clipboard.png");
     await Bun.write(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     const had = { has: CodeTuiClipboard.has, image: CodeTuiClipboard.image };
@@ -786,8 +876,7 @@ describe("CodeTui", () => {
     CodeTuiClipboard.image = () => Promise.resolve(file);
     try {
       await harness.press(`${esc}[200~${esc}[201~`);
-      await settle();
-      expect(harness.stdout.lastFrame).toContain("[image #1]");
+      await harness.drawn("[image #1]");
     } finally {
       Object.assign(CodeTuiClipboard, had);
     }
@@ -795,12 +884,12 @@ describe("CodeTui", () => {
 
   test("an empty bracketed paste with an empty clipboard does nothing at all", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     const had = CodeTuiClipboard.has;
     CodeTuiClipboard.has = () => false;
     try {
       await harness.press(`${esc}[200~${esc}[201~`);
-      await settle();
+      await quiet();
       expect(harness.stdout.lastFrame).toContain("ask for something");
       expect(harness.stdout.lastFrame).not.toContain("[image");
     } finally {
@@ -813,10 +902,7 @@ describe("CodeTui", () => {
     CodeTuiClipboard.has = () => true;
     try {
       const harness = mount();
-      const offer = "an image is on your clipboard";
-      const deadline = Date.now() + 2 * CodeTui.clipboardMs;
-      while (!harness.stdout.lastFrame.includes(offer) && Date.now() < deadline) await Bun.sleep(50);
-      expect(harness.stdout.lastFrame).toContain(offer);
+      await harness.drawn("an image is on your clipboard", 2 * CodeTui.clipboardMs);
     } finally {
       CodeTuiClipboard.has = had;
     }
@@ -824,44 +910,46 @@ describe("CodeTui", () => {
 
   test("a bracketed paste keeps its newlines instead of sending the prompt", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press(`${esc}[200~fix this:\rat foo (a.ts:1)\r${esc}[201~`);
+    await harness.drawn("at foo (a.ts:1)");
     expect(harness.agent.calls).toEqual([]);
-    expect(harness.stdout.lastFrame).toContain("at foo (a.ts:1)");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["prompt:fix this:\nat foo (a.ts:1)"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:fix this:\nat foo (a.ts:1)"]));
   });
 
   test("a bracketed paste ending in a newline runs nothing", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press(`${esc}[200~/help\r${esc}[201~`);
+    await harness.drawn("/help");
+    await quiet();
     const frame = harness.stdout.lastFrame;
-    expect(frame).toContain("/help");
     expect(frame).not.toContain("list these commands");
     expect(frame).not.toContain("200~");
   });
 
   test("a pasted image path becomes a marker in the prompt, and the marker is the attachment", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     const file = path.join(tmpdir(), "Screenshot at 20.11.02.png");
     await Bun.write(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     // Escaped spaces, the way a terminal writes a dragged or pasted path.
     await harness.press(file.replace(/ /g, "\\ "));
-    expect(harness.stdout.lastFrame).toContain("[image #1]");
+    await harness.drawn("[image #1]");
     expect(harness.stdout.lastFrame).not.toContain("Screenshot at");
     await harness.press("look at this");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual([`prompt:look at this:${file}`]);
-    expect(harness.stdout.lastFrame).toContain("⧉ 1 image");
-    await harness.emit({ type: "message", turnId: "t1", role: "user", text: "look at this" });
+    await eventually(() => expect(harness.agent.calls).toEqual([`prompt:look at this:${file}`]));
+    await harness.drawn("⧉ 1 image");
+    harness.emit({ type: "message", turnId: "t1", role: "user", text: "look at this" });
+    await quiet();
     expect(harness.stdout.lastFrame.split("› look at this").length - 1).toBe(1);
   });
 
   test("deleting the marker before sending un-attaches the image", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     const file = path.join(tmpdir(), "akan-paste.png");
     await Bun.write(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     await harness.press(file);
@@ -869,43 +957,49 @@ describe("CodeTui", () => {
     for (let at = 0; at < "never mind".length + "[image #1] ".length; at += 1) await harness.press(keys.backspace);
     await harness.press("just text");
     await harness.press("\r");
-    expect(harness.agent.calls).toEqual(["prompt:just text"]);
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:just text"]));
   });
 
-  test("an @ token completes a file in the repo", async () => {
-    //? A repo of its own: CI unpacks the workspace from a tarball without `.git`, so the checkout lists nothing.
-    const root = mkdtempSync(path.join(tmpdir(), "akan-tui-files-"));
-    mkdirSync(path.join(root, "pkgs/cli/code"), { recursive: true });
-    writeFileSync(path.join(root, "pkgs/cli/code/CodeTuiFiles.ts"), "");
-    Bun.spawnSync(["git", "init", "--quiet"], { cwd: root });
-    const harness = mount(root);
-    await settle();
-    await harness.press("read @codeTuiFiles");
-    await settle();
-    const frame = harness.stdout.lastFrame;
-    expect(frame).toContain("@pkgs/cli/code/CodeTuiFiles.ts");
-    await harness.press("\t");
-    expect(harness.stdout.lastFrame).toContain("› read @pkgs/cli/code/CodeTuiFiles.ts");
-    rmSync(root, { recursive: true, force: true });
-  });
+  //? Retried: it timed out once in CI with the file list still pending (run 42854281601, attempt 1).
+  test(
+    "an @ token completes a file in the repo",
+    async () => {
+      //? A repo of its own: CI unpacks the workspace from a tarball without `.git`, so the checkout lists nothing.
+      const root = mkdtempSync(path.join(tmpdir(), "akan-tui-files-"));
+      mkdirSync(path.join(root, "pkgs/cli/code"), { recursive: true });
+      writeFileSync(path.join(root, "pkgs/cli/code/CodeTuiFiles.ts"), "");
+      Bun.spawnSync(["git", "init", "--quiet"], { cwd: root });
+      const harness = mount(root);
+      await harness.ready();
+      await harness.press("read @codeTuiFiles");
+      await harness.drawn("@pkgs/cli/code/CodeTuiFiles.ts", 5_000);
+      await harness.press("\t");
+      await harness.drawn("› read @pkgs/cli/code/CodeTuiFiles.ts");
+      rmSync(root, { recursive: true, force: true });
+    },
+    { timeout: 10_000, retry: 1 },
+  );
 
   test("the banner names the session at the top and survives what clears the conversation", async () => {
     const harness = mount();
-    await settle();
-    expect(harness.stdout.lastFrame).toContain("Akan — write one line, deploy every stack");
+    await harness.ready();
+    await harness.drawn("Akan — write one line, deploy every stack");
     await harness.press("remember this");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).toContain("› remember this");
+    await eventually(() => expect(harness.agent.calls).toEqual(["prompt:remember this"]));
+    await harness.drawn("› remember this");
     await harness.press("/clear");
     await harness.press("\r");
-    expect(harness.stdout.lastFrame).not.toContain("› remember this");
-    expect(harness.stdout.lastFrame).toContain("Akan — write one line, deploy every stack");
-    expect(harness.stdout.lastFrame).toContain("the model still remembers");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).not.toContain("› remember this");
+      expect(harness.stdout.lastFrame).toContain("Akan — write one line, deploy every stack");
+      expect(harness.stdout.lastFrame).toContain("the model still remembers");
+    });
   });
 
   test("down walks back through history, whatever the recalled entry's height", async () => {
     const harness = mount();
-    await settle();
+    await harness.ready();
     await harness.press(`one ${"long ".repeat(30)}`);
     await harness.press("\r");
     await harness.press("two");
@@ -919,11 +1013,13 @@ describe("CodeTui", () => {
     };
     await harness.press(`${esc}[A`);
     await harness.press(`${esc}[A`);
-    expect(prompt()[0]).toStartWith("› one long");
-    expect(prompt().length).toBeGreaterThan(1);
+    await eventually(() => {
+      expect(prompt()[0]).toStartWith("› one long");
+      expect(prompt().length).toBeGreaterThan(1);
+    });
     await harness.press(`${esc}[B`);
-    expect(prompt()).toEqual(["› two"]);
+    await eventually(() => expect(prompt()).toEqual(["› two"]));
     await harness.press(`${esc}[B`);
-    expect(prompt().join("\n")).toContain("ask for something");
+    await eventually(() => expect(prompt().join("\n")).toContain("ask for something"));
   });
 });
