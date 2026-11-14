@@ -73,6 +73,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `listFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `liveAlreadySet` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `livePaused` | 409 | `AkanError` | no | yes | `base/akanError.ts` |
+| `liveRoomLimit` | 429 | `LiveRoomLimitError` | yes | yes | `service/liveRoomLimitError.ts` |
 | `liveRoomTaken` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `locked` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `logControlUnavailable` | 503 | `LogControlUnavailableError` | no | yes | `server/logging/logTailClient.ts` |

@@ -2,14 +2,14 @@
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 977,
     "server/di/diLifecycle.ts": 822,
-    "server/resolver/signal.resolver.ts": 900,
+    "server/resolver/signal.resolver.ts": 894,
     "server/ssrFromRscRenderer.tsx": 839,
     "signal/signalContext.ts": 983,
     "ui/Constant/Doc.tsx": 812
   },
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,
-    "server/resolver/signal.resolver.ts#SignalResolver.resolveEndpoint": 163,
+    "server/resolver/signal.resolver.ts#SignalResolver.resolveEndpoint": 162,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
     "ui/BottomSheet.tsx#BottomSheet": 154,
     "ui/Data/RefPicker.tsx#RefPicker": 169,

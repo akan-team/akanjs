@@ -24,7 +24,7 @@ import {
   serialize,
 } from "akanjs/constant";
 import { DictionaryRegistry } from "akanjs/dictionary";
-import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey, type QueryFieldMap } from "akanjs/document";
+import { baseDocumentColumns, documentQueryHelper, getFilterSortByKey } from "akanjs/document";
 import type {
   AkanJob,
   AkanJobOptions,
@@ -58,6 +58,7 @@ import type { RoomReplay } from "../routing/roomReplay";
 import type { HttpRoutes, LocalPublish, SignalRoutes, WebsocketRoutes } from "../types";
 import { invalidSignal as invalid } from "./invalidSignal";
 import { LivePause } from "./livePause";
+import { LiveRoomJoin } from "./liveRoomJoin";
 import { PendingSubscribes } from "./PendingSubscribes";
 import { SliceCrud } from "./sliceCrud";
 import { websocketOf } from "./websocketOf";
@@ -526,12 +527,6 @@ export class SignalResolver {
       }
     }
   }
-  // Routing reads it only for array paths: a bare value on an array field means membership, not equality.
-  static #queryFieldsOf(live: LiveRegistry, refName: string): QueryFieldMap {
-    const sliceCls = live.sliceCls.get(refName);
-    const doc = sliceCls?.srv.db?.doc as { [FIELD_META]?: QueryFieldMap } | undefined;
-    return doc?.[FIELD_META] ?? {};
-  }
   //? A call still running when its socket closes finishes after `handleWsClose`, which ran every cleanup it knew of.
   static #closedWs = new WeakSet<Bun.ServerWebSocket<unknown>>();
   static #pendingSubscribes = new PendingSubscribes();
@@ -677,13 +672,12 @@ export class SignalResolver {
                   const roomId = liveOption ? context.getLiveRoomId(key, query) : baseRoomId;
                   const roomCtxMap = SignalResolver.#liveWsPubsubRoomCtx.get(ws) ?? new Map();
                   if (liveOption && !roomCtxMap.has(roomId))
-                    live.syncHub.join({
+                    LiveRoomJoin.join(live, roomCtxMap.values(), {
                       refName: liveOption.refName,
                       roomId,
                       query: query as never,
                       fallback: liveOption.fallback,
                       payload: liveOption.payload,
-                      fields: SignalResolver.#queryFieldsOf(live, liveOption.refName),
                     });
                   roomCtxMap.set(roomId, context);
                   SignalResolver.#liveWsPubsubRoomCtx.set(ws, roomCtxMap);

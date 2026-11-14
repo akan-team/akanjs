@@ -233,6 +233,10 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   ``await this.rateLimit.consume(`otp:${phone}`, { calls: 5, windowMs: 3_600_000 })``, which answers
   `{ ok: true } | { ok: false, retryAfterMs }` and is never switched off — throw the module's own `Err` with the
   wait when it refuses.
+- **Live rooms per socket are capped at 256** (`option.setLiveRoomLimit({ roomsPerSocket })`, merged in mount order
+  with the app last; `AKAN_LIVE_ROOMS_PER_SOCKET=<count>|off` wins over it). A subscribe past the cap is refused
+  with 429 `base.error.liveRoomLimit`, `data: { limit, per: "socket" }`; the rooms already held keep their events,
+  subscribing a held room again does not count twice, and leaving a room or closing the socket frees its place.
 
 ## Calling Another Server
 

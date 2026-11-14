@@ -1098,6 +1098,31 @@ export interface LiveRegistry {
     syncHub: LiveSyncHub;
 }
 
+export declare class LiveRoomLimit {
+    static readonly defaultRoomsPerSocket = 256;
+    static readonly defaultRoomsPerModel = 50000;
+    static configure(setting: LiveRoomLimitSetting): void;
+    static applyEnv(env?: Env): void;
+    static reset(): void;
+    static get roomsPerSocket(): null | number;
+    static get roomsPerModel(): null | number;
+}
+
+export interface LiveRoomLimitData {
+    limit: number;
+    per: "model" | "socket";
+}
+
+export declare class LiveRoomLimitError extends AkanError<"liveRoomLimit", LiveRoomLimitData> {
+    constructor(per: LiveRoomLimitData["per"], limit: number);
+    get forwarded(): boolean;
+}
+
+export interface LiveRoomLimitSetting {
+    roomsPerSocket?: false | number;
+    roomsPerModel?: false | number;
+}
+
 export interface LiveRoomRegistration {
     refName: string;
     roomId: string;
@@ -2446,6 +2471,8 @@ type DocumentRecord = Record<string, unknown>;
 declare const EndpointCacheControl_base: import("..").AdaptorCls<{}, {
     cache: import("..").InjectInfo<"plug", import("./cache.adaptor").CacheAdaptor, never, never>;
 }>;
+
+type Env = Record<string, string | undefined>;
 
 type FieldMap = Record<string, {
     getProps: () => Record<string, unknown>;

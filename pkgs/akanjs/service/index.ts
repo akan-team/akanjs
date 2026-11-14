@@ -11,6 +11,8 @@ export * from "./injectError";
 export * from "./injectInfo";
 export * from "./insightQueryError";
 export * from "./ipcTypes";
+export * from "./liveRoomLimit";
+export * from "./liveRoomLimitError";
 export * from "./liveSyncHub";
 export * from "./predefinedAdaptor";
 export * from "./rateLimiter";

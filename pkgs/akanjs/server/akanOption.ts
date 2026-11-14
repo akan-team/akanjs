@@ -1,5 +1,5 @@
 import { AkanError, type BackendEnv, type PromiseOrObject } from "akanjs/base";
-import type { Adaptor, AdaptorCls, AgentAccountResolver, LlmOption } from "akanjs/service";
+import type { Adaptor, AdaptorCls, AgentAccountResolver, LiveRoomLimitSetting, LlmOption } from "akanjs/service";
 import type {
   AgentQuotaHook,
   AgentRequestPolicy,
@@ -34,6 +34,7 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   #agentAccountResolver: AgentAccountResolver | null | undefined;
   #crossSite: CrossSiteOption | undefined;
   #getRateLimit: ((env: Env) => RateLimitSetting | false) | undefined;
+  #liveRoomLimit: LiveRoomLimitSetting | undefined;
   #sessionRefresh: SessionRefreshHook | null | undefined;
   use(fnOrObject: ((env: Env) => Record<string, PromiseOrObject<unknown>>) | Record<string, PromiseOrObject<unknown>>) {
     if (typeof fnOrObject === "function")
@@ -101,6 +102,15 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
    */
   setRateLimit(settingOrFn: RateLimitSetting | false | ((env: Env) => RateLimitSetting | false)) {
     this.#getRateLimit = typeof settingOrFn === "function" ? settingOrFn : () => settingOrFn;
+    return this;
+  }
+  /**
+   * Live rooms one websocket may hold (256 unless named) and one model may hold on a server (50,000), past which a
+   * subscribe is refused with 429 `liveRoomLimit`. Merged in mount order, the app's last; `AKAN_LIVE_ROOMS_PER_SOCKET`
+   * and `AKAN_LIVE_ROOMS_PER_MODEL` win over both.
+   */
+  setLiveRoomLimit(setting: LiveRoomLimitSetting) {
+    this.#liveRoomLimit = setting;
     return this;
   }
   /**
@@ -174,6 +184,9 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getRateLimit(env: Env): RateLimitSetting | false | undefined {
     return this.#getRateLimit?.(env);
+  }
+  getLiveRoomLimit(): LiveRoomLimitSetting | undefined {
+    return this.#liveRoomLimit;
   }
   getSessionRefresh(): SessionRefreshHook | null | undefined {
     return this.#sessionRefresh;

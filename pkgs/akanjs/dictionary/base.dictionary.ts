@@ -44,6 +44,10 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
       "Too many requests. Please try again in {seconds} seconds.",
       "요청이 너무 많습니다. {seconds}초 후 다시 시도해주세요.",
     ],
+    liveRoomLimit: [
+      "This list stopped updating live: the server follows as many live lists as it allows. Reload to see the latest.",
+      "이 목록의 실시간 갱신이 멈췄습니다. 서버가 허용하는 실시간 목록 수를 넘었습니다. 새로고침하면 최신 내용을 볼 수 있습니다.",
+    ],
     payloadTooLarge: [
       "The request is too large for the server to accept.",
       "요청이 너무 커서 서버가 받을 수 없습니다.",

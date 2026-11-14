@@ -20,6 +20,8 @@ import {
   getDefaultLiveRegistry,
   getSolidConfig,
   type LiveChange,
+  LiveRoomLimit,
+  LiveRoomLimitError,
   SolidPubSub,
   SolidQueue,
   serve,
@@ -2533,6 +2535,68 @@ describe("SignalResolver declaration contracts", () => {
     await route(ws, ["news"], "subscribe");
     await SignalResolver.handleWsClose(ws, registry, live);
     expect(live.syncHub.roomIds()).toEqual([]);
+  });
+
+  test("refuses a live room past a socket's cap with 429 liveRoomLimit, and the rooms it holds keep routing", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 2 });
+    try {
+      const { live, route } = resolveLiveCategoryRoute();
+      const ws = makeWs();
+      await route(ws, ["news"], "subscribe");
+      await route(ws, ["sports"], "subscribe");
+      await route(ws, ["news"], "subscribe");
+      await expect(route(ws, ["music"], "subscribe")).rejects.toMatchObject({
+        message: "base.error.liveRoomLimit",
+        code: "liveRoomLimit",
+        statusCode: 429,
+        data: { limit: 2, per: "socket" },
+      });
+      expect(ws.subscribed.map((roomId) => roomId.split("::")[0])).toEqual([
+        "serverResolverTestItemLiveInCategory-news",
+        "serverResolverTestItemLiveInCategory-sports",
+        "serverResolverTestItemLiveInCategory-news",
+      ]);
+      const doc = (category: string) => ({ id: validId, category, createdAt: dayjs(1000), updatedAt: dayjs(1000) });
+      expect(live.syncHub.route("serverResolverTestItem", doc("sports"))).toHaveLength(1);
+      expect(live.syncHub.route("serverResolverTestItem", doc("music"))).toEqual([]);
+      const other = makeWs();
+      await route(other, ["music"], "subscribe");
+      expect(live.syncHub.roomCountOf("serverResolverTestItem")).toBe(3);
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
+  test("frees a place under a socket's live room cap when it unsubscribes, and all of them when it closes", async () => {
+    LiveRoomLimit.configure({ roomsPerSocket: 1 });
+    try {
+      const { registry, live, route } = resolveLiveCategoryRoute();
+      const ws = makeWs();
+      await route(ws, ["news"], "subscribe");
+      await expect(route(ws, ["sports"], "subscribe")).rejects.toBeInstanceOf(LiveRoomLimitError);
+      await route(ws, ["news"], "unsubscribe");
+      expect(await route(ws, ["sports"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+      await SignalResolver.handleWsClose(ws, registry, live);
+      expect(live.syncHub.roomIds()).toEqual([]);
+      const reopened = makeWs();
+      expect(await route(reopened, ["music"], "subscribe")).toMatchObject({ type: "sub", subscribe: true });
+    } finally {
+      LiveRoomLimit.reset();
+    }
+  });
+
+  test("reads the live room limits from the env over what option.ts set, and lifts one set off", () => {
+    try {
+      LiveRoomLimit.configure({ roomsPerSocket: 10, roomsPerModel: 20 });
+      LiveRoomLimit.applyEnv({ AKAN_LIVE_ROOMS_PER_SOCKET: "512" });
+      expect([LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerModel]).toEqual([512, 20]);
+      LiveRoomLimit.applyEnv({ AKAN_LIVE_ROOMS_PER_SOCKET: "off", AKAN_LIVE_ROOMS_PER_MODEL: "0" });
+      expect([LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerModel]).toEqual([null, null]);
+      LiveRoomLimit.reset();
+      expect([LiveRoomLimit.roomsPerSocket, LiveRoomLimit.roomsPerModel]).toEqual([256, 50_000]);
+    } finally {
+      LiveRoomLimit.reset();
+    }
   });
 
   test("pauses a live room while a declared argument carries a value", async () => {
