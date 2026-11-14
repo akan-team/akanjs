@@ -591,9 +591,12 @@ at every event.
   — and call `loop` again with them. A stored result is read as the answer to the call its id names, under that
   call's name. It is judged as an endpoint's only when that call names an endpoint this run lists: any other, a
   page's tool or a tool this run no longer has, taints the run without asking `untrusted`, whatever mark it was
-  stored with. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt
-  from the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the
-  run and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal included, as a resume
+  stored with. The run's own answer to a tool name the model made up, `Unknown tool: <name>.` with nothing beside
+  it, taints nothing. Keep `ask` and `toolkits` the same for the life of a transcript: a stored `askUser` or
+  `openToolkit` answer is the run's own only under the options it was given with, and one whose name the page lends
+  taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
+  the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the run
+  and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal included, as a resume
   cannot tell one from a result. Store every message whole, marks included. `compacted` says the first `replaced`
   messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary with no
   marker counts as tainted. A batch's results reach `onMessage` one tool message a call, as each call finishes, so a

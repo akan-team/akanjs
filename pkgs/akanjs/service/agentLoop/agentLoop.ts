@@ -78,7 +78,7 @@ export class AgentLoop {
   #tokens = 0;
   #toolCalls = 0;
   #tainted: boolean = false;
-  #storedJudged = false;
+  #storedJudged: boolean = false;
   #compactFloor = 0;
   #overflowAt = Number.POSITIVE_INFINITY;
 
@@ -185,12 +185,27 @@ export class AgentLoop {
     if (this.#storedJudged) return;
     this.#storedJudged = true;
     const listed = new Set(endpoints.map((tool) => tool.name));
+    const lent = new Set((this.#request.clientTools ?? []).map((tool) => tool.name));
     for (const [result, call] of LoopTranscript.answered(this.#messages)) {
       const name = call?.name ?? "";
-      if (call && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name))) continue;
+      //? A page that lends the name may have answered it in a run that had not turned `ask` or `toolkits` on.
+      const own = !!call && !lent.has(name) && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name));
+      if (own || AgentLoop.#isUnknownRefusal(result, call)) continue;
       if (listed.has(name)) this.#taintBy({ ...result, name });
       else this.#tainted = true;
     }
+  }
+
+  static #unknownTool(name: string) {
+    return `Unknown tool: ${name}.`;
+  }
+
+  //? Security: this run's own answer to a name the model made up carries nothing read, as the call fixes its every
+  //? character. `code` alone would not say so, and anything stored beside the sentence is not this run's.
+  static #isUnknownRefusal(stored: AgentWireToolResult, call: AgentWireToolCall | undefined) {
+    const { error, result, changes, attachments } = stored;
+    if (!call || error !== AgentLoop.#unknownTool(call.name)) return false;
+    return result === undefined && changes === undefined && attachments === undefined;
   }
 
   //? Security: `readOnly` is the page's own claim, and it lifts the write rules, so a client tool always counts as a write.
@@ -396,7 +411,7 @@ export class AgentLoop {
       const closed = this.#toolkits.refusalOf(call.name);
       return closed
         ? { deny: closed, code: "toolkitClosed" }
-        : { deny: `Unknown tool: ${call.name}.`, code: "unknownTool" };
+        : { deny: AgentLoop.#unknownTool(call.name), code: "unknownTool" };
     }
     const { approve } = this.#request;
     const client = this.#clientNames.has(call.name) ? { client: true as const } : {};
