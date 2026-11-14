@@ -35,6 +35,7 @@ export interface AkanRequestStore {
     queryLog: RequestQueryRecord[];
     policy: AkanRequestPolicy;
     dynamicUsage: AkanDynamicUsage;
+    needsBrowser?: boolean;
 }
 
 export type AkanTheme = "css" | "system" | (string & {});

@@ -120,7 +120,7 @@ Only on `page()`:
 
 ```ts
 .prompt(name: string, description: string)
-.app<Name extends string>(name: Name & FreeName<Name, Record<never, never>>, description: string, load: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>)
+.app<Name extends string>(name: Name & FreeName<Name, Record<never, never>>, description: string, load: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>, option?: { static?: boolean; })
 ```
 
 On `layout()` and `rootLayout()`, where a line replaces its shared form above:
