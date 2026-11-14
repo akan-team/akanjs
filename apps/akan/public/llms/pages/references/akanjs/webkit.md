@@ -211,15 +211,15 @@ The storage quota exists only in the browser, so this component is loaded throug
 
 useCamera
 
-`useCamera` takes a photo or picks one from the library through the native runtime's camera plugin. In the native app it asks for the camera first and opens the app settings when the user has denied it; in a browser it picks from files.
+`useCamera` takes a photo or picks one from the library through the native runtime's camera plugin; in a browser it picks from files. A denial returns `undefined` without opening the settings, as App Store review requires; only a camera denied before the tap gets a notice whose button opens them.
 
-- getPhoto(src = "prompt"): Takes or picks one photo as `{ dataUrl }`, an upright JPEG. `"prompt"` shows a camera-or-library sheet in the native app; cancel returns `undefined`.
+- getPhoto(src = "prompt"): Takes or picks one photo as `{ dataUrl }`, an upright JPEG. `"prompt"` shows a camera-or-library sheet in the native app; cancel or a denied permission returns `undefined`.
 
 - pickImage({ limit }): Picks several images from the library, each as `{ dataUrl }`.
 
 - permissions: `{ camera }`. Read on mount in the native app, `"prompt"` until then.
 
-- checkPermission(): Asks for the camera, and opens the app settings when it is denied.
+- checkPermission(): Asks for the camera and returns the state.
 
 Option
 
@@ -239,9 +239,9 @@ Native permissions, and the plugins they add.
 
 useGeoLocation
 
-`useGeoLocation` reads the current position through the native runtime's geolocation plugin, and through `navigator.geolocation` in a browser. It sends the user to the app settings when the permission is denied.
+`useGeoLocation` reads the current position through the native runtime's geolocation plugin, and through `navigator.geolocation` in a browser. A denied permission returns `undefined` and leaves the user where they are.
 
-- getPosition({ enableHighAccuracy }): Returns a `Position`. When the permission is denied, opens the settings and returns `undefined`.
+- getPosition({ enableHighAccuracy }): Returns a `Position`, or `undefined` when the permission is denied.
 
 - checkPermission(): Requests permission and returns `{ location, precise }`.
 
