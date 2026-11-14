@@ -1600,6 +1600,7 @@ describe("SignalContext execution", () => {
         () => "rejected",
       );
       expect(first).not.toBe(200);
+      await new Promise((resolve) => setTimeout(resolve, 30));
       const second = call("news");
       await started(2);
       expect(held.runs).toBe(2);
