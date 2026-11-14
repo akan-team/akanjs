@@ -70,9 +70,10 @@ export class PackageRunner extends runner("package") {
     return await pkg.scan();
   }
   async buildPackage(pkg: Pkg) {
+    //? Loaded before the dist is cleared: building @akanjs/cli runs from that dist, and a chunk imported afterwards is gone.
+    const { TypeScriptDependencyScanner } = await import("@akanjs/devkit/workspace/dependencyScanner");
     await $`rm -rf ${pkg.dist.cwdPath}`;
     await pkg.dist.mkdir(pkg.dist.cwdPath);
-    const { TypeScriptDependencyScanner } = await import("@akanjs/devkit/workspace/dependencyScanner");
     const scanner = await TypeScriptDependencyScanner.from(pkg);
     const { npmDeps, npmDevDeps, missingDeps } = await scanner.getPackageBuildDependencies(pkg.name);
     // The pi packages are pinned here: neither pi-coding-agent's own dependency ranges nor our `overrides` reach a
