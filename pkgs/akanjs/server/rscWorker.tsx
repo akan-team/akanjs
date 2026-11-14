@@ -212,6 +212,7 @@ export class RscRenderer {
           this.#send({
             type: "error",
             requestId: msg.requestId,
+            manifestRevision: msg.manifestRevision,
             message: `render names client manifest revision ${msg.manifestRevision}, which this worker was not sent`,
           });
         return;

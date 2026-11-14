@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import { AkanError } from "akanjs/base";
 import type { ClientManifest } from "./artifact";
 import { RscWorker } from "./rscWorkerHost";
 import type { BaseBuildArtifact } from "./types";
@@ -41,8 +42,8 @@ const until = async (check: () => boolean) => {
   while (!check()) await Bun.sleep(5);
 };
 
-const flightOf = async (rsc: RscWorker, clientManifest: ClientManifest) => {
-  const result = await rsc.renderWithMeta(new Request("http://localhost/en/widget"), { clientManifest });
+const flightOf = async (rsc: RscWorker, clientManifest: ClientManifest, search = "") => {
+  const result = await rsc.renderWithMeta(new Request(`http://localhost/en/widget${search}`), { clientManifest });
   if (result.type !== "stream") throw new Error(`expected a rendered page, got ${result.type}`);
   return await new Response(result.stream).text();
 };
@@ -70,6 +71,18 @@ describe("RscWorker render manifest", () => {
       const queued = flightOf(rsc, manifest);
       expect(await queued).toContain("/chunks/first.js");
       expect(rsc.getMetrics().rscWorkerRestartCount).toBe(1);
+      expect(await flightOf(rsc, manifest)).toContain("/chunks/first.js");
+    });
+  }, 20_000);
+
+  test("a worker that answers that it does not hold the manifest gets it again with the next render", async () => {
+    await withManifestWorker(async (rsc) => {
+      const manifest = manifestOf("/chunks/first.js");
+
+      const refused = await flightOf(rsc, manifest, "?lost=1").catch((error: unknown) => error);
+      expect(AkanError.is(refused, "rscWorkerFailed")).toBe(true);
+      expect(refused).toMatchObject({ message: expect.stringContaining("client manifest revision 1") });
+      expect(await flightOf(rsc, manifest)).toContain("/chunks/first.js");
       expect(await flightOf(rsc, manifest)).toContain("/chunks/first.js");
     });
   }, 20_000);

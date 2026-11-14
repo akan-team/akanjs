@@ -135,9 +135,55 @@ describe("RscHostRequests render manifest", () => {
     ]);
   });
 
+  test("names the manifest by revision again to the process a failed replacement hands the worker back to", () => {
+    const toFirst: SentRender[] = [];
+    const toReplacement: SentRender[] = [];
+    const first = procOf(toFirst);
+    const { worker, requests, render } = hostOf("ready", first);
+    const manifest = manifestOf("/a.js");
+    const newer = manifestOf("/b.js");
+    render(manifest);
+
+    worker.status = "restarting";
+    worker.proc = procOf(toReplacement);
+    render(manifest);
+    render(newer);
+    worker.proc = first;
+    worker.status = "ready";
+    requests.flushQueuedSends();
+    render(newer);
+
+    expect(toReplacement).toEqual([]);
+    expect(manifestsOf(toFirst)).toEqual([
+      [1, manifest],
+      [1, undefined],
+      [2, newer],
+      [2, undefined],
+    ]);
+  });
+
+  test("sends the manifest again once the worker has answered that it does not hold it", () => {
+    const sent: SentRender[] = [];
+    const { requests, render } = hostOf("ready", procOf(sent));
+    const manifest = manifestOf("/a.js");
+    render(manifest);
+    render(manifest);
+
+    requests.forgetManifest();
+    render(manifest);
+    render(manifest);
+
+    expect(manifestsOf(sent)).toEqual([
+      [1, manifest],
+      [1, undefined],
+      [1, manifest],
+      [1, undefined],
+    ]);
+  });
+
   test("sends the manifest again after a send that failed", () => {
     const sent: SentRender[] = [];
-    const channel = { closed: true };
+    const channel: { closed: boolean } = { closed: true };
     const { render } = hostOf("ready", {
       send: (message) => {
         if (channel.closed) throw new Error("channel closed");

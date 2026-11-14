@@ -8,6 +8,12 @@ loads.akanManifestFixtureLoads = (loads.akanManifestFixtureLoads ?? 0) + 1;
 //? Only a reload imports this a second time: slow enough that a render sent right after it arrives while it imports.
 if (loads.akanManifestFixtureLoads > 1) await Bun.sleep(600);
 
+//? Stands in for a worker that lost a manifest the host counts as sent, a state no message order reaches.
+if (loads.akanManifestFixtureLoads === 1)
+  process.prependListener("message", (message: { type?: string; url?: string; clientManifest?: unknown }) => {
+    if (message.type === "render" && message.url?.includes("lost=1")) delete message.clientManifest;
+  });
+
 const Widget = registerClientReference(
   (): ReactNode => {
     throw new Error("Widget is a client component");

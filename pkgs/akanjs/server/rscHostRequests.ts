@@ -144,6 +144,11 @@ export class RscHostRequests {
     return { revision: (sent?.revision ?? 0) + 1, held: false };
   }
 
+  //? The worker refused a revision: whatever it holds, the next render brings the manifest rather than fail the same way.
+  forgetManifest(): void {
+    this.#sentManifest = null;
+  }
+
   #cancelRender(requestId: string): void {
     if (this.#worker.status !== "ready") return;
     try {
