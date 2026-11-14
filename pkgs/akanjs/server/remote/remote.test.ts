@@ -77,6 +77,28 @@ describe("RemoteFetch", () => {
     expect(await codeOf(large.fetcher.send("https://shop.example.com/mcp"))).toBe("remoteTooLarge");
   });
 
+  test("ends a lookup, a connection or a body that outlasts its time as unavailable, and a caller's abort as an abort", async () => {
+    const stalled = new Promise<never>(() => undefined);
+    const lookup = fetcherOf(() => json({}), { timeoutMs: 20, lookup: () => stalled });
+    expect(await codeOf(lookup.fetcher.send("https://shop.example.com/mcp"))).toBe("remoteUnavailable");
+    const headers = fetcherOf(() => json({}), {
+      timeoutMs: 20,
+      fetchImpl: (_input, init) =>
+        new Promise((_resolve, reject) => init.signal?.addEventListener("abort", () => reject(init.signal?.reason))),
+    });
+    expect(await codeOf(headers.fetcher.send("https://shop.example.com/mcp"))).toBe("remoteUnavailable");
+    const trickle = () =>
+      new Response(new ReadableStream({ start: (controller) => controller.enqueue(new Uint8Array([123])) }));
+    const body = fetcherOf(trickle, { timeoutMs: 20 });
+    expect(await codeOf(body.fetcher.send("https://shop.example.com/mcp"))).toBe("remoteUnavailable");
+    const caller = new AbortController();
+    const aborted = fetcherOf(trickle, { timeoutMs: 5_000 }).fetcher.send("https://shop.example.com/mcp", {
+      signal: caller.signal,
+    });
+    setTimeout(() => caller.abort(), 10);
+    expect(await codeOf(aborted)).toContain("AbortError");
+  });
+
   test("reaches a private address as it is only when told to", async () => {
     const { fetcher, seen } = fetcherOf(() => json({}), { allowPrivate: true });
     await fetcher.send("http://127.0.0.1:8282/mcp");

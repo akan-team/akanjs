@@ -59,12 +59,11 @@ export class RemoteFetch {
     const { timeoutMs = RemoteFetch.timeoutMs, fetchImpl = fetch } = this.#options;
     const timeout = AbortSignal.timeout(timeoutMs);
     const signal = request.signal ? AbortSignal.any([request.signal, timeout]) : timeout;
-    const { target, tls } = await this.#pinned(url);
-    const headers = new Headers(request.headers);
-    if (target.host !== url.host) headers.set("host", url.host);
-    let response: Response;
     try {
-      response = await fetchImpl(target, {
+      const { target, tls } = await this.#pinned(url, signal);
+      const headers = new Headers(request.headers);
+      if (target.host !== url.host) headers.set("host", url.host);
+      const response = await fetchImpl(target, {
         method: request.method ?? "GET",
         headers,
         ...(request.body === undefined ? {} : { body: request.body }),
@@ -72,16 +71,17 @@ export class RemoteFetch {
         signal,
         ...(tls ? { tls } : {}),
       });
+      if (response.status >= 300 && response.status < 400) {
+        await response.body?.cancel().catch(() => undefined);
+        throw new RemoteError("remoteUrlRejected", `${url.host} answered with a redirect, which is not followed.`);
+      }
+      const maxBytes = request.maxBytes ?? this.#options.maxBytes ?? RemoteFetch.maxBytes;
+      const text = await RemoteFetch.#read(response, maxBytes, signal);
+      return { status: response.status, headers: response.headers, text };
     } catch (error) {
-      if (request.signal?.aborted) throw error;
+      if (error instanceof RemoteError || request.signal?.aborted) throw error;
       throw new RemoteError("remoteUnavailable", `${url.host} did not answer: ${RemoteFetch.#reason(error)}`);
     }
-    if (response.status >= 300 && response.status < 400) {
-      await response.body?.cancel().catch(() => undefined);
-      throw new RemoteError("remoteUrlRejected", `${url.host} answered with a redirect, which is not followed.`);
-    }
-    const maxBytes = request.maxBytes ?? this.#options.maxBytes ?? RemoteFetch.maxBytes;
-    return { status: response.status, headers: response.headers, text: await RemoteFetch.#read(response, maxBytes) };
   }
 
   async json(input: string | URL, request: RemoteRequest = {}): Promise<{ status: number; body: unknown }> {
@@ -97,7 +97,7 @@ export class RemoteFetch {
   }
 
   //? With the address in the url, `serverName` is what Bun sends as SNI and checks the certificate against.
-  async #pinned(url: URL): Promise<{ target: URL; tls?: { serverName: string } }> {
+  async #pinned(url: URL, signal: AbortSignal): Promise<{ target: URL; tls?: { serverName: string } }> {
     if (this.allowsPrivate) return { target: url };
     const host = url.hostname.startsWith("[") ? url.hostname.slice(1, -1) : url.hostname;
     const literal = /^\d+\.\d+\.\d+\.\d+$/.test(host) || host.includes(":");
@@ -107,7 +107,10 @@ export class RemoteFetch {
       return { target: url };
     }
     const resolve = this.#options.lookup ?? RemoteFetch.#lookup;
-    const addresses = await resolve(host).catch(() => []);
+    const addresses = await RemoteFetch.#until(
+      signal,
+      resolve(host).catch(() => []),
+    );
     if (!addresses.length) throw new RemoteError("remoteUrlRejected", `${host} does not resolve.`);
     //? Every record is checked: a name answering one public and one private address gets no second try.
     if (addresses.some(({ address }) => TrustedProxy.isPrivateAddress(address)))
@@ -121,7 +124,7 @@ export class RemoteFetch {
   static readonly #lookup: RemoteAddressLookup = async (hostname) => await lookup(hostname, { all: true });
 
   //? A chunked body states no length, so the cap is counted as it arrives.
-  static async #read(response: Response, maxBytes: number): Promise<string> {
+  static async #read(response: Response, maxBytes: number, signal: AbortSignal): Promise<string> {
     if (Number(response.headers.get("content-length")) > maxBytes) {
       await response.body?.cancel().catch(() => undefined);
       throw new RemoteError("remoteTooLarge", `The answer is past ${maxBytes} bytes.`);
@@ -130,7 +133,12 @@ export class RemoteFetch {
     if (!reader) return "";
     const chunks: Uint8Array[] = [];
     let bytes = 0;
-    for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
+    const next = () =>
+      RemoteFetch.#until(signal, reader.read()).catch(async (error: unknown) => {
+        await reader.cancel().catch(() => undefined);
+        throw error;
+      });
+    for (let chunk = await next(); !chunk.done; chunk = await next()) {
       bytes += chunk.value.byteLength;
       if (bytes > maxBytes) {
         await reader.cancel().catch(() => undefined);
@@ -139,6 +147,16 @@ export class RemoteFetch {
       chunks.push(chunk.value);
     }
     return Buffer.concat(chunks).toString("utf8");
+  }
+
+  //? A lookup cannot be cancelled and a body the fetch implementation hands over may ignore the signal, so both race it.
+  static #until<T>(signal: AbortSignal, work: Promise<T>): Promise<T> {
+    if (signal.aborted) return Promise.reject(signal.reason);
+    return new Promise<T>((resolve, reject) => {
+      const stop = () => reject(signal.reason);
+      signal.addEventListener("abort", stop, { once: true });
+      work.then(resolve, reject).finally(() => signal.removeEventListener("abort", stop));
+    });
   }
 
   static #reason(error: unknown): string {
