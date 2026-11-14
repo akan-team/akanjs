@@ -79,6 +79,12 @@ export const isLocalDevRuntime = ({
   operationMode === "local" &&
   (process.env.NODE_ENV !== "production" || process.env.AKAN_COMMAND_TYPE === "start");
 
+let localTimingCache: boolean | null = null;
+const isLocalTimingRuntime = (): boolean => (localTimingCache ??= isLocalDevRuntime());
+export const setLocalServerTiming = (enabled: boolean | null): void => {
+  localTimingCache = enabled;
+};
+
 // `x-akan-debug` lowers one request's log floor to `trace`; outside `local` it must carry `AKAN_LOG_DEBUG_HEADER`,
 // since a client that can lower the log level is a log-volume vector.
 /** @internal */
@@ -93,8 +99,19 @@ const refreshLoggerContextGate = () => {
 };
 
 export interface SpanRecord {
+  id: string;
+  /** The span open around this one, else the call's own span; for that one, the caller's. */
+  parentId: string | null;
   name: string;
+  /** From the start of the call. */
+  startMs: number;
   durationMs: number;
+  attrs?: LogAttrs;
+}
+
+interface OpenSpan {
+  trace: SignalTrace;
+  id: string;
 }
 
 export type TraceMode = "context" | "full";
@@ -102,6 +119,7 @@ export type TraceOrigin = "http" | "websocket" | "mcp" | "internal" | "page";
 export type TraceOutcome = "ok" | "error";
 
 const MAX_SPANS_PER_TRACE = 64;
+const SERVER_TIMING_ENTRIES = 32;
 const FLIGHT_RING_SIZE = 64;
 const CANONICAL_ERROR_CHARS = 200;
 
@@ -132,7 +150,7 @@ export class SignalTrace {
   readonly endpointKey: string;
   readonly endpointType: string;
   readonly origin: TraceOrigin;
-  readonly mode: TraceMode;
+  mode: TraceMode;
   readonly startedAt: number;
   readonly spans: SpanRecord[] = [];
   readonly attrs: LogAttrs = {};
@@ -150,6 +168,7 @@ export class SignalTrace {
   #flightRing: FlightEntry[] | null = null;
   #flightEvicted = 0;
   #finalized = false;
+  readonly #aggregated: boolean;
   /** An id this call was handed but did not take: an untrusted caller's, or the trace that enqueued a job. */
   link: string | null;
   readonly #parent: TraceParentRef | null;
@@ -170,6 +189,7 @@ export class SignalTrace {
     this.mode = mode;
     this.origin = origin;
     this.startedAt = performance.now();
+    this.#aggregated = mode === "full";
     this.#parent = parent;
     this.link = parent?.link ?? null;
   }
@@ -246,22 +266,76 @@ export class SignalTrace {
     const allowed = isLocalDevRuntime() || (!!secret && sameSecret(value, secret));
     if (!allowed) return false;
     this.debugSev = logSeverity.trace;
+    this.mode = "full";
     return true;
+  }
+
+  //? Security: timings name models and spans, so only a local runtime or a call whose `x-akan-debug` passed sees them.
+  get exposesTiming(): boolean {
+    return this.debugSev !== null || isLocalTimingRuntime();
+  }
+
+  writeServerTiming(response: Response): void {
+    try {
+      response.headers.set("Server-Timing", this.serverTiming());
+    } catch {
+      // A fetched Response's headers are immutable, and a debugging aid is not worth a copy of the body.
+    }
+  }
+
+  //? Security: names are the app's identifiers, yet anything outside a header token is replaced before it is sent.
+  serverTiming(): string {
+    const token = (text: string) => text.replace(/[^A-Za-z0-9_.-]/g, "_");
+    const dur = (ms: number) => Math.round(ms * 10) / 10;
+    const total = this.spans.find((span) => span.id === this.#spanId);
+    const rest = this.spans.filter((span) => span !== total).sort((a, b) => a.startMs - b.startMs);
+    const entries = rest.slice(0, SERVER_TIMING_ENTRIES - 1).map((span) => {
+      const { model, op } = span.attrs ?? {};
+      if (typeof model !== "string" || typeof op !== "string") return `${token(span.name)};dur=${dur(span.durationMs)}`;
+      return `db;desc="${token(model)}.${token(op)}";dur=${dur(span.durationMs)}`;
+    });
+    return [`total;dur=${dur(total?.durationMs ?? performance.now() - this.startedAt)}`, ...entries].join(", ");
   }
 
   setAttr(key: string, value: LogAttrs[string]): void {
     this.attrs[key] = value;
   }
 
-  recordSpan(name: string, durationMs: number): void {
+  recordSpan(name: string, durationMs: number, attrs?: LogAttrs): void {
     if (this.mode !== "full" || this.spans.length >= MAX_SPANS_PER_TRACE) return;
-    this.spans.push({ name, durationMs });
+    const id = TraceContext.mintSpanId();
+    const startMs = Math.max(0, performance.now() - this.startedAt - durationMs);
+    this.spans.push({ id, parentId: this.#openSpanId(), name, startMs, durationMs, ...(attrs ? { attrs } : {}) });
+  }
+
+  #openSpanId(): string {
+    const open = spanAls.getStore();
+    return open?.trace === this ? open.id : this.spanId;
+  }
+
+  async span<T>(name: string, fn: () => Promise<T>): Promise<T> {
+    const id = TraceContext.mintSpanId();
+    const parentId = this.#openSpanId();
+    const startedAt = performance.now();
+    try {
+      return await spanAls.run({ trace: this, id }, fn);
+    } finally {
+      if (this.spans.length < MAX_SPANS_PER_TRACE) {
+        const startMs = startedAt - this.startedAt;
+        this.spans.push({ id, parentId, name, startMs, durationMs: performance.now() - startedAt });
+      }
+    }
   }
 
   countDbQuery(durationMs: number): void {
     if (this.mode !== "full") return;
     this.dbQueryCount += 1;
     this.dbQueryMs += durationMs;
+  }
+
+  recordDbQuery(model: string, op: string, durationMs: number): void {
+    this.countDbQuery(durationMs);
+    this.recordSpan(`db:${model}.${op}`, durationMs, { model, op });
   }
 
   countCache(hit: boolean): void {
@@ -292,7 +366,8 @@ export class SignalTrace {
     this.#flushFlight(totalMs);
     this.#emitCanonicalLine(totalMs);
     if (this.mode !== "full") return;
-    this.recordSpan("total", totalMs);
+    this.spans.push({ id: this.spanId, parentId: this.parentSpanId, name: "total", startMs: 0, durationMs: totalMs });
+    if (!this.#aggregated) return;
     traceAggregator.ingest(this);
     maybeFlushTraceFile();
   }
@@ -356,11 +431,14 @@ export class SignalTrace {
 // `process` is the one object they share, so the ALS and the aggregator stay single instances.
 const traceProcessStore = process as unknown as {
   __akanTraceAls?: AsyncLocalStorage<SignalTrace>;
+  __akanSpanAls?: AsyncLocalStorage<OpenSpan>;
   __akanTraceAggregator?: TraceAggregator;
 };
 
 traceProcessStore.__akanTraceAls ??= new AsyncLocalStorage<SignalTrace>();
 const als = traceProcessStore.__akanTraceAls;
+traceProcessStore.__akanSpanAls ??= new AsyncLocalStorage<OpenSpan>();
+const spanAls = traceProcessStore.__akanSpanAls;
 
 export const getCurrentTrace = (): SignalTrace | undefined => als.getStore();
 
@@ -389,14 +467,17 @@ export const runWithTrace = <T>(trace: SignalTrace, fn: () => T): T => als.run(t
 export const runTraced = async <T>(trace: SignalTrace | null, fn: () => Promise<T>): Promise<T> => {
   if (!trace) return await fn();
   return await als.run(trace, async () => {
+    let result: T;
     try {
-      return await fn();
+      result = await fn();
     } catch (error) {
       trace.fail(error);
       throw error;
     } finally {
       trace.finalize();
     }
+    if (result instanceof Response && trace.exposesTiming) trace.writeServerTiming(result);
+    return result;
   });
 };
 
@@ -417,12 +498,7 @@ TraceContext.registerOutboundReader(() => (als.getStore() ?? RequestTrace.curren
 export const traceSpan = async <T>(name: string, fn: () => Promise<T>): Promise<T> => {
   const trace = getCurrentTrace();
   if (trace?.mode !== "full") return await fn();
-  const start = performance.now();
-  try {
-    return await fn();
-  } finally {
-    trace.recordSpan(name, performance.now() - start);
-  }
+  return await trace.span(name, fn);
 };
 
 /** @deprecated Unused by akanjs; call `getCurrentTrace()?.countDbQuery(ms)`. */

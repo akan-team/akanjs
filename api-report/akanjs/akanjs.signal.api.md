@@ -1573,7 +1573,7 @@ export declare class SignalTrace {
     readonly endpointKey: string;
     readonly endpointType: string;
     readonly origin: TraceOrigin;
-    readonly mode: TraceMode;
+    mode: TraceMode;
     readonly startedAt: number;
     readonly spans: SpanRecord[];
     readonly attrs: LogAttrs;
@@ -1604,9 +1604,14 @@ export declare class SignalTrace {
     get endpoint(): string;
     startFlightRecorder(): boolean;
     applyDebugHeader(value: null | string | undefined): boolean;
+    get exposesTiming(): boolean;
+    writeServerTiming(response: Response): void;
+    serverTiming(): string;
     setAttr(key: string, value: LogAttrs[string]): void;
-    recordSpan(name: string, durationMs: number): void;
+    recordSpan(name: string, durationMs: number, attrs?: LogAttrs): void;
+    span<T>(name: string, fn: () => Promise<T>): Promise<T>;
     countDbQuery(durationMs: number): void;
+    recordDbQuery(model: string, op: string, durationMs: number): void;
     countCache(hit: boolean): void;
     countDataLoaderBatch(keyCount: number): void;
     fail(error: unknown): void;
@@ -1791,8 +1796,12 @@ export type SliceInfoServerArgs<S> = SliceInfoParts<S>["serverArgs"];
 export type SliceInfoSrvs<S> = SliceInfoParts<S>["srvs"];
 
 export interface SpanRecord {
+    id: string;
+    parentId: null | string;
     name: string;
+    startMs: number;
     durationMs: number;
+    attrs?: LogAttrs;
 }
 
 export type SrvMap<S extends ServiceModel> = S["srvMap"];
