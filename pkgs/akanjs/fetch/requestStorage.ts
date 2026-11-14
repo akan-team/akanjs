@@ -32,6 +32,7 @@ export interface AkanRequestStore {
   queryLog: RequestQueryRecord[];
   policy: AkanRequestPolicy;
   dynamicUsage: AkanDynamicUsage;
+  needsBrowser?: boolean;
 }
 
 export interface RequestStorage {
