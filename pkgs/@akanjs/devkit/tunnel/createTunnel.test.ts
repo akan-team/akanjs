@@ -218,6 +218,21 @@ describe("createTunnel", () => {
     expect(ssh.methods).toEqual([]);
   });
 
+  test("a key file the tunnel cannot read fails naming the tunnel, the setting and the path", async () => {
+    const { root, app } = track(await createTempApp("demo"));
+    const keyPath = path.join(root, "missing_key");
+    process.env.SSH_TUNNEL_PRIVATE_KEY_PATH = keyPath;
+    const connect = spyOn(Client.prototype, "connect");
+    try {
+      await expect(createTunnel("redis", { app, environment: "testing", port: freePort() })).rejects.toThrow(
+        `The redis tunnel for demo-testing could not read the key SSH_TUNNEL_PRIVATE_KEY_PATH names, ${keyPath} (ENOENT)`,
+      );
+      expect(connect).not.toHaveBeenCalled();
+    } finally {
+      connect.mockRestore();
+    }
+  });
+
   test("listens where SSH_TUNNEL_BIND_HOST says and warns when that is not loopback", async () => {
     const { root, app } = track(await createTempApp("demo"));
     const ssh = await startSshServer();

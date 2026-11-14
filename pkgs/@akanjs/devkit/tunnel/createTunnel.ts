@@ -20,10 +20,21 @@ interface TunnelOption {
   port?: number;
 }
 
+const readTunnelKey = (purpose: string, keyPath: string) => {
+  try {
+    return readFileSync(keyPath);
+  } catch (error) {
+    const reason = (error as NodeJS.ErrnoException).code ?? (error instanceof Error ? error.message : String(error));
+    throw new Error(`${purpose} could not read the key SSH_TUNNEL_PRIVATE_KEY_PATH names, ${keyPath} (${reason}).`, {
+      cause: error,
+    });
+  }
+};
+
 const tunnelAuth = (purpose: string): Pick<ConnectConfig, "privateKey" | "passphrase" | "password"> => {
   const keyPath = tunnelEnv.get("SSH_TUNNEL_PRIVATE_KEY_PATH");
   const passphrase = tunnelEnv.get("SSH_TUNNEL_PASSPHRASE");
-  if (keyPath) return { privateKey: readFileSync(keyPath), ...(passphrase ? { passphrase } : {}) };
+  if (keyPath) return { privateKey: readTunnelKey(purpose, keyPath), ...(passphrase ? { passphrase } : {}) };
   if (process.env.SSH_TUNNEL_PASSWORD) return { password: process.env.SSH_TUNNEL_PASSWORD };
   throw new Error(
     `${purpose} needs an SSH credential: export SSH_TUNNEL_PRIVATE_KEY_PATH (with SSH_TUNNEL_PASSPHRASE if the key has one) in the shell, or set SSH_TUNNEL_PASSWORD.`,
