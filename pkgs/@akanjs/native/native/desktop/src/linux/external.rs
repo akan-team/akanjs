@@ -351,10 +351,17 @@ pub(crate) fn cdp(webview: &WebView, method: &str, params: &str, reply: Reply) {
     "Input.dispatchKeyEvent" => match json::parse(params).and_then(|params| send_key(webview, &params)) {
       //? Answered once a script sent after the key has run: WebKit gives the page a key only after its answer to the one
       //? before, so no sent key waits behind another, and a Tab's take-focus reaches GTK before its hold ends.
-      Ok(hold) => webview.webview().evaluate_javascript("0", None, None, None::<&gio::Cancellable>, move |_| {
-        drop(hold);
-        reply.send(Ok("{}".into()));
-      }),
+      Ok(hold) => {
+        let hold = glib::thread_guard::ThreadGuard::new(hold);
+        evaluate(
+          webview,
+          "0",
+          Reply::new(move |answered| {
+            drop(hold);
+            reply.send(answered.map(|_| "{}".into()));
+          }),
+        );
+      }
       Err(error) => reply.send(Err(error)),
     },
     _ => reply.send(Err(format!("UNSUPPORTED: {method} reaches no view on Linux"))),

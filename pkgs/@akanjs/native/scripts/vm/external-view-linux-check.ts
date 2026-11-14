@@ -25,7 +25,7 @@
 // 8. loads again when its web process ends, counting restarts, with its init script, and an evaluate the end cut off
 //    answers INTERNAL,
 // 9. answers an evaluate sent before its first commit once, run once, gives null for what JSON has no form for, and
-//    answers CANCELLED for an evaluate its close cut off.
+//    answers CANCELLED for an evaluate and a sendKey its close cut off, a real Tab moving the focus again after it.
 
 import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -407,9 +407,18 @@ async function main() {
   }
   const cut = code(inView("for (;;) {}", "early"));
   await sleep(500);
+  const keyCut = code(externalView.sendKey({ id: "early", key: "Tab", code: "Tab" }));
+  await sleep(500);
+  const closing = Date.now();
   await externalView.close({ id: "early" });
   const closedMid = await within("an evaluate cut off by a close", cut, 10000);
   if (closedMid !== "CANCELLED") throw new Error("an evaluate cut off by a close answered " + closedMid);
+  const keyClosed = await within("a sendKey to a looping page cut off by a close", keyCut, 10000);
+  const waited = Date.now() - closing;
+  log("a sendKey to a looping page cut off by a close answered " + keyClosed + (waited < 3000 ? " within 3 s" : " after " + waited + " ms"));
+  if (keyClosed !== "CANCELLED" || waited >= 3000) throw new Error("a sendKey cut off by a close answered " + keyClosed + " after " + waited + " ms");
+  const tabbedOut = await checkpoint("realTab", { innerWidth, innerHeight });
+  if (!tabbedOut.skipped) await holdsKeyboard("a real Tab in the page after a sendKey cut off by a close");
 
   await externalView.close({ id: "board" });
   if ((await externalView.list()).length !== 0) throw new Error("the view is still listed");
