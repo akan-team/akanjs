@@ -1308,6 +1308,33 @@ describe("WebRouter page request metrics", () => {
     expect(timedOf("/docs") - timedBefore).toBe(2);
     expect(seen.after).toEqual(new Set([...seen.known, "unmatched"]));
   });
+
+  test("counts a CSR document under its route id, and one no route matches as unmatched", async () => {
+    const cwd = process.cwd();
+    const appDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-webrouter-csr-"));
+    fs.mkdirSync(path.join(appDir, "csr"));
+    fs.writeFileSync(path.join(appDir, "csr", "index.html"), "<html><body>csr shell</body></html>");
+    const [docsBefore, unmatchedBefore, timedBefore] = [countOf("/docs"), countOf("unmatched"), timedOf("/docs")];
+    try {
+      process.chdir(appDir);
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          const shell = await fullSsr(new Request("https://example.test/docs?csr=true"));
+          expect(shell.status).toBe(200);
+          expect(await shell.text()).toContain("csr shell");
+          expect((await fullSsr(new Request("https://example.test/users/42?csr=true"))).status).toBe(200);
+        },
+        { seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] } },
+      );
+    } finally {
+      process.chdir(cwd);
+      fs.rmSync(appDir, { recursive: true, force: true });
+    }
+
+    expect(countOf("/docs") - docsBefore).toBe(1);
+    expect(timedOf("/docs") - timedBefore).toBe(1);
+    expect(countOf("unmatched") - unmatchedBefore).toBe(1);
+  });
 });
 
 describe("WebRouter RSC redirect response", () => {

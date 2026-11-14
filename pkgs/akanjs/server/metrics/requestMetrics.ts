@@ -88,7 +88,7 @@ export const endpointRequests = new RequestSeriesSet(
 export const pageRequests = new RequestSeriesSet(
   metricRegistry.counter(
     "akan_page_requests_total",
-    "Page documents and RSC payloads answered, by route and status class.",
+    "Page documents, a `?csr=true` shell included, and RSC payloads answered, by route and status class.",
     ["route", "status_class"],
   ),
   metricRegistry.histogram(

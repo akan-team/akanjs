@@ -77,6 +77,10 @@ export class WebRouteContext {
     return null;
   }
 
+  exactRouteIdOf(pathname: string): string | undefined {
+    return RouteSeedIndexStore.match(pathname, this.seedIndex.entries)?.entry.routeId;
+  }
+
   async ensureRoute(url: URL, page?: PageCall) {
     const started = Date.now();
     const exact = RouteSeedIndexStore.match(url.pathname, this.seedIndex.entries);

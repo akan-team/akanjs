@@ -5,6 +5,7 @@ import type { BuilderRpc } from "./artifact";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import { CSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import type { CsrDevShell } from "./hmr/csrDevShell";
+import { PageCall, UNMATCHED_ROUTE } from "./metrics/requestMetrics";
 import { DevRoutes } from "./routing/devRoutes";
 import { resolveStaticPath } from "./staticPath";
 import type { BaseBuildArtifact, HttpRoutes } from "./types";
@@ -70,11 +71,9 @@ export class WebCsrSurface {
     const isCsr = url.searchParams.get("csr") === "true";
     if (isCsr) {
       stats.csr += 1;
-      if (this.devShell) return await this.#serveDevShell(req, url.pathname, this.devShell);
-      const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, url.pathname);
-      if (!csrHtml) return this.#unavailableResponse(url.pathname);
-      const html = await Bun.file(csrHtml).text();
-      return new Response(this.#withCsrHmr(html), { headers: this.#context.htmlResponseHeaders(200, req) });
+      const page = new PageCall();
+      page.route = this.#context.exactRouteIdOf(url.pathname) ?? UNMATCHED_ROUTE;
+      return page.finish(await this.#shell(req, url, csrOutputDir));
     }
 
     const csrAssetPath = path.extname(url.pathname) ? resolveStaticPath(csrOutputDir, url.pathname) : null;
@@ -86,6 +85,14 @@ export class WebCsrSurface {
       });
     }
     return null;
+  }
+
+  async #shell(req: Request, url: URL, csrOutputDir: string): Promise<Response> {
+    if (this.devShell) return await this.#serveDevShell(req, url.pathname, this.devShell);
+    const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, url.pathname);
+    if (!csrHtml) return this.#unavailableResponse(url.pathname);
+    const html = await Bun.file(csrHtml).text();
+    return new Response(this.#withCsrHmr(html), { headers: this.#context.htmlResponseHeaders(200, req) });
   }
 
   #withCsrHmr(html: string): string {
