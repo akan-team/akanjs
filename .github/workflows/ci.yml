@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: ./node_modules/.bin/biome ci --diagnostic-level=error --reporter=github .
 
@@ -29,7 +29,7 @@ jobs:
     timeout-minutes: 20
     steps:
       # Full history: the maintainability gate compares each akan.baseline.json with its copy on main.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run typecheckPkgs
 
@@ -53,7 +53,7 @@ jobs:
     timeout-minutes: 15
     steps:
       # Full history: a removed or changed export is checked against the report where the branch left the base.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
       - uses: ./.github/actions/setup
@@ -68,7 +68,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run audit:deps
 
@@ -77,7 +77,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
       - name: Seed each lib's gitignored test env from its tracked example
@@ -90,7 +90,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run release:build-packages
       - run: bun run release:verify-packages
@@ -107,7 +107,7 @@ jobs:
       matrix:
         package: [akanjs, "@akanjs/devkit", "@akanjs/cli", "@akanjs/native", "@akanjs/language", "@akanjs/vscode", create-akan-workspace, use-agentic]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
       - run: bun run runAkan test "$PACKAGE" --coverage
@@ -121,7 +121,7 @@ jobs:
           echo "name=coverage-${name//\//-}" >> "$GITHUB_OUTPUT"
         env:
           PACKAGE: ${{ matrix.package }}
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: ${{ !cancelled() }}
         with:
           name: ${{ steps.coverage.outputs.name }}
@@ -135,7 +135,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
       # --fast skips the typecheck, which fails on the empty env files a fresh checkout seeds; the budget reads only bundles.
@@ -147,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       - uses: ./.github/actions/setup
       - run: bun run buildAkan
       - run: bun run runAkan sync-all
