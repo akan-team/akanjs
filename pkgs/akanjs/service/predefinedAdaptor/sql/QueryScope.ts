@@ -1,7 +1,7 @@
 import { type DocumentQuery, type DocumentScopeOptions, documentQueryHelper, LiveRowScope } from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
 import type { QueryCompiler } from "./QueryCompiler";
-import type { FindManyOptions, SearchJoin, SortOption } from "./types";
+import type { FindManyOptions, SearchJoin, SortOption, SqlFrag } from "./types";
 import { quoteIdent } from "./values";
 
 export class QueryScope {
@@ -18,13 +18,20 @@ export class QueryScope {
     const limitValue = Number(options.limit ?? 0);
     const skipValue = Number(options.skip ?? 0);
     const order = options.sample ? "ORDER BY random()" : `ORDER BY ${this.#orderBy(options.sort, joins)}`;
-    const page = `${limitValue ? ` LIMIT ${limitValue}` : ""}${skipValue ? ` OFFSET ${skipValue}` : ""}`;
+    const page = this.#page(limitValue, skipValue);
     return {
       // A bare `*` would drag the join subquery's `rid`/`score` into the row.
       star: joins.length ? `${quoteIdent(this.#table)}.*` : "*",
-      tail: `FROM ${quoteIdent(this.#table)}${this.joinSql(joins)} WHERE ${where} ${order}${page}`,
-      args: [...this.joinParams(joins), ...params],
+      tail: `FROM ${quoteIdent(this.#table)}${this.joinSql(joins)} WHERE ${where} ${order}${page.sql}`,
+      args: [...this.joinParams(joins), ...params, ...page.params],
     };
+  }
+
+  //? The page size stays in the text: SQLite compiles a bound LIMIT into the statement and prepares it again each
+  //? time the parameter is bound, so only the offset, which it leaves a parameter, keeps one prepared statement.
+  #page(limit: number, skip: number): SqlFrag {
+    if (!limit && !skip) return { sql: "", params: [] };
+    return { sql: `${limit ? ` LIMIT ${limit}` : ""} OFFSET ?`, params: [skip] };
   }
 
   safeQuery(query: DocumentQuery | undefined, operation: string, { withRemoved = false }: DocumentScopeOptions) {
