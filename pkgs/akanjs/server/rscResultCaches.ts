@@ -51,7 +51,7 @@ export class RscResultCaches {
 
   static #resultCacheOptions(): LruTtlCacheOptions<CachedRscResult> {
     return {
-      sizeOf: (result) => result.bytes,
+      sizeOf: (result) => result.body.byteLength,
       maxBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_RSC_RESULT_CACHE_MAX_BYTES),
       maxEntryBytes: LruTtlCache.parseByteCeiling(process.env.AKAN_RSC_RESULT_CACHE_MAX_BODY_BYTES),
       sweepIntervalMs: RESULT_CACHE_SWEEP_INTERVAL_MS,
@@ -68,7 +68,7 @@ export class RscResultCaches {
   store(kind: string, cache: LruTtlCache<CachedRscResult>, cacheKey: string, result: CachedRscResult, ttl: number) {
     if (cache.set(cacheKey, result, ttl)) return;
     this.#logger.verbose(
-      `${kind} result cache store skipped pathname=${result.pathname} bytes=${result.bytes} reason=body-too-large`,
+      `${kind} result cache store skipped pathname=${result.pathname} bytes=${result.body.byteLength} reason=body-too-large`,
     );
   }
 }
