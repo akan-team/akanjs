@@ -1652,7 +1652,8 @@ describe("AkanApp", () => {
   }, 15_000);
 
   test("answers ready 503 while a replica's RSC worker restarts, and 200 again once its pong says it is back", async () => {
-    const { root, serverPath, runtimeDir, port } = await makeRoot("akan-app-ready-rsc-");
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ready-rsc-");
+    let port = 0;
     const workerPath = path.join(root, "worker.txt");
     await Bun.write(workerPath, "starting");
     await Bun.write(
@@ -1679,7 +1680,8 @@ describe("AkanApp", () => {
         return res?.status === code ? res : null;
       }, 8_000);
 
-    await withApp(serverPath, { replica: 1, runtimeDir, port }, async () => {
+    await withApp(serverPath, { replica: 1, runtimeDir }, async (bound) => {
+      port = bound;
       await waitForReady(port);
       expect(await (await readyAnswering(503)).json()).toMatchObject({
         ready: false,
