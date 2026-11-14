@@ -6,10 +6,32 @@ runs:
     - uses: oven-sh/setup-bun@v2
       with:
         bun-version: 1.4.4
-    - uses: actions/cache@v4
+    - id: bun-version
+      shell: bash
+      run: echo "version=$(bun --version)" >> "$GITHUB_OUTPUT"
+    # Restored and saved by hand rather than with actions/cache, whose post-job save would capture whatever the job's builds and tests wrote under node_modules.
+    - id: node-modules
+      uses: actions/cache/restore@v4
+      with:
+        path: |
+          node_modules
+          pkgs/*/node_modules
+          pkgs/@akanjs/*/node_modules
+        key: node-modules-${{ runner.os }}-bun-${{ steps.bun-version.outputs.version }}-${{ hashFiles('bun.lock', 'package.json', 'pkgs/*/package.json', 'pkgs/@akanjs/*/package.json') }}
+    - if: steps.node-modules.outputs.cache-hit != 'true'
+      uses: actions/cache@v4
       with:
         path: ~/.bun/install/cache
         key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
         restore-keys: bun-${{ runner.os }}-
-    - shell: bash
+    - if: steps.node-modules.outputs.cache-hit != 'true'
+      shell: bash
       run: bun install --frozen-lockfile
+    - if: steps.node-modules.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: |
+          node_modules
+          pkgs/*/node_modules
+          pkgs/@akanjs/*/node_modules
+        key: ${{ steps.node-modules.outputs.cache-primary-key }}
