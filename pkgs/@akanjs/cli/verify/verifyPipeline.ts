@@ -251,8 +251,10 @@ export class VerifyPipeline {
   }
 
   async #ssr(scope: VerifyScope): Promise<StepOutcome> {
-    const scanned = await new AkanQualityScanner().scan(this.#root);
-    const warnings = scanned.warnings.filter((warning) => warning.scope === "ssr");
+    const dirs = scope.targets
+      .filter((target) => target.type !== "pkg" && target.files.some((file) => file.endsWith(".tsx")))
+      .map((target) => target.dir);
+    const warnings = await new AkanQualityScanner().scanSsr(this.#root, dirs);
     return { diagnostics: VerifyDiagnostics.fromQuality(warnings, scope.changedFiles) };
   }
 
