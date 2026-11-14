@@ -39,8 +39,9 @@ await runner.build();
 
 값은 그것을 가진 facet에서 import합니다(`@akanjs/devkit/executors`, `@akanjs/devkit/akanConfig`,
 `@akanjs/devkit/workflow` 등). 루트 `@akanjs/devkit` 진입점은 타입만 내보내므로, 도구 하나를 불러도 모든 facet이
-프로세스에 올라오지 않습니다. facet이 따로 없는 도구는 그 폴더에서 import합니다(`@akanjs/devkit/app/…`, `quality/`,
-`workspace/`, `util/` 등). 이 도구들이 패키지 루트에 있던 시절의 경로는 다음 minor 릴리스까지 계속 동작합니다.
+프로세스에 올라오지 않습니다. facet 외에는 `exports`가 이름을 붙인 몇몇 파일(`app/applicationBuildRunner`,
+`cloud/cloudApi`, `mobile/desktopRelease` 등)만 공개되며, 그 밖의 파일은 `akan` 명령의 내부 구현이라 패키지 밖에서
+resolve되지 않습니다.
 
 ## 제공하는 것
 

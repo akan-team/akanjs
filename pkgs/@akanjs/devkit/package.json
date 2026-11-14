@@ -38,6 +38,7 @@
     "./preview": "./preview/index.ts",
     "./transforms": "./transforms/index.ts",
     "./workflow": "./workflow/index.ts",
+    "./app/applicationBuildRunner": "./app/applicationBuildRunner.ts",
     "./cloud/cloudApi": "./cloud/cloudApi.ts",
     "./cloud/cloudUpdates": "./cloud/cloudUpdates.ts",
     "./commandDecorators/exitCodeError": "./commandDecorators/exitCodeError.ts",
