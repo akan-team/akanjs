@@ -2,13 +2,12 @@
   "akan.size.file": {
     "fetch/client/fetchClient.ts": 968,
     "server/di/diLifecycle.ts": 822,
-    "server/resolver/signal.resolver.ts": 892,
-    "signal/signalContext.ts": 983,
+    "server/resolver/signal.resolver.ts": 889,
+    "signal/signalContext.ts": 976,
     "ui/Constant/Doc.tsx": 812
   },
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,
-    "server/resolver/signal.resolver.ts#SignalResolver.resolveEndpoint": 154,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 156,
     "ui/BottomSheet.tsx#BottomSheet": 154,
     "ui/Data/RefPicker.tsx#RefPicker": 169,
@@ -24,7 +23,7 @@
     "common/Logger.ts#Logger": 65,
     "fetch/client/fetchClient.ts#FetchClient": 72,
     "fetch/client/wsClient.ts#WsClient": 64,
-    "signal/signalContext.ts#SignalContext": 72,
+    "signal/signalContext.ts#SignalContext": 71,
     "store/storeInstance.ts#StoreInstance": 68
   },
   "akan.error.bare-error": {

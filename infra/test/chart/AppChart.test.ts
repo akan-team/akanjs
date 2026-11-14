@@ -138,4 +138,19 @@ describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
     expect(annotations["nginx.ingress.kubernetes.io/enable-cors"]).toBe("true");
     expect(annotations["nginx.ingress.kubernetes.io/cors-allow-headers"]).toContain("Authorization");
   });
+
+  it("marks the pod for scraping only with the Secret the scrape's token comes from", () => {
+    const annotationsOf = (metrics?: Record<string, unknown>) =>
+      AppChart.find(chart.render({ values: metrics ? { main: { metrics } } : undefined }), "Deployment").spec.template
+        ?.metadata?.annotations;
+
+    expect(annotationsOf()).toBeUndefined();
+    expect(annotationsOf({ scrape: true, tokenSecret: "myapp-status" })).toEqual({
+      "prometheus.io/scrape": "true",
+      "prometheus.io/path": "/_akan/app/metrics",
+      "prometheus.io/port": "8282",
+    });
+    for (const metrics of [{ scrape: true }, { scrape: true, tokenSecret: "" }, { scrape: true, tokenSecret: null }])
+      expect(() => annotationsOf(metrics)).toThrow("metrics.scrape needs metrics.tokenSecret");
+  });
 });

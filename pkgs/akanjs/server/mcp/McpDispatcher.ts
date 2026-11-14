@@ -19,6 +19,7 @@ import { MCP_APP_META, McpDocument, type McpExposedEndpoint, type McpToolResult 
 import type { MiddlewareCls } from "../../signal/middleware";
 import { SignalFailure } from "../../signal/SignalFailure";
 import { SignalContext } from "../../signal/signalContext";
+import { endpointRequests } from "../metrics/requestMetrics";
 import { McpArgumentError, McpExecutionContext } from "./McpExecutionContext";
 
 // The caller presented no credential at all, so the client must be told to authenticate.
@@ -171,16 +172,18 @@ export class McpDispatcher {
     req: Request,
   ) {
     // `run`, not `.try`: `.try` puts the stack in its 500 body, and an agent would quote it back into a transcript.
-    return await SignalContext.run(endpoint, endpointInfo, key, "mcp", async () => {
-      const context = await new SignalContext(key, req as Bun.BunRequest, {
-        ...this.#props,
-        endpointInfo,
-        adaptor: endpoint,
-        ctx: new McpExecutionContext(req, args),
-        origin: "mcp",
-      }).init();
-      return (await context.exec()) as unknown;
-    });
+    return await endpointRequests.of(`${endpointInfo.type}:${key}`).track(() =>
+      SignalContext.run(endpoint, endpointInfo, key, "mcp", async () => {
+        const context = await new SignalContext(key, req as Bun.BunRequest, {
+          ...this.#props,
+          endpointInfo,
+          adaptor: endpoint,
+          ctx: new McpExecutionContext(req, args),
+          origin: "mcp",
+        }).init();
+        return (await context.exec()) as unknown;
+      }),
+    );
   }
 
   isEndpoint(name: string) {

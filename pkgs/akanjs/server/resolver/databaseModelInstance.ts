@@ -107,38 +107,38 @@ export const databaseModelInstanceOf = (
 
     async __list(query?: QueryOf<any>, queryOption?: ListQueryOption): Promise<any[]> {
       const { find, sort, skip, limit, sample, select } = getListQuery(query, queryOption);
-      return await timedQuery(() => this.__store.find(find, { sort, skip, limit, sample, select }));
+      return await timedQuery(modelName, "find", () => this.__store.find(find, { sort, skip, limit, sample, select }));
     }
     async __listIds(query?: QueryOf<any>, queryOption?: ListQueryOption): Promise<string[]> {
       const { find, sort, skip, limit, sample } = getListQuery(query, queryOption);
-      return await timedQuery(() => this.__store.findIds(find, { sort, skip, limit, sample }));
+      return await timedQuery(modelName, "findIds", () => this.__store.findIds(find, { sort, skip, limit, sample }));
     }
     async __find(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<any | null> {
       const { find, sort, skip, sample, select } = getFindQuery(query, queryOption);
-      return await timedQuery(() => this.__store.findOne(find, { sort, skip, sample, select }));
+      return await timedQuery(modelName, "findOne", () => this.__store.findOne(find, { sort, skip, sample, select }));
     }
     async __findId(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<string | null> {
       const { find, sort, skip, sample } = getFindQuery(query, queryOption);
-      return await timedQuery(() => this.__store.findId(find, { sort, skip, sample }));
+      return await timedQuery(modelName, "findId", () => this.__store.findId(find, { sort, skip, sample }));
     }
     async __pick(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<any> {
       const { find, sort, skip, sample, select } = getFindQuery(query, queryOption);
-      return await timedQuery(() => this.__store.pickOne(find, { sort, skip, sample, select }));
+      return await timedQuery(modelName, "pickOne", () => this.__store.pickOne(find, { sort, skip, sample, select }));
     }
     async __pickId(query?: QueryOf<any>, queryOption?: FindQueryOption): Promise<string> {
       const { find, sort, skip, sample } = getFindQuery(query, queryOption);
-      const id = await timedQuery(() => this.__store.findId(find, { sort, skip, sample }));
+      const id = await timedQuery(modelName, "findId", () => this.__store.findId(find, { sort, skip, sample }));
       if (!id) throw new NoDocumentError(`No Document (${database.refName}): ${JSON.stringify(query)}`);
       return id;
     }
     async __exists(query?: QueryOf<any>): Promise<string | null> {
-      return await timedQuery(() => this.__store.exists(query));
+      return await timedQuery(modelName, "exists", () => this.__store.exists(query));
     }
     async __count(query?: QueryOf<any>): Promise<number> {
-      return await timedQuery(() => this.__store.count(query));
+      return await timedQuery(modelName, "count", () => this.__store.count(query));
     }
     async __insight(query?: QueryOf<any>): Promise<any> {
-      return await timedQuery(() => this.__store.insight(query));
+      return await timedQuery(modelName, "insight", () => this.__store.insight(query));
     }
     listenPre(type: SaveEventType, listener: SaveEventListener<any>) {
       return listenPreHook(type, listener);
@@ -167,40 +167,42 @@ export const databaseModelInstanceOf = (
       return this.__loadMany(ids);
     }
     async clone(data: DataInputOf<any, any> & { id: string }) {
-      return await timedQuery(() => this.__store.clone(data));
+      return await timedQuery(modelName, "clone", () => this.__store.clone(data));
     }
     async __create(data: DataInputOf<any, any>) {
-      return await timedQuery(() => this.__store.create(data));
+      return await timedQuery(modelName, "create", () => this.__store.create(data));
     }
     async [names.createModel](data: DataInputOf<any, any>) {
       return this.__create(data);
     }
     async __createMany(data: DataInputOf<any, any>[]) {
-      return await timedQuery(() => this.__store.createMany(data));
+      return await timedQuery(modelName, "createMany", () => this.__store.createMany(data));
     }
     async __update(id: string, data: DataInputOf<any, any>) {
-      return await timedQuery(() => this.__store.update(id, data));
+      return await timedQuery(modelName, "update", () => this.__store.update(id, data));
     }
     async [names.updateModel](id: string, data: DataInputOf<any, any>) {
       return this.__update(id, data);
     }
     async __remove(id: string) {
-      return await timedQuery(() => this.__store.remove(id));
+      return await timedQuery(modelName, "remove", () => this.__store.remove(id));
     }
     async __removeMany(query: QueryOf<any>) {
-      return await timedQuery(() => this.__store.removeManyByQuery(query));
+      return await timedQuery(modelName, "removeMany", () => this.__store.removeManyByQuery(query));
     }
     async __removeOne(query: QueryOf<any>) {
-      return await timedQuery(() => this.__store.removeOneByQuery(query));
+      return await timedQuery(modelName, "removeOne", () => this.__store.removeOneByQuery(query));
     }
     async __purgeMany(query: QueryOf<any>) {
-      return await timedQuery(() => this.__store.purgeManyByQuery(query));
+      return await timedQuery(modelName, "purgeMany", () => this.__store.purgeManyByQuery(query));
     }
     async __updateMany(query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentTouchOptions) {
-      return await timedQuery(() => this.__store.updateManyByQuery(query, update, ...touchArgs(options)));
+      const touch = touchArgs(options);
+      return await timedQuery(modelName, "updateMany", () => this.__store.updateManyByQuery(query, update, ...touch));
     }
     async __updateOne(query: QueryOf<any>, update: DocumentUpdateInput, options?: DocumentTouchOptions) {
-      return await timedQuery(() => this.__store.updateOneByQuery(query, update, ...touchArgs(options)));
+      const touch = touchArgs(options);
+      return await timedQuery(modelName, "updateOne", () => this.__store.updateOneByQuery(query, update, ...touch));
     }
     async [names.removeModel](id: string) {
       return this.__remove(id);

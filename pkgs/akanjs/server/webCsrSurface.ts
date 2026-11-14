@@ -5,6 +5,7 @@ import type { BuilderRpc } from "./artifact";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import { CSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import type { CsrDevShell } from "./hmr/csrDevShell";
+import { PageCall, UNMATCHED_ROUTE } from "./metrics/requestMetrics";
 import { DevRoutes } from "./routing/devRoutes";
 import { ScriptPolicy } from "./scriptPolicy";
 import { resolveStaticPath } from "./staticPath";
@@ -73,10 +74,9 @@ export class WebCsrSurface {
     const isCsr = url.searchParams.get("csr") === "true";
     if (isCsr) {
       stats.csr += 1;
-      if (this.devShell) return await this.#serveDevShell(req, url.pathname, this.devShell);
-      const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, url.pathname);
-      if (!csrHtml) return this.#unavailableResponse(url.pathname);
-      return this.#htmlResponse(req, await Bun.file(csrHtml).text(), { filePath: csrHtml });
+      const page = new PageCall();
+      page.route = this.#context.exactRouteIdOf(url.pathname) ?? UNMATCHED_ROUTE;
+      return page.finish(await this.#shell(req, url, csrOutputDir));
     }
 
     const csrAssetPath = path.extname(url.pathname) ? resolveStaticPath(csrOutputDir, url.pathname) : null;
@@ -88,6 +88,13 @@ export class WebCsrSurface {
       });
     }
     return null;
+  }
+
+  async #shell(req: Request, url: URL, csrOutputDir: string): Promise<Response> {
+    if (this.devShell) return await this.#serveDevShell(req, url.pathname, this.devShell);
+    const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, url.pathname);
+    if (!csrHtml) return this.#unavailableResponse(url.pathname);
+    return this.#htmlResponse(req, await Bun.file(csrHtml).text(), { filePath: csrHtml });
   }
 
   //? A built document's scripts are named by hash, as it is the same file for every request. What dev adds (the HMR

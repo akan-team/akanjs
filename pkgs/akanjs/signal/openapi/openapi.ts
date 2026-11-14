@@ -49,6 +49,10 @@ const akanErrorSchema: JsonSchema = {
     data: { type: "object", additionalProperties: true, description: "The values the message interpolates." },
     details: {},
     path: { type: "string" },
+    traceId: {
+      type: "string",
+      description: "The request's id, as its x-request-id header and its log records carry it.",
+    },
     timestamp: { type: "string", format: "date-time" },
   },
   required: ["error", "statusCode"],

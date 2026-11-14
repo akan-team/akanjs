@@ -131,6 +131,8 @@ describe("RscWorker process metric projection", () => {
   const processLevelKeys = [
     "role",
     "pid",
+    "startedAt",
+    "metricFamilies",
     "reportedAt",
     "rssBytes",
     "heapTotalBytes",

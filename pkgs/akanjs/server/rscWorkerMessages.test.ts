@@ -1,7 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import { Logger } from "akanjs/common";
+import { MetricExposition } from "./metrics/metricExposition";
+import type { ServerListener } from "./routing/serverListener";
 import { RscWorker } from "./rscWorkerHost";
+import { ServerMetrics } from "./serverMetrics";
 import type { BaseBuildArtifact } from "./types";
+import type { WebRouter } from "./webRouter";
 
 const withMessagesWorker = async (env: Record<string, string>, run: (rsc: RscWorker) => Promise<void>) => {
   const vars: Record<string, string> = {
@@ -29,6 +34,15 @@ const withMessagesWorker = async (env: Record<string, string>, run: (rsc: RscWor
       else process.env[key] = value;
     }
   }
+};
+
+const hostOf = (rsc: RscWorker) => {
+  const router = { getMetrics: () => rsc.getMetrics(), metricFamilies: () => rsc.metricFamilies() };
+  return new ServerMetrics(
+    { logger: new Logger("test"), serverMode: "solo" } as unknown as ConstructorParameters<typeof ServerMetrics>[0],
+    {} as unknown as ServerListener,
+    () => router as unknown as WebRouter,
+  );
 };
 
 const until = async (check: () => boolean) => {
@@ -95,4 +109,65 @@ describe("RscWorker messages", () => {
       expect(rsc.getMetrics().rscResultCacheHits).toBe(1);
     });
   }, 15_000);
+
+  test("the RSC cache's hits, misses and bypasses in the worker reach the host's scrape", async () => {
+    await withMessagesWorker({ AKAN_RSC_RESULT_CACHE: "1", AKAN_RSC_RESULT_CACHE_PATHS: "/en/cached" }, async (rsc) => {
+      const host = hostOf(rsc);
+      const lookups = () => {
+        const family = host.families().find((each) => each.name === "akan_route_cache_lookups_total");
+        const samples = family?.type === "counter" ? family.samples : [];
+        const sum = (outcome: string) =>
+          samples
+            .filter(({ labels }) => labels.cache === "rsc" && labels.role === "solo" && labels.outcome === outcome)
+            .reduce((total, sample) => total + sample.value, 0);
+        return { hit: sum("hit"), miss: sum("miss"), bypass: sum("bypass") };
+      };
+      const afterReport = async (url: string, expected: ReturnType<typeof lookups>) => {
+        await traceOf(rsc, url);
+        const count = Object.values(expected).reduce((sum, value) => sum + value, 0);
+        await until(() => Object.values(lookups()).reduce((sum, value) => sum + value, 0) >= count);
+        expect(lookups()).toEqual(expected);
+      };
+
+      await afterReport("http://localhost/en/cached", { hit: 0, miss: 1, bypass: 0 });
+      await afterReport("http://localhost/en/cached", { hit: 1, miss: 1, bypass: 0 });
+      await afterReport("http://localhost/en/counted", { hit: 1, miss: 1, bypass: 1 });
+    });
+  }, 15_000);
+
+  test("a counter the worker registers reaches the host's exposition, and its total never drops across a recycle or a crash", async () => {
+    await withMessagesWorker({}, async (rsc) => {
+      const host = hostOf(rsc);
+      const seen: number[] = [];
+      const total = () => {
+        const family = host.families().find((each) => each.name === "akan_test_counted_renders_total");
+        const value = family?.type === "counter" ? family.samples.reduce((sum, sample) => sum + sample.value, 0) : 0;
+        seen.push(value);
+        return value;
+      };
+      const replaced = async (restart: (pid: number) => void) => {
+        const pid = rsc.getMetrics().rscWorkerPid ?? 0;
+        restart(pid);
+        await until(() => {
+          total();
+          return rsc.status === "ready" && rsc.getMetrics().rscWorkerPid !== pid;
+        });
+      };
+
+      await messagesOf(rsc, "http://localhost/en/counted");
+      await messagesOf(rsc, "http://localhost/en/counted");
+      await until(() => total() === 2);
+      await replaced(() => expect(rsc.restartWhenIdle("test")).toBe(true));
+      await messagesOf(rsc, "http://localhost/en/counted");
+      await until(() => total() === 3);
+      await replaced((pid) => process.kill(pid, "SIGKILL"));
+      await messagesOf(rsc, "http://localhost/en/counted");
+      await until(() => total() === 4);
+
+      expect(seen.every((value, idx) => idx === 0 || value >= seen[idx - 1])).toBe(true);
+      expect(MetricExposition.render(host.families(), "openmetrics")).toContain(
+        'akan_test_counted_renders_total{role="solo"} 4',
+      );
+    });
+  }, 30_000);
 });

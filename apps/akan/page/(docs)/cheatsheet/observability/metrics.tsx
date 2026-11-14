@@ -47,12 +47,14 @@ export default page()
         desc: l.trans({
           en: (
             <span>
-              <strong>How busy is it?</strong> Requests in flight, WebSocket load, memory and the render queue.
+              <strong>How busy is it?</strong> Requests in flight, calls and errors per endpoint, WebSocket load, memory
+              and the render queue.
             </span>
           ),
           ko: (
             <span>
-              <strong>얼마나 바쁜가요?</strong> 처리 중인 요청, WebSocket 부하, 메모리, 렌더링 대기열을 보여 줍니다.
+              <strong>얼마나 바쁜가요?</strong> 처리 중인 요청, endpoint별 호출과 에러, WebSocket 부하, 메모리, 렌더링
+              대기열을 보여 줍니다.
             </span>
           ),
         }),
@@ -367,14 +369,119 @@ export default page()
       },
     ];
 
+    const seriesRows = [
+      {
+        name: ["akan_endpoint_requests_total", "akan_endpoint_request_duration_seconds"],
+        desc: l.trans({
+          en: "Calls and their latency per endpoint over HTTP, websocket and MCP, labelled `endpoint` (`query:getUser`, as a trace names it) and `status_class` (`2xx` to `5xx`).",
+          ko: "HTTP, websocket, MCP로 들어온 endpoint 호출 수와 지연 시간입니다. `endpoint`(trace와 같은 `query:getUser` 형태)와 `status_class`(`2xx`~`5xx`) label이 붙습니다.",
+        }),
+      },
+      {
+        name: ["akan_page_requests_total", "akan_page_request_duration_seconds"],
+        desc: l.trans({
+          en: "Page documents and RSC payloads per `route` id (`/:lang/blog`), timed to the start of the response; a path no route matches counts as `unmatched`.",
+          ko: "페이지 문서와 RSC payload를 `route` id(`/:lang/blog`)별로 셉니다. 시간은 응답이 시작될 때까지이고, 어느 route에도 맞지 않는 경로는 `unmatched`로 셉니다.",
+        }),
+      },
+      {
+        name: ["akan_route_cache_lookups_total"],
+        desc: l.trans({
+          en: "Route cache lookups by `cache` (`rsc` in the render worker, `html` in the web server) and `outcome`: a `hit` or `miss` whose `reason` is `requested-query` or `rewritten-query`, or a `bypass` whose `reason` says why the request skipped the cache, such as `request-not-public`.",
+          ko: "route cache 조회 수를 `cache`(render worker의 `rsc`, 웹 서버의 `html`)와 `outcome`별로 셉니다. `hit`과 `miss`의 `reason`은 `requested-query` 또는 `rewritten-query`이고, `bypass`의 `reason`은 `request-not-public`처럼 요청이 cache를 건너뛴 이유입니다.",
+        }),
+      },
+      {
+        name: ["akan_rsc_workers", "akan_rsc_workers_ready"],
+        desc: l.trans({
+          en: "RSC workers the app runs, and those ready to render; fewer ready than running means pages wait or fail.",
+          ko: "앱이 띄운 RSC worker 수와, 그중 렌더링할 준비가 된 수입니다. 준비된 수가 적으면 페이지가 기다리거나 실패합니다.",
+        }),
+      },
+      {
+        name: ["akan_rsc_renders_pending", "akan_rsc_sends_queued", "akan_rsc_worker_resident_memory_bytes"],
+        desc: l.trans({
+          en: "The worker's render queue, its unsent messages and its memory, sampled like the JSON fields.",
+          ko: "worker의 렌더링 대기열, 아직 못 보낸 메시지, 메모리입니다. JSON 필드와 같은 주기로 샘플링합니다.",
+        }),
+      },
+      {
+        name: ["akan_rsc_worker_restarts_total", "akan_rsc_worker_recycles_total"],
+        desc: l.trans({
+          en: "Worker restarts after it exited or hung, and planned swaps at a memory limit.",
+          ko: "worker가 죽거나 멈춰서 재시작한 횟수와, 메모리 한도에 닿아 계획대로 교체된 횟수입니다.",
+        }),
+      },
+      {
+        name: ["akan_build_info", "process_start_time_seconds"],
+        desc: l.trans({
+          en: "The akanjs release and app name as labels, and when the answering process started; a new start time means its counters began again.",
+          ko: "akanjs 버전과 앱 이름을 label로 싣고, 응답한 프로세스가 언제 시작했는지 알려 줍니다. 시작 시각이 바뀌면 카운터도 처음부터 다시 셉니다.",
+        }),
+      },
+    ];
+
+    const alertColumns = [
+      { key: "alert", label: l.trans({ en: "Alert", ko: "알림" }), code: true },
+      { key: "when", label: l.trans({ en: "Fires when", ko: "울리는 조건" }) },
+      { key: "check", label: l.trans({ en: "Look at", ko: "확인할 곳" }) },
+    ];
+
+    const alertRows = [
+      {
+        alert: "AkanEndpointErrorRatioHigh",
+        when: l.trans({
+          en: "More than 5% of an endpoint's calls answer 5xx for 15 minutes, at six calls a minute or more.",
+          ko: "endpoint 호출의 5% 넘게 15분 동안 5xx로 답할 때입니다. 분당 6회 이상 호출될 때만 봅니다.",
+        }),
+        check: l.trans({
+          en: "`akan logs` for that endpoint; a 4xx is the caller's and never counts.",
+          ko: "그 endpoint의 `akan logs`를 봅니다. 4xx는 호출한 쪽 문제라 세지 않습니다.",
+        }),
+      },
+      {
+        alert: "AkanPageErrorRatioHigh",
+        when: l.trans({
+          en: "The same, for a route's documents and RSC payloads.",
+          ko: "같은 조건을 route의 문서와 RSC payload에 적용합니다.",
+        }),
+        check: l.trans({
+          en: "The render path in the logs, and the RSC worker panels.",
+          ko: "로그의 렌더링 경로와 RSC worker 패널을 봅니다.",
+        }),
+      },
+      {
+        alert: "AkanEndpointLatencyHigh · AkanPageLatencyHigh",
+        when: l.trans({
+          en: "The 95th percentile stays above 2.5 s for 15 minutes, at six calls a minute or more.",
+          ko: "95번째 percentile이 15분 동안 2.5초를 넘을 때입니다. 분당 6회 이상일 때만 봅니다.",
+        }),
+        check: l.trans({
+          en: "`eventLoopLagP99Ms` and the render queue first, then `AKAN_TRACE=1` for that endpoint's steps.",
+          ko: "먼저 `eventLoopLagP99Ms`와 렌더링 대기열을 보고, 그다음 `AKAN_TRACE=1`로 그 endpoint의 단계를 봅니다.",
+        }),
+      },
+      {
+        alert: "AkanRscWorkerUnavailable",
+        when: l.trans({
+          en: "warning: a process runs more RSC workers than are ready for 10 minutes; critical: none is ready for 3.",
+          ko: "warning은 준비된 RSC worker가 띄운 수보다 적은 상태가 10분 갈 때, critical은 하나도 준비되지 않은 상태가 3분 갈 때입니다.",
+        }),
+        check: l.trans({
+          en: "`rscWorkerStatus` and the restarts in health; frequent recycles point at render memory.",
+          ko: "health의 `rscWorkerStatus`와 재시작 횟수를 봅니다. 교체가 잦다면 렌더링 메모리를 의심하세요.",
+        }),
+      },
+    ];
+
     const memoryEnvItems = [
       {
         key: "AKAN_MEMORY_LOG",
         type: '"1"',
         default: off,
         desc: l.trans({
-          en: "Logs one `memory role=…` line per process on every sample.",
-          ko: "샘플마다 프로세스당 `memory role=…` 줄 하나를 로그로 남깁니다.",
+          en: "Logs one `memory role=…` line per process on every sample, and adds the JSC heap walk (`jscHeapSizeBytes`, `jscObjectCount`, …) to each.",
+          ko: "샘플마다 프로세스당 `memory role=…` 줄 하나를 로그로 남기고, 샘플에 JSC heap 전체를 훑은 값(`jscHeapSizeBytes`, `jscObjectCount` 등)을 더합니다.",
         }),
       },
       {
@@ -745,6 +852,256 @@ curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/m
         </Scroll.Slide>
         <Divider />
 
+        <Scroll.Slide id="prometheus" title={l.trans({ en: "Scrape With Prometheus", ko: "Prometheus로 수집" })}>
+          <Docs.Title>{l.trans({ en: "Scrape With Prometheus", ko: "Prometheus로 수집" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The same route answers a Prometheus scrape, behind the same token. Every endpoint and page call is
+                    counted and timed with tracing off, so request rate, error rate and latency per endpoint need no
+                    setup. <code>Accept: application/openmetrics-text</code>, which Prometheus sends, gets OpenMetrics
+                    1.0; <code>text/plain</code> alone gets the 0.0.4 text. <code>*/*</code>,{" "}
+                    <code>application/json</code> or no Accept keeps the JSON above, whose <code>metricFamilies</code>{" "}
+                    carries the same series.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    같은 경로가 같은 토큰으로 Prometheus scrape에도 답합니다. trace를 켜지 않아도 endpoint와 페이지
+                    호출을 모두 세고 시간을 재므로, endpoint별 요청률, 에러율, 지연 시간에 따로 설정할 것이 없습니다.
+                    Prometheus가 보내는 <code>Accept: application/openmetrics-text</code>에는 OpenMetrics 1.0으로,{" "}
+                    <code>text/plain</code>만 보내면 0.0.4 텍스트로 답합니다. <code>*/*</code>,{" "}
+                    <code>application/json</code>, 또는 Accept가 없으면 위의 JSON을 그대로 받고, 그 안의{" "}
+                    <code>metricFamilies</code>에 같은 series가 담깁니다.
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="bash"
+            title="Terminal"
+            code={`curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" -H "Accept: application/openmetrics-text" localhost:8282/_akan/app/metrics
+# HELP akan_endpoint_requests Endpoint calls answered, over HTTP, websocket or MCP, by status class.
+# TYPE akan_endpoint_requests counter
+akan_endpoint_requests_total{role="all",endpoint="query:benchPing",status_class="2xx"} 5
+# TYPE akan_endpoint_request_duration_seconds histogram
+akan_endpoint_request_duration_seconds_bucket{role="all",endpoint="query:benchPing",le="0.001"} 4
+akan_endpoint_request_duration_seconds_bucket{role="all",endpoint="query:benchPing",le="+Inf"} 5
+akan_endpoint_request_duration_seconds_sum{role="all",endpoint="query:benchPing"} 0.0019
+akan_endpoint_request_duration_seconds_count{role="all",endpoint="query:benchPing"} 5
+akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
+# EOF`}
+          />
+          <Docs.Description>
+            <Docs.SubSubTitle>{l.trans({ en: "Series", ko: "series" })}</Docs.SubSubTitle>
+            <Docs.IntroTable type={l.trans({ en: "Series", ko: "series" })} items={seriesRows} />
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Labels stay bounded.</strong> A series is labelled only by endpoint, route id, status
+                      class and the process <code>role</code>, never a URL, user, account or query. A label takes at
+                      most 2,000 values and counts the rest as <code>other</code>. Latency has 12 buckets from 1 ms to
+                      10 s.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>label 수는 묶여 있습니다.</strong> label은 endpoint, route id, status class, 프로세스{" "}
+                      <code>role</code>뿐이고 URL, 사용자, 계정, 쿼리는 들어가지 않습니다. label 하나는 값을 2,000개까지
+                      받고 나머지는 <code>other</code>로 셉니다. 지연 시간 bucket은 1ms부터 10s까지 12개입니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Behind a gateway, one scrape covers every replica.</strong> Each replica reports its own
+                      counts and the gateway adds counters and buckets; it never averages a percentile, so take one with{" "}
+                      <code>histogram_quantile</code> over the sum. The sum is as fresh as each replica's last report,
+                      every <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>; set it to your scrape interval.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>gateway가 있으면 scrape 한 번으로 모든 replica를 봅니다.</strong> replica마다 자기 수치를
+                      보고하고 gateway가 카운터와 bucket을 더합니다. percentile은 평균 내지 않으니{" "}
+                      <code>histogram_quantile</code>로 합계에서 구하세요. 합계는 replica의 마지막 보고만큼 최신이고,
+                      보고는 <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>마다 옵니다. scrape 주기에 맞춰 두세요.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A restart starts a replica's counters from zero.</strong> The gateway keeps the counts it
+                      had, so its sum never drops; a solo process restarts with the pod, which{" "}
+                      <code>process_start_time_seconds</code> shows and <code>rate()</code> already handles.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>재시작하면 replica의 카운터는 0부터 다시 셉니다.</strong> gateway는 이전 값을 그대로 더해
+                      두므로 합계가 줄지 않습니다. solo 프로세스는 pod와 함께 재시작하며, 이는{" "}
+                      <code>process_start_time_seconds</code>에 드러나고 <code>rate()</code>가 알아서 처리합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="dashboard" title={l.trans({ en: "Dashboard And Alerts", ko: "대시보드와 알림" })}>
+          <Docs.Title>{l.trans({ en: "Dashboard And Alerts", ko: "대시보드와 알림" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The chart in <code>infra/app</code> marks the pod for scraping once a branch asks for it. It is off
+                    by default, because a built server answers the route 401 until the scraper holds the token. Keep the
+                    token in a Secret under the key <code>AKAN_STATUS_TOKEN</code>, and name only the Secret in the
+                    values file; the chart refuses to render <code>scrape</code> without <code>tokenSecret</code>:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>infra/app</code> chart는 branch가 원할 때 pod에 scrape 표시를 붙입니다. 빌드된 서버는
+                    scraper가 토큰을 갖기 전까지 이 경로에 401로 답하므로 기본값은 꺼짐입니다. 토큰은 Secret의{" "}
+                    <code>AKAN_STATUS_TOKEN</code> 키에 두고, values 파일에는 Secret 이름만 적습니다.{" "}
+                    <code>tokenSecret</code> 없이 <code>scrape</code>만 켜면 chart가 렌더링을 거부합니다:
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="yaml"
+            title="infra/app/values/<appName>-values.yaml"
+            showLineNumbers={false}
+            code={`# kubectl -n <appName>-main create secret generic <appName>-status --from-literal=AKAN_STATUS_TOKEN="$(openssl rand -hex 32)"
+main:
+  metrics:
+    scrape: true
+    tokenSecret: <appName>-status`}
+          />
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The pod then carries <code>prometheus.io/scrape</code>, <code>/path</code> and <code>/port</code>,
+                    and reads <code>AKAN_STATUS_TOKEN</code> from that Secret. The annotations do nothing on their own:
+                    a Prometheus pod job keeps annotated pods and sends the same token as a bearer from a file, here a
+                    copy of the Secret mounted into Prometheus's own namespace. With the Prometheus Operator, a{" "}
+                    <code>PodMonitor</code> in the app's namespace names the Secret in{" "}
+                    <code>authorization.credentials</code> instead.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    그러면 pod에 <code>prometheus.io/scrape</code>, <code>/path</code>, <code>/port</code>가 붙고, 앱은
+                    그 Secret에서 <code>AKAN_STATUS_TOKEN</code>을 읽습니다. annotation만으로는 아무 일도 일어나지
+                    않습니다. Prometheus의 pod job이 annotation이 붙은 pod만 남기고, 같은 토큰을 파일에서 읽어 bearer로
+                    보내야 합니다. 이 파일은 Prometheus namespace에 복사해 mount한 Secret입니다. Prometheus Operator를
+                    쓴다면 앱 namespace의 <code>PodMonitor</code>가 <code>authorization.credentials</code>에 그 Secret을
+                    가리킵니다.
+                  </span>
+                ),
+              })}
+            </div>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            language="yaml"
+            title="prometheus.yml"
+            showLineNumbers={false}
+            code={`scrape_configs:
+  - job_name: <appName>
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [<appName>-main]
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/<appName>-status/AKAN_STATUS_TOKEN
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        target_label: __metrics_path__
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: ([^:]+)(?::\\d+)?;(\\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+rule_files:
+  - akan-rules.yaml`}
+          />
+          <Docs.Description>
+            <Docs.SubSubTitle>{l.trans({ en: "Dashboard", ko: "대시보드" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    Import <code>infra/monitoring/akan-dashboard.json</code> into Grafana and pick a Prometheus data
+                    source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, the route
+                    caches' hit ratio and bypasses, p50/p95/p99 over every endpoint, the RSC workers running and ready,
+                    their queue, memory, restarts and recycles, and the build each process runs. The job, endpoint and
+                    route pickers narrow every panel.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    Grafana에 <code>infra/monitoring/akan-dashboard.json</code>을 import하고 Prometheus data source를
+                    고르세요. endpoint와 route별 요청률, 5xx 비율, p95 지연 시간, route cache의 hit 비율과 bypass, 전체
+                    endpoint의 p50/p95/p99, 실행 중이고 준비된 RSC worker 수와 대기열, 메모리, 재시작과 교체 횟수,
+                    프로세스마다 돌고 있는 빌드를 보여 줍니다. job, endpoint, route 선택으로 모든 패널을 좁힐 수
+                    있습니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.SubSubTitle>{l.trans({ en: "Alerts", ko: "알림" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    <code>infra/monitoring/akan-rules.yaml</code> is a Prometheus rules file; wrap its{" "}
+                    <code>groups</code> in a <code>PrometheusRule</code> for the Operator. The thresholds are
+                    conservative, so tighten them once you know your traffic:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>infra/monitoring/akan-rules.yaml</code>은 Prometheus rules 파일입니다. Operator를 쓴다면{" "}
+                    <code>groups</code>를 <code>PrometheusRule</code>로 감싸세요. 기준값은 보수적으로 잡았으니 트래픽을
+                    파악한 뒤 조이세요:
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.Table columns={alertColumns} rows={alertRows} stacked />
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
         <Scroll.Slide id="read" title={l.trans({ en: "How To Read", ko: "숫자 읽는 법" })}>
           <Docs.Title>{l.trans({ en: "How To Read", ko: "숫자 읽는 법" })}</Docs.Title>
           <Docs.Description>
@@ -959,13 +1316,15 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
                   en: (
                     <span>
                       <strong>Open metrics.</strong> Check <code>activeRequests</code>, <code>activeWebSockets</code>,{" "}
-                      <code>rooms</code>, memory and <code>eventLoopLagP99Ms</code>.
+                      <code>rooms</code>, memory and <code>eventLoopLagP99Ms</code>, and which endpoint answers{" "}
+                      <code>5xx</code> or slowly in the <code>akan_endpoint_*</code> series.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>metrics를 봅니다.</strong> <code>activeRequests</code>, <code>activeWebSockets</code>,{" "}
-                      <code>rooms</code>, 메모리, <code>eventLoopLagP99Ms</code>를 확인합니다.
+                      <code>rooms</code>, 메모리, <code>eventLoopLagP99Ms</code>를 확인하고,{" "}
+                      <code>akan_endpoint_*</code> series에서 어느 endpoint가 <code>5xx</code>를 내거나 느린지 봅니다.
                     </span>
                   ),
                 })}
