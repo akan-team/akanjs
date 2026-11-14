@@ -11,6 +11,7 @@ import {
   type LlmTurnRequest,
   pageContentInstruction,
 } from "./predefinedAdaptor/llm.adaptor";
+import { LlmContext } from "./predefinedAdaptor/llmContext";
 import { LlmSpend } from "./predefinedAdaptor/llmSpend";
 import { AgentToolsRole, LlmAdaptorRole } from "./predefinedAdaptor/role.adaptor";
 import { serve } from "./serve";
@@ -134,8 +135,10 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
   private static referencedMessage(message: AgentWireMessage): AgentWireMessage {
     const { references = [], ...rest } = message;
     if (!references.length) return message;
-    const block = [AgentService.referenceHeading, ...references.map(AgentService.referenceLine)].join("\n\n");
-    return { ...rest, text: [message.text, block].filter(Boolean).join("\n\n") };
+    //? Security: a record's title, its id, its value and its note are another party's text, so the whole of them is
+    //? fenced as a marked context block is. Only the heading, which is the framework's, stays outside.
+    const pointed = LlmContext.untrusted(references.map(AgentService.referenceLine).join("\n\n"));
+    return { ...rest, text: [message.text, AgentService.referenceHeading, pointed].filter(Boolean).join("\n\n") };
   }
 
   /** Not free to shorten: both halves were observed working — a re-read with a tool, else a caveat. */

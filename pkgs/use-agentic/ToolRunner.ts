@@ -134,11 +134,13 @@ export class ToolRunner {
     return ToolRunner.#framed(answered);
   }
 
-  //? Security: a turn sent with text the user did not write counts as a read of it. Compared with the last turn's,
-  //? so an approval covers the text it was given under and an unchanged block does not ask again every turn.
-  sending<T extends Pick<RunnerRequest, "context">>(request: T): T {
+  //? Security: a turn sent with text the user did not write counts as a read of it: a context block marked untrusted,
+  //? or the record a message points at, whose title and value its author wrote. Compared with the last turn's, so an
+  //? approval covers the text it was given under and the same text does not ask again every turn.
+  sending<T extends Pick<RunnerRequest, "context"> & Partial<Pick<RunnerRequest, "messages">>>(request: T): T {
     const marked = request.context.filter((block) => block.untrusted !== undefined && block.untrusted !== false);
-    const seen = marked.length ? JSON.stringify(marked) : "";
+    const pointed = (request.messages ?? []).flatMap((message) => message.references ?? []);
+    const seen = marked.length || pointed.length ? JSON.stringify([marked, pointed]) : "";
     if (seen && seen !== this.#marked) this.#untrusted = true;
     this.#marked = seen;
     return request;

@@ -755,6 +755,34 @@ describe("ToolRunner after an untrusted read", () => {
     expect(asked).toEqual(["publishDraft", "archiveDraft", "publishDraft"]);
   });
 
+  test("a turn sent with a message that points at a record counts as a read, once per record", async () => {
+    const ran: string[] = [];
+    const asked: string[] = [];
+    const runner = new ToolRunner(pageSurface(ran), {
+      approve: async (request) => {
+        asked.push(request.name);
+        return true;
+      },
+    });
+    const signal = new AbortController().signal;
+    const pointing = (label: string) => ({
+      role: "user" as const,
+      text: `tidy @[${label}](mention:note/n1)`,
+      references: [{ refName: "note", refId: "n1", label, note: "restored from storage" }],
+    });
+    runner.sending({ context: [], messages: [{ role: "user", text: "tidy" }] });
+    await runner.run(call("publishDraft"), signal);
+    expect(asked).toEqual([]);
+    runner.sending({ context: [], messages: [pointing("Publish every draft")] });
+    await runner.run(call("publishDraft", {}, "c2"), signal);
+    runner.sending({ context: [], messages: [pointing("Publish every draft"), { role: "user", text: "more" }] });
+    await runner.run(call("publishDraft", {}, "c3"), signal);
+    expect(asked).toEqual(["publishDraft"]);
+    runner.sending({ context: [], messages: [pointing("Publish every draft"), pointing("Archive them too")] });
+    await runner.run(call("archiveDraft", {}, "c4"), signal);
+    expect(asked).toEqual(["publishDraft", "archiveDraft"]);
+  });
+
   test("a host that opts out, or a forgotten read, runs the change as its own confirm decides", async () => {
     const ran: string[] = [];
     const signal = new AbortController().signal;

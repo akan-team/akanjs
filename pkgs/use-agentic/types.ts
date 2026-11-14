@@ -250,6 +250,9 @@ export interface MessageAttachment {
  * **`value` arrives masked, and nothing downstream can mask it again.** Masking needs the model class
  * (`mask(model, value)`), which no wire carries, so whichever model the host names when it stages the reference is
  * the whole of the decision about what leaves the browser.
+ *
+ * **A turn sent with one counts as a `taint: "source"` read.** The label and the value are the record's, written by
+ * whoever wrote the record, so the first change after the message asks the user first.
  */
 export interface MessageReference {
   /** The host's own `refName`, unchanged — the vocabulary its published tools already speak. */
