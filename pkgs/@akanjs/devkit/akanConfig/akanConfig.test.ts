@@ -7,7 +7,7 @@ import { AppExecutor, WorkspaceExecutor } from "../executors";
 import { NativeConfig } from "../mobile/nativeConfig";
 import type { PackageJson } from "../workspace/types";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
-import { DEFAULT_DOCKER_IMAGE } from "./dockerImage";
+import { BUN_IMAGE_PIN, DEFAULT_DOCKER_IMAGE } from "./dockerImage";
 import type { LibConfigInput } from "./types";
 
 const akanPackageJson = JSON.parse(
@@ -311,12 +311,11 @@ describe("AkanAppConfig", () => {
       expect(config.dockerfile).not.toContain(dropped);
   });
 
-  test("pins the default image by its multi-arch digest to the Bun release the repo runs", () => {
-    const [, tag, digest] = /^oven\/bun:(.+)-slim@sha256:([0-9a-f]+)$/.exec(DEFAULT_DOCKER_IMAGE) ?? [];
-
-    expect(tag).toBe(rootPackageJson.engines.bun);
+  test("pins the default image to the Bun release the repo runs, by the digest kept beside that version", () => {
+    expect(BUN_IMAGE_PIN.version).toBe(rootPackageJson.engines.bun);
     expect(setupActionBunVersion).toBe(rootPackageJson.engines.bun);
-    expect(digest).toHaveLength(64);
+    expect(BUN_IMAGE_PIN.digest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(DEFAULT_DOCKER_IMAGE).toBe(`oven/bun:${BUN_IMAGE_PIN.version}-slim@${BUN_IMAGE_PIN.digest}`);
   });
 
   test("runs the generated image as the bun user once every root step is done, on directories it owns", () => {
