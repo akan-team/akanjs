@@ -39,6 +39,10 @@ export const agentDictionary = serviceDictionary(["en", "ko"])
       "이 계정의 에이전트 사용 한도에 도달했습니다.",
     ],
     requestRefused: ["This app's agent does not take this request", "이 앱의 에이전트는 이 요청을 받지 않습니다."],
+    answerRefused: [
+      "This agent run is not waiting on the call this answer names",
+      "이 에이전트 실행은 이 답이 가리키는 호출을 기다리고 있지 않습니다.",
+    ],
     accountResolverMissing: [
       "An agent loop named a principal, and this server has no account resolver to resolve it with",
       "에이전트 루프에 principal이 주어졌지만 이 서버에는 이를 해석할 계정 resolver가 없습니다.",

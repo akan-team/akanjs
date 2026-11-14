@@ -36,6 +36,8 @@ export interface AgentLoopBudget {
     wallMs?: number;
 }
 
+export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
+
 export type AgentLoopEvent = {
     type: "awaiting";
     call: AgentWireToolCall;
@@ -84,6 +86,7 @@ export interface AgentLoopOptions {
     toolkits?: Record<string, AgentLoopToolkit>;
     clientTools?: AgentTool[];
     ask?: boolean;
+    answer?: AgentLoopCallAnswer;
     compact?: {
         at: number;
         keep?: number;

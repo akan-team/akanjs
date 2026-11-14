@@ -19,16 +19,24 @@ at every event.
   `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input, and a name an endpoint holds is dropped. The run
-  never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`,
-  append its result — or your own error when no page answers — and resume. The page keeps its own rule beside the
-  run's: `run(call)` asks the member through `host.approve` when a call that changes something follows a
-  `taint: "source"` read. The run's rule below is the wider one, counting every result, the page's included, so with
-  no `approve` a client call is refused once the run has read anything; an `approve` that allows a client call
-  leaves that question to the page.
+  never runs one: `approve` is asked, then the run ends `awaiting` with `client: true`. Have the page `run(call)`
+  and resume with what it returned as `answer` — or `answer: { id, error }` when no page answers. The page keeps
+  its own rule beside the run's: `run(call)` asks the member through `host.approve` when a call that changes
+  something follows a `taint: "source"` read. The run's rule below is the wider one, counting every result, the
+  page's included, so with no `approve` a client call is refused once the run has read anything; an `approve` that
+  allows a client call leaves that question to the page.
 - **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
-  A call ends the run `awaiting` with `question: true`; put the question to the member, append
-  `{ id, name: "askUser", result }` — or an `error` when they dismiss it — and resume. It never reaches `approve`,
-  counts as no tool call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
+  A call ends the run `awaiting` with `question: true`; put the question to the member and resume with
+  `answer: { id, result }` — or `{ id, error }` when they dismiss it. It never reaches `approve`, counts as no tool
+  call, and `untrusted` never sees the answer. A `clientTools` entry by that name is dropped.
+- **Answering a parked call.** `answer` is the only way in for what a client sends, and `messages` holds only your
+  own user messages and what `onMessage` handed over: never append a client's result to them. A run parks on one
+  call, the first of its last batch that nothing answered, so `answer` is accepted for that call alone and only when
+  it is a client tool's or `askUser`'s. The run names the result after the call, whatever name was sent, hands it to
+  `onMessage`, emits it as a `toolResult` and runs the calls the batch has left. An endpoint tool's call is
+  answered only by running it: an `answer` naming one, a call the run has not reached, or a call already answered
+  ends the run with `agent.error.answerRefused` before anything runs, and a resume without it carries on. Only
+  `askUser`'s answer is the member's own word; a client tool's is judged by the rule below like any result.
 - **Writes after a read.** What a tool returns may be text someone else wrote, so the run is tainted from the first
   result of a call that ran — an endpoint tool's or a client tool's, an error included — and every later call
   reaches `approve(call, { tainted, tool })` with `tainted` set. `askUser`'s answer, `openToolkit`'s and a call the
@@ -42,7 +50,8 @@ at every event.
   endpoint option says whose text a tool returns — `readOnly` says only that it changes nothing — so the predicate
   is where that is declared. `"defer"` holds the whole batch, emits `awaiting` and ends the run as `"awaiting"`.
 - **Resuming.** Store each message `onMessage` hands over — it is awaited, and a retried run may hand one over twice —
-  and call `loop` again with them. Trailing calls nothing answered go to `approve` again before any model call, and
+  and call `loop` again with them. A stored result is read as the answer to the call its id names, under that call's
+  name. Trailing calls nothing answered go to `approve` again before any model call, and
   the taint is rebuilt from the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result
   whole during the run and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal
   included, as a resume cannot tell one from a result. Store every message whole, marks included. `compacted` says

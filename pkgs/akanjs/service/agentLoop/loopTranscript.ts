@@ -127,6 +127,22 @@ export class LoopTranscript {
     return messages.some(({ summary, tainted }) => tainted ?? !!summary);
   }
 
+  //? Paired as `sanitize` pairs them, a result with the nearest call before it by that id; one no call is owed has none.
+  static answered(messages: readonly AgentWireMessage[]): [AgentWireToolResult, AgentWireToolCall | undefined][] {
+    const owed = new Map<string, AgentWireToolCall[]>();
+    const pairs: [AgentWireToolResult, AgentWireToolCall | undefined][] = [];
+    for (const message of messages) {
+      if (message.role === "tool") {
+        for (const result of message.toolResults ?? []) pairs.push([result, owed.get(result.id)?.shift()]);
+        continue;
+      }
+      const calls = message.toolCalls ?? [];
+      for (const call of calls) owed.delete(call.id);
+      for (const call of calls) owed.set(call.id, [...(owed.get(call.id) ?? []), call]);
+    }
+    return pairs;
+  }
+
   static results(messages: readonly AgentWireMessage[]): AgentWireToolResult[] {
     return messages.flatMap((message) => (message.role === "tool" ? (message.toolResults ?? []) : []));
   }

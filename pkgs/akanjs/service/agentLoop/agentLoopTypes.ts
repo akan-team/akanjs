@@ -19,6 +19,9 @@ export type AgentLoopApprove = (
   state: { tainted: boolean; tool: AgentTool },
 ) => PromiseOrObject<AgentLoopApproval>;
 
+/** What answers a parked call: a page's `run(call)` result or the member's reply. Its `name` is the call's, never sent. */
+export type AgentLoopCallAnswer = Omit<AgentWireToolResult, "name">;
+
 /** `description` is the one line the model reads, in `openToolkit`'s own description, to decide whether to open it. */
 export interface AgentLoopToolkit {
   description: string;
@@ -39,7 +42,7 @@ export interface AgentLoopBudget {
 
 /**
  * `awaiting`: `approve` deferred a call, and a resume with the messages `onMessage` stored asks it again; or a client
- * tool or `askUser` was called, and a resume with its result appended runs on from it.
+ * tool or `askUser` was called, and a resume with those messages and its `answer` runs on from it.
  */
 export type AgentLoopStop =
   | "end"
@@ -54,7 +57,10 @@ export type AgentLoopStop =
 export interface AgentLoopOptions {
   /** Tool names; the run sees only those `AgentToolsRole` lists to the account: `/mcp`'s, plus `mcp: "agent"` ones. */
   allow: readonly string[];
-  /** The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run. */
+  /**
+   * The transcript so far, ending in a user message for a new ask or in unanswered calls for a resumed run: your own
+   * user messages and what `onMessage` handed over, nothing a client sent. What a client answers goes in `answer`.
+   */
   messages: AgentWireMessage[];
   /** With no `preamble` either, a short neutral prompt stands in, as each adaptor's own fallback is about a screen. */
   instructions?: string;
@@ -73,17 +79,24 @@ export interface AgentLoopOptions {
   /**
    * The tools of a screen a connected browser has open (`AgentClientTools.list()` in `akanjs/ui`): client input,
    * listed beside the endpoint tools and never run here. `approve` is still asked. An allowed call ends the run as
-   * `awaiting` with `client: true`; append the browser's result, or an error when no page answers, and resume. A name
-   * an endpoint tool or `openToolkit` holds is dropped.
+   * `awaiting` with `client: true`; resume with the browser's result as `answer`, or `{ id, error }` when no page
+   * answers. A name an endpoint tool or `openToolkit` holds is dropped.
    */
   clientTools?: AgentTool[];
   /**
    * Lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool. A call ends the run as `awaiting`
-   * with `question: true`; append the person's `{ id, name: "askUser", result }`, or an `error` when they dismiss it,
-   * and resume. It never reaches `approve`, counts as no tool call, and `untrusted` never sees its answer. A call with
+   * with `question: true`; resume with the person's reply as `answer: { id, result }`, or `{ id, error }` when they
+   * dismiss it. It never reaches `approve`, counts as no tool call, and `untrusted` never sees its answer. A call with
    * no question is answered with an error instead. A `clientTools` entry by that name is dropped.
    */
   ask?: boolean;
+  /**
+   * Answers the call the last run parked on with `client` or `question`: the first call of the last batch that
+   * nothing answered, and only when it is a client tool's or `askUser`'s. The run names the result after that call,
+   * hands it to `onMessage` and runs on. An endpoint tool's call is answered only by running it, so an `answer` that
+   * names any other call ends the run with `agent.error.answerRefused` before anything runs; resume without it.
+   */
+  answer?: AgentLoopCallAnswer;
   /**
    * Summarizes all but the last `keep` messages (6), a batch's results counting as one, once the transcript is
    * estimated at `at` tokens, and also when a round's call fails as `agent.error.contextOverflow`, which is then asked

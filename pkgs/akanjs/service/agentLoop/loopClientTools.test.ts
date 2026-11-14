@@ -126,7 +126,7 @@ describe("AgentLoop client tools", () => {
     });
   });
 
-  test("runs on from the result a caller appended, and parks again when none was", async () => {
+  test("runs on from the answer a caller resumes with, and parks again when there is none", async () => {
     const parked: AgentWireMessage[] = [
       { role: "user", text: "Fill in the form, then check the calendar." },
       { role: "assistant", toolCalls: [callOf("c2", "fillForm"), callOf("c3", "eventList")] },
@@ -136,12 +136,9 @@ describe("AgentLoop client tools", () => {
     expect(reparked.filter((event) => event.type === "awaiting")).toEqual([
       { type: "awaiting", call: callOf("c2", "fillForm"), client: true },
     ]);
-    const answered: AgentWireMessage[] = [
-      ...parked,
-      { role: "tool", toolResults: [{ id: "c2", name: "fillForm", result: { filled: ["title"] } }] },
-    ];
+    const answer = { id: "c2", result: { filled: ["title"] } };
     const { port, called, requests } = harness([saying("Filled and checked.")]);
-    const { events } = await drain(port, ask({ messages: answered }));
+    const { events } = await drain(port, ask({ messages: parked, answer }));
     expect(called).toEqual(["eventList"]);
     expect(requests[0]?.messages.at(-1)?.toolResults?.map((result) => result.id)).toEqual(["c2", "c3"]);
     expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 1 });

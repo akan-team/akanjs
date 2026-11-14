@@ -45,7 +45,8 @@ an endpoint with a real guard is published, one with none is refused, and so is 
   so pass `approve`, or `untrusted` to name the results that carry another party's text. `toolkits` holds named
   groups of `allow` back until the model calls `openToolkit`; `clientTools` (from `AgentClientTools` on an open page)
   parks a call as `awaiting { client: true }` for the page to run; `ask: true` lists `askUser`, which parks as
-  `awaiting { question: true }` until you append the member's answer.
+  `awaiting { question: true }`. Resume either with `answer: { id, result | error }`, never by appending a
+  client's result to `messages`.
 
 ## Verify
 

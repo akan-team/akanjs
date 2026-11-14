@@ -12,8 +12,15 @@ import type {
   LlmTurnRequest,
   LlmUsage,
 } from "../predefinedAdaptor/llm.adaptor";
-import type { AgentLoopApproval, AgentLoopEvent, AgentLoopRequest, AgentLoopStop } from "./agentLoopTypes";
+import type {
+  AgentLoopApproval,
+  AgentLoopCallAnswer,
+  AgentLoopEvent,
+  AgentLoopRequest,
+  AgentLoopStop,
+} from "./agentLoopTypes";
 import { DeltaStream } from "./deltaStream";
+import { LoopAnswer } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
 import { LoopRequest } from "./loopRequest";
@@ -110,13 +117,19 @@ export class AgentLoop {
   async *#drive(): Events<AgentLoopStop> {
     this.#toolkits.restore(this.#messages);
     this.#tainted = LoopTranscript.markedTainted(this.#messages);
-    //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it.
-    for (const result of LoopTranscript.results(this.#messages))
-      if (!this.#askUser.isMeta(result.name) && !this.#toolkits.isMeta(result.name)) this.#taintBy(result);
-    const pending = LoopTranscript.pending(this.#messages);
-    if (pending.length) {
+    //? Security: a person's answer is the principal's own input, like a user message, so `untrusted` never sees it. Which
+    //? result is one is read off the call its id answers: a result's own name is whatever was stored.
+    for (const [result, call] of LoopTranscript.answered(this.#messages)) {
+      const name = call?.name ?? result.name;
+      const own = !!call && (this.#askUser.isMeta(name) || this.#toolkits.isMeta(name));
+      if (!own) this.#taintBy({ ...result, name });
+    }
+    const { answer } = this.#request;
+    if (answer !== undefined || LoopTranscript.pending(this.#messages).length) {
       if (!(await this.#authorize())) return "unauthorized";
-      const stop = yield* this.#runCalls(pending, await this.#listTools());
+      const tools = await this.#listTools();
+      if (answer !== undefined) yield* this.#accept(answer);
+      const stop = yield* this.#runCalls(LoopTranscript.pending(this.#messages), tools);
       if (stop) return stop;
     }
     for (;;) {
@@ -329,6 +342,19 @@ export class AgentLoop {
       await this.#record(results);
     }
     return stop;
+  }
+
+  //? Security: judged like a tool's result, a person's answer aside, and stored before the calls it left are judged.
+  async *#accept(answer: AgentLoopCallAnswer): Events<void> {
+    const result = LoopAnswer.resultOf(answer, this.#messages, (call) => this.#parks(call));
+    if (!this.#askUser.isMeta(result.name)) this.#taintBy(result);
+    await this.#record([result]);
+    yield { type: "toolResult", result, round: this.#round };
+  }
+
+  #parks(call: AgentWireToolCall): boolean {
+    if (call.argsError) return false;
+    return this.#askUser.isMeta(call.name) ? !LoopAsk.refusalOf(call) : this.#clientNames.has(call.name);
   }
 
   //? Per call, not per batch: a run killed mid-batch reaches no `finally`, and its resume would run a landed write again.
