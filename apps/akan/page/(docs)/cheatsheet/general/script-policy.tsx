@@ -241,8 +241,33 @@ export default page()
               </li>
               <li>
                 {l.trans({
-                  en: "A page replayed from the HTML cache has no nonce: it lists the hash of every script its first render ran under one. A page with more than 32 such scripts is rendered each time instead of stored.",
-                  ko: "HTML 캐시에서 다시 보내는 페이지에는 nonce가 없습니다: 첫 렌더가 nonce로 실행한 스크립트의 해시를 모두 나열합니다. 그런 스크립트가 32개를 넘는 페이지는 저장하지 않고 매번 렌더링합니다.",
+                  en: "A page replayed from the HTML cache has no nonce: it lists the hash of every script its first render ran under one, which is one per boundary that streamed in.",
+                  ko: "HTML 캐시에서 다시 보내는 페이지에는 nonce가 없습니다: 첫 렌더가 nonce로 실행한 스크립트의 해시를 모두 나열하며, 스트리밍으로 들어온 boundary마다 하나씩입니다.",
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      A response names at most 32 hashes, which keeps the header under 2 KB: a proxy in front reads a
+                      response's headers into one buffer (4 KB in nginx unless configured) and answers 502 past it. A
+                      page whose replay would need more is rendered for each request and says so:{" "}
+                      <code>X-Akan-Cache: BYPASS</code> with <code>X-Akan-Cache-Reason: script-hashes</code>, counted
+                      under that reason in <code>akan_route_cache_lookups_total</code>, and one warning in the log per
+                      route. Hashes a <code>.head()</code> declares past the 32 are left out, with one warning per
+                      route.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      한 응답은 해시를 최대 32개까지 적고, 그러면 헤더가 2 KB를 넘지 않습니다: 앞단의 프록시는 응답
+                      헤더를 버퍼 하나에 읽고 (nginx는 설정하지 않으면 4 KB) 넘치면 502로 답합니다. 다시 보낼 때 그보다
+                      많이 필요한 페이지는 요청마다 렌더링하고 그 사실을 알립니다: <code>X-Akan-Cache: BYPASS</code>와{" "}
+                      <code>X-Akan-Cache-Reason: script-hashes</code>, <code>akan_route_cache_lookups_total</code>의
+                      같은 reason, 그리고 route마다 한 번의 경고 로그입니다. <code>.head()</code>가 선언한 해시 중
+                      32개를 넘는 것은 빠지고, route마다 한 번 경고합니다.
+                    </span>
+                  ),
                 })}
               </li>
             </ul>
@@ -394,6 +419,99 @@ export default layout()
               })}
             </div>
             <Docs.Table columns={scriptColumns} rows={scriptRows} />
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="page-changes" title={l.trans({ en: "What Changes In A Page", ko: "페이지에서 달라지는 것" })}>
+          <Docs.Title>{l.trans({ en: "What Changes In A Page", ko: "페이지에서 달라지는 것" })}</Docs.Title>
+          <Docs.Description>
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      In the page source, the route state, the dictionary URL and each Flight chunk are{" "}
+                      <code>{'<script type="application/json">'}</code> blocks where there was script text, and the
+                      markup has no <code>{'<script type="module">'}</code> tag for the client entry: the bootstrap
+                      script adds it once the document has arrived.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      페이지 소스에서 route state, dictionary URL, Flight chunk는 스크립트 텍스트 대신{" "}
+                      <code>{'<script type="application/json">'}</code> 블록이고, 마크업에는 클라이언트 entry의{" "}
+                      <code>{'<script type="module">'}</code> 태그가 없습니다: 문서가 다 도착하면 bootstrap 스크립트가
+                      추가합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      A module a script adds does not hold the document's events back, so <code>DOMContentLoaded</code>{" "}
+                      and <code>load</code> can fire before the client entry runs (on a cached docs page,{" "}
+                      <code>load</code> at 31 ms and the entry at 63 ms). A listener for either that client code adds
+                      afterwards is never called: check <code>document.readyState</code> first.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      스크립트가 추가한 module은 문서의 이벤트를 붙잡지 않으므로, <code>DOMContentLoaded</code>와{" "}
+                      <code>load</code>가 클라이언트 entry보다 먼저 발생할 수 있습니다 (캐시된 문서 페이지에서{" "}
+                      <code>load</code> 31 ms, entry 63 ms). 클라이언트 코드가 그 뒤에 추가한 listener는 호출되지
+                      않습니다: 먼저 <code>document.readyState</code>를 확인하세요.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+          </Docs.Description>
+          <Code.Snippet
+            className="w-full"
+            title="apps/myapp/webkit/useWindowLoad.tsx"
+            code={`if (document.readyState === "complete") onLoad();
+else window.addEventListener("load", onLoad, { once: true });`}
+          />
+          <Docs.Description>
+            <ul className={bulletList}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      For <code>DOMContentLoaded</code> the test is <code>document.readyState !== "loading"</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <code>DOMContentLoaded</code>는 <code>document.readyState !== "loading"</code>으로 확인합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      A browser test that clicks or types as soon as navigation reports <code>load</code> can meet a
+                      page that has not hydrated, and the event is lost. Wait for something only the hydrated page does:
+                      assert the result of the action and let the runner retry it, or wait for a marker a client
+                      component sets in an effect, such as <code>document.documentElement.dataset.hydrated</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      내비게이션이 <code>load</code>를 알리자마자 클릭하거나 입력하는 브라우저 테스트는 아직 hydrate되지
+                      않은 페이지를 만나 이벤트를 잃을 수 있습니다. hydrate된 페이지만 하는 일을 기다리세요: 동작의
+                      결과를 단언하고 러너가 재시도하게 하거나, 클라이언트 컴포넌트가 effect에서 남기는 표시 (예:{" "}
+                      <code>document.documentElement.dataset.hydrated</code>)를 기다립니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
           </Docs.Description>
         </Scroll.Slide>
         <Divider />

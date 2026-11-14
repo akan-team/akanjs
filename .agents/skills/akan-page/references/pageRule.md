@@ -144,6 +144,14 @@ body shape — this is the full contract behind them. Before changing route beha
   `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header, `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names
   where the browser posts reports, and `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response
   (`'wasm-unsafe-eval'` for a page that compiles WebAssembly).
+  A response names at most 32 hashes (its header stays under 2 KB, inside the 4 KB a proxy reads headers into):
+  `scriptHashes()` past that are left out with one warning per route, and a page whose cached replay would need more
+  (one per streamed boundary) is rendered each time, answering `X-Akan-Cache-Reason: script-hashes`.
+- **`load` and `DOMContentLoaded` can fire before client code runs.** The client entry is a module the document's
+  bootstrap script adds, not a tag in the markup, so neither event waits for it. A listener for either is added only
+  after checking `document.readyState` (`"complete"` for `load`, not `"loading"` for `DOMContentLoaded`) and calling
+  the handler directly when it already holds. A browser test waits for what the hydrated page does (the result of
+  its action, or a marker a client component sets in an effect), never for navigation's `load`.
 
 ## A Root Layout Inside A CSR Bundle
 
