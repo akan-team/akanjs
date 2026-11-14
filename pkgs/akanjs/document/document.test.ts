@@ -1254,6 +1254,44 @@ describe("data loaders", () => {
     ]);
   });
 
+  test("DataLoader on a macrotask schedule batches what each scope loads across the turns of that task, each apart", async () => {
+    const scopes = new AsyncLocalStorage<{ name: string }>();
+    const batches: [string, string[]][] = [];
+    const loader = new DataLoader<string, string>(
+      async (keys) => {
+        const name = scopes.getStore()?.name ?? "shared";
+        batches.push([name, [...keys]]);
+        return keys.map((key) => `${name}:${key}`);
+      },
+      { scopeFn: () => scopes.getStore(), batchScheduleFn: (callback) => setImmediate(callback) },
+    );
+    const request = async (keys: string[]) => {
+      const loads: Promise<string>[] = [];
+      for (const key of keys) {
+        await null;
+        loads.push(loader.load(key));
+      }
+      return await Promise.all(loads);
+    };
+
+    const answers = await Promise.all([
+      scopes.run({ name: "first" }, () => request(["a", "b", "a"])),
+      scopes.run({ name: "second" }, () => request(["a", "c"])),
+      request(["a", "d"]),
+    ]);
+
+    expect(answers).toEqual([
+      ["first:a", "first:b", "first:a"],
+      ["second:a", "second:c"],
+      ["shared:a", "shared:d"],
+    ]);
+    expect(batches).toEqual([
+      ["first", ["a", "b"]],
+      ["second", ["a", "c"]],
+      ["shared", ["a", "d"]],
+    ]);
+  });
+
   test("DataLoader neither answers a scoped load from its cache nor keeps what that load read", async () => {
     const scopes = new AsyncLocalStorage<object>();
     let version = "committed";
