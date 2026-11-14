@@ -6,7 +6,9 @@ import { AppChart, type RenderOptions } from "./AppChart";
 const helm = Bun.which("helm");
 const chart = new AppChart(helm ?? "helm");
 
-const clusterValues = () => ({ main: { database: { mode: "cluster", secretName: "db" } } });
+const clusterValues = (storage?: { sharedClaim: string }) => ({
+  main: { database: { mode: "cluster", secretName: "db" }, ...(storage ? { storage } : {}) },
+});
 
 const renderCases: { name: string; render: RenderOptions }[] = [
   ...[[], ...AppChart.valueFiles.map((file) => [file])].flatMap((valueFiles) =>
@@ -17,6 +19,17 @@ const renderCases: { name: string; render: RenderOptions }[] = [
   ),
   { name: "cluster main", render: { values: clusterValues() } },
 ];
+const volumePermissions = (uid: number, gid: number) => ({
+  name: "volume-permissions",
+  command: ["sh", "-c", `find /data \\( ! -user ${uid} -o ! -group ${gid} \\) -exec chown -h ${uid}:${gid} {} +`],
+  securityContext: {
+    runAsUser: 0,
+    runAsNonRoot: false,
+    allowPrivilegeEscalation: false,
+    capabilities: { drop: ["ALL"], add: ["CHOWN", "FOWNER", "DAC_READ_SEARCH"] },
+  },
+  volumeMounts: [{ name: "sqlite-data", mountPath: "/data" }],
+});
 
 describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
   it("runs every branch as the bun user with no privilege escalation and no capabilities", () => {
@@ -40,18 +53,43 @@ describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
     }
   });
 
+  it("hands a single-mode claim to the pod's uid from a root init container with only the capabilities it needs", () => {
+    for (const { name, render } of renderCases.filter(({ render }) => !render.values)) {
+      const pod = AppChart.podSpec(chart.render(render));
+      expect({ name, init: pod.initContainers }).toEqual({
+        name,
+        init: [{ ...volumePermissions(1000, 1000), image: pod.containers[0]?.image, imagePullPolicy: "Always" }],
+      });
+    }
+    const pod = AppChart.podSpec(
+      chart.render({ values: { podSecurityContext: { runAsUser: 1001, runAsGroup: 1002 } } }),
+    );
+    expect(pod.initContainers?.[0]?.command).toEqual(volumePermissions(1001, 1002).command);
+  });
+
+  it("runs no init container in cluster mode, on a shared claim, or with volumePermissions off", () => {
+    for (const values of [
+      clusterValues(),
+      clusterValues({ sharedClaim: "uploads" }),
+      { volumePermissions: { enabled: false } },
+    ])
+      expect(AppChart.podSpec(chart.render({ values }))).not.toHaveProperty("initContainers");
+  });
+
   it("runs the pod as root again from a values file", () => {
     const pod = AppChart.podSpec(
       chart.render({
         values: {
           podSecurityContext: { runAsUser: 0, runAsGroup: 0, runAsNonRoot: false },
           securityContext: { capabilities: null },
+          volumePermissions: { enabled: false },
         },
       }),
     );
 
     expect(pod.securityContext).toMatchObject({ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false });
     expect(pod.containers[0]?.securityContext).toEqual({ allowPrivilegeEscalation: false });
+    expect(pod).not.toHaveProperty("initContainers");
   });
 
   it("renders the hardened defaults when the values predate them, as `helm upgrade --reuse-values` does, or null them", () => {

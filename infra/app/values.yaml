@@ -20,3 +20,6 @@ ingress:
   # The app answers CORS itself; ingress-nginx's answer to a preflight and its headers would replace the app's.
   cors:
     enabled: false
+# Single mode: before the app starts, a root init container hands the sqlite-data claim to runAsUser:runAsGroup.
+volumePermissions:
+  enabled: true

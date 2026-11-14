@@ -9,6 +9,10 @@
 {{- $podSecurityContext := .Values.podSecurityContext | default (dict "runAsNonRoot" true "runAsUser" 1000 "runAsGroup" 1000 "fsGroup" 1000 "fsGroupChangePolicy" "OnRootMismatch" "seccompProfile" (dict "type" "RuntimeDefault")) }}
 {{- $securityContext := .Values.securityContext | default (dict "allowPrivilegeEscalation" false "capabilities" (dict "drop" (list "ALL"))) }}
 {{- $ingress := .Values.ingress | default dict }}
+{{- $volumePermissions := and (not $cluster) (dig "enabled" true (.Values.volumePermissions | default dict)) }}
+{{- $uid := dig "runAsUser" 1000 $podSecurityContext | int64 }}
+{{- $gid := dig "runAsGroup" 1000 $podSecurityContext | int64 }}
+{{- $image := printf "%s/%s/%s:%s" .Values.image.registry .Values.repoName .Values.appName (default (printf "%s-live" $branch) .Values.image.tag) }}
 {{- if eq $mode "multiple" }}
 {{- fail "multiple mode opens one SQLite file from every container on one host; run it with docker compose, not this chart" }}
 {{- end }}
@@ -41,9 +45,35 @@ spec:
       securityContext:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if $volumePermissions }}
+      # A claim an image running as root wrote stays root's where the kubelet skips fsGroup (hostPath, NFS, some CSI).
+      initContainers:
+        - name: volume-permissions
+          image: {{ $image }}
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+            - {{ printf "find /data \\( ! -user %d -o ! -group %d \\) -exec chown -h %d:%d {} +" $uid $gid $uid $gid | quote }}
+          securityContext:
+            runAsUser: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              # DAC_READ_SEARCH lets find walk the 0700 snapshot directories the server makes under /workspace/sqlite.
+              add:
+                - CHOWN
+                - FOWNER
+                - DAC_READ_SEARCH
+          volumeMounts:
+            - name: sqlite-data
+              mountPath: /data
+      {{- end }}
       containers:
         - name: app
-          image: {{ .Values.image.registry }}/{{ .Values.repoName }}/{{ .Values.appName }}:{{ default (printf "%s-live" $branch) .Values.image.tag }}
+          image: {{ $image }}
           imagePullPolicy: Always
           {{- with $securityContext }}
           securityContext:

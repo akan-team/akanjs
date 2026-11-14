@@ -161,8 +161,8 @@ export default page()
         type: "object",
         default: "uid 1000, fsGroup 1000",
         desc: l.trans({
-          en: "The pod's `securityContext`: it runs as uid and gid 1000 (`runAsNonRoot`), its volumes are handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp is `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it; the block left out or `null` keeps these defaults. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }` with `securityContext: { capabilities: null }` runs it as root.",
-          ko: "pod의 `securityContext`입니다. uid와 gid 1000으로 실행하고(`runAsNonRoot`), 볼륨을 그룹 1000에 넘기며(`fsGroup`, `OnRootMismatch`), seccomp는 `RuntimeDefault`입니다. values 파일은 키 단위로 바꾸고, 키에 `null`을 적으면 그 키가 빠집니다. 블록을 빼거나 `null`로 두면 이 기본값을 씁니다. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }`와 `securityContext: { capabilities: null }`을 함께 적으면 root로 실행합니다.",
+          en: "The pod's `securityContext`: it runs as uid and gid 1000 (`runAsNonRoot`), its volumes are handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp is `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it; the block left out or `null` keeps these defaults. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }` with `securityContext: { capabilities: null }` and `volumePermissions: { enabled: false }` runs it as root.",
+          ko: "pod의 `securityContext`입니다. uid와 gid 1000으로 실행하고(`runAsNonRoot`), 볼륨을 그룹 1000에 넘기며(`fsGroup`, `OnRootMismatch`), seccomp는 `RuntimeDefault`입니다. values 파일은 키 단위로 바꾸고, 키에 `null`을 적으면 그 키가 빠집니다. 블록을 빼거나 `null`로 두면 이 기본값을 씁니다. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }`, `securityContext: { capabilities: null }`, `volumePermissions: { enabled: false }`를 함께 적으면 root로 실행합니다.",
         }),
       },
       {
@@ -172,6 +172,15 @@ export default page()
         desc: l.trans({
           en: "The container's `securityContext`: `allowPrivilegeEscalation: false` and every capability dropped. The root filesystem stays writable, because the server writes `/workspace/runtime`, `/workspace/.akan` and `/tmp` inside the image. `capabilities: null` gives the container the runtime's default capabilities; the block left out or `null` keeps these defaults.",
           ko: "컨테이너의 `securityContext`입니다. `allowPrivilegeEscalation: false`이고 모든 capability를 뺍니다. 서버가 이미지 안의 `/workspace/runtime`, `/workspace/.akan`, `/tmp`에 쓰므로 루트 파일시스템은 쓰기 가능한 채로 둡니다. `capabilities: null`이면 런타임 기본 capability로 돌아가고, 블록을 빼거나 `null`로 두면 이 기본값을 씁니다.",
+        }),
+      },
+      {
+        key: "volumePermissions.enabled",
+        type: "boolean",
+        default: "true",
+        desc: l.trans({
+          en: "Single mode: before the app starts, an init container from the app's image runs as root with only `CHOWN`, `FOWNER` and `DAC_READ_SEARCH` and hands every file on the `sqlite-data` claim to `podSecurityContext`'s `runAsUser:runAsGroup`, so a claim a root image wrote stays writable where `fsGroup` does not reach (hostPath, NFS, some CSI drivers). Once ownership is right it changes nothing. A cluster's `sharedClaim` is never touched. An image without `sh` and `find` needs `false`.",
+          ko: "single 모드에서 앱이 뜨기 전에, 앱 이미지로 만든 init container가 `CHOWN`, `FOWNER`, `DAC_READ_SEARCH`만 가진 root로 실행돼 `sqlite-data` claim의 모든 파일을 `podSecurityContext`의 `runAsUser:runAsGroup`에게 넘깁니다. 그래서 root 이미지가 쓴 claim도 `fsGroup`이 닿지 않는 곳(hostPath, NFS, 일부 CSI 드라이버)에서 계속 쓸 수 있습니다. 소유자가 이미 맞으면 아무것도 바꾸지 않습니다. cluster의 `sharedClaim`은 건드리지 않습니다. `sh`와 `find`가 없는 이미지는 `false`로 둡니다.",
         }),
       },
       {
