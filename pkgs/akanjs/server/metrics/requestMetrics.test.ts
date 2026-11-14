@@ -9,14 +9,28 @@ import { makeEnv, serverResolverTestServiceModel } from "../resolver/resolver.co
 import { SignalResolver } from "../resolver/signal.resolver";
 import { createSoloAppRoutes } from "../routing/soloAppRoutes";
 import { metricRegistry } from "./metricRegistry";
-import { endpointRequests } from "./requestMetrics";
 
 class MeteredEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
   meteredAnswer: builder.query(String, { guards: [Public] }).exec(() => "answer"),
   meteredRefusal: builder.query(String, { guards: [Public] }).exec(() => {
     throw new AkanError("meteredRefusal", "Refused for the test.", { statusCode: 503 });
   }),
+  meteredEcho: builder
+    .message(String, { guards: [Public] })
+    .msg("text", String)
+    .exec((text) => {
+      if (text === "missing") throw new AkanError("meteredMissing", "Missing for the test.", { statusCode: 404 });
+      return `echo:${text}`;
+    }),
 })) {}
+
+const resolved = () =>
+  SignalResolver.resolveEndpoint(MeteredEndpoint, new MeteredEndpoint(), {
+    registry: getDefaultInjectRegistry(),
+    env: makeEnv(),
+    live: getDefaultLiveRegistry(),
+    middleware: new Map(),
+  });
 
 const token = "metrics-status-token";
 
@@ -57,12 +71,7 @@ const callsOf = (families: AkanMetricFamily[], endpointLabel: string): Record<st
 
 describe("endpoint request metrics", () => {
   test("a solo server's scrape counts each endpoint's calls by status class, and times them", async () => {
-    const { routes = {} } = SignalResolver.resolveEndpoint(MeteredEndpoint, new MeteredEndpoint(), {
-      registry: getDefaultInjectRegistry(),
-      env: makeEnv(),
-      live: getDefaultLiveRegistry(),
-      middleware: new Map(),
-    });
+    const { routes = {} } = resolved();
     for (let idx = 0; idx < 3; idx++) expect((await call(routes, "meteredAnswer")).status).toBe(200);
     const logged = spyOn(Logger, "emit").mockImplementation(() => undefined);
     try {
@@ -85,14 +94,24 @@ describe("endpoint request metrics", () => {
     expect(answered?.counts.reduce((total, count) => total + count, 0)).toBe(3);
   });
 
-  test("counts a websocket or MCP call by the status its failure answers with, and passes the failure on", async () => {
-    const calls = endpointRequests.of("message:meteredEcho");
-    expect(await calls.track(async () => "echo")).toBe("echo");
-    const refused = new AkanError("meteredMissing", "Missing for the test.", { statusCode: 404 });
-    await expect(calls.track(() => Promise.reject(refused))).rejects.toBe(refused);
-    const families = metricRegistry.snapshot();
+  test("counts a websocket message its route answers by the status its failure answers with, and passes the failure on", async () => {
+    const { wsRoutes = {} } = resolved();
+    const ws = { data: {}, subscribe: () => undefined, unsubscribe: () => undefined } as unknown as Bun.ServerWebSocket;
+    const before = callsOf(metricRegistry.snapshot(), "message:meteredEcho");
+    expect(await wsRoutes.meteredEcho(ws, ["hi"], "message")).toEqual({
+      type: "msg",
+      key: "meteredEcho",
+      data: "echo:hi",
+    });
+    const logged = spyOn(Logger, "emit").mockImplementation(() => undefined);
+    try {
+      await expect(wsRoutes.meteredEcho(ws, ["missing"], "message")).rejects.toMatchObject({ code: "meteredMissing" });
+    } finally {
+      logged.mockRestore();
+    }
 
-    expect(callsOf(families, "message:meteredEcho")).toEqual([
+    expect(before).toEqual([]);
+    expect(callsOf(metricRegistry.snapshot(), "message:meteredEcho")).toEqual([
       { endpoint: "message:meteredEcho", status_class: "2xx", value: 1 },
       { endpoint: "message:meteredEcho", status_class: "4xx", value: 1 },
     ]);
