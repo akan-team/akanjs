@@ -114,7 +114,11 @@ const violationsOf = (
   if (needles.some((needle) => after.system.includes(needle))) found.add(rules.system);
   if (after.system !== before.system) found.add(rules.systemMoved);
   if (after.rest !== before.rest || needles.some((needle) => after.rest.includes(needle))) found.add(rules.rest);
-  const folded = (text: string) => text.normalize("NFKC").toLowerCase();
+  const folded = (text: string) =>
+    text
+      .normalize("NFKC")
+      .replace(/\p{Default_Ignorable_Code_Point}/gu, "")
+      .toLowerCase();
   const fences: Fence[] = [];
   const outside: string[] = [];
   for (const text of after.user) {
