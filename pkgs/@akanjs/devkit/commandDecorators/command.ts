@@ -152,12 +152,20 @@ const argValuesOf = (argMetas: (ArgMeta | InternalArgMeta)[], cmdArgs: unknown[]
   return values;
 };
 
+const resolvedValuesOf = (argMetas: (ArgMeta | InternalArgMeta)[], commandArgs: unknown[]) =>
+  Object.fromEntries(
+    argMetas.flatMap((argMeta) =>
+      argMeta.type === "Option" || argMeta.type === "Argument" ? [[argMeta.name, commandArgs[argMeta.idx]]] : [],
+    ),
+  );
+
 const versionGateOf = (cliVersion: string | undefined) => {
-  const warning = WorkspaceVersionCheck.warning(cliVersion, process.argv, process.cwd());
+  let warning = WorkspaceVersionCheck.warning(cliVersion, process.argv, process.cwd());
   const refusal = WorkspaceVersionCheck.refusal(cliVersion, process.argv, process.cwd());
   return (targetOption: TargetOption, values: { [name: string]: unknown }) => {
     if (refusal && !WorkspaceVersionCheck.readsOnly(targetOption, values)) throw new CliError("refused", refusal);
     if (warning) Logger.rawLog(chalk.yellow(`\n${warning}`), undefined, "error");
+    warning = null;
   };
 };
 
@@ -624,6 +632,8 @@ export const runCommands = async (...commands: CommandCls[]) => {
             assignCommandContext(commandContext, argMeta, commandArgs[argMeta.idx]);
             if ((opt as { verbose?: boolean }).verbose) Executor.setVerbose(true);
           }
+          //? Again on the answers: a left-out argument reads as read-only above, then may be answered `apply`.
+          checkVersion(targetMeta.targetOption, resolvedValuesOf(allArgMetas, commandArgs));
           const cmd = CommandContainer.get(command);
 
           try {

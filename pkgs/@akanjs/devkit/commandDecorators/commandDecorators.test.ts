@@ -787,6 +787,11 @@ describe("a CLI of another major.minor than the workspace's akanjs", () => {
         "    .exec(async function (fix) {",
         '      process.stdout.write("fix " + fix + "\\n");',
         "    }),",
+        '  actThing: target({ desc: "acts on a thing", readOnly: ({ action }) => action !== "apply" })',
+        '    .option("action", String, { enum: () => ["apply"] })',
+        "    .exec(async function (action) {",
+        '      process.stdout.write("acted " + action + "\\n");',
+        "    }),",
         "})) {}",
         "await runCommands(ThingCommand);",
         "",
@@ -815,6 +820,14 @@ describe("a CLI of another major.minor than the workspace's akanjs", () => {
     expect(refused.stdout).toContain("AKAN_ALLOW_VERSION_MISMATCH=1");
     expect(refused.stdout).not.toContain("made");
     expect((await run(["fix-thing"])).code).toBe(2);
+  }, 30_000);
+
+  test("decides on the values the left-out arguments resolve to, so one answered later cannot slip through", async () => {
+    const acted = await run(["act-thing"]);
+    expect(acted.code).toBe(2);
+    expect(acted.stdout).toContain("AKAN_ALLOW_VERSION_MISMATCH=1");
+    expect(acted.stdout).not.toContain("acted");
+    expect((await run(["act-thing"], { AKAN_ALLOW_VERSION_MISMATCH: "1" })).stdout).toContain("acted apply\n");
   }, 30_000);
 
   test("only warns for a read-only command, and runs a writing one with the override set", async () => {
