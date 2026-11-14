@@ -1,4 +1,10 @@
-import { type DocumentQuery, type DocumentScopeOptions, documentQueryHelper, LiveRowScope } from "akanjs/document";
+import {
+  type DocumentQuery,
+  type DocumentScopeOptions,
+  documentQueryHelper,
+  isDocumentQueryNode,
+  LiveRowScope,
+} from "akanjs/document";
 import { DocumentStoreError } from "../../documentStoreError";
 import type { QueryCompiler } from "./QueryCompiler";
 import type { FindManyOptions, SearchJoin, SortOption, SqlDialect, SqlFrag } from "./types";
@@ -57,7 +63,25 @@ export class QueryScope {
         "invalidQuery",
         `${operation} on "${this.#table}" can never match (${conflict}); ${operation.startsWith("remove") ? "a remove reaches live rows only" : "pass { withRemoved: true }"}`,
       );
-    return this.#compiler.compile(documentQueryHelper.all(documentQueryHelper.empty("removedAt"), query ?? {}));
+    return this.#compiler.compile(documentQueryHelper.all(this.#live(query), query ?? {}));
+  }
+
+  //? SQLite is given no statistics, so it expects 10 rows from `"removedAt" IS NULL` on an index leading with it and
+  //? reads every live row sooner than five ids by primary key. The `+` keeps that index out of a read by a list of ids.
+  #live(query: DocumentQuery | undefined) {
+    return this.#dialect.name === "sqlite" && QueryScope.#listsIds(query)
+      ? documentQueryHelper.raw('+"removedAt" IS NULL')
+      : documentQueryHelper.empty("removedAt");
+  }
+
+  static #listsIds(query: DocumentQuery | undefined): boolean {
+    if (!query) return false;
+    if (isDocumentQueryNode(query))
+      return query.kind === "all" && query.queries.some((sub) => QueryScope.#listsIds(sub));
+    const { id } = query as { id?: unknown };
+    return (
+      isDocumentQueryNode(id) && id.kind === "op" && id.op === "oneOf" && Array.isArray(id.value) && id.value.length > 0
+    );
   }
 
   // An atomic write has no join for the search; ignoring it would widen the write to every other match.

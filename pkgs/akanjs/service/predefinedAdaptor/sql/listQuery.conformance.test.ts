@@ -13,6 +13,7 @@ import {
 } from "akanjs/document";
 import { ConformanceEnv, type SqlDriver, type SqlDriverKind } from "../../../test/conformance";
 import { SqlDocumentStore } from "./SqlDocumentStore";
+import { queryPlanOf, sentQueries } from "./sentStatements.fixture";
 import { BASE_COLUMNS } from "./types";
 import { BASE_COLUMN_LEAF } from "./values";
 
@@ -200,21 +201,9 @@ const describeDriver = (kind: SqlDriverKind) => {
     });
 
     test("a list is read through the index on what it lists: the primary key, or a declared index", async () => {
-      const explained = async (explain: string, query: DocumentQuery) => {
-        const { where, params } = store.compiler.compile(query);
-        return await driver.database
-          .getConnection()
-          .prepare(`${explain} SELECT * FROM "listConf" WHERE ${where}`)
-          .all<Record<string, unknown>>(...params);
-      };
       const planOf = async (query: DocumentQuery) => {
-        if (!onPostgres)
-          return (await explained("EXPLAIN QUERY PLAN", query)).map(({ detail }) => String(detail)).join("\n");
-        return await driver.database.transaction(async () => {
-          // A table this small is cheaper to read whole; with that ruled out, an index the condition can use is used.
-          await driver.database.getConnection().execute("SET LOCAL enable_seqscan = off");
-          return (await explained("EXPLAIN", query)).map((row) => String(row["QUERY PLAN"])).join("\n");
-        });
+        const { where, params } = store.compiler.compile(query);
+        return await queryPlanOf(driver, { sql: `SELECT * FROM "listConf" WHERE ${where}`, params });
       };
       const byIds = await planOf({ id: q.oneOf([idOf("plain"), idOf("a,b"), idOf("NULL")]) });
       expect(byIds).toContain(onPostgres ? "listConf_pkey" : "sqlite_autoindex_listConf_1");
@@ -224,6 +213,85 @@ const describeDriver = (kind: SqlDriverKind) => {
       expect(await planOf({ ownerId: q.oneOf(["u1", "u2", "u3"]) })).toContain("listConf_ownerId");
       expect(await planOf({ score: q.oneOf([1, 2, 5]) })).toContain("listConf_score");
       if (onPostgres) expect(byIds).toContain("Index Cond: (id = ANY");
+    });
+  });
+
+  // Postgres gathers statistics and plans an id list through the primary key without help.
+  describe.skipIf(onPostgres)(`sql id list plans (${kind})`, () => {
+    let driver: SqlDriver;
+    let store: SqlDocumentStore;
+    let ids: string[];
+    const primaryKey = "sqlite_autoindex_listConf_1";
+
+    // The indexes every model gets lead with `removedAt`, and no statistics are gathered: what SQLite plans against.
+    beforeAll(async () => {
+      driver = await ConformanceEnv.openSqlDriver(kind);
+      const schema = new DocumentSchema()
+        .index({ removedAt: 1, createdAt: -1 })
+        .index({ removedAt: 1, ownerId: 1, createdAt: -1 })
+        .index({ ownerId: 1 });
+      store = new SqlDocumentStore(driver.database, listConstant, listDatabase, schema, driver.dialect);
+      await store.ensure();
+      await store.createMany(
+        Array.from({ length: 400 }, (_, idx) => ({ label: `row ${idx}`, ownerId: `u${idx % 20}`, score: idx % 7 })),
+      );
+      ids = await store.findIds({}, { limit: null });
+    });
+    afterAll(async () => {
+      await driver?.close();
+    });
+
+    const planOf = async (run: () => Promise<unknown>) =>
+      await queryPlanOf(driver, (await sentQueries(driver, run))[0]);
+
+    for (const length of [1, 2, 5, 200])
+      test(`a find and a count by ${length} ids read through the primary key, not through every live row`, async () => {
+        const list = ids.slice(0, length);
+        for (const read of [
+          () => store.find({ id: q.oneOf(list) }),
+          () => store.findIds({ id: q.oneOf(list) }),
+          () => store.count({ id: q.oneOf(list) }),
+        ]) {
+          const plan = await planOf(read);
+          expect(plan).toContain(primaryKey);
+          expect(plan).not.toContain("listConf_removedAt");
+        }
+        expect(await store.find({ id: q.oneOf(list) })).toHaveLength(length);
+        expect(await store.count({ id: q.oneOf(list) })).toBe(length);
+      });
+
+    test("an id list beside other conditions and a sort is read through an index on one of them, never every live row", async () => {
+      const list = ids.slice(0, 5);
+      const beside = [
+        () => store.find({ id: q.oneOf(list), score: 3 }, { sort: { createdAt: -1 }, limit: 20 }),
+        () => store.find(q.all({ id: q.oneOf(list) }, { score: q.gte(2) }), { sort: { score: 1 } }),
+        () => store.count({ id: q.oneOf(list), label: q.contains("row") }),
+      ];
+      for (const read of beside) {
+        const plan = await planOf(read);
+        expect(plan).toContain(primaryKey);
+        expect(plan).not.toContain("listConf_removedAt");
+      }
+      const ownersToo = await planOf(() =>
+        store.find({ id: q.oneOf(list), ownerId: "u1" }, { sort: { createdAt: -1 }, limit: 20 }),
+      );
+      expect(ownersToo).toMatch(new RegExp(`${primaryKey}|listConf_ownerId`));
+      expect(ownersToo).not.toContain("listConf_removedAt_createdAt");
+      const removed = await store.create({ label: "removed", ownerId: "u1" });
+      await store.remove(removed.id);
+      expect(await store.findIds({ id: q.oneOf([removed.id, ...list]) })).toHaveLength(5);
+      expect(await store.count({ id: q.oneOf([removed.id]) })).toBe(0);
+    });
+
+    test("a read that lists no ids keeps the index that leads with removedAt: a first page in order, an owner's rows", async () => {
+      expect(await planOf(() => store.find({}, { limit: 20 }))).toContain("listConf_removedAt_createdAt (removedAt=?)");
+      expect(await planOf(() => store.find({ ownerId: "u1" }, { limit: 20 }))).toContain(
+        "listConf_removedAt_ownerId_createdAt (removedAt=? AND <expr>=?)",
+      );
+      expect(await planOf(() => store.count({ ownerId: q.oneOf(["u1", "u2"]) }))).toContain(
+        "listConf_removedAt_ownerId_createdAt (removedAt=? AND <expr>=?)",
+      );
+      expect(await planOf(() => store.findOne({ id: ids[0] }))).toContain(primaryKey);
     });
   });
 
