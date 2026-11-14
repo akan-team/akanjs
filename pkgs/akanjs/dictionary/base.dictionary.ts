@@ -95,6 +95,13 @@ export const baseDictionary = serviceDictionary(["en", "ko"])
     cameraPromptPhoto: ["Choose from library", "앨범에서 선택하기"],
     cameraPromptPicture: ["Take a photo", "사진 찍기"],
     cameraPromptCancel: ["Cancel", "취소"],
+    cameraDeniedTitle: ["Camera access is off", "카메라 접근이 꺼져 있어요"],
+    cameraDeniedMessage: [
+      "To take a photo, allow camera access for this app in Settings.",
+      "사진을 찍으려면 설정에서 이 앱의 카메라 접근을 허용해 주세요.",
+    ],
+    cameraDeniedSettings: ["Open Settings", "설정 열기"],
+    cameraDeniedLater: ["Not now", "나중에"],
     success: ["Success", "성공"],
     failed: ["Failed", "실패"],
     processing: ["Processing...", "처리중..."],
