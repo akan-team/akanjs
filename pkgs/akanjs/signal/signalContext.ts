@@ -40,7 +40,7 @@ import { ResolveFieldContext } from "./resolveFieldContext";
 import { RoomKey } from "./roomKey";
 import { SignalFailure } from "./SignalFailure";
 import { SignalContractError } from "./signalContractError";
-import { getCurrentTrace, runTraced, SignalTrace, type TraceOrigin, traceSpan } from "./trace";
+import { getCurrentTrace, logCrash, runTraced, SignalTrace, type TraceOrigin, traceSpan } from "./trace";
 
 export type SignalTransportType = "http" | "websocket";
 
@@ -425,7 +425,7 @@ export class SignalContext<
   static wasReported(error: unknown) {
     return typeof error === "object" && error !== null && SignalContext.#reported.has(error);
   }
-  /** The 500 log is written in here, not in the transport, so it carries the call's traceId; rethrows after. */
+  /** The 5xx log is written in here, not in the transport, so it carries the call's traceId; rethrows after. */
   static async run<T>(
     endpoint: Adaptor,
     endpointInfo: EndpointInfo,
@@ -433,16 +433,16 @@ export class SignalContext<
     origin: TraceOrigin,
     fn: () => Promise<T>,
   ): Promise<T> {
-    return await runTraced(SignalTrace.create(key, endpointInfo.type, origin), async () => {
+    const trace = SignalTrace.create(key, endpointInfo.type, origin);
+    return await runTraced(trace, async () => {
       try {
         return await fn();
       } catch (error) {
         if (isExceptionLike(error))
           EndpointErrorContract.checkThrown(endpoint, endpointInfo, key, EndpointErrorContract.wireKey(error));
-        else if (SignalFailure.generalized(error).statusCode >= 500) {
-          const message = error instanceof Error ? error.message : String(error);
-          const stack = error instanceof Error ? error.stack : undefined;
-          endpoint.logger.error(`Error ${endpointInfo.type}-${key}:\n${stack ?? message}`);
+        const status = SignalFailure.statusOf(error);
+        if (status >= 500) {
+          logCrash(trace, { name: endpoint.logger.name ?? "App", label: `${endpointInfo.type}-${key}`, error, status });
           if (typeof error === "object" && error !== null) SignalContext.#reported.add(error);
         }
         throw error;

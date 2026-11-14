@@ -221,7 +221,8 @@ normalized to `info` with one warning.
   a client that stops reading holds at most 4 MiB, hears `{type:"dropped",count}` when it reads again, and is cut off
   past 10,000 dropped records);
   unset, the route does not exist. The same bearer also unlocks the health detail and metrics.
-- **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call; **`AKAN_LOG_FLIGHT=1`**
+- **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call, at `info`, `warn` under
+  500, or `error` with `type` and `stack` for a 5xx (then the only 5xx record); **`AKAN_LOG_FLIGHT=1`**
   keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
   `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace` — under the local dev runtime, or
   with the `AKAN_LOG_DEBUG_HEADER` secret.

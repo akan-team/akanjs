@@ -367,15 +367,15 @@ export default page()
       {
         name: "ok | error <endpoint>",
         desc: l.trans({
-          en: "The message. A clean call is written at info, a failed one at warn.",
-          ko: "메시지입니다. 정상 호출은 info, 실패한 호출은 warn으로 씁니다.",
+          en: "The message. A clean call is written at info, a failure under 500 at warn, and a 5xx at error with the error's type and stack.",
+          ko: "메시지입니다. 정상 호출은 info, 500 미만 실패는 warn, 5xx는 에러의 type과 stack을 붙여 error로 씁니다.",
         }),
       },
       {
         name: ["ms", "status"],
         desc: l.trans({
-          en: "Duration and status. On failure, status is the error's statusCode, or 500.",
-          ko: "걸린 시간과 status입니다. 실패하면 에러의 statusCode, 없으면 500입니다.",
+          en: "Duration and status. On failure, status is the one HTTP answers: an AkanError's statusCode, otherwise 500.",
+          ko: "걸린 시간과 status입니다. 실패하면 HTTP가 답한 status입니다. AkanError면 그 statusCode, 아니면 500입니다.",
         }),
       },
       {

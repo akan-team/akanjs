@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { AkanError } from "akanjs/base";
 import { Logger, type LoggerSinkEntry, logSeverity } from "akanjs/common";
 import {
   getCurrentTrace,
@@ -197,19 +198,39 @@ describe("canonical request line", () => {
     }
   });
 
-  test("a failed call is a warn line carrying the error's status and first line", async () => {
+  test("a call failed under 500 is a warn line carrying the error's status and first line", async () => {
     setCanonicalLineMode("all");
     const sink = collect();
     try {
       const trace = new SignalTrace("refund", "mutation", { mode: "context" });
       await expect(
         runTraced(trace, async () => {
-          throw Object.assign(new Error("nope\n    at somewhere"), { statusCode: 403 });
+          throw new AkanError("refused", "nope\n    at somewhere", { statusCode: 403 });
         }),
       ).rejects.toThrow("nope");
       const [line] = sink.canonical();
       expect(line?.record).toMatchObject({ level: "warn", message: "error mutation:refund" });
       expect(line?.record.attrs).toMatchObject({ status: 403, err: "nope" });
+      expect(line?.record.attrs?.stack).toBeUndefined();
+    } finally {
+      sink.restore();
+    }
+  });
+
+  test("a 5xx is an error line with the error's type and stack, and its status is the one HTTP answers", async () => {
+    setCanonicalLineMode("all");
+    const sink = collect();
+    try {
+      const trace = new SignalTrace("refund", "mutation", { mode: "context" });
+      await expect(
+        runTraced(trace, async () => {
+          throw Object.assign(new TypeError("driver broke"), { statusCode: 403 });
+        }),
+      ).rejects.toThrow("driver broke");
+      const [line] = sink.canonical();
+      expect(line?.record).toMatchObject({ level: "error", message: "error mutation:refund" });
+      expect(line?.record.attrs).toMatchObject({ status: 500, err: "driver broke", type: "TypeError" });
+      expect(String(line?.record.attrs?.stack)).toContain("TypeError: driver broke\n    at ");
     } finally {
       sink.restore();
     }

@@ -1486,6 +1486,8 @@ export declare class SignalFailure {
     static readonly message = "Internal Server Error";
     static get detailed(): boolean;
     static reset(): void;
+    static statusOf(error: unknown): number;
+    static logAttrs(error: unknown): LogAttrs;
     static generalized(error: unknown): {
         error: string;
         statusCode: number;
