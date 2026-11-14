@@ -98,7 +98,8 @@ interface ViewProps {
   height?: number;
 }
 // Security: the view is another server's script. It runs in a frame with no origin of its own, under a policy that
-// lets it connect nowhere, and reaches only what this host relays: calls to its own server, and links there.
+// lets its script open no connection and load images, styles, fonts and media from its own server alone; it calls
+// tools and opens links only through what this host relays, to that server.
 export const View = ({ className, url, tool, args, uri, href, height = 360 }: ViewProps) => {
   const { l } = usePage();
   const card = useRef<HTMLDivElement>(null);
