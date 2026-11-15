@@ -17,26 +17,26 @@ describe("OTLP exporter settings", () => {
     expect(read({ ...base, OTEL_SDK_DISABLED: "false" }).config).not.toBeNull();
   });
 
-  test("the generic endpoint is a base for v1/traces and v1/logs, and exports both; a per-signal one is used as is", () => {
+  test("the generic endpoint is a base for v1/traces, and for v1/logs once logs are asked for; a per-signal one is used as is", () => {
     const generic = read({ OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:4318/otlp/" }).config;
+    const withLogs = read({ OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:4318/otlp/", OTEL_LOGS_EXPORTER: "otlp" });
     const specific = read({ ...base, OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "https://traces.example.com/ingest" }).config;
     const tracesOnly = read({ OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: "http://collector:4318/v1/traces" }).config;
+    const logsOnly = read({ OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "https://logs.example.com/ingest" }).config;
 
-    expect([generic?.traces?.url, generic?.logs?.url]).toEqual([
-      "http://collector:4318/otlp/v1/traces",
-      "http://collector:4318/otlp/v1/logs",
-    ]);
-    expect([specific?.traces?.url, specific?.logs?.url]).toEqual([
-      "https://traces.example.com/ingest",
-      "http://collector:4318/v1/logs",
-    ]);
+    expect([generic?.traces?.url, generic?.logs]).toEqual(["http://collector:4318/otlp/v1/traces", null]);
+    expect(withLogs.config?.logs?.url).toBe("http://collector:4318/otlp/v1/logs");
+    expect([specific?.traces?.url, specific?.logs]).toEqual(["https://traces.example.com/ingest", null]);
     expect([tracesOnly?.traces?.url, tracesOnly?.logs]).toEqual(["http://collector:4318/v1/traces", null]);
+    expect([logsOnly?.traces, logsOnly?.logs?.url]).toEqual([null, "https://logs.example.com/ingest"]);
   });
 
   test("OTEL_LOGS_EXPORTER=none or OTEL_TRACES_EXPORTER=none turns one signal off", () => {
-    expect(read({ ...base, OTEL_LOGS_EXPORTER: "none" }).config?.logs).toBeNull();
-    expect(read({ ...base, OTEL_TRACES_EXPORTER: "none" }).config?.traces).toBeNull();
-    expect(read({ ...base, OTEL_TRACES_EXPORTER: "none", OTEL_LOGS_EXPORTER: "none" }).config).toBeNull();
+    const logs = { ...base, OTEL_EXPORTER_OTLP_LOGS_ENDPOINT: "http://collector:4318/v1/logs" };
+    expect(read({ ...logs, OTEL_LOGS_EXPORTER: "none" }).config?.logs).toBeNull();
+    expect(read({ ...base, OTEL_TRACES_EXPORTER: "none" }).config).toBeNull();
+    expect(read({ ...logs, OTEL_TRACES_EXPORTER: "none" }).config?.traces).toBeNull();
+    expect(read({ ...logs, OTEL_TRACES_EXPORTER: "none", OTEL_LOGS_EXPORTER: "none" }).config).toBeNull();
     const console = read({ ...base, OTEL_LOGS_EXPORTER: "console" });
     expect([console.config?.logs, console.warnings]).toEqual([
       null,
@@ -47,6 +47,7 @@ describe("OTLP exporter settings", () => {
   test("headers come from OTEL_EXPORTER_OTLP_HEADERS, percent-decoded, a per-signal list overriding a name", () => {
     const { config, warnings } = read({
       ...base,
+      OTEL_LOGS_EXPORTER: "otlp",
       OTEL_EXPORTER_OTLP_HEADERS: "Authorization=Basic%20c2VjcmV0, x-tenant = one",
       OTEL_EXPORTER_OTLP_LOGS_HEADERS: "x-tenant=two",
     });
@@ -72,6 +73,7 @@ describe("OTLP exporter settings", () => {
     const protobuf = read({ ...base, OTEL_EXPORTER_OTLP_TRACES_PROTOCOL: "http/protobuf", OTEL_LOGS_EXPORTER: "none" });
     const tuned = read({
       ...base,
+      OTEL_LOGS_EXPORTER: "otlp",
       OTEL_EXPORTER_OTLP_TIMEOUT: "2500",
       OTEL_EXPORTER_OTLP_LOGS_TIMEOUT: "800",
       OTEL_BSP_SCHEDULE_DELAY: "200",
@@ -98,7 +100,7 @@ describe("OTLP exporter settings", () => {
 
   test("an always_off or unsupported sampler leaves traces off and logs on", () => {
     for (const sampler of ["always_off", "xray"]) {
-      const { config } = read({ ...base, OTEL_TRACES_SAMPLER: sampler });
+      const { config } = read({ ...base, OTEL_LOGS_EXPORTER: "otlp", OTEL_TRACES_SAMPLER: sampler });
       expect([config?.traces, config?.sampler, config?.logs?.url]).toEqual([
         null,
         null,

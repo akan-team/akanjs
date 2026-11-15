@@ -99,6 +99,7 @@ beforeAll(async () => {
     AKAN_PUBLIC_REPO_NAME: "akanjs",
     AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
     OTEL_EXPORTER_OTLP_ENDPOINT: endpointUrl,
+    OTEL_LOGS_EXPORTER: "otlp",
     OTEL_EXPORTER_OTLP_HEADERS: "authorization=Bearer%20never-logged",
     // Long enough that the worker's spans reach the collector only through its flush on SIGTERM.
     OTEL_BSP_SCHEDULE_DELAY: "60000",
@@ -273,5 +274,6 @@ describe("OTLP export from the gateway, the replica and the RSC worker", () => {
     expect(flat(line?.attributes)).toMatchObject({ "akan.endpoint": "page:/:lang/hello" });
     expect(received.authorization).toContain("Bearer never-logged");
     expect(JSON.stringify(received.logs)).not.toContain("never-logged");
+    expect(new Set(received.logs.map((log) => log.resource["akan.process.role"]))).toEqual(new Set(["rsc-worker"]));
   });
 });

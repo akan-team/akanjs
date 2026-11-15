@@ -73,9 +73,12 @@ export class OtlpConfigReader {
 
   #signal(signal: OtlpSignal): OtlpSignalConfig | null {
     const upper = signal.toUpperCase();
+    const named = value(this.#env, `OTEL_${upper}_EXPORTER`);
+    //? Security: a log line's text is sent unredacted, so unlike OTel's default the generic endpoint alone sends no logs.
+    if (signal === "logs" && !named && !value(this.#env, "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT")) return null;
     const url = this.#endpointOf(signal);
     if (!url) return null;
-    const exporters = (value(this.#env, `OTEL_${upper}_EXPORTER`) ?? "otlp").toLowerCase().split(",");
+    const exporters = (named ?? "otlp").toLowerCase().split(",");
     const names = exporters.map((name) => name.trim()).filter(Boolean);
     if (names.includes("none")) return null;
     if (!names.includes("otlp")) {
