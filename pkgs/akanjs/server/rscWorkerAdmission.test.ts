@@ -140,6 +140,8 @@ describe("RscWorker render admission", () => {
     await withAdmissionWorker(cached, async ({ raise, render, body, started, settled }) => {
       expect(await body("quick/stored")).toContain("quick stored");
       const held = body("held/holder");
+      //? The gauges are sampled, so one in flight may still be the stored page's render.
+      await until(() => started("holder") === 1, "the holder to start");
       await settled(1, 0);
       const waiting = body("quick/waiter");
       await settled(1, 1);
