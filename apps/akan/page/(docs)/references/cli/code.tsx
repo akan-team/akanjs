@@ -283,7 +283,7 @@ akan code --rpc true`,
       { key: "write", label: l.trans({ en: "Write & run", ko: "쓰기·실행" }) },
       { key: "web", label: l.trans({ en: "Web", ko: "웹" }) },
       { key: "mcp", label: "MCP" },
-      { key: "ask", label: l.trans({ en: "Asks first", ko: "쓰기 승인" }) },
+      { key: "ask", label: l.trans({ en: "Asks first", ko: "승인 요청" }) },
       { key: "saved", label: l.trans({ en: "Saved", ko: "세션 저장" }) },
     ];
 
@@ -294,10 +294,10 @@ akan code --rpc true`,
           {
             name: "local",
             desc: l.trans({
-              en: "The default. Everything is on, and nothing asks for approval.",
-              ko: "기본값입니다. 모든 기능이 켜져 있고 승인을 묻지 않습니다.",
+              en: "The default. Everything is on, and a shell command waits for your approval (`--no-ask-commands` turns that off).",
+              ko: "기본값입니다. 모든 기능이 켜져 있고, 셸 명령은 승인을 받은 뒤 실행합니다 (`--no-ask-commands`로 끕니다).",
             }),
-            marks: { write: true, web: true, mcp: true, ask: false, saved: true },
+            marks: { write: true, web: true, mcp: true, ask: true, saved: true },
           },
           {
             name: "review",
@@ -370,7 +370,8 @@ akan code --rpc true`,
             <strong>
               <code>web</code> asks before <code>write</code> and <code>edit</code> only.
             </strong>{" "}
-            <code>bash</code> never waits for approval.
+            <code>bash</code> never waits for approval there. <code>local</code> is the reverse: it asks before{" "}
+            <code>bash</code> and never before a file write.
           </>
         ),
         ko: (
@@ -378,7 +379,8 @@ akan code --rpc true`,
             <strong>
               <code>web</code>이 승인을 묻는 것은 <code>write</code>와 <code>edit</code>뿐입니다.
             </strong>{" "}
-            <code>bash</code>는 승인을 묻지 않고 실행됩니다.
+            <code>bash</code>는 승인을 묻지 않고 실행됩니다. <code>local</code>은 반대로 <code>bash</code> 전에 묻고,
+            파일을 쓸 때는 묻지 않습니다.
           </>
         ),
       }),

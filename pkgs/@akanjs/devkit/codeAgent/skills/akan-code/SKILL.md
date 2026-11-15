@@ -139,13 +139,15 @@ akan code -i "<prompt>"         open the session with the prompt already sent
 --compact-at <percent>          compact once the window is this full (10, 20, … 100)
 --trust-workspace               start this repo's MCP servers and extensions without asking
 --no-ask-network                never ask before an unlisted host (local profile)
+--no-ask-commands               run shell commands without asking (local profile)
 --rpc-listen unix:<path>|tcp:[host:]<port>   serve the RPC wire on a socket instead of stdio
 ```
 
 `local` runs as the user: it refuses known secret files and the home credential stores, and asks before it
-fetches a page from a host off a short documentation list or a shell command that reaches the network
-(`curl`, `ssh`, …) — refused outright where nobody can answer, as in a one-shot `akan code "<prompt>"`. It is
-not a sandbox; `pod` in a container is.
+runs a shell command, fetches a page from a host off a short documentation list, or runs a shell command that
+reaches the network (`curl`, `ssh`, …). Where nobody can answer, as in a one-shot `akan code "<prompt>"` or
+inside a sub-agent, an ordinary command runs unasked and those network calls are refused outright. It is not a
+sandbox; `pod` in a container is.
 
 A `tcp:` listener asks every connection to open with `{"auth":"<token>"}` on its first line; the token is a
 fresh one in `~/.akan/code/rpc/<port>.token`, or the one in the file `AKAN_CODE_RPC_TOKEN_FILE` names.
