@@ -240,9 +240,18 @@ describe("Logger attrs", () => {
     }));
 
   test("masks every key a server env profile may not carry, not only the obvious ones", () => {
-    const attrs = { discordWebhook: "w", sentryDsn: "d", awsAccessKey: "a", regcred: "r", enrollKey: "e", ms: 1 };
+    const attrs = {
+      discordWebhook: "w",
+      sentryDsn: "d",
+      awsAccessKey: "a",
+      AKAN_CLIENT_REPORT_KEY: "k",
+      regcred: "r",
+      enrollKey: "e",
+      ms: 1,
+    };
     expect(Logger.redactAttrs(attrs)).toEqual({
       discordWebhook: "[redacted]",
+      AKAN_CLIENT_REPORT_KEY: "[redacted]",
       sentryDsn: "[redacted]",
       awsAccessKey: "[redacted]",
       regcred: "[redacted]",
