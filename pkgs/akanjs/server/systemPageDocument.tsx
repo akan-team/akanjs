@@ -14,6 +14,8 @@ export interface SystemPageOptions {
   error?: unknown;
   /** Dev only: the HMR client, so a page that failed to render reloads once a later build fixes it. */
   script?: string;
+  /** The response's script nonce, which `script` runs under: the HMR client imports modules itself. */
+  scriptNonce?: string;
 }
 
 export interface SystemPageHomeHrefOptions {
@@ -58,7 +60,9 @@ a { color: inherit; }
 `;
 
 /** The card alone, styled by the app's own tokens: what a not-found raised after the layouts streamed renders in place. */
-export const SystemPageMain = (options: Omit<SystemPageOptions, "lang" | "stylesheetHref" | "script">) => {
+export const SystemPageMain = (
+  options: Omit<SystemPageOptions, "lang" | "stylesheetHref" | "script" | "scriptNonce">,
+) => {
   const copy = SYSTEM_PAGE_STATUS_COPY[options.kind];
   const details = options.showDetails ? getSystemPageErrorDetails(options.error) : null;
   return (
@@ -115,7 +119,7 @@ export function createSystemPageDocument(options: SystemPageOptions): ReactNode 
         <SystemPageMain {...options} />
         {options.script ? (
           // biome-ignore lint/security/noDangerouslySetInnerHtml: the dev HMR client, a constant the server owns
-          <script dangerouslySetInnerHTML={{ __html: options.script }} />
+          <script nonce={options.scriptNonce} dangerouslySetInnerHTML={{ __html: options.script }} />
         ) : null}
       </body>
     </html>

@@ -16,6 +16,7 @@ describe("RouteCacheTally", () => {
         "request-not-public",
         "dev-registry",
         "no-route",
+        "script-hashes",
         "other",
       ]);
     }
@@ -27,6 +28,7 @@ describe("RouteCacheTally", () => {
     RouteCacheTally.lookup("rsc", false, "requested-query");
     RouteCacheTally.lookup("html", true, "requested-query");
     RouteCacheTally.bypass("html", "request-not-public");
+    RouteCacheTally.bypass("html", "script-hashes");
     RouteCacheTally.bypass("html", "a-reason-nobody-declared");
     RouteCacheTally.bypass("rsc", undefined);
     const after = RouteCacheTally.snapshot();
@@ -37,7 +39,8 @@ describe("RouteCacheTally", () => {
     expect(after.html.bypass["request-not-public"] - before.html.bypass["request-not-public"]).toBe(1);
     expect(after.html.bypass.other - before.html.bypass.other).toBe(1);
     expect(after.rsc.bypass.other - before.rsc.bypass.other).toBe(1);
-    expect(Object.keys(after.html.bypass)).toHaveLength(8);
+    expect(after.html.bypass["script-hashes"] - before.html.bypass["script-hashes"]).toBe(1);
+    expect(Object.keys(after.html.bypass)).toHaveLength(9);
     expect(after.html.miss).toEqual(before.html.miss);
   });
 

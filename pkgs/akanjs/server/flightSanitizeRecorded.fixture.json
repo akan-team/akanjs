@@ -10,7 +10,7 @@
     "ssr": ["1:\"a\"\n2:[\"$\",\"div\",null,{\"children\":\"$1\"}]\n0:\"$2\"\n"],
     "client": ["1:\"a\"\n2:[\"$\",\"div\",null,{\"children\":\"$1\"}]\n0:\"$2\"\n"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"1:\\\"a\\\"\\n2:[\\\"$\\\",\\\"div\\\",null,{\\\"children\\\":\\\"$1\\\"}]\\n0:\\\"$2\\\"\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"1:\\\"a\\\"\\n2:[\\\"$\\\",\\\"div\\\",null,{\\\"children\\\":\\\"$1\\\"}]\\n0:\\\"$2\\\"\\n\"]</script>"
     ],
     "seenBySsr": [["", "1:\"a\"\n"], ["", "2:[\"$\",\"div\",null,{\"children\":\"$1\"}]\n"], ["", "0:\"$2\"\n"]],
     "runDigests": "IuZMIuZMIuZMIuZMIuZMIuZMAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMyAWMy2ihu2ihu2ihu2ihu2ihu2ihu2ihuIuZMOhDQOhDQAWMyIuZMB_7o6L6p6L6pNjogZa57"
@@ -23,7 +23,7 @@
       "\n\nno colon here\n0:\n:\n7:null\n1:I[\"/_akan/client/a.js\",[\"a\",\"/_akan/client/a.js\"],\"default\"]\n8:\"/_akan/client/b.js\"\nf:#x\n3:W[\"log\",\"x\"]\n4:N{\"name\":\"x\"}\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"\\n\\nno colon here\\n0:\\n:\\n7:null\\n1:I[\\\"/_akan/client/a.js\\\",[\\\"a\\\",\\\"/_akan/client/a.js\\\"],\\\"default\\\"]\\n8:\\\"/_akan/client/b.js\\\"\\nf:#x\\n3:W[\\\"log\\\",\\\"x\\\"]\\n4:N{\\\"name\\\":\\\"x\\\"}\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"\\n\\nno colon here\\n0:\\n:\\n7:null\\n1:I[\\\"/_akan/client/a.js\\\",[\\\"a\\\",\\\"/_akan/client/a.js\\\"],\\\"default\\\"]\\n8:\\\"/_akan/client/b.js\\\"\\nf:#x\\n3:W[\\\"log\\\",\\\"x\\\"]\\n4:N{\\\"name\\\":\\\"x\\\"}\\n\"]</script>"
     ],
     "seenBySsr": [
       ["", "0:\n"],
@@ -43,7 +43,7 @@
       "a:D{\"time\":1}\n0:\"x\"\nb:D{\"name\":\"Page\",\"env\":\"Server\"}\nc:D{\"time\":2}\n1:\"y\"\nd:D{\"time\":3}\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"a:D{\\\"time\\\":1}\\n0:\\\"x\\\"\\nb:D{\\\"name\\\":\\\"Page\\\",\\\"env\\\":\\\"Server\\\"}\\nc:D{\\\"time\\\":2}\\n1:\\\"y\\\"\\nd:D{\\\"time\\\":3}\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"a:D{\\\"time\\\":1}\\n0:\\\"x\\\"\\nb:D{\\\"name\\\":\\\"Page\\\",\\\"env\\\":\\\"Server\\\"}\\nc:D{\\\"time\\\":2}\\n1:\\\"y\\\"\\nd:D{\\\"time\\\":3}\\n\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"], ["", "1:\"y\"\n"]],
     "runDigests": "gyRXgyRXgyRXgyRXgyRXgyRXgyRXgyRXgyRXgyRXgyRXgyRXgyRXgyRX7Epa7Epa7Epa7Epa7Epa7EpabxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYbxsYMMkwMMkwMMkwMMkwMMkwMMkwMMkwMMkwMMkwMMkwMMkwMMkwMMkwMMkwx_9-x_9-x_9-x_9-x_9-x_9-vPTYvPTYvPTYvPTYvPTYvPTYvPTYvPTYvPTYvPTYvPTYvPTYvPTYvPTYgyRXkko3kko3uBlmgyRXB_7oMtZhldxGmwtj"
@@ -51,7 +51,9 @@
   "only debug rows": {
     "ssr": [],
     "client": ["a:D{\"time\":1}\nb:D{\"time\":2}\n"],
-    "inlineScripts": ["<script>self.__RSC_PUSH__(1,\"a:D{\\\"time\\\":1}\\nb:D{\\\"time\\\":2}\\n\")</script>"],
+    "inlineScripts": [
+      "<script type=\"application/json\" data-akan=\"\">[1,\"a:D{\\\"time\\\":1}\\nb:D{\\\"time\\\":2}\\n\"]</script>"
+    ],
     "seenBySsr": [],
     "runDigests": "QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-QJ6-bVszbVszbVszbVszbVszbVszbVszbVszbVszbVszbVszbVszbVszbVszQJ6-bVszbVszbVszQJ6-B_7o6sA7PS94"
   },
@@ -63,7 +65,7 @@
       ":HL[\"/style.css\",\"style\"]\n0:\"x\"\n:HL[\"/quote\\\".css\",\"style\"]\n:HL[\"/font.woff2\",\"font\"]\n:HL[\"/options.css\",\"stylesheet\",{\"crossOrigin\":\"\"}]\n:HD\"https://cdn.example\"\n5:HL[\"/with-id.css\",\"style\"]\n:HL[\"/two.css\",\"style\"]:HL[\"/three.css\",\"style\"]\n6:\"a model row naming :HL[\\\"/model.css\\\",\\\"stylesheet\\\"]\"\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\":HL[\\\"/style.css\\\",\\\"style\\\"]\\n0:\\\"x\\\"\\n:HL[\\\"/quote\\\\\\\".css\\\",\\\"style\\\"]\\n:HL[\\\"/font.woff2\\\",\\\"font\\\"]\\n:HL[\\\"/options.css\\\",\\\"stylesheet\\\",{\\\"crossOrigin\\\":\\\"\\\"}]\\n:HD\\\"https://cdn.example\\\"\\n5:HL[\\\"/with-id.css\\\",\\\"style\\\"]\\n:HL[\\\"/two.css\\\",\\\"style\\\"]:HL[\\\"/three.css\\\",\\\"style\\\"]\\n6:\\\"a model row naming :HL[\\\\\\\"/model.css\\\\\\\",\\\\\\\"stylesheet\\\\\\\"]\\\"\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\":HL[\\\"/style.css\\\",\\\"style\\\"]\\n0:\\\"x\\\"\\n:HL[\\\"/quote\\\\\\\".css\\\",\\\"style\\\"]\\n:HL[\\\"/font.woff2\\\",\\\"font\\\"]\\n:HL[\\\"/options.css\\\",\\\"stylesheet\\\",{\\\"crossOrigin\\\":\\\"\\\"}]\\n:HD\\\"https://cdn.example\\\"\\n5:HL[\\\"/with-id.css\\\",\\\"style\\\"]\\n:HL[\\\"/two.css\\\",\\\"style\\\"]:HL[\\\"/three.css\\\",\\\"style\\\"]\\n6:\\\"a model row naming :HL[\\\\\\\"/model.css\\\\\\\",\\\\\\\"stylesheet\\\\\\\"]\\\"\\n\"]</script>"
     ],
     "seenBySsr": [
       ["H", ":HL[\"/style.css\",\"stylesheet\"]\n"],
@@ -86,7 +88,7 @@
       "c7:null\nc8:null\nnf:E{\"digest\":\"AKAN_NOT_FOUND\",\"name\":\"AkanNotFoundError\",\"message\":\"Not Found\"}\ner:E{\"digest\":\"AKAN_REDIRECTED\",\"name\":\"Error\",\"message\":\"Boom\"}\nC9:E{\"digest\":\"AKAN_REDIRECT\"}\n:E{\"digest\":\"AKAN_REDIRECT\"}\n0:\"after\"\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"c7:null\\nc8:null\\nnf:E{\\\"digest\\\":\\\"AKAN_NOT_FOUND\\\",\\\"name\\\":\\\"AkanNotFoundError\\\",\\\"message\\\":\\\"Not Found\\\"}\\ner:E{\\\"digest\\\":\\\"AKAN_REDIRECTED\\\",\\\"name\\\":\\\"Error\\\",\\\"message\\\":\\\"Boom\\\"}\\nC9:E{\\\"digest\\\":\\\"AKAN_REDIRECT\\\"}\\n:E{\\\"digest\\\":\\\"AKAN_REDIRECT\\\"}\\n0:\\\"after\\\"\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"c7:null\\nc8:null\\nnf:E{\\\"digest\\\":\\\"AKAN_NOT_FOUND\\\",\\\"name\\\":\\\"AkanNotFoundError\\\",\\\"message\\\":\\\"Not Found\\\"}\\ner:E{\\\"digest\\\":\\\"AKAN_REDIRECTED\\\",\\\"name\\\":\\\"Error\\\",\\\"message\\\":\\\"Boom\\\"}\\nC9:E{\\\"digest\\\":\\\"AKAN_REDIRECT\\\"}\\n:E{\\\"digest\\\":\\\"AKAN_REDIRECT\\\"}\\n0:\\\"after\\\"\\n\"]</script>"
     ],
     "seenBySsr": [
       ["E", "c7:E{\"digest\":\"AKAN_REDIRECT\",\"name\":\"AkanRedirectError\",\"message\":\"Redirect to /target\"}\n"],
@@ -107,7 +109,7 @@
       "1:\"</script><script>alert(1)</script>\"\n2:\"<!-- <script> --> &   \"\n3:T41c,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx</script><!--\n4:D{\"time\":1}\na:D{\"text\":\"</script><!--\"}\n:HL[\"/</script>.css\",\"style\"]\nc7:null\n0:[\"$1\",\"$2\",\"$3\"]\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"1:\\\"\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\\\"\\n2:\\\"\\u003c!-- \\u003cscript\\u003e --\\u003e \\u0026 \\u2028\\u2029\\\"\\n3:T41c,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\u003c/script\\u003e\\u003c!--\\n4:D{\\\"time\\\":1}\\na:D{\\\"text\\\":\\\"\\u003c/script\\u003e\\u003c!--\\\"}\\n:HL[\\\"/\\u003c/script\\u003e.css\\\",\\\"style\\\"]\\nc7:null\\n0:[\\\"$1\\\",\\\"$2\\\",\\\"$3\\\"]\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"1:\\\"\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e\\\"\\n2:\\\"\\u003c!-- \\u003cscript\\u003e --\\u003e \\u0026 \\u2028\\u2029\\\"\\n3:T41c,xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\\u003c/script\\u003e\\u003c!--\\n4:D{\\\"time\\\":1}\\na:D{\\\"text\\\":\\\"\\u003c/script\\u003e\\u003c!--\\\"}\\n:HL[\\\"/\\u003c/script\\u003e.css\\\",\\\"style\\\"]\\nc7:null\\n0:[\\\"$1\\\",\\\"$2\\\",\\\"$3\\\"]\\n\"]</script>"
     ],
     "seenBySsr": [
       ["", "1:\"</script><script>alert(1)</script>\"\n"],
@@ -126,7 +128,7 @@
       "1:\"한글 😀 ñ\"\na:D{\"text\":\"한글 😀\"}\n:HL[\"/스타일.css\",\"style\"]\nc7:null\n2:T4df,가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가\n3:D{}\n😀😀😀😀😀😀😀😀😀😀0:\"$2\"\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"1:\\\"한글 😀 ñ\\\"\\na:D{\\\"text\\\":\\\"한글 😀\\\"}\\n:HL[\\\"/스타일.css\\\",\\\"style\\\"]\\nc7:null\\n2:T4df,가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가\\n3:D{}\\n😀😀😀😀😀😀😀😀😀😀0:\\\"$2\\\"\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"1:\\\"한글 😀 ñ\\\"\\na:D{\\\"text\\\":\\\"한글 😀\\\"}\\n:HL[\\\"/스타일.css\\\",\\\"style\\\"]\\nc7:null\\n2:T4df,가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가가\\n3:D{}\\n😀😀😀😀😀😀😀😀😀😀0:\\\"$2\\\"\\n\"]</script>"
     ],
     "seenBySsr": [
       ["", "1:\"한글 😀 ñ\"\n"],
@@ -156,9 +158,9 @@
       "0:\"x\"\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(3,\"/wAKMTpFeyJkaWdlc3QiOiJBS0FOX1JFRElSRUNUIv99CjpITFsiL2HDLmNzcyIsInN0eWxlc2hlZXQiXQphOkT+Cg==\")</script>",
-      "<script>self.__RSC_PUSH__(3,\"MjpvMywK/wo=\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[3,\"/wAKMTpFeyJkaWdlc3QiOiJBS0FOX1JFRElSRUNUIv99CjpITFsiL2HDLmNzcyIsInN0eWxlc2hlZXQiXQphOkT+Cg==\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[3,\"MjpvMywK/wo=\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>"
     ],
     "seenBySsr": [
       [
@@ -193,9 +195,9 @@
       "4:A0,c7:null\n0:{\"text\":\"$2\",\"bytes\":\"$3\",\"empty\":\"$4\"}\n"
     ],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\":HL[\\\"/style.css\\\",\\\"style\\\"]\\na:D{\\\"time\\\":1}\\n2:T4fb,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nstatus:Draft is the default\\n5:D{\\\"time\\\":1}\\n7:E{\\\"digest\\\":\\\"AKAN_REDIRECT;replace;307;https%3A%2F%2Fexample.com%2F\\\",\\\"name\\\":\\\"Error\\\"}\\n:HL[\\\"/text.css\\\",\\\"stylesheet\\\"]\\n한글 😀 tail\")</script>",
-      "<script>self.__RSC_PUSH__(3,\"MzpvNTIsCv8KYzpFeyJkaWdlc3QiOiJBS0FOX1JFRElSRUNUO3B1c2g7MzA3OyUyRmJ5dGVzIiwibmFtZSI6IkVycm9yIn0KYjpEeyJ0aW1lIjoyfQrwnw==\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"4:A0,c7:null\\n0:{\\\"text\\\":\\\"$2\\\",\\\"bytes\\\":\\\"$3\\\",\\\"empty\\\":\\\"$4\\\"}\\n\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\":HL[\\\"/style.css\\\",\\\"style\\\"]\\na:D{\\\"time\\\":1}\\n2:T4fb,aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\nstatus:Draft is the default\\n5:D{\\\"time\\\":1}\\n7:E{\\\"digest\\\":\\\"AKAN_REDIRECT;replace;307;https%3A%2F%2Fexample.com%2F\\\",\\\"name\\\":\\\"Error\\\"}\\n:HL[\\\"/text.css\\\",\\\"stylesheet\\\"]\\n한글 😀 tail\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[3,\"MzpvNTIsCv8KYzpFeyJkaWdlc3QiOiJBS0FOX1JFRElSRUNUO3B1c2g7MzA3OyUyRmJ5dGVzIiwibmFtZSI6IkVycm9yIn0KYjpEeyJ0aW1lIjoyfQrwnw==\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"4:A0,c7:null\\n0:{\\\"text\\\":\\\"$2\\\",\\\"bytes\\\":\\\"$3\\\",\\\"empty\\\":\\\"$4\\\"}\\n\"]</script>"
     ],
     "seenBySsr": [
       ["H", ":HL[\"/style.css\",\"stylesheet\"]\n"],
@@ -208,8 +210,8 @@
     "ssr": ["0:\"x\"\n", "1:\"cut"],
     "client": ["0:\"x\"\n", "1:\"cut"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"1:\\\"cut\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"1:\\\"cut\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"], ["", "1:\"cut"]],
     "runDigests": "M0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnM0tnB_7oh95G"
@@ -218,8 +220,8 @@
     "ssr": ["0:\"x\"\n"],
     "client": ["0:\"x\"\n", "a:D{\"time\":1}"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"a:D{\\\"time\\\":1}\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"a:D{\\\"time\\\":1}\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"]],
     "runDigests": "QVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIQVrIB_7oh95Gh95G"
@@ -228,8 +230,8 @@
     "ssr": ["0:\"x\"\n", ":HL[\"/style.css\",\"stylesheet\"]"],
     "client": ["0:\"x\"\n", ":HL[\"/style.css\",\"style\"]"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>",
-      "<script>self.__RSC_PUSH__(1,\":HL[\\\"/style.css\\\",\\\"style\\\"]\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\":HL[\\\"/style.css\\\",\\\"style\\\"]\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"], ["H", ":HL[\"/style.css\",\"stylesheet\"]"]],
     "runDigests": "nKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbnKTbB_7oh95Gh95Gh95G"
@@ -238,8 +240,8 @@
     "ssr": ["0:\"x\"\n", "c7:null"],
     "client": ["0:\"x\"\n", "c7:null"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"c7:null\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"c7:null\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"], ["E", "c7:E{\"digest\":\"AKAN_REDIRECT\"}"]],
     "runDigests": "qhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFqhrFB_7oh95Gh95Gh95G"
@@ -248,8 +250,8 @@
     "ssr": ["0:\"x\"\n", "1:T7,abc"],
     "client": ["0:\"x\"\n", "1:T7,abc"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"1:T7,abc\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"1:T7,abc\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"]],
     "runDigests": "UbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgUbAgB_7oh95G"
@@ -258,8 +260,8 @@
     "ssr": ["0:\"x\"\n", "1:T1f"],
     "client": ["0:\"x\"\n", "1:T1f"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"1:T1f\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"1:T1f\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"]],
     "runDigests": "g2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJg2pJB_7oh95G"
@@ -268,8 +270,8 @@
     "ssr": ["0:\"x\"\n", "1:"],
     "client": ["0:\"x\"\n", "1:"],
     "inlineScripts": [
-      "<script>self.__RSC_PUSH__(1,\"0:\\\"x\\\"\\n\")</script>",
-      "<script>self.__RSC_PUSH__(1,\"1:\")</script>"
+      "<script type=\"application/json\" data-akan=\"\">[1,\"0:\\\"x\\\"\\n\"]</script>",
+      "<script type=\"application/json\" data-akan=\"\">[1,\"1:\"]</script>"
     ],
     "seenBySsr": [["", "0:\"x\"\n"]],
     "runDigests": "9ZP39ZP39ZP39ZP39ZP39ZP39ZP39ZP39ZP39ZP39ZP39ZP39ZP3B_7oh95G"
@@ -305,16 +307,16 @@
     ],
     "inlineScripts": [
       {
-        "byteLength": 16520,
-        "sha256": "81463b6b8d61dd09ecdbb6a60543375acba3b61937d4fb31390058f510bd7573"
+        "byteLength": 16540,
+        "sha256": "ff874dbb7dc80c5b49c3447245c34ec4b9c64870fe9be29f6f5caab0aa122ebb"
       },
       {
-        "byteLength": 16536,
-        "sha256": "7b94dc9ef46d9fa66747898f6a8b82d54ec73ad23fc07a1739f173cea5b8152f"
+        "byteLength": 16556,
+        "sha256": "aff0afd17afb2eda0031667372d62e56d6be91734a7459d936366faa29edb80a"
       },
       {
-        "byteLength": 2651,
-        "sha256": "46fab39ca81f41f5bd249e0836e504a1c9c41414865848cfb26a2d6745b36102"
+        "byteLength": 2671,
+        "sha256": "1effcb759d5d98d22cf2e0dd5bde0e160dc457bc0b6a339388eca0ebd7a8cd12"
       }
     ],
     "seenBySsr": [

@@ -16,12 +16,15 @@ import {
 import { type EncodedBody, encodeBody } from "./contentEncoding";
 import { canonicalRouteCacheUrl, type RouteCacheQueryForm } from "./routeCacheQuery";
 import { type RouteCacheLookupReason, RouteCacheTally } from "./routeCacheTally";
+import { MAX_RESPONSE_SCRIPT_HASHES, ScriptPolicy, type ScriptPolicySources } from "./scriptPolicy";
 import type { SsrLateControl } from "./ssrTypes";
 import { WebRouteContext } from "./webRouteContext";
 
 export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Well above any sensible TTL: this only has to reclaim a cache nobody is reading, not track expiry closely. */
 const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
+
+const emptyBody: EncodedBody = { bytes: new Uint8Array(0), encodings: {}, byteLength: 0 };
 
 interface HtmlCacheStreamOptions {
   shouldCache?: () => boolean | Promise<boolean>;
@@ -93,8 +96,15 @@ export function resolveHtmlRouteCacheStoreTtl(input: {
   return resolveRouteCacheStoreTtl(workerTtl, hostCacheState);
 }
 
-interface CachedHtmlResult {
+export interface CachedHtmlPage {
   body: EncodedBody;
+  /** Every hash source the stored page's scripts need: a replay has no nonce of its own to name them by. */
+  scriptHashes: string[];
+}
+
+interface CachedHtmlResult extends CachedHtmlPage {
+  //* Held in place of a page whose replay would name too many hashes: its requests skip the cache until this expires.
+  unstored?: true;
   pathname: string;
   routeId?: string;
   tags?: string[];
@@ -118,6 +128,7 @@ interface HtmlStoreInput {
   cacheState: Promise<RouteCacheRenderState>;
   hostRequestStore: AkanRequestStore;
   logger: Logger;
+  scripts?: ScriptPolicySources;
 }
 
 export class HtmlResultCache {
@@ -169,18 +180,29 @@ export class HtmlResultCache {
       RouteCacheTally.bypass("html", decision.reason);
       return decision;
     }
-    return { entry: { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) } };
+    const entry = { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) };
+    if (this.#lookup(entry)?.unstored) {
+      this.#bypass += 1;
+      RouteCacheTally.bypass("html", "script-hashes");
+      return { entry: null, reason: "script-hashes" };
+    }
+    return { entry };
   }
 
-  get(entry: HtmlCacheEntry): EncodedBody | null {
+  get(entry: HtmlCacheEntry): CachedHtmlPage | null {
     const cached = this.#lookup(entry);
-    if (!cached) {
+    if (!cached || cached.unstored) {
       this.#misses += 1;
       return null;
     }
     this.#hits += 1;
     RouteCacheTally.lookup("html", true, HtmlResultCache.#lookupReason(entry, cached.queryForm));
-    return cached.body;
+    return cached;
+  }
+
+  //? The scripts React wrote under the render's nonce are named by hash in a replay's policy.
+  static #scriptHashesOf(body: Uint8Array, { nonce, hashes = [] }: ScriptPolicySources = {}): string[] {
+    return [...new Set([...hashes, ...(nonce ? ScriptPolicy.hashesOfNonced(body, nonce) : [])])];
   }
 
   static #lookupReason({ key, exactKey }: HtmlCacheEntry, queryForm: RouteCacheQueryForm): RouteCacheLookupReason {
@@ -198,7 +220,7 @@ export class HtmlResultCache {
     const { entry, pathname, hostRequestStore, logger } = input;
     let htmlStoreTtl = entry.ttl;
     let htmlStoreKey = entry.exactKey;
-    let htmlCacheMetadata: Omit<CachedHtmlResult, "body"> = { pathname, queryForm: "exact" };
+    let htmlCacheMetadata: Omit<CachedHtmlResult, keyof CachedHtmlPage> = { pathname, queryForm: "exact" };
     const shouldCacheHtml = Promise.all([input.lateControl, input.cacheState]).then(([control, cacheState]) => {
       const queryForm = cacheState.queryForm ?? "exact";
       //? The host learns how a route is keyed only from its render, so a miss is counted here rather than at lookup.
@@ -223,8 +245,20 @@ export class HtmlResultCache {
     return cacheHtmlWhileStreaming(
       htmlStream,
       (bytes) => {
+        const scriptHashes = HtmlResultCache.#scriptHashesOf(bytes, input.scripts);
+        if (scriptHashes.length > MAX_RESPONSE_SCRIPT_HASHES) {
+          const unstored = { body: emptyBody, scriptHashes: [], unstored: true as const, ...htmlCacheMetadata };
+          this.#cache.set(htmlStoreKey, unstored, htmlStoreTtl);
+          const route = htmlCacheMetadata.routeId ?? "unknown";
+          if (ScriptPolicy.firstReport("replay", route))
+            logger.warn(
+              `html cache: a page of route ${route} is rendered for each request (X-Akan-Cache-Reason: script-hashes): ` +
+                `its replay would name ${scriptHashes.length} script hashes, and a response names ${MAX_RESPONSE_SCRIPT_HASHES}`,
+            );
+          return;
+        }
         void encodeBody(bytes).then((body) =>
-          this.#cache.set(htmlStoreKey, { body, ...htmlCacheMetadata }, htmlStoreTtl),
+          this.#cache.set(htmlStoreKey, { body, scriptHashes, ...htmlCacheMetadata }, htmlStoreTtl),
         );
       },
       {

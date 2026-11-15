@@ -1,6 +1,7 @@
 import type { AkanRequestStore, AkanTheme } from "akanjs/fetch";
 import type { ClientManifest } from "./artifact";
 import type { ModulePreloadPlan } from "./artifact/modulePreloadPlan";
+import type { SsrBootstrapData } from "./ssrInlineScripts";
 
 export interface SsrManifestEntry {
   id: string;
@@ -48,6 +49,8 @@ export interface RscTraceMetadata {
   routeState?: string;
   /** The route's `pageConfig.ssr === "block"`, carried here because the host never resolves pageConfig itself. */
   ssrBlocking?: boolean;
+  /** The hash sources the route's heads declared with `scriptHashes()`, for the response's script policy. */
+  scriptHashes?: string[];
 }
 
 export interface RscRenderOptions {
@@ -74,7 +77,11 @@ export interface SsrFromRscInput {
   modulePreloads?: string[];
   /** Preloads the chunks of each client reference the shell's flight names, with the runtime and their vendors. */
   modulePreloadPlan?: ModulePreloadPlan;
-  extraBootstrapInline?: string;
+  bootstrapData?: Pick<SsrBootstrapData, "routeState" | "dictionaryUrl" | "importMapKey">;
+  /** Dev only: script text that runs after the bootstrap, under the response's nonce. */
+  devBootstrapInline?: string;
+  /** The response's script nonce: React's own inline scripts carry it. */
+  nonce?: string;
   // One React across route chunks: their externalized specifiers resolve to the base build's vendor entries.
   // Injected by a stream transform, not React children: the spec needs the import map before any module fetch.
   importmap?: Record<string, string>;
@@ -92,7 +99,7 @@ export interface SsrFromRscInput {
 }
 
 export interface SsrDocumentOptions {
-  bootstrap: string;
+  nonce?: string;
   waitForAllReady?: boolean;
   inlineBoundaries?: boolean;
   onError: (error: unknown, phase?: string) => void;

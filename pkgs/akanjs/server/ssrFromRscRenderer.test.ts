@@ -19,21 +19,25 @@ import {
 } from "./flightRows.fixture";
 import { createInitialRscStream } from "./rscInlineStream";
 import {
-  createInlineRscScript,
-  createSoftRedirectScript,
   ExpectedLateRedirectStderrSuppressor,
-  encodeInlineRscChunk,
   interleaveRscScriptsWithHtml,
   SsrChunkRegistry,
   SsrFromRscRenderer,
   sanitizeFlightForClientStream,
   sanitizeFlightForSsrStream,
 } from "./ssrFromRscRenderer";
+import {
+  createInlineRscScript,
+  createSoftRedirectScript,
+  encodeInlineRscChunk,
+  SsrInlineScripts,
+} from "./ssrInlineScripts";
 import { renderOverlappingVisitors } from "./ssrRequestScope.fixture";
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const rscBootstrap = `<script>self.__RSC_CHUNKS__=[];self.__RSC_PUSH__=function(type,data){self.__RSC_CHUNKS__.push([type,data]);};</script>`;
+const closeTags = SsrInlineScripts.endTags("");
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -149,7 +153,7 @@ describe("inline RSC chunks", () => {
   test("escapes script-breaking UTF-8 payloads", () => {
     const script = createInlineRscScript(new TextEncoder().encode(`</script><!--\u2028\u2029`));
 
-    expect(script).toContain("self.__RSC_PUSH__(1,");
+    expect(script).toContain('<script type="application/json" data-akan="">[1,');
     expect(script).not.toContain("</script><!--");
     expect(script).toContain("\\u003c/script\\u003e\\u003c!--\\u2028\\u2029");
   });
@@ -165,7 +169,7 @@ describe("inline RSC chunks", () => {
     expect(script).toContain(
       `<noscript><meta http-equiv="refresh" content="0;url=/login?next=/a&amp;label=&quot;x&quot;"></noscript>`,
     );
-    expect(script).toContain(`window.location.replace("/login?next=/a\\u0026label=\\"x\\"")`);
+    expect(script).toContain(`["redirect","replace","/login?next=/a\\u0026label=\\"x\\""]</script>`);
   });
 
   test("replaces Akan redirect error rows for browser-bound Flight", async () => {
@@ -311,7 +315,7 @@ describe("inline RSC interleaving", () => {
     expect(firstHtmlIndex).toBeGreaterThanOrEqual(0);
     expect(secondHtmlIndex).toBeGreaterThan(firstHtmlIndex);
     expect(scriptIndex).toBeGreaterThan(secondHtmlIndex);
-    expect(output).toContain("<script>self.__RSC_CLOSE__()</script>");
+    expect(output).toContain(closeTags);
   });
 
   test("flushes the first HTML and RSC script before a delayed second Flight chunk", async () => {
@@ -359,25 +363,23 @@ describe("inline RSC interleaving", () => {
     }
 
     expect(output).toContain(secondScript);
-    expect(output).toContain("<script>self.__RSC_CLOSE__()</script>");
+    expect(output).toContain(closeTags);
   });
 
-  test("keeps bootstrap module scripts before the final RSC drain", async () => {
-    const bootstrap = `<script type="module" src="/rsc-client.js"></script>`;
+  test("writes the end block, where the bootstrap modules start, after the last Flight block and its flush", async () => {
     const html = textStream([{ text: `<main>shell${rscBootstrap}</main>` }]);
     const rsc = textStream([{ text: "final", delayMs: 20 }]);
-    const output = await new Response(
-      interleaveRscScriptsWithHtml(html, rsc, { bootstrapModuleScripts: bootstrap }),
-    ).text();
+    const output = await new Response(interleaveRscScriptsWithHtml(html, rsc, { token: "t0" })).text();
     const htmlIndex = output.indexOf("<main>shell");
-    const bootstrapIndex = output.indexOf(bootstrap);
-    const scriptIndex = output.indexOf(createInlineRscScript(encoder.encode("final")));
-    const closeIndex = output.indexOf("<script>self.__RSC_CLOSE__()</script>");
+    const scriptIndex = output.indexOf(
+      `${createInlineRscScript(encoder.encode("final"), "t0")}${SsrInlineScripts.flushTag}`,
+    );
 
     expect(htmlIndex).toBeGreaterThanOrEqual(0);
-    expect(bootstrapIndex).toBeGreaterThan(htmlIndex);
-    expect(scriptIndex).toBeGreaterThan(bootstrapIndex);
-    expect(closeIndex).toBeGreaterThan(scriptIndex);
+    expect(scriptIndex).toBeGreaterThan(htmlIndex);
+    expect(output.endsWith(SsrInlineScripts.endTags("t0"))).toBe(true);
+    expect(output.indexOf(SsrInlineScripts.endTags("t0"))).toBeGreaterThan(scriptIndex);
+    expect(output).not.toContain('<script type="module"');
   });
 
   test("emits late redirect as a soft redirect script after complete HTML", async () => {
@@ -405,7 +407,7 @@ describe("inline RSC interleaving", () => {
     expect(thirdHtmlIndex).toBeGreaterThan(secondHtmlIndex);
     expect(redirectIndex).toBeGreaterThan(thirdHtmlIndex);
     expect(output).toContain(createInlineRscScript(encoder.encode("flight")));
-    expect(output).toContain("<script>self.__RSC_CLOSE__()</script>");
+    expect(output).toContain(closeTags);
   });
 
   test("flushes complete RSC stream after a late redirect", async () => {
@@ -423,7 +425,7 @@ describe("inline RSC interleaving", () => {
     const redirectIndex = output.indexOf(createSoftRedirectScript(redirect));
     const beforeIndex = output.indexOf(createInlineRscScript(encoder.encode("before")));
     const afterIndex = output.indexOf(createInlineRscScript(encoder.encode("after")));
-    const closeIndex = output.indexOf("<script>self.__RSC_CLOSE__()</script>");
+    const closeIndex = output.indexOf(closeTags);
 
     expect(redirectIndex).toBeGreaterThanOrEqual(0);
     expect(beforeIndex).toBeGreaterThanOrEqual(0);
@@ -537,7 +539,7 @@ describe("inline RSC interleaving", () => {
 describe("document Flight scripts", () => {
   const pushesOf = (page: string): Array<[1, string] | [3, string]> =>
     Array.from(
-      page.matchAll(/<script>self\.__RSC_PUSH__\(([13]),("(?:[^"\\]|\\.)*")\)<\/script>/g),
+      page.matchAll(/<script type="application\/json" data-akan="">\[([13]),("(?:[^"\\]|\\.)*")\]<\/script>/g),
       ([, type, data]) => (type === "3" ? [3, JSON.parse(data ?? "")] : [1, JSON.parse(data ?? "")]),
     );
   const documentOf = (flight: ReadableStream<Uint8Array>) =>
@@ -792,7 +794,7 @@ describe("SsrFromRscRenderer.renderDocument", () => {
         createElement(Suspense, { fallback: createElement("p", null, "Loading") }, createElement(Article)),
       ),
     );
-    const stream = await SsrFromRscRenderer.renderDocument(page, { bootstrap: "", onError: () => {}, ...options });
+    const stream = await SsrFromRscRenderer.renderDocument(page, { onError: () => {}, ...options });
     return await new Response(stream).text();
   };
 
@@ -876,8 +878,8 @@ describe("SsrFromRscRenderer head", () => {
     expect(head).toContain(
       '<link rel="modulepreload" href="/_akan/rsc-client.js"><link rel="modulepreload" href="/_akan/dict/en-abc.js">',
     );
-    expect(html).toContain('<script type="module" src="/_akan/rsc-client.js"></script>');
-    expect(html).not.toContain('<script type="module" src="/_akan/dict/en-abc.js">');
+    expect(head).toContain('"modules":["/_akan/rsc-client.js"]');
+    expect(html).not.toContain('<script type="module"');
   });
 });
 
