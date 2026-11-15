@@ -1300,23 +1300,25 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>An id another deployment signed.</strong> The key comes from{" "}
-                      <code>AKAN_LOG_DEBUG_HEADER</code> when it is 32 characters or more, with the app name and the
-                      environment, so every server of a deployment that sets it takes an id any of them gave. Without
-                      it, the replicas behind one gateway share a key the gateway makes at start, so a report is taken
-                      by any of them and by no other gateway's; a server run alone uses its own key, so only the process
-                      that served the page takes its reports, and none after a restart. Set the secret when more than
-                      one gateway or pod answers for the app.
+                      <strong>An id another deployment signed.</strong> An operator may set the secret{" "}
+                      <code>AKAN_CLIENT_REPORT_KEY</code> to 32 characters or more, and every server that holds it takes
+                      an id any of them gave; a gateway passes it to its replicas unchanged, and a shorter value is
+                      ignored with one warning. Without it, the replicas behind one gateway share a key the gateway
+                      makes at start, so a report is taken by any of them and by no other gateway's; a server run alone
+                      uses its own key, so only the process that served the page takes its reports, and none after a
+                      restart. The app name and the environment are signed in either way. Set the key, the same on each,
+                      when more than one gateway or pod answers for the app.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>다른 배포가 서명한 id.</strong> 키는 32자 이상인 <code>AKAN_LOG_DEBUG_HEADER</code>와 앱
-                      이름, 환경에서 나오므로, 이 값을 설정한 배포의 모든 서버는 그중 누가 준 id든 받습니다. 설정하지
-                      않으면 한 gateway 뒤의 replica들은 gateway가 시작할 때 만든 키를 함께 쓰므로 그 replica 중 누구든
-                      보고를 받지만 다른 gateway의 것은 받지 않습니다. 혼자 도는 서버는 자기 키를 쓰므로 페이지를 내보낸
-                      프로세스만 그 보고를 받고, 재시작한 뒤에는 받지 않습니다. gateway나 pod가 둘 이상이면 이 secret을
-                      설정하세요.
+                      <strong>다른 배포가 서명한 id.</strong> 운영자는 비밀값 <code>AKAN_CLIENT_REPORT_KEY</code>를 32자
+                      이상으로 설정할 수 있으며, 이 값을 가진 서버는 그중 누가 준 id든 받습니다. gateway는 이 값을
+                      replica에 그대로 넘기고, 더 짧은 값은 경고 한 줄과 함께 무시됩니다. 설정하지 않으면 한 gateway
+                      뒤의 replica들은 gateway가 시작할 때 만든 키를 함께 쓰므로 그 replica 중 누구든 보고를 받지만 다른
+                      gateway의 것은 받지 않습니다. 혼자 도는 서버는 자기 키를 쓰므로 페이지를 내보낸 프로세스만 그
+                      보고를 받고, 재시작한 뒤에는 받지 않습니다. 앱 이름과 환경은 어느 쪽이든 서명에 들어갑니다.
+                      gateway나 pod가 둘 이상이면 모두에 같은 키를 설정하세요.
                     </span>
                   ),
                 })}

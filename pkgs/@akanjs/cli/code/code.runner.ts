@@ -23,6 +23,7 @@ export interface CodeRunOptions {
   resume?: string;
   trustWorkspace?: boolean;
   askNetwork?: boolean;
+  askCommands?: boolean;
   rpcBindAny?: boolean;
   rpcToken?: boolean;
 }
@@ -156,6 +157,7 @@ export class CodeRunner extends runner("code") {
     return {
       ...profile,
       ...(options.askNetwork === false ? { network } : {}),
+      ...(options.askCommands === false && profile.approval === "commands" ? { approval: "never" as const } : {}),
       ui: { ...profile.ui, canPrompt: CodeRunner.canPrompt(profile, hostAttached, interactive) },
     };
   }
@@ -173,7 +175,7 @@ export class CodeRunner extends runner("code") {
       ...AkanCodeEnv.ignored(),
       ...(profile.name === "local"
         ? [
-            "The local profile is not a sandbox: it refuses known secret files and asks before an unlisted host, but a command it runs can read anything you can. Use --profile pod inside a container to isolate it.",
+            "The local profile is not a sandbox: it refuses known secret files and asks before a shell command and an unlisted host, but a command you approve can read anything you can. Use --profile pod inside a container to isolate it.",
           ]
         : []),
     ];

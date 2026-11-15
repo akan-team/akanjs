@@ -3,6 +3,7 @@ import path from "node:path";
 import type { AkanChildRole, AkanUpstream } from "akanjs/service";
 import { getApiPrefix, getWsPrefix, normalizeRoutePrefix } from "../../base/baseEnv";
 import type { RestartPolicy } from "../../common/restartSchedule";
+import { ClientReportId } from "../clientReportId";
 import { resolveRuntimeDir } from "../lifecycle/runtimeDir";
 import { getWebConfigFromEnv } from "../types";
 
@@ -69,7 +70,7 @@ export class GatewayConfig {
   readonly disableLibs: string[];
   readonly solo: boolean;
   //? Made once per gateway, so its replicas sign a page's report id alike and a respawned one still takes the others'.
-  readonly #clientReportKey = randomBytes(32).toString("base64url");
+  readonly #clientReportKey = ClientReportId.operatorKey() ?? randomBytes(32).toString("base64url");
 
   constructor(serverPath: string, options: AkanAppOptions) {
     this.serverPath = GatewayConfig.#resolveServerPath(options.serverPath ?? serverPath);

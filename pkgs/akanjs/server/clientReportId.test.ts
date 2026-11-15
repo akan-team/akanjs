@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import path from "node:path";
+import { Logger } from "akanjs/common";
 import { ClientReportId } from "./clientReportId";
 import { GatewayConfig } from "./gateway/gatewayConfig";
 
@@ -56,25 +57,43 @@ describe("ClientReportId", () => {
     expect(ClientReportId.verify(signed, signedAt - ClientReportId.bucketMs)).toBeNull();
   });
 
-  test("takes an id another server process signed when both hold the deployment's secret", () => {
-    const shared = { AKAN_LOG_DEBUG_HEADER: "s".repeat(32), AKAN_PUBLIC_APP_NAME: "shop", AKAN_PUBLIC_ENV: "main" };
+  test("takes an id another server process signed when both hold the operator's key", () => {
+    const shared = { AKAN_CLIENT_REPORT_KEY: "k".repeat(32), AKAN_PUBLIC_APP_NAME: "shop", AKAN_PUBLIC_ENV: "main" };
     setEnv(shared);
     expect(ClientReportId.verify(signedElsewhere(shared))).toBe(pageId);
-    expect(ClientReportId.verify(signedElsewhere({ ...shared, AKAN_CLIENT_REPORT_KEY: "another-gateway" }))).toBe(
-      pageId,
-    );
+    expect(ClientReportId.verify(signedElsewhere({ ...shared, AKAN_CLIENT_REPORT_KEY: "j".repeat(32) }))).toBeNull();
     expect(ClientReportId.verify(signedElsewhere({ ...shared, AKAN_PUBLIC_APP_NAME: "admin" }))).toBeNull();
     expect(ClientReportId.verify(signedElsewhere({ ...shared, AKAN_PUBLIC_ENV: "develop" }))).toBeNull();
-    expect(ClientReportId.verify(signedElsewhere({ ...shared, AKAN_LOG_DEBUG_HEADER: "t".repeat(32) }))).toBeNull();
   });
 
-  test("without that secret, takes an id from a replica of its own gateway and from no other process", () => {
-    const replica = { AKAN_CLIENT_REPORT_KEY: "made-by-the-gateway", AKAN_PUBLIC_APP_NAME: "shop" };
-    setEnv({ ...replica, AKAN_LOG_DEBUG_HEADER: "too-short" });
+  test("ignores a key shorter than 32 characters with one warning that never holds the value", () => {
+    const value = "too-short-secret";
+    const lines: string[] = [];
+    const stop = Logger.addSink(({ message }) => void lines.push(message));
+    try {
+      setEnv({ AKAN_CLIENT_REPORT_KEY: value });
+      expect(ClientReportId.operatorKey()).toBeNull();
+      expect(ClientReportId.verify(ClientReportId.sign(pageId))).toBe(pageId);
+      expect(ClientReportId.verify(signedElsewhere({ AKAN_CLIENT_REPORT_KEY: value }))).toBeNull();
+    } finally {
+      stop();
+    }
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toContain("AKAN_CLIENT_REPORT_KEY");
+    expect(lines[0]).toContain("32");
+    expect(lines[0]).not.toContain(value);
+  });
+
+  test("is not tied to the debug-header secret", () => {
+    const env = { AKAN_LOG_DEBUG_HEADER: "s".repeat(32), AKAN_PUBLIC_APP_NAME: "shop" };
+    setEnv(env);
+    expect(ClientReportId.verify(signedElsewhere(env))).toBeNull();
+  });
+
+  test("without a key, takes an id from a replica of its own gateway and from no other process", () => {
+    const replica = { AKAN_CLIENT_REPORT_KEY: "g".repeat(43), AKAN_PUBLIC_APP_NAME: "shop" };
+    setEnv(replica);
     expect(ClientReportId.verify(signedElsewhere(replica))).toBe(pageId);
-    expect(
-      ClientReportId.verify(signedElsewhere({ ...replica, AKAN_CLIENT_REPORT_KEY: "another-gateway" })),
-    ).toBeNull();
 
     setEnv({ AKAN_PUBLIC_APP_NAME: "shop" });
     expect(ClientReportId.verify(ClientReportId.sign(pageId))).toBe(pageId);
@@ -89,5 +108,12 @@ describe("ClientReportId", () => {
     expect(keys[0]).toMatch(/^[\w-]{43}$/);
     expect(keys[1]).toBe(keys[0] ?? "");
     expect(gateway().childEnv(0, "all").AKAN_CLIENT_REPORT_KEY).not.toBe(keys[0] ?? "");
+  });
+
+  test("a gateway hands the operator's key to its replicas unchanged", () => {
+    const key = "o".repeat(40);
+    setEnv({ AKAN_CLIENT_REPORT_KEY: key });
+    const gateway = new GatewayConfig(path.join("/tmp", "server.ts"), { replica: 2, runtimeDir: "/tmp", port: 0 });
+    expect([0, 1].map((idx) => gateway.childEnv(idx, "all").AKAN_CLIENT_REPORT_KEY)).toEqual([key, key]);
   });
 });

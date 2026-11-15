@@ -869,6 +869,15 @@ REDIS_URI=redis://redis.internal:6379`}
                     ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록하고 Server-Timing으로 답합니다. AKAN_DEVTOOLS=true이면 이 값이 32자 이상일 때 devtools와 Studio도 이 값으로 열립니다.",
                   }),
                 },
+                {
+                  key: "AKAN_CLIENT_REPORT_KEY",
+                  type: "string",
+                  default: l.trans({ en: "unset — made at start", ko: "미설정 — 시작할 때 생성" }),
+                  desc: l.trans({
+                    en: "A secret of at least 32 characters that signs the id a page view carries for option.setClientReport. Set the same value on every gateway or pod so each takes the others' ids; a gateway passes it to its replicas unchanged. A shorter value is ignored with a warning.",
+                    ko: "option.setClientReport에서 페이지 뷰가 가지는 id를 서명하는 32자 이상의 비밀값입니다. 모든 gateway나 pod에 같은 값을 두면 서로의 id를 받고, gateway는 이 값을 replica에 그대로 넘깁니다. 더 짧은 값은 경고와 함께 무시됩니다.",
+                  }),
+                },
               ]}
             />
             <div>
