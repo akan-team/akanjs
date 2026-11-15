@@ -123,7 +123,7 @@ worker per web-serving replica.
   token from the Secret `<branch>.metrics.tokenSecret` names, and refuses to render `scrape` without it;
   `infra/monitoring` holds a Grafana dashboard and the alert rules.
 - **Each SQL statement is timed once, where its driver sends it**; the `db:` spans, the `akan_db_statement*` series
-  (labels `fingerprint`, `model`, `op`; the SQLite write-turn or Postgres pool wait apart) and the slow log read that
+  (labels `model`, `op`; the SQLite write-turn or Postgres pool wait apart) and the slow log read that
   point. A fingerprint hashes the text with literals `?` and lists collapsed; the text sent never changes.
   `/_akan/app/statements` (metrics token) ranks statements by total time and p95 with their senders.
   `AKAN_LOG_SLOW_STATEMENT_MS` (200, `off`) logs one `SlowStatement` warn per fingerprint a minute; a local dev run

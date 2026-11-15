@@ -12,8 +12,8 @@ const q = createDocumentQueryHelper();
 const secret = "alice@example.com";
 const statementFamilies = () =>
   metricRegistry.snapshot().filter((family) => family.name.startsWith("akan_db_statement"));
-const sampleOf = (family: AkanMetricFamily | undefined, fingerprint: string) =>
-  family?.samples.find((sample) => sample.labels.fingerprint === fingerprint);
+const sampleOf = (family: AkanMetricFamily | undefined, model: string, op: string) =>
+  family?.samples.find((sample) => sample.labels.model === model && sample.labels.op === op);
 
 describe("statement metrics", () => {
   let model: StatementModel;
@@ -49,7 +49,7 @@ describe("statement metrics", () => {
     expect(pick?.sentBy.map((sender) => sender.endpoint)).toEqual(["query:memo"]);
   });
 
-  test("labels every series by fingerprint, model and op, and carries no value it was sent", async () => {
+  test("labels every series by model and op only, and carries no value it was sent", async () => {
     const { Memo } = model;
     await runTraced(new SignalTrace("memoUpdate", "mutation", { mode: "context" }), async () => {
       await Memo.updateMany({ ownerId: "u1" } as never, { title: secret } as never);
@@ -65,17 +65,36 @@ describe("statement metrics", () => {
       "akan_db_statements_total",
     ]);
     for (const family of families)
-      for (const sample of family.samples)
-        expect(Object.keys(sample.labels).sort()).toEqual(["fingerprint", "model", "op"]);
+      for (const sample of family.samples) expect(Object.keys(sample.labels).sort()).toEqual(["model", "op"]);
     const [update] = statementMetrics.top(50).filter((stat) => stat.op === "updateMany");
     const rows = sampleOf(
       families.find((family) => family.name === "akan_db_statement_rows_total"),
-      update.fingerprint,
+      update.model,
+      update.op,
     );
     expect(rows && "value" in rows ? rows.value : null).toBe(10);
     const exposed = MetricExposition.render(families, "openmetrics");
     const report = JSON.stringify(StatementReport.view(statementMetrics.top(50)));
     for (const text of [exposed, report]) expect(text).not.toContain(secret);
+  });
+
+  test("exposes the same series however many distinct statements are sent", () => {
+    const seriesCount = () => statementFamilies().reduce((sum, family) => sum + family.samples.length, 0);
+    StatementProbe.sent(StatementProbe.fixed(`SELECT "first" FROM "spread"`), [], 1, 0, 1);
+    const before = seriesCount();
+    for (let idx = 0; idx < 300; idx++)
+      StatementProbe.sent(
+        StatementProbe.fixed(`SELECT "c${idx}" FROM "spread" WHERE "id" = ${idx} LIMIT ${idx}`),
+        [],
+        1,
+        0,
+        1,
+      );
+    for (let idx = 0; idx < 300; idx++)
+      StatementProbe.sent(StatementProbe.fixed(`SELECT "d${idx}" FROM "spread"`), [], 1, 0, 1);
+
+    expect(statementMetrics.top(1000).length).toBeGreaterThan(100);
+    expect(seriesCount()).toBe(before);
   });
 
   test("times a write's wait for the SQLite write turn apart from its run", async () => {

@@ -7,12 +7,12 @@ import { SlowStatementLog } from "./slowStatementLog";
 import { StatementPlanCheck } from "./statementPlanCheck";
 import { STATEMENT_BUCKETS_SECONDS, StatementReport } from "./statementReport";
 
-const LABELS = ["fingerprint", "model", "op"] as const;
+const LABELS = ["model", "op"] as const;
 const MAX_SENDERS = 16;
 
 const statements = metricRegistry.counter(
   "akan_db_statements_total",
-  "Statements sent to the database, by fingerprint and the model call that sent them.",
+  "Statements sent to the database, by the model call that sent them.",
   LABELS,
 );
 const seconds = metricRegistry.counter(
@@ -53,10 +53,10 @@ export class SiteSeries {
   readonly #rows: CounterSeries;
   readonly #duration: HistogramSeries;
 
-  constructor(fingerprint: string, model: string, op: string) {
+  constructor(model: string, op: string) {
     this.model = model;
     this.op = op;
-    const labels = { fingerprint, model, op };
+    const labels = { model, op };
     this.#count = statements.series(labels);
     this.#seconds = seconds.series(labels);
     this.#wait = waits.series(labels);
@@ -175,7 +175,7 @@ export class StatementStat {
   }
 
   #series(model: string, op: string) {
-    return new SiteSeries(this.shape.fingerprint, model, op);
+    return new SiteSeries(model, op);
   }
 }
 

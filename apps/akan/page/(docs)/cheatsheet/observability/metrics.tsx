@@ -438,8 +438,8 @@ export default page()
           "akan_db_statement_duration_seconds",
         ],
         desc: l.trans({
-          en: "Each SQL statement's runs, run time, wait for the write turn or a pool connection, rows returned or changed, and latency (16 buckets, 0.1 ms to 10 s), labelled `fingerprint`, `model` and `op`; see Find Slow Statements below.",
-          ko: "SQL 문마다 실행 수, 실행 시간, write 차례나 pool 연결을 기다린 시간, 돌려주거나 바꾼 행 수, 지연 시간(bucket 16개, 0.1ms~10s)입니다. `fingerprint`, `model`, `op` label이 붙고, 아래 느린 SQL 문 찾기에서 자세히 다룹니다.",
+          en: "Each SQL statement's runs, run time, wait for the write turn or a pool connection, rows returned or changed, and latency (16 buckets, 0.1 ms to 10 s), labelled `model` and `op` only, so the series count follows the app's models, not its statements; the per-statement detail is in Find Slow Statements below.",
+          ko: "SQL 문마다 실행 수, 실행 시간, write 차례나 pool 연결을 기다린 시간, 돌려주거나 바꾼 행 수, 지연 시간(bucket 16개, 0.1ms~10s)입니다. `model`, `op` label만 붙으므로 series 수는 문 수가 아니라 앱의 model 수를 따르고, 문마다의 자세한 내용은 아래 느린 SQL 문 찾기에 있습니다.",
         }),
       },
       {
@@ -963,17 +963,17 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                   en: (
                     <span>
                       <strong>Labels stay bounded.</strong> A series is labelled only by endpoint, route id, status
-                      class, a statement's fingerprint, model and op, and the process <code>role</code>, never a URL,
-                      user, account, query or value. A label takes at most 2,000 values and counts the rest as{" "}
-                      <code>other</code>. Request latency has 12 buckets from 1 ms to 10 s.
+                      class, a statement's model and op, and the process <code>role</code>, never a URL, user, account,
+                      query or value. A label takes at most 2,000 values and counts the rest as <code>other</code>.
+                      Request latency has 12 buckets from 1 ms to 10 s.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>label 수는 묶여 있습니다.</strong> label은 endpoint, route id, status class, SQL 문의
-                      fingerprint, model, op, 프로세스 <code>role</code>뿐이고 URL, 사용자, 계정, 쿼리, 값은 들어가지
-                      않습니다. label 하나는 값을 2,000개까지 받고 나머지는 <code>other</code>로 셉니다. 요청 지연 시간
-                      bucket은 1ms부터 10s까지 12개입니다.
+                      model, op, 프로세스 <code>role</code>뿐이고 URL, 사용자, 계정, 쿼리, 값은 들어가지 않습니다. label
+                      하나는 값을 2,000개까지 받고 나머지는 <code>other</code>로 셉니다. 요청 지연 시간 bucket은 1ms부터
+                      10s까지 12개입니다.
                     </span>
                   ),
                 })}
@@ -1159,14 +1159,14 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 {l.trans({
                   en: (
                     <span>
-                      <strong>No value leaves the driver.</strong> The series, the report and both logs carry the
-                      normalized text and the fingerprint, model and op, never a bound value, id or user data.
+                      <strong>No value leaves the driver.</strong> The series carry only model and op; the report and
+                      both logs add the normalized text and the fingerprint, never a bound value, id or user data.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>값은 드라이버 밖으로 나가지 않습니다.</strong> series, 보고서, 두 로그 모두 정규화한
-                      텍스트와 fingerprint, model, op만 싣고, 바인딩한 값, id, 사용자 데이터는 싣지 않습니다.
+                      <strong>값은 드라이버 밖으로 나가지 않습니다.</strong> series는 model과 op만 싣고, 보고서와 두
+                      로그는 정규화한 텍스트와 fingerprint를 더해 싣되, 바인딩한 값, id, 사용자 데이터는 싣지 않습니다.
                     </span>
                   ),
                 })}
