@@ -9,6 +9,8 @@ import {
   secretEnvFixtureNames,
   secretEnvPlain,
   secretEnvSentinels,
+  twinSecretEnv,
+  twinSecrets,
   writeComputedSecretFixture,
   writeSecretEnvFixture,
 } from "../test/secretEnvFixture";
@@ -201,6 +203,61 @@ describe("createServerEnvPlugin for an image", () => {
     const declared = await SecretEnvDeclaration.of(envDir, "main");
     expect(declared.unmoved).toEqual(computedSecretKeys);
     expect(declared.variables.map(({ name }) => name)).toEqual(secretEnvFixtureNames);
+  });
+
+  test("a secret string a plain key holds as well stays in the built server: a long mixed one stops the image check by both keys, a short one is a warning, and neither names the value", async () => {
+    const built = await build(await makeTempRoot(), "read", { mainExtra: twinSecretEnv });
+    for (const value of Object.values(twinSecrets)) expect(built.text).toContain(value);
+    const { moved } = await SecretEnvDeclaration.of(built.envDir, "main");
+    expect(moved.filter(({ twins }) => twins.length).map(({ path: at, name, twins }) => ({ at, name, twins }))).toEqual(
+      [
+        { at: "audit.password", name: "AUDIT__PASSWORD", twins: ["audit.label"] },
+        { at: "cache.password", name: "CACHE__PASSWORD", twins: ["cache.name"] },
+        { at: "door.secret", name: "DOOR__SECRET", twins: ["door.hint"] },
+      ],
+    );
+    const secrets = new ServerBundleSecrets(built.root, built.appDir);
+    const failure = await secrets.assertImageClean(built.outDir, moved).then(
+      () => "",
+      (error: Error) => error.message,
+    );
+    expect(failure).toStartWith(
+      "The build holds secret values the server reads from its process env, so it stops here:\n  server.js holds the value of audit.password (AUDIT__PASSWORD), which the env's audit.label holds as well\nThe build left each out",
+    );
+    expect(holdsSentinel(failure)).toBe(false);
+    const note = await secrets.assertImageClean(
+      built.outDir,
+      moved.filter(({ path: at }) => at !== "audit.password"),
+    );
+    expect(note).toBe(
+      [
+        "2 secret values the server reads from its process env are also in what this build wrote, short or plain enough to be there for another reason, so the build goes on:",
+        "  cache.password (CACHE__PASSWORD): server.js; the env's cache.name holds the same string",
+        "  door.secret (DOOR__SECRET): the env's door.hint holds the same string",
+        "Where another key of the env or the app's code holds a secret's own string, the image holds it too: change one of the two.",
+      ].join("\n"),
+    );
+
+    const clean = await build(await makeTempRoot(), "read");
+    const declared = await SecretEnvDeclaration.of(clean.envDir, "main");
+    expect(declared.moved.map(({ name }) => name)).toEqual([
+      "JWT_SECRET",
+      "SECURITY__SSO__GOOGLE__CLIENT_SECRET",
+      "MAILER__AUTH__PASS",
+      "OBJECT_STORAGE__ENDPOINT",
+      "OBJECT_STORAGE__ENDPOINT",
+      "DISCORD__TOKENS",
+      "DISCORD__TOKENS",
+      "DISCORD__WEBHOOK",
+      "PUSH_NOTI__FIREBASE__PRIVATE_KEY",
+      "MESSAGE__API_SECRET",
+      "MESSAGE__SENDER_PASSWORD",
+      "POSTGRES_URL",
+      "POSTGRES_URL",
+    ]);
+    expect(await new ServerBundleSecrets(clean.root, clean.appDir).assertImageClean(clean.outDir, declared.moved)).toBe(
+      null,
+    );
   });
 
   test("a secret the env file reads from the process env itself stays that read in the built server, which holds no value the build's shell gave it", async () => {

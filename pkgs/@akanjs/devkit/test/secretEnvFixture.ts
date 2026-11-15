@@ -104,6 +104,16 @@ export const computedSecrets = {
   user: "sentinel-user",
 };
 
+//* One string under a secret-named key and a plain one: a long mixed one, a short one, and one under eight characters.
+export const twinSecrets = { long: "sentinel-Twin-7d21-Xq", plain: "sentinel-db", short: "s-pin" };
+
+export const twinSecretEnv = [
+  "",
+  `  audit: { password: ${JSON.stringify(twinSecrets.long)}, label: ${JSON.stringify(twinSecrets.long)} },`,
+  `  cache: { password: ${JSON.stringify(twinSecrets.plain)}, name: ${JSON.stringify(twinSecrets.plain)} },`,
+  `  door: { secret: ${JSON.stringify(twinSecrets.short)}, hint: ${JSON.stringify(twinSecrets.short)} },`,
+].join("\n");
+
 export const computedSecretKeys = ["store.password", "store.passphrase", "otp.secret", "credentials.user"];
 
 export const writeComputedSecretFixture = async (root: string, app = "demo"): Promise<SecretEnvFixture> => {

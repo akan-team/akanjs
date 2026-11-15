@@ -26,15 +26,31 @@ interface Computed {
   value: string;
 }
 
+interface MarkedVariable extends SecretEnvVariable {
+  literal: unknown;
+  underSecret: boolean;
+}
+
 interface Found {
-  variables: SecretEnvVariable[];
+  variables: MarkedVariable[];
   computed: Computed[];
+  plain: { at: string; value: string }[];
+}
+
+export interface SecretEnvMoved {
+  path: string;
+  name: string;
+  /** One secret string the variable holds: the value, an item of its array, or the password of a URL in it. */
+  value: string;
+  /** Keys of the env that hold the same string and stay in the build as written. */
+  twins: string[];
 }
 
 export interface SecretEnvDeclared {
   variables: SecretEnvVariable[];
   /** Keys whose secret value the env computes or imports, so no build can read it from a variable. A value that comes from the env file's own read of the process env is not one. */
   unmoved: string[];
+  moved: SecretEnvMoved[];
 }
 
 //* Evaluated with each secret literal marked as a build replaces it, so the list is the reads the built server holds.
@@ -48,9 +64,9 @@ export class SecretEnvDeclaration {
     if (!existsSync(file))
       throw new Error(`${file} is missing: \`akan sync\` writes the app's env files where it has none.`);
     const loaded = await SecretEnvDeclaration.#loaded(file, envDir, environment);
-    const found: Found = { variables: [], computed: [] };
+    const found: Found = { variables: [], computed: [], plain: [] };
     SecretEnvDeclaration.#collect(loaded.value, "", [], false, found);
-    const variables = new Map<string, SecretEnvVariable>();
+    const variables = new Map<string, MarkedVariable>();
     for (const variable of found.variables) {
       const taken = variables.get(variable.name);
       if (taken && taken.path !== variable.path)
@@ -60,7 +76,24 @@ export class SecretEnvDeclaration {
       variables.set(variable.name, variable);
     }
     const computed = await SecretEnvDeclaration.#notRead(found.computed, file, envDir, environment, loaded);
-    return { variables: [...variables.values()], unmoved: [...new Set(computed.map(({ at }) => at))] };
+    return {
+      variables: [...variables.values()].map(({ name, kind, path: at, value }) => ({ name, kind, path: at, value })),
+      unmoved: [...new Set(computed.map(({ at }) => at))],
+      moved: [...variables.values()].flatMap(({ name, path: at, literal, underSecret }) =>
+        ServerEnvProfile.movedTexts(literal, underSecret).map((value) => ({
+          path: at,
+          name,
+          value,
+          twins: [
+            ...new Set(
+              found.plain
+                .filter((plain) => plain.value === value || (value.length >= 8 && plain.value.includes(value)))
+                .map((plain) => plain.at),
+            ),
+          ],
+        })),
+      ),
+    };
   }
 
   static async #evaluate(file: string, envDir: string, environment: string, variables: Variables) {
@@ -145,6 +178,7 @@ export class SecretEnvDeclaration {
 
   static #collect(value: unknown, at: string, segments: string[], underSecret: boolean, found: Found): void {
     if (typeof value === "string") {
+      found.plain.push({ at, value });
       if (ServerEnvProfile.isSecret(value, underSecret)) found.computed.push({ at, segments, value });
       return;
     }
@@ -156,8 +190,11 @@ export class SecretEnvDeclaration {
     }
     const mark = (value as { [key: string]: unknown })[SecretEnvSource.markKey];
     if (Array.isArray(mark)) {
-      const [name, kind, held] = mark as [string, SecretEnvKind, unknown];
-      found.variables.push({ name, kind, path: at, value: typeof held === "string" ? held : JSON.stringify(held) });
+      const [name, kind, literal] = mark as [string, SecretEnvKind, unknown];
+      //? A string a build moved is a secret wherever it sits: a credential URL is one under a plain key too.
+      const held = underSecret || typeof literal === "string";
+      const value = typeof literal === "string" ? literal : JSON.stringify(literal);
+      found.variables.push({ name, kind, path: at, value, literal, underSecret: held });
       return;
     }
     for (const [key, child] of Object.entries(value))

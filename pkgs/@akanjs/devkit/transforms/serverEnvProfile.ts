@@ -179,6 +179,19 @@ export class ServerEnvProfile {
     );
   }
 
+  //* The strings of a value a build moved to a variable, and the password of each URL among them.
+  static movedTexts(value: unknown, underSecret: boolean): string[] {
+    const texts = ServerEnvProfile.#fold(
+      value,
+      ServerEnvProfile.#collect((text, _at, held) =>
+        ServerEnvProfile.isSecret(text, held) ? [text, ServerEnvProfile.#url(text)?.password ?? ""] : [],
+      ),
+      "",
+      underSecret,
+    );
+    return [...new Set(texts)].filter((text) => text !== "");
+  }
+
   //* Evaluated in a child with no app env, so `process.env.X ?? "fallback"` reads as the fallback the bundle carries.
   //* The result comes back over IPC, as an import may write to stdout; `load` answers for each env file it reaches.
   static async evaluate(file: string, cwd: string, load?: EnvLoad, evaluation?: EnvEvaluation): Promise<unknown> {

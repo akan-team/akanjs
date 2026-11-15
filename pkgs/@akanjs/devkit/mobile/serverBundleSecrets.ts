@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import type { SecretEnvMoved } from "../transforms/secretEnvDeclaration";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 
 interface SecretValue {
@@ -64,6 +65,48 @@ export class ServerBundleSecrets {
         `The server this app carries holds secret values of the workspace's env files, so the release stops here:\n  ${[...new Set(leaks)].join("\n  ")}\nBuild its server with a profile (native.desktop.server.profile), whose bundle leaves the env files' secrets out. A value a profile build still holds sits in code or a file the server carries: take it out there.`,
       );
     return unread;
+  }
+
+  //* An image's own check: the build left each secret string out at its key, and the same string may sit in what it
+  //* wrote for another reason. A long mixed one stops the build; a short or plain one, which code holds by chance
+  //* (a password equal to a database's name), comes back as a warning. Neither names a value.
+  async assertImageClean(bundleDir: string, moved: readonly SecretEnvMoved[]): Promise<string | null> {
+    //? A string under eight characters is in any bundle by chance, so it is not looked for: the env alone says
+    //? whether a key the build leaves as written holds it too.
+    const searched = (value: string) => value.length >= 8;
+    const sought = moved
+      .filter(({ value }) => searched(value))
+      .map((secret) => ({ secret, needles: ServerBundleSecrets.#needles(secret.value) }));
+    const holders = new Map<SecretEnvMoved, string[]>();
+    if (sought.length)
+      for (const bundled of await ServerBundleSecrets.#files(bundleDir)) {
+        const text = await readFile(bundled, "latin1");
+        for (const { secret, needles } of sought)
+          if (needles.some((needle) => text.includes(needle)))
+            holders.set(secret, [...(holders.get(secret) ?? []), ServerBundleSecrets.#relative(bundleDir, bundled)]);
+      }
+    const stops: string[] = [];
+    const notes: string[] = [];
+    for (const secret of moved) {
+      const files = holders.get(secret) ?? [];
+      const key = `${secret.path} (${secret.name})`;
+      const twins = secret.twins.length ? `the env's ${secret.twins.join(", ")}` : "";
+      if (files.length && ServerEnvProfile.distinctive(secret.value))
+        stops.push(
+          ...files.map((file) => `${file} holds the value of ${key}${twins ? `, which ${twins} holds as well` : ""}`),
+        );
+      else if (files.length || (twins && !searched(secret.value)))
+        notes.push(
+          `${key}: ${[files.join(", "), twins ? `${twins} holds the same string` : ""].filter(Boolean).join("; ")}`,
+        );
+    }
+    if (stops.length)
+      throw new Error(
+        `The build holds secret values the server reads from its process env, so it stops here:\n  ${[...new Set(stops)].join("\n  ")}\nThe build left each out at its secret-named key of the env file, and the same string is in what it wrote for another reason: another key of the env holds it too, or the app's code, or a file the build copies. Take it out there, or read it there from the same variable. \`akan build --inline-secrets\` builds with the env files as written until akanjs 3.5.0 removes it.`,
+      );
+    if (!notes.length) return null;
+    const lines = [...new Set(notes)];
+    return `${lines.length} secret value${lines.length === 1 ? "" : "s"} the server reads from its process env ${lines.length === 1 ? "is" : "are"} also in what this build wrote, short or plain enough to be there for another reason, so the build goes on:\n  ${lines.join("\n  ")}\nWhere another key of the env or the app's code holds a secret's own string, the image holds it too: change one of the two.`;
   }
 
   //? A short or plain value the app's or a lib's own code holds as well (a default password) is that code's, which

@@ -12,6 +12,9 @@ import {
   computedSecretKeys,
   computedSecrets,
   holdsSentinel,
+  secretEnvSentinels,
+  twinSecretEnv,
+  twinSecrets,
   writeComputedSecretFixture,
   writeSecretEnvFixture,
 } from "../test/secretEnvFixture";
@@ -313,6 +316,74 @@ console.info(new SampleService().name);
       const inlined = await started("inline");
       expect(inlined.prepared()).toBe(true);
       expect(inlined.failure).toBe("stopped before the phases");
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an image build stops before its metadata when a file it wrote holds a secret it left out of the env, and warns of a short one a plain key holds as well", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeSecretEnvFixture(root, { app: "portal", mainExtra: twinSecretEnv.split("\n").slice(0, 3).join("\n") });
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    const runnerOf = async (secretEnv: "read" | "inline") => {
+      const app = AppExecutor.from(workspace, "portal");
+      const warnings: string[] = [];
+      spyOn(app.logger, "warn").mockImplementation((message: string) => {
+        warnings.push(message);
+      });
+      app.prepareCommand = async () => {
+        throw new Error("stopped before the phases");
+      };
+      const runner = new ApplicationBuildRunner(app, { secretEnv });
+      await expect(runner.build()).rejects.toThrow("stopped before the phases");
+      return { app, runner, warnings };
+    };
+    try {
+      const { app, runner, warnings } = await runnerOf("read");
+      await mkdir(app.dist.cwdPath, { recursive: true });
+      await writeFile(path.join(app.dist.cwdPath, "server.js"), 'const env = { hostname: "app.example.test" };\n');
+      await runner.assertSecretsLeftOut();
+      expect(warnings).toEqual([]);
+      await writeFile(
+        path.join(app.dist.cwdPath, "chunk-a.js"),
+        `const cache = { name: ${JSON.stringify(twinSecrets.plain)} };\n`,
+      );
+      await runner.assertSecretsLeftOut();
+      expect(warnings).toHaveLength(1);
+      expect(warnings[0]).toContain(
+        "\n  cache.password (CACHE__PASSWORD): chunk-a.js; the env's cache.name holds the same string\n",
+      );
+      expect(holdsSentinel(warnings[0] ?? "")).toBe(false);
+      await writeFile(
+        path.join(app.dist.cwdPath, "chunk-b.js"),
+        `const key = ${JSON.stringify(secretEnvSentinels.google)};\nconst label = ${JSON.stringify(twinSecrets.long)};\n`,
+      );
+      const failure = await runner.assertSecretsLeftOut().then(
+        () => "",
+        (error: Error) => error.message,
+      );
+      expect(failure).toStartWith(
+        [
+          "The build holds secret values the server reads from its process env, so it stops here:",
+          "  chunk-b.js holds the value of security.sso.google.clientSecret (SECURITY__SSO__GOOGLE__CLIENT_SECRET)",
+          "  chunk-b.js holds the value of audit.password (AUDIT__PASSWORD), which the env's audit.label holds as well",
+          "",
+        ].join("\n"),
+      );
+      expect(holdsSentinel(failure)).toBe(false);
+      const inlined = await runnerOf("inline");
+      await inlined.runner.assertSecretsLeftOut();
+      expect(inlined.warnings.join("\n")).not.toContain("also in what this build wrote");
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];
