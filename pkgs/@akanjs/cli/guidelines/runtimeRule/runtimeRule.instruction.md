@@ -101,12 +101,16 @@ worker per web-serving replica.
 - **A render worker starts every render it is sent, unless `AKAN_RSC_WORKER_MAX_CONCURRENCY` caps it.** With a
   cap, that many renders run in one worker (so per replica) and the rest wait first come, first served: documents,
   `/__rsc` navigations and prefetches, and a failed render's error page. A stored page is replayed without a slot,
-  an aborted request leaves the queue, and a slot comes back when its render ends, throws or is cancelled; MCP page
-  prompts are not queued. `AKAN_RSC_WORKER_MAX_QUEUE` bounds the queue (default: the cap times `AKAN_IDLE_TIMEOUT`'s
-  seconds, `0` for none): a render past it, or one that waited that timeout, is answered `503` with `Retry-After: 1`
-  and `no-store` before it renders (`renderQueueFull`, `renderQueueTimeout`), counted as its route's `5xx` and in
-  `akan_rsc_render_refusals_total{reason}`. `akan_rsc_renders_in_flight`, `akan_rsc_render_queue_depth` and
+  after a wait too; an aborted request leaves the queue, and a slot comes back when its render ends, throws, is
+  cancelled, or has held it as long as `AKAN_IDLE_TIMEOUT` (120 s, also where that is `0`); MCP page prompts are not
+  queued. `AKAN_RSC_WORKER_MAX_QUEUE` bounds the queue (default: the cap times that timeout's seconds, `0` for
+  none): a render past it, or one that waited that timeout, is answered `503` with `Retry-After: 1` and `no-store`
+  before it renders (`renderQueueFull`, `renderQueueTimeout`; a browser gets a page that reloads once, backing
+  off), counted as its route's `5xx` and in `akan_rsc_render_refusals_total{reason}`, which counts a slot taken
+  back as `hold-timeout`. `akan_rsc_renders_in_flight`, `akan_rsc_render_queue_depth` and
   `akan_rsc_render_queue_wait_seconds` report the queue; a page that waited carries `queueMs` on its request line.
+  The cap bounds admitted renders, not abandoned ones: a page whose slot came back runs on until its own `await`
+  settles, counted in `akan_rsc_renders_abandoned`.
   Off by default, because a page that awaits data holds its slot: on `apps/akan` at 32 requests at once, pages
   waiting 20–200 ms on data served 151 requests a second uncapped and 32 at a cap of 4, while CPU-bound pages
   served about 105 at any cap with the same median latency. It bounds a burst, not latency: set it to the requests

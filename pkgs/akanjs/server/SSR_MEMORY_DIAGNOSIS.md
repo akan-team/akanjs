@@ -131,6 +131,12 @@ and queue the rest first come, first served; `AKAN_RSC_WORKER_MAX_QUEUE` bounds 
 the idle timeout's seconds), and a render past it is answered 503 with `Retry-After`. A stored page is replayed
 without a slot. Both are off by default.
 
+The cap bounds the renders admitted, not the ones abandoned. A slot comes back when its client leaves, and after a
+render has held it as long as the idle timeout (120 seconds, also where that timeout is off), but the page's own
+code runs on until its `await` settles: `akan_rsc_renders_abandoned` counts those renders, and
+`akan_rsc_render_refusals_total{reason="hold-timeout"}` the slots taken back. A count that stays up means pages
+wait on something with no timeout of its own.
+
 ```sh
 AKAN_RSC_WORKER_MAX_CONCURRENCY=32
 AKAN_RSC_WORKER_MAX_QUEUE=3840
@@ -197,8 +203,8 @@ What it shows:
 So a cap is a bound on a burst, not a way to lower latency: set it to the number of requests one replica is sized
 to hold at once, and lower only for pages that render without waiting on data, to hold the worker's heap down.
 
-`akan_rsc_renders_in_flight`, `akan_rsc_render_queue_depth`, `akan_rsc_render_queue_wait_seconds` and
-`akan_rsc_render_refusals_total` report the queue on `/_akan/app/metrics`.
+`akan_rsc_renders_in_flight`, `akan_rsc_render_queue_depth`, `akan_rsc_renders_abandoned`,
+`akan_rsc_render_queue_wait_seconds` and `akan_rsc_render_refusals_total` report the queue on `/_akan/app/metrics`.
 
 ## Dev Builder Recycle
 

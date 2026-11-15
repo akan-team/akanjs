@@ -830,8 +830,9 @@ keys() · entries() · forEach(fn)`,
                       <strong>A full queue answers 503, and so does a long wait.</strong> A render past{" "}
                       <code>AKAN_RSC_WORKER_MAX_QUEUE</code>, or one that has waited as long as{" "}
                       <code>AKAN_IDLE_TIMEOUT</code> (120 s), gets <code>503</code> with <code>Retry-After: 1</code> and{" "}
-                      <code>Cache-Control: no-store</code> before any of it renders: a page that reloads itself for a
-                      browser, <code>base.error.serverUnavailable</code> JSON for a JSON caller.
+                      <code>Cache-Control: no-store</code> before any of it renders: for a browser a page that reloads
+                      itself once, waiting longer after each refusal in a row; <code>base.error.serverUnavailable</code>{" "}
+                      JSON for a JSON caller.
                     </span>
                   ),
                   ko: (
@@ -839,9 +840,9 @@ keys() · entries() · forEach(fn)`,
                       <strong>대기열이 가득 차면 503으로 답하고, 너무 오래 기다려도 그렇습니다.</strong>{" "}
                       <code>AKAN_RSC_WORKER_MAX_QUEUE</code>를 넘은 렌더와 <code>AKAN_IDLE_TIMEOUT</code>(120초)만큼
                       기다린 렌더는 렌더를 시작하기 전에 <code>Retry-After: 1</code>,{" "}
-                      <code>Cache-Control: no-store</code>와 함께 <code>503</code>을 받습니다. 브라우저에는 스스로
-                      새로고침하는 페이지로, JSON 호출자에는 <code>base.error.serverUnavailable</code> JSON으로
-                      답합니다.
+                      <code>Cache-Control: no-store</code>와 함께 <code>503</code>을 받습니다. 브라우저에는 한 번만
+                      스스로 새로고침하고 거절이 이어질수록 더 오래 기다리는 페이지로, JSON 호출자에는{" "}
+                      <code>base.error.serverUnavailable</code> JSON으로 답합니다.
                     </span>
                   ),
                 })}
@@ -862,6 +863,28 @@ keys() · entries() · forEach(fn)`,
                       <code>akan_rsc_render_queue_depth</code>, <code>akan_rsc_render_queue_wait_seconds</code>,{" "}
                       <code>akan_rsc_render_refusals_total</code>이 프로세스별로 알려 주고, 기다린 페이지는 요청 줄에{" "}
                       <code>queueMs</code>가 붙습니다. 상한은 렌더 워커마다, 곧 replica마다 따로 셉니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The cap bounds the renders admitted, not the ones abandoned.</strong> A slot comes back
+                      when its client leaves, and after the page has held it as long as <code>AKAN_IDLE_TIMEOUT</code>{" "}
+                      (120 s), so a page stuck on its data cannot keep every other page out. The page itself runs on
+                      until its own <code>await</code> settles; <code>akan_rsc_renders_abandoned</code> counts those, so
+                      give a page's data calls their own timeout.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>상한은 받아들인 렌더 수를 묶을 뿐, 버려진 렌더는 묶지 않습니다.</strong> 클라이언트가
+                      떠나거나 페이지가 slot을 <code>AKAN_IDLE_TIMEOUT</code>(120초)만큼 쥐면 slot을 돌려받으므로,
+                      데이터에 막힌 페이지가 다른 페이지를 모두 막지는 못합니다. 그 페이지 자체는 자기{" "}
+                      <code>await</code>가 끝날 때까지 계속 실행되고 <code>akan_rsc_renders_abandoned</code>가 그 수를
+                      세므로, 페이지의 데이터 호출에는 따로 timeout을 두세요.
                     </span>
                   ),
                 })}
