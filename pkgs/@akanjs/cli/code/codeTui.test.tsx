@@ -948,7 +948,7 @@ describe("CodeTui", () => {
     const file = path.join(tmpdir(), "Screenshot at 20.11.02.png");
     await Bun.write(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     // Escaped spaces, the way a terminal writes a dragged or pasted path.
-    await harness.press(file.replace(/ /g, "\\ "));
+    await harness.press(file.replace(/[\\ ]/g, "\\$&"));
     await harness.drawn("[image #1]");
     expect(harness.stdout.lastFrame).not.toContain("Screenshot at");
     await harness.press("look at this");
