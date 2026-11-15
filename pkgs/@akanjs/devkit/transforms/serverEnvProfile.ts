@@ -20,6 +20,11 @@ export interface LibEnvSource extends ServerEnvSource {
 
 type EnvLoad = (envFile: string) => Promise<ServerEnvSource>;
 
+export interface EnvEvaluation {
+  environment?: string;
+  loads?: RegExp;
+}
+
 interface Stripped {
   value: unknown;
   stripped: string[];
@@ -38,6 +43,7 @@ type EvaluatedMessage = { load: string } | { env: string; lossy: string[] } | { 
 export class ServerEnvProfile {
   static readonly namePattern = /^[a-z][a-zA-Z0-9-]*$/;
   static readonly envFilePattern = /[\\/]env[\\/]env\.server\.[A-Za-z0-9-]+\.ts$/;
+  static readonly envModulePattern = /[\\/]env[\\/]env\.server(?:\.[A-Za-z0-9-]+)?\.ts$/;
 
   static fileName(environment: string, profile: string) {
     return `env.server.${environment}.${profile}.ts`;
@@ -65,7 +71,7 @@ export class ServerEnvProfile {
     return !!url && ServerEnvProfile.#carriesCredential(url);
   }
 
-  static #isSecret(value: string, underSecret: boolean) {
+  static isSecret(value: string, underSecret: boolean) {
     return (underSecret && !!value.trim()) || ServerEnvProfile.#isCredentialUrl(value);
   }
 
@@ -92,7 +98,7 @@ export class ServerEnvProfile {
   static strip(value: unknown): Stripped {
     return ServerEnvProfile.#fold<Stripped>(value, {
       text: (text, at, underSecret) =>
-        ServerEnvProfile.#isSecret(text, underSecret)
+        ServerEnvProfile.isSecret(text, underSecret)
           ? { value: undefined, stripped: [at] }
           : { value: text, stripped: [] },
       other: (other) => ({ value: other, stripped: [] }),
@@ -152,22 +158,29 @@ export class ServerEnvProfile {
     return value.length >= 16 && !/^https?:\/\//.test(value) && !/^[a-z]+(?:[._-][a-z]+)*$/.test(value);
   }
 
-  static secretPaths(value: unknown): string[] {
+  static secretPaths(value: unknown, underSecret = false): string[] {
     return ServerEnvProfile.#fold(
       value,
-      ServerEnvProfile.#collect((text, at, underSecret) => (ServerEnvProfile.#isSecret(text, underSecret) ? [at] : [])),
+      ServerEnvProfile.#collect((text, at, held) => (ServerEnvProfile.isSecret(text, held) ? [at] : [])),
+      "",
+      underSecret,
     );
   }
 
   //* Evaluated in a child with no app env, so `process.env.X ?? "fallback"` reads as the fallback the bundle carries.
   //* The result comes back over IPC, as an import may write to stdout; `load` answers for each env file it reaches.
-  static async evaluate(file: string, cwd: string, load?: EnvLoad): Promise<unknown> {
-    return (await ServerEnvProfile.#evaluated(file, cwd, load)).value;
+  static async evaluate(file: string, cwd: string, load?: EnvLoad, evaluation?: EnvEvaluation): Promise<unknown> {
+    return (await ServerEnvProfile.#evaluated(file, cwd, load, evaluation)).value;
   }
 
   //? Bun prints a failing module's source line with its error, so stderr is never read: the child sends the error's
   //? name and place, and its message without JSC's `(evaluating '…')` or any string literal of the files at fault.
-  static async #evaluated(file: string, cwd: string, load?: EnvLoad): Promise<{ value: unknown; lossy: string[] }> {
+  static async #evaluated(
+    file: string,
+    cwd: string,
+    load?: EnvLoad,
+    { environment, loads = ServerEnvProfile.envFilePattern }: EnvEvaluation = {},
+  ): Promise<{ value: unknown; lossy: string[] }> {
     const pattern = (regex: RegExp, flags = "") => `new RegExp(${JSON.stringify(regex.source)}, "${flags}")`;
     const literal = /(["'`])((?:\\[\s\S]|(?!\1)[^\\])*)\1/;
     const frame = /^\s*at (?:[^(]*\()?(.+):(\d+):(\d+)\)?\s*$/;
@@ -235,7 +248,8 @@ export class ServerEnvProfile {
         PATH: process.env.PATH ?? "",
         HOME: process.env.HOME ?? "",
         AKAN_PROFILE_ENV_FILE: file,
-        ...(load ? { AKAN_PROFILE_ENV_LOAD: ServerEnvProfile.envFilePattern.source } : {}),
+        ...(load ? { AKAN_PROFILE_ENV_LOAD: loads.source } : {}),
+        ...(environment ? { AKAN_PUBLIC_ENV: environment } : {}),
       },
       stdout: "ignore",
       stderr: "ignore",

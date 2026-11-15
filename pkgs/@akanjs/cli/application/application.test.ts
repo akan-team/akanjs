@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
@@ -15,6 +15,7 @@ import {
 } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { NativeApp } from "@akanjs/devkit/mobile";
+import { holdsSentinel, secretEnvFixtureNames, writeSecretEnvFixture } from "@akanjs/devkit/test/secretEnvFixture";
 import {
   createCallRecorder,
   createFakeExecutor,
@@ -163,6 +164,30 @@ describe("ApplicationCommand", () => {
       handler?.call(command, { name: "demo" }, true, false, false, null, null, true, false, true),
     ).rejects.toThrow("Pass at most one of --check-budget, --update-budget and --raise-budget.");
     expect(calls).toHaveLength(3);
+  });
+
+  test("secret-env lists unless given --out, which it writes as a Kubernetes Secret unless told dotenv", async () => {
+    const options = Object.fromEntries(
+      getArgMetas(ApplicationCommand, "secretEnv")[1].map((meta) => [meta.name, meta.argsOption]),
+    );
+    expect(options.env).toMatchObject({ enum: ["local", "debug", "develop", "main"], nullable: true });
+    expect(options.out).toMatchObject({ nullable: true });
+    expect(options.format).toMatchObject({ enum: ["k8s", "dotenv"], default: "k8s" });
+    expect(options.name).toMatchObject({ nullable: true });
+    expect(options.force).toMatchObject({ default: false });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.secretEnv = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "secretEnv")?.handler;
+    await handler?.call(command, { name: "demo" }, null, null, "k8s", null, false);
+    await handler?.call(command, { name: "demo" }, "main", "local/demo.env", "dotenv", "app-env", true);
+    expect(calls).toEqual([
+      [{ name: "demo" }, { format: "k8s", force: false }],
+      [{ name: "demo" }, { env: "main", out: "local/demo.env", format: "dotenv", name: "app-env", force: true }],
+    ]);
   });
 
   test("studio passes the runtime and framework views through, and opens the ERD for anything else", async () => {
@@ -358,6 +383,34 @@ describe("ApplicationScript", () => {
       answers.mockRestore();
       printed.mockRestore();
     }
+  });
+
+  test("secret-env prints the names a build reads and never a value, and writes the values only to a file its user alone reads", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { root, app } = track(await createTempApp("demo"));
+    await writeSecretEnvFixture(root);
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    const output = () => printed.mock.calls.map(([line]) => line).join("\n");
+
+    await script.secretEnv(app, { env: "main" });
+    for (const name of secretEnvFixtureNames) expect(output()).toContain(name);
+    expect(holdsSentinel(output())).toBe(false);
+
+    await expect(script.secretEnv(app, { env: "main", out: path.join(root, "dist/apps/demo/.env") })).rejects.toThrow(
+      "is under dist/, and an image copies the whole of dist/apps/<app>",
+    );
+    expect(existsSync(path.join(root, "dist/apps/demo/.env"))).toBe(false);
+
+    const out = path.join(root, "local/demo-secret.yaml");
+    await script.secretEnv(app, { env: "main", out });
+    expect((await stat(out)).mode & 0o777).toBe(0o600);
+    const manifest = Bun.YAML.parse(await readFile(out, "utf8")) as { metadata: { name: string }; data: object };
+    expect(manifest.metadata.name).toBe("demo-env");
+    expect(Object.keys(manifest.data)).toEqual(secretEnvFixtureNames);
+    expect(output()).toContain(
+      `Wrote 10 secret env values of demo (main) to ${out}, which this user alone can read. It holds the values themselves: hand it to the deployment, then delete it.`,
+    );
+    expect(holdsSentinel(output())).toBe(false);
   });
 
   test("build hands its --env to the build runner", async () => {

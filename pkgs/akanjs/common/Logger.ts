@@ -97,7 +97,7 @@ const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`,
 //* `iapVerify` (its `apple` is the App Store shared secret) and a service account. Not every `…Key`: an `enrollKey`
 //* names a fleet.
 const secretKey =
-  /password|passwd|passphrase|^pass$|pwd|token|jwt|authorization|cookie|secret|api[-_]?key|private[-_]?key|access[-_]?key|auth[-_]?key|hash[-_]?key|(?:signing|encryption|master|session)[-_]?key|webhook|credential|dsn$|connection[-_]?string|iap[-_]?verify|service[-_]?account/i;
+  /password|passwd|passphrase|^pass$|pwd|token|jwt|authorization|cookie|secret|api[-_]?key|aes[-_]?key|private[-_]?key|access[-_]?key|auth[-_]?key|hash[-_]?key|(?:signing|encryption|master|session)[-_]?key|webhook|credential|dsn$|connection[-_]?string|iap[-_]?verify|service[-_]?account/i;
 //* Case-sensitive, so it finds `cred` as a word (`regcred`, `awsCreds`, `AWS_CREDS`) and not in `credits` or `syncRedis`.
 const credWord = /[cC]reds?(?![a-z])|CREDS?(?![A-Z])/;
 

@@ -250,6 +250,7 @@ describe("Logger attrs", () => {
       ms: 1,
     });
     expect(Logger.inlineData({ mailer: { pass: "p", host: "h" } })).toBe('{"mailer":{"pass":"[redacted]","host":"h"}}');
+    for (const name of ["aeskey", "aesKey", "AES_KEY"]) expect(Logger.isSecretKey(name)).toBe(true);
   });
 
   test("masks a cred only as a word of its own, so a credit count stays readable", () => {
