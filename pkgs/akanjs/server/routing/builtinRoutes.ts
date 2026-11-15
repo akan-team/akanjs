@@ -112,6 +112,7 @@ export class BuiltinRoutes {
             rscWorker: webRouter?.rscWorkerStatus ?? null,
             metrics: this.#metrics.last,
             families: () => this.#metrics.families(),
+            statements: () => this.#metrics.statements(),
           }),
           this.#logging.stream,
           this.#opsRoute(),

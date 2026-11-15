@@ -108,6 +108,7 @@ describe("SignalTrace spans", () => {
     });
     const busy = new SignalTrace("listMemo", "query", { mode: "full" });
     await runTraced(busy, async () => {
+      for (let idx = 0; idx < 100; idx += 1) busy.recordSpan("work", 1);
       for (let idx = 0; idx < 100; idx += 1) busy.recordDbQuery("memo", "findOne", 1);
     });
 
@@ -116,6 +117,22 @@ describe("SignalTrace spans", () => {
     expect(busy.spans).toHaveLength(65);
     expect(busy.spans.at(-1)).toMatchObject({ name: "total", id: busy.spanId });
     expect(busy.dbQueryCount).toBe(100);
+  });
+
+  test("keeps room for other spans when a request sends many statements, and still counts every one", async () => {
+    const trace = new SignalTrace("listMemo", "query", { mode: "full" });
+    await runTraced(trace, async () => {
+      for (let idx = 0; idx < 100; idx += 1) trace.recordDbQuery("memo", "findOne", 1);
+      for (let idx = 0; idx < 20; idx += 1) trace.recordSpan("cache:memo", 1);
+      await traceSpan("render", async () => undefined);
+    });
+
+    const names = trace.spans.map((span) => span.name);
+    expect(names.filter((name) => name.startsWith("db:"))).toHaveLength(32);
+    expect(names.filter((name) => name === "cache:memo")).toHaveLength(20);
+    expect(names).toContain("render");
+    expect(trace.dbQueryCount).toBe(100);
+    expect(trace.dbQueryMs).toBe(100);
   });
 });
 

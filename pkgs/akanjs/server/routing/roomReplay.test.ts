@@ -147,6 +147,19 @@ describe("RoomReplay", () => {
     expect(replay.since("solo", { epoch: cursor.epoch, seq: 1 })).toBeNull();
   });
 
+  test("counts the frame bytes it keeps across every room, and gives them back with a room it forgets", () => {
+    const frameBytes = Buffer.byteLength(JSON.stringify({ ...pub("a", 1), seq: 1 }));
+    const replay = new RoomReplay({ vouches: true, subscribed: () => true });
+    replay.watch("a", 0);
+    replay.watch("b", 0);
+    replay.frameOf(pub("a", 1), true, 1);
+    replay.frameOf(pub("b", 1), true, 2);
+    expect(replay.bytes).toBe(frameBytes * 2);
+    replay.forget("a");
+    expect(replay.bytes).toBe(frameBytes);
+    expect(new RoomReplay({ vouches: false }).bytes).toBe(0);
+  });
+
   test("drops a held room's frames once they are older than retainMs, with no publish to it to notice", () => {
     const replay = new RoomReplay({ vouches: true, retainMs: 1_000, subscribed: () => true });
     replay.watch("quiet", 0);

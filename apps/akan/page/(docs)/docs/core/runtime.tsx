@@ -745,6 +745,24 @@ REDIS_URI=redis://redis.internal:6379`}
                   }),
                 },
                 {
+                  key: "AKAN_LOG_SLOW_STATEMENT_MS",
+                  type: "number | off",
+                  default: "200",
+                  desc: l.trans({
+                    en: "A SQL statement whose wait and run reach this writes one SlowStatement warning, once a minute per statement; off or 0 turns it off.",
+                    ko: "기다린 시간과 실행 시간을 더해 이 값에 닿은 SQL 문은 SlowStatement 경고 한 줄을 씁니다. 같은 문은 1분에 한 번만 쓰고, off나 0이면 끕니다.",
+                  }),
+                },
+                {
+                  key: "AKAN_QUERY_PLAN_IGNORE",
+                  type: "fingerprints | all",
+                  default: l.trans({ en: "unset — every statement checked", ko: "미설정 — 모든 문 검사" }),
+                  desc: l.trans({
+                    en: "Local dev runtime only: comma-separated statement fingerprints whose full scan or sort is deliberate; all turns the query-plan check off.",
+                    ko: "local 개발 런타임 전용입니다. 전체 스캔이나 정렬이 의도된 문의 fingerprint를 쉼표로 나열하고, all이면 쿼리 플랜 검사를 끕니다.",
+                  }),
+                },
+                {
                   key: "AKAN_LOG_BUFFER",
                   type: "number",
                   default: "2000",

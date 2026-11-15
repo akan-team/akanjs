@@ -137,6 +137,13 @@ worker per web-serving replica.
   `infra/app` chart adds the `prometheus.io/*` scrape annotations with `<branch>.metrics.scrape: true` and reads the
   token from the Secret `<branch>.metrics.tokenSecret` names, and refuses to render `scrape` without it;
   `infra/monitoring` holds a Grafana dashboard and the alert rules.
+- **Each SQL statement is timed once, where its driver sends it**; the `db:` spans, the `akan_db_statement*` series
+  (labels `model`, `op`; the SQLite write-turn or Postgres pool wait apart) and the slow log read that
+  point. A fingerprint hashes the text with literals `?` and lists collapsed; the text sent never changes.
+  `/_akan/app/statements` (metrics token) ranks statements by total time and p95 with their senders.
+  `AKAN_LOG_SLOW_STATEMENT_MS` (200, `off`) logs one `SlowStatement` warn per fingerprint a minute; a local dev run
+  warns once (`QueryPlan`) of a full scan or temp sort, silenced per fingerprint by `AKAN_QUERY_PLAN_IGNORE`.
+  `akan_room_replay_bytes` and `akan_pubsub_buffered_messages` gauge the reconnect replay and the Redis buffer.
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once
@@ -278,7 +285,7 @@ normalized to `info` with one warning.
   `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace`, records its spans and answers with
   `Server-Timing` — under the local dev runtime, or with the `AKAN_LOG_DEBUG_HEADER` secret. A local runtime sends
   `Server-Timing` on every signal response. Spans carry ids, parents and start offsets; under `AKAN_TRACE=1` each
-  database call is a `db:<model>.<op>` span, never its statement or values.
+  SQL statement sent is a `db:<model>.<op>` span, never its text or values.
 - **`OTEL_EXPORTER_OTLP_ENDPOINT` (or `…_TRACES_ENDPOINT` / `…_LOGS_ENDPOINT`) turns on OTLP/HTTP JSON export**;
   with none set nothing is created. Each process sends its own spans and log records with `akan.process.role`, the
   RSC worker included, batched in a bounded queue that drops its oldest and never blocks or throws into a request.

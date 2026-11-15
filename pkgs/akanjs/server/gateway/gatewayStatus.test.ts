@@ -185,3 +185,29 @@ describe("GatewayStatus metric families", () => {
     expect(sampleOf(families, "akan_rsc_renders_pending")).toMatchObject({ value: 6 });
   });
 });
+
+describe("GatewayStatus statement report", () => {
+  test("merges every replica's statements into one report and keeps them out of the metrics body", () => {
+    const { children, status } = gatewayOf(2);
+    const statement = (count: number, endpoint: string) => ({
+      fingerprint: "0a1b2c3d4e5f",
+      text: `SELECT * FROM "memo" WHERE "ownerId" = ?`,
+      model: "memo",
+      op: "find",
+      count,
+      totalMs: count * 10,
+      waitMs: 0,
+      rows: count,
+      sinceMs: 60_000,
+      buckets: [0, 0, 0, 0, 0, 0, count, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      sentBy: [{ endpoint, count, totalMs: count * 10 }],
+    });
+    children.updateMetrics(0, { pid: 1000, statements: [statement(2, "query:memoList")] });
+    children.updateMetrics(1, { pid: 1001, statements: [statement(3, "query:memoList")] });
+
+    expect(status.statementsStatus().byTotalTime).toMatchObject([
+      { fingerprint: "0a1b2c3d4e5f", count: 5, totalMs: 50, sentBy: [{ endpoint: "query:memoList", count: 5 }] },
+    ]);
+    expect(status.metricsStatus().children.map((child) => "statements" in child.metrics)).toEqual([false, false]);
+  });
+});

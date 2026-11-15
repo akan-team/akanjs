@@ -37,6 +37,7 @@ const productionRoutes = [
   "/_akan/app/health",
   "/_akan/app/ready",
   "/_akan/app/metrics",
+  "/_akan/app/statements",
   "/_akan/app/info",
   "/_akan/app/logs",
   "/_akan/ops/*",
