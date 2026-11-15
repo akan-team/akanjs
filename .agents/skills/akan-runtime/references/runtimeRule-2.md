@@ -1,5 +1,103 @@
 <!-- akan:generated -->
 
+## Logging — Records, Request Context And Live Tail
+
+Every `Logger` call builds a `LogRecord` before any text exists: `at`, `level`, OTel `sev`, `name`, `message`,
+`pid`, `replicaIdx`, `role` (`gateway` / `all` / `batch` / `rsc-worker`) and — inside a call — `traceId`,
+`endpoint` (`mutation:signScContract`, `internal:cleanupJob`, `page:/org/[orgId]`) and `origin` (`http`,
+`websocket`, `mcp`, `internal`, `page`). The console line is rendered from the record and is byte-identical to
+what it was; a sink reads `entry.record` and renders only if it touches `entry.message`.
+
+The level ladder is `trace verbose debug info warn error`. `log` was a seventh tier *below* `info` that
+`AKAN_PUBLIC_LOG_LEVEL=info` silently dropped; the method is kept and emits at `info`, so
+`no-deprecated-log-level.grit` refuses a call to it — write `.info()`. `AKAN_PUBLIC_LOG_LEVEL=log` still boots,
+normalized to `info` with one warning.
+
+- **Request context is on by default, production included.** `SignalContext.try` / `SignalContext.run` own the
+  `AsyncLocalStorage` scope for the whole call, including the 500 log, so every line of one request shares a
+  `traceId`. Internal triggers get `internal:<key>`, the RSC worker gets `page:<route>`, MCP calls are the
+  endpoint's own type with `origin: "mcp"`. `AKAN_LOG_CONTEXT=0` is the escape hatch; `AKAN_TRACE=1` is a
+  different switch that adds span and query aggregation. Measured cost: ~25ns per call.
+- **One id per request, across processes.** The `traceId` is 32 hex digits (a W3C trace id), written on the response
+  as `x-request-id` and in a failed call's body as `traceId`. The server always mints it: an inbound `traceparent`,
+  or else an `x-request-id` that is a UUID or 32 hex digits, is kept as `link` on every record of the request, and
+  `akan logs --trace` matches `link` too and takes the id as the caller sent it. Only the gateway's unix-socket hop
+  to its replica carries an id over. `AKAN_TRACE_ADOPT=trusted-proxies` lets a peer `AKAN_TRUSTED_PROXIES` names
+  (an address, a CIDR, or `private`; never the unset default, `*`, or loopback unlisted) choose the id, which is
+  safe only when that proxy overwrites or strips both headers. The replica hands its id to the RSC worker in the
+  render message, a server-side `fetch` sends `traceparent` to the app's own server and to a `clone({ origin })`,
+  every websocket frame is a span under its handshake's id, and a queued job is a trace of its own that links the
+  enqueuing one.
+- **Errors to a tracker go through `option.setErrorReporter(fn)`**, never a `Logger` sink parsing lines. It gets each
+  server 5xx (never a 4xx), render error, uncaught exception and unhandled rejection as a real `Error`, once, after
+  the response, with `{ source, traceId, endpoint, routeId, accountId, digest }`, in the solo server or the replica
+  (a worker's render error is carried to it; the gateway reports none). Reports of one request share `traceId`. A
+  process hands it at most 600 errors a minute, 10 of them process errors, and 3 render errors a request, so `await`
+  what the reporter sends: an unawaited send that fails returns as an unhandled rejection. `option.setClientReport({
+  sampleRate })`, off unless set, adds what pages hit in the browser as a `BrowserError` through
+  `/_akan/client-report`: a report is taken only with the signed id the page's `Server-Timing` gave that page view,
+  for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. With
+  more than one gateway or pod, set `AKAN_LOG_DEBUG_HEADER` (32+ characters) so each takes the others' ids.
+- **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
+  primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
+  lines wrap the traced handler from outside; gateway lines written outside a request have none. `akan logs
+  --endpoint` says so.
+- **`Logger.addSink(sink, { minLevel })` — give a sink its floor.** A sink with none follows `AKAN_LOG_FILE_LEVEL`
+  (default `trace`), which is why a registered sink used to make every `verbose` call render (1,294ns against an
+  11ns reject). The IPC forwarder and any sink that never reads the text pass a floor and cost a record literal.
+- **The hub lives with whoever owns the surface**: the gateway when there is one, the replica itself under solo
+  (`AKAN_REPLICA=0,0,1`), the same rule as the rotating log file and `/_akan/app/*`. It keeps a ring
+  (`AKAN_LOG_BUFFER` records / `AKAN_LOG_BUFFER_MB`, default 2000 / 4), suppresses a line repeating more than 20
+  times a second into one counted line there, in live tails and in the log file (never a request line; the ndjson
+  stdout gets every record), and serves `<runtimeDir>/akan-control.sock` (`0600`, NDJSON). A child
+  forwards records only while a subscriber wants that level (`log.level` IPC), so an unwatched process sends
+  nothing; `AKAN_LOG_STREAM=1` keeps it on. The RSC worker forwards to its replica the same way.
+- **`akan logs <app>`** is the client: `--level --grep --endpoint --trace --child --role --origin --since`
+  AND together, comma lists OR, `*` is the only glob; `--replay N` first, `--follow false` for history only,
+  `--json` for NDJSON, `--runtime-dir` for a built app. Inside `akan console`, `.tail level=warn grep=payment`,
+  `.tail off`, `.trace <id>` — the console is its own `listen: false` process, so these attach to the running
+  server's socket rather than reading their own logs.
+- **The generated Dockerfile sets `AKAN_LOG_TO_FILE=0`.** A container's writable layer is ephemeral and nothing
+  collects a file from it; stdout is the collection path. A deployment that wants the files back sets
+  `AKAN_LOG_TO_FILE=1`; they are created 0600, so a collector running as another user needs `AKAN_LOG_FILE_MODE`
+  (octal, e.g. `640`), and a file already there keeps its mode.
+- **`AKAN_LOG_FORMAT=ndjson` makes the container's stdout one JSON record per line, and the hub owner (gateway or
+  solo replica) its only writer** — every other server process turns its console off and forwards from
+  `AKAN_LOG_STDOUT_LEVEL` (default: the console level); a child's or the RSC worker's crash stack is wrapped as a
+  `raw=true` record instead of breaking the stream. Text stays the default; turn it on in the deployment.
+- **`AKAN_LOG_STREAM_TOKEN` mounts `/_akan/app/logs`** (SSE, `Last-Event-ID` resume, explicit `gap` events;
+  a client that stops reading holds at most 4 MiB of live records beyond a resume's replay, hears `{type:"dropped",count}` when it reads again, and is cut off
+  past 10,000 dropped records);
+  unset, the route does not exist. The same bearer also unlocks the health detail and metrics.
+- **`AKAN_LOG_CANONICAL=1|slow`** writes one `ok|error <endpoint> ms= status=` line per call, at `info`, `warn` under
+  500, or `error` with `type` and `stack` for a 5xx (then the only 5xx record); **`AKAN_LOG_FLIGHT=1`**
+  keeps each call's last 64 sub-level records and promotes them (`flight=true`) only when it failed or ran past
+  `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace`, records its spans and answers with
+  `Server-Timing` — under the local dev runtime, or with the `AKAN_LOG_DEBUG_HEADER` secret. A local runtime sends
+  `Server-Timing` on every signal response. Spans carry ids, parents and start offsets; under `AKAN_TRACE=1` each
+  SQL statement sent is a `db:<model>.<op>` span, never its text or values.
+- **`OTEL_EXPORTER_OTLP_ENDPOINT` (or `…_TRACES_ENDPOINT` / `…_LOGS_ENDPOINT`) turns on OTLP/HTTP JSON export**;
+  with none set nothing is created. Each process sends its own spans and log records with `akan.process.role`, the
+  RSC worker included, batched in a bounded queue that drops its oldest and never blocks or throws into a request.
+  `OTEL_TRACES_SAMPLER` (`always_on`, `always_off`, `traceidratio` and their `parentbased_` forms, default
+  `parentbased_always_on`; any other value exports no spans) decides at the first TCP hop, and the sampled flag of
+  `traceparent` carries it to the replica and the worker. Logs go only with `OTEL_LOGS_EXPORTER=otlp` or
+  `…_LOGS_ENDPOINT`, never from the generic endpoint alone, their message text as written; only secret-named attrs are
+  redacted. Stage spans wait for `AKAN_TRACE=1`. `OTEL_EXPORTER_OTLP_HEADERS` values are credentials, never
+  logged; `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SDK_DISABLED` work as in the OTel spec. It is
+  separate from `AKAN_TRACE` and `x-akan-debug`: neither changes what is sampled.
+- **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,
+  the ssr-dev and csr-dev module registries, `/__rsc/manifest` — and is mounted through `DevRoutes.mount`, which
+  refuses a path the list lacks. Each answers only localhost, an IP address, the app's own hosts and
+  `AKAN_ALLOWED_HOSTS` names, even on a server that answers every Host; `--share` serves only the two module
+  registries. Devtools opens in the local dev runtime; elsewhere `AKAN_DEVTOOLS=true` opens it only with
+  `AKAN_LOG_DEBUG_HEADER` set to at least 32 characters, to `x-akan-debug: <secret>` or a browser that posted the
+  secret to the form it is shown (a 15-minute cookie); without one that long it stays closed and the log says why.
+- **Structured values go in `LogRecord.attrs` via `Logger.emit(...)`**; a key naming a secret is `[redacted]`
+  before the record exists.
+- **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,
+  and a subscriber asking for everything is the test.
+
 ## The Generated Image — `docker` In `akan.config.ts`
 
 **`docker` is `string | { image, preRuns, postRuns, command }`** — a whole Dockerfile, or the parts Akan
