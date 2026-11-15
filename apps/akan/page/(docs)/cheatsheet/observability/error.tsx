@@ -229,8 +229,8 @@ export default page()
       {
         name: "traceId",
         desc: l.trans({
-          en: "The request id the response named as `x-request-id`. For a browser report, the id of the page view it came from.",
-          ko: "응답이 `x-request-id`로 알려 준 요청 id입니다. 브라우저 보고라면 그 보고가 나온 페이지 뷰의 id입니다.",
+          en: "The request id the response named as `x-request-id`. For a browser report, the id of the document the tab loaded, which a later in-app navigation keeps.",
+          ko: "응답이 `x-request-id`로 알려 준 요청 id입니다. 브라우저 보고라면 그 탭이 불러온 문서의 id이며, 이후 앱 안에서 이동해도 그대로입니다.",
         }),
       },
       {
@@ -250,8 +250,8 @@ export default page()
       {
         name: "accountId",
         desc: l.trans({
-          en: "The signed-in account's id when the request had one. Never set for a browser report, which carries no cookies.",
-          ko: "요청에 로그인한 계정이 있으면 그 id입니다. 쿠키를 싣지 않는 브라우저 보고에는 없습니다.",
+          en: "The signed-in account's id on a `server` report whose request had one. Null on a `render` report, since rendering a page runs no guard, and on a browser report, which carries no cookies.",
+          ko: "`server` 보고에서, 요청에 로그인한 계정이 있으면 그 id입니다. 페이지 렌더는 guard를 실행하지 않으므로 `render` 보고에는 없고, 쿠키를 싣지 않는 브라우저 보고에도 없습니다.",
         }),
       },
       {
@@ -274,15 +274,15 @@ export default page()
       {
         name: ["name", "message", "stack"],
         desc: l.trans({
-          en: "What the browser's `Error` held, cut to 100, 1,000 and 4,000 characters.",
-          ko: "브라우저의 `Error`가 가진 값이며, 각각 100자, 1,000자, 4,000자로 자릅니다.",
+          en: "What the browser's `Error` held, cleaned as below and cut to 100, 1,000 and 4,000 characters.",
+          ko: "브라우저의 `Error`가 가진 값이며, 아래처럼 정리한 뒤 각각 100자, 1,000자, 4,000자로 자릅니다.",
         }),
       },
       {
         name: ["routeId", "digest"],
         desc: l.trans({
-          en: "The page's route pattern, and the digest of a server error the page showed. Dropped unless each has its expected shape.",
-          ko: "페이지의 route 패턴과, 페이지가 보여 준 서버 에러의 digest입니다. 정해진 모양이 아니면 버립니다.",
+          en: "The page's route pattern, and the digest when the browser's error carried one. Dropped unless each has its expected shape.",
+          ko: "페이지의 route 패턴과, 브라우저의 에러가 digest를 가졌다면 그 값입니다. 정해진 모양이 아니면 버립니다.",
         }),
       },
       {
@@ -309,8 +309,8 @@ export default page()
         type: "number",
         default: "10",
         desc: l.trans({
-          en: "Reports one address may send a minute.",
-          ko: "한 주소가 1분에 보낼 수 있는 보고 수입니다.",
+          en: "Requests one address may send the route a minute, kept or not. An IPv6 address counts as its /64.",
+          ko: "한 주소가 1분에 이 route로 보낼 수 있는 요청 수이며, 받든 버리든 셉니다. IPv6 주소는 /64 단위로 셉니다.",
         }),
       },
       {
@@ -318,8 +318,8 @@ export default page()
         type: "number",
         default: "120",
         desc: l.trans({
-          en: "Reports one server process takes a minute from all addresses together.",
-          ko: "서버 프로세스 하나가 모든 주소를 합쳐 1분에 받는 보고 수입니다.",
+          en: "Reports one server process hands the reporter a minute from all addresses together.",
+          ko: "서버 프로세스 하나가 모든 주소를 합쳐 1분에 reporter로 넘기는 보고 수입니다.",
         }),
       },
     ];
@@ -1127,6 +1127,51 @@ export const option = new AkanOption<ModulesOptions>()
                   ),
                 })}
               </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A bounded number a minute.</strong> One server process hands the reporter at most 600
+                      errors a minute, at most 10 of them uncaught exceptions and unhandled rejections, and at most 3
+                      render errors of one request. It logs one line when it starts skipping and drops the rest. Await
+                      what the reporter sends: a send it does not await, failing, comes back as an unhandled rejection
+                      of the process and counts toward those 10.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>1분에 정해진 수까지.</strong> 서버 프로세스 하나는 reporter에 1분에 에러를 600개까지, 그중
+                      잡히지 않은 예외와 처리되지 않은 rejection은 10개까지, 한 요청의 렌더 에러는 3개까지 넘깁니다.
+                      건너뛰기 시작할 때 로그를 한 줄 남기고 나머지는 버립니다. reporter가 보내는 것은 await 하세요.
+                      await하지 않은 전송이 실패하면 프로세스의 처리되지 않은 rejection으로 돌아와 그 10개에 들어갑니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>One fault can arrive more than once.</strong> Reports of one request share its{" "}
+                      <code>traceId</code>, so group by it. An endpoint that answers 5xx while a page renders arrives as{" "}
+                      <code>server</code>, with its <code>endpoint</code>, and as <code>render</code>, with the page's{" "}
+                      <code>routeId</code> and <code>digest</code>. A server error streamed into a page arrives as{" "}
+                      <code>render</code>, and when the browser re-renders that part of the page, also as a{" "}
+                      <code>client</code> report of kind <code>recoverable</code> with the same <code>traceId</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>장애 하나가 여러 번 올 수 있습니다.</strong> 한 요청의 보고는 <code>traceId</code>가
+                      같으므로 그것으로 묶으세요. 페이지를 렌더하는 중에 5xx로 응답한 endpoint는 <code>endpoint</code>를
+                      가진 <code>server</code>로도, 페이지의 <code>routeId</code>와 <code>digest</code>를 가진{" "}
+                      <code>render</code>로도 옵니다. 페이지로 스트리밍된 서버 에러는 <code>render</code>로 오고,
+                      브라우저가 그 부분을 다시 렌더하면 같은 <code>traceId</code>를 가진 <code>recoverable</code>{" "}
+                      종류의 <code>client</code> 보고로도 옵니다.
+                    </span>
+                  ),
+                })}
+              </li>
             </ul>
             <Docs.SubSubTitle>{l.trans({ en: "What the reporter gets", ko: "reporter가 받는 것" })}</Docs.SubSubTitle>
             <div>
@@ -1155,7 +1200,10 @@ export const option = new AkanOption<ModulesOptions>()
                     With <code>setClientReport</code>, each page view the sample draws sends its React root's uncaught,
                     caught and recoverable errors, <code>window.onerror</code> and unhandled rejections to{" "}
                     <code>/_akan/client-report</code>, at most five a page view. A page loads the sending code only on
-                    its first error. Without the option the route does not exist and pages send nothing.
+                    its first error. Without the option the route does not exist and pages send nothing. The server
+                    gives each such page view an id in the page's <code>Server-Timing</code> header, the request id with
+                    a signature, and takes a report only with that id: for 30 to 60 minutes after the page was served,
+                    and five times.
                   </span>
                 ),
                 ko: (
@@ -1163,7 +1211,9 @@ export const option = new AkanOption<ModulesOptions>()
                     <code>setClientReport</code>를 켜면, 표본으로 뽑힌 페이지 뷰가 React root의 uncaught·caught·
                     recoverable 에러와 <code>window.onerror</code>, 처리되지 않은 rejection을 페이지 뷰마다 다섯 개까지{" "}
                     <code>/_akan/client-report</code>로 보냅니다. 보내는 코드는 첫 에러가 났을 때에만 불러옵니다. 옵션이
-                    없으면 그 route가 없고 페이지도 아무것도 보내지 않습니다.
+                    없으면 그 route가 없고 페이지도 아무것도 보내지 않습니다. 서버는 그런 페이지 뷰마다 페이지의{" "}
+                    <code>Server-Timing</code> 헤더에 id(요청 id와 서명)를 실어 주고, 그 id가 있는 보고만 받습니다.
+                    페이지를 내보낸 뒤 30~60분 동안, 다섯 번까지입니다.
                   </span>
                 ),
               })}
@@ -1193,15 +1243,17 @@ export const option = new AkanOption<ModulesOptions>()
                   en: (
                     <span>
                       <strong>Reports it did not ask for.</strong> It keeps only a <code>text/plain</code> POST from the
-                      app's own origin, of 8 KB or less, within the limits above, naming a request id its sample drew.
-                      Every report, kept or not, gets the same empty 204.
+                      app's own origin, of 8 KB or less, carrying the id the server gave that page view, within the
+                      limits above. It checks in that order, and only a report with such an id counts toward{" "}
+                      <code>perServer</code>. Every request, kept or not, gets the same empty 204.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>요청하지 않은 보고.</strong> 앱 자신의 origin에서 온 8 KB 이하의 <code>text/plain</code>{" "}
-                      POST로, 위 한도 안에 있고 표본으로 뽑힌 요청 id를 가진 것만 받습니다. 받든 버리든 모든 보고에 같은
-                      빈 204로 답합니다.
+                      POST로, 서버가 그 페이지 뷰에 준 id를 싣고 위 한도 안에 있는 것만 받습니다. 이 순서로 확인하며,
+                      그런 id를 가진 보고만 <code>perServer</code>에 셉니다. 받든 버리든 모든 요청에 같은 빈 204로
+                      답합니다.
                     </span>
                   ),
                 })}
@@ -1226,14 +1278,66 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Query strings in the stack.</strong> A URL in the stack loses its query string and
-                      fragment, which can hold a token, and keeps its line and column.
+                      <strong>Query strings, addresses and credentials.</strong> In the name, message and stack, a URL
+                      or a path loses its query string and fragment and keeps its line and column, an email address
+                      becomes <code>[email]</code>, a <code>Bearer …</code> value and a JWT become{" "}
+                      <code>[redacted]</code>, and the characters that reorder how a line displays are removed. The page
+                      does this before it sends, and the server again before the reporter or the log sees the text.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>stack의 query string.</strong> stack 안 URL의 query string과 fragment는 token을 담을 수
-                      있으므로 지우고, 줄과 열 번호는 남깁니다.
+                      <strong>query string, 주소, 인증 값.</strong> name·message·stack에서 URL이나 경로의 query string과
+                      fragment를 지우고 줄과 열 번호는 남기며, 이메일 주소는 <code>[email]</code>로,{" "}
+                      <code>Bearer …</code> 값과 JWT는 <code>[redacted]</code>로 바꾸고, 줄이 표시되는 순서를 바꾸는
+                      문자는 지웁니다. 페이지가 보내기 전에 한 번, 서버가 reporter와 로그에 넘기기 전에 다시 한 번
+                      합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>An id another deployment signed.</strong> The key comes from{" "}
+                      <code>AKAN_LOG_DEBUG_HEADER</code> when it is 32 characters or more, with the app name and the
+                      environment, so every server of a deployment that sets it takes an id any of them gave. Without
+                      it, the replicas behind one gateway share a key the gateway makes at start, so a report is taken
+                      by any of them and by no other gateway's; a server run alone uses its own key, so only the process
+                      that served the page takes its reports, and none after a restart. Set the secret when more than
+                      one gateway or pod answers for the app.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>다른 배포가 서명한 id.</strong> 키는 32자 이상인 <code>AKAN_LOG_DEBUG_HEADER</code>와 앱
+                      이름, 환경에서 나오므로, 이 값을 설정한 배포의 모든 서버는 그중 누가 준 id든 받습니다. 설정하지
+                      않으면 한 gateway 뒤의 replica들은 gateway가 시작할 때 만든 키를 함께 쓰므로 그 replica 중 누구든
+                      보고를 받지만 다른 gateway의 것은 받지 않습니다. 혼자 도는 서버는 자기 키를 쓰므로 페이지를 내보낸
+                      프로세스만 그 보고를 받고, 재시작한 뒤에는 받지 않습니다. gateway나 pod가 둘 이상이면 이 secret을
+                      설정하세요.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>What the limits leave.</strong> Each server process counts on its own, so N replicas take
+                      up to N times <code>perServer</code> and five reports per id each. Visitors behind one address
+                      share its <code>perAddress</code>. <code>perServer</code> is one budget for everyone who loaded a
+                      page: once a minute's worth is taken, later reports that minute are dropped, never queued.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>한도가 남기는 것.</strong> 서버 프로세스마다 따로 세므로 replica가 N개면{" "}
+                      <code>perServer</code>의 N배까지, id 하나당 프로세스마다 다섯 개까지 받습니다. 한 주소 뒤의
+                      방문자들은 그 주소의 <code>perAddress</code>를 나눠 씁니다. <code>perServer</code>는 페이지를
+                      불러온 모두가 함께 쓰는 한도입니다. 1분 치를 다 쓰면 그 분의 나머지 보고는 버리며 쌓아 두지
+                      않습니다.
                     </span>
                   ),
                 })}
@@ -1243,19 +1347,20 @@ export const option = new AkanOption<ModulesOptions>()
               {l.trans({
                 en: (
                   <span>
-                    <strong>What leaves the browser.</strong> The page view's request id, the route pattern, and the
-                    error's name, message, stack and digest. No cookies, no referrer, no URL query string and no
-                    account. A message still holds whatever the code put into it, such as a value a user typed, so keep
-                    personal data out of error messages, and name the service in your privacy notice when your reporter
-                    forwards to one.
+                    <strong>What leaves the browser.</strong> The id the server gave the page view, the route pattern,
+                    and the error's name, message, stack and digest, cleaned as above. No cookies, no referrer and no
+                    account. The cleaning knows a few shapes, not meanings: a message still holds whatever else the code
+                    put into it, such as a value a user typed, so keep personal data out of error messages, and name the
+                    service in your privacy notice when your reporter forwards to one.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>브라우저를 떠나는 것.</strong> 페이지 뷰의 요청 id, route 패턴, 에러의 name·message·stack·
-                    digest입니다. 쿠키, referrer, URL query string, 계정은 보내지 않습니다. 다만 message에는 코드가 넣은
-                    것이 그대로 들어가므로(사용자가 입력한 값 등) 에러 메시지에 개인정보를 넣지 말고, reporter가 외부
-                    서비스로 보낸다면 개인정보 처리방침에 그 서비스를 적으세요.
+                    <strong>브라우저를 떠나는 것.</strong> 서버가 페이지 뷰에 준 id, route 패턴, 위처럼 정리한 에러의
+                    name·message·stack·digest입니다. 쿠키, referrer, 계정은 보내지 않습니다. 정리는 몇 가지 모양만 알 뿐
+                    뜻은 모릅니다. message에는 코드가 넣은 다른 것(사용자가 입력한 값 등)이 그대로 남으므로 에러
+                    메시지에 개인정보를 넣지 말고, reporter가 외부 서비스로 보낸다면 개인정보 처리방침에 그 서비스를
+                    적으세요.
                   </span>
                 ),
               })}
@@ -1270,7 +1375,10 @@ export const option = new AkanOption<ModulesOptions>()
                     reuse it (<code>AKAN_HTML_CACHE_CONTROL</code> set to <code>public, max-age=…</code> or{" "}
                     <code>off</code>) carries no id, since a stored copy would give one page view's id to the next
                     visitor; the default <code>no-cache</code> and a signed-in page's <code>private, no-cache</code> do
-                    carry it. The CSR bundle a native app loads sends none.
+                    carry it. The CSR bundle a native app loads sends none. A tab open for longer than the 30 to 60
+                    minutes its id is taken for sends reports the server drops, until it loads a document again. The
+                    page reads its id once, when the document loads: after an in-app navigation a report still carries
+                    that first id, with the route pattern of the page the user is on.
                   </span>
                 ),
                 ko: (
@@ -1281,7 +1389,9 @@ export const option = new AkanOption<ModulesOptions>()
                     <code>public, max-age=…</code>나 <code>off</code>로 둔 경우)로 나간 페이지는 저장된 사본이 다음
                     방문자에게 같은 id를 줄 수 있으므로 id를 싣지 않습니다. 기본값 <code>no-cache</code>와 로그인한
                     페이지의 <code>private, no-cache</code>는 id를 싣습니다. 네이티브 앱이 불러오는 CSR 번들은 보내지
-                    않습니다.
+                    않습니다. id를 받아 주는 30~60분보다 오래 열어 둔 탭의 보고는 문서를 다시 불러올 때까지 서버가
+                    버립니다. 페이지는 문서를 불러올 때 id를 한 번만 읽습니다. 앱 안에서 이동한 뒤의 보고에도 그 첫 id가
+                    실리고, route 패턴은 사용자가 보고 있는 페이지의 것입니다.
                   </span>
                 ),
               })}

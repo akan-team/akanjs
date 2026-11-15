@@ -138,8 +138,8 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   /**
    * Opens `/_akan/client-report`, where a page's script sends the errors its browser hit, and makes the page send them:
-   * `sampleRate` of page views (1), reports per address (10) and per server (120) a minute. Off unless set; `false`
-   * turns a lib's off, and the app's wins.
+   * `sampleRate` of page views (1), requests per address (10) and reports per server (120) a minute. Off unless set;
+   * `false` turns a lib's off, and the app's wins.
    */
   setClientReport(setting: ClientReportSetting | boolean = true) {
     this.#clientReport = setting;

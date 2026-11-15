@@ -217,8 +217,13 @@ normalized to `info` with one warning.
 - **Errors to a tracker go through `option.setErrorReporter(fn)`**, never a `Logger` sink parsing lines. It gets each
   server 5xx (never a 4xx), render error, uncaught exception and unhandled rejection as a real `Error`, once, after
   the response, with `{ source, traceId, endpoint, routeId, accountId, digest }`, in the solo server or the replica
-  (a worker's render error is carried to it; the gateway reports none). `option.setClientReport({ sampleRate })`, off
-  unless set, adds what pages hit in the browser as a `BrowserError` through `/_akan/client-report`.
+  (a worker's render error is carried to it; the gateway reports none). Reports of one request share `traceId`. A
+  process hands it at most 600 errors a minute, 10 of them process errors, and 3 render errors a request, so `await`
+  what the reporter sends: an unawaited send that fails returns as an unhandled rejection. `option.setClientReport({
+  sampleRate })`, off unless set, adds what pages hit in the browser as a `BrowserError` through
+  `/_akan/client-report`: a report is taken only with the signed id the page's `Server-Timing` gave that page view,
+  for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. With
+  more than one gateway or pod, set `AKAN_LOG_DEBUG_HEADER` (32+ characters) so each takes the others' ids.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
   lines wrap the traced handler from outside; gateway lines written outside a request have none. `akan logs

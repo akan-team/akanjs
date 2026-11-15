@@ -541,15 +541,15 @@ export default page()
       {
         name: "setErrorReporter(fn)",
         desc: l.trans({
-          en: "Gets each server 5xx, render error, uncaught exception and unhandled rejection, and each browser report, once, after the response, as an `Error` with its request id.",
-          ko: "서버 5xx, 렌더 에러, 잡히지 않은 예외와 처리되지 않은 rejection, 브라우저 보고를 응답이 나간 뒤 한 번씩 요청 id와 함께 `Error`로 받습니다.",
+          en: "Gets each server 5xx, render error, uncaught exception and unhandled rejection, and each browser report, once, after the response, as an `Error` with its request id: at most 600 a minute per process.",
+          ko: "서버 5xx, 렌더 에러, 잡히지 않은 예외와 처리되지 않은 rejection, 브라우저 보고를 응답이 나간 뒤 한 번씩 요청 id와 함께 `Error`로 받습니다. 프로세스마다 1분에 600개까지입니다.",
         }),
       },
       {
         name: "setClientReport(setting?)",
         desc: l.trans({
-          en: "Opens `/_akan/client-report` and has pages send the errors their browser hit to `setErrorReporter`. Off unless set.",
-          ko: "`/_akan/client-report`를 열고, 페이지가 브라우저에서 난 에러를 보내 `setErrorReporter`로 전하게 합니다. 설정하지 않으면 꺼져 있습니다.",
+          en: "Opens `/_akan/client-report` and has pages send the errors their browser hit to `setErrorReporter`, each with the signed id the server gave its page view. Off unless set.",
+          ko: "`/_akan/client-report`를 열고, 페이지가 브라우저에서 난 에러를 서버가 그 페이지 뷰에 준 서명된 id와 함께 보내 `setErrorReporter`로 전하게 합니다. 설정하지 않으면 꺼져 있습니다.",
         }),
       },
     ];
