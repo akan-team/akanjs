@@ -4,10 +4,16 @@ import os from "node:os";
 import path from "node:path";
 import { DevResourceProbe, type DevResourceProc } from "./devResourceProbe";
 
-export type SoakMix = "cpu" | "io" | "mixed";
+export type SoakMix = "cpu" | "io" | "mixed" | "hit";
 export type SoakKind = "cpu" | "io" | "hit";
 export type SoakArrival = "burst" | "steady";
 type SoakRole = "server" | "rsc" | "other";
+
+export interface SoakVariant {
+  label: string;
+  workerCap: number;
+  env: Record<string, string>;
+}
 
 export interface RenderAdmissionSoakOptions {
   appName: string;
@@ -15,7 +21,7 @@ export interface RenderAdmissionSoakOptions {
   cliEntry: string;
   distDir: string;
   port: number;
-  caps: number[];
+  variants: SoakVariant[];
   mixes: SoakMix[];
   runs: number;
   seconds: number;
@@ -24,6 +30,7 @@ export interface RenderAdmissionSoakOptions {
   softNavigationPercent: number;
   abortPercent: number;
   maxQueue: string | null;
+  calmLoad: number;
   prepare: boolean;
   logPath: string;
   outPath: string | null;
@@ -41,6 +48,9 @@ interface SoakTally {
   latencies: Record<SoakKind, number[]>;
   documents: number[];
   softNavigations: number[];
+  firstBytes: number[];
+  hitDocuments: number[];
+  hitSoftNavigations: number[];
   refused: number;
   aborted: number;
   failed: number;
@@ -62,6 +72,7 @@ interface SoakWait {
 }
 
 export interface SoakRunResult {
+  variant: string;
   cap: number;
   mix: SoakMix;
   run: number;
@@ -76,6 +87,12 @@ export interface SoakRunResult {
   p50ByKind: Record<SoakKind, number | null>;
   p50Document: number;
   p50SoftNavigation: number;
+  firstByteP50: number;
+  firstByteP95: number;
+  p50HitDocument: number;
+  p50HitSoftNavigation: number;
+  p95Hit: number;
+  loadAverage: number;
   waitMeanMs: number;
   waitP95Ms: number;
   refusals: number;
@@ -91,6 +108,8 @@ export interface SoakRunResult {
 // With a fixed number in flight (`--arrival=steady`) the mean latency is that number over the throughput whatever
 // order renders run in; only rounds sent at once (`burst`) show what first come, first served does to the median.
 // Every row is a fresh server: RSS only grows within a process, so a shared one would carry the last cap's peak.
+// `--variants=off,w4,gate@NAME:value@OTHER:value` runs a server with no cap, one with a worker cap of 4 and one with
+// those variables set, in that order within every run, so each variant meets the same drift of a shared machine.
 export class RenderAdmissionSoak {
   static readonly #pagePath = "soak/io";
   static readonly #markerName = ".render-admission-soak.json";
@@ -114,6 +133,7 @@ export default page()
     cpu: { cpu: 100, io: 0, hit: 0 },
     io: { cpu: 0, io: 100, hit: 0 },
     mixed: { cpu: 40, io: 30, hit: 30 },
+    hit: { cpu: 0, io: 0, hit: 100 },
   };
   static readonly #routeCount = 32;
   static readonly #hotRouteCount = 8;
@@ -129,6 +149,9 @@ export default page()
             .map(Number)
             .filter((value) => Number.isInteger(value) && value >= 0)
         : fallback;
+    const variants = args.has("variants")
+      ? (args.get("variants") ?? "").split(",").map(RenderAdmissionSoak.variant)
+      : numbers("caps", [2, 4, 8, 16, 32, 0]).map((cap) => RenderAdmissionSoak.variant(cap ? `w${cap}` : "off"));
     const mixes = (args.get("mixes") ?? "cpu,io,mixed")
       .split(",")
       .filter((mix): mix is SoakMix => mix in RenderAdmissionSoak.#shares);
@@ -138,7 +161,7 @@ export default page()
       cliEntry: args.get("cli") ?? "dist/pkgs/@akanjs/cli/index.js",
       distDir: args.get("dist") ?? path.join(workspaceRoot, "dist", "apps", appName),
       port: num("port", 8483),
-      caps: numbers("caps", [2, 4, 8, 16, 32, 0]),
+      variants,
       mixes,
       runs: num("runs", 3),
       seconds: num("seconds", 12),
@@ -147,10 +170,23 @@ export default page()
       softNavigationPercent: num("soft", 30),
       abortPercent: num("aborts", 5),
       maxQueue: args.get("queue") ?? null,
+      calmLoad: num("calm", 0),
       prepare: args.has("prepare"),
       logPath: args.get("log") ?? path.join(os.tmpdir(), `akan-render-admission-soak-${appName}.log`),
       outPath: args.get("out") ?? null,
     };
+  }
+
+  static variant(text: string): SoakVariant {
+    const [label = "", ...pairs] = text.split("@");
+    const workerCap = /^w\d+$/.test(label) ? Number(label.slice(1)) : 0;
+    const env = Object.fromEntries(
+      pairs.map((pair) => {
+        const at = pair.indexOf(":");
+        return [pair.slice(0, at), pair.slice(at + 1)];
+      }),
+    );
+    return { label, workerCap, env };
   }
 
   readonly #options: RenderAdmissionSoakOptions;
@@ -216,7 +252,8 @@ export default page()
   }
 
   async #measure(): Promise<SoakRunResult[]> {
-    const { appName, distDir, caps, mixes, runs, outPath } = this.#options;
+    const { appName, distDir, variants, mixes, runs, outPath } = this.#options;
+    const labels = variants.map((variant) => variant.label);
     if (this.#options.prepare) await this.#prepare();
     if (!fs.existsSync(path.join(distDir, "main.js")))
       throw new Error(
@@ -224,19 +261,26 @@ export default page()
       );
     const routes = await this.#routes();
     console.info(
-      `[soak] app=${appName} arrival=${this.#options.arrival} caps=${caps.join(",")} mixes=${mixes.join(",")} runs=${runs} routes=${routes.docs.length}`,
+      `[soak] app=${appName} arrival=${this.#options.arrival} variants=${labels.join(",")} mixes=${mixes.join(",")} runs=${runs} routes=${routes.docs.length}`,
     );
     const results: SoakRunResult[] = [];
     for (let run = 1; run <= runs; run += 1)
-      for (const cap of caps)
+      for (const variant of variants)
         for (const mix of mixes) {
-          const result = await this.#runOnce(cap, mix, run, routes);
+          await this.#calm();
+          const result = await this.#runOnce(variant, mix, run, routes);
           results.push(result);
           console.info(RenderAdmissionSoak.#line(result));
           if (outPath) await Bun.write(outPath, JSON.stringify(results, null, 2));
         }
-    console.info(`\n${RenderAdmissionSoak.summary(results, caps, mixes)}`);
+    console.info(`\n${RenderAdmissionSoak.summary(results, labels, mixes)}`);
     return results;
+  }
+
+  async #calm(): Promise<void> {
+    const { calmLoad } = this.#options;
+    const deadline = Date.now() + 15 * 60_000;
+    while (calmLoad > 0 && (os.loadavg()[0] ?? 0) > calmLoad && Date.now() < deadline) await Bun.sleep(5_000);
   }
 
   async #prepare(): Promise<void> {
@@ -278,12 +322,12 @@ export default page()
   }
 
   async #runOnce(
-    cap: number,
+    variant: SoakVariant,
     mix: SoakMix,
     run: number,
     routes: { docs: string[]; io: string },
   ): Promise<SoakRunResult> {
-    const server = this.#spawn(cap);
+    const server = this.#spawn(variant);
     this.#serverPid = server.pid;
     this.#server = server;
     try {
@@ -308,17 +352,15 @@ export default page()
       await sampler;
       await Bun.sleep(RenderAdmissionSoak.#reportIntervalMs * 6);
       const waitAfter = await this.#wait();
-      return RenderAdmissionSoak.#result({ cap, mix, run }, tally, elapsedSeconds, { baseline, peak }, [
-        waitBefore,
-        waitAfter,
-      ]);
+      const row = { variant: variant.label, cap: variant.workerCap, mix, run };
+      return RenderAdmissionSoak.#result(row, tally, elapsedSeconds, { baseline, peak }, [waitBefore, waitAfter]);
     } finally {
       await DevResourceProbe.killTree(server, () => this.#sampleTree());
       this.#server = null;
     }
   }
 
-  #spawn(cap: number) {
+  #spawn(variant: SoakVariant) {
     const { appName, distDir, port, logPath, maxQueue } = this.#options;
     return Bun.spawn(["bun", "main.js"], {
       cwd: distDir,
@@ -334,8 +376,9 @@ export default page()
         PORT: String(port),
         AKAN_STATUS_TOKEN: this.#statusToken,
         AKAN_MEMORY_LOG_INTERVAL_MS: String(RenderAdmissionSoak.#reportIntervalMs),
-        AKAN_RSC_WORKER_MAX_CONCURRENCY: String(cap),
+        AKAN_RSC_WORKER_MAX_CONCURRENCY: String(variant.workerCap),
         ...(maxQueue ? { AKAN_RSC_WORKER_MAX_QUEUE: maxQueue } : {}),
+        ...variant.env,
       },
       stdout: Bun.file(logPath),
       stderr: Bun.file(logPath),
@@ -367,6 +410,9 @@ export default page()
       latencies: { cpu: [], io: [], hit: [] },
       documents: [],
       softNavigations: [],
+      firstBytes: [],
+      hitDocuments: [],
+      hitSoftNavigations: [],
       refused: 0,
       aborted: 0,
       failed: 0,
@@ -409,11 +455,14 @@ export default page()
         headers: request.credentialed ? { cookie: "soak=1" } : {},
         signal: AbortSignal.timeout(request.abortAfterMs ?? 60_000),
       });
+      const firstByte = performance.now() - startedAt;
       await response.arrayBuffer();
       const elapsed = performance.now() - startedAt;
       if (response.ok) {
         tally.latencies[request.kind].push(elapsed);
+        tally.firstBytes.push(firstByte);
         (request.soft ? tally.softNavigations : tally.documents).push(elapsed);
+        if (request.kind === "hit") (request.soft ? tally.hitSoftNavigations : tally.hitDocuments).push(elapsed);
       } else if (response.status === 503) tally.refused += 1;
       else tally.failed += 1;
     } catch {
@@ -433,7 +482,7 @@ export default page()
   }
 
   static #result(
-    row: { cap: number; mix: SoakMix; run: number },
+    row: { variant: string; cap: number; mix: SoakMix; run: number },
     tally: SoakTally,
     elapsedSeconds: number,
     memory: { baseline: SoakMemory; peak: SoakMemory },
@@ -451,6 +500,8 @@ export default page()
           0.5,
         ),
       );
+    const firstBytes = [...tally.firstBytes].sort((a, b) => a - b);
+    const hits = [...tally.latencies.hit].sort((a, b) => a - b);
     const waited = after.count - before.count;
     const p95Bound = [...after.buckets.keys()]
       .sort((a, b) => a - b)
@@ -470,6 +521,12 @@ export default page()
       ) as Record<SoakKind, number | null>,
       p50Document: median(tally.documents),
       p50SoftNavigation: median(tally.softNavigations),
+      firstByteP50: round(at(firstBytes, 0.5)),
+      firstByteP95: round(at(firstBytes, 0.95)),
+      p50HitDocument: median(tally.hitDocuments),
+      p50HitSoftNavigation: median(tally.hitSoftNavigations),
+      p95Hit: round(at(hits, 0.95)),
+      loadAverage: round(os.loadavg()[0] ?? 0),
       waitMeanMs: waited > 0 ? round(((after.sumSeconds - before.sumSeconds) / waited) * 1000) : 0,
       waitP95Ms: waited > 0 && p95Bound !== undefined && Number.isFinite(p95Bound) ? p95Bound * 1000 : 0,
       refusals: after.refusals - before.refusals,
@@ -484,35 +541,40 @@ export default page()
 
   static #line(result: SoakRunResult): string {
     return (
-      `[soak] run=${result.run} cap=${result.cap || "off"} mix=${result.mix}: ${result.throughput} req/s ` +
+      `[soak] run=${result.run} variant=${result.variant} mix=${result.mix}: ${result.throughput} req/s ` +
       `p50=${result.p50} (document ${result.p50Document}, soft ${result.p50SoftNavigation}) p95=${result.p95} ` +
-      `p99=${result.p99}ms wait=${result.waitMeanMs}ms(p95<=${result.waitP95Ms}) ` +
+      `p99=${result.p99}ms firstByte=${result.firstByteP50}/${result.firstByteP95}ms ` +
+      `hit=${result.p50HitDocument}/${result.p50HitSoftNavigation}ms (p95 ${result.p95Hit}) ` +
+      `wait=${result.waitMeanMs}ms(p95<=${result.waitP95Ms}) load=${result.loadAverage} ` +
       `ok=${result.ok} 503=${result.refused} aborted=${result.aborted} failed=${result.failed} ` +
       `depth<=${result.peakDepth} inFlight<=${result.peakInFlight} rscRss=${result.peakWorkerRssMb}MB ` +
       `(+${result.workerRssGrowthMb}) rscHeap=+${result.workerHeapGrowthMb}MB`
     );
   }
 
-  static summary(results: SoakRunResult[], caps: number[], mixes: SoakMix[]): string {
+  static summary(results: SoakRunResult[], variants: string[], mixes: SoakMix[]): string {
     const spread = (values: number[]) => {
       const sorted = [...values].sort((a, b) => a - b);
       const median = sorted[Math.floor(sorted.length / 2)] ?? 0;
       return `${median} (${sorted[0] ?? 0}–${sorted.at(-1) ?? 0})`;
     };
     const lines = [
-      "| mix | cap | req/s | p50 ms | document p50 | soft p50 | p95 ms | p99 ms | wait ms | 503 | rsc peak RSS MB | rsc heap growth MB |",
-      "|---|---|---|---|---|---|---|---|---|---|---|---|",
+      "| mix | variant | req/s | p50 ms | document p50 | soft p50 | p95 ms | p99 ms | first byte p50 | first byte p95 | hit document p50 | hit soft p50 | hit p95 | wait ms | 503 | rsc peak RSS MB | rsc RSS growth MB | rsc heap growth MB | load |",
+      "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ];
     for (const mix of mixes)
-      for (const cap of caps) {
-        const rows = results.filter((result) => result.mix === mix && result.cap === cap);
+      for (const variant of variants) {
+        const rows = results.filter((result) => result.mix === mix && result.variant === variant);
         if (!rows.length) continue;
         const column = (pick: (result: SoakRunResult) => number) => spread(rows.map(pick));
         lines.push(
-          `| ${mix} | ${cap || "off"} | ${column((r) => r.throughput)} | ${column((r) => r.p50)} | ` +
+          `| ${mix} | ${variant} | ${column((r) => r.throughput)} | ${column((r) => r.p50)} | ` +
             `${column((r) => r.p50Document)} | ${column((r) => r.p50SoftNavigation)} | ${column((r) => r.p95)} | ` +
-            `${column((r) => r.p99)} | ${column((r) => r.waitMeanMs)} | ${column((r) => r.refused)} | ` +
-            `${column((r) => r.peakWorkerRssMb)} | ${column((r) => r.workerHeapGrowthMb)} |`,
+            `${column((r) => r.p99)} | ${column((r) => r.firstByteP50)} | ${column((r) => r.firstByteP95)} | ` +
+            `${column((r) => r.p50HitDocument)} | ${column((r) => r.p50HitSoftNavigation)} | ` +
+            `${column((r) => r.p95Hit)} | ${column((r) => r.waitMeanMs)} | ${column((r) => r.refused)} | ` +
+            `${column((r) => r.peakWorkerRssMb)} | ${column((r) => r.workerRssGrowthMb)} | ` +
+            `${column((r) => r.workerHeapGrowthMb)} | ${column((r) => r.loadAverage)} |`,
         );
       }
     return lines.join("\n");
