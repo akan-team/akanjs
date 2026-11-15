@@ -16,6 +16,7 @@ import { GatewayStatus } from "./gateway/gatewayStatus";
 import { GatewayWebSocketRelay, type GatewayWsData } from "./gateway/gatewayWebSocketRelay";
 import { ListeningPort } from "./gateway/listeningPort";
 import { isPortInUseError } from "./lifecycle/portInUse";
+import { SecretEnv } from "./lifecycle/secretEnv";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { AppInfo } from "./ops/appInfo";
 import type { OpsHost } from "./ops/opsCommand";
@@ -101,6 +102,7 @@ export class AkanApp {
         await OpsCommand.run(process.argv.slice(3), { importServer: async () => await this.#importServer() }),
       );
     }
+    SecretEnv.check(this.logger);
     if (this.#config.solo) return await this.#startSolo();
     if (SelfExec.carried)
       throw new AkanError(
