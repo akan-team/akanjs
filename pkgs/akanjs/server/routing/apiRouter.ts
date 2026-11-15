@@ -142,10 +142,7 @@ export class ApiRouter {
           ? route
           : ApiRouter.#mapRoute(route, (handler) => (req) => {
               const trace = RequestTrace.accept(req.headers, HttpPeer.of(req));
-              const answer = RequestTrace.run(trace, () => handler(req));
-              return answer instanceof Promise
-                ? answer.then((response) => RequestTrace.echo(response, trace))
-                : RequestTrace.echo(answer, trace);
+              return RequestTrace.serve(trace, req, path, () => handler(req));
             }),
       ]),
     ) as NonNullHttpRoutes;

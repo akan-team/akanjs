@@ -72,7 +72,7 @@ export class GatewayHttpProxy {
   async proxyHttp(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response> {
     const peer = server.requestIP(req) ?? undefined;
     const trace = adoptProxyTrace(req, peer);
-    return RequestTrace.echo(await RequestTrace.run(trace, () => this.#proxyHttp(req, peer, trace)), trace);
+    return await RequestTrace.serve(trace, req, null, () => this.#proxyHttp(req, peer, trace));
   }
 
   async #proxyHttp(req: Request, peer: ProxyClientPeer | undefined, trace: RequestTrace): Promise<Response> {

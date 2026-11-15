@@ -15,7 +15,7 @@ export class LogForwarder {
   static readonly defaultMaxBytes = 32 * 1024;
   static readonly defaultMaxQueue = 1_000;
   static readonly defaultMaxMessageChars = 16 * 1024;
-  static readonly #closeTimeoutMs = 1_000;
+  static readonly closeTimeoutMs = 1_000;
 
   readonly #send: (message: AkanIpcMessage, onSent?: () => void) => void;
   readonly #flushMs: number;
@@ -112,7 +112,7 @@ export class LogForwarder {
     this.#removeSink?.();
     this.#removeSink = null;
     return new Promise((resolve) => {
-      const timer = setTimeout(resolve, LogForwarder.#closeTimeoutMs);
+      const timer = setTimeout(resolve, LogForwarder.closeTimeoutMs);
       timer.unref?.();
       this.flush(() => {
         clearTimeout(timer);

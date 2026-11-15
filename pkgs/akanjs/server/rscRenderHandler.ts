@@ -29,6 +29,7 @@ import {
   isAkanRscPartialCommitEnabled,
 } from "./routeState";
 import { RouteTreeBuilder } from "./routeTreeBuilder";
+import type { FirstRenderStart } from "./rscFirstRenderMemory";
 import type { RscFlightRenderer } from "./rscFlightRenderer";
 import type { FlightRenderResult } from "./rscFlightStream";
 import { type ResolvedRouteHead, RscPatchPlanner } from "./rscPatchPlanner";
@@ -165,6 +166,7 @@ export class RscRenderHandler {
           );
         else this.#logger.verbose(`render[${requestId}] no route matched pathname=${urlObj.pathname} — rendering 404`);
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
+        const firstRender = this.#stats.firstRenderMemory.begin(routeId);
         const target: RscRenderTarget = { msg, requestId, startedAt, request, url: urlObj, match, routeId };
         const plan = await this.#plan(target);
         if (!plan) return;
@@ -264,7 +266,7 @@ export class RscRenderHandler {
           await this.#fallbacks.answerControl({ msg, match, url: urlObj, searchParams, trace }, result, control);
           return;
         }
-        this.#recordRendered(target, result, beforeLoadedKeys);
+        this.#recordRendered(target, result, beforeLoadedKeys, firstRender);
       });
     } catch (error) {
       await this.#fallbacks.answerThrown(msg, activeRoute, error);
@@ -395,12 +397,14 @@ export class RscRenderHandler {
     { requestId, routeId, startedAt }: RscRenderTarget,
     result: FlightRenderResult,
     beforeLoadedKeys: string[],
+    firstRender: FirstRenderStart | null,
   ): void {
     this.#stats.recordFlight(result);
     this.#stats.lastRenderDurationMs = Date.now() - startedAt;
     const afterLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
     this.#stats.lastRenderLoadedModules = afterLoadedKeys.filter((key) => !beforeLoadedKeys.includes(key));
     this.#stats.lastRenderLoadedModuleDelta = this.#stats.lastRenderLoadedModules.length;
+    this.#stats.firstRenderMemory.end(firstRender, this.#stats.lastRenderLoadedModules);
     this.#stats.recordRouteStats(routeId, result.bytes, this.#stats.lastRenderDurationMs);
     this.#logger.verbose(
       `render[${requestId}] done chunks=${result.chunksCount} bytes=${result.bytes} theme=${getRequestTheme() ?? "(none)"} in ${

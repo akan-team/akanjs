@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { type LogContextSnapshot, TrustedProxy } from "akanjs/common";
 import { type AdoptedTrace, TraceContext } from "../common/TraceContext";
+import { SpanExport } from "./spanExport";
 
 export interface TraceParentRef {
   readonly traceId: string;
@@ -19,14 +20,16 @@ export class RequestTrace implements TraceParentRef {
   readonly parentSpanId: string | null;
   readonly sampled: boolean;
   readonly link: string | null;
+  readonly linkSpanId: string | null;
   #spanId: string | null = null;
   #logContext: LogContextSnapshot | null = null;
 
-  constructor({ traceId, parentSpanId, sampled, link }: AdoptedTrace) {
+  constructor({ traceId, parentSpanId, sampled, link, linkSpanId = null }: AdoptedTrace) {
     this.traceId = traceId;
     this.parentSpanId = parentSpanId;
     this.sampled = sampled;
     this.link = link;
+    this.linkSpanId = link ? linkSpanId : null;
   }
 
   get spanId(): string {
@@ -48,7 +51,8 @@ export class RequestTrace implements TraceParentRef {
   }
 
   static accept(headers: Headers, peer: { address: string } | null | undefined): RequestTrace {
-    return RequestTrace.adopt(headers, () => RequestTrace.adoptsFrom(peer));
+    const adopted = TraceContext.adopt(headers, () => RequestTrace.adoptsFrom(peer));
+    return new RequestTrace(SpanExport.headSample(adopted, peer === null));
   }
 
   //? Security: a proxy may pass a caller's `traceparent` through, so a TCP peer counts only once opted in and listed.
@@ -58,7 +62,8 @@ export class RequestTrace implements TraceParentRef {
   }
 
   static fresh(): RequestTrace {
-    return new RequestTrace({ traceId: TraceContext.mintTraceId(), parentSpanId: null, sampled: false, link: null });
+    const minted = { traceId: TraceContext.mintTraceId(), parentSpanId: null, sampled: false, link: null };
+    return new RequestTrace(SpanExport.headSample(minted, false));
   }
 
   //? Security: only for what a parent process sent over IPC, a channel no caller writes to; a header goes to `adopt`.
@@ -73,6 +78,38 @@ export class RequestTrace implements TraceParentRef {
 
   static run<T>(trace: RequestTrace, fn: () => T): T {
     return als.run(trace, fn);
+  }
+
+  static serve<R extends Response | undefined>(
+    trace: RequestTrace,
+    req: Request,
+    route: string | null,
+    handle: () => R | Promise<R>,
+  ): R | Promise<R> {
+    const end = trace.sampled ? SpanExport.openServerSpan(trace, req, route) : null;
+    let answer: R | Promise<R>;
+    try {
+      answer = als.run(trace, handle);
+    } catch (error) {
+      end?.(undefined, error);
+      throw error;
+    }
+    if (!(answer instanceof Promise)) {
+      end?.(answer);
+      return RequestTrace.echo(answer, trace);
+    }
+    return answer.then(
+      (response) => {
+        end?.(response);
+        return RequestTrace.echo(response, trace);
+      },
+      end
+        ? (error: unknown) => {
+            end(undefined, error);
+            throw error;
+          }
+        : undefined,
+    );
   }
 
   static echo<R extends Response | undefined>(response: R, trace: RequestTrace): R {
