@@ -89,8 +89,8 @@ export class RscFlightRenderer {
       if (this.#forwarded.has(error)) return;
       this.#forwarded.add(error);
     }
-    const { traceId, accountId } = reportedTraceOf();
-    this.#send({ type: "render-error", error: ForwardedError.serialize(error), digest, routeId, traceId, accountId });
+    const { traceId } = reportedTraceOf();
+    this.#send({ type: "render-error", error: ForwardedError.serialize(error), digest, routeId, traceId });
   }
 
   static #isExpectedRequestAbort(error: unknown): boolean {

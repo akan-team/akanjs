@@ -38,7 +38,7 @@ process.on("message", (message) => {
       const error = { name: "TypeError", message: "price was undefined", stack: null, code: null, cause };
       const traceId = "0af7651916cd43dd8448eb211c80319c";
       const routeId = "/:lang/orders/:orderId";
-      process.send?.({ type: "render-error", error, digest: "a1b2c3d4", routeId, traceId, accountId: null });
+      process.send?.({ type: "render-error", error, digest: "a1b2c3d4", routeId, traceId });
       process.send?.({ type: "not-found", requestId: message.requestId });
       return;
     }

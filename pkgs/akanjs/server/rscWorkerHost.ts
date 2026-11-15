@@ -135,7 +135,6 @@ type RscInMsg =
       digest: string;
       routeId: string | null;
       traceId: string | null;
-      accountId: string | null;
     }
   | { type: "page-prompts.result"; requestId: string; result: PagePromptEntry[] }
   | { type: "page-prompt.result"; requestId: string; result: PagePromptRun }
@@ -390,7 +389,6 @@ export class RscWorker {
           digest: message.digest,
           routeId: message.routeId,
           traceId: message.traceId,
-          accountId: message.accountId,
         });
         return;
       case "page-prompts.result":

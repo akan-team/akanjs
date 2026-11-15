@@ -29,7 +29,6 @@ interface RenderErrorMessage {
   digest: string;
   routeId: string | null;
   traceId: string | null;
-  accountId: string | null;
 }
 
 const renderErrorsOf = async (...errors: unknown[]) => {
@@ -56,11 +55,12 @@ describe("RscFlightRenderer render errors", () => {
     const { request, sent } = await renderErrorsOf(failure, failure);
 
     expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
+    expect(sent[0]).toEqual({
+      type: "render-error",
+      error: expect.any(Object),
       digest: "price was undefined",
       routeId: "/:lang/orders/:orderId",
       traceId: request.traceId,
-      accountId: null,
     });
     const rebuilt = new ForwardedError(structuredClone(sent[0]?.error) as SerializedError);
     expect(rebuilt).toMatchObject({ name: "TypeError", message: "price was undefined", stack: failure.stack });
