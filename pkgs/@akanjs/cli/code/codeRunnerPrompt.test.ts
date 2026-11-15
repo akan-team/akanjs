@@ -63,6 +63,13 @@ describe("CodeRunner.profileOf", () => {
     expect(quiet.network.askOutside).toBeUndefined();
   });
 
+  test("the local profile asks before a shell command unless told not to, and no flag makes another profile ask", () => {
+    expect(CodeRunner.profileOf(runOptions(), { hostAttached: false }).approval).toBe("commands");
+    expect(CodeRunner.profileOf(runOptions({ askCommands: false }), { hostAttached: false }).approval).toBe("never");
+    const web = CodeRunner.profileOf(runOptions({ profile: "web", askCommands: false }), { hostAttached: true });
+    expect(web.approval).toBe("writes");
+  });
+
   test("the local profile warns at start that it is not a sandbox, and a pod does not", () => {
     expect(CodeRunner.startWarnings(codeAgentPresets.local("/w")).join(" ")).toContain("not a sandbox");
     expect(CodeRunner.startWarnings(codeAgentPresets.pod("/w"))).toEqual([]);
