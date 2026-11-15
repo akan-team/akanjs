@@ -43,8 +43,12 @@ Domain code reaches none of them.
   writes a Kubernetes Secret for `envFrom`, `--format dotenv` a file for `bun --env-file`. Never write it
   under `dist/` or a tracked path, and delete it once applied.
 - At boot a variable left unset is one warning naming it, and the server runs without it; 3.5.0 will refuse to boot.
-- A secret the env file computes or imports stops the build: write `process.env.<NAME>` there. A key the name rule
-  misses (`stripeKey`) stays in the image unless written that way too.
+- A secret the env file computes or imports stops the build, whatever its length: write the string at the key, or
+  `process.env.<NAME>` there, which the build leaves as that read. A secret string a plain key or the app's code
+  holds as well stops it too when long and mixed, and is a warning when short. A key the name rule misses
+  (`stripeKey`) stays in the image unless read from `process.env`.
+- The build loads the env file to list the secrets, with the shell's variables only when it cannot load without
+  them; a file that throws as it loads stops the build by error class and line.
 - `akan start`, `akan test`, `akan build --profile …` and desktop and mobile builds read the env file as written.
   `akan build --inline-secrets` keeps the values in the image for one release, for a deployment not ready yet.
 - Give every log sink a floor (`Logger.addSink(sink, { minLevel })`) and never log once per delivered record.

@@ -32,8 +32,8 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   read at boot from a variable named after its key path (`security.sso.google.clientSecret` is
   `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` is `JWT_SECRET`). `akan secret-env <app> --env <env>`
   lists what the deployment must set, and `--out <file>` writes it as a Kubernetes Secret or dotenv. A secret the env
-  file computes or imports stops the build: write `process.env.<NAME>` there. `akan start`, `akan test`, `--profile`
-  and desktop and mobile builds read the file as written.
+  file computes or imports stops the build: write the string at the key, or `process.env.<NAME>` there, which the
+  build leaves as it is. `akan start`, `akan test`, `--profile` and desktop and mobile builds read the file as written.
 - **`i18n: { localePrefix: "as-needed" }`** serves the default locale at unprefixed paths (`/books/x`, and `<Link>`
   renders them so) while other locales keep `/<locale>/…`. Use it, not a raw `<a>`, for a single-language app or URLs
   fixed from outside (OAuth callbacks, QR codes, mail links, a migrated site).

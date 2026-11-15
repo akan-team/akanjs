@@ -377,11 +377,24 @@ place a developer writes them; the build turns each into a read of an environmen
 - **What the build rewrites** is source text: a string literal that is the value of a key in the object
   `export const env` holds, in the app's `env.server.<env>.ts`, in `env.server.ts` itself where a pipeline copies an
   env file over it, and in each lib's `env.server.<name>.ts`. In `process.env.MY_URL ?? "literal"` only the literal
-  becomes the read, so the developer's own variable comes first. A value that is computed, imported or spread from
-  another file is left alone, and when the built files still hold it the build stops, naming the file and the key:
-  write `process.env.<NAME>` there. Two keys that map to one name (`apiKey` and `api_key`), and a name the platform
-  or akan owns (`PATH`, `HOME`, `HOSTNAME`, `PORT`, `USER`, `PWD`, `TZ`, `NODE_ENV`, `AKAN_*`, `BUN_*`), stop the
-  build before it starts.
+  becomes the read, so the developer's own variable comes first. Two keys that map to one name (`apiKey` and
+  `api_key`), and a name the platform or akan owns (`PATH`, `HOME`, `HOSTNAME`, `PORT`, `USER`, `PWD`, `TZ`,
+  `NODE_ENV`, `AKAN_*`, `BUN_*`), stop the build before it starts.
+- **What stops a build.** Before any phase the build loads the env file with each literal marked, to list the
+  variables and to see what it cannot move. A secret-named key whose value is computed, imported or spread from
+  another file stops it there, whatever the value's length or shape, naming the app, the env file and the keys:
+  write the string at the key, or `process.env.<NAME>`. A key the env file reads from `process.env` itself is the
+  developer's own: it is not moved, never stops the build, and the bundle holds the read and no value, set in the
+  build's shell or not. After the bundles are written the build looks in `dist/apps/<app>` for each secret string it
+  left out, eight characters or longer: a long mixed one found there stops the build, naming its key, its variable
+  and a plain key of the env that holds it too; a short or plain one (a password equal to a database's name) is a
+  warning by the same names, as is a shorter string a plain key holds as well. No message prints a value.
+- **How the env file is loaded.** In a process with `PATH`, `HOME` and `AKAN_PUBLIC_ENV` alone, so the list is the
+  same from any shell and `process.env.X ?? fallback` reads as the fallback the bundle carries. A file that cannot
+  load so (`process.env.HOSTS!.split(",")`) is loaded again with the build shell's variables, where a value a
+  variable gave counts as the developer's read. One that loads neither way stops the build with the error's class
+  and its file and line, never its message, which could quote a value; loading has a 60 second limit, and a file
+  that leaves a timer or a server open still ends when its answer is in.
 - **What the image carries** is the list: `AKAN_SECRET_ENV` in `akan.env.json` and the Dockerfile, names with
   `:json` or `:multiline` after an array or a multi-line value, never a value. The build prints the names.
 - **At boot**, in `AkanApp.start` before the server is loaded or a replica is spawned, the list is compared with the
@@ -404,8 +417,9 @@ place a developer writes them; the build turns each into a read of an environmen
   restarts.
 - **`akan build <app> --inline-secrets`** keeps each value in the build as what its read falls back to, for a
   deployment that does not set the variables yet; a variable that is set still wins, the boot warning says the
-  built-in values are in use, and the check for a secret the build could not move is skipped. Version 3.5.0 removes
-  the flag.
+  built-in values are in use, and nothing above stops it: a computed or imported secret stays, the files written are
+  not searched, and an env file that cannot be loaded is a warning, after which the env files are bundled as
+  written and no variable is read. Version 3.5.0 removes the flag.
 - **Read as written, as before:** `akan start` and `akan test` (the env file is imported from source), a
   `--profile` build (its profile file may hold no secret at all), and the server a desktop or mobile build carries.
 - **Not covered:** a key file an env value names by path (`security.sso.apple.keyFilePath` under `private/`) ships
