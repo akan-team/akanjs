@@ -5,12 +5,14 @@ import { RequestTrace } from "../signal/requestTrace";
 import { SignalContext } from "../signal/signalContext";
 import { AkanOption } from "./akanOption";
 import { ClientErrorReport } from "./clientErrorReport";
+import { ClientReportId } from "./clientReportId";
 import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
 import { WebRouteContext } from "./webRouteContext";
 
 const pageId = "0af7651916cd43dd8448eb211c80319c";
+const otherPageId = "4bf92f3577b34da6a3ce929d0e0e4736";
 const report = {
-  requestId: pageId,
+  requestId: ClientReportId.sign(pageId),
   routeId: "/:lang/orders/:orderId",
   kind: "uncaught",
   name: "TypeError",
@@ -167,6 +169,10 @@ describe("ClientErrorReport route", () => {
       }),
       post("{not json"),
       post({ ...report, requestId: "not-a-request-id" }),
+      post({ ...report, requestId: pageId }),
+      post({ ...report, requestId: `${pageId}.${"A".repeat(22)}` }),
+      post({ ...report, requestId: `${otherPageId}.${report.requestId.split(".")[1]}` }),
+      post({ ...report, requestId: ClientReportId.sign(pageId, Date.now() - 2 * ClientReportId.bucketMs) }),
       post({ ...report, kind: "warning" }),
     ];
     for (const req of refused) expect(await answerOf(req)).toEqual(constantAnswer);
@@ -174,27 +180,75 @@ describe("ClientErrorReport route", () => {
     expect(reported).toEqual([]);
   });
 
-  test("caps a flood per address and per server a minute, answering every request the same", async () => {
+  test("takes a bounded number per address and per server a minute, answering every request the same", async () => {
     ClientErrorReport.configure({ perAddress: 2, perServer: 3 });
     const answers = [];
-    for (let i = 0; i < 4; i += 1) answers.push(await answerOf(post({ ...report, message: `flood ${i}` })));
+    for (let i = 0; i < 4; i += 1) answers.push(await answerOf(post({ ...report, message: `first ${i}` })));
     for (let i = 0; i < 3; i += 1)
       answers.push(await answerOf(post({ ...report, message: `other ${i}` }, { address: "203.0.113.9" })));
     await ErrorReporting.flush();
 
     expect(answers.every((answer) => JSON.stringify(answer) === JSON.stringify(constantAnswer))).toBe(true);
-    expect(reported.map(([error]) => (error as BrowserError).data.message)).toEqual(["flood 0", "flood 1", "other 0"]);
+    expect(reported.map(([error]) => (error as BrowserError).data.message)).toEqual(["first 0", "first 1", "other 0"]);
   });
 
-  test("takes only the page views its sample drew, from the request id, on the server as in the page", async () => {
+  test("counts an IPv6 address by its /64", async () => {
+    ClientErrorReport.configure({ perAddress: 2 });
+    const from = (address: string) => answerOf(post({ ...report, message: address }, { address }));
+    for (const host of ["1", "2", "3", "ffff:ffff:ffff:ffff"]) await from(`2001:db8:1:2::${host}`);
+    await from("2001:db8:1:3::1");
+    await ErrorReporting.flush();
+
+    expect(reported.map(([error]) => (error as BrowserError).data.message)).toEqual([
+      "2001:db8:1:2::1",
+      "2001:db8:1:2::2",
+      "2001:db8:1:3::1",
+    ]);
+  });
+
+  test("takes one page view's id as often as its page sends, from whatever address", async () => {
+    ClientErrorReport.configure({ perAddress: 100 });
+    const second = { ...report, requestId: ClientReportId.sign(otherPageId) };
+    for (let i = 0; i < ClientErrorReport.perPageView + 3; i += 1)
+      await answerOf(post({ ...report, message: `again ${i}` }, { address: `198.51.100.${i}` }));
+    await answerOf(post({ ...second, message: "another page view" }));
+    await ErrorReporting.flush();
+
+    expect(ClientErrorReport.perPageView).toBe(5);
+    expect(reported.map(([error, context]) => [(error as BrowserError).data.message, context.traceId])).toEqual([
+      ...[0, 1, 2, 3, 4].map((i) => [`again ${i}`, pageId]),
+      ["another page view", otherPageId],
+    ]);
+  });
+
+  test("spends none of the server's minute on a body that names no id it gave a page view", async () => {
+    ClientErrorReport.configure({ perServer: 2 });
+    const unsigned = [
+      "{not json",
+      { ...report, requestId: pageId },
+      { ...report, requestId: `${pageId}.${"A".repeat(22)}` },
+      { ...report, kind: "warning" },
+    ];
+    for (let i = 0; i < 40; i += 1)
+      await answerOf(post(unsigned[i % unsigned.length], { address: `2001:db8:${i.toString(16)}::1` }));
+    await answerOf(post({ ...report, message: "a real one" }));
+    await answerOf(post({ ...report, message: "and another" }));
+    await answerOf(post({ ...report, message: "past the server's minute" }));
+    await ErrorReporting.flush();
+
+    expect(reported.map(([error]) => (error as BrowserError).data.message)).toEqual(["a real one", "and another"]);
+  });
+
+  test("gives its id only to the page views its sample drew, and takes a report only with that id", async () => {
     ClientErrorReport.configure({ sampleRate: 0.5 });
     const inSample = `00000000${pageId.slice(8)}`;
     const outOfSample = `ffffffff${pageId.slice(8)}`;
-    expect(ClientErrorReport.timingEntry("no-cache", inSample)).toBe(`akan-report;desc=${inSample}`);
+    const given = ClientErrorReport.timingEntry("no-cache", inSample)?.split("desc=")[1];
+    expect(ClientReportId.verify(given)).toBe(inSample);
     expect(ClientErrorReport.timingEntry("no-cache", outOfSample)).toBeNull();
 
     await answerOf(post({ ...report, requestId: outOfSample }));
-    await answerOf(post({ ...report, requestId: inSample }));
+    await answerOf(post({ ...report, requestId: given }));
     await ErrorReporting.flush();
     expect(reported.map(([, context]) => context.traceId)).toEqual([inSample]);
   });
@@ -219,7 +273,8 @@ describe("a page's request id for its reports", () => {
     expect(timingOf(page()).timing).toBeNull();
     ClientErrorReport.configure(true);
     const { trace, timing } = timingOf(page());
-    expect(timing).toBe(`akan-report;desc=${trace.traceId}`);
+    expect(timing).toBe(`akan-report;desc=${ClientReportId.sign(trace.traceId)}`);
+    expect(ClientReportId.verify(timing?.split("desc=")[1])).toBe(trace.traceId);
     expect(timingOf(page({ cookie: "session=1" })).timing).toStartWith("akan-report;desc=");
   });
 

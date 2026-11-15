@@ -6,6 +6,7 @@ import { act } from "react";
 import { BrowserError } from "../signal/browserError";
 import { type ErrorReportContext, ErrorReporting } from "../signal/errorReporting";
 import { ClientErrorReport } from "./clientErrorReport";
+import { ClientReportId } from "./clientReportId";
 import { AKAN_RSC_RESPONSE_STATE_HEADER, encodeAkanRouterState } from "./routeState";
 import { makeRouterState } from "./rscNavigation.fixture";
 
@@ -31,7 +32,7 @@ beforeAll(async () => {
   spies.push(
     spyOn(performance, "getEntriesByType").mockImplementation(((type: string) =>
       type === "navigation"
-        ? [{ serverTiming: [{ name: "akan-report", description: pageId }] }]
+        ? [{ serverTiming: [{ name: "akan-report", description: ClientReportId.sign(pageId) }] }]
         : []) as unknown as typeof performance.getEntriesByType),
   );
   Object.assign(globalThis, {

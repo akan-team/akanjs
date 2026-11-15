@@ -1,10 +1,10 @@
 import { AkanError } from "akanjs/base";
-import { hostFromRequest, Logger } from "akanjs/common";
-import { TraceContext } from "../common/TraceContext";
+import { addressBlockOf, hostFromRequest, Logger } from "akanjs/common";
 import { BrowserError, type BrowserErrorData, type BrowserErrorKind } from "../signal/browserError";
 import { ErrorReporting } from "../signal/errorReporting";
 import { RequestTrace } from "../signal/requestTrace";
 import { SignalContext } from "../signal/signalContext";
+import { ClientReportId } from "./clientReportId";
 import { ClientReport } from "./hmr/clientReport";
 import { AppInfo } from "./ops/appInfo";
 import { FailureLimiter } from "./ops/failureLimiter";
@@ -14,9 +14,9 @@ import type { HttpRoutes } from "./types";
 export interface ClientReportSetting {
   /** The share of page views, from 0 to 1, whose browser sends its errors, drawn from the page view's request id. */
   sampleRate?: number;
-  /** Reports one address may send a minute. */
+  /** Requests one address, an IPv6 one counted as its /64, may send the route a minute. */
   perAddress?: number;
-  /** Reports one server takes a minute from every address together. */
+  /** Reports one server hands the reporter a minute from every address together. */
   perServer?: number;
 }
 
@@ -34,6 +34,7 @@ export class ClientErrorReport {
   static readonly path = "/_akan/client-report";
   static readonly timingName = "akan-report";
   static readonly maxBodyBytes = 8_192;
+  static readonly perPageView = 5;
   static readonly fieldLimits = { name: 100, message: 1_000, stack: 4_000, userAgent: 300 } as const;
   static readonly #kinds: ReadonlySet<string> = new Set<BrowserErrorKind>([
     "uncaught",
@@ -49,6 +50,7 @@ export class ClientErrorReport {
   static #setting: Required<ClientReportSetting> | null = null;
   static #perAddress = new FailureLimiter({ limit: 10 });
   static #perServer = new FailureLimiter({ limit: 120 });
+  static #perPageView = ClientErrorReport.#pageViewCounts();
 
   static configure(setting: ClientReportSetting | boolean) {
     if (setting === false) {
@@ -64,6 +66,7 @@ export class ClientErrorReport {
     ClientErrorReport.#setting = { sampleRate, perAddress, perServer };
     ClientErrorReport.#perAddress = new FailureLimiter({ limit: perAddress });
     ClientErrorReport.#perServer = new FailureLimiter({ limit: perServer, maxClients: 1 });
+    ClientErrorReport.#perPageView = ClientErrorReport.#pageViewCounts();
   }
 
   static get enabled(): boolean {
@@ -78,7 +81,7 @@ export class ClientErrorReport {
   static timingEntry(cacheControl: string | null, traceId = RequestTrace.current()?.traceId): string | null {
     if (!traceId || !ClientErrorReport.#sampled(traceId)) return null;
     if (!cacheControl || !ClientErrorReport.#uncachedPage.test(cacheControl)) return null;
-    return `${ClientErrorReport.timingName};desc=${traceId}`;
+    return `${ClientErrorReport.timingName};desc=${ClientReportId.sign(traceId)}`;
   }
 
   static async handle(req: Request): Promise<Response> {
@@ -86,17 +89,23 @@ export class ClientErrorReport {
     return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
   }
 
+  //? Security: cheapest check first, and nothing is counted against the server, cleaned or handed on for a body
+  //? whose id this deployment did not sign; the per-address count is the only cost an unsigned body has.
   static async #take(req: Request) {
     if (!ClientErrorReport.#setting || req.method !== "POST" || !ClientErrorReport.#sameOrigin(req)) return;
     if (req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "text/plain") return;
     const address = SignalContext.clientIpOf(req);
-    if (ClientErrorReport.#perAddress.blocked(address) || ClientErrorReport.#perServer.blocked("server")) return;
-    ClientErrorReport.#perAddress.fail(address);
-    ClientErrorReport.#perServer.fail("server");
+    const block = address ? addressBlockOf(address) : null;
+    if (ClientErrorReport.#perAddress.blocked(block)) return;
+    ClientErrorReport.#perAddress.fail(block);
     const text = await ClientErrorReport.#read(req);
-    const report = text === null ? null : ClientErrorReport.#parse(text, req);
-    if (!report) return;
-    const { data, traceId } = report;
+    const body = text === null ? null : ClientErrorReport.#parse(text);
+    const traceId = ClientReportId.verify(body?.requestId);
+    if (!body || !traceId || typeof body.kind !== "string" || !ClientErrorReport.#kinds.has(body.kind)) return;
+    if (ClientErrorReport.#perPageView.blocked(traceId) || ClientErrorReport.#perServer.blocked("server")) return;
+    ClientErrorReport.#perPageView.fail(traceId);
+    ClientErrorReport.#perServer.fail("server");
+    const data = ClientErrorReport.#dataOf(body, body.kind as BrowserErrorKind, req);
     Logger.emit({
       level: "error",
       name: "ClientErrorReport",
@@ -109,6 +118,11 @@ export class ClientErrorReport {
       routeId: data.routeId,
       digest: data.digest,
     });
+  }
+
+  //? Counted for as long as an id is taken, so one page view's id is good for as many reports as its page sends.
+  static #pageViewCounts(): FailureLimiter {
+    return new FailureLimiter({ limit: ClientErrorReport.perPageView, windowMs: 2 * ClientReportId.bucketMs });
   }
 
   static #sampled(traceId: string): boolean {
@@ -147,33 +161,28 @@ export class ClientErrorReport {
     return Buffer.concat(chunks).toString("utf8");
   }
 
-  static #parse(text: string, req: Request): { data: BrowserErrorData; traceId: string } | null {
-    let body: ClientReportBody | null;
+  static #parse(text: string): ClientReportBody | null {
     try {
-      body = JSON.parse(text) as ClientReportBody | null;
+      const body = JSON.parse(text) as ClientReportBody | null;
+      return body && typeof body === "object" ? body : null;
     } catch {
       return null;
     }
-    if (!body || typeof body !== "object") return null;
-    const traceId = typeof body.requestId === "string" ? TraceContext.parseId(body.requestId) : null;
-    if (!traceId || !ClientErrorReport.#sampled(traceId)) return null;
-    if (typeof body.kind !== "string" || !ClientErrorReport.#kinds.has(body.kind)) return null;
+  }
+
+  static #dataOf(body: ClientReportBody, kind: BrowserErrorKind, req: Request): BrowserErrorData {
     const { name, message, stack, userAgent } = ClientErrorReport.fieldLimits;
     const agent = req.headers.get("user-agent");
     return {
-      traceId,
-      data: {
-        kind: body.kind as BrowserErrorKind,
-        name: ClientErrorReport.#scrub(body.name, name, false) || "Error",
-        message: ClientErrorReport.#scrub(body.message, message, false),
-        stack: ClientErrorReport.#scrub(body.stack, stack, true) || null,
-        routeId:
-          typeof body.routeId === "string" && ClientErrorReport.#routeIdShape.test(body.routeId) ? body.routeId : null,
-        digest:
-          typeof body.digest === "string" && ClientErrorReport.#digestShape.test(body.digest) ? body.digest : null,
-        buildId: AppInfo.build().buildId,
-        userAgent: agent ? ClientReport.line(agent, userAgent) : null,
-      },
+      kind,
+      name: ClientErrorReport.#scrub(body.name, name, false) || "Error",
+      message: ClientErrorReport.#scrub(body.message, message, false),
+      stack: ClientErrorReport.#scrub(body.stack, stack, true) || null,
+      routeId:
+        typeof body.routeId === "string" && ClientErrorReport.#routeIdShape.test(body.routeId) ? body.routeId : null,
+      digest: typeof body.digest === "string" && ClientErrorReport.#digestShape.test(body.digest) ? body.digest : null,
+      buildId: AppInfo.build().buildId,
+      userAgent: agent ? ClientReport.line(agent, userAgent) : null,
     };
   }
 
