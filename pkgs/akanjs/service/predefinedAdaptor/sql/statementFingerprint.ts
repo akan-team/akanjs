@@ -82,6 +82,10 @@ export class StatementFingerprint {
     });
   }
 
+  static scrubPlan(text: string): string {
+    return text.replace(TOKEN, (token) => (token[0] === '"' ? token : "?"));
+  }
+
   static #shapeOf(fingerprint: string, text: string): StatementShape {
     const verb = VERBS[/^\(?\s*([a-z]+)/i.exec(text)?.[1]?.toLowerCase() ?? ""] ?? "other";
     const table = TABLE_OF[verb]?.exec(text);

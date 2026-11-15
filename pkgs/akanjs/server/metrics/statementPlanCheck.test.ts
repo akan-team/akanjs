@@ -1,9 +1,9 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { Logger, type LogRecord } from "akanjs/common";
 import { createDocumentQueryHelper } from "akanjs/document";
-import { StatementProbe } from "akanjs/service";
+import { StatementFingerprint, StatementProbe } from "akanjs/service";
 import { runTraced, SignalTrace } from "../../signal/trace";
-import { statementMetrics } from "./statementMetrics";
+import { StatementStat, statementMetrics } from "./statementMetrics";
 import { openStatementModel, type StatementModel } from "./statementModel.fixture";
 import { StatementPlanCheck } from "./statementPlanCheck";
 
@@ -109,6 +109,47 @@ describe("dev query-plan check", () => {
       scans: null,
       sorts: false,
     });
+  });
+
+  test("shows a plan line with every quoted value replaced, array literals and paths included", () => {
+    const lines = [
+      "Index Cond: (id = ANY ('{secretA,secretB}'::text[]))",
+      "Filter: (tags && '{secretT}'::text[])",
+      "Filter: ((name)::text = 'bob'::text)",
+      "Filter: ((_doc #>> '{secretKey}'::text[]) = 'x'::text)",
+      "Filter: (json_extract(_doc, '$.secret.path') = 1)",
+    ];
+    const shown = lines.map((line) => StatementFingerprint.scrubPlan(line));
+    expect(shown).toEqual([
+      "Index Cond: (id = ANY (?::text[]))",
+      "Filter: (tags && ?::text[])",
+      "Filter: ((name)::text = ?::text)",
+      "Filter: ((_doc #>> ?::text[]) = ?::text)",
+      "Filter: (json_extract(_doc, ?) = ?)",
+    ]);
+    for (const text of shown) expect(text).not.toMatch(/secret|bob/);
+  });
+
+  test("logs a Postgres plan with its array and text values replaced", async () => {
+    const plan = [
+      "Seq Scan on memo",
+      "  Filter: (id = ANY ('{secretA,secretB}'::text[]))",
+      "  Filter: (tags && '{secretT}'::text[])",
+    ];
+    const planner = {
+      explain: async () => plan,
+      rowsUpTo: async () => StatementPlanCheck.minRows,
+      isModelTable: () => true,
+    };
+    const statement = { ...StatementProbe.fixed(`SELECT "id" FROM "memo" WHERE "id" = ANY(?)`), planner };
+    const stat = new StatementStat(statement.shape);
+    const series = stat.siteOf(StatementProbe.siteOf("memo", "list"));
+    new StatementPlanCheck().consider(stat, statement, [["secretA", "secretB"]], undefined, series, undefined);
+    await settle();
+
+    expect(records).toHaveLength(1);
+    expect(records[0].message).toContain("ANY (?::text[])");
+    expect(records[0].message).not.toContain("secret");
   });
 
   test("runs only in a local dev runtime, and AKAN_QUERY_PLAN_IGNORE=all turns it off", () => {

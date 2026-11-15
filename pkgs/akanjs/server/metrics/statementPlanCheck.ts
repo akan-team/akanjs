@@ -113,7 +113,7 @@ export class StatementPlanCheck {
 
   //? Security: a Postgres plan prints the values it was planned with, so its text is scrubbed of literals first.
   #warn(stat: StatementStat, series: SiteSeries, sentBy: string, finding: PlanFinding, plan: readonly string[]) {
-    const planText = plan.map((line) => StatementFingerprint.scrub(line).trim()).join("; ");
+    const planText = plan.map((line) => StatementFingerprint.scrubPlan(line).trim()).join("; ");
     const { fingerprint, text } = stat.shape;
     const key = `${fingerprint}\u0000${planText}`;
     if (this.#warned.has(key) || this.#warned.size >= MAX_WARNINGS) return;
