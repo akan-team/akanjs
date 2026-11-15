@@ -80,7 +80,7 @@ export class SecretEnvSource {
     return ts.isIdentifier(name) || ts.isStringLiteralLike(name) || ts.isNumericLiteral(name) ? name.text : null;
   }
 
-  #visit(expression: ts.Expression, keys: string[], underSecret: boolean): void {
+  #visit(expression: ts.Expression, keys: string[], underSecret: boolean, beside?: ts.Expression): void {
     const node = SecretEnvSource.#unwrap(expression);
     if (ts.isObjectLiteralExpression(node)) {
       for (const property of node.properties) {
@@ -95,18 +95,18 @@ export class SecretEnvSource {
     if (ts.isBinaryExpression(node)) {
       const { kind } = node.operatorToken;
       if (kind === ts.SyntaxKind.QuestionQuestionToken || kind === ts.SyntaxKind.BarBarToken)
-        this.#visit(node.right, keys, underSecret);
+        this.#visit(node.right, keys, underSecret, beside ?? expression);
       return;
     }
     if (ts.isStringLiteralLike(node)) {
       if (ServerEnvProfile.isSecret(node.text, underSecret))
-        this.#replace(node, keys, node.text.includes("\n") ? "multiline" : "string");
+        this.#replace(node, keys, node.text.includes("\n") ? "multiline" : "string", beside);
       return;
     }
     if (!ts.isArrayLiteralExpression(node)) return;
     const value = SecretEnvSource.#literal(node);
     if (value !== SecretEnvSource.#dynamic && ServerEnvProfile.secretPaths(value, underSecret).length)
-      this.#replace(node, keys, "json");
+      this.#replace(node, keys, "json", beside);
   }
 
   static #literal(expression: ts.Expression): unknown {
@@ -136,7 +136,8 @@ export class SecretEnvSource {
     return Object.fromEntries(entries);
   }
 
-  #replace(node: ts.Expression, keys: string[], kind: SecretEnvKind) {
+  //? A listing marks the whole `process.env.X ?? "literal"`, so it names the variable whether or not a shell sets X.
+  #replace(node: ts.Expression, keys: string[], kind: SecretEnvKind, beside?: ts.Expression) {
     const at = keys.join(".");
     const name = SecretEnvName.of(keys);
     const refusal = SecretEnvName.refusal(name);
@@ -159,6 +160,7 @@ export class SecretEnvSource {
         : this.#mode === "inline"
           ? `${read}(${JSON.stringify(name)}, ${written})`
           : `${read}(${JSON.stringify(name)})`;
-    this.#edits.push({ start, end: node.end, text });
+    const marked = this.#mode === "mark" && beside ? beside : node;
+    this.#edits.push({ start: marked.getStart(this.#source), end: marked.end, text });
   }
 }

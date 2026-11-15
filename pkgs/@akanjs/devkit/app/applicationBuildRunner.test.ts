@@ -214,6 +214,69 @@ console.info(new SampleService().name);
     }
   });
 
+  test("an env file that needs a variable of the shell to load builds with it set; without it a build stops at the place, and an --inline-secrets build warns and holds the env as written", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeSecretEnvFixture(root, { app: "portal", mainExtra: '\n  hosts: process.env.ZQ_HOSTS!.split(","),' });
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN", "ZQ_HOSTS"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    const started = async (secretEnv: "read" | "inline") => {
+      const app = AppExecutor.from(workspace, "portal");
+      const warnings: string[] = [];
+      spyOn(app.logger, "warn").mockImplementation((message: string) => {
+        warnings.push(message);
+      });
+      app.prepareCommand = async () => {
+        throw new Error("stopped before the phases");
+      };
+      const runner = new ApplicationBuildRunner(app, { secretEnv });
+      const failure = await runner.build().then(
+        () => "",
+        (error: Error) => error.message,
+      );
+      return { app, runner, failure, warnings };
+    };
+    const envOf = async ({ app, runner }: Awaited<ReturnType<typeof started>>) => {
+      await runner.buildAppMeta();
+      return JSON.parse(await readFile(path.join(app.dist.cwdPath, "akan.env.json"), "utf8")) as {
+        [key: string]: string;
+      };
+    };
+    const place =
+      /env\.server\.ts could not be evaluated to check it for secrets: TypeError at .*env\.server\.main\.ts:\d+/;
+    try {
+      const stopped = await started("read");
+      expect(stopped.failure).toMatch(place);
+      expect(stopped.failure).toContain("Make the file load at that line");
+      expect(holdsSentinel(stopped.failure)).toBe(false);
+
+      const inlined = await started("inline");
+      expect(inlined.failure).toBe("stopped before the phases");
+      expect(inlined.warnings).toHaveLength(1);
+      expect(inlined.warnings[0]).toMatch(place);
+      expect(inlined.warnings[0]).toStartWith("--inline-secrets: env.server.ts could not be evaluated");
+      expect(holdsSentinel(inlined.warnings.join())).toBe(false);
+      const written = await envOf(inlined);
+      expect(written).not.toHaveProperty("AKAN_SECRET_ENV");
+      expect(written).not.toHaveProperty("AKAN_SECRET_ENV_FALLBACK");
+
+      process.env.ZQ_HOSTS = "a.example.test,b.example.test";
+      const built = await started("read");
+      expect(built.failure).toBe("stopped before the phases");
+      expect((await envOf(built)).AKAN_SECRET_ENV).toStartWith("JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,");
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("an image build stops before its metadata when the files it wrote hold a secret the env file imports", async () => {
     const { root, workspace } = await createTempApp("portal");
     await writeImportedSecretFixture(root, "portal");

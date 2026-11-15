@@ -17,6 +17,7 @@ import {
 } from "../frontendBuild";
 import { ServerBundleSecrets } from "../mobile/serverBundleSecrets";
 import { SecretEnvDeclaration, type SecretEnvDeclared } from "../transforms/secretEnvDeclaration";
+import { ServerEnvEvaluationError } from "../transforms/serverEnvEvaluationError";
 import { createServerEnvPlugin } from "../transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import { ProjectTypecheck } from "../typecheck/projectTypecheck";
@@ -184,7 +185,7 @@ export class ApplicationBuildRunner {
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
     if (this.#profile)
       await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile: this.#profile });
-    if (this.#secretEnv) this.#secrets = await SecretEnvDeclaration.of(this.#envDir, environment);
+    if (this.#secretEnv) await this.#declareSecrets(environment);
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
     if (!this.#fast) await this.#runPhase("typecheck", "Typechecking", () => this.typecheck());
     await this.#runPhase(
@@ -238,6 +239,24 @@ export class ApplicationBuildRunner {
     await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
     this.#reportSecretEnv(environment);
     return this.#resultOf(environment, routeJs);
+  }
+
+  //* A build that cannot load the env file cannot say what it left out, so it stops; under --inline-secrets, which
+  //* leaves nothing out, it goes on as a build without the setting does.
+  async #declareSecrets(environment: string) {
+    try {
+      this.#secrets = await SecretEnvDeclaration.of(this.#envDir, environment);
+    } catch (error) {
+      if (!(error instanceof ServerEnvEvaluationError)) throw error;
+      if (this.#secretEnv === "read")
+        throw new Error(
+          `${error.message}\nA build leaves the secret values of the server env out of what it writes, and names the variables the server reads them from by loading the env file: with no variable of this shell first, then with them. Make the file load at that line, by setting the variable it reads there in this shell or giving it a fallback, and build again. \`akan build --inline-secrets\` builds with the env files as written until akanjs 3.5.0 removes it.`,
+        );
+      this.#app.logger.warn(
+        `--inline-secrets: ${error.message}. The secret values of the server env could not be listed, so this build holds the env files as written: the server reads no secret from a variable of its process env, and names none at boot.`,
+      );
+      this.#secretEnv = undefined;
+    }
   }
 
   //? Before the metadata phase: a build that still holds a secret gets no Dockerfile to build an image from.

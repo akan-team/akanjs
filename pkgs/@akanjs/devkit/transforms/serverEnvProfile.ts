@@ -25,6 +25,15 @@ export interface EnvEvaluation {
   environment?: string;
   loads?: RegExp;
   timeoutMs?: number;
+  //* What the child's process env holds beside PATH, HOME and the environment's selector.
+  variables?: { readonly [name: string]: string };
+}
+
+export interface EnvEvaluated {
+  value: unknown;
+  lossy: string[];
+  //* The names the env file and its imports asked the process env for, set or not.
+  reads: string[];
 }
 
 interface Stripped {
@@ -38,7 +47,7 @@ interface EnvFold<T> {
   node(value: object, children: (readonly [string, T])[]): T;
 }
 
-type EvaluatedMessage = { load: string } | { env: string; lossy: string[] } | { failure: string };
+type EvaluatedMessage = { load: string } | { env: string; lossy: string[]; reads: string[] } | { failure: string };
 
 //* A server env profile is bundled in place of the environment's own file, for a server that runs where its bundle
 //* can be read: the computers a desktop app is installed on. So it may hold no secret.
@@ -176,6 +185,10 @@ export class ServerEnvProfile {
     return (await ServerEnvProfile.#evaluated(file, cwd, load, evaluation)).value;
   }
 
+  static async evaluateReads(file: string, cwd: string, load: EnvLoad, evaluation: EnvEvaluation) {
+    return await ServerEnvProfile.#evaluated(file, cwd, load, evaluation, true);
+  }
+
   //? Bun prints a failing module's source line with its error, so stderr is never read. The child sends the error's
   //? class and place and never its message, which can quote a value of any file the env file imports.
   static async #evaluated(
@@ -186,8 +199,10 @@ export class ServerEnvProfile {
       environment,
       loads = ServerEnvProfile.envFilePattern,
       timeoutMs = ServerEnvProfile.evaluationTimeoutMs,
+      variables,
     }: EnvEvaluation = {},
-  ): Promise<{ value: unknown; lossy: string[] }> {
+    notesReads = false,
+  ): Promise<EnvEvaluated> {
     const frame = /^\s*at (?:[^(]*\()?(.+):(\d+):(\d+)\)?\s*$/;
     const script = [
       //? An import may leave a timer, a server or a socket open, which would keep this process alive past its answer
@@ -214,6 +229,15 @@ export class ServerEnvProfile {
       "        }));",
       "    },",
       "  });",
+      "const reads = new Set();",
+      'const note = (key) => typeof key === "string" && reads.add(key);',
+      "const noting = { get: (target, key, receiver) => (note(key), Reflect.get(target, key, receiver)), has: (target, key) => (note(key), Reflect.has(target, key)) };",
+      //? `Bun.env` and `import.meta.env` stay the object `process.env` was, which a proxy put in its place does not
+      //? see: a name that object lacks is noted through its prototype, and a name it holds through the proxy alone.
+      "if (process.env.AKAN_PROFILE_ENV_READS) {",
+      "  Object.setPrototypeOf(process.env, new Proxy(Object.prototype, noting));",
+      "  process.env = new Proxy(process.env, noting);",
+      "}",
       `const frameOf = new RegExp(${JSON.stringify(frame.source)});`,
       'const { existsSync } = require("node:fs");',
       //? The stack opens with the message, whose own lines could read as a frame: only lines after it are looked at,
@@ -242,12 +266,12 @@ export class ServerEnvProfile {
       "  };",
       '  walk(env, "");',
       '  const plain = (_, value) => (typeof value === "function" || typeof value === "symbol" ? undefined : typeof value === "bigint" ? String(value) : value);',
-      '  finish({ env: JSON.stringify(env ?? null, plain) ?? "null", lossy }, 0);',
+      '  finish({ env: JSON.stringify(env ?? null, plain) ?? "null", lossy, reads: [...reads] }, 0);',
       "} catch (error) {",
       "  finish({ failure: describe(error) }, 1);",
       "}",
     ].join("\n");
-    let sent: { env: string; lossy: string[] } | undefined;
+    let sent: { env: string; lossy: string[]; reads: string[] } | undefined;
     let failure: string | undefined;
     let loadError: unknown;
     const child = Bun.spawn([process.execPath, "--eval", script], {
@@ -255,9 +279,11 @@ export class ServerEnvProfile {
       env: {
         PATH: process.env.PATH ?? "",
         HOME: process.env.HOME ?? "",
+        ...variables,
         AKAN_PROFILE_ENV_FILE: file,
         AKAN_PROFILE_ENV_DEADLINE: String(timeoutMs + 5_000),
         ...(load ? { AKAN_PROFILE_ENV_LOAD: loads.source } : {}),
+        ...(notesReads ? { AKAN_PROFILE_ENV_READS: "1" } : {}),
         ...(environment ? { AKAN_PUBLIC_ENV: environment } : {}),
       },
       stdout: "ignore",
@@ -298,7 +324,8 @@ export class ServerEnvProfile {
       clearTimeout(timer);
       process.off("exit", kill);
     });
-    if (sent && !timedOut && exitCode === 0) return { value: JSON.parse(sent.env) as unknown, lossy: sent.lossy };
+    if (sent && !timedOut && exitCode === 0)
+      return { value: JSON.parse(sent.env) as unknown, lossy: sent.lossy, reads: sent.reads };
     if (loadError) throw loadError;
     if (timedOut)
       throw new ServerEnvEvaluationError(

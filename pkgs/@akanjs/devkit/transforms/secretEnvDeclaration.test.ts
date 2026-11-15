@@ -12,6 +12,38 @@ import { SecretEnvFile } from "./secretEnvFile";
 
 const makeTempRoot = tempDirs("akan-devkit-secret-env-");
 
+const withShell = async <T>(variables: { [name: string]: string }, run: () => Promise<T>) => {
+  const before = Object.fromEntries(Object.keys(variables).map((name) => [name, process.env[name]]));
+  Object.assign(process.env, variables);
+  try {
+    return await run();
+  } finally {
+    for (const [name, value] of Object.entries(before)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
+};
+
+const ownReads = [
+  "",
+  "  own: {",
+  "    apiKey: process.env.ZQ_API_KEY,",
+  '    token: "Bearer " + process.env.ZQ_TOKEN,',
+  ["    url: `postgres://app:$", "{process.env.ZQ_DB_PASS}@db.example.test/app`,"].join(""),
+  '    privateKey: process.env.ZQ_PEM?.replace(/\\\\n/g, "\\n"),',
+  '    password: process.env.ZQ_PASSWORD ?? "sentinel-own-fallback-3c55",',
+  "  },",
+].join("\n");
+
+const shellOwn = {
+  ZQ_API_KEY: "shell-api-key-1d20",
+  ZQ_TOKEN: "abc",
+  ZQ_DB_PASS: "shell-db-pass-2e31",
+  ZQ_PEM: "-----BEGIN-----\\nshell-pem-line-3f42\\n-----END-----",
+  ZQ_PASSWORD: "shell-password-4a53",
+};
+
 describe("SecretEnvDeclaration", () => {
   test("lists each secret of the environment's server env with its variable, kind and value, a lib's default included", async () => {
     const { envDir } = await writeSecretEnvFixture(await makeTempRoot());
@@ -102,6 +134,39 @@ describe("SecretEnvDeclaration", () => {
     expect(listing).toEndWith(
       "\nNot read from a variable, since the env file computes or imports it: llm.apiKey. Write `process.env.<NAME>` there for a build to leave the value out.",
     );
+  });
+
+  test("a secret key the env file reads from the process env itself is nothing the build moves or holds, with the variable unset", async () => {
+    const { envDir } = await writeSecretEnvFixture(await makeTempRoot(), { mainExtra: ownReads });
+    const declared = await SecretEnvDeclaration.of(envDir, "main");
+    expect(declared.unmoved).toEqual([]);
+    expect(declared.variables.map(({ name }) => name)).toEqual([...secretEnvFixtureNames, "OWN__PASSWORD"]);
+  });
+
+  test("an env file that needs a variable of the shell to load is listed with it set, its own reads left alone, and named by error class and line without it", async () => {
+    const { envDir } = await writeSecretEnvFixture(await makeTempRoot(), {
+      mainExtra: `${ownReads}\n  hosts: process.env.ZQ_HOSTS!.split(","),\n  push: { privateKey: process.env.ZQ_PEM!.replace(/\\\\n/g, "\\n") },`,
+    });
+    const failure = await SecretEnvDeclaration.of(envDir, "main").catch((error: Error) => error.message);
+    expect(failure).toMatch(
+      /^env\.server\.ts could not be evaluated to check it for secrets: TypeError at .*env\.server\.main\.ts:\d+$/,
+    );
+    const declared = await withShell({ ...shellOwn, ZQ_HOSTS: "a.example.test,b.example.test" }, () =>
+      SecretEnvDeclaration.of(envDir, "main"),
+    );
+    expect(declared.unmoved).toEqual([]);
+    expect(declared.variables.map(({ name }) => name)).toEqual([...secretEnvFixtureNames, "OWN__PASSWORD"]);
+    expect(JSON.stringify(declared.variables)).not.toContain("shell-");
+  });
+
+  test("a value the env file imports behind its own read is still one no build can move, while the variable is unset", async () => {
+    const root = await makeTempRoot();
+    await writeText(path.join(root, "apps/demo/srvkit/keys.ts"), 'export const llmKey = "sentinel-imported-0a73";\n');
+    const { envDir } = await writeSecretEnvFixture(root, {
+      mainHead: 'import { llmKey } from "../srvkit/keys";\n',
+      mainExtra: "\n  llm: { apiKey: process.env.ZQ_LLM_KEY ?? llmKey },",
+    });
+    expect((await SecretEnvDeclaration.of(envDir, "main")).unmoved).toEqual(["llm.apiKey"]);
   });
 
   test("says so when the server env holds no secret", async () => {

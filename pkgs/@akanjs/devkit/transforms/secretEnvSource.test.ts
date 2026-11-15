@@ -79,6 +79,23 @@ describe("SecretEnvSource", () => {
     expect(rewritten).toContain('apiKey: (process.env.LLM_KEY || __akanSecretEnv.read("LLM__API_KEY")) as string');
   });
 
+  test("a listing marks the literal with the developer's own variable beside it whole, so a shell that sets that variable lists it too", () => {
+    const marked = SecretEnvSource.rewrite(
+      file,
+      [
+        "export const env = {",
+        '  database: { postgres: { url: process.env.DATABASE_URL ?? "postgres://app:sentinel@db.example.test/app" } },',
+        '  llm: { apiKey: (process.env.LLM_KEY || process.env.OTHER_KEY || "sentinel-llm") as string },',
+        "};",
+      ].join("\n"),
+      "mark",
+    );
+    expect(marked).toContain(
+      'url: ({ __akanSecretEnv: ["POSTGRES_URL", "string", "postgres://app:sentinel@db.example.test/app"] }) }',
+    );
+    expect(marked).toContain('apiKey: ({ __akanSecretEnv: ["LLM__API_KEY", "string", "sentinel-llm"] }) }');
+  });
+
   test("leaves a file alone that holds no secret literal, or whose env is not an object it can read", () => {
     const plain = 'export const env = { hostname: "app.example.test", port: 8080, tokenTtl: 3600 };\n';
     expect(read(plain)).toBe(plain);

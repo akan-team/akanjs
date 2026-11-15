@@ -213,6 +213,26 @@ describe("createServerEnvPlugin for an image", () => {
     );
   });
 
+  test("a secret the env file reads from the process env itself stays that read in the built server, which holds no value the build's shell gave it", async () => {
+    const shell = process.env.ZQ_API_KEY;
+    process.env.ZQ_API_KEY = "shell-api-key-1d20";
+    try {
+      const built = await build(await makeTempRoot(), "read", {
+        mainExtra: '\n  own: { apiKey: process.env.ZQ_API_KEY, hosts: process.env.ZQ_API_KEY!.split("-") },',
+      });
+      expect(built.text).toContain("apiKey: process.env.ZQ_API_KEY");
+      expect(built.text).not.toContain("shell-api-key-1d20");
+      const { list, values } = await declare(built);
+      expect(list).not.toContain("OWN__");
+      const booted = boot(built.file, { AKAN_SECRET_ENV: list, ...values, ZQ_API_KEY: "deployed-api-key" });
+      expect(booted.warnings).toEqual([]);
+      expect(booted.env?.own).toEqual({ apiKey: "deployed-api-key", hosts: ["deployed", "api", "key"] });
+    } finally {
+      if (shell === undefined) delete process.env.ZQ_API_KEY;
+      else process.env.ZQ_API_KEY = shell;
+    }
+  });
+
   test("without the setting, as for the server a desktop app carries, the env files are bundled as written", async () => {
     const built = await build(await makeTempRoot());
     expect(built.text).toContain(secretEnvSentinels.jwt);
