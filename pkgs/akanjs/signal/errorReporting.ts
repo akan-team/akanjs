@@ -84,6 +84,10 @@ export class ErrorReporting {
     setImmediate(() => ErrorReporting.#call(reporter, reported, context));
   }
 
+  static renderReported(traceId: string | null): boolean {
+    return traceId !== null && ErrorReporting.#renders.has(traceId);
+  }
+
   static async flush(timeoutMs = ErrorReporting.flushTimeoutMs): Promise<void> {
     await new Promise((resolve) => setImmediate(resolve));
     if (!ErrorReporting.#pending.size) return;

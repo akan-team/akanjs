@@ -11,6 +11,7 @@ import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { parsePositiveInt } from "./cachePolicy";
 import { FlightModulePreloads } from "./flightModulePreloads";
 import { mapFlightLineRows } from "./flightRowReader";
+import { PageFailure } from "./pageFailure";
 import type {
   SsrChunkRegistryStats,
   SsrDocumentOptions,
@@ -728,8 +729,7 @@ export class SsrFromRscRenderer {
       SsrFromRscRenderer.#logger.debug(`[SSR] ${phase} aborted: ${description}`);
       return;
     }
-    const path = input.request ? new URL(input.request.url).pathname : "unknown";
-    SsrFromRscRenderer.#logger.error(`[SSR] ${phase} failed path=${path}: ${description}`);
+    PageFailure.htmlRender(error, { logger: SsrFromRscRenderer.#logger, request: input.request, phase, description });
   }
 
   static #isExpectedRequestAbort(error: unknown): boolean {

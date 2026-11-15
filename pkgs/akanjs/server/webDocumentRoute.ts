@@ -8,6 +8,7 @@ import type { CsrDevShell } from "./hmr/csrDevShell";
 import { SsrDevShim } from "./hmr/ssrDevShim";
 import type { HtmlResultCache } from "./htmlResultCache";
 import { PageCall } from "./metrics/requestMetrics";
+import { PageFailure } from "./pageFailure";
 import type { RscRedirectStatus, RscRenderResult, RscWorker } from "./rscWorkerHost";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
@@ -71,7 +72,7 @@ export class WebDocumentRoute {
     try {
       answer = await this.#render(req, url, page);
     } catch (err) {
-      return page.finish(await this.#context.errorPageResponse(req, url.pathname, err));
+      return page.finish(await this.#context.errorPageResponse(req, url.pathname, err, page.route));
     }
     return page.finish(answer === "not-found" ? await this.#context.notFoundPageResponse(req, url) : answer);
   }
@@ -164,6 +165,7 @@ export class WebDocumentRoute {
     ]
       .filter(Boolean)
       .join("\n");
+    PageFailure.routed(req, rscResult.trace?.routeId);
     return await new SsrFromRscRenderer().render({
       request: req,
       requestStore: hostRequestStore,

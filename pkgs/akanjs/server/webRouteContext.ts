@@ -14,6 +14,7 @@ import { encodedFileResponse, isCompressibleContentType, matchesIfNoneMatch, var
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { HmrWsHub } from "./hmr/wsHub";
 import type { PageCall } from "./metrics/requestMetrics";
+import { PageFailure } from "./pageFailure";
 import { normalizeHost } from "./proxy/hostBasePathWebProxy";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
@@ -167,10 +168,11 @@ export class WebRouteContext {
     });
   }
 
-  errorPageResponse(req: Request, scope: string, err: unknown): Promise<Response> {
+  errorPageResponse(req: Request, scope: string, err: unknown, route: string): Promise<Response> {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return Promise.resolve(WebRouteContext.#clientClosedResponse());
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
+    PageFailure.answered(err, route);
     this.#hub()?.broadcast({ type: "error", message });
     return createSystemPageResponse({
       kind: "error",
@@ -185,10 +187,12 @@ export class WebRouteContext {
     });
   }
 
-  rscErrorResponse(scope: string, err: unknown): Response {
+  //? Without a `route` nothing was thrown here: the worker's render answered 5xx and sent the reporter its error.
+  rscErrorResponse(scope: string, err: unknown, route?: string): Response {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return WebRouteContext.#clientClosedResponse();
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
+    if (route !== undefined) PageFailure.answered(err, route);
     this.#hub()?.broadcast({ type: "error", message });
     return new Response("Internal Server Error", {
       status: 500,

@@ -78,7 +78,7 @@ export class WebRscRoute {
         try {
           return page.finish(await this.#navigate(req, prefetch, page));
         } catch (err) {
-          return page.finish(context.rscErrorResponse("__rsc", err));
+          return page.finish(context.rscErrorResponse("__rsc", err, page.route));
         }
       }),
       ...DevRoutes.mount({
