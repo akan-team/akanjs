@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { Logger, toError } from "akanjs/common";
+import { ServerEnvEvaluationError } from "./serverEnvEvaluationError";
 
 export interface ServerEnvProfileProps {
   envDir: string;
@@ -23,6 +24,7 @@ type EnvLoad = (envFile: string) => Promise<ServerEnvSource>;
 export interface EnvEvaluation {
   environment?: string;
   loads?: RegExp;
+  timeoutMs?: number;
 }
 
 interface Stripped {
@@ -44,6 +46,7 @@ export class ServerEnvProfile {
   static readonly namePattern = /^[a-z][a-zA-Z0-9-]*$/;
   static readonly envFilePattern = /[\\/]env[\\/]env\.server\.[A-Za-z0-9-]+\.ts$/;
   static readonly envModulePattern = /[\\/]env[\\/]env\.server(?:\.[A-Za-z0-9-]+)?\.ts$/;
+  static readonly evaluationTimeoutMs = 60_000;
 
   static fileName(environment: string, profile: string) {
     return `env.server.${environment}.${profile}.ts`;
@@ -179,12 +182,22 @@ export class ServerEnvProfile {
     file: string,
     cwd: string,
     load?: EnvLoad,
-    { environment, loads = ServerEnvProfile.envFilePattern }: EnvEvaluation = {},
+    {
+      environment,
+      loads = ServerEnvProfile.envFilePattern,
+      timeoutMs = ServerEnvProfile.evaluationTimeoutMs,
+    }: EnvEvaluation = {},
   ): Promise<{ value: unknown; lossy: string[] }> {
     const pattern = (regex: RegExp, flags = "") => `new RegExp(${JSON.stringify(regex.source)}, "${flags}")`;
     const literal = /(["'`])((?:\\[\s\S]|(?!\1)[^\\])*)\1/;
     const frame = /^\s*at (?:[^(]*\()?(.+):(\d+):(\d+)\)?\s*$/;
     const script = [
+      //? An import may leave a timer, a server or a socket open, which would keep this process alive past its answer
+      //? and past a parent that died: it exits when its answer is sent, when the parent's channel closes, and at a
+      //? deadline of its own.
+      'process.on("disconnect", () => process.exit(1));',
+      "setTimeout(() => process.exit(1), Number(process.env.AKAN_PROFILE_ENV_DEADLINE)).unref();",
+      "const finish = (message, code) => process.send(message, undefined, undefined, () => process.exit(code));",
       "const waiting = new Map();",
       'process.on("message", ({ load, error, loader, contents }) => {',
       "  const reply = waiting.get(load);",
@@ -233,10 +246,9 @@ export class ServerEnvProfile {
       "  };",
       '  walk(env, "");',
       '  const plain = (_, value) => (typeof value === "function" || typeof value === "symbol" ? undefined : typeof value === "bigint" ? String(value) : value);',
-      '  process.send({ env: JSON.stringify(env ?? null, plain) ?? "null", lossy }, undefined, undefined, () => process.disconnect());',
+      '  finish({ env: JSON.stringify(env ?? null, plain) ?? "null", lossy }, 0);',
       "} catch (error) {",
-      "  process.exitCode = 1;",
-      "  process.send({ failure: await describe(error) }, undefined, undefined, () => process.disconnect());",
+      "  finish({ failure: await describe(error) }, 1);",
       "}",
     ].join("\n");
     let sent: { env: string; lossy: string[] } | undefined;
@@ -248,6 +260,7 @@ export class ServerEnvProfile {
         PATH: process.env.PATH ?? "",
         HOME: process.env.HOME ?? "",
         AKAN_PROFILE_ENV_FILE: file,
+        AKAN_PROFILE_ENV_DEADLINE: String(timeoutMs + 5_000),
         ...(load ? { AKAN_PROFILE_ENV_LOAD: loads.source } : {}),
         ...(environment ? { AKAN_PUBLIC_ENV: environment } : {}),
       },
@@ -278,14 +291,28 @@ export class ServerEnvProfile {
           .catch(() => undefined);
       },
     });
-    const exitCode = await child.exited;
-    if (exitCode !== 0 || !sent) {
-      if (loadError) throw loadError;
-      throw new Error(
-        `${path.basename(file)} could not be evaluated to check it for secrets: ${failure ?? `its process exited with code ${exitCode} and sent nothing`}`,
+    let timedOut = false;
+    const kill = () => child.kill("SIGKILL");
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
+    }, timeoutMs);
+    process.on("exit", kill);
+    const exitCode = await child.exited.finally(() => {
+      clearTimeout(timer);
+      process.off("exit", kill);
+    });
+    if (sent && !timedOut && exitCode === 0) return { value: JSON.parse(sent.env) as unknown, lossy: sent.lossy };
+    if (loadError) throw loadError;
+    if (timedOut)
+      throw new ServerEnvEvaluationError(
+        "timedOut",
+        `${file} was not evaluated within ${timeoutMs / 1000}s, so its process was stopped: the file, or one it imports, waits on something as it loads that does not end (a server it starts, a connection it opens, a loop).`,
       );
-    }
-    return { value: JSON.parse(sent.env) as unknown, lossy: sent.lossy };
+    throw new ServerEnvEvaluationError(
+      failure ? "threw" : "exited",
+      `${path.basename(file)} could not be evaluated to check it for secrets: ${failure ?? `its process exited with code ${exitCode} and sent nothing`}`,
+    );
   }
 
   //? A profile is served under the path of the file it replaces, so its import of that file would import itself.

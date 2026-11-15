@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import { tempDirs, writeText as write } from "../test/testHelpers";
+import { ServerEnvEvaluationError } from "./serverEnvEvaluationError";
 import { ServerEnvProfile } from "./serverEnvProfile";
 
 const makeTempRoot = tempDirs("akan-devkit-server-env-profile-");
@@ -129,6 +130,20 @@ describe("ServerEnvProfile.strip", () => {
   });
 });
 
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const goneWithin = async (pid: number, ms: number) => {
+  for (const started = Date.now(); Date.now() - started < ms; await Bun.sleep(50)) if (!alive(pid)) return true;
+  return !alive(pid);
+};
+
 describe("ServerEnvProfile.evaluate", () => {
   test("says why and where an env file could not be evaluated, and never a line or a value of it", async () => {
     const root = await makeTempRoot();
@@ -159,6 +174,65 @@ describe("ServerEnvProfile.evaluate", () => {
     );
     expect(messages.syntax).toMatch(/env\.server\.syntax\.ts:2:\d+\)$/);
   });
+
+  test("answers for an env file whose import keeps a timer running, and leaves no process behind", async () => {
+    const root = await makeTempRoot();
+    const pidFile = path.join(root, "pid");
+    await write(
+      path.join(root, "lib/ticker.ts"),
+      `await Bun.write(${JSON.stringify(pidFile)}, String(process.pid));\nexport const ticker = setInterval(() => undefined, 1_000);\n`,
+    );
+    const file = path.join(root, "env/env.server.main.ts");
+    await write(file, 'import "../lib/ticker";\nexport const env = { hostname: "app.example.test" };\n');
+    const started = Date.now();
+    expect(await ServerEnvProfile.evaluate(file, root)).toEqual({ hostname: "app.example.test" });
+    expect(Date.now() - started).toBeLessThan(10_000);
+    expect(await goneWithin(Number(await Bun.file(pidFile).text()), 3_000)).toBe(true);
+  });
+
+  test("stops an env file that never finishes loading, names it, and leaves no process behind", async () => {
+    const root = await makeTempRoot();
+    const pidFile = path.join(root, "pid");
+    const file = path.join(root, "env/env.server.main.ts");
+    await write(
+      file,
+      `await Bun.write(${JSON.stringify(pidFile)}, String(process.pid));\nsetInterval(() => undefined, 1_000);\nawait new Promise(() => undefined);\nexport const env = {};\n`,
+    );
+    const failure = await ServerEnvProfile.evaluate(file, root, undefined, { timeoutMs: 1_500 }).then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ServerEnvEvaluationError);
+    expect((failure as ServerEnvEvaluationError).reason).toBe("timedOut");
+    expect((failure as Error).message).toStartWith(`${file} was not evaluated within 1.5s, so its process was stopped`);
+    expect(await goneWithin(Number(await Bun.file(pidFile).text()), 3_000)).toBe(true);
+  });
+
+  test("its process ends with the process that asked, even one that was killed", async () => {
+    const root = await makeTempRoot();
+    const pidFile = path.join(root, "pid");
+    const file = path.join(root, "env/env.server.main.ts");
+    await write(
+      file,
+      `await Bun.write(${JSON.stringify(pidFile)}, String(process.pid));\nsetInterval(() => undefined, 1_000);\nawait new Promise(() => undefined);\nexport const env = {};\n`,
+    );
+    const asker = path.join(root, "asker.ts");
+    await write(
+      asker,
+      `import { ServerEnvProfile } from ${JSON.stringify(path.join(import.meta.dir, "serverEnvProfile.ts"))};\nawait ServerEnvProfile.evaluate(${JSON.stringify(file)}, ${JSON.stringify(root)});\n`,
+    );
+    const parent = Bun.spawn([process.execPath, asker], { cwd: import.meta.dir, stdout: "ignore", stderr: "ignore" });
+    try {
+      for (let tries = 0; tries < 200 && !(await Bun.file(pidFile).exists()); tries++) await Bun.sleep(50);
+      const child = Number(await Bun.file(pidFile).text());
+      expect(alive(child)).toBe(true);
+      parent.kill("SIGKILL");
+      await parent.exited;
+      expect(await goneWithin(child, 5_000)).toBe(true);
+    } finally {
+      parent.kill("SIGKILL");
+    }
+  }, 30_000);
 
   test("reads an env file that writes to stdout as it loads", async () => {
     const envDir = await writeProfile(
