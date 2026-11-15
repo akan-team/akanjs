@@ -229,7 +229,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     {{- if dig "cors" "enabled" false $ingress }}
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,apollo-require-preflight"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,apollo-require-preflight,x-akan-session-tokens"
     {{- end }}
     nginx.ingress.kubernetes.io/proxy-body-size: {{ dig "proxyBodySize" "128m" $ingress | quote }}
     nginx.ingress.kubernetes.io/affinity: "cookie"

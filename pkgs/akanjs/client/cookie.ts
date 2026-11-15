@@ -155,7 +155,6 @@ export interface GetOption {
   unauthorize: string;
 }
 interface SetAuthOption {
-  /** Absent from a sign-in or refresh answer when the server kept the session in its HttpOnly cookies alone. */
   jwt?: string | null;
 }
 const announceAuth = () => {
