@@ -2,6 +2,7 @@ import {
   Account,
   Admin as AdminGuard,
   adminRolePolicy,
+  browserRefreshGraceMs,
   Me,
   makeAdminAccessTokenResponse as makeAccessTokenResponse,
   makeAdminSignoutResponse as makeSignoutResponse,
@@ -103,7 +104,8 @@ export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, 
           const signable = user ? await this.userService._assertSignable(user).catch(() => null) : null;
           return signable ? await this.userService.makeSelf(signable) : null;
         };
-        return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account, readSelf), {
+        const options = { graceMs: browserRefreshGraceMs };
+        return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account, readSelf, options), {
           req,
         }) as never;
       } catch (error) {

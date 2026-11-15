@@ -1,5 +1,6 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import {
+  browserRefreshGraceMs,
   hashPassword,
   isBcryptHash,
   isPasswordMatch,
@@ -7,13 +8,14 @@ import {
   SignChallenge,
   setAdminSsoPolicy,
 } from "@libs/shared/srvkit";
-import { dayjs } from "akanjs/base";
+import { dayjs, ENDPOINT_META } from "akanjs/base";
 import { CacheDatabase } from "akanjs/document";
 import { ConformanceEnv } from "akanjs/test";
 
 import type * as db from "../db";
 import { AdminModel } from "./admin.document";
 import { AdminService } from "./admin.service";
+import { AdminEndpoint } from "./admin.signal";
 
 process.env.AKAN_PUBLIC_APP_NAME ??= "shared";
 process.env.AKAN_PUBLIC_REPO_NAME ??= "soft-s2";
@@ -52,6 +54,7 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
       ({ service, adminModel } = serviceOn(new CacheDatabase("admin", opened.cache)));
     });
     afterEach(async () => {
+      setSystemTime();
       await opened.close();
     });
 
@@ -113,15 +116,40 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
       expect((await service.refreshAdminToken(browserToken)).refreshToken).toBeTruthy();
     });
 
-    test("a page load's renewal answers a token used twice within its window, and a plain refresh reads it as reuse", async () => {
-      const window = { graceMs: 10_000 };
+    test("a page load's renewal answers a token used twice within its window, and past the window it reads as reuse", async () => {
+      const window = { graceMs: browserRefreshGraceMs };
       const pageToken = crypto.randomUUID();
       await adminModel.createRefreshSession(admin.id, `hash:${pageToken}`, expiresAt());
       const first = await service.refreshAdminToken(pageToken, undefined, undefined, window);
       const second = await service.refreshAdminToken(pageToken, undefined, undefined, window);
       expect(second.refreshToken).not.toBe(first.refreshToken);
       expect((await service.refreshAdminToken(first.refreshToken ?? "")).refreshToken).toBeTruthy();
-      await expect(service.refreshAdminToken(pageToken)).rejects.toThrow("shared.error.refreshTokenReuseDetected");
+      setSystemTime(Date.now() + browserRefreshGraceMs + 1000);
+      await expect(service.refreshAdminToken(pageToken, undefined, undefined, window)).rejects.toThrow(
+        "shared.error.refreshTokenReuseDetected",
+      );
+    });
+
+    test("the admin refresh endpoint answers a token presented twice within the window, as the user's does", async () => {
+      const refreshAdminJwt = AdminEndpoint[ENDPOINT_META].refreshAdminJwt.execFn as unknown as (
+        this: { adminService: AdminService; userService: unknown },
+        refreshToken: string | null,
+        account: undefined,
+        req: Request,
+      ) => Promise<Response>;
+      const endpoint = { adminService: service, userService: {} };
+      const answer = async (refreshToken: string) => {
+        const req = new Request("https://app.example.com/api/admin/refreshAdminJwt", { method: "POST" });
+        const response = await refreshAdminJwt.call(endpoint, refreshToken, undefined, req);
+        return (await response.json()) as { refreshToken?: string };
+      };
+      const consoleToken = crypto.randomUUID();
+      await adminModel.createRefreshSession(admin.id, `hash:${consoleToken}`, expiresAt());
+      const first = await answer(consoleToken);
+      const second = await answer(consoleToken);
+      expect(second.refreshToken).toBeTruthy();
+      expect(second.refreshToken).not.toBe(first.refreshToken);
+      expect((await answer(first.refreshToken ?? "")).refreshToken).toBeTruthy();
     });
   });
 }
