@@ -164,6 +164,7 @@ export class ApplicationBuildRunner {
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {
     // serial build is needed because of Bun.build is unstable for parallel build
     this.#spinner = spinner;
+    if (this.#verify) this.#app.useVerifyDist();
     const { web, assets, baseDevEnv } = await this.#app.getConfig();
     const environment = this.#environment ?? baseDevEnv.env;
     WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, "akan build");
@@ -370,7 +371,8 @@ export class ApplicationBuildRunner {
   //? `bun main.js` in dist/apps/<app> is a documented way to run a build, and a verify output has no CSR bundle or
   //? production env file, so its main.js refuses to boot before any app module runs.
   #verifyBanner() {
-    const message = `dist/apps/${this.#app.name} holds the partial output of akan verify, not a build. Run \`akan build ${this.#app.name}\` first.`;
+    const { name, dist, workspace } = this.#app;
+    const message = `${path.relative(workspace.workspaceRoot, dist.cwdPath)} holds the partial output of akan verify, not a build. Run \`akan build ${name}\` and start dist/apps/${name}.`;
     return `console.error(${JSON.stringify(message)});process.exit(1);`;
   }
 
