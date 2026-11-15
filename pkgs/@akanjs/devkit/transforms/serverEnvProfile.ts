@@ -179,7 +179,7 @@ export class ServerEnvProfile {
     );
   }
 
-  //* The strings of a value a build moved to a variable, and the password of each URL among them.
+  //? A URL's password is looked for on its own too: code that holds it holds it without the URL around it.
   static movedTexts(value: unknown, underSecret: boolean): string[] {
     const texts = ServerEnvProfile.#fold(
       value,

@@ -48,7 +48,7 @@ export interface SecretEnvMoved {
 
 export interface SecretEnvDeclared {
   variables: SecretEnvVariable[];
-  /** Keys whose secret value the env computes or imports, so no build can read it from a variable. A value that comes from the env file's own read of the process env is not one. */
+  /** Keys whose secret value the env computes or imports, and does not read from the process env itself. */
   unmoved: string[];
   moved: SecretEnvMoved[];
 }
@@ -128,32 +128,36 @@ export class SecretEnvDeclaration {
     );
     if (!kept.length) return kept;
     const names = loaded.reads.filter((name) => SecretEnvName.refusal(name) === null);
-    if (!names.length) return kept;
-    const probing = {
-      ...loaded.variables,
-      ...Object.fromEntries(
-        names.map((name) => [
-          name,
-          Object.hasOwn(loaded.variables, name)
-            ? `${loaded.variables[name]}${SecretEnvDeclaration.#set}`
-            : SecretEnvDeclaration.#unset,
-        ]),
-      ),
-    };
-    const probed = await SecretEnvDeclaration.#evaluate(file, envDir, environment, probing).then(
-      ({ value }) => value,
-      (error: unknown) => {
-        if (error instanceof ServerEnvEvaluationError) return undefined;
-        throw error;
-      },
-    );
+    const probe = async (probed: string[]) =>
+      await SecretEnvDeclaration.#evaluate(file, envDir, environment, {
+        ...loaded.variables,
+        ...Object.fromEntries(
+          probed.map((name) => [
+            name,
+            Object.hasOwn(loaded.variables, name)
+              ? `${loaded.variables[name]}${SecretEnvDeclaration.#set}`
+              : SecretEnvDeclaration.#unset,
+          ]),
+        ),
+      }).then(
+        ({ value }) => [value],
+        (error: unknown) => {
+          if (error instanceof ServerEnvEvaluationError) return [];
+          throw error;
+        },
+      );
+    //? All names at once, and one at a time when that cannot load: `new URL(process.env.BASE ?? "…")` throws on a probe.
+    const all = names.length ? await probe(names) : [];
+    const probes = all.length ? all : (await Promise.all(names.slice(0, 32).map((name) => probe([name])))).flat();
     return kept.filter(
       ({ segments, value }) =>
-        !SecretEnvDeclaration.#followsRead(
-          value,
-          segments.reduce<unknown>(
-            (node, key) => (node as { [key: string]: unknown } | null | undefined)?.[key],
-            probed,
+        !probes.some((probed) =>
+          SecretEnvDeclaration.#followsRead(
+            value,
+            segments.reduce<unknown>(
+              (node, key) => (node as { [key: string]: unknown } | null | undefined)?.[key],
+              probed,
+            ),
           ),
         ),
     );

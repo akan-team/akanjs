@@ -153,6 +153,13 @@ describe("SecretEnvDeclaration", () => {
     expect(declared.variables.map(({ name }) => name)).toEqual([...secretEnvFixtureNames, "OWN__PASSWORD"]);
   });
 
+  test("its own read is told from a computed secret also when another of its variables cannot take a made-up value", async () => {
+    const { envDir } = await writeSecretEnvFixture(await makeTempRoot(), {
+      mainExtra: `${ownReads}\n  origin: new URL(process.env.ZQ_ORIGIN ?? "https://app.example.test").host,`,
+    });
+    expect((await SecretEnvDeclaration.of(envDir, "main")).unmoved).toEqual([]);
+  });
+
   test("an env file that needs a variable of the shell to load is listed with it set, its own reads left alone, and named by error class and line without it", async () => {
     const { envDir } = await writeSecretEnvFixture(await makeTempRoot(), {
       mainExtra: `${ownReads}\n  hosts: process.env.ZQ_HOSTS!.split(","),\n  push: { privateKey: process.env.ZQ_PEM!.replace(/\\\\n/g, "\\n") },`,
