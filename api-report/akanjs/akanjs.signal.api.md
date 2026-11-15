@@ -311,6 +311,7 @@ export declare class CrossSiteGuard {
     static reset(): void;
     static assertJsonBody(contentType: null | string): void;
     static assertOrigin(req: Request, url: URL, key: string): void;
+    static isFromOwnHost(req: Request, url: URL): boolean;
     static corsOrigin(req: Request): null | string;
     static preflight(req: Request, methods: string[]): Response;
     static withCors(req: Request, res: Response): Response;

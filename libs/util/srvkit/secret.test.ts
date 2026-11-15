@@ -1,5 +1,6 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import * as base from "akanjs/base";
+import { dayjs } from "akanjs/base";
 import { Logger, type LoggerSinkEntry } from "akanjs/common";
 import { type ModulesOptions, option } from "../lib/option";
 import { jwtSign } from "./jwt";
@@ -151,6 +152,29 @@ describe("resolveJwt", () => {
       removeSink();
       Logger.setLevel("info");
     }
+  });
+
+  test("reads the second credential only after this app's own token past its expiry", async () => {
+    const claims = { appName: "resolvejwt", environment: "local", tokenType: "access" };
+    const past = { expiresAt: dayjs().subtract(1, "minute") };
+    const second = `Bearer ${await jwtSign({ ...claims, sid: "second" }, secret)}`;
+    const read = async (first: string) =>
+      await resolveJwt<typeof anonymous>(secret, `Bearer ${first}`, anonymous, second);
+
+    expect(await read(await jwtSign({ ...claims, sid: "first" }, secret, past))).toMatchObject({ sid: "second" });
+    expect(await read(await jwtSign({ ...claims, sid: "first" }, secret))).toMatchObject({ sid: "first" });
+    for (const refused of [
+      "not-a-token",
+      await jwtSign({ ...claims, sid: "first" }, "another-secret", past),
+      await jwtSign({ ...claims, appName: "elsewhere" }, secret, past),
+      await jwtSign({ ...claims, appName: "elsewhere" }, secret),
+      await jwtSign({ ...claims, environment: "main" }, secret, past),
+    ])
+      expect(await read(refused)).toBe(anonymous);
+    expect(
+      await resolveJwt(secret, `Bearer ${await jwtSign(claims, secret, past)}`, anonymous, "Bearer not-a-token"),
+    ).toBe(anonymous);
+    expect(await resolveJwt(secret, `Bearer ${await jwtSign(claims, secret, past)}`, anonymous)).toBe(anonymous);
   });
 
   test("stays anonymous for every header /mcp's bearer check reads no token from", async () => {

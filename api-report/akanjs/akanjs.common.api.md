@@ -1990,6 +1990,13 @@ export declare function routeSegmentToPatternPart(segment: string): string;
 
 export declare function routeSegmentToTreePath(segment: string): string;
 
+export declare const sessionTokenContract: {
+    readonly header: "x-akan-session-tokens";
+    readonly body: "body";
+    readonly makeHeaders: () => Record<string, string>;
+    readonly asksForBody: (headers: Headers) => boolean;
+};
+
 export declare const sleep: (ms: number) => Promise<unknown>;
 
 export declare const sliceNames: (refName: string, suffix?: string) => {

@@ -65,12 +65,29 @@
   답한다. `leaveAndSignoutSelf`는 그 기기의 푸시 토큰을 삭제보다 먼저 빼고(삭제된 행은 쓰기가 닿지 않는다) 세션 쿠키를 지우는
   응답을 준다.
 - 한 JWT가 `self`와 `me`를 함께 싣되, 각 신원은 자기 세션 id(`selfSid`/`meSid`)를 따른다. 폐기된 세션에서 나온 access
-  token은 남은 수명(7일) 동안 거부되고, refresh는 다른 쪽 신원이 아직 유효할 때만 다시 싣는다. 사용자 로그인이 이어 싣는
+  token은 거부 기록이 남는 7일(`RevokedSessions.deniedSeconds`, 토큰 수명 1시간보다 길다) 동안 거부되고, refresh는 다른 쪽 신원이 아직 유효할 때만 다시 싣는다. 사용자 로그인이 이어 싣는
   관리자 `me`는 폐기 확인이 실패하면 싣지 않는다.
 - refresh token은 회전된다. 브라우저는 탭 사이에서도 한 번에 하나만 refresh하고, 서버는 10초 안의 재사용을 형제 회전으로
   받는다. 그 밖의 재사용은 계정의 모든 브라우저 세션을 끊는다. 한 토큰을 여러 프로세스가 쥐는 호출자(클라우드 CLI)만
   `{ graceMs, reuseRevokes: "lineage" }`로 lineage만 끊는다. OAuth 클라이언트에 발급된 refresh token은 여기서 모르는
   토큰으로 거절되고, 아무것도 회전하거나 끊지 않는다.
+- 브라우저의 access token은 1시간이다. 페이지는 만료 2분 전에 refresh하고, 탭이 다시 보이거나 창이 포커스를 얻거나
+  네트워크가 돌아올 때와 1분마다 만료를 다시 확인한다. 만료된 채 도착한 페이지 로드·RSC 이동은 렌더 전에 서버가 요청의
+  refresh 쿠키로 갱신한다(`PageSession`, `option.setSessionRefresh`). 이때 `self`와 `me`는 각자의 refresh 쿠키로만 돌아오며
+  만료된 access token은 어느 쪽도 보증하지 않는다. 앱이 `setSessionRefresh`를 정하면 그쪽이 이긴다.
+- 페이지는 토큰 수명을 기기 시계가 아니라 서버 시계로 센다(`SessionClock`). refresh 응답마다 토큰의 `iat`과 refresh를 청한
+  시각으로 기기 시계가 얼마나 어긋났는지 재서 클라이언트 저장소에 두고, 그 값과 맞지 않는 토큰을 만나면 한 번 refresh해 다시
+  잰다. 수명의 절반보다 적게 빠른 시계는 읽히는 대로 믿는다(일찍 갱신될 뿐이다). 응답받은 refresh는 1분 안에 다시 청하지
+  않는다.
+- 토큰을 스스로 보관하는 호출자(네이티브 셸, 다른 오리진의 CSR 앱, 서버·테스트의 `fetch`)는 7일 토큰을 받는다. 본문 토큰을
+  청하고(`x-akan-session-tokens: body` 또는 허용된 다른 오리진), 세션 쿠키가 없고, 서버 자신의 호스트에 있는 페이지(`Origin`이
+  서버 호스트이거나 `Sec-Fetch-Site: same-origin`)가 아닐 때만이다. 요청마다 `AccountMiddleware`가 정하고 user·admin 서비스가 `WebSession.accessTokenExpiresAt()`으로 서명한다.
+- 한 브라우저의 user·admin refresh는 한 번에 하나씩 나간다(탭 사이에서도). 만료 뒤에 둘이 함께 나가면 각자 자기 신원만
+  담아 돌아오기 때문이다. 자기 앱의 만료된 Bearer 토큰이 온 호출은 세션 쿠키로 읽는다. 형식이 틀리거나 서명·앱·환경이
+  다르거나 폐기된 토큰은 쿠키로 넘어가지 않는다.
+- `session.cookieOnly`를 켜면 로그인·SSO 완료·refresh가 서버 렌더 페이지에는 HttpOnly 쿠키만 주고 본문 `jwt`는 빈 문자열,
+  `refreshToken`은 없다. 본문 토큰은 세션 쿠키가 없고 `x-akan-session-tokens: body`로 청하거나 허용된 다른 오리진에서 온
+  호출자만 받으며, 그 응답은 세션 쿠키를 심지 않는다(`WebSession`). 기본값은 3.4.0에서 꺼짐, 3.5.0에서 켜짐이다.
 - CSR 클라이언트(네이티브 셸)는 API와 오리진이 달라 HttpOnly refresh 쿠키를 받지도 보내지도 못한다. 로그인·refresh 응답
   본문의 refresh token을 user·admin 범위별로 OS 자격 증명 저장소(`secretStorage`)에 두고 refresh 본문으로 보낸다. 재설치한
   앱은 첫 실행에서 그 저장소를 비우므로 이전 설치의 로그인을 이어받지 않는다.

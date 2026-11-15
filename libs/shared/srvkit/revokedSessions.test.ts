@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { accessTokenSeconds } from "@libs/util/common";
+import { type Dayjs, dayjs } from "akanjs/base";
 import { Logger } from "akanjs/common";
 
 import { RevokedSessions } from "./revokedSessions";
@@ -22,6 +24,18 @@ describe("RevokedSessions", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+
+  test("denies a revoked session for as long as an access token of it can still live", async () => {
+    const marks: Array<{ sessionId: string; until: Dayjs }> = [];
+    RevokedSessions.use(null, async (sessionId, until) => void marks.push({ sessionId, until }));
+    await RevokedSessions.markRevoked(["s1", "s2"]);
+    expect(marks.map(({ sessionId }) => sessionId)).toEqual(["s1", "s2"]);
+    const sevenDays = 7 * 24 * 60 * 60;
+    expect(RevokedSessions.deniedSeconds).toBeGreaterThanOrEqual(accessTokenSeconds);
+    expect(RevokedSessions.deniedSeconds).toBeGreaterThanOrEqual(sevenDays);
+    for (const { until } of marks)
+      expect(Math.abs(until.diff(dayjs(), "second") - RevokedSessions.deniedSeconds)).toBeLessThanOrEqual(2);
   });
 
   test("an answering check decides alone, whichever way the caller asked to fail", async () => {

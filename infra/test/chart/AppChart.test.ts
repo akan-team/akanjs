@@ -1,5 +1,6 @@
 import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import path from "node:path";
+import { sessionTokenContract } from "akanjs/common";
 import { ServerLimits } from "akanjs/server/routing/serverLimits";
 import { AppChart, type RenderOptions } from "./AppChart";
 
@@ -137,6 +138,16 @@ describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
     expect(annotations["nginx.ingress.kubernetes.io/proxy-body-size"]).toBe("0");
     expect(annotations["nginx.ingress.kubernetes.io/enable-cors"]).toBe("true");
     expect(annotations["nginx.ingress.kubernetes.io/cors-allow-headers"]).toContain("Authorization");
+  });
+
+  it("lets a native shell or another origin's page ask sign-in for body tokens through the ingress CORS answer", () => {
+    const { annotations = {} } = AppChart.find(
+      chart.render({ values: { ingress: { cors: { enabled: true } } } }),
+      "Ingress",
+    ).metadata;
+    const allowed = (annotations["nginx.ingress.kubernetes.io/cors-allow-headers"] ?? "").toLowerCase().split(",");
+
+    expect(allowed).toContain(sessionTokenContract.header);
   });
 
   it("marks the pod for scraping only with the Secret the scrape's token comes from", () => {

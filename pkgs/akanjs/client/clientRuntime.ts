@@ -38,6 +38,8 @@ type RuntimeErr = {
 
 type RuntimeWs = {
   connected: boolean;
+  state?: "connecting" | "open" | "closed" | "gaveUp";
+  connect?: (option?: { fresh?: boolean }) => void;
   on: (event: string, handler: (...args: unknown[]) => void) => void;
   off: (event: string, handler: (...args: unknown[]) => void) => void;
 };

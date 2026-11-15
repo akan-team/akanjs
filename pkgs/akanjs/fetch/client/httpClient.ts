@@ -1,4 +1,5 @@
-import { AbortSignals, Backoff, isRecord, Logger, type RetryPolicy } from "akanjs/common";
+import { getEnv } from "akanjs/base";
+import { AbortSignals, Backoff, isRecord, Logger, type RetryPolicy, sessionTokenContract } from "akanjs/common";
 import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
 import { TraceContext } from "../../common/TraceContext";
 import {
@@ -75,6 +76,19 @@ export class HttpClient {
   static traceHeaders(): Record<string, string> {
     const traceparent = TraceContext.outbound();
     return traceparent ? { traceparent } : {};
+  }
+  static callerHeaders(ownOrigin: boolean): Record<string, string> {
+    const asksForTokens = ownOrigin && !HttpClient.#isServerRenderedPage();
+    return { ...HttpClient.traceHeaders(), ...(asksForTokens ? sessionTokenContract.makeHeaders() : {}) };
+  }
+  static #isServerRenderedPage() {
+    try {
+      const env = getEnv();
+      return env.side === "client" && env.renderMode !== "csr";
+    } catch {
+      // A standalone client runs without Akan public env, so it is no page of this server.
+      return false;
+    }
   }
   #resolveUrl(url: string, options: FetchOptions) {
     return `${(options.baseUrl ?? this.baseUrl).replace(/\/$/, "")}${url}`;
