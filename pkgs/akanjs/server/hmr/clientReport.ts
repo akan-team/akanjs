@@ -29,12 +29,12 @@ export class ClientReport {
     return {
       type: "client-report",
       kind: report.kind,
-      message: ClientReport.#line(report.message),
-      href: ClientReport.#line(report.href),
+      message: ClientReport.line(report.message),
+      href: ClientReport.line(report.href),
       client: report.client,
-      ...(typeof report.stack === "string" && report.stack ? { stack: ClientReport.#clean(report.stack) } : {}),
-      ...(typeof report.platform === "string" ? { platform: ClientReport.#line(report.platform) } : {}),
-      ...(typeof report.target === "string" ? { target: ClientReport.#line(report.target) } : {}),
+      ...(typeof report.stack === "string" && report.stack ? { stack: ClientReport.clean(report.stack) } : {}),
+      ...(typeof report.platform === "string" ? { platform: ClientReport.line(report.platform) } : {}),
+      ...(typeof report.target === "string" ? { target: ClientReport.line(report.target) } : {}),
     };
   }
 
@@ -66,11 +66,11 @@ export class ClientReport {
     });
   }
 
-  static #clean(text: string) {
-    return Logger.stripAnsi(text).replace(ClientReport.#controlChars, "").slice(0, ClientReport.#fieldLimit);
+  static clean(text: string, limit = ClientReport.#fieldLimit) {
+    return Logger.stripAnsi(text).replace(ClientReport.#controlChars, "").slice(0, limit);
   }
 
-  static #line(text: string) {
-    return ClientReport.#clean(text).replace(ClientReport.#lineBreaks, "\\n");
+  static line(text: string, limit = ClientReport.#fieldLimit) {
+    return ClientReport.clean(text, limit).replace(ClientReport.#lineBreaks, "\\n");
   }
 }

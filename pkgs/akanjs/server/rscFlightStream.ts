@@ -51,7 +51,7 @@ interface RscFlightStreamProps {
   isCancelled: (requestId: string) => boolean;
   track: (requestId: string, reader: ReadableStreamDefaultReader<Uint8Array>) => void;
   untrack: (requestId: string) => void;
-  reportRenderError: (error: unknown, pathname?: string) => string;
+  reportRenderError: (error: unknown, trace?: RscTraceMetadata) => string;
 }
 
 export class RscFlightStream {
@@ -171,7 +171,7 @@ export class RscFlightStream {
       return error.digest;
     }
     if (!RouteElementComposer.streamed(error)) this.#controlRef.current = { type: "error", error };
-    return this.#props.reportRenderError(error, options.trace?.pathname);
+    return this.#props.reportRenderError(error, options.trace);
   }
 
   #resultOf(control: RenderControl | null, cancelled: boolean): FlightRenderResult {

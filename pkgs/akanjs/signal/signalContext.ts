@@ -444,7 +444,7 @@ export class SignalContext<
           EndpointErrorContract.checkThrown(endpoint, endpointInfo, key, EndpointErrorContract.wireKey(error));
         const status = SignalFailure.statusOf(error);
         if (status >= 500) {
-          logCrash(trace, { name: endpoint.logger.name ?? "App", label: `${endpointInfo.type}-${key}`, error, status });
+          logCrash(trace, { name: endpoint.logger.name ?? "App", type: endpointInfo.type, key, error, status });
           if (typeof error === "object" && error !== null) SignalContext.#reported.add(error);
         }
         throw error;

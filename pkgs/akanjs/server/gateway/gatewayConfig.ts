@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import path from "node:path";
 import type { AkanChildRole, AkanUpstream } from "akanjs/service";
 import { getApiPrefix, getWsPrefix, normalizeRoutePrefix } from "../../base/baseEnv";
@@ -67,6 +68,8 @@ export class GatewayConfig {
   readonly disableModules: string[];
   readonly disableLibs: string[];
   readonly solo: boolean;
+  //? Made once per gateway, so its replicas sign a page's report id alike and a respawned one still takes the others'.
+  readonly #clientReportKey = randomBytes(32).toString("base64url");
 
   constructor(serverPath: string, options: AkanAppOptions) {
     this.serverPath = GatewayConfig.#resolveServerPath(options.serverPath ?? serverPath);
@@ -160,6 +163,7 @@ export class GatewayConfig {
       SERVER_MODE: role,
       AKAN_API_PREFIX: this.prefix,
       AKAN_WS_PREFIX: this.websocketPrefix,
+      AKAN_CLIENT_REPORT_KEY: this.#clientReportKey,
       ...(this.openapi === undefined ? {} : { AKAN_OPENAPI: this.openapi ? "true" : "false" }),
       ...(this.modules.length ? { AKAN_MODULES: this.modules.join(",") } : {}),
       ...(this.disableModules.length ? { AKAN_DISABLE_MODULES: this.disableModules.join(",") } : {}),

@@ -173,6 +173,7 @@ Declared in [server/rscWorkerHost.ts](server/rscWorkerHost.ts).
 | `not-found` | `RscRenderFallbacks` | `RscWorker` |
 | `metrics` | `RscRenderer` | `RscWorker` |
 | `log.records` | `LogForwarder` | `RscWorker` |
+| `render-error` | `RscFlightRenderer` | `RscWorker` |
 | `page-prompts.result` | `RscRenderer` | `RscWorker` |
 | `page-prompt.result` | `RscRenderer` | `RscWorker` |
 | `page-prompt.draw.result` | `RscRenderer` | `RscWorker` |
