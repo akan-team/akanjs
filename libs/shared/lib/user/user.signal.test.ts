@@ -1132,9 +1132,41 @@ describe("Cookie-only Web Sessions", () => {
     });
   });
 
+  it("keeps seven days for a caller that holds its tokens itself and gives a browser one hour, at sign-in and refresh, with the option on or off", async () => {
+    const { credentials } = await signup();
+    const hour = 60 * 60;
+    const secondsOf = ({ exp, iat }: { exp: number; iat: number }) => exp - iat;
+    const bodySecondsOf = async (response: Response) =>
+      secondsOf(decodeJwtPayload<{ exp: number; iat: number }>(((await response.json()) as TokenBody).jwt ?? ""));
+    const ownHost = { ...asking, origin: `http://localhost:${process.env.PORT}` };
+    const bothKinds = async () => {
+      for (const claim of [asking, { origin: "app://localhost" }]) {
+        const signedIn = await post("signinWithPassword", credentials, claim);
+        const body = (await signedIn.clone().json()) as TokenBody;
+        expect(await bodySecondsOf(signedIn)).toBe(7 * 24 * hour);
+        const refreshed = await post("refreshJwt", { refreshToken: body.refreshToken }, claim);
+        expect(await bodySecondsOf(refreshed)).toBe(7 * 24 * hour);
+      }
+
+      const signedIn = await post("signinWithPassword", credentials);
+      expect(secondsOf(claimsOf(signedIn))).toBe(hour);
+      let cookie = cookieOf(signedIn);
+      for (const claim of [{}, asking, { origin: "app://localhost" }]) {
+        const refreshed = await post("refreshJwt", { refreshToken: null }, { ...claim, cookie });
+        expect(secondsOf(claimsOf(refreshed))).toBe(hour);
+        cookie = cookieOf(refreshed);
+      }
+      expect(await bodySecondsOf(await post("signinWithPassword", credentials, ownHost))).toBe(hour);
+    };
+
+    await bothKinds();
+    await withCookieOnly(bothKinds);
+  });
+
   it("renews an expired session for a page load from its refresh cookie, and leaves a live one alone", async () => {
     const { PageSession } = await import("@libs/shared/srvkit");
-    const pageLoad = (cookie: string) => new Request(`http://localhost:${process.env.PORT}/`, { headers: { cookie } });
+    const pageLoad = (cookie: string, headers: Record<string, string> = {}) =>
+      new Request(`http://localhost:${process.env.PORT}/`, { headers: { ...headers, cookie } });
     const pairsOf = (setCookies: string[]) =>
       setCookies
         .filter((entry) => !entry.includes("Max-Age=0"))
@@ -1161,8 +1193,18 @@ describe("Cookie-only Web Sessions", () => {
     expect(pairsOf(renewed)).not.toBe(cookieOf(signedIn));
     expect(await selfIdOf(pairsOf(renewed))).toBe(userId);
 
-    const again = await PageSession.renewedCookies(pageLoad(cookieOf(signedIn)));
+    const again = await PageSession.renewedCookies(
+      pageLoad(cookieOf(signedIn), { ...asking, origin: "app://localhost" }),
+    );
     expect(await selfIdOf(pairsOf(again ?? []))).toBe(userId);
     expect(await selfIdOf(pairsOf(renewed))).toBe(userId);
+    for (const setCookies of [renewed, again ?? []]) {
+      const claims = setCookies.find((entry) => /^(__Host-)?jwt:[^=]+\.claims=/.test(entry)) ?? "";
+      const [pair = ""] = claims.split(";");
+      const { exp, iat } = decodeJwtPayload<{ exp: number; iat: number }>(
+        decodeURIComponent(pair.slice(pair.indexOf("=") + 1)),
+      );
+      expect(exp - iat).toBe(60 * 60);
+    }
   });
 });

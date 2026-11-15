@@ -11,6 +11,7 @@ import {
   RevokedSessions,
   type RotateRefreshSessionOptions,
   SignChallenge,
+  WebSession,
 } from "@libs/shared/srvkit";
 import { getEnv } from "akanjs/base";
 import type { Account } from "akanjs/fetch";
@@ -91,7 +92,7 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     const me = this._makeMe(admin);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryUserIdentity(account)), me, meSid: session.id },
-      { sid: session.id, jti: crypto.randomUUID() },
+      { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken };
   }
@@ -112,7 +113,7 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     const me = this._makeMe(admin);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryUserIdentity(account, readSelf)), me, meSid: session.id },
-      { sid: session.id, jti: crypto.randomUUID() },
+      { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken: nextRefreshToken.refreshToken };
   }

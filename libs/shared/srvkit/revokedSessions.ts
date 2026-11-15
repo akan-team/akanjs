@@ -1,6 +1,7 @@
 import { accessTokenSeconds } from "@libs/util/common";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import { WebSession } from "./webSession";
 
 type RevokedSessionCheck = (sessionId: string) => Promise<boolean>;
 type RevokedSessionMark = (sessionId: string, until: Dayjs) => Promise<void>;
@@ -14,8 +15,8 @@ const logger = new Logger("RevokedSessions");
  * check registered means nothing was ever revoked.
  */
 export class RevokedSessions {
-  //? A denial that ends before its token revives it: tokens signed before 3.4.0 and an OAuth client's outlive an hour.
-  static readonly deniedSeconds = Math.max(accessTokenSeconds, 7 * 24 * 60 * 60);
+  //? A denial that ends before its token revives it: a cookieless caller's and an OAuth client's outlive an hour.
+  static readonly deniedSeconds = Math.max(accessTokenSeconds, WebSession.cookielessAccessTokenSeconds);
   static #check: RevokedSessionCheck | null = null;
   static #mark: RevokedSessionMark | null = null;
 

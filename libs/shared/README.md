@@ -33,7 +33,7 @@ Each module's invariants are in its abstract next to the code.
 | `signup.activateVerifies` | verifies a prepare user must hold before activation; unset means any identity-proving verify, `[]` admits every sign-up |
 | `signup.requireVerifiedEmail` | shorthand for `email` plus the email-based SSOs |
 | `nativeSso.callbackSchemes` | deep-link schemes a native app may take an SSO code back on; unset admits the app's own name |
-| `session.cookieOnly` | `true` answers a server-rendered page's sign-in, SSO completion and refresh with HttpOnly cookies alone (`jwt: ""`, no `refreshToken` in the body); a native or client-rendered app on another origin still gets body tokens. Off in 3.4.0, on by default from 3.5.0 |
+| `session.cookieOnly` | `true` answers a server-rendered page's sign-in, SSO completion and refresh with HttpOnly cookies alone (`jwt: ""`, no `refreshToken` in the body); a native or client-rendered app on another origin still gets body tokens. Off in 3.4.0, on by default from 3.5.0. Either way a browser's access token lives one hour and a caller that keeps its tokens itself and holds no session cookie keeps seven days |
 | `oauth` | `enabled`, `issuer`, `resource`, `consentPath`, `signinPath`, `clients`, `dynamicRegistration`, `allowedRedirectSchemes`, `accessTokenSeconds`, `clientIdMetadata` |
 | `security.sso` | SSO provider credentials (`google`, `github`, `kakao`, `naver`, `facebook`, `apple`), declared in `@libs/util` |
 

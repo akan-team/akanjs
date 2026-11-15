@@ -7,8 +7,11 @@ import {
   rotateRefreshSession,
   SignChallenge,
   setAdminSsoPolicy,
+  WebSession,
 } from "@libs/shared/srvkit";
-import { dayjs, ENDPOINT_META } from "akanjs/base";
+import { accessTokenSeconds } from "@libs/util/common";
+import { type Dayjs, dayjs, ENDPOINT_META } from "akanjs/base";
+import { sessionTokenContract } from "akanjs/common";
 import { CacheDatabase } from "akanjs/document";
 import { ConformanceEnv } from "akanjs/test";
 
@@ -108,6 +111,31 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
       expect(payloads.at(-1)?.self).toBeUndefined();
       await service.refreshAdminToken(second.refreshToken, account);
       expect(payloads.at(-1)?.self).toBeUndefined();
+    });
+
+    test("an admin's refreshed token lives as long as its caller's kind does: seven days for one that keeps its tokens itself, an hour for a browser", async () => {
+      const seconds: number[] = [];
+      Object.defineProperty(service, "securityService", {
+        value: {
+          ...(service as unknown as { securityService: object }).securityService,
+          signAccessToken: async (_payload: object, { expiresAt }: { expiresAt: Dayjs }) => {
+            seconds.push(Math.round(expiresAt.diff(dayjs()) / 1000));
+            return { jwt: "jwt", expiresAt };
+          },
+        },
+      });
+      const requestWith = (headers: Record<string, string>) =>
+        new Request("https://app.example.com/api/admin/refreshAdminJwt", { method: "POST", headers });
+      const first = crypto.randomUUID();
+      await adminModel.createRefreshSession(admin.id, `hash:${first}`, expiresAt());
+
+      const second = await service.refreshAdminToken(first);
+      const third = await WebSession.answering(requestWith(sessionTokenContract.makeHeaders()), () =>
+        service.refreshAdminToken(second.refreshToken),
+      );
+      await WebSession.answering(requestWith({}), () => service.refreshAdminToken(third.refreshToken));
+
+      expect(seconds).toEqual([accessTokenSeconds, WebSession.cookielessAccessTokenSeconds, accessTokenSeconds]);
     });
 
     test("a first-party admin refresh token still rotates", async () => {

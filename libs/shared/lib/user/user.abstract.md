@@ -71,9 +71,16 @@
   받는다. 그 밖의 재사용은 계정의 모든 브라우저 세션을 끊는다. 한 토큰을 여러 프로세스가 쥐는 호출자(클라우드 CLI)만
   `{ graceMs, reuseRevokes: "lineage" }`로 lineage만 끊는다. OAuth 클라이언트에 발급된 refresh token은 여기서 모르는
   토큰으로 거절되고, 아무것도 회전하거나 끊지 않는다.
-- access token은 1시간이다. 페이지는 만료 2분 전과 다시 보일 때 refresh하고, 만료된 채 도착한 페이지 로드·RSC 이동은 렌더
-  전에 서버가 요청의 refresh 쿠키로 갱신한다(`PageSession`, `option.setSessionRefresh`). 이때 `self`와 `me`는 각자의
-  refresh 쿠키로만 돌아오며 만료된 access token은 어느 쪽도 보증하지 않는다. 앱이 `setSessionRefresh`를 정하면 그쪽이 이긴다.
+- 브라우저의 access token은 1시간이다. 페이지는 만료 2분 전에 refresh하고, 탭이 다시 보이거나 창이 포커스를 얻거나
+  네트워크가 돌아올 때와 1분마다 만료를 다시 확인한다. 만료된 채 도착한 페이지 로드·RSC 이동은 렌더 전에 서버가 요청의
+  refresh 쿠키로 갱신한다(`PageSession`, `option.setSessionRefresh`). 이때 `self`와 `me`는 각자의 refresh 쿠키로만 돌아오며
+  만료된 access token은 어느 쪽도 보증하지 않는다. 앱이 `setSessionRefresh`를 정하면 그쪽이 이긴다.
+- 토큰을 스스로 보관하는 호출자(네이티브 셸, 다른 오리진의 CSR 앱, 서버·테스트의 `fetch`)는 7일 토큰을 받는다. 본문 토큰을
+  청하고(`x-akan-session-tokens: body` 또는 허용된 다른 오리진), 세션 쿠키가 없고, 서버 자신의 호스트에 있는 페이지가 아닐
+  때만이다. 요청마다 `AccountMiddleware`가 정하고 user·admin 서비스가 `WebSession.accessTokenExpiresAt()`으로 서명한다.
+- 한 브라우저의 user·admin refresh는 한 번에 하나씩 나간다(탭 사이에서도). 만료 뒤에 둘이 함께 나가면 각자 자기 신원만
+  담아 돌아오기 때문이다. 자기 앱의 만료된 Bearer 토큰이 온 호출은 세션 쿠키로 읽는다. 형식이 틀리거나 서명·앱·환경이
+  다르거나 폐기된 토큰은 쿠키로 넘어가지 않는다.
 - `session.cookieOnly`를 켜면 로그인·SSO 완료·refresh가 서버 렌더 페이지에는 HttpOnly 쿠키만 주고 본문 `jwt`는 빈 문자열,
   `refreshToken`은 없다. 본문 토큰은 세션 쿠키가 없고 `x-akan-session-tokens: body`로 청하거나 허용된 다른 오리진에서 온
   호출자만 받으며, 그 응답은 세션 쿠키를 심지 않는다(`WebSession`). 기본값은 3.4.0에서 꺼짐, 3.5.0에서 켜짐이다.

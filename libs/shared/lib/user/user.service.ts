@@ -8,6 +8,7 @@ import {
   type RotateRefreshSessionOptions,
   type SessionRefreshTokens,
   SignupToken,
+  WebSession,
 } from "@libs/shared/srvkit";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { decodeJwtPayload, isEmail } from "akanjs/common";
@@ -78,7 +79,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     const self = await this.makeSelf(user);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryAdminIdentity(account)), self, selfSid: session.id },
-      { sid: session.id, jti: crypto.randomUUID() },
+      { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken };
   }
@@ -98,7 +99,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     const self = await this.makeSelf(user);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryAdminIdentity(account)), self, selfSid: session.id },
-      { sid: session.id, jti: crypto.randomUUID() },
+      { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken: nextRefreshToken.refreshToken };
   }

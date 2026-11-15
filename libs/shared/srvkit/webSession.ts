@@ -1,4 +1,7 @@
-import { CookieJar, hostFromRequest, sessionTokenContract } from "akanjs/common";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { accessTokenSeconds } from "@libs/util/common";
+import { dayjs } from "akanjs/base";
+import { CookieJar, hostFromRequest, SessionCookies, sessionTokenContract } from "akanjs/common";
 import { CrossSiteGuard } from "akanjs/signal";
 
 export interface SessionOptions {
@@ -8,7 +11,10 @@ export interface SessionOptions {
 
 export class WebSession {
   static readonly cookieOnlyByDefault = false;
-  static #cookieOnly = WebSession.cookieOnlyByDefault;
+  //? Nothing renews a refused token in a native shell or another origin's app, so it keeps the pre-3.4.0 lifetime.
+  static readonly cookielessAccessTokenSeconds = 7 * 24 * 60 * 60;
+  static #cookieOnly: boolean = WebSession.cookieOnlyByDefault;
+  static readonly #accessTokenSeconds = new AsyncLocalStorage<number>();
 
   static configure({ cookieOnly = WebSession.cookieOnlyByDefault }: SessionOptions = {}) {
     WebSession.#cookieOnly = cookieOnly;
@@ -19,17 +25,36 @@ export class WebSession {
   }
 
   //? Security: asking is not enough. A page always sends its session cookies, so their holder gets cookies alone.
-  static handsTokensTo(req: Request | undefined, sessionCookieKeys: string[]) {
+  static handsTokensTo(req: Request | undefined) {
     if (!WebSession.#cookieOnly) return true;
-    if (!req || !WebSession.#asksForTokens(req)) return false;
+    return !!req && WebSession.#keepsTokensItself(req);
+  }
+
+  //? Security: seven days never go to a page on this server's own host, a browser that takes the session cookies.
+  static answering<Answer>(req: Request | undefined, answer: () => Promise<Answer>): Promise<Answer> {
+    const cookieless = !!req && WebSession.#keepsTokensItself(req) && !WebSession.#isOwnHostPage(req);
+    const seconds = cookieless ? WebSession.cookielessAccessTokenSeconds : accessTokenSeconds;
+    return WebSession.#accessTokenSeconds.run(seconds, answer);
+  }
+
+  static accessTokenExpiresAt() {
+    return dayjs().add(WebSession.#accessTokenSeconds.getStore() ?? accessTokenSeconds, "second");
+  }
+
+  static #keepsTokensItself(req: Request) {
+    if (!WebSession.#asksForTokens(req)) return false;
     const jar = CookieJar.parse(req.headers.get("cookie"));
-    return !sessionCookieKeys.some((key) => jar.has(key));
+    return !SessionCookies.names().some((name) => jar.has(name));
   }
 
   //? A native app released before the ask header calls from an allowlisted origin, which holds no cookie of this host.
   static #asksForTokens(req: Request) {
     if (sessionTokenContract.asksForBody(req.headers)) return true;
-    const origin = CrossSiteGuard.corsOrigin(req);
-    return origin !== null && URL.parse(origin)?.host !== hostFromRequest(req.headers, new URL(req.url));
+    return CrossSiteGuard.corsOrigin(req) !== null && !WebSession.#isOwnHostPage(req);
+  }
+
+  static #isOwnHostPage(req: Request) {
+    const origin = req.headers.get("origin");
+    return !!origin && URL.parse(origin)?.host === hostFromRequest(req.headers, new URL(req.url));
   }
 }

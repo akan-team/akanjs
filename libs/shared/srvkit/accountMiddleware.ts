@@ -11,6 +11,7 @@ import { isAgentToken } from "./agentCall";
 import { isOauthServerClientId } from "./oauthClientRecord";
 import type { OAuthStaticClient } from "./oauthServer";
 import { RevokedSessions } from "./revokedSessions";
+import { WebSession } from "./webSession";
 
 type ScopedAccount = AccessAccount & AuthTokenMeta & { self?: unknown; me?: unknown; exp?: number };
 
@@ -95,7 +96,7 @@ export class AccountMiddleware implements Middleware {
         account: live ?? ({ appName, environment } as Account),
         userAgent: req.headers?.get("user-agent") ?? undefined,
       });
-      return await next();
+      return await WebSession.answering(context.transport === "http" ? (req as Request) : undefined, next);
     };
   }
 

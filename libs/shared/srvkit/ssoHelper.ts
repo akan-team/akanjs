@@ -111,8 +111,6 @@ interface AccessTokenResponseOption {
   req?: Request;
 }
 
-const sessionCookieKeys = () => [authTokenKey(), userRefreshTokenKey(), adminRefreshTokenKey()];
-
 //* With `session.cookieOnly` on, a caller handed body tokens is set no session cookie: holding one would end them.
 const makeTokenResponse = (
   accessToken: AccessTokenResponse,
@@ -120,7 +118,7 @@ const makeTokenResponse = (
   { endsSignup = false, req }: AccessTokenResponseOption,
 ) => {
   const headers = new Headers({ "Content-Type": "application/json" });
-  const inBody = WebSession.handsTokensTo(req, sessionCookieKeys());
+  const inBody = WebSession.handsTokensTo(req);
   if (!inBody || !WebSession.cookieOnly) {
     if (accessToken.jwt) appendSessionCookies(headers, accessToken.jwt);
     if (accessToken.refreshToken) appendRefreshTokenCookies(headers, kind, accessToken.refreshToken);
@@ -154,7 +152,7 @@ interface SsoSigninAnswer {
 }
 
 export const makeSsoSigninResponse = <Signin extends SsoSigninAnswer>(signin: Signin, req: Request) => {
-  if (!signin.jwt || WebSession.handsTokensTo(req, sessionCookieKeys())) return signin;
+  if (!signin.jwt || WebSession.handsTokensTo(req)) return signin;
   return makeTokenResponse({ ...signin, jwt: signin.jwt, refreshToken: signin.refreshToken ?? undefined }, "user", {
     req,
   });
