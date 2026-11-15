@@ -100,6 +100,23 @@ worker per web-serving replica.
   is then the only thing bound to answer `/_akan/app/health`.
 - **The RSC worker is never folded in.** It runs under `--conditions react-server`, which resolves the same
   module graph differently, so it cannot share a process with the server that renders client components.
+- **A render worker starts every render it is sent, unless `AKAN_RSC_WORKER_MAX_CONCURRENCY` caps it.** With a
+  cap, that many renders run in one worker (so per replica) and the rest wait first come, first served: documents,
+  `/__rsc` navigations and prefetches, and a failed render's error page. A stored page is replayed without a slot,
+  after a wait too; an aborted request leaves the queue, and a slot comes back when its render ends, throws, is
+  cancelled, or has held it as long as `AKAN_IDLE_TIMEOUT` (120 s, also where that is `0`); MCP page prompts are not
+  queued. `AKAN_RSC_WORKER_MAX_QUEUE` bounds the queue (default: the cap times that timeout's seconds, `0` for
+  none): a render past it, or one that waited that timeout, is answered `503` with `Retry-After: 1` and `no-store`
+  before it renders (`renderQueueFull`, `renderQueueTimeout`; a browser gets a page that reloads once, backing
+  off), counted as its route's `5xx` and in `akan_rsc_render_refusals_total{reason}`, which counts a slot taken
+  back as `hold-timeout`. `akan_rsc_renders_in_flight`, `akan_rsc_render_queue_depth` and
+  `akan_rsc_render_queue_wait_seconds` report the queue; a page that waited carries `queueMs` on its request line.
+  The cap bounds admitted renders, not abandoned ones: a page whose slot came back runs on until its own `await`
+  settles, counted in `akan_rsc_renders_abandoned`.
+  Off by default, because a page that awaits data holds its slot: on `apps/akan` at 32 requests at once, pages
+  waiting 20–200 ms on data served 151 requests a second uncapped and 32 at a cap of 4, while CPU-bound pages
+  served about 105 at any cap with the same median latency. It bounds a burst, not latency: set it to the requests
+  one replica is sized for; the table is in `pkgs/akanjs/server/SSR_MEMORY_DIAGNOSIS.md`.
 - **A solo process answers `/_akan/app/health`, `/_akan/app/metrics` and `/_akan/bench/ping` itself**, in the
   gateway's own shape — a `children` array with one entry — so a probe reads one contract either way. It owns the
   rotating log file the gateway would otherwise write, in the same `runtime/logs` directory.
@@ -275,46 +292,3 @@ normalized to `info` with one warning.
   before the record exists.
 - **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,
   and a subscriber asking for everything is the test.
-
-## The Generated Image — `docker` In `akan.config.ts`
-
-**`docker` is `string | { image, preRuns, postRuns, command }`** — a whole Dockerfile, or the parts Akan
-assembles one from. There is no `content` field; the string *is* the content.
-
-```ts
-const config: AppConfig = {
-  docker: { preRuns: ["apt-get update && apt-get install -y --no-install-recommends ffmpeg"] },
-};
-const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbatim, nothing merged in
-```
-
-- `image` and each run entry take `string | { amd64?, arm64? }`; the object form compiles to a
-  `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
-  before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
-  and before the app files are copied.
-- **The server runs as `USER 1000:1000`, oven/bun's `bun` user, and owns only the directories it writes.** The
-  build steps (`apt-get`, `preRuns`, `bun install`, `postRuns`) run as root and the app files stay root's, so
-  `main.js`, `server.js`, `public/` and `node_modules` are read-only to the server. After the copy, uid 1000 gets
-  `/workspace/sqlite`, `/workspace/local`, `/workspace/runtime` (the control socket), `/workspace/data` and
-  `/workspace/.akan/artifact/image-cache`; `/tmp` and `/home/bun` are writable too. A directory a `postRuns` step
-  makes for the server to write needs `chown 1000:1000`. An empty named volume takes the owner of the directory it
-  mounts over; one a root image already wrote is owned by root, so the server stops at boot with
-  `directoryNotWritable`, naming the directory and the `chown -R 1000:1000` that fixes it.
-- **The base image is pinned by digest**, `oven/bun:<bun>-slim@sha256:…`, the multi-arch index's, so amd64 and
-  arm64 build from the same release; a test holds the tag to the Bun version the workspace's `package.json` pins.
-- **The image installs the versions the workspace locked.** `akan build` writes a `bun.lock` beside the image's
-  `package.json`, cut down from the workspace's to what the server needs, and the image installs it
-  `--frozen-lockfile`. A workspace without a root `bun.lock` gets a warning and an unlocked install; a Dockerfile
-  written whole copies `bun.lock` itself.
-- **A lib declares the steps its own runtime needs**, and every app that mounts it inherits them:
-  `libs/<lib>/akan.config.ts` takes `docker: { preRuns, postRuns }` and nothing else — the base image and the
-  command belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
-  becomes one layer.
-- **The string form takes no contributions.** A Dockerfile handed over whole is used exactly as written, so a
-  lib's `preRuns` are dropped rather than spliced into a file Akan does not own. An app that needs both writes
-  the parts instead.
-- Like `externalLibs`, lib steps are collected from **every lib in the workspace**, not just this app's
-  dependency closure — narrowing that set needs the dependency scan, and this config is re-read on every file
-  change in dev. Keep a lib's steps to what its runtime genuinely requires.
-- `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
-  to `dist/apps/<app>/Dockerfile`.

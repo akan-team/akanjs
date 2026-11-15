@@ -32,6 +32,7 @@ import {
   createAkanSegmentOutletKey,
   isAkanRscPartialCommitEnabled,
 } from "./routeState";
+import { RscRenderLevels } from "./rscRenderLevels";
 import { AkanSegmentOutletReference } from "./rscSegmentOutletReference";
 
 /** How a render reached after the layouts streamed answers `router.notFound()` — in place, since its parents are out. */
@@ -457,6 +458,7 @@ export class RouteElementComposer {
     gate?: RouteShellGate;
   }) => {
     gate?.enter();
+    const levels = RscRenderLevels.begin();
     try {
       return RouteElementComposer.#normalizeReactNode(
         await routeRender.render({ children, params, searchParams } as never),
@@ -473,6 +475,7 @@ export class RouteElementComposer {
       }
     } finally {
       gate?.leave();
+      levels?.end();
     }
   };
 

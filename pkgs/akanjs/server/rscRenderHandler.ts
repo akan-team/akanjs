@@ -33,8 +33,10 @@ import type { FirstRenderStart } from "./rscFirstRenderMemory";
 import type { RscFlightRenderer } from "./rscFlightRenderer";
 import type { FlightRenderResult } from "./rscFlightStream";
 import { type ResolvedRouteHead, RscPatchPlanner } from "./rscPatchPlanner";
-import type { RscRenderRequest } from "./rscRenderControl";
+import type { RscRenderAdmission } from "./rscRenderAdmission";
+import { isAkanRedirectError, type RscRenderRequest } from "./rscRenderControl";
 import type { RscActiveRoute, RscRenderFallbacks } from "./rscRenderFallbacks";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import type { RscRenderStats } from "./rscRenderStats";
 import type { RscResultCaches } from "./rscResultCaches";
 import type { RscRouteDocument } from "./rscRouteDocument";
@@ -90,6 +92,7 @@ interface RscRenderHandlerProps {
   stats: RscRenderStats;
   caches: RscResultCaches;
   flights: RscFlightRenderer;
+  admission: RscRenderAdmission;
   documents: RscRouteDocument;
   fallbacks: RscRenderFallbacks;
   patchPlanner: RscPatchPlanner;
@@ -111,6 +114,7 @@ export class RscRenderHandler {
   readonly #stats: RscRenderStats;
   readonly #caches: RscResultCaches;
   readonly #flights: RscFlightRenderer;
+  readonly #admission: RscRenderAdmission;
   readonly #documents: RscRouteDocument;
   readonly #fallbacks: RscRenderFallbacks;
   readonly #patchPlanner: RscPatchPlanner;
@@ -122,6 +126,7 @@ export class RscRenderHandler {
     this.#stats = props.stats;
     this.#caches = props.caches;
     this.#flights = props.flights;
+    this.#admission = props.admission;
     this.#documents = props.documents;
     this.#fallbacks = props.fallbacks;
     this.#patchPlanner = props.patchPlanner;
@@ -145,6 +150,7 @@ export class RscRenderHandler {
     this.#stats.renderCount += 1;
     this.#flights.begin(requestId);
     const activeRoute: RscActiveRoute = { url: null, match: null, request: null };
+    const slot = { asked: false };
     try {
       const request = new Request(url, { method, headers });
       const urlObj = new URL(url);
@@ -171,6 +177,9 @@ export class RscRenderHandler {
         const plan = await this.#plan(target);
         if (!plan) return;
         if (this.#replayFromCache(target, plan)) return;
+        const admission = this.#admit(slot, requestId);
+        //? Whoever held the slot may have stored this page while it waited.
+        if (admission !== true && (!(await admission) || this.#replayFromCache(target, plan, { again: true }))) return;
         const { searchParams, renderUrl, notFoundFallback, admitted, cacheEntry, safePatchDecision, admittedHead } =
           plan;
         let element: ReactNode;
@@ -269,9 +278,29 @@ export class RscRenderHandler {
         this.#recordRendered(target, result, beforeLoadedKeys, firstRender);
       });
     } catch (error) {
-      await this.#fallbacks.answerThrown(msg, activeRoute, error);
+      if (await this.#admitFallback(slot, requestId, error))
+        await this.#fallbacks.answerThrown(msg, activeRoute, error);
     } finally {
       this.#flights.release(requestId);
+      if (slot.asked) this.#admission.leave(requestId, activeRoute.request);
+    }
+  }
+
+  #admit(slot: { asked: boolean }, requestId: string): boolean | Promise<boolean> {
+    slot.asked = true;
+    return this.#admission.enter(requestId, () => this.#flights.isCancelled(requestId));
+  }
+
+  //? An error page is a render too: a throw from before the slot was taken takes one here, a redirect needs none.
+  async #admitFallback(slot: { asked: boolean }, requestId: string, error: unknown): Promise<boolean> {
+    try {
+      if (RscRenderRefusal.is(error)) throw error;
+      if (!slot.asked && !isAkanRedirectError(error)) await this.#admit(slot, requestId);
+      return true;
+    } catch (refusal) {
+      if (!RscRenderRefusal.is(refusal)) throw refusal;
+      this.#send({ type: "error", requestId, code: refusal.code, message: refusal.message });
+      return false;
     }
   }
 
@@ -335,10 +364,14 @@ export class RscRenderHandler {
     };
   }
 
-  #replayFromCache({ requestId, routeId, startedAt }: RscRenderTarget, plan: RscRenderPlan): boolean {
+  #replayFromCache(
+    { requestId, routeId, startedAt }: RscRenderTarget,
+    plan: RscRenderPlan,
+    lookup: { again?: boolean } = {},
+  ): boolean {
     const { cacheEntry, targetRouterState, safePatchDecision, admittedHead, patchCacheEntry, createTraceBase } = plan;
     const cachedPatch = patchCacheEntry
-      ? this.#caches.getCached(this.#caches.patchResultCache, patchCacheEntry.key, plan.lookupReason)
+      ? this.#caches.getCached(this.#caches.patchResultCache, patchCacheEntry.key, plan.lookupReason, lookup)
       : null;
     if (
       cachedPatch?.patch &&
@@ -368,7 +401,7 @@ export class RscRenderHandler {
     }
     const cached =
       shouldUseRscWorkerFullResultCache({ cacheEntry, patchCacheEntry }) && cacheEntry
-        ? this.#caches.getCached(this.#caches.resultCache, cacheEntry.key, plan.lookupReason)
+        ? this.#caches.getCached(this.#caches.resultCache, cacheEntry.key, plan.lookupReason, lookup)
         : null;
     if (!cached) return false;
     const traceBase = createTraceBase(
