@@ -87,6 +87,21 @@ describe("VerifyDiagnostics", () => {
     ]);
   });
 
+  test("withholds the message of a diagnostic in an env file", () => {
+    const [diagnostic] = VerifyDiagnostics.fromBiome({
+      diagnostics: [
+        {
+          severity: "error",
+          message: "Unexpected SENTINEL_PASSWORD in a string",
+          category: "lint/suspicious/noTemplateCurlyInString",
+          location: { path: "apps/minimal/env/env.server.main.ts", start: { line: 8, column: 54 } },
+        },
+      ],
+    });
+    expect(diagnostic).toMatchObject({ file: "apps/minimal/env/env.server.main.ts", line: 8, col: 54 });
+    expect(diagnostic?.message).toBe("the text is withheld because this file holds secrets");
+  });
+
   test("points a raw Error in an srvkit adapter at its Err import and the app's own dictionary", () => {
     const rawError = (severity: BiomeSeverity, verb: "throw" | "construct", file: string) => ({
       severity,

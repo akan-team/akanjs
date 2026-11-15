@@ -1,13 +1,13 @@
 import * as path from "node:path";
 import * as ts from "typescript";
+import { WithheldEnvFile } from "../lint/withheldEnvFile";
 
-//* An env file holds deployment secrets, and both a source line and a TypeScript message (`Type '"abc"' is not assignable`) quote them.
+//? A TypeScript message quotes the literal too: `Type '"abc"' is not assignable`.
 export class WithheldDiagnostics {
-  static readonly #envFile = /[\\/]env[\\/]env\.(?:server|client)(?:\.[A-Za-z0-9-]+)*\.ts$/;
-  static readonly note = "the text is withheld because this file holds secrets";
+  static readonly note = WithheldEnvFile.note;
 
   static isWithheld(fileName: string | undefined) {
-    return fileName !== undefined && WithheldDiagnostics.#envFile.test(fileName);
+    return WithheldEnvFile.isEnvFile(fileName);
   }
 
   static applies(diagnostic: ts.Diagnostic) {
