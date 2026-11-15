@@ -189,4 +189,39 @@ describe("GraphClientEntryDiscovery", () => {
     fresh.invalidate([file("Server.tsx")]);
     expect(await fresh.discover([file("Page.tsx")], { importsAs })).toEqual([]);
   });
+
+  test("a client file exporting only hooks is no entry of a server graph that imports it, one with a component still is", async () => {
+    const file = await tempDir();
+    await Bun.write(file("Layout.tsx"), 'import "./store";\nimport "./Panel";\n');
+    await Bun.write(
+      file("store.ts"),
+      'import { useForm } from "./useForm";\nimport { useEffect } from "./reactHooks";\nimport "./useMixed";\nexport const st = { useForm, useEffect };\n',
+    );
+    await Bun.write(
+      file("useForm.ts"),
+      '"use client";\nimport "./Inner";\nexport interface FormShape {}\nexport const useForm = () => null;\nexport function useOther() {}\n',
+    );
+    await Bun.write(file("reactHooks.ts"), '"use client";\nexport { useContext, useEffect } from "react";\n');
+    await Bun.write(
+      file("useMixed.ts"),
+      '"use client";\nexport const useMixed = () => null;\nexport const Mixed = () => null;\n',
+    );
+    await Bun.write(file("Inner.tsx"), '"use client";\nexport const Inner = () => null;\n');
+    await Bun.write(
+      file("Panel.tsx"),
+      '"use client";\nimport { useForm } from "./useForm";\nexport const Panel = () => useForm();\n',
+    );
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+    expect(await discovery.discover([file("Layout.tsx")])).toEqual([file("Panel.tsx"), file("useMixed.ts")]);
+  });
+
+  test("a client file with a default export or a star re-export stays an entry", async () => {
+    const file = await tempDir();
+    await Bun.write(file("S.tsx"), 'import "./A";\nimport "./B";\nimport "./C";\n');
+    await Bun.write(file("A.ts"), '"use client";\nexport default function useA() {}\n');
+    await Bun.write(file("B.ts"), '"use client";\nexport * from "./C";\nexport const useB = () => null;\n');
+    await Bun.write(file("C.ts"), '"use client";\nexport const C = () => null;\n');
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+    expect(await discovery.discover([file("S.tsx")])).toEqual([file("A.ts"), file("B.ts"), file("C.ts")]);
+  });
 });

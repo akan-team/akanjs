@@ -7,6 +7,8 @@ import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transfor
 import type { AkanConfig, ClientEntryDiscovery, DiscoverOptions, ScannedImport } from "./clientBuildTypes";
 
 const USE_CLIENT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
+const EXPORT_STAR_RE = /^\s*export\s*\*/m;
+const HOOK_NAME_RE = /^use[A-Z0-9]/;
 const NODE_MODULES_RE = /[\\/]node_modules[\\/]/;
 const AKANJS_NODE_MODULE_RE = /[\\/]node_modules[\\/]akanjs[\\/]/;
 // Bun's scanImports also surfaces CSS and asset imports, none of which can be a client component.
@@ -172,7 +174,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
           .catch(() => null);
         if (content === null) return null;
         this.#readFiles.add(absPath);
-        if (USE_CLIENT_RE.test(content)) return { isClientEntry: true, imports: [] };
+        if (USE_CLIENT_RE.test(content)) return { isClientEntry: !this.#exportsOnlyHooks(content), imports: [] };
         return { isClientEntry: false, imports: this.#scanImports(await this.#rewrite(content, absPath)) };
       })();
       this.#factsCache.set(absPath, cached);
@@ -188,6 +190,17 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       return (await rewriteBarrelImports(content, this.#akanConfig.barrelImports, this.#analyzer)) ?? content;
     } catch {
       return content;
+    }
+  }
+
+  //? A hook is never rendered, so no flight row names its file; `export *` hides names from the scan, so it stays an entry.
+  #exportsOnlyHooks(content: string): boolean {
+    if (EXPORT_STAR_RE.test(content)) return false;
+    try {
+      const { exports } = this.#tsTranspiler.scan(content);
+      return exports.length > 0 && exports.every((name) => HOOK_NAME_RE.test(name));
+    } catch {
+      return false;
     }
   }
 
