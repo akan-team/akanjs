@@ -5,15 +5,14 @@ import { getStoredAuthToken, resetAuth, router } from "akanjs/client";
 import { decodeJwtPayload, Logger } from "akanjs/common";
 import { useEffect } from "react";
 import type { AuthScope, TokenPayload } from "./tokenRefresh.type";
-import { hasScope, isFinalRefreshError } from "./tokenRefresh.util";
+import { hasScope, isFinalRefreshError, retryDelayOf } from "./tokenRefresh.util";
 
 interface TokenRefreshProps {
   scope: AuthScope;
   onRefresh: () => Promise<void> | void;
 }
 
-const retryDelayMs = 30 * 1000;
-const maxRetryDelayMs = 10 * 60 * 1000;
+const recheckMs = 60 * 1000;
 
 export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
   useEffect(() => {
@@ -22,6 +21,8 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
     let disposed = false;
     let failures = 0;
     let restoreTried = false;
+    //* Set while a failed refresh is retried: the other scope's refresh may leave a token that no longer names this one.
+    let owed: number | null = null;
 
     const clearRefreshTimeout = () => {
       if (!timeout) return;
@@ -48,8 +49,52 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
       }
     };
 
+    const holdsScope = () => {
+      try {
+        return hasScope(decodeJwtPayload<TokenPayload>(sessionTokenOf() ?? ""), scope);
+      } catch {
+        return false;
+      }
+    };
+
+    const refresh = async (expiresAt: number) => {
+      if (refreshing || disposed) return;
+      refreshing = true;
+      // A phone that slept past the token's expiry rendered this page with a token the server refused.
+      const wasExpired = expiresAt <= Date.now();
+      try {
+        await onRefresh();
+        failures = 0;
+        owed = null;
+        if (wasExpired) router.refresh();
+        schedule();
+      } catch (error) {
+        Logger.warn(`Failed to refresh ${scope} token: ${error instanceof Error ? error.message : String(error)}`);
+        if (isFinalRefreshError(error)) {
+          owed = null;
+          //? A token without this scope is the other identity's renewed session, which this scope's end leaves alone.
+          if (!wasExpired || !holdsScope()) return;
+          resetAuth();
+          router.refresh();
+          return;
+        }
+        failures += 1;
+        owed = expiresAt;
+        clearRefreshTimeout();
+        timeout = setTimeout(() => void refresh(expiresAt), retryDelayOf(failures));
+      } finally {
+        refreshing = false;
+      }
+    };
+
     const schedule = () => {
       clearRefreshTimeout();
+      if (disposed) return;
+      if (owed !== null) {
+        const expiresAt = owed;
+        timeout = setTimeout(() => void refresh(expiresAt), 0);
+        return;
+      }
       const jwt = sessionTokenOf();
       if (!jwt) {
         void restore();
@@ -66,31 +111,12 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
       persistAuthCookie();
 
       const expiresAt = payload.exp * 1000;
-      const delay = Math.max(expiresAt - Date.now() - refreshBeforeMs, 0);
-      timeout = setTimeout(async () => {
-        if (refreshing || disposed) return;
-        refreshing = true;
-        // A phone that slept past the token's expiry rendered this page with a token the server refused.
-        const wasExpired = expiresAt <= Date.now();
-        try {
-          await onRefresh();
-          failures = 0;
-          if (wasExpired) router.refresh();
-          schedule();
-        } catch (error) {
-          Logger.warn(`Failed to refresh ${scope} token: ${error instanceof Error ? error.message : String(error)}`);
-          if (isFinalRefreshError(error)) {
-            if (!wasExpired) return;
-            resetAuth();
-            router.refresh();
-            return;
-          }
-          failures += 1;
-          timeout = setTimeout(schedule, Math.min(retryDelayMs * 2 ** (failures - 1), maxRetryDelayMs));
-        } finally {
-          refreshing = false;
-        }
-      }, delay);
+      const delay = expiresAt - Date.now() - refreshBeforeMs;
+      //? A timer does not count the time a device sleeps, so a long wait is cut into rechecks against the clock.
+      timeout =
+        delay > recheckMs
+          ? setTimeout(schedule, recheckMs)
+          : setTimeout(() => void refresh(expiresAt), Math.max(delay, 0));
     };
 
     const refreshWhenVisible = () => {
@@ -103,12 +129,17 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
     document.addEventListener("visibilitychange", refreshWhenVisible);
     // A home-screen app can be swiped away without a visibilitychange; pagehide is the more reliable last call.
     window.addEventListener("pagehide", persistAuthCookie);
+    // A laptop that slept with the tab in front wakes without a visibilitychange.
+    window.addEventListener("focus", schedule);
+    window.addEventListener("online", schedule);
     return () => {
       disposed = true;
       clearTimeout(start);
       clearRefreshTimeout();
       document.removeEventListener("visibilitychange", refreshWhenVisible);
       window.removeEventListener("pagehide", persistAuthCookie);
+      window.removeEventListener("focus", schedule);
+      window.removeEventListener("online", schedule);
     };
   }, [scope]);
 

@@ -55,9 +55,11 @@ const isFresh = (scope: RefreshScope) => {
 };
 
 const pending = new Map<RefreshScope, Promise<void>>();
+let lastRefresh: Promise<void> = Promise.resolve();
 
 // The server rotates a refresh token on use and reads a second use as theft, ending every session. So one refresh runs
-// at a time per scope, across tabs as well (Web Locks), and a tab that waited checks whether another already refreshed.
+// at a time, across tabs as well (Web Locks), and a tab that waited checks whether another already refreshed.
+//? Both scopes share the turn: past expiry, two refreshes sent together would each bring back its own identity alone.
 export const refreshSession = (scope: RefreshScope, refresh: RefreshCall, { force = false } = {}): Promise<void> => {
   const running = pending.get(scope);
   if (running) return running;
@@ -69,9 +71,9 @@ export const refreshSession = (scope: RefreshScope, refresh: RefreshCall, { forc
     await saveRefreshToken(scope, accessToken.refreshToken);
   };
   const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  const next = (locks ? locks.request(`akan:refresh:${getEnv().appName}:${scope}`, run) : run()).finally(() =>
-    pending.delete(scope),
-  );
+  const locked = (): Promise<void> => (locks ? locks.request(`akan:refresh:${getEnv().appName}`, run) : run());
+  const next = lastRefresh.then(locked).finally(() => pending.delete(scope));
+  lastRefresh = next.catch(() => undefined);
   pending.set(scope, next);
   return next;
 };

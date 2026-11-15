@@ -5,8 +5,8 @@ const stored = new Map<string, string>();
 const authToken = { value: null as string | null };
 const sessionClaims = { value: undefined as string | undefined };
 const authAnswers: Array<string | null | undefined> = [];
-const jwtExpiringIn = (seconds: number) =>
-  `h.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds, self: { id: "u1" } })).toString("base64url")}.s`;
+const jwtExpiringIn = (seconds: number, claims: Record<string, unknown> = { self: { id: "u1" } }) =>
+  `h.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds, ...claims })).toString("base64url")}.s`;
 
 beforeAll(() => {
   mock.module("akanjs/base", () => ({
@@ -131,6 +131,61 @@ describe("refreshSession", () => {
     expect(stored.size).toBe(0);
     await refreshSession("user", refresh);
     expect(calls).toHaveLength(1);
+  });
+
+  test("a user and an admin refresh started together past expiry go out in turn, the later with the token the first brought", async () => {
+    const { refreshSession } = await import("./refreshToken");
+    const both = { self: { id: "u1" }, me: { id: "a1" } };
+    const expired = jwtExpiringIn(-60, both);
+    const userOnly = jwtExpiringIn(3600);
+    const sentWith: Array<string | null> = [];
+    const answering = (jwt: string) => async () => {
+      sentWith.push(authToken.value);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return { jwt };
+    };
+    authToken.value = expired;
+
+    await Promise.all([
+      refreshSession("user", answering(userOnly)),
+      refreshSession("admin", answering(jwtExpiringIn(3600, both))),
+    ]);
+
+    expect(sentWith).toEqual([expired, userOnly]);
+  });
+
+  test("a refresh that failed does not hold up the other scope's", async () => {
+    const { refreshSession } = await import("./refreshToken");
+    const { calls, refresh } = refreshCounting();
+    const failing = refreshSession("user", async () => {
+      throw new Error("Failed to fetch");
+    });
+    const next = refreshSession("admin", refresh);
+
+    await expect(failing).rejects.toThrow("Failed to fetch");
+    await next;
+    expect(calls).toHaveLength(1);
+  });
+
+  test("both scopes wait on one lock, so two tabs never send the two refreshes together either", async () => {
+    const { refreshSession } = await import("./refreshToken");
+    const { refresh } = refreshCounting();
+    const names: string[] = [];
+    const locks = {
+      request: (name: string, run: () => Promise<void>) => {
+        names.push(name);
+        return run();
+      },
+    };
+    Object.defineProperty(navigator, "locks", { value: locks, configurable: true });
+    try {
+      await refreshSession("user", refresh);
+      await refreshSession("admin", refresh);
+    } finally {
+      Object.defineProperty(navigator, "locks", { value: undefined, configurable: true });
+    }
+
+    expect(names).toEqual(["akan:refresh:shop", "akan:refresh:shop"]);
   });
 
   test("a token about to expire is refreshed and the rotated one is kept", async () => {
