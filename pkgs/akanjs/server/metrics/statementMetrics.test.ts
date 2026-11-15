@@ -113,6 +113,21 @@ describe("statement metrics", () => {
     expect(age()?.sinceMs).toBeLessThan(25);
   });
 
+  test("counts a transaction's BEGIN and COMMIT in the request's totals without a span for either", async () => {
+    const { Memo, driver } = model;
+    const trace = new SignalTrace("memoTransaction", "mutation", { mode: "full" });
+    await runTraced(trace, async () => {
+      await driver.database.transaction(async () => {
+        await Memo.count({ ownerId: "u1" } as never);
+      });
+    });
+
+    expect(trace.dbQueryCount).toBe(3);
+    expect(trace.spans.map((span) => span.name).filter((name) => name.startsWith("db:"))).toEqual([
+      "db:statMemo.count",
+    ]);
+  });
+
   test("times a write's wait for the SQLite write turn apart from its run", async () => {
     const { driver, Memo, store } = model;
     let held!: () => void;

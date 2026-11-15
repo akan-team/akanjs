@@ -1703,8 +1703,8 @@ akan:myapp> .tail off`}
                   type: "1",
                   default: off,
                   desc: l.trans({
-                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per SQL statement sent among them, or per model call for a store that sends none through the SQLite or Postgres driver.",
-                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다. 보낸 SQL 문마다 `db:<model>.<op>` span이 하나씩 들어가고, SQLite나 Postgres 드라이버로 문을 보내지 않는 store는 model 호출마다 하나씩 들어갑니다.",
+                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per SQL statement sent among them (the first 32 of a request; `db` and `dbMs` count them all, `BEGIN` and `COMMIT` included, without a span), or per model call for a store that sends none through the SQLite or Postgres driver.",
+                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다. 보낸 SQL 문마다 `db:<model>.<op>` span이 하나씩(요청당 처음 32개까지, `db`와 `dbMs`는 `BEGIN`·`COMMIT`을 포함해 전부 세고 둘에는 span이 없습니다) 들어가고, SQLite나 Postgres 드라이버로 문을 보내지 않는 store는 model 호출마다 하나씩 들어갑니다.",
                   }),
                 },
               ]}

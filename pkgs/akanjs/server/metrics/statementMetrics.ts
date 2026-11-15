@@ -9,6 +9,7 @@ import { STATEMENT_BUCKETS_SECONDS, StatementReport } from "./statementReport";
 
 const LABELS = ["model", "op"] as const;
 const MAX_SENDERS = 16;
+const TRANSACTION_CONTROL = /^(?:BEGIN|COMMIT|ROLLBACK)\b/i;
 const MAX_PLAN_VARIANTS = 8;
 
 const statements = metricRegistry.counter(
@@ -217,7 +218,10 @@ export class StatementMetrics implements StatementSink {
     stat.observe(series, durationMs, waitMs, rows);
     const trace = getCurrentTrace();
     stat.sentBy(trace, elapsedMs);
-    if (trace?.mode === "full") trace.recordDbQuery(series.model, series.op, elapsedMs);
+    if (trace?.mode === "full") {
+      if (TRANSACTION_CONTROL.test(statement.shape.text)) trace.countDbQuery(elapsedMs);
+      else trace.recordDbQuery(series.model, series.op, elapsedMs);
+    }
     if (elapsedMs >= this.slowLog.thresholdMs) this.slowLog.log(stat, series, { durationMs, waitMs, rows, trace });
     if (this.planCheck === undefined) this.planCheck = StatementPlanCheck.fromEnv();
     this.planCheck?.consider(stat, statement, params, site, series, trace);

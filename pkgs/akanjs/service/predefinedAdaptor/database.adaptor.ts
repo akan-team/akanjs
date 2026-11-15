@@ -124,6 +124,7 @@ export class SqliteDatabase
 {
   readonly dialect = new SqliteDialect();
   static readonly #begin = StatementProbe.fixed("BEGIN IMMEDIATE");
+  static readonly #commit = StatementProbe.fixed("COMMIT");
   #db!: Database;
   #reader: Database | null = null;
   #plans: SqlitePlans | null = null;
@@ -278,7 +279,9 @@ export class SqliteDatabase
         StatementProbe.sent(SqliteDatabase.#begin, [], 0, performance.now() - askedAt, 0);
         try {
           const value = await fn();
+          const committedFrom = performance.now();
           this.#db.run("COMMIT");
+          StatementProbe.sent(SqliteDatabase.#commit, [], performance.now() - committedFrom, 0, 0);
           return value;
         } catch (err) {
           if (this.#db.inTransaction) this.#db.run("ROLLBACK");
@@ -371,6 +374,7 @@ export class PostgresDatabase
 {
   readonly dialect = new PostgresDialect();
   static readonly #begin = StatementProbe.fixed("BEGIN");
+  static readonly #commit = StatementProbe.fixed("COMMIT");
   #sql!: Sql;
   #client!: PostgresAkanClient;
   #stores = new Map<string, SqlDocumentStore>();
@@ -570,14 +574,18 @@ export class PostgresDatabase
     const context: TransactionContext = { afterCommit: [] };
     const askedAt = performance.now();
     let result: T;
+    let committedFrom = 0;
     try {
       result = (await this.#sql.begin(async (transaction) => {
         StatementProbe.sent(PostgresDatabase.#begin, [], 0, performance.now() - askedAt, 0);
-        return await this.#transaction.run(
+        const value = await this.#transaction.run(
           Object.assign(context, { client: new PostgresAkanClient(transaction, this.#plans) }),
           async () => await fn(),
         );
+        committedFrom = performance.now();
+        return value;
       })) as T;
+      StatementProbe.sent(PostgresDatabase.#commit, [], performance.now() - committedFrom, 0, 0);
     } finally {
       context.closed = true;
     }
