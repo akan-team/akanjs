@@ -2,6 +2,7 @@ import { sessionCookieMaxAgeSec } from "@libs/shared/common";
 import { getEnv } from "akanjs/base";
 import { getAuthToken, getSessionClaims, secretStorage, setAuth } from "akanjs/client";
 import { authTokenKey, decodeJwtPayload } from "akanjs/common";
+import { SessionClock } from "./sessionClock";
 
 type RefreshScope = "user" | "admin";
 type RefreshCall = (refreshToken: string | null) => Promise<{ jwt?: string | null; refreshToken?: string | null }>;
@@ -46,9 +47,10 @@ const isFresh = (scope: RefreshScope) => {
   const jwt = sessionTokenOf();
   if (!jwt) return false;
   try {
-    const payload = decodeJwtPayload<{ exp?: number; self?: unknown; me?: unknown }>(jwt);
+    const payload = decodeJwtPayload<{ iat?: number; exp?: number; self?: unknown; me?: unknown }>(jwt);
     const hasScope = scope === "user" ? !!payload.self : !!payload.me;
-    return hasScope && !!payload.exp && payload.exp * 1000 - Date.now() > refreshBeforeMs;
+    if (!hasScope || !payload.exp || SessionClock.isDoubted(payload.iat)) return false;
+    return SessionClock.expiresAt(payload.exp, payload.iat) - Date.now() > refreshBeforeMs;
   } catch {
     return false;
   }
@@ -65,8 +67,13 @@ export const refreshSession = (scope: RefreshScope, refresh: RefreshCall, { forc
   if (running) return running;
   const run = async () => {
     if (!force && isFresh(scope)) return;
-    const accessToken = await refresh(await loadRefreshToken(scope));
+    const held = sessionTokenOf();
+    const refreshToken = await loadRefreshToken(scope);
+    const askedAt = Date.now();
+    const accessToken = await refresh(refreshToken);
     setAuth({ jwt: accessToken.jwt });
+    const answered = sessionTokenOf();
+    if (answered && answered !== held) SessionClock.measure(answered, askedAt);
     persistAuthCookie();
     await saveRefreshToken(scope, accessToken.refreshToken);
   };

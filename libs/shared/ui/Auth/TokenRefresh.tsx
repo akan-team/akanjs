@@ -1,6 +1,6 @@
 "use client";
 
-import { persistAuthCookie, refreshBeforeMs, sessionTokenOf } from "@libs/shared/webkit";
+import { persistAuthCookie, refreshBeforeMs, SessionClock, sessionTokenOf } from "@libs/shared/webkit";
 import { getStoredAuthToken, resetAuth, router } from "akanjs/client";
 import { decodeJwtPayload, Logger } from "akanjs/common";
 import { useEffect } from "react";
@@ -21,6 +21,7 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
     let disposed = false;
     let failures = 0;
     let restoreTried = false;
+    let held = false;
     //* Set while a failed refresh is retried: the other scope's refresh may leave a token that no longer names this one.
     let owed: number | null = null;
 
@@ -49,12 +50,23 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
       }
     };
 
-    const holdsScope = () => {
+    const heldToken = (): TokenPayload => {
       try {
-        return hasScope(decodeJwtPayload<TokenPayload>(sessionTokenOf() ?? ""), scope);
+        return decodeJwtPayload<TokenPayload>(sessionTokenOf() ?? "");
       } catch {
-        return false;
+        return {};
       }
+    };
+    const holdsScope = () => hasScope(heldToken(), scope);
+
+    //? However a token reads on this device's clock, a refresh that was answered is not asked again within a minute.
+    const hold = () => {
+      clearRefreshTimeout();
+      held = true;
+      timeout = setTimeout(() => {
+        held = false;
+        schedule();
+      }, recheckMs);
     };
 
     const refresh = async (expiresAt: number) => {
@@ -66,15 +78,19 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
         await onRefresh();
         failures = 0;
         owed = null;
-        if (wasExpired) router.refresh();
-        schedule();
+        SessionClock.concede(heldToken().iat);
+        //? A session held in cookies that lost this scope's identity is answered without an error.
+        if (wasExpired || !holdsScope()) router.refresh();
+        hold();
       } catch (error) {
         Logger.warn(`Failed to refresh ${scope} token: ${error instanceof Error ? error.message : String(error)}`);
         if (isFinalRefreshError(error)) {
           owed = null;
+          SessionClock.concede(heldToken().iat);
           //? A token without this scope is the other identity's renewed session, which this scope's end leaves alone.
-          if (!wasExpired || !holdsScope()) return;
-          resetAuth();
+          const isOthers = !holdsScope();
+          if (!wasExpired && !isOthers) return;
+          if (!isOthers) resetAuth();
           router.refresh();
           return;
         }
@@ -88,6 +104,7 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
     };
 
     const schedule = () => {
+      if (held) return;
       clearRefreshTimeout();
       if (disposed) return;
       if (owed !== null) {
@@ -110,8 +127,8 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
       if (!hasScope(payload, scope) || !payload.exp) return;
       persistAuthCookie();
 
-      const expiresAt = payload.exp * 1000;
-      const delay = expiresAt - Date.now() - refreshBeforeMs;
+      const expiresAt = SessionClock.expiresAt(payload.exp, payload.iat);
+      const delay = SessionClock.isDoubted(payload.iat) ? 0 : expiresAt - Date.now() - refreshBeforeMs;
       //? A timer does not count the time a device sleeps, so a long wait is cut into rechecks against the clock.
       timeout =
         delay > recheckMs
@@ -125,7 +142,7 @@ export const TokenRefresh = ({ scope, onRefresh }: TokenRefreshProps) => {
     };
 
     // Not now: this effect runs before the root's, and the root's `initAuth` rewrites the cookie without a Max-Age.
-    const start = setTimeout(schedule, 0);
+    const start = setTimeout(() => void SessionClock.ready().then(schedule), 0);
     document.addEventListener("visibilitychange", refreshWhenVisible);
     // A home-screen app can be swiped away without a visibilitychange; pagehide is the more reliable last call.
     window.addEventListener("pagehide", persistAuthCookie);

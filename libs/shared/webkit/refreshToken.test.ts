@@ -1,7 +1,8 @@
-import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, jest, mock, test } from "bun:test";
 
 const envState = { side: "client" as "client" | "server", renderMode: "csr" as "csr" | "ssr" };
 const stored = new Map<string, string>();
+const kept = new Map<string, string>();
 const authToken = { value: null as string | null };
 const sessionClaims = { value: undefined as string | undefined };
 const authAnswers: Array<string | null | undefined> = [];
@@ -28,10 +29,19 @@ beforeAll(() => {
         stored.delete(key);
       },
     },
+    storage: {
+      getItem: async (key: string) => kept.get(key) ?? null,
+      setItem: async (key: string, value: string) => {
+        kept.set(key, value);
+      },
+    },
   }));
 });
 
-afterEach(() => {
+afterEach(async () => {
+  (await import("./sessionClock")).SessionClock.reset();
+  jest.useRealTimers();
+  kept.clear();
   envState.side = "client";
   envState.renderMode = "csr";
   stored.clear();
@@ -195,5 +205,62 @@ describe("refreshSession", () => {
     await refreshSession("user", refresh);
     expect(calls).toHaveLength(1);
     expect(await loadRefreshToken("user")).toBe("r-1");
+  });
+});
+
+describe("refreshSession on a device whose clock is off", () => {
+  const hourMs = 3600 * 1000;
+  const signedBy = (serverAheadMs: number, ageSec = 0) => {
+    const iat = Math.floor((Date.now() + serverAheadMs) / 1000) - ageSec;
+    return `h.${Buffer.from(JSON.stringify({ iat, exp: iat + 3600, jti: crypto.randomUUID(), self: { id: "u1" } })).toString("base64url")}.s`;
+  };
+  const keptAheadMs = () => Number(kept.get("serverClockAheadMs:shop"));
+
+  test("a token that reads two hours from expiry on a clock an hour slow is renewed once, and judged by the server's hour after that", async () => {
+    const { refreshSession } = await import("./refreshToken");
+    const calls = { num: 0 };
+    const refresh = async () => {
+      calls.num += 1;
+      return { jwt: signedBy(hourMs) };
+    };
+    authToken.value = signedBy(hourMs);
+
+    await refreshSession("user", refresh);
+    expect(calls.num).toBe(1);
+    expect(Math.abs(keptAheadMs() + hourMs)).toBeLessThan(2000);
+
+    await refreshSession("user", refresh);
+    expect(calls.num).toBe(1);
+
+    authToken.value = signedBy(hourMs, 59 * 60);
+    await refreshSession("user", refresh);
+    expect(calls.num).toBe(2);
+  });
+
+  test("a slow answer is timed from the asking, so the token is never read as living longer than it does", async () => {
+    const { refreshSession } = await import("./refreshToken");
+    jest.useFakeTimers();
+    authToken.value = signedBy(0, 59 * 60);
+
+    await refreshSession("user", async () => {
+      const jwt = signedBy(0);
+      jest.setSystemTime(Date.now() + 30 * 1000);
+      return { jwt };
+    });
+
+    expect(Math.abs(keptAheadMs())).toBeLessThan(2000);
+  });
+
+  test("an answer that leaves the held session as it was measures nothing", async () => {
+    envState.renderMode = "ssr";
+    const { refreshSession } = await import("./refreshToken");
+    sessionClaims.value = signedBy(0, 59 * 60)
+      .split(".")
+      .slice(0, 2)
+      .join(".");
+
+    await refreshSession("user", async () => ({ jwt: "" }));
+
+    expect(kept.size).toBe(0);
   });
 });

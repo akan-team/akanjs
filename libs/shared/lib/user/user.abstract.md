@@ -75,9 +75,13 @@
   네트워크가 돌아올 때와 1분마다 만료를 다시 확인한다. 만료된 채 도착한 페이지 로드·RSC 이동은 렌더 전에 서버가 요청의
   refresh 쿠키로 갱신한다(`PageSession`, `option.setSessionRefresh`). 이때 `self`와 `me`는 각자의 refresh 쿠키로만 돌아오며
   만료된 access token은 어느 쪽도 보증하지 않는다. 앱이 `setSessionRefresh`를 정하면 그쪽이 이긴다.
+- 페이지는 토큰 수명을 기기 시계가 아니라 서버 시계로 센다(`SessionClock`). refresh 응답마다 토큰의 `iat`과 refresh를 청한
+  시각으로 기기 시계가 얼마나 어긋났는지 재서 클라이언트 저장소에 두고, 그 값과 맞지 않는 토큰을 만나면 한 번 refresh해 다시
+  잰다. 수명의 절반보다 적게 빠른 시계는 읽히는 대로 믿는다(일찍 갱신될 뿐이다). 응답받은 refresh는 1분 안에 다시 청하지
+  않는다.
 - 토큰을 스스로 보관하는 호출자(네이티브 셸, 다른 오리진의 CSR 앱, 서버·테스트의 `fetch`)는 7일 토큰을 받는다. 본문 토큰을
-  청하고(`x-akan-session-tokens: body` 또는 허용된 다른 오리진), 세션 쿠키가 없고, 서버 자신의 호스트에 있는 페이지가 아닐
-  때만이다. 요청마다 `AccountMiddleware`가 정하고 user·admin 서비스가 `WebSession.accessTokenExpiresAt()`으로 서명한다.
+  청하고(`x-akan-session-tokens: body` 또는 허용된 다른 오리진), 세션 쿠키가 없고, 서버 자신의 호스트에 있는 페이지(`Origin`이
+  서버 호스트이거나 `Sec-Fetch-Site: same-origin`)가 아닐 때만이다. 요청마다 `AccountMiddleware`가 정하고 user·admin 서비스가 `WebSession.accessTokenExpiresAt()`으로 서명한다.
 - 한 브라우저의 user·admin refresh는 한 번에 하나씩 나간다(탭 사이에서도). 만료 뒤에 둘이 함께 나가면 각자 자기 신원만
   담아 돌아오기 때문이다. 자기 앱의 만료된 Bearer 토큰이 온 호출은 세션 쿠키로 읽는다. 형식이 틀리거나 서명·앱·환경이
   다르거나 폐기된 토큰은 쿠키로 넘어가지 않는다.
