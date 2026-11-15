@@ -98,7 +98,7 @@ describe("createServerEnvPlugin for an image", () => {
   test("started with the variables its env file maps to, it runs on the env that file evaluates to, and warns of nothing", async () => {
     const built = await build(await makeTempRoot(), "read");
     const { list, values } = await declare(built);
-    const booted = boot(built.file, { AKAN_SECRET_ENV: list, ...values });
+    const booted = boot(built.file, { AKAN_ENV_NAMES: list, ...values });
     expect(booted.exitCode).toBe(0);
     expect(booted.warnings).toEqual([]);
     expect(booted.env).toEqual((await evaluated(built)) as { [key: string]: unknown });
@@ -114,7 +114,7 @@ describe("createServerEnvPlugin for an image", () => {
     const built = await build(await makeTempRoot(), "read");
     const { list, values } = await declare(built);
     const booted = boot(built.file, {
-      AKAN_SECRET_ENV: list,
+      AKAN_ENV_NAMES: list,
       ...values,
       DATABASE_URL: "postgres://own.example.test/app",
     });
@@ -125,10 +125,10 @@ describe("createServerEnvPlugin for an image", () => {
     const built = await build(await makeTempRoot(), "read");
     const { list, values } = await declare(built);
     const { MAILER__AUTH__PASS: _pass, DISCORD__TOKENS: _tokens, ...set } = values;
-    const booted = boot(built.file, { AKAN_SECRET_ENV: list, ...set });
+    const booted = boot(built.file, { AKAN_ENV_NAMES: list, ...set });
     expect(booted.exitCode).toBe(0);
     expect(booted.warnings).toEqual([
-      "2 secret env values this server declares are not set: MAILER__AUTH__PASS, DISCORD__TOKENS. It runs without them, and akanjs 3.5.0 will refuse to boot. Set them in the deployment's environment; `akan secret-env <app> --env main` lists every name.",
+      "2 secret env values this server declares are not set: MAILER__AUTH__PASS, DISCORD__TOKENS. The framework does not stop for them yet, though whatever reads them may, and akanjs 3.5.0 will refuse to boot. Set them in the deployment's environment; `akan secret-env <app> --env main` lists every name.",
     ]);
     expect(booted.env).toMatchObject({ mailer: { address: "noreply@example.test", auth: { user: "mailer" } } });
     expect((booted.env?.mailer as { auth: object } | undefined)?.auth).not.toHaveProperty("pass");
@@ -145,9 +145,9 @@ describe("createServerEnvPlugin for an image", () => {
       mainExtra: '\n  llm: { accessKey: "sentinel-llm-1c95" },',
     });
     const { list } = await declare(renamed);
-    const booted = boot(renamed.file, { AKAN_SECRET_ENV: list, ...old.values });
+    const booted = boot(renamed.file, { AKAN_ENV_NAMES: list, ...old.values });
     expect(booted.warnings).toEqual([
-      "1 secret env value this server declares is not set: LLM__ACCESS_KEY. It runs without it, and akanjs 3.5.0 will refuse to boot. Set it in the deployment's environment; `akan secret-env <app> --env main` lists every name.",
+      "1 secret env value this server declares is not set: LLM__ACCESS_KEY. The framework does not stop for it yet, though whatever reads it may, and akanjs 3.5.0 will refuse to boot. Set it in the deployment's environment; `akan secret-env <app> --env main` lists every name.",
     ]);
     expect(booted.env?.llm).toEqual({});
   });
@@ -156,15 +156,15 @@ describe("createServerEnvPlugin for an image", () => {
     const built = await build(await makeTempRoot(), "inline");
     expect(built.text).toContain(secretEnvSentinels.jwt);
     const { list } = await declare(built);
-    const fallback = boot(built.file, { AKAN_SECRET_ENV: list, AKAN_SECRET_ENV_FALLBACK: "image" });
+    const fallback = boot(built.file, { AKAN_ENV_NAMES: list, AKAN_ENV_FALLBACK: "image" });
     expect(fallback.env).toEqual((await evaluated(built)) as { [key: string]: unknown });
     expect(fallback.warnings).toHaveLength(1);
     expect(fallback.warnings[0]).toStartWith(
       "10 secret env values this server declares are not set, so it uses the values built into this image (akan build --inline-secrets): JWT_SECRET, ",
     );
     const overridden = boot(built.file, {
-      AKAN_SECRET_ENV: list,
-      AKAN_SECRET_ENV_FALLBACK: "image",
+      AKAN_ENV_NAMES: list,
+      AKAN_ENV_FALLBACK: "image",
       JWT_SECRET: "set-by-the-deployment",
       DISCORD__TOKENS: '["set-by-the-deployment"]',
     });
@@ -179,7 +179,7 @@ describe("createServerEnvPlugin for an image", () => {
     expect(holdsSentinel(built.text)).toBe(false);
     const { list, values } = await declare(built);
     expect(Object.keys(values)).toEqual(secretEnvFixtureNames);
-    const booted = boot(built.file, { AKAN_SECRET_ENV: list, ...values });
+    const booted = boot(built.file, { AKAN_ENV_NAMES: list, ...values });
     expect(booted.warnings).toEqual([]);
     expect(booted.env).toEqual((await evaluated(built)) as { [key: string]: unknown });
   });
@@ -271,7 +271,7 @@ describe("createServerEnvPlugin for an image", () => {
       expect(built.text).not.toContain("shell-api-key-1d20");
       const { list, values } = await declare(built);
       expect(list).not.toContain("OWN__");
-      const booted = boot(built.file, { AKAN_SECRET_ENV: list, ...values, ZQ_API_KEY: "deployed-api-key" });
+      const booted = boot(built.file, { AKAN_ENV_NAMES: list, ...values, ZQ_API_KEY: "deployed-api-key" });
       expect(booted.warnings).toEqual([]);
       expect(booted.env?.own).toEqual({ apiKey: "deployed-api-key", hosts: ["deployed", "api", "key"] });
     } finally {

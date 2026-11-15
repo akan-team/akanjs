@@ -69,4 +69,33 @@ describe("ProjectTypecheck", () => {
       severity: "error",
     });
   }, 60_000);
+
+  test.each(["pretty", "records"] as const)(
+    "reports a type error in an env file by position and code alone, in the %p report",
+    async (report) => {
+      const root = await makeTempRoot();
+      const dir = path.join(root, "apps/demo");
+      const sentinel = "SENTINEL_JWT_SECRET_4f9c2a71e0b3";
+      await write(
+        path.join(dir, "tsconfig.json"),
+        JSON.stringify({
+          compilerOptions: { strict: true, types: [], target: "esnext", module: "esnext", noEmit: true },
+        }),
+      );
+      await write(path.join(dir, "env/env.server.main.ts"), `export const jwtSecret: "other" = "${sentinel}";\n`);
+      await write(path.join(dir, "server.ts"), 'export { jwtSecret } from "./env/env.server.main";\n');
+
+      const error = await new ProjectTypecheck(dir, root, { ...process.env })
+        .run(["../../server.ts"], { report })
+        .catch((e: unknown) => e);
+
+      const printed = (error as Error).message;
+      expect(printed).toContain("env/env.server.main.ts");
+      expect(printed).toContain("TS2322");
+      expect(printed).toContain(report === "records" ? ":1:14" : "1:14");
+      expect(printed).not.toContain(sentinel);
+      expect(printed).not.toContain("jwtSecret:");
+    },
+    60_000,
+  );
 });

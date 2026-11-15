@@ -4,8 +4,8 @@ Generated from the declaration emit by `bun run api:report`. Do not edit it by h
 
 ```ts
 export declare class SecretEnv {
-    static readonly listKey = "AKAN_SECRET_ENV";
-    static readonly fallbackKey = "AKAN_SECRET_ENV_FALLBACK";
+    static readonly listKey = "AKAN_ENV_NAMES";
+    static readonly fallbackKey = "AKAN_ENV_FALLBACK";
     static read(name: string, inlined?: string): string | undefined;
     static json(name: string, inlined?: unknown): unknown;
     static format(entries: readonly SecretEnvEntry[]): string;

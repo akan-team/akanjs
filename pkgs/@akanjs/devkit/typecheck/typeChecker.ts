@@ -4,6 +4,7 @@ import chalk from "chalk";
 import * as ts from "typescript";
 
 import type { Executor } from "../executors";
+import { WithheldDiagnostics } from "./withheldDiagnostics";
 
 export interface ProjectTypecheckResult {
   configPath: string;
@@ -93,7 +94,7 @@ export class TypeChecker {
             : diagnostic.category === ts.DiagnosticCategory.Warning
               ? (["warning", chalk.yellow, "⚠️"] as const)
               : (["suggestion", chalk.blue, "💡"] as const);
-        const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+        const message = WithheldDiagnostics.message(diagnostic);
         const tsCode = chalk.dim(`(TS${diagnostic.code})`);
 
         if (diagnostic.file && diagnostic.start !== undefined) {
@@ -103,7 +104,7 @@ export class TypeChecker {
           output.push(`     ${chalk.gray("at")} ${fileName}:${chalk.bold(`${line + 1}:${character + 1}`)}`);
 
           const sourceLines = diagnostic.file.text.split("\n");
-          if (line < sourceLines.length) {
+          if (!WithheldDiagnostics.applies(diagnostic) && line < sourceLines.length) {
             const sourceLine = sourceLines[line];
             const lineNumber = (line + 1).toString().padStart(5, " ");
 
@@ -139,10 +140,10 @@ export class TypeChecker {
     const details = diagnostics.map((diagnostic) => {
       if (diagnostic.file && diagnostic.start !== undefined) {
         const { line, character } = diagnostic.file.getLineAndCharacterOfPosition(diagnostic.start);
-        const message = ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n");
+        const message = WithheldDiagnostics.message(diagnostic);
 
         const lines = sourceFile.text.split("\n");
-        const codeSnippet = line < lines.length ? lines[line] : undefined;
+        const codeSnippet = line < lines.length && !WithheldDiagnostics.applies(diagnostic) ? lines[line] : undefined;
         return { line: line + 1, column: character + 1, message, code: diagnostic.code, codeSnippet };
       }
 
@@ -238,16 +239,17 @@ export class TypeChecker {
           col: position ? position.character + 1 : 0,
           code: `TS${diagnostic.code}`,
           severity: diagnostic.category === ts.DiagnosticCategory.Error ? "error" : "warning",
-          message: ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"),
+          message: WithheldDiagnostics.message(diagnostic),
         };
       });
   }
 
   static formatDiagnosticMessages(diagnostics: ts.Diagnostic[]): string {
-    return ts.formatDiagnosticsWithColorAndContext(diagnostics, {
+    const host: ts.FormatDiagnosticsHost = {
       getCanonicalFileName: (fileName) => fileName,
       getCurrentDirectory: () => process.cwd(),
       getNewLine: () => ts.sys.newLine,
-    });
+    };
+    return diagnostics.map((diagnostic) => WithheldDiagnostics.format(diagnostic, host)).join("");
   }
 }

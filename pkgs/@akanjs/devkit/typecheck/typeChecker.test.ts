@@ -98,3 +98,52 @@ describe("TypeChecker.checkProject", () => {
     expect(nextFileToCheck(configPath)).toBeUndefined();
   });
 });
+
+describe("an env file's diagnostics", () => {
+  const sentinel = "SENTINEL_DB_PASSWORD_4f9c2a71e0b3";
+
+  const envProject = async () => {
+    const { root, configPath } = await project(false);
+    const file = path.join(root, "src/env/env.server.main.ts");
+    await writeText(file, `export const password: "other" = "${sentinel}";\n`);
+    const checker = new TypeChecker({ cwdPath: root } as never);
+    return { root, configPath, file, checker };
+  };
+
+  test("never print the source line or a message that quotes it, in any report", async () => {
+    const { root, configPath, file, checker } = await envProject();
+    const project = TypeChecker.checkProject(configPath);
+    const inFile = project.errors.filter((diagnostic) => diagnostic.file?.fileName === file);
+    expect(inFile.map((diagnostic) => diagnostic.code)).toEqual([2322]);
+    expect(ts.flattenDiagnosticMessageText(inFile[0]?.messageText ?? "", "\n")).toContain(sentinel);
+
+    const { diagnostics, fileDiagnostics } = checker.check(file);
+    const detailed = checker.getDetailedDiagnostics(file);
+    const reports = [
+      project.message,
+      checker.formatDiagnostics(fileDiagnostics),
+      JSON.stringify(TypeChecker.toRecords(diagnostics, root)),
+      JSON.stringify(detailed.details),
+    ];
+    for (const report of reports) {
+      expect(report).not.toContain(sentinel);
+      expect(report).not.toContain("password:");
+    }
+    expect(project.message).toContain("env.server.main.ts:1:14 - error TS2322");
+    expect(project.message).toContain("withheld");
+    expect(TypeChecker.toRecords(inFile, root)[0]).toMatchObject({
+      file: "src/env/env.server.main.ts",
+      line: 1,
+      col: 14,
+      code: "TS2322",
+    });
+  });
+
+  test("leave another file's report as TypeScript prints it", async () => {
+    const { configPath } = await envProject();
+    const { message } = TypeChecker.checkProject(configPath);
+    expect(message).toContain("semantic.ts");
+    expect(message).toContain("Type 'string' is not assignable to type 'number'");
+    expect(message).toContain('export const name: number = "akan";');
+  });
+});
