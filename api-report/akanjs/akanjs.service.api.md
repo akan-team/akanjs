@@ -655,6 +655,7 @@ export interface AkanStatementStat {
     totalMs: number;
     waitMs: number;
     rows: number;
+    sinceMs: number;
     buckets: number[];
     sentBy: AkanStatementSender[];
 }
