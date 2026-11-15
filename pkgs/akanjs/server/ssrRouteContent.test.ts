@@ -158,7 +158,9 @@ describe("SSR of a route with no .loading()", () => {
   test("fails the document on an error the page throws after I/O, rather than ship one the browser breaks on", async () => {
     await withLoggedErrors(async () => {
       await withRouteContentWorker(async (render) => {
-        await expect(render("broken")).rejects.toThrow("page broke");
+        //? Settled first: inside expect().rejects, Bun on Windows can miss the worker's IPC answer.
+        const broken = await render("broken").catch((error: unknown) => error);
+        expect(broken).toMatchObject({ message: expect.stringContaining("page broke") });
       });
     });
   }, 20_000);
@@ -483,7 +485,8 @@ describe("The root layout's own level", () => {
   test("lets a route control through: a real redirect before the first byte, and no notice for one after it", async () => {
     await withLoggedErrors(async () => {
       await withRouteContentWorker(async (render) => {
-        await expect(render("rootearly")).rejects.toThrow("got redirect");
+        const early = await render("rootearly").catch((error: unknown) => error);
+        expect(early).toMatchObject({ message: expect.stringContaining("got redirect") });
         const moved = await render("rootmoved");
         expect(moved.html).toMatch(
           /<script type="application\/json" data-akan="[\w-]+">\["redirect","replace","\/en\/elsewhere"\]<\/script>/,

@@ -119,7 +119,7 @@ export class WorkspaceRunner extends runner("workspace") {
       dryRun: true,
     });
     const writes = [
-      ...planned.map((file) => path.relative(fsRoot, file.filePath)),
+      ...planned.map((file) => path.relative(fsRoot, file.filePath).replaceAll(path.sep, "/")),
       ...(normalizedRegistryUrl ? [".npmrc"] : []),
       `apps/${appName}`,
       ...libs.map((libName) => `libs/${libName}`),
@@ -219,7 +219,7 @@ export class WorkspaceRunner extends runner("workspace") {
     const outer = (await WorkspaceRunner.#git(root, ["rev-parse", "--show-toplevel"]))?.trim();
     //? An outer `app/*` ignores every file in the folder but not the folder, so ask about a file the scaffold writes.
     if (outer && (await WorkspaceRunner.#git(root, ["check-ignore", "-q", path.join(root, "package.json")])) === null)
-      return { committed: false, repository: outer };
+      return { committed: false, repository: path.resolve(outer) };
     //? `git var` fails exactly where `git commit` would stop on "Please tell me who you are": a container, a CI image.
     const known = await Promise.all(
       ["GIT_AUTHOR_IDENT", "GIT_COMMITTER_IDENT"].map((ident) => WorkspaceRunner.#git(root, ["var", ident])),

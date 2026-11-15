@@ -49,16 +49,24 @@ export class NativeFile {
   //? linked folder is judged by where the write would land; a dangling link could land anywhere and is refused.
   static #realPath(target: string): string {
     const rest: string[] = [];
+    let missing: unknown;
     for (let current = target; ; current = path.dirname(current)) {
+      let real: string;
       try {
-        return path.join(realpathSync.native(current), ...rest);
+        real = realpathSync.native(current);
       } catch (error) {
         //? Refused like a path outside the grant, not a 500: the status alone would tell what lies behind a link.
         if ((error as NodeJS.ErrnoException).code !== "ENOENT" || path.dirname(current) === current)
           throw NativeFile.#refused(`${target} cannot be followed.`, error);
         if (NativeFile.#exists(current)) throw NativeFile.#refused(`${target} is a link to nothing.`);
         rest.unshift(path.basename(current));
+        missing = error;
+        continue;
       }
+      //? Windows answers ENOENT, not ENOTDIR, for a path that runs through a file.
+      if (rest.length > 0 && !lstatSync(real).isDirectory())
+        throw NativeFile.#refused(`${target} cannot be followed.`, missing);
+      return path.join(real, ...rest);
     }
   }
 

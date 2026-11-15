@@ -26,12 +26,15 @@ export class RecipeDuplicateCheck {
       if (duplicates.length === 0) continue;
       const preview = duplicates
         .slice(0, 3)
-        .map((duplicate) => `${path.relative(workspace.workspaceRoot, duplicate.path)}:${duplicate.line}`)
+        .map(
+          (duplicate) =>
+            `${path.relative(workspace.workspaceRoot, duplicate.path).replaceAll(path.sep, "/")}:${duplicate.line}`,
+        )
         .join(", ");
       findings.push({
         severity: "warning",
         code: "recipe-inline-duplicate",
-        path: path.join(sys.path, "ui/Recipe"),
+        path: path.posix.join(sys.path, "ui/Recipe"),
         message: `${sys.name}: ${duplicates.length} inline className(s) re-author a recipe fingerprint (${preview}${duplicates.length > 3 ? ", …" : ""}) — consume the recipe instead.`,
       });
     }

@@ -77,7 +77,9 @@ describe("appSample", () => {
       await workspace.applyTemplate({ ...app, template: "app" });
       if (sample) await workspace.applyTemplate({ ...app, template: "appSample" });
       const appRoot = path.join(root, "apps/myapp");
-      const files = [...new Glob("**/*").scanSync({ cwd: appRoot })].sort();
+      const files = [...new Glob("**/*").scanSync({ cwd: appRoot })]
+        .map((file) => file.replaceAll(path.sep, "/"))
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
       return { workspace, appRoot, files, read: (file: string) => readFile(path.join(appRoot, file), "utf8") };
     };
     const tokenNamesOf = (css: string) =>

@@ -1,6 +1,6 @@
 {
   "name": "@akanjs/devkit",
-  "version": "3.1.1",
+  "version": "3.2.0",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -50,7 +50,7 @@
     "./workspace/getRelatedCnsts": "./workspace/getRelatedCnsts.ts"
   },
   "dependencies": {
-    "@akanjs/language": "3.1.1",
+    "@akanjs/language": "3.2.0",
     "@earendil-works/pi-agent-core": "1.5.2",
     "@earendil-works/pi-ai": "1.5.2",
     "@earendil-works/pi-codemode": "1.5.2",
@@ -59,7 +59,7 @@
     "@earendil-works/pi-tui": "1.5.2",
     "@inquirer/prompts": "^8.7.3",
     "@tailwindcss/node": "^4.3.3",
-    "akanjs": "3.1.1",
+    "akanjs": "3.2.0",
     "chalk": "^6.0.1",
     "commander": "^15.0.0",
     "dayjs": "^1.11.23",

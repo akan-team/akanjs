@@ -63,7 +63,7 @@ export class LinuxDockerTarget extends PlatformTestTarget {
     if (started.exitCode !== 0) throw new Error(`docker run failed: ${started.stderr.trim()}`);
     this.#container = container;
     const extract = await this.exec(
-      `tar -xf /io/${path.basename(context.snapshot.tarPath)} -C /w && cp /io-env /w/.env && git -C /w init -q`,
+      `tar -xf /io/${path.basename(context.snapshot.tarPath)} -C /w && cp /io-env /w/.env && git -C /w init -q && git -C /w add -A`,
       path.join(context.logDir, this.platform, "extract.log"),
       PlatformTestTarget.installIdleMs,
     );

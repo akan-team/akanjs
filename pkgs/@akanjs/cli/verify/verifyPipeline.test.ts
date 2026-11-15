@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdir, rm, symlink } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { RouteJsBudget } from "@akanjs/devkit/app/routeJsBudget";
 import { createTempApp, createTempPackage, writeJson, writeText } from "@akanjs/devkit/test/testHelpers";
@@ -195,7 +196,7 @@ describe("VerifyPipeline", () => {
 
     expect(result.targets).toEqual(["util", "demo"]);
     expect(new Set(typechecked)).toEqual(new Set(["demo", "util"]));
-    expect(overlapped).toBe(2);
+    expect(overlapped).toBe(Math.min(2, VerifyPipeline.concurrencyOf(os.availableParallelism(), os.totalmem())));
     expect(builds).toEqual([]);
     expect(result.ok).toBe(false);
     expect(VerifyReport.text(result).split("\n").slice(1)).toEqual([

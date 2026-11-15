@@ -74,7 +74,7 @@ export class VerifyScope {
     const libs = new Set<string>();
     const cwd = path.join(workspaceRoot, dir);
     for await (const file of new Bun.Glob("**/*.{ts,tsx}").scan({ cwd })) {
-      if (/(^|\/)(node_modules|dist)\//.test(file)) continue;
+      if (/(^|[\\/])(node_modules|dist)[\\/]/.test(file)) continue;
       const text = await Bun.file(path.join(cwd, file)).text();
       if (!text.includes("@libs/")) continue;
       for (const { fileName } of ts.preProcessFile(text, true, true).importedFiles) {

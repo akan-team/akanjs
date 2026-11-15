@@ -108,8 +108,8 @@ describe("ApiReport", () => {
   test("reads named TS entry points and lists wildcards apart", () => {
     const { entries, wildcards } = ApiReport.entriesOf(JSON.parse(fixture["package.json"] ?? "{}"), "/pkg");
     expect(entries.map(({ specifier, reportName, file }) => ({ specifier, reportName, file }))).toEqual([
-      { specifier: "demo", reportName: "demo.api.md", file: "/pkg/index.ts" },
-      { specifier: "demo/sub", reportName: "demo.sub.api.md", file: "/pkg/sub/index.ts" },
+      { specifier: "demo", reportName: "demo.api.md", file: path.resolve("/pkg/index.ts") },
+      { specifier: "demo/sub", reportName: "demo.sub.api.md", file: path.resolve("/pkg/sub/index.ts") },
     ]);
     expect(wildcards).toEqual(["./parts/*"]);
   });
@@ -452,6 +452,8 @@ describe("ApiReportPolicy", () => {
         "commit.gpgsign=false",
         "-c",
         "core.hooksPath=/dev/null",
+        "-c",
+        "core.autocrlf=false",
         ...args,
       ],
       { cwd: root, stdout: "pipe", stderr: "pipe" },
