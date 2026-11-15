@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import { tempDirs, writeText as write } from "../test/testHelpers";
@@ -170,9 +171,47 @@ describe("ServerEnvProfile.evaluate", () => {
       expect(message).not.toContain(secret);
     }
     expect(messages.reference).toMatch(
-      /^env\.server\.reference\.ts could not be evaluated to check it for secrets: ReferenceError: undefinedVar is not defined \(at .*env\.server\.reference\.ts:3:\d+\)$/,
+      /^env\.server\.reference\.ts could not be evaluated to check it for secrets: ReferenceError at .*env\.server\.reference\.ts:3$/,
     );
-    expect(messages.syntax).toMatch(/env\.server\.syntax\.ts:2:\d+\)$/);
+    expect(messages.syntax).toMatch(/: [A-Za-z]+ at .*env\.server\.syntax\.ts:2$/);
+    expect(messages.thrown).toMatch(/: Error at .*env\.server\.thrown\.ts:2$/);
+    expect(messages.thrownString).toEndWith(": Error, which gave no location");
+  });
+
+  test("names the class and the place of an error whose message quotes a value another file holds, and not the message", async () => {
+    const root = realpathSync(await makeTempRoot());
+    const secret = "sentinel-imported-0123456789";
+    await write(
+      path.join(root, "srvkit/keys.ts"),
+      `export const key = ${JSON.stringify(secret)};\nexport const word = "sentinelpassphrase";\n`,
+    );
+    const sources = {
+      thrown:
+        'import { key } from "../srvkit/keys";\nif (key) throw new Error("expected a longer key, got " + key);\nexport const env = {};\n',
+      parsed: 'import { key } from "../srvkit/keys";\nexport const env = {\n  settings: JSON.parse(key),\n};\n',
+      framed:
+        'import { key } from "../srvkit/keys";\nthrow new Error("failed\\n    at " + key + ":1:1");\nexport const env = {};\n',
+      named:
+        'import { word } from "../srvkit/keys";\nconst error = new Error("failed");\nerror.name = word;\nthrow error;\nexport const env = {};\n',
+    };
+    const messages: Record<string, string> = {};
+    for (const [name, source] of Object.entries(sources)) {
+      const file = path.join(root, `env/env.server.${name}.ts`);
+      await write(file, source);
+      messages[name] = await ServerEnvProfile.evaluate(file, root).then(
+        () => "",
+        (error: Error) => error.message,
+      );
+    }
+    for (const message of Object.values(messages)) expect(message).not.toContain("sentinel");
+    expect(messages.thrown).toBe(
+      `env.server.thrown.ts could not be evaluated to check it for secrets: Error at ${path.join(root, "env/env.server.thrown.ts")}:2`,
+    );
+    expect(messages.parsed).toBe(
+      `env.server.parsed.ts could not be evaluated to check it for secrets: SyntaxError at ${path.join(root, "env/env.server.parsed.ts")}:3`,
+    );
+    expect(messages.framed).toEndWith(`: Error at ${path.join(root, "env/env.server.framed.ts")}:2`);
+    expect(messages.named).toEndWith(`: Error at ${path.join(root, "env/env.server.named.ts")}:2`);
   });
 
   test("answers for an env file whose import keeps a timer running, and leaves no process behind", async () => {

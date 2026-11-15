@@ -176,8 +176,8 @@ export class ServerEnvProfile {
     return (await ServerEnvProfile.#evaluated(file, cwd, load, evaluation)).value;
   }
 
-  //? Bun prints a failing module's source line with its error, so stderr is never read: the child sends the error's
-  //? name and place, and its message without JSC's `(evaluating '…')` or any string literal of the files at fault.
+  //? Bun prints a failing module's source line with its error, so stderr is never read. The child sends the error's
+  //? class and place and never its message, which can quote a value of any file the env file imports.
   static async #evaluated(
     file: string,
     cwd: string,
@@ -188,8 +188,6 @@ export class ServerEnvProfile {
       timeoutMs = ServerEnvProfile.evaluationTimeoutMs,
     }: EnvEvaluation = {},
   ): Promise<{ value: unknown; lossy: string[] }> {
-    const pattern = (regex: RegExp, flags = "") => `new RegExp(${JSON.stringify(regex.source)}, "${flags}")`;
-    const literal = /(["'`])((?:\\[\s\S]|(?!\1)[^\\])*)\1/;
     const frame = /^\s*at (?:[^(]*\()?(.+):(\d+):(\d+)\)?\s*$/;
     const script = [
       //? An import may leave a timer, a server or a socket open, which would keep this process alive past its answer
@@ -216,23 +214,21 @@ export class ServerEnvProfile {
       "        }));",
       "    },",
       "  });",
-      `const literal = ${pattern(literal, "g")};`,
-      `const interpolation = ${pattern(/\$\{[^}]*\}/)};`,
-      `const frameOf = ${pattern(frame)};`,
-      `const evaluating = ${pattern(/\s*\(evaluating '[\s\S]*'\)\s*$/)};`,
-      "const literalsOf = async (file) =>",
-      '  [...(await Bun.file(file).text().catch(() => "")).matchAll(literal)].flatMap((match) => match[2].split(interpolation));',
-      "const describe = async (error) => {",
+      `const frameOf = new RegExp(${JSON.stringify(frame.source)});`,
+      'const { existsSync } = require("node:fs");',
+      //? The stack opens with the message, whose own lines could read as a frame: only lines after it are looked at,
+      //? and only one that names a file on disk.
+      "const describe = (error) => {",
       "  const first = Array.isArray(error?.errors) && error.errors.length ? error.errors[0] : error;",
-      '  const frame = String(first?.stack ?? "").split("\\n").map((line) => frameOf.exec(line)).find(Boolean);',
-      "  const at = first?.position?.file ? [first.position.file, first.position.line, first.position.column] : frame ? frame.slice(1, 4) : [];",
-      "  const files = [process.env.AKAN_PROFILE_ENV_FILE, at[0]].filter(Boolean);",
-      "  const literals = (await Promise.all(files.map(literalsOf))).flat().filter((part) => part.length >= 4);",
-      '  let message = String(first?.message ?? first).replace(evaluating, "");',
-      "  for (const part of literals.sort((a, b) => b.length - a.length))",
-      '    message = message.split(part).join("[redacted]");',
-      '  const name = typeof first?.name === "string" && /^[A-Za-z]+$/.test(first.name) ? first.name : "Error";',
-      '  return name + ": " + message.slice(0, 200) + (at.length ? " (at " + at.join(":") + ")" : "");',
+      '  const stack = String(first?.stack ?? "");',
+      '  const message = String(first?.message ?? "");',
+      "  const frames = message && stack.includes(message) ? stack.slice(stack.indexOf(message) + message.length) : stack;",
+      '  const frame = frames.split("\\n").map((line) => frameOf.exec(line)).find((found) => found && existsSync(found[1]));',
+      "  const at = first?.position?.file ? [first.position.file, first.position.line] : frame ? frame.slice(1, 3) : [];",
+      //? `error.name` is a property any code can set to a value, so the class is read from the constructor.
+      '  const named = first === null || first === undefined ? "" : String(Object.getPrototypeOf(first)?.constructor?.name ?? "");',
+      '  const name = first instanceof Error && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(named) ? named : "Error";',
+      '  return name + (at.length ? " at " + at.join(":") : ", which gave no location");',
       "};",
       "try {",
       "  const { env } = await import(process.env.AKAN_PROFILE_ENV_FILE);",
@@ -248,7 +244,7 @@ export class ServerEnvProfile {
       '  const plain = (_, value) => (typeof value === "function" || typeof value === "symbol" ? undefined : typeof value === "bigint" ? String(value) : value);',
       '  finish({ env: JSON.stringify(env ?? null, plain) ?? "null", lossy }, 0);',
       "} catch (error) {",
-      "  finish({ failure: await describe(error) }, 1);",
+      "  finish({ failure: describe(error) }, 1);",
       "}",
     ].join("\n");
     let sent: { env: string; lossy: string[] } | undefined;
