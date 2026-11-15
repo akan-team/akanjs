@@ -3,9 +3,42 @@ import { GatewayStatusPage } from "./gateway/gatewayStatusPage";
 import type { RscRenderRefusal } from "./rscRenderRefusal";
 
 export class RenderBusyResponse {
-  static readonly #retryAfterSeconds = "1";
+  static readonly #retryAfterSeconds = 1;
   static readonly #warnEveryMs = 10_000;
   static readonly #detail = "Too many pages are waiting to render";
+  //? The same bytes in every response, so a script CSP covers it with one hash.
+  static readonly script = `(() => {
+  const key = "akan.busy";
+  const now = Date.now();
+  let refusals = 0;
+  try {
+    const [count, at] = (sessionStorage.getItem(key) || "").split(":").map(Number);
+    if (now - at < 120000) refusals = count || 0;
+    sessionStorage.setItem(key, refusals + 1 + ":" + now);
+  } catch {}
+  const seconds = Math.min(30, ${RenderBusyResponse.#retryAfterSeconds} * 2 ** refusals);
+  setTimeout(() => location.reload(), (seconds + Math.random() * seconds) * 1000);
+})();`;
+  static readonly #html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<title>Server is busy</title>
+<style>
+  body { margin: 0; padding: 48px 24px; background: #111827; color: #e5e7eb; font-family: ui-sans-serif, system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; }
+  h1 { font-size: 20px; color: #f87171; }
+  p { color: #9ca3af; font-size: 14px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Server is busy</h1>
+<p>${RenderBusyResponse.#detail}. This page tries again by itself in a moment.</p>
+</main>
+<script>${RenderBusyResponse.script}</script>
+</body>
+</html>`;
   readonly #logger: Logger;
   #warnedAt = Number.NEGATIVE_INFINITY;
   #unreported = 0;
@@ -19,11 +52,7 @@ export class RenderBusyResponse {
     const accept = req.headers.get("accept") ?? "";
     if (accept.includes("text/html"))
       return RenderBusyResponse.#answer(
-        GatewayStatusPage.html({
-          heading: "Server is busy",
-          detail: RenderBusyResponse.#detail,
-          note: "This page reloads itself as soon as the server answers.",
-        }),
+        RenderBusyResponse.#html,
         GatewayStatusPage.headers("text/html; charset=utf-8"),
       );
     if (!accept.includes("application/json"))
@@ -48,7 +77,7 @@ export class RenderBusyResponse {
   }
 
   static #answer(body: string, headers: Headers): Response {
-    headers.set("Retry-After", RenderBusyResponse.#retryAfterSeconds);
+    headers.set("Retry-After", String(RenderBusyResponse.#retryAfterSeconds));
     return new Response(body, { status: 503, headers });
   }
 
