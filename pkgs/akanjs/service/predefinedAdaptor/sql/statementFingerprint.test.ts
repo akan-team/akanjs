@@ -105,4 +105,27 @@ describe("StatementFingerprint", () => {
     expect(sizes.shapes).toBeLessThanOrEqual(StatementFingerprint.maxShapes);
     expect(sizes.texts).toBeLessThanOrEqual(StatementFingerprint.maxTexts);
   });
+
+  test("keeps no copy of a statement text over 8 KB and still names its shape", () => {
+    const sql = `INSERT INTO "bulk" VALUES ${Array.from({ length: 800 }, (_, idx) => `('row ${idx}', ${idx})`).join(",")}`;
+    expect(sql.length).toBeGreaterThan(8_192);
+    const before = StatementFingerprint.sizes().texts;
+
+    const first = StatementFingerprint.of(sql);
+    const second = StatementFingerprint.of(sql);
+
+    expect(StatementFingerprint.sizes().texts).toBe(before);
+    expect(second.fingerprint).toBe(first.fingerprint);
+    expect(first).toMatchObject({ verb: "insert", table: "bulk" });
+  });
+
+  test("keeps answering from the cache while it turns over", () => {
+    const sql = `SELECT "hot" FROM "turnover" WHERE "id" = 1`;
+    const shape = StatementFingerprint.of(sql);
+    for (let idx = 0; idx < StatementFingerprint.maxTexts * 3; idx++) {
+      StatementFingerprint.of(`SELECT "t${idx}" FROM "turnover"`);
+      if (idx % 100 === 0) expect(StatementFingerprint.of(sql)).toBe(shape);
+    }
+    expect(StatementFingerprint.sizes().texts).toBeLessThanOrEqual(StatementFingerprint.maxTexts);
+  });
 });

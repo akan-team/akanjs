@@ -33,15 +33,18 @@ const VERBS: Readonly<Record<string, StatementVerb>> = {
   delete: "delete",
 };
 const MAX_TEXT_LENGTH = 2_000;
+const MAX_CACHED_SQL_LENGTH = 8_192;
 
 export class StatementFingerprint {
   static readonly maxShapes = 500;
   static readonly maxTexts = 2_000;
-  static readonly #byText = new Map<string, StatementShape>();
+  static #recentTexts = new Map<string, StatementShape>();
+  static #olderTexts = new Map<string, StatementShape>();
   static readonly #byFingerprint = new Map<string, StatementShape>();
 
   static of(sql: string): StatementShape {
-    const known = StatementFingerprint.#byText.get(sql);
+    const cacheable = sql.length <= MAX_CACHED_SQL_LENGTH;
+    const known = cacheable ? StatementFingerprint.#cached(sql) : undefined;
     if (known) return known;
     const text = StatementFingerprint.normalize(sql);
     const fingerprint = createHash("sha1").update(text).digest("hex").slice(0, 12);
@@ -55,12 +58,31 @@ export class StatementFingerprint {
         StatementFingerprint.maxShapes,
       );
     }
-    StatementFingerprint.#remember(StatementFingerprint.#byText, sql, shape, StatementFingerprint.maxTexts);
+    if (cacheable) StatementFingerprint.#cache(sql, shape);
     return shape;
   }
 
+  static #cached(sql: string) {
+    const recent = StatementFingerprint.#recentTexts.get(sql);
+    if (recent) return recent;
+    const older = StatementFingerprint.#olderTexts.get(sql);
+    if (older) StatementFingerprint.#cache(sql, older);
+    return older;
+  }
+
+  static #cache(sql: string, shape: StatementShape) {
+    if (StatementFingerprint.#recentTexts.size >= StatementFingerprint.maxTexts / 2) {
+      StatementFingerprint.#olderTexts = StatementFingerprint.#recentTexts;
+      StatementFingerprint.#recentTexts = new Map();
+    }
+    StatementFingerprint.#recentTexts.set(sql, shape);
+  }
+
   static sizes() {
-    return { shapes: StatementFingerprint.#byFingerprint.size, texts: StatementFingerprint.#byText.size };
+    return {
+      shapes: StatementFingerprint.#byFingerprint.size,
+      texts: StatementFingerprint.#recentTexts.size + StatementFingerprint.#olderTexts.size,
+    };
   }
 
   static normalize(sql: string): string {
