@@ -903,7 +903,7 @@ void run();`}
                     ko: "replica마다 metrics를 모아 전체 프로세스의 상태를 알려 줍니다.",
                   })}
                 </div>
-                <code className={chip}>/_akan/app/health · /_akan/app/metrics</code>
+                <code className={chip}>/_akan/app/health · /_akan/app/metrics · /_akan/app/statements</code>
               </div>
               <div className={card}>
                 <div className="font-semibold text-primary">{l.trans({ en: "Stops Cleanly", ko: "깔끔한 종료" })}</div>
@@ -921,15 +921,16 @@ void run();`}
                   en: (
                     <span>
                       <strong>Solo answers the same routes.</strong> A solo process serves{" "}
-                      <code>/_akan/app/health</code>, <code>/_akan/app/ready</code> and <code>/_akan/app/metrics</code>{" "}
-                      in the gateway's shape, so a probe reads one contract either way.
+                      <code>/_akan/app/health</code>, <code>/_akan/app/ready</code>, <code>/_akan/app/metrics</code> and{" "}
+                      <code>/_akan/app/statements</code> in the gateway's shape, so a probe reads one contract either
+                      way.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>solo도 같은 경로에 답합니다.</strong> solo 프로세스도 <code>/_akan/app/health</code>,{" "}
-                      <code>/_akan/app/ready</code>, <code>/_akan/app/metrics</code>를 gateway와 같은 모양으로
-                      제공하므로, probe는 어느 쪽이든 똑같이 읽습니다.
+                      <code>/_akan/app/ready</code>, <code>/_akan/app/metrics</code>, <code>/_akan/app/statements</code>
+                      를 gateway와 같은 모양으로 제공하므로, probe는 어느 쪽이든 똑같이 읽습니다.
                     </span>
                   ),
                 })}

@@ -75,6 +75,10 @@ export class RoomReplay {
     this.#subscribed = subscribed;
   }
 
+  get bytes() {
+    return this.#bytes;
+  }
+
   /** A socket subscribed here: the room is numbered from now on, and for `retainMs` after its last subscriber left. */
   watch(roomId: string, now = Date.now()) {
     const room = this.#rooms.get(roomId);

@@ -119,6 +119,7 @@ export type TraceOrigin = "http" | "websocket" | "mcp" | "internal" | "page";
 export type TraceOutcome = "ok" | "error";
 
 const MAX_SPANS_PER_TRACE = 64;
+const MAX_DB_SPANS_PER_TRACE = 32;
 const SERVER_TIMING_ENTRIES = 32;
 const FLIGHT_RING_SIZE = 64;
 const CANONICAL_ERROR_CHARS = 200;
@@ -346,7 +347,10 @@ export class SignalTrace {
 
   recordDbQuery(model: string, op: string, durationMs: number): void {
     this.countDbQuery(durationMs);
-    this.recordSpan(`db:${model}.${op}`, durationMs, { model, op });
+    if (this.mode !== "full" || this.spans.length >= MAX_SPANS_PER_TRACE) return;
+    let dbSpans = 0;
+    for (const span of this.spans) if (span.name.startsWith("db:")) dbSpans += 1;
+    if (dbSpans < MAX_DB_SPANS_PER_TRACE) this.recordSpan(`db:${model}.${op}`, durationMs, { model, op });
   }
 
   countCache(hit: boolean): void {

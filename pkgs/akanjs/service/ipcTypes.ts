@@ -53,6 +53,28 @@ export type AkanMetricFamily =
   | { name: string; help: string; type: "counter" | "gauge"; samples: AkanMetricSample[] }
   | { name: string; help: string; type: "histogram"; buckets: number[]; samples: AkanHistogramSample[] };
 
+export interface AkanStatementSender {
+  endpoint: string;
+  count: number;
+  totalMs: number;
+}
+
+export interface AkanStatementStat {
+  fingerprint: string;
+  text: string;
+  model: string;
+  op: string;
+  count: number;
+  totalMs: number;
+  waitMs: number;
+  rows: number;
+  /** Milliseconds this process has counted the statement: since it first listed it, or last admitted it again after dropping it. */
+  sinceMs: number;
+  /** Statements per duration bucket, the last one past every bound. */
+  buckets: number[];
+  sentBy: AkanStatementSender[];
+}
+
 export interface AkanMetricsReport {
   role?: string;
   pid?: number;
@@ -64,6 +86,9 @@ export interface AkanMetricsReport {
   totalRequests?: number;
   activeWebSockets?: number;
   roomCount?: number;
+  replayBytes?: number;
+  pubsubBufferedCount?: number;
+  statements?: AkanStatementStat[];
   queueWakeCount?: number;
   pubsubDeliverCount?: number;
   pubsubDropCount?: number;

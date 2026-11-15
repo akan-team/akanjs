@@ -305,6 +305,18 @@ describe("WebSocketRedisAdaptor buffer", () => {
     expect(publisher.published).toEqual([1]);
   });
 
+  test("counts the publishes it holds back until the publisher is ready, and none once they went out", async () => {
+    const { adaptor, publisher, send } = await openAdaptor();
+    send(1);
+    send(2);
+    adaptor.publish("live", { n: 3 }, { coalesce: true });
+    adaptor.publish("live", { n: 4 }, { coalesce: true });
+    expect(adaptor.bufferedCount).toBe(3);
+    publisher.emit("ready");
+    await until(() => publisher.published.length === 3);
+    expect(adaptor.bufferedCount).toBe(0);
+  });
+
   test("retries a batch an error reply refused on a timer, not on every later send", async () => {
     const { publisher, send } = await openAdaptor();
     send(1);
