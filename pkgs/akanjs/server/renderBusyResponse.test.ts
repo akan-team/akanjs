@@ -50,7 +50,8 @@ describe("RenderBusyResponse page", () => {
   test("carries one script, the same bytes whatever was refused, that reloads and never polls", async () => {
     const [first, second] = [await busyPage("render queue is full: 480 renders wait for 4 slots"), await busyPage("x")];
     expect(first).toBe(second);
-    expect(first.match(/<script>([\s\S]*?)<\/script>/g)).toEqual([`<script>${RenderBusyResponse.script}</script>`]);
+    expect(first.toLowerCase().split("<script")).toHaveLength(2);
+    expect(first).toContain(`<script>${RenderBusyResponse.script}</script>`);
     expect(RenderBusyResponse.script).not.toContain("fetch(");
     expect(RenderBusyResponse.script.match(/location\.reload\(\)/g)).toHaveLength(1);
   });

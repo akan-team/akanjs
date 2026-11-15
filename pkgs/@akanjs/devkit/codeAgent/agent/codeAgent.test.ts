@@ -38,6 +38,22 @@ let llm: ReturnType<typeof Bun.serve>;
 let llmCalls = 0;
 let reportedTokens = 0;
 const requestedModels: string[] = [];
+const scriptedCommands: string[] = [];
+const bashCall = (command: string) =>
+  chunk(
+    {
+      role: "assistant",
+      tool_calls: [
+        {
+          index: 0,
+          id: `call_${llmCalls}`,
+          type: "function",
+          function: { name: "bash", arguments: JSON.stringify({ command }) },
+        },
+      ],
+    },
+    "tool_calls",
+  );
 beforeAll(() => {
   llm = Bun.serve({
     port: 0,
@@ -46,6 +62,11 @@ beforeAll(() => {
       const body = (await request.json().catch(() => ({}))) as { model?: string };
       requestedModels.push(body.model ?? "");
       const usage = reportedTokens ? usageChunk(reportedTokens) : "";
+      const command = scriptedCommands.shift();
+      if (command)
+        return new Response(`${bashCall(command)}data: [DONE]\n\n`, {
+          headers: { "content-type": "text/event-stream" },
+        });
       return new Response(
         `${chunk({ role: "assistant", content: "ok" })}${chunk({}, "stop")}${usage}data: [DONE]\n\n`,
         {
@@ -143,6 +164,47 @@ describe("CodeAgent", () => {
     };
     expect(await compactions({})).toEqual([]);
     expect(await compactions({ autoCompactAt: 60 })).toEqual(["threshold"]);
+  });
+
+  test("a command allowed for the session runs unasked from then on, and one that is always asked has no session answer", async () => {
+    const root = await makeTempRoot();
+    const local = codeAgentPresets.local(root);
+    const agent = await createAgent(root, {
+      profile: {
+        ...local,
+        tools: { builtin: ["bash"], akan: false, mcp: "off", subagent: false, web: { fetch: false, search: false } },
+        context: { projectFiles: false, skills: false },
+      },
+    });
+    const events: CodeAgentEvent[] = [];
+    agent.on((event) => {
+      events.push(event);
+      if (event.type !== "approval") return;
+      const { approvalId, remember } = event.request;
+      setTimeout(() => void agent.approve(approvalId, !!remember, "session"));
+    });
+    try {
+      scriptedCommands.push("echo one", "echo two", "echo three; rm -f absent.txt");
+      await agent.prompt("go");
+      await agent.waitForIdle();
+
+      const asked = events.flatMap((event) => (event.type === "approval" ? [event.request] : []));
+      expect(asked.map(({ summary, remember }) => ({ summary, remember }))).toEqual([
+        { summary: "run: echo one", remember: ["echo"] },
+        { summary: "run: echo three; rm -f absent.txt", remember: undefined },
+      ]);
+      const resolved = events.flatMap((event) => (event.type === "approval_resolved" ? [event] : []));
+      expect(resolved.map(({ approved, remembered }) => ({ approved, remembered }))).toEqual([
+        { approved: true, remembered: ["echo"] },
+        { approved: false, remembered: undefined },
+      ]);
+      expect(agent.allowed.names).toEqual(["echo"]);
+      expect(agent.allowed.clear()).toBe(1);
+      expect(agent.allowed.names).toEqual([]);
+    } finally {
+      scriptedCommands.length = 0;
+      agent.dispose();
+    }
   });
 
   test("a sub-agent hands its plugins the token tally of the tree that opened it", async () => {

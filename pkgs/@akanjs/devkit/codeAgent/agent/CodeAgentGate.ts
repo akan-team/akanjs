@@ -4,6 +4,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { CodeAgentProfile } from "akanjs/common";
 import { akanCodePaths } from "./akanCodePaths";
+import { CodeAgentAllowed } from "./CodeAgentAllowed";
+import { CodeAgentCommandLine } from "./CodeAgentCommandLine";
 import { codeAgentHostListed, codeAgentHostOf, codeAgentIsLoopback } from "./codeAgentHosts";
 import { stringArg } from "./stringArg";
 
@@ -11,8 +13,10 @@ const writeTools = new Set(["write", "edit"]);
 const commandTools = new Set(["bash"]);
 // A client in command position (after a separator, `sh -c '`, `-exec`), past `VAR=value` and wrappers like `timeout 5`.
 // Gaps are spaces and tabs only: a newline is itself a separator, and letting `\s` take it too backtracks polynomially.
-const networkClients =
-  /(?:^[ \t]*|[\n;&|(`{][ \t]*|\s-\w*c\s+['"][ \t]*|\s-exec(?:dir)?\s+)(?:(?:[A-Za-z_]\w*=\S*|sudo|env|command|exec|nohup|time|timeout|nice|watch|stdbuf|xargs|-\S+|\d\S*)[ \t]+)*(?:[^\s;&|()`'"]*\/)?(curl|wget|nc|ncat|netcat|socat|telnet|ssh|scp|sftp|rsync|ftp)(?=$|[\s;&|)`'"])/g;
+const networkClients = new RegExp(
+  String.raw`(?:^[ \t]*|[\n;&|(\`{][ \t]*|\s-\w*c\s+['"][ \t]*|\s-exec(?:dir)?\s+)(?:(?:[A-Za-z_]\w*=\S*|${CodeAgentCommandLine.wrappers.join("|")}|-\S+|\d\S*)[ \t]+)*(?:[^\s;&|()\`'"]*\/)?(${CodeAgentCommandLine.networkClients.join("|")})(?=$|[\s;&|)\`'"])`,
+  "g",
+);
 const urlPattern = /\b[a-z][a-z0-9+.-]*:\/\/[^\s'"`<>|;&()]+/gi;
 // curl and wget read a `host:port` argument without a scheme as http.
 const hostPortPattern = /(?<=^|[\s'"=])(?:\[[0-9a-f:.]+\]|[a-z0-9.-]+):\d{1,5}(?=[/?#\s'"]|$)/gi;
@@ -25,6 +29,8 @@ export interface GateVerdict {
   approval?: string;
   /** Refused, not run, when nobody can be asked: the call would leave the machine. */
   strict?: boolean;
+  /** The command names an "allow for this session" answer stops asking about; absent when that answer is not offered. */
+  remember?: string[];
 }
 
 interface NameRule {
@@ -34,6 +40,7 @@ interface NameRule {
 
 // Gated here, not in the engine's file-ops port: a throw there reads to the model as a tool bug, and it retries.
 export class CodeAgentGate {
+  readonly allowed = new CodeAgentAllowed();
   readonly #profile: CodeAgentProfile;
   readonly #realRoot: string;
   readonly #deny: Bun.Glob[];
@@ -83,7 +90,19 @@ export class CodeAgentGate {
     const network = this.#networkApproval(toolName, args);
     if (network) return { approval: network, strict: true };
     if (!this.#needsApproval(toolName)) return {};
-    return { approval: CodeAgentGate.#summarize(toolName, args) };
+    const names = command && commandTools.has(toolName) ? CodeAgentGate.#allowable(command) : undefined;
+    const remember = names && this.allowed.missing(names);
+    if (remember && !remember.length) return {};
+    return { approval: CodeAgentGate.#summarize(toolName, args), ...(remember ? { remember } : {}) };
+  }
+
+  // The network pattern is asked as well as the reader: either one naming a client keeps the line asked about.
+  static #allowable(command: string) {
+    return CodeAgentGate.#networkClientsIn(command).length ? undefined : CodeAgentCommandLine.allowable(command);
+  }
+
+  static #networkClientsIn(command: string) {
+    return [...command.matchAll(networkClients)].map((match) => match[1]);
   }
 
   // A speed bump, not a boundary: a shell reaches any path; the real boundary is the `pod` profile's container.
@@ -138,7 +157,7 @@ export class CodeAgentGate {
     }
     const command = stringArg(args, "command");
     if (!command || !commandTools.has(toolName)) return undefined;
-    const clients = [...command.matchAll(networkClients)].map((match) => match[1]);
+    const clients = CodeAgentGate.#networkClientsIn(command);
     if (!clients.length) return undefined;
     // Only loopback is exempt here: a listed host still takes an upload under someone else's account.
     const hosts = [
