@@ -316,6 +316,18 @@ pipeline {
                     ALL_PROJECTS.tokenize(",").each { app -> 
                         if((PROJECTS).contains(app)) {
                             deploys[app] = {
+                                // The image holds the names of the server env's secrets, not their values: the build
+                                // host writes them from the env file as a Secret the chart's `app.secretName` names,
+                                // piped to master without touching this workspace, and both copies are removed whether
+                                // or not the apply worked. `rollout restart` below is what makes the pods read it.
+                                try {
+                                    sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cd $REPO_NAME/$BRANCH && bun run runAkan secret-env $app --env $BRANCH --format k8s --name app-env --out local/$app-secret-env.yaml --force\""
+                                    sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"cat $REPO_NAME/$BRANCH/local/$app-secret-env.yaml\" | ssh -i $SSH_KEY $MASTER_USER@$MASTER_HOST -p $MASTER_PORT \"umask 077 && cat > $REPO_NAME/$BRANCH/infra/master/$app-secret-env.yaml\""
+                                    sh "ssh -i $SSH_KEY $MASTER_USER@$MASTER_HOST -p $MASTER_PORT \"cd $REPO_NAME/$BRANCH/infra && kubectl apply -f master/$app-secret-env.yaml -n $app-$BRANCH --kubeconfig master/${app}.yaml\""
+                                } finally {
+                                    sh "ssh -i $SSH_KEY $BUILD_USER@$BUILD_HOST -p $BUILD_PORT \"rm -f $REPO_NAME/$BRANCH/local/$app-secret-env.yaml\""
+                                    sh "ssh -i $SSH_KEY $MASTER_USER@$MASTER_HOST -p $MASTER_PORT \"rm -f $REPO_NAME/$BRANCH/infra/master/$app-secret-env.yaml\""
+                                }
                                 sh "ssh -i $SSH_KEY $MASTER_USER@$MASTER_HOST -p $MASTER_PORT \"cd $REPO_NAME/$BRANCH/infra && helm upgrade app ./app/ -f app/values/_common-values.yaml -f app/values/_common-secret.yaml -f app/values/$app-values.yaml -f app/values/$app-secret.yaml -i --create-namespace -n $app-$BRANCH --kubeconfig master/${app}.yaml\""
                                 sh "ssh -i $SSH_KEY $MASTER_USER@$MASTER_HOST -p $MASTER_PORT \"cd $REPO_NAME/$BRANCH/infra && kubectl rollout restart deployments/app-deployment -n $app-$BRANCH --kubeconfig master/${app}.yaml\""
                             }
