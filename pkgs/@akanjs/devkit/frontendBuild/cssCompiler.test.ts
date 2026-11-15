@@ -102,7 +102,8 @@ describe("CssCompiler.discoverCssAndSources", () => {
 
     const { sourcePaths } = await new CssCompiler(app as never).discoverCssAndSources({ pageKeys: ["_index.tsx"] });
 
-    expect(sourcePaths.map((file) => path.relative(root, file)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+    const relativePaths = sourcePaths.map((file) => path.relative(root, file).split(path.sep).join("/"));
+    expect(relativePaths.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "apps/demo/lib/memo/Memo.Zone.tsx",
       "apps/demo/lib/memo/index.ts",
       "apps/demo/lib/st.ts",

@@ -232,7 +232,8 @@ describe("AgentMeter", () => {
       const next = AgentMeter.run({ id: "u1" }, async () => ({ usage, text: "next" }));
       const early = await Promise.race([next.then(() => "ran"), Bun.sleep(5).then(() => "held")]);
       expect(early).toBe("held");
-      await expect(next).resolves.toMatchObject({ text: "next" });
+      //? Awaited first: inside expect().resolves, Bun on Windows never fires a timer set before an earlier one fired.
+      expect(await next).toMatchObject({ text: "next" });
     } finally {
       AgentMeter.usageTimeoutMs = timeout;
     }

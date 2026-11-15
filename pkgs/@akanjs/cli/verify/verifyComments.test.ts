@@ -150,7 +150,7 @@ describe("VerifyComments", () => {
           dict: { ...dict, ...Object.fromEntries(capitals) },
           options,
         });
-        return written.map((file) => path.relative(root, file.filePath));
+        return written.map((file) => path.relative(root, file.filePath).replaceAll(path.sep, "/"));
       };
       const label = bilingualLabelForField("photo");
       const description = bilingualDescriptionForField("photo");

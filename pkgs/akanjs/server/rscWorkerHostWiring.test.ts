@@ -15,11 +15,6 @@ const mark = (kind) => {
   } catch {}
 };
 process.on("disconnect", () => process.exit(0));
-process.on("exit", () => mark("exited"));
-process.on("SIGTERM", () => {
-  mark("killed");
-  process.exit(0);
-});
 mark("spawned");
 process.on("message", (message) => {
   if (message.type === "init") {
@@ -74,6 +69,15 @@ afterEach(async () => {
   Logger.format = savedFormat;
 });
 
+const isRunning = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const until = async (condition: () => boolean, what: string) => {
   const deadline = Date.now() + 8_000;
   while (!condition()) {
@@ -84,7 +88,7 @@ const until = async (condition: () => boolean, what: string) => {
 
 const startWorker = async (overrides: Partial<Record<EnvKey, string>> = {}) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-rsc-wiring-"));
-  for (const kind of ["spawned", "exited", "killed"]) fs.mkdirSync(path.join(dir, kind));
+  fs.mkdirSync(path.join(dir, "spawned"));
   fs.writeFileSync(path.join(dir, "worker.ts"), workerSource);
   process.env.AKAN_RSC_WORKER_PATH = path.join(dir, "worker.ts");
   process.env.AKAN_TEST_RSC_DIR = dir;
@@ -97,8 +101,7 @@ const startWorker = async (overrides: Partial<Record<EnvKey, string>> = {}) => {
   rsc.onLogRecords = (next) => records.push(...next);
   cleanups.push(async () => {
     rsc.kill();
-    const exited = () =>
-      fs.readdirSync(path.join(dir, "spawned")).every((pid) => fs.existsSync(path.join(dir, "exited", pid)));
+    const exited = () => fs.readdirSync(path.join(dir, "spawned")).every((pid) => !isRunning(Number(pid)));
     await until(exited, "the stub workers' exit").finally(() => fs.rmSync(dir, { recursive: true, force: true }));
   });
   await rsc.ready;
@@ -170,7 +173,8 @@ describe("RscWorker collaborator wiring", () => {
     rsc.kill();
     const failed = await reload;
     expect(AkanError.is(failed, "rscWorkerStopped")).toBe(true);
-    expect(failed).toMatchObject({ statusCode: 500, message: "rsc worker exited with code 0" });
+    //? 128 + SIGTERM: the stub, like the real worker, has no SIGTERM handler, which Windows could not run anyway.
+    expect(failed).toMatchObject({ statusCode: 500, message: "rsc worker exited with code 143" });
   }, 20_000);
 
   test("a cache invalidation reaches the worker", async () => {
@@ -206,7 +210,7 @@ describe("RscWorker collaborator wiring", () => {
     await until(() => rsc.getMetrics().rscWorkerPid !== oldPid, "the replacement");
     rsc.kill();
 
-    await until(() => fs.existsSync(path.join(dir, "killed", String(oldPid))), "the replaced worker's kill");
+    await until(() => !isRunning(Number(oldPid)), "the replaced worker's kill");
   }, 20_000);
 
   test("a worker's stdout reaches onLogRecords under ndjson", async () => {

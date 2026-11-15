@@ -1,5 +1,6 @@
 import { afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import type { CodeAgent } from "@akanjs/devkit/codeAgent";
@@ -189,6 +190,18 @@ beforeAll(() => {
   expect(akanCodePaths.globalMcpFile().startsWith(home)).toBe(true);
 });
 
+//? The session's `git ls-files` runs in the repo root, and Windows refuses to delete a folder a live process is in.
+const removeOnceReleased = async (root: string) => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rm(root, { recursive: true, force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EBUSY" || attempt >= 30) throw error;
+      await Bun.sleep(100);
+    }
+  }
+};
+
 const running: { tui: CodeTui; done: Promise<CodeTuiExit | undefined> }[] = [];
 
 const mount = (root = "/repo") => {
@@ -326,7 +339,7 @@ describe("CodeTui", () => {
     };
     expect(file.mcpServers.github).toEqual({ command: "npx", args: ["-y", "server-github"] });
     rmSync(akanCodePaths.globalMcpFile(), { force: true });
-    rmSync(root, { recursive: true, force: true });
+    await removeOnceReleased(root);
   });
 
   test("/mcp add --local writes the workspace file instead", async () => {
@@ -342,7 +355,7 @@ describe("CodeTui", () => {
     };
     expect(file.mcpServers.repobot).toEqual({ command: "bun", args: ["run", "bot.ts"] });
     expect(existsSync(akanCodePaths.globalMcpFile())).toBe(false);
-    rmSync(root, { recursive: true, force: true });
+    await removeOnceReleased(root);
   });
 
   test("/mcp remove says when the home file still declares the name it took from this repo", async () => {
@@ -359,7 +372,7 @@ describe("CodeTui", () => {
     expect(exit?.notice).toContain("the global file still declares it, so it still applies");
     expect(McpServerConfig.declared(root).map((entry) => entry.scope)).toEqual(["global"]);
     rmSync(akanCodePaths.globalMcpFile(), { force: true });
-    rmSync(root, { recursive: true, force: true });
+    await removeOnceReleased(root);
   });
 
   test("/mcp remove --local leaves a name only the home file declares where it is", async () => {
@@ -373,7 +386,7 @@ describe("CodeTui", () => {
     await harness.drawn(`"office" is not declared in this repo's file`);
     expect(McpServerConfig.declared(root).map((entry) => entry.scope)).toEqual(["global"]);
     rmSync(akanCodePaths.globalMcpFile(), { force: true });
-    rmSync(root, { recursive: true, force: true });
+    await removeOnceReleased(root);
   });
 
   test("a session with nothing on disk is told a reload has nothing to reopen", async () => {
@@ -975,7 +988,7 @@ describe("CodeTui", () => {
       await harness.drawn("@pkgs/cli/code/CodeTuiFiles.ts", 5_000);
       await harness.press("\t");
       await harness.drawn("› read @pkgs/cli/code/CodeTuiFiles.ts");
-      rmSync(root, { recursive: true, force: true });
+      await removeOnceReleased(root);
     },
     { timeout: 10_000, retry: 1 },
   );

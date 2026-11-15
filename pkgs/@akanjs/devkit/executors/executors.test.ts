@@ -1081,7 +1081,7 @@ describe("Workspace and app executor environment contracts", () => {
       });
 
       await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
-        /unsupported export "LevelBoundary" in .*page\/_layout\.tsx: LevelBoundary belongs to the root layout Akan\.js generates, which never reads one from an app's layout/,
+        /unsupported export "LevelBoundary" in .*page[\\/]_layout\.tsx: LevelBoundary belongs to the root layout Akan\.js generates, which never reads one from an app's layout/,
       );
     });
 
@@ -1092,7 +1092,7 @@ describe("Workspace and app executor environment contracts", () => {
       });
 
       await expect(app.getPageKeys({ refresh: true })).rejects.toThrow(
-        /unsupported export "LevelBoundary" in .*page\/\(home\)\/_layout\.tsx: LevelBoundary belongs to the root layout Akan\.js generates/,
+        /unsupported export "LevelBoundary" in .*page[\\/]\(home\)[\\/]_layout\.tsx: LevelBoundary belongs to the root layout Akan\.js generates/,
       );
     });
   });

@@ -1,11 +1,24 @@
 import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import path from "node:path";
 import { createTempApp, tempRoots, writeText } from "../test/testHelpers";
 import type { BuildBatchMessage, BuildBatchRequest, BuildBatchResult } from "./buildBatchProtocol";
 import { BuildBatchRunner } from "./buildBatchRunner";
 
-const track = tempRoots();
+//? `run` returns on the result while the released worker may live on in its cwd, which Windows refuses to delete, and
+//? Bun's `rm` ignores `maxRetries` there.
+const removeOnceReleased = async (root: string) => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await rm(root, { recursive: true, force: true });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "EBUSY" || attempt >= 30) throw error;
+      await Bun.sleep(100);
+    }
+  }
+};
+const track = tempRoots(removeOnceReleased);
 const isAlive = (pid: number) => {
   try {
     process.kill(pid, 0);
