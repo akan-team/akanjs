@@ -16,6 +16,8 @@ import type { HmrWsHub } from "./hmr/wsHub";
 import type { PageCall } from "./metrics/requestMetrics";
 import { PageFailure } from "./pageFailure";
 import { normalizeHost } from "./proxy/hostBasePathWebProxy";
+import { RenderBusyResponse } from "./renderBusyResponse";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import type { ScriptPolicySources } from "./scriptPolicy";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
@@ -52,6 +54,7 @@ export class WebRouteContext {
   readonly seedIndex: RouteSeedIndex;
   readonly routeCache: RouteClientCache;
   readonly #hub: () => HmrWsHub | null;
+  readonly #busy = new RenderBusyResponse(this.logger);
   #runtimeManifest: { revision: number; manifest: MergedManifest } | null = null;
 
   constructor({ artifact, prodMode, renderState, subRoutes, seedIndex, routeCache, hub }: WebRouteContextOptions) {
@@ -171,6 +174,7 @@ export class WebRouteContext {
 
   errorPageResponse(req: Request, scope: string, err: unknown, route: string): Promise<Response> {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return Promise.resolve(WebRouteContext.#clientClosedResponse());
+    if (RscRenderRefusal.is(err)) return Promise.resolve(this.#busy.document(req, err));
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
     PageFailure.answered(err, route);
@@ -191,6 +195,7 @@ export class WebRouteContext {
   //? Without a `route` nothing was thrown here: the worker's render answered 5xx and sent the reporter its error.
   rscErrorResponse(scope: string, err: unknown, route?: string): Response {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return WebRouteContext.#clientClosedResponse();
+    if (RscRenderRefusal.is(err)) return this.#busy.rsc(err);
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
     if (route !== undefined) PageFailure.answered(err, route);

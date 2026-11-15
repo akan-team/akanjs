@@ -1,6 +1,7 @@
 import { AkanError } from "akanjs/base";
 import type { AkanTheme } from "akanjs/fetch";
 import type { RouteCacheRenderState } from "./cachePolicy";
+import { RscRenderRefusal, type RscRenderRefusalCode } from "./rscRenderRefusal";
 import type { RscWorkerErrorCode } from "./rscWorkerProcess";
 import type { RscTraceMetadata, SsrLateControl } from "./ssrTypes";
 
@@ -10,7 +11,7 @@ const DEFAULT_RSC_HOST_MAX_PENDING_CHUNKS = 256;
 export interface RscPending {
   onChunk: (data: Uint8Array) => void;
   onEnd: () => void;
-  onError: (message: string, code?: RscWorkerErrorCode) => void;
+  onError: (message: string, code?: RscWorkerErrorCode | RscRenderRefusalCode) => void;
   onMeta?: (meta: { theme?: AkanTheme; status?: number; trace?: RscTraceMetadata }) => void;
   onTheme?: (theme: AkanTheme | undefined) => void;
   onCacheState?: (state: RouteCacheRenderState) => void;
@@ -180,12 +181,13 @@ function createRscHostPending({
       settleLateControl(null);
       settleCacheState({ cacheable: false, reason: "error" });
       cleanupAbortListener();
+      const error = RscRenderRefusal.isCode(code) ? new RscRenderRefusal(code, msg) : new AkanError(code, msg);
       if (!render.settled) {
         render.settled = true;
-        reject(new AkanError(code, msg));
+        reject(error);
         return;
       }
-      controller.error(new AkanError(code, msg));
+      controller.error(error);
     },
     onRedirect: (location, method, status) => {
       settleLateControl(null);

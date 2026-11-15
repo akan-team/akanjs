@@ -167,7 +167,7 @@ Declared in [server/rscWorkerHost.ts](server/rscWorkerHost.ts).
 | `cache-state` | `RscFlightStream` | `RscWorker` |
 | `chunk` | `RscFlightStream` | `RscWorker` |
 | `end` | `RscFlightStream`, `RscRenderHandler` | `RscWorker` |
-| `redirect` | `RscRenderFallbacks` | `RscWorker` |
+| `redirect` | `RscRenderFallbacks` | `RscRenderHandler`, `RscWorker` |
 | `late-redirect` | `RscFlightStream` | `RscWorker` |
 | `late-not-found` | `RscFlightStream` | `RscWorker` |
 | `not-found` | `RscRenderFallbacks` | `RscWorker` |
@@ -179,7 +179,7 @@ Declared in [server/rscWorkerHost.ts](server/rscWorkerHost.ts).
 | `page-prompt.draw.result` | `RscRenderer` | `RscWorker` |
 | `page-prompts.visible.result` | `RscRenderer` | `RscWorker` |
 | `web-manifest.result` | `RscRenderer` | `RscWorker` |
-| `error` | `RscRenderFallbacks`, `RscRenderer` | `RscWorker` |
+| `error` | `RscRenderFallbacks`, `RscRenderHandler`, `RscRenderer` | `RscWorker` |
 
 ### `HmrMessage`: dev server → browser tab
 

@@ -109,6 +109,8 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `remoteUnavailable` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
 | `remoteUrlRejected` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
 | `renderAborted` | 499 | `AkanError` | no | yes | `base/akanError.ts` |
+| `renderQueueFull` | 503 | `RscRenderRefusal` | no | yes | `server/rscRenderRefusal.ts` |
+| `renderQueueTimeout` | 503 | `RscRenderRefusal` | no | yes | `server/rscRenderRefusal.ts` |
 | `routeConflict` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `RscRouteNotFound` | no | yes | `server/rscClient.tsx` |
