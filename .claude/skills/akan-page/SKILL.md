@@ -28,19 +28,19 @@ export default page()
 ## Steps
 
 1. Place the file: `<route>.tsx` or `<dir>/_index.tsx` serves the path, `_layout.tsx` nests a layout (`layout()`;
-   the root one is `rootLayout()`), `[id]` is a dynamic segment, `(group)` groups without a segment. `page/` holds
-   route modules only — no helpers, no `.ts` files.
+   the root one is `rootLayout()`), `[id]` is a dynamic segment, `(group)` groups without a segment.
 2. Name every `[x]` segment with `.param("x", Type)` and read a query key only with `.search("k", Type)`. Values
-   arrive typed; `lang` reaches every stage and is never declared.
-3. Gate with `.guard(() => signedIn())` on the `_layout.tsx` (a real redirect before anything renders), and repeat
-   a stricter guard on a page that needs more. The endpoint guards are still the real gate. `signedIn` comes from
-   `@libs/shared/webkit`, and a new workspace has that lib only with `create-workspace --libs true`.
+   arrive typed: `ID` / `String` → string, `Int` / `Float` → number, `Boolean`, `Date` → Dayjs, an `enumOf` class →
+   its union, `[T]` → array. A path value the type refuses answers not-found, and a search value that fails is
+   dropped. `lang` reaches every stage and is never declared.
+3. Gate with `.guard(() => signedIn())` on the `_layout.tsx`, and repeat a stricter guard on a page that needs more.
+   `.guard((_, { path }) => signedIn({ path }))` sends a refused visitor to `/signin?redirect=<path>`.
 4. In `.render()`: `usePage()`, then fetch, then return. Hand `fetch.init*` / `view*` / `edit*` fields to sections
    unawaited; await only what the shell reads, in one `Promise.all`.
-5. `.head()` takes JSX (or a function returning it), never a metadata object. A canonical link comes only from the
-   page's own head.
+5. `.head()` takes JSX (or a function returning it), never a metadata object.
 6. Re-skin an `akanjs/ui` component for a subtree with `_overrides.tsx`:
-   `export default override({ Slot: AppComponent })`, no logic.
+   `export default override({ Slot: AppComponent })`, no logic. Nested ones merge slot by slot, the closest winning;
+   `componentRule` lists the slots.
 
 ## API at a glance
 
@@ -52,12 +52,16 @@ declared params and search keys plus `lang`.
   where `Book` is the `common/` interface for the query's `Any` return (`akan-service`).
 - Async page: `.render(async ({ id }) => { const book = (await fetch.book(id)) as Book | null; if (!book) return router.notFound(); … })`;
   the same query in `.head()` and `.render()` is one request.
+- Loading: `.loading(() => <Skeleton />)` on a page or layout is what that level shows until its `.render()` and the
+  levels below it resolve; the levels above it stream first.
 - `router.notFound()` from `.guard()`, `.head()` or `.render()` answers 404 with the nearest layout's `.notFound()`
   above it (an unmatched URL: the deepest layout covering it), else the built-in 404.
 - A layout's own 404 and error views: `.notFound(({ pathname }) => …)` and `.error(({ error }) => …)` on `layout()`
-  or `rootLayout()`.
+  or `rootLayout()`. A `<title>` and `<meta>` at the top of what they return replace the page's head:
+  `.notFound(() => <><title>Not found</title>…</>)`, except below a `.loading()`, where the head is already out.
 - `<Link href="/books/OL45804W">`: write the path without the locale; Link adds it, or leaves it off for the default
-  locale under `i18n.localePrefix: "as-needed"`. `activeClassName` marks the current one.
+  locale under `i18n.localePrefix: "as-needed"`. It renders an `<a>` and takes its attributes; `activeClassName`
+  marks the current one.
 - From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.
 - A client filter kept in the URL without reloading the page: ``router.replace(`/books?q=${q}`, { shallow: true,
   scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`. Shallow
@@ -70,14 +74,15 @@ declared params and search keys plus `lang`.
 - `useState`, `useEffect`, comments, a named export beside the chain, or the legacy `export default async function`.
 - Editing a lib page through its link in `page/(libs)/` — edit the lib's own `page/` source.
 
-Full detail: `get_guideline` with `pageRule`, or `ssrRule` for what may render on the server. Every stage's
-signature, the router's methods, Link's props and every import path are in the `akanApi-*` references below.
+Full detail: `get_guideline` with `pageRule` (guards in depth, heads, MCP apps, CSR root layouts, lib pages), or
+`ssrRule` for what may render on the server. Every stage's signature, the router's methods, Link's props and every
+import path are in the `akanApi-*` references below.
 
 ## References
 
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
-- `.agents/skills/akan-page/references/pageRule.md` — Route Files · The Route Chain · Route Guards — `.guard()` · MCP Apps — `.app()` · Heads · …
+- `.agents/skills/akan-page/references/pageRule.md` — The Route Chain · Route Guards — `.guard()` · MCP Apps — `.app()` · Heads · A Root Layout Inside A CSR Bundle · …
 - `.agents/skills/akan-page/references/akanApi-imports.md` — Imports (`akanjs/*`, `@apps/<app>/client`, `../cnst`, `../dict`, `../srv`, layer barrels)
 - `.agents/skills/akan-page/references/akanApi-routes.md` — Routes (`page/`): `page`, `layout`, `rootLayout`, `RouteBaseArgs`, `router`, `RouteOptions`, `Link`, `CommonLinkProps`, `usePageLocation`, Route stages
 - `.agents/skills/akan-page/references/akanApi-app-config.md` — App config (`akan.config.ts`): `AppConfig`, `AppConfigInput`, `AkanWebOption`, `AkanI18nConfig`

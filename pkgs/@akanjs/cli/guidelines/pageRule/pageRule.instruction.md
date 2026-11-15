@@ -1,53 +1,13 @@
-# Page Rule — Route Files, The Route Chain, Heads, Lib Pages
+# Page Rule — The Route Chain, Guards, Heads, Lib Pages
 
-What a file under `page/` may be, how a route declares its arguments and settings, how a route guards itself, how
-heads merge, what a CSR bundle shows of a root layout, and how a lib's routes reach an app. `conventions` carries the invariants and the page
-body shape — this is the full contract behind them. Before changing route behavior, check
+The full contract behind the `page` rule and the `akan-page` skill, which carry what a route file may be, the chain,
+typed params and search, loading, 404 and error views, Link and the router. Before changing route behavior, check
 `pkgs/akanjs/server/routeTreeBuilder.ts` and nearby routes for the expected pattern.
-
-## Route Files
-
-- `apps/<app>/page` may contain route modules only. Do not add helper logic or component-only files there.
-- Route source files under `page/` must use `.tsx`. Do not add `logic.ts`, `.js`, or `.jsx` files under `page/`.
-- A route page is either `<routeName>.tsx` (serving `/routeName`) or a directory's `_index.tsx`; layouts use
-  `_layout.tsx`; per-route UI overrides use `_overrides.tsx`.
-- Reserved `_*.tsx` route filenames are limited to `_index.tsx`, `_layout.tsx`, and `_overrides.tsx`; do not add
-  files like `_Component.tsx` or `_helper.tsx`.
-- Page filenames must not start with an uppercase letter. Move helper components like `Component.tsx` to app `ui`,
-  `common`, or `lib` instead.
-- Dynamic segments use `[id]`; route groups use directories like `(user)`, `(public)`, `(tab)`, or `(detail)`.
-- `_overrides.tsx` is a logic-free UI-override manifest: imports plus a single
-  `export default override({ Slot: AppComponent })` (from `akanjs/ui`), no `"use client"`. It re-skins framework
-  `akanjs/ui` components for its route subtree; nested manifests merge over ancestors slot-by-slot (closest wins).
-  The slot list is in `componentRule`.
 
 ## The Route Chain
 
-- **A route file exports one thing**: `export default page()…render(…)` for a page, `layout()…render(…)` for a
-  `_layout.tsx`, `rootLayout()…render(…)` for the app's (or a basePath's) root `_layout.tsx`. Every route setting is
-  a stage of the chain — `.param()`, `.search()`, `.config()`, `.guard()`, `.head()`, `.loading()`; `.notFound()` /
-  `.error()` on a layout; `.fonts()` / `.theme()` / `.manifest()` / `.reconnect()` / `.wsConnect()` /
-  `.layoutStyle()` / `.viewport()` on the root layout; `.prompt()` and `.app()` on a page. A named export beside the
-  chain, or `page()` in a `_layout.tsx`, fails the build.
-- **A page names every `[x]` segment of its path with `.param("x", Type)`** and reads a query key only through
-  `.search("k", Type)`. Values arrive typed — `ID`/`String` → string, `Int`/`Float` → number, `Boolean`, `Date` →
-  Dayjs, an `enumOf` class → its union, `[T]` → array — a path value the type refuses answers not-found, and a
-  search value that fails is dropped. A layout may declare a subset. Names are string literals: `akan sync` reads
-  them off the source and refuses a `[projectId]` folder whose page declares no `.param("projectId")`, so the chain
-  is the `export default` expression itself — one bound to a variable first is refused.
-- **`lang` is never declared**: every route sits under `/:lang`, and the locale segment reaches every stage as
-  `lang`.
 - **On a web page's first render `st.use.searchParams()` is still the server's empty snapshot**, synced right after
   hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
-- There is no `loader=` / `render=` page prop and no `PageProps` interface: the chain declares the arguments and
-  `.render()` receives them flat, typed, with `lang` on every route and `children` added for a layout.
-- **A route only reads while it renders.** A `fetch.<mutation>()` (or socket message) sent from `.render()`, `.guard()`,
-  `.head()`, `.loading()` or a layout's `.notFound()` / `.error()` (a `.prompt()` run included) throws
-  `base.error.mutationInRender` synchronously, before it is sent — a `.catch()` on its promise never sees it: opening a
-  link to the page would perform it. Send a write from a user action — a button through a store action. Only a write
-  that is harmless to repeat and safe for anyone to trigger (a warm-up) passes `{ duringRender: true }` as the option
-  after the endpoint's own arguments (`fetch.updateX(id, data, { duringRender: true })`). `akan quality` flags the call,
-  same-file helpers included, as `akan.ssr.render-mutation`.
 - **A `Link` renders its page ahead of the click** — on hover, on keyboard focus, or as it shows with
   `prefetch="viewport"` (production only). A page whose render has an effect one visit should cause once — a view
   counted through `duringRender`, an expensive report — refuses with `.config({ prefetch: false })`; on a `_layout.tsx`
@@ -117,20 +77,14 @@ body shape — this is the full contract behind them. Before changing route beha
 
 ## Heads
 
-- **`.head()` takes JSX — `<title>`, `<meta>`, `<link>` — or a function of the route's args returning it.** One that
-  throws renders no head (warned about), so a layout's sign-in redirect still answers. There is no metadata object,
-  and analytics is the app's own script, not a stage.
+- A `.head()` that throws renders no head (warned about), so a layout's sign-in redirect still answers. Analytics is
+  the app's own script, not a stage.
 - **Heads merge root first**: a deeper `.head()` replaces the `<title>`, a `<meta>` with the same `name` /
   `property`, and a canonical / manifest / icon link, and keeps the rest — so a page states only what it changes.
-- A canonical link and `og:url` each name one URL, so a page carries them only from its own `.head()`, never from a
-  layout's.
 - A level that writes `og:image` or `twitter:image` drops the `og:image:*` / `twitter:image:*` tags it inherits, and a
   `<meta name="theme-color">` a `.head()` writes replaces the root `.viewport({ themeColor })`'s. Only `.head()`
   merges: a `<title>` or `<meta>` written inside a component renders beside the merged head, so a second `<title>`
   can reach the document.
-- **A not-found or error view titles itself**: the `<title>` and `<meta>` at the top of what a layout's `.notFound()`
-  / `.error()` returns replace the layouts' head, and the page's own head is dropped. Under a `.loading()` the head is
-  already out, so they stay in the view.
 
 ## A Root Layout Inside A CSR Bundle
 
@@ -144,8 +98,7 @@ body shape — this is the full contract behind them. Before changing route beha
 ## Lib Pages — `syncPageLibs`
 
 - `libs/<lib>/page` follows the same rules and ships routes to apps that opt in with `syncPageLibs` in
-  `akan.config.ts`: `true` takes every lib dep that has a `page` folder, an array takes the libs listed, `false` (the
-  default) syncs nothing.
+  `akan.config.ts`.
 - `akan sync` links those routes into `apps/<app>/page/(libs)/(<lib>)` — once per basePath when the app declares
   subRoutes. The folder is generated and gitignored like `public/libs`; edit the lib source, never the link.
 - Both path segments are route groups, so a lib route mounts at its own path (`libs/<lib>/page/login/_index.tsx`
