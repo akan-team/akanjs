@@ -1,5 +1,74 @@
 # @akanjs/cli
 
+## 3.2.0
+
+### Minor Changes
+
+- 038d918: Akan.js 3.2.0. Read **Upgrade notes** before deploying an app that runs 3.1.1: unguarded endpoints, log levels, the `Err` class, loaders, SQLite transactions, exit codes and a CLI version check change behaviour.
+
+  **Highlights**
+
+  - **`agentService.loop`.** A server-side agent run over the `/mcp` tool catalogue, in-process, with `toolkits`, `remotes` (other MCP servers), `clientTools` (a screen the member has open), `ask` (a question parked between runs), `answer`, overflow retry, and a read rule that counts what a run reads as untrusted. `plug(AgentToolsRole)` runs the catalogue as a given account; `mcp: "agent"` keeps an entry off `/mcp` for the in-process agent only.
+  - **Akan Graph and Akan Studio.** `get_graph` (MCP) returns the Akan Graph, read from source with no dev server: models, scalars, slices, endpoints with guards, services, jobs, adaptors, routes, layouts, the framework itself, and the Change Map for `since: <revision>`. `akan start` serves Studio at `/_akan/studio`, and it opens from the CLI and the editor.
+  - **Editor support.** `@akanjs/language` resolves names Akan.js derives (`fetch.initMemoInPublic`, `st.do.setNameOnMemo`, `this.memoService.listByName`) and ships `akan-language-server`. The VS Code / Cursor extension opens a module side by side, runs `akan verify` and workflows, and publishes from CI to the VS Marketplace and Open VSX.
+  - **Secure defaults.** Signals, websocket rooms, MCP, OAuth, the agent relay, the server edge, the ops channel, native builds, `akan code`, the CLI's tunnels and workflows, and the in-page agent each take the narrower default. Every change names how to get the old behaviour back.
+  - **Faster pages.** Every SSR page loads 72K less framework JS (22K less Brotli); client modules preload from `<head>`; Link prefetch; Flight rows share inline scripts; one preloaded font face per family; faster RSC decoding and store writes; a route JS budget (`akan build --check-budget`).
+  - **Realtime.** Per-socket, per-caller and per-model room limits, subscribe budgets, gateway subscribe acks, per-model live-sync routing, Redis room sharding, resync after a Redis outage, and an outbox limit for a down socket.
+  - **Native.** `external-view` on Linux (Wayland and X11) with `sendKey`; Android 12 launch crash fixed; AppImage relaunch; tighter CSP, external-link, temp-folder and update defaults.
+
+  **Upgrade notes**
+
+  - **Guards.** An endpoint, slice query or pubsub room that declares no guards is refused with 403; open it with `[Public]`. Outside local operation a server whose signals declare a guardless endpoint stops at boot and names each one. `AKAN_UNGUARDED_ENDPOINTS=open` answers them as before. A slice whose `guards` leaves out `root` mounts no root list or insight. `guard(name)` refuses until `canPass` is overridden.
+  - **`Err`.** Every `Err` is one class, `Err` from `akanjs/common`, and an `AkanError`. `err.code` is always set (a generalized failure's code, else its status's code), so `{ ...err }` now holds it. `Err.NotFound.is(error)` also requires status 404. Check across a page bundle and the framework with `Err.is`, not `instanceof`. `setErrorConstructor`, `HttpClientOptions.ErrorCls` and `FetchClient.build`'s `Err` option are deprecated.
+  - **Coded failures.** The signal, service, server, route-tree, RSC and client facets throw coded `AkanError`s instead of a bare `Error`; messages and statuses are unchanged. A production 500 shows the status reason and code only. `bun run error:codes` lists the codes. A failed tool call and a failed agent turn carry a `code`.
+  - **Log levels.** A failure under 500 logs at `warn`, a 5xx is one `error` record with `type` and `stack`, a declared error, a 429 and a by-id read of a missing id log at `debug`, and a crashed RSC worker logs at `warn`. Alerts and `--level error` filters see fewer lines. A page `redirect()` is `ok` at `info` with its 3xx status, and `notFound()` is `warn` with 404. Every log record reaches ndjson stdout, and a request line is never folded.
+  - **Loaders.** A loader no longer shares a batch between a transaction and the requests outside it, and each caller gets its own document. A loader that keeps its keys forgets them when the model is written; a write by query clears every kept key of the model, and `cache: true` keeps the 10,000 most recent keys. A custom `DatabaseAdaptor` can implement `transactionKey()`; a `batchScheduleFn` must run its callback in the caller's async context.
+  - **SQLite.** Work outside an open `this.transaction()` no longer sees its uncommitted rows, on `:memory:` or a non-WAL file either. `SqliteDatabase.getMeta` and `listMeta` return promises, so await them. A reader pays one database copy per transaction on `:memory:`; past a few tens of megabytes, put the database in a file.
+  - **Indexes.** A boot keeps an index the release no longer declares and warns about it. After every instance runs this release, run `akan migrate <app> prune-indexes` once. `migrationActions` gains `indexes` and `prune-indexes`, so code that switches over every action needs the two cases.
+  - **Websockets.** A socket holds at most 256 rooms, a caller 2,000 per process, a model 50,000 evaluated live rooms; a subscribe past a limit gets a 429 frame coded `liveRoomLimit`. Subscribes are budgeted at 1,000 a minute per socket and 10,000 per caller. A `pubsub` room's `onResync` also runs after Redis returns; a custom `WebsocketAdaptor.onRecovered` handler now takes the held rooms. A down socket keeps at most 100 emits.
+  - **Gateway.** `/_akan/app/ready` answers 503 while no replica's RSC worker can render. A subscribe is acknowledged once the gateway routes the room.
+  - **CLI.** A CLI whose major.minor differs from the workspace's `akanjs` refuses every command that writes, with exit 2; run `akan update`, or set `AKAN_ALLOW_VERSION_MISMATCH=1`. Exit codes: 2 for usage and unknown targets, 3 for failed checks (`verify`, `typecheck`), 130 for an interrupted prompt; a script that tested for exit 1 tests for non-zero. With `--json`, a failure ends stdout with `{"ok":false,"error":"<message>","code":"<code>"}`. `akan doctor` exits 1 on `"status": "failed"`; `akan workflow plan`, `apply` and `validate` exit non-zero on failure. A shell `AKAN_PUBLIC_ENV` now outranks the workspace `.env`, and `akan build --env <env>` builds another environment.
+  - **Package budget.** `akan lint` and `akan verify` hold each package under `pkgs/` to the file, function and class budget. Run `akan quality baseline` once in a workspace whose packages are over it. `akan verify` also typechecks every app and lib that uses a changed lib.
+  - **Secure defaults.**
+    - Write tools in the in-page agent confirm by default (`submit`, `create`, `update`, `send`, `export` and the rest, not only `remove`); opt out with `{ confirm: false }`. Page text reaches the model fenced as data, and a transcript belongs to one account.
+    - A `FetchClient` sends its session token only to its own origin; pass `clone({ origin, jwt })` to send one elsewhere.
+    - A connection idle for 120 s closes (`AKAN_IDLE_TIMEOUT`), a body is capped at 128 MiB (`AKAN_MAX_UPLOAD_BODY`) and 16 MiB for a non-multipart one (`AKAN_MAX_REQUEST_BODY`), `akan start` binds 127.0.0.1 (`AKAN_LISTEN_HOST=*` restores it), and HTML carries `Cache-Control`, HSTS and a `frame-ancestors` policy.
+    - The dev server answers only `localhost`, `*.localhost` and IP hosts unless `AKAN_ALLOWED_HOSTS` is set.
+    - A 500 shows its message and stack only under `akan start`, `NODE_ENV` `development` or `test`, or `AKAN_ERROR_DETAIL=1`.
+    - `ops snapshot` outside local operation needs `AKAN_BACKUP_RECIPIENT` or `--allow-plaintext`; the ops key must differ from `AKAN_MACHINE_PUBLIC_KEY`.
+    - `/__rsc/manifest` is dev-only (`AKAN_EXPOSE_RSC_MANIFEST=1`), and health detail, metrics and devtools need a local dev runtime.
+    - Filter arguments are parsed against their declared type and an `Any` filter argument throws at declaration; `q.search()` text is capped at 32 terms and 1000 characters.
+    - The image optimizer refuses non-public remote hosts (`images.dangerouslyAllowLocalIP`).
+    - The CLI's tunnels listen on loopback and check the SSH host key, workflow commands run without a shell, `akan download-env` copies only env and secret files, a Dockerfile built with `AKAN_PUBLIC_ENV=local` needs `--build-arg AKAN_ALLOW_LOCAL_IMAGE=1`, and `akan code` asks before network access and trusts a repository's MCP servers and extensions only after one terminal approval.
+    - MCP rate-limits an unverified bearer by address, checks the browser Origin, and bounds client registration; the agent relay refuses a request past fixed limits with `agent.error.requestRefused` (413) unless a policy sets its own.
+    - Native builds ship a Content-Security-Policy, open only `https:`, `mailto:` and `tel:` links, and recheck a downloaded desktop update before installing it; `updates.windowsSigners` and `updates.expiresIn` are new.
+  - **UI.** `Field.Switch`'s on position is `primary` (pass `variant="accent"` for the old look), and two `Data.Item` status tags change color. `useCamera` and `useGeoLocation` no longer send the user to Settings after a denial. A page `.head()` can set `theme-color`, and a level that writes an image no longer inherits the image tags above it. `--akan-theme-color` drives the browser's `theme-color`.
+  - **Libraries.** The `shared` and `util` libraries `akan install-library` copies are refreshed; compare your copy. In `util`, `security` and `security.jwtSecret` are optional in `ModulesOptions`. `libs/shared` keeps its SSO and refresh cookies on `__Host-` names outside local.
+  - **Other.** `LLM` stream endings are read more completely: a cut tool call ends as `length`, and unparseable arguments in a finished answer get `argsError` and the code `invalidArgument`. `ConformanceEnv.has` fails instead of skipping when `AKAN_TEST_REQUIRE_BACKENDS=1`. A new workspace has no `patches/` folder, no `agent:sample:*` scripts and one `setup:agent` script; `create-akan-workspace` no longer hangs when `akan` is not on PATH.
+
+  **Features**
+
+  - **Agent.** `Agent.Chat` modals and toasts stack above the panel and its header takes a node; the tool row is the `AgentToolRow` override slot; a restored transcript that ends on an unanswered `askUser` reopens on it; a turn its caller stops is billed at what the provider plausibly charged, and every turn the quota passes is billed.
+  - **Rendering and navigation.** `{ static: true }` page apps answer a host that asks for script-less HTML; `i18n.localePrefix: "as-needed"` serves the default locale unprefixed; a route guard receives `{ path }` and `signedIn({ path })` adds `?redirect=`; a failed route level or `Load.Stream` draws a notice with "Try again" in its own place; `router.refresh()` in CSR no longer reloads the document; a lazy chunk the server no longer serves reloads the page once; `forwardVisitor: false` keeps a render cacheable; a query takes `signal` and identical in-flight queries share one request.
+  - **Data.** `create<Model>Many(rows)` runs every row through `_preCreate`, `_postCreate` and the document hooks; `bulkWrite` runs in one transaction; a cascade removes a long array's documents 200 ids at a time; `Binary` arguments are typed `Uint8Array<ArrayBuffer>`; a hidden `.optional()` field is optional in create inputs; store form setters and writes cost about one copy of the state; `onError` on store writes receives the failed request's dictionary error.
+  - **Server and ops.** `/_akan/app/ready`; `RestartSchedule` shared by every child-restart loop; a single-flight `cache` endpoint; stopped or failed starts tear down what they brought up; the Redis WebSocket adaptor shards channels per room and model and flushes publishes on shutdown; a log stream stops growing for a client that stops reading; missing assets answer `no-store`.
+  - **CLI.** `akan test --parallel=<n>`, `--junit <path>` and `--coverage`; `akan build --env`; a `rename-key` workflow; `akan remove-module pokedex:_billing` removes a service module; `akan create-workspace` works in an existing folder, without sample code, and without a git identity; `akan preview` opens `/_akan/studio`, `/openapi.json` and `/mcp` as written and restarts a dead browser; `akan verify` reports step durations and gives a dictionary hint for a missing key; commands without a terminal take the workspace's only app, lib or package, and remove commands never pick a target themselves; release candidates publish from CI with npm provenance.
+  - **Native.** `external-view` and `sendKey` on Linux; Android 12 and 12L launch fix; AppImage relaunch; a `single-instance` pipe that another account cannot own on Windows.
+  - **Types and styling.** A new app's default style is Pretendard with -3% letter spacing, even sizes from 12px, 150% line height for wrapping text and `leading-auto` for one line.
+
+  **Fixes**
+
+  - A dev page keeps its styles after a stylesheet change arrives with a pages rebuild; idle-suspended dev servers apply every save, stay awake when work arrives, and stop cleanly; `[BarrelAnalyzer] ERROR scan failed` is gone; a backend replica's builder answer no longer reaches its replacement.
+  - A page that renders a string of 1024 characters or more renders and hydrates whatever its lines say; a page cut off by a disconnected client, or one that streamed an error, is no longer cached; partial RSC commit (`AKAN_PUBLIC_RSC_PARTIAL_COMMIT=1`) patches real pages, replays patches from cache and cancels overtaken navigations.
+  - In production, a render error no longer reaches the browser as its message; reading the client address from a crafted forwarded header no longer stalls the server; `happy-dom` peers ask for `^21.0.4`; the pi agent packages move to 1.5.2, dropping undici and minimatch advisories.
+  - The build lock records its host and survives a dead remover, a Windows antivirus hold and a devcontainer; `akan` no longer rebuilds the dev CLI from a command it runs; the typecheck behind `akan verify` and `akan build` uses its incremental cache.
+  - Internal: the largest classes and methods in `akanjs`, `@akanjs/devkit` and `@akanjs/cli` are split by concern with unchanged public members, and the `akanjs` facets import sibling files instead of their own barrel and list every export by name.
+
+### Patch Changes
+
+- Updated dependencies [038d918]
+  - akanjs@3.2.0
+
 ## 3.1.1
 
 ### Patch Changes
