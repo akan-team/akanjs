@@ -70,6 +70,7 @@ describe("dev query-plan check", () => {
 
     const ignoredScan = await (async () => {
       statementMetrics.planCheck = null;
+      statementMetrics.reset();
       await large.Memo.count({ score: q.gte(5) } as never);
       return statementMetrics.top(50).find((stat) => stat.text.includes("json_extract"))?.fingerprint ?? "";
     })();
@@ -77,6 +78,16 @@ describe("dev query-plan check", () => {
     statementMetrics.planCheck = new StatementPlanCheck([ignoredScan]);
     await traced("memoByScore", async () => await large.Memo.count({ score: q.gte(5) } as never));
     expect(records).toEqual([]);
+  });
+
+  test("checks each filter of a shared fingerprint, so an unindexed field is found after an indexed one", async () => {
+    statementMetrics.planCheck = new StatementPlanCheck();
+    await traced("memoByTitle", async () => await large.Memo.count({ title: "memo 4" } as never));
+    expect(records).toEqual([]);
+    await traced("memoByOwner", async () => await large.Memo.count({ ownerId: "u1" } as never));
+
+    expect(records).toHaveLength(1);
+    expect(records[0].message).toContain("sent by query:memoByOwner");
   });
 
   test("leaves a table under the row threshold alone", async () => {

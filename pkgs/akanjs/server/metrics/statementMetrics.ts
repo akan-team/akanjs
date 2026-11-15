@@ -9,6 +9,7 @@ import { STATEMENT_BUCKETS_SECONDS, StatementReport } from "./statementReport";
 
 const LABELS = ["model", "op"] as const;
 const MAX_SENDERS = 16;
+const MAX_PLAN_VARIANTS = 8;
 
 const statements = metricRegistry.counter(
   "akan_db_statements_total",
@@ -77,6 +78,12 @@ export class SiteSeries {
   }
 }
 
+export interface PlanState {
+  epoch: number;
+  pending: boolean;
+  dueAt: number;
+}
+
 interface Sender {
   count: number;
   totalMs: number;
@@ -91,9 +98,7 @@ export class StatementStat {
   readonly buckets = new Float64Array(STATEMENT_BUCKETS_SECONDS.length + 1);
   slowLoggedAt = Number.NEGATIVE_INFINITY;
   slowSuppressed = 0;
-  planEpoch = -1;
-  planPending = false;
-  planDueAt = 0;
+  readonly #plans = new Map<string, PlanState>();
   readonly #sites = new Map<StatementSite, SiteSeries>();
   #outside: SiteSeries | null = null;
   readonly #senders = new Map<string, Map<string, Sender>>();
@@ -101,6 +106,17 @@ export class StatementStat {
 
   constructor(shape: StatementShape) {
     this.shape = shape;
+  }
+
+  //? Filters that differ only by a field path share one fingerprint, so a plan is kept per sent text, a few of them.
+  planOf(variant: string): PlanState {
+    let plan = this.#plans.get(variant);
+    if (!plan) {
+      if (this.#plans.size >= MAX_PLAN_VARIANTS) return this.planOf("");
+      plan = { epoch: -1, pending: false, dueAt: 0 };
+      this.#plans.set(variant, plan);
+    }
+    return plan;
   }
 
   siteOf(site: StatementSite | undefined): SiteSeries {

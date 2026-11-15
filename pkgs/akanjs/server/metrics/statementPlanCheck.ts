@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { Logger } from "akanjs/common";
 import {
   type SentStatement,
@@ -7,7 +8,7 @@ import {
   type StatementSite,
 } from "akanjs/service";
 import { isLocalDevRuntime, type SignalTrace } from "akanjs/signal";
-import type { SiteSeries, StatementStat } from "./statementMetrics";
+import type { PlanState, SiteSeries, StatementStat } from "./statementMetrics";
 
 interface PlanFinding {
   scans: string | null;
@@ -48,16 +49,18 @@ export class StatementPlanCheck {
     series: SiteSeries,
     trace: SignalTrace | undefined,
   ) {
-    if (stat.planPending || stat.planEpoch === StatementProbe.schemaEpoch || stat.count < stat.planDueAt) return;
     const { planner, sql } = statement;
+    const variant = createHash("sha1").update(sql).digest("hex").slice(0, 12);
+    const state = stat.planOf(variant);
+    if (state.pending || state.epoch === StatementProbe.schemaEpoch || stat.count < state.dueAt) return;
     if (!planner || !this.#checks(stat, planner, params, site, series)) {
-      stat.planEpoch = StatementProbe.schemaEpoch;
+      state.epoch = StatementProbe.schemaEpoch;
       return;
     }
-    stat.planPending = true;
+    state.pending = true;
     const sentBy = trace ? trace.endpoint : "none";
-    void this.#check(stat, planner, sql, [...params], series, sentBy).finally(() => {
-      stat.planPending = false;
+    void this.#check(stat, state, variant, planner, sql, [...params], series, sentBy).finally(() => {
+      state.pending = false;
     });
   }
 
@@ -78,6 +81,8 @@ export class StatementPlanCheck {
 
   async #check(
     stat: StatementStat,
+    state: PlanState,
+    variant: string,
     planner: StatementPlanner,
     sql: string,
     params: readonly unknown[],
@@ -88,15 +93,15 @@ export class StatementPlanCheck {
     const table = stat.shape.table ?? "";
     try {
       if ((await planner.rowsUpTo(table, StatementPlanCheck.minRows)) < StatementPlanCheck.minRows) {
-        stat.planDueAt = Math.max(stat.count * 2, 16);
+        state.dueAt = Math.max(stat.count * 2, 16);
         return;
       }
       const plan = await planner.explain(sql, params);
-      stat.planEpoch = epoch;
+      state.epoch = epoch;
       const finding = StatementPlanCheck.findingOf(plan, table);
-      if (finding.scans || finding.sorts) this.#warn(stat, series, sentBy, finding, plan);
+      if (finding.scans || finding.sorts) this.#warn(stat, variant, series, sentBy, finding, plan);
     } catch {
-      stat.planEpoch = epoch;
+      state.epoch = epoch;
     }
   }
 
@@ -112,10 +117,17 @@ export class StatementPlanCheck {
   }
 
   //? Security: a Postgres plan prints the values it was planned with, so its text is scrubbed of literals first.
-  #warn(stat: StatementStat, series: SiteSeries, sentBy: string, finding: PlanFinding, plan: readonly string[]) {
+  #warn(
+    stat: StatementStat,
+    variant: string,
+    series: SiteSeries,
+    sentBy: string,
+    finding: PlanFinding,
+    plan: readonly string[],
+  ) {
     const planText = plan.map((line) => StatementFingerprint.scrub(line).trim()).join("; ");
     const { fingerprint, text } = stat.shape;
-    const key = `${fingerprint}\u0000${planText}`;
+    const key = `${fingerprint}\u0000${variant}\u0000${planText}`;
     if (this.#warned.has(key) || this.#warned.size >= MAX_WARNINGS) return;
     this.#warned.add(key);
     const found = [
