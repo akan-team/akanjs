@@ -110,6 +110,7 @@ export class CodeTui {
           move: this.#move,
           toggle: this.#question.toggle,
           answerConfirm: this.#question.answerConfirm,
+          allowForSession: this.#question.allowForSession,
           cancel: this.#cancel,
           interrupt: this.#interrupt,
         }}
@@ -363,6 +364,8 @@ export class CodeTui {
         return this.#overlay.open("agents", this.#runner.agentList());
       case "mcp":
         return this.#runner.mcp(argument);
+      case "allowed":
+        return this.#runner.allowed(argument);
       case "name":
         if (!argument) return this.#overlay.open("name", "Usage: /name <what this session is about>");
         this.#agent.setName(argument);

@@ -54,6 +54,7 @@ export interface CodeTuiActions {
   move: (delta: number) => void;
   toggle: () => void;
   answerConfirm: (value: boolean) => void;
+  allowForSession: () => void;
   cancel: () => void;
   interrupt: () => void;
 }
@@ -211,6 +212,7 @@ export const CodeTuiApp = ({ actions }: { actions: CodeTuiActions }) => {
     if (snapshot.mode === "confirm") {
       if (input === "y" || input === "Y") return actions.answerConfirm(true);
       if (input === "n" || input === "N") return actions.answerConfirm(false);
+      if (input === "a" || input === "A") return actions.allowForSession();
       return;
     }
     if (snapshot.mode === "select") {

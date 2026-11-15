@@ -19,6 +19,7 @@ export class CodeTuiCommands {
     { name: "fork", desc: "continue this conversation twice; the copy takes over here", arg: "[name]" },
     { name: "agents", desc: "what a sub-agent may be, and what one may spend" },
     { name: "mcp", desc: "the MCP servers this session reached", arg: "[add|remove|login|reload]" },
+    { name: "allowed", desc: "the commands this session runs without asking", arg: "[clear]" },
     { name: "peers", desc: "the other akan code sessions running here" },
     { name: "msg", desc: "hand a message to another session", arg: "<peer> <text>" },
     { name: "quit", desc: "leave the session" },

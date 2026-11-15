@@ -15,6 +15,7 @@ export interface CodeScriptOptions {
   trustWorkspace: boolean;
   askNetwork: boolean;
   askCommands: boolean;
+  ask: boolean;
   rpcBindAny: boolean;
   rpcToken: boolean;
 }
@@ -33,6 +34,7 @@ export class CodeScript extends script("code", [CodeRunner]) {
       trustWorkspace: options.trustWorkspace,
       askNetwork: options.askNetwork,
       askCommands: options.askCommands,
+      ask: options.ask,
       rpcBindAny: options.rpcBindAny,
       rpcToken: options.rpcToken,
     };

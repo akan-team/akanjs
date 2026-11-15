@@ -237,6 +237,16 @@ export default page()
               ko: "프롬프트를 줬어도 전체 화면 세션을 열고, 그 프롬프트를 첫 메시지로 보냅니다.",
             }),
           },
+          {
+            name: "--no-ask",
+            type: "Boolean",
+            defaultValue: "false",
+            enumOrFlag: "local profile",
+            desc: l.trans({
+              en: "Runs this session without asking before a shell command or a network request, and says so in one line at start. The same as `--no-ask-commands --no-ask-network`.",
+              ko: "이 세션에서는 셸 명령과 네트워크 요청 전에 묻지 않고 실행하며, 시작할 때 그 사실을 한 줄로 알립니다. `--no-ask-commands --no-ask-network`와 같습니다.",
+            }),
+          },
         ],
         notes: [
           {
@@ -294,8 +304,8 @@ akan code --rpc true`,
           {
             name: "local",
             desc: l.trans({
-              en: "The default. Everything is on, and a shell command waits for your approval (`--no-ask-commands` turns that off).",
-              ko: "기본값입니다. 모든 기능이 켜져 있고, 셸 명령은 승인을 받은 뒤 실행합니다 (`--no-ask-commands`로 끕니다).",
+              en: "The default. Everything is on, and a shell command waits for your approval: `y` once, `a` for the rest of the session (`--no-ask` turns asking off).",
+              ko: "기본값입니다. 모든 기능이 켜져 있고, 셸 명령은 승인을 받은 뒤 실행합니다. `y`는 한 번, `a`는 세션이 끝날 때까지 허용합니다 (`--no-ask`로 끕니다).",
             }),
             marks: { write: true, web: true, mcp: true, ask: true, saved: true },
           },
@@ -381,6 +391,37 @@ akan code --rpc true`,
             </strong>{" "}
             <code>bash</code>는 승인을 묻지 않고 실행됩니다. <code>local</code>은 반대로 <code>bash</code> 전에 묻고,
             파일을 쓸 때는 묻지 않습니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>
+              <code>a</code> stops asking about one command for the session.
+            </strong>{" "}
+            It remembers the program, and the sub-command for tools like <code>git</code> and <code>bun</code>, so
+            allowing <code>git status</code> leaves <code>git diff</code> asked about; a line of several commands runs
+            unasked only once each is allowed. <code>/allowed</code> lists them and <code>/allowed clear</code> forgets
+            them, and nothing is kept after the session. A networking command, a command that sends something out (
+            <code>git push</code>, <code>npm publish</code>, <code>docker push</code>, <code>gh api</code>),{" "}
+            <code>rm</code>, a command that runs another (<code>sudo</code>, <code>xargs</code>, <code>sh</code>,{" "}
+            <code>source</code>), a variable set in front of a command other than a few like <code>CI=1</code> and a
+            line that writes a file with <code>&gt;</code> are asked about every time.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>
+              <code>a</code>는 한 명령을 세션이 끝날 때까지 묻지 않게 합니다.
+            </strong>{" "}
+            프로그램 이름을 기억하고, <code>git</code>이나 <code>bun</code> 같은 도구는 하위 명령까지 기억하므로{" "}
+            <code>git status</code>를 허용해도 <code>git diff</code>는 계속 묻습니다. 명령이 여러 개인 줄은 모두 허용된
+            뒤에만 묻지 않고 실행합니다. <code>/allowed</code>로 목록을 보고 <code>/allowed clear</code>로 지우며,
+            세션이 끝나면 남지 않습니다. 네트워크 명령, 밖으로 내보내는 명령(<code>git push</code>,{" "}
+            <code>npm publish</code>, <code>docker push</code>, <code>gh api</code>), <code>rm</code>, 다른 명령을
+            실행하는 명령(<code>sudo</code>, <code>xargs</code>, <code>sh</code>, <code>source</code>),{" "}
+            <code>CI=1</code> 같은 몇 가지를 뺀 명령 앞의 변수 지정, <code>&gt;</code>로 파일을 쓰는 줄은 매번 묻습니다.
           </>
         ),
       }),
