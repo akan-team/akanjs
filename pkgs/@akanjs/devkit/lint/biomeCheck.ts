@@ -7,7 +7,7 @@ export interface BiomeCheckOptions {
   target: string;
   configPath: string | null;
   write: boolean;
-  /** `0` shows every diagnostic. */
+  //? 0 shows every diagnostic.
   maxDiagnostics: number;
   print: (text: string) => void;
 }
@@ -15,8 +15,11 @@ export interface BiomeCheckOptions {
 //* Biome's own report quotes source lines, so a first run writes the fixes and reads the JSON report. An env file's
 //* diagnostics are printed from it by position and rule alone; Biome prints the rest again, from the files that have any.
 export class BiomeCheck {
+  static readonly #groupSize = 100;
+
   static async run({ root, target, configPath, write, maxDiagnostics, print }: BiomeCheckOptions) {
     const [biome, ...biomeArgs] = Linter.biomeCommand(root);
+    //? Pinned: without it a malformed biome.json makes Biome fall back to discovery and name the wrong file.
     const config = configPath ? ["--config-path", configPath] : [];
     const first = Bun.spawn(
       [
@@ -32,43 +35,90 @@ export class BiomeCheck {
       ],
       { cwd: root, stdout: "pipe", stderr: "pipe" },
     );
-    const [stdout, exitCode] = await Promise.all([new Response(first.stdout).text(), first.exited]);
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(first.stdout).text(),
+      new Response(first.stderr).text(),
+      first.exited,
+    ]);
     let diagnostics: BiomeDiagnostic[];
     try {
       diagnostics = parseBiomeReport(stdout).diagnostics ?? [];
     } catch {
-      throw new CliError("failed", `Biome exited with ${exitCode} and gave no report that could be read.`);
+      const cause = (stderr || stdout).trim();
+      throw new CliError(
+        "failed",
+        cause && !WithheldEnvFile.namesEnvFile(cause)
+          ? cause
+          : `Biome exited with ${exitCode} and gave no report that could be read.`,
+      );
     }
     const shown = diagnostics.filter(({ severity }) => severity !== "hint");
-    const [fromEnv, rest] = [
-      shown.filter(({ location }) => WithheldEnvFile.isEnvFile(location?.path?.replaceAll("\\", "/"))),
-      shown.filter(({ location }) => !WithheldEnvFile.isEnvFile(location?.path?.replaceAll("\\", "/"))),
-    ];
-    const limit = maxDiagnostics > 0 ? maxDiagnostics : Number.POSITIVE_INFINITY;
-    for (const diagnostic of fromEnv.slice(0, limit)) print(BiomeCheck.#line(diagnostic));
-    const hidden = Math.max(0, fromEnv.length - limit);
-    if (hidden) print(`${hidden} more diagnostics in env files are not shown; --max-diagnostics 0 shows them all.`);
-    const remaining = limit - Math.min(fromEnv.length, limit);
-    const files = [...new Set(rest.flatMap(({ location }) => (location?.path ? [location.path] : [])))];
-    if (files.length && remaining > 0) {
+    const inEnv = (diagnostic: BiomeDiagnostic) =>
+      WithheldEnvFile.isEnvFile(diagnostic.location?.path?.replaceAll("\\", "/"));
+    const fromEnv = shown.filter(inEnv);
+    const rest = shown.filter((diagnostic) => !inEnv(diagnostic));
+    let remaining = maxDiagnostics > 0 ? maxDiagnostics : Number.POSITIVE_INFINITY;
+    for (const diagnostic of fromEnv.slice(0, remaining)) print(BiomeCheck.#line(diagnostic));
+    let hidden = Math.max(0, fromEnv.length - remaining);
+    remaining -= Math.min(fromEnv.length, remaining);
+    for (const group of BiomeCheck.#groups(rest)) {
+      if (remaining <= 0) {
+        hidden += group.count;
+        continue;
+      }
       const second = Bun.spawn(
         [
           biome,
           ...biomeArgs,
           "check",
+          //? Biome shows 20 diagnostics unless told otherwise.
           `--max-diagnostics=${Number.isFinite(remaining) ? remaining : "none"}`,
+          ...(process.stdout.isTTY && !process.env.NO_COLOR ? ["--colors=force"] : []),
           ...config,
-          ...files,
+          ...group.files,
         ],
         { cwd: root, stdout: "pipe", stderr: "pipe" },
       );
-      const [out, err] = await Promise.all([new Response(second.stdout).text(), new Response(second.stderr).text()]);
-      await second.exited;
-      print(`${out}${err}`.trimEnd());
+      const [out, err] = await Promise.all([
+        new Response(second.stdout).text(),
+        new Response(second.stderr).text(),
+        second.exited,
+      ]);
+      print(BiomeCheck.#withoutSummary(`${out}${err}`));
+      remaining -= Math.min(group.count, remaining);
     }
     for (const diagnostic of rest.filter(({ location }) => !location?.path)) print(diagnostic.message);
-    const errors = shown.filter(({ severity }) => severity === "error").length;
+    if (hidden) print(`${hidden} more diagnostics are not shown; --max-diagnostics 0 shows them all.`);
+    const count = (severity: string) => shown.filter((diagnostic) => diagnostic.severity === severity).length;
+    for (const [severity, noun] of [
+      ["error", "error"],
+      ["warning", "warning"],
+      ["information", "info"],
+    ] as const)
+      if (count(severity))
+        print(`Found ${count(severity)} ${noun}${count(severity) === 1 || noun === "info" ? "" : "s"}.`);
+    const errors = count("error");
     if (errors) throw new CliError("checkFailed", `Lint found ${errors} error${errors === 1 ? "" : "s"}.`);
+  }
+
+  //? Each group's summary counts only its own files; the one printed at the end counts the whole run.
+  static #withoutSummary(text: string) {
+    return text
+      .split("\n")
+      .filter((line) => !/^(?:Checked \d+ files? in |Found \d+ (?:errors?|warnings?|info))/.test(line))
+      .join("\n")
+      .trim();
+  }
+
+  static #groups(diagnostics: BiomeDiagnostic[]) {
+    const counts = new Map<string, number>();
+    for (const { location } of diagnostics)
+      if (location?.path) counts.set(location.path, (counts.get(location.path) ?? 0) + 1);
+    const entries = [...counts];
+    return Array.from({ length: Math.ceil(entries.length / BiomeCheck.#groupSize) }, (_, index) => {
+      const slice = entries.slice(index * BiomeCheck.#groupSize, (index + 1) * BiomeCheck.#groupSize);
+      return { files: slice.map(([file]) => file), count: slice.reduce((sum, [, count]) => sum + count, 0) };
+    });
   }
 
   static #line({ severity, category, location }: BiomeDiagnostic) {

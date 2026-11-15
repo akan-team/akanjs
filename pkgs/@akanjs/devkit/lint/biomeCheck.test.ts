@@ -75,4 +75,63 @@ describe.skipIf(!hasBiome)("BiomeCheck", () => {
     expect(capped.output).not.toContain("export const card: any");
     expect(capped.error).not.toBeNull();
   }, 60_000);
+
+  test("explains a biome.json Biome cannot read, in Biome's own words", async () => {
+    const root = await workspace();
+    await writeText(path.join(root, "biome.json"), '{ // a comment\n  "vcs": { "enabled": false } }');
+    const { error, output } = await run(root, { write: false, maxDiagnostics: 200 });
+    expect(output).toBe("");
+    expect(error?.message).toContain("biome.json");
+    expect(error?.message).not.toContain("gave no report");
+  }, 60_000);
+
+  test("reports every file of a large app in groups, and stops at the cap with the count left", async () => {
+    const root = await workspace();
+    await writeText(path.join(root, "apps/demo/env/env.server.main.ts"), "export const env = {};\n");
+    await writeText(path.join(root, "apps/demo/ui/card.ts"), "export const card = 1;\n");
+    for (let idx = 0; idx < 250; idx += 1)
+      await writeText(path.join(root, `apps/demo/ui/many/file${idx}.ts`), `export const value${idx}: any = ${idx};\n`);
+    const reported = (output: string) => output.match(/noExplicitAny ━/g)?.length ?? 0;
+
+    const all = await run(root, { write: false, maxDiagnostics: 0 });
+    expect(reported(all.output)).toBe(250);
+    expect(all.output).not.toContain("not shown");
+    expect(all.output.match(/^Found 250 errors\.$/gm)).toHaveLength(1);
+    expect(all.output).not.toContain("Checked ");
+    expect(all.error?.message).toBe("Lint found 250 errors.");
+
+    const capped = await run(root, { write: false, maxDiagnostics: 150 });
+    expect(reported(capped.output)).toBe(150);
+    expect(capped.output).toContain("50 more diagnostics are not shown; --max-diagnostics 0 shows them all.");
+  }, 120_000);
+
+  test("lists after a write only what is still wrong", async () => {
+    const root = await workspace();
+    await writeText(path.join(root, "apps/demo/env/env.server.main.ts"), "export const env = {};\n");
+    await writeText(path.join(root, "apps/demo/ui/card.ts"), "export const card = 1;\nexport const other   =   2\n");
+    const { output, error } = await run(root, { write: true, maxDiagnostics: 200 });
+    expect(output).toBe("");
+    expect(error).toBeNull();
+    expect(await Bun.file(path.join(root, "apps/demo/ui/card.ts")).text()).toContain("export const other = 2;");
+  }, 60_000);
+
+  test("withholds a grit plugin diagnostic on an env file", async () => {
+    const root = await workspace();
+    await writeText(
+      path.join(root, "no-marker.grit"),
+      'engine biome(1.0)\nlanguage js(typescript)\n`MARKER` as $m where { register_diagnostic(span = $m, message = "marker found", severity = "error") }\n',
+    );
+    await writeText(
+      path.join(root, "biome.json"),
+      JSON.stringify({ vcs: { enabled: false }, plugins: ["./no-marker.grit"] }),
+    );
+    await writeText(
+      path.join(root, "apps/demo/env/env.server.main.ts"),
+      `export const env = { password: MARKER, other: "${sentinel}" };\n`,
+    );
+    const { output, error } = await run(root, { write: false, maxDiagnostics: 200 });
+    expect(output).not.toContain(sentinel);
+    expect(output).toMatch(/env\.server\.main\.ts:\d+:\d+ error plugin - the text is withheld/);
+    expect(error).not.toBeNull();
+  }, 60_000);
 });
