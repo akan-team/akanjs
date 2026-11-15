@@ -290,6 +290,7 @@ export class RscWorker {
       rscPendingRenderCount: this.#requests.pending.size,
       rscQueuedSendCount: this.#requests.queuedSends.length,
       rscHostPendingChunkOverflowCount: this.#requests.hostPendingChunkOverflowCount,
+      ...this.#requests.gate?.counts(),
     });
   }
 
@@ -488,7 +489,11 @@ export class RscWorker {
     //? across a crash and a respawn that failed to boot, not a crash loop, where it would wait forever.
     const queued = new Set(this.#requests.queuedSends.map((entry) => entry.requestId));
     const keepsQueue = this.#worker.restart.attempts < RscWorker.#queuedRespawns;
-    this.#requests.failRequests(err, (requestId) => !keepsQueue || !queued.has(requestId));
+    const gate = this.#requests.gate;
+    this.#requests.failRequests(
+      err,
+      (requestId) => !keepsQueue || !(queued.has(requestId) || gate?.isWaiting(requestId)),
+    );
 
     if (this.#worker.killed) {
       this.#worker.status = "stopped";

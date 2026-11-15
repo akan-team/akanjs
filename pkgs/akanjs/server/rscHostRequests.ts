@@ -2,6 +2,7 @@ import { AkanError } from "akanjs/base";
 import type { Logger } from "akanjs/common";
 import { RequestTrace } from "../signal/requestTrace";
 import type { ClientManifest } from "./artifact";
+import { RscHostGate } from "./rscHostGate";
 import { createRscHostRenderStream, type RscPending, type RscRenderResult } from "./rscHostRenderStream";
 import type { RscProcess, RscWorkerErrorCode, RscWorkerProcess } from "./rscWorkerProcess";
 import type { RscRenderOptions, RscRenderTrace } from "./ssrTypes";
@@ -24,10 +25,16 @@ export class RscHostRequests {
   #sentManifest: { proc: RscProcess; manifest: ClientManifest; revision: number } | null = null;
   readonly #worker: RscWorkerProcess;
   readonly #logger: Logger;
+  readonly #gate: RscHostGate | null;
 
-  constructor(worker: RscWorkerProcess, logger: Logger) {
+  constructor(worker: RscWorkerProcess, logger: Logger, gate: RscHostGate | null = RscHostGate.from()) {
     this.#worker = worker;
     this.#logger = logger;
+    this.#gate = gate;
+  }
+
+  get gate(): RscHostGate | null {
+    return this.#gate;
   }
 
   get queuedSends(): readonly RscQueuedSend[] {
@@ -42,11 +49,19 @@ export class RscHostRequests {
     const requestId = crypto.randomUUID();
     //? Read here, in the request's own turn: a render queued behind a starting worker is sent from another one.
     const trace = RscHostRequests.#traceOf(RequestTrace.current());
+    const gate = this.#gate?.takes(req) ? this.#gate : null;
+    const send = () => this.#sendRenderOrQueue(requestId, req, options, trace);
+    let unsent = false;
     return createRscHostRenderStream({
-      setPending: (pending) => this.pending.set(requestId, pending),
-      deletePending: () => this.pending.delete(requestId),
-      sendRenderOrQueue: () => this.#sendRenderOrQueue(requestId, req, options, trace),
-      cancelRender: () => this.#cancelRender(requestId),
+      setPending: (pending) => this.pending.set(requestId, gate ? gate.watching(requestId, pending) : pending),
+      deletePending: () => {
+        this.pending.delete(requestId);
+        if (gate?.leave(requestId) === "waited") unsent = true;
+      },
+      sendRenderOrQueue: gate ? () => gate.enter(requestId, send) : send,
+      cancelRender: () => {
+        if (!unsent) this.#cancelRender(requestId);
+      },
       signal: options.signal,
       onPendingChunkOverflow: () => {
         this.#hostPendingChunkOverflowCount += 1;
