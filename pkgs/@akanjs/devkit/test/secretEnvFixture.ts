@@ -95,16 +95,30 @@ export const secretEnvFixtureNames = [
 
 export const holdsSentinel = (text: string) => text.includes("sentinel-");
 
-export const importedSecret = "sentinel-imported-llm-key-0a73";
+//* What no search of a build's files tells from code: a short password, a passphrase of plain words, a value under
+//* eight characters, and a plain-named key under a secret-named one.
+export const computedSecrets = {
+  password: "sentinel-12c",
+  passphrase: "sentinel-correct-horse-battery-xyzz",
+  short: "s9-k2",
+  user: "sentinel-user",
+};
 
-export const writeImportedSecretFixture = async (root: string, app = "demo"): Promise<SecretEnvFixture> => {
+export const computedSecretKeys = ["store.password", "store.passphrase", "otp.secret", "credentials.user"];
+
+export const writeComputedSecretFixture = async (root: string, app = "demo"): Promise<SecretEnvFixture> => {
   await writeText(
     path.join(root, "apps", app, "srvkit/keys.ts"),
-    `export const llmKey = ${JSON.stringify(importedSecret)};\n`,
+    `export const keys = ${JSON.stringify({ password: computedSecrets.password, passphrase: computedSecrets.passphrase, user: computedSecrets.user })};\n`,
   );
   return await writeSecretEnvFixture(root, {
     app,
-    mainHead: 'import { llmKey } from "../srvkit/keys";\n',
-    mainExtra: "\n  llm: { apiKey: llmKey },",
+    mainHead: 'import { keys } from "../srvkit/keys";\n',
+    mainExtra: [
+      "",
+      "  store: { password: keys.password, passphrase: keys.passphrase },",
+      `  otp: { secret: ${JSON.stringify(computedSecrets.short.split("-"))}.join("-") },`,
+      "  credentials: { user: keys.user },",
+    ].join("\n"),
   });
 };

@@ -3,12 +3,13 @@ import path from "node:path";
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import { ServerBundleSecrets } from "../mobile/serverBundleSecrets";
 import {
+  computedSecretKeys,
+  computedSecrets,
   holdsSentinel,
-  importedSecret,
   secretEnvFixtureNames,
   secretEnvPlain,
   secretEnvSentinels,
-  writeImportedSecretFixture,
+  writeComputedSecretFixture,
   writeSecretEnvFixture,
 } from "../test/secretEnvFixture";
 import { tempDirs, writeText } from "../test/testHelpers";
@@ -32,11 +33,9 @@ interface Built {
 const build = async (
   root: string,
   secrets?: "read" | "inline",
-  { mainExtra = "", overSwitch = false, imported = false } = {},
+  { mainExtra = "", overSwitch = false } = {},
 ): Promise<Built> => {
-  const { appDir, envDir } = imported
-    ? await writeImportedSecretFixture(root)
-    : await writeSecretEnvFixture(root, { mainExtra });
+  const { appDir, envDir } = await writeSecretEnvFixture(root, { mainExtra });
   if (overSwitch)
     await writeText(path.join(envDir, "env.server.ts"), await Bun.file(path.join(envDir, "env.server.main.ts")).text());
   const entry = path.join(appDir, "server.ts");
@@ -183,34 +182,25 @@ describe("createServerEnvPlugin for an image", () => {
     expect(booted.env).toEqual((await evaluated(built)) as { [key: string]: unknown });
   });
 
-  test("a secret the env file imports stays in the built server, which the image check refuses by file and key alone", async () => {
-    const built = await build(await makeTempRoot(), "read", { imported: true });
-    expect(built.text).toContain(importedSecret);
-    expect(built.text).not.toContain(secretEnvSentinels.jwt);
-    const { held, unmoved } = await SecretEnvDeclaration.of(built.envDir, "main");
-    expect(unmoved).toEqual(["llm.apiKey"]);
-    const failure = await new ServerBundleSecrets(built.root, built.appDir)
-      .assertImageClean(built.outDir, path.join(built.envDir, "env.server.ts"), held)
-      .then(
-        () => "",
-        (error: Error) => error.message,
-      );
-    expect(failure).toBe(
-      [
-        "The build holds secret values of the server env (apps/demo/env/env.server.ts), so it stops here:",
-        "  server.js holds llm.apiKey",
-        "The env file computes or imports each of them, so the build could not turn it into a read from the process env. Write `process.env.<NAME>` there and set that variable where the server is deployed, or build with --inline-secrets, which akanjs 3.5.0 removes.",
-      ].join("\n"),
-    );
-    expect(holdsSentinel(failure)).toBe(false);
-
-    const clean = await build(await makeTempRoot(), "read");
-    const declared = await SecretEnvDeclaration.of(clean.envDir, "main");
-    await new ServerBundleSecrets(clean.root, clean.appDir).assertImageClean(
-      clean.outDir,
-      path.join(clean.envDir, "env.server.ts"),
-      declared.held,
-    );
+  test("a secret the env file imports or computes stays in the built server, and the declaration names its key whatever the value's length", async () => {
+    const root = await makeTempRoot();
+    const { appDir, envDir } = await writeComputedSecretFixture(root);
+    const entry = path.join(appDir, "server.ts");
+    await writeText(entry, 'import { env } from "./env/env.server";\nconsole.info(JSON.stringify(env));\n');
+    const result = await Bun.build({
+      entrypoints: [entry],
+      outdir: path.join(root, "dist/apps/demo"),
+      target: "bun",
+      plugins: [createServerEnvPlugin({ envDir, environment: "main", environments, secrets: "read" })],
+    });
+    const text = (await result.outputs.find((artifact) => artifact.kind === "entry-point")?.text()) ?? "";
+    expect(text).toContain(computedSecrets.password);
+    expect(text).toContain(computedSecrets.passphrase);
+    expect(text).toContain(computedSecrets.user);
+    expect(text).not.toContain(secretEnvSentinels.jwt);
+    const declared = await SecretEnvDeclaration.of(envDir, "main");
+    expect(declared.unmoved).toEqual(computedSecretKeys);
+    expect(declared.variables.map(({ name }) => name)).toEqual(secretEnvFixtureNames);
   });
 
   test("a secret the env file reads from the process env itself stays that read in the built server, which holds no value the build's shell gave it", async () => {

@@ -34,7 +34,12 @@ export class SecretEnvFile {
 
   static unmovedNote(unmoved: readonly string[]): string {
     if (!unmoved.length) return "";
-    return `Not read from a variable, since the env file computes or imports ${unmoved.length === 1 ? "it" : "them"}: ${unmoved.join(", ")}. Write \`process.env.<NAME>\` there for a build to leave the value out.`;
+    return `\`akan build\` stops at ${unmoved.join(", ")}: ${unmoved.length === 1 ? "a secret value" : "secret values"} the env file computes or imports. Write the string at the key, or read it there yourself as \`process.env.<NAME>\`.`;
+  }
+
+  static unmovedStop(app: string, environment: string, envFile: string, unmoved: readonly string[]): string {
+    const one = unmoved.length === 1;
+    return `The server env of ${app} (${environment}) holds ${one ? "a secret value" : `${unmoved.length} secret values`} this build cannot leave out, so it stops here: ${unmoved.join(", ")} (${envFile} and what it imports).\nA build turns a secret written as a string at its key into a read from the server's process env, and ${one ? "this one is" : "these are"} computed or imported. Write the string at the key, or read it there yourself as \`process.env.<NAME>\` and set that variable where the server is deployed. \`akan build --inline-secrets\` builds with the env files as written until akanjs 3.5.0 removes it.`;
   }
 
   static render(format: SecretEnvFormat, variables: readonly SecretEnvVariable[], name: string): string {

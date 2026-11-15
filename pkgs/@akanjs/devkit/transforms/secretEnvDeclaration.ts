@@ -12,11 +12,6 @@ export interface SecretEnvVariable extends SecretEnvEntry {
   value: string;
 }
 
-export interface SecretEnvHeld {
-  path: string;
-  value: string;
-}
-
 interface Variables {
   readonly [name: string]: string;
 }
@@ -40,8 +35,6 @@ export interface SecretEnvDeclared {
   variables: SecretEnvVariable[];
   /** Keys whose secret value the env computes or imports, so no build can read it from a variable. A value that comes from the env file's own read of the process env is not one. */
   unmoved: string[];
-  /** The values of `unmoved` long enough to look for in the files a build wrote. */
-  held: SecretEnvHeld[];
 }
 
 //* Evaluated with each secret literal marked as a build replaces it, so the list is the reads the built server holds.
@@ -67,11 +60,7 @@ export class SecretEnvDeclaration {
       variables.set(variable.name, variable);
     }
     const computed = await SecretEnvDeclaration.#notRead(found.computed, file, envDir, environment, loaded);
-    const unmoved = [...new Set(computed.map(({ at }) => at))];
-    const held = ServerEnvProfile.secretValues(SecretEnvDeclaration.#withoutMarks(loaded.value)).filter((secret) =>
-      unmoved.some((at) => secret.path === at || secret.path.startsWith(`${at}.`)),
-    );
-    return { variables: [...variables.values()], unmoved, held };
+    return { variables: [...variables.values()], unmoved: [...new Set(computed.map(({ at }) => at))] };
   }
 
   static async #evaluate(file: string, envDir: string, environment: string, variables: Variables) {
@@ -145,18 +134,6 @@ export class SecretEnvDeclaration {
     const given = probed.replace(new RegExp(SecretEnvDeclaration.#set, "gi"), "");
     const unset = new RegExp(SecretEnvDeclaration.#unset, "gi");
     return ["undefined", "", "null"].some((gone) => given.replace(unset, gone) === value);
-  }
-
-  static #withoutMarks(value: unknown): unknown {
-    if (!value || typeof value !== "object") return value;
-    if (Array.isArray(value)) return value.map((item) => SecretEnvDeclaration.#withoutMarks(item));
-    return Object.fromEntries(
-      Object.entries(value).flatMap(([key, child]) =>
-        Array.isArray((child as { [key: string]: unknown } | null)?.[SecretEnvSource.markKey])
-          ? []
-          : [[key, SecretEnvDeclaration.#withoutMarks(child)]],
-      ),
-    );
   }
 
   static async source(file: string, mode: SecretEnvMode): Promise<ServerEnvSource> {

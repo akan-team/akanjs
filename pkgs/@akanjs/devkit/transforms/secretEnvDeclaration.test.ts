@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import {
+  computedSecretKeys,
   holdsSentinel,
   secretEnvFixtureNames,
   secretEnvSentinels,
+  writeComputedSecretFixture,
   writeSecretEnvFixture,
 } from "../test/secretEnvFixture";
 import { tempDirs, writeText } from "../test/testHelpers";
@@ -47,8 +49,8 @@ const shellOwn = {
 describe("SecretEnvDeclaration", () => {
   test("lists each secret of the environment's server env with its variable, kind and value, a lib's default included", async () => {
     const { envDir } = await writeSecretEnvFixture(await makeTempRoot());
-    const { variables, unmoved, held } = await SecretEnvDeclaration.of(envDir, "main");
-    expect({ unmoved, held }).toEqual({ unmoved: [], held: [] });
+    const { variables, unmoved } = await SecretEnvDeclaration.of(envDir, "main");
+    expect(unmoved).toEqual([]);
     expect(variables.map(({ name }) => name)).toEqual(secretEnvFixtureNames);
     expect(Object.fromEntries(variables.map(({ name, kind, path: at, value }) => [name, { kind, at, value }]))).toEqual(
       {
@@ -121,18 +123,26 @@ describe("SecretEnvDeclaration", () => {
     ]);
   });
 
+  test("names every key whose secret the env file imports or computes, a short one and a plain-named one under a secret parent included", async () => {
+    const { envDir } = await writeComputedSecretFixture(await makeTempRoot());
+    const declared = await SecretEnvDeclaration.of(envDir, "main");
+    expect(declared.unmoved).toEqual(computedSecretKeys);
+    expect(SecretEnvFile.listing(declared)).toEndWith(
+      `\n\`akan build\` stops at ${computedSecretKeys.join(", ")}: secret values the env file computes or imports. Write the string at the key, or read it there yourself as \`process.env.<NAME>\`.`,
+    );
+  });
+
   test("names a secret the env file computes as one no build can move, without its value", async () => {
     const { envDir } = await writeSecretEnvFixture(await makeTempRoot(), {
       mainExtra: '\n  llm: { apiKey: ["sentinel", "computed", "0a73"].join("-") },',
     });
     const declared = await SecretEnvDeclaration.of(envDir, "main");
     expect(declared.unmoved).toEqual(["llm.apiKey"]);
-    expect(declared.held).toEqual([{ path: "llm.apiKey", value: "sentinel-computed-0a73" }]);
     expect(declared.variables.map(({ name }) => name)).toEqual(secretEnvFixtureNames);
     const listing = SecretEnvFile.listing(declared);
     expect(holdsSentinel(listing)).toBe(false);
     expect(listing).toEndWith(
-      "\nNot read from a variable, since the env file computes or imports it: llm.apiKey. Write `process.env.<NAME>` there for a build to leave the value out.",
+      "\n`akan build` stops at llm.apiKey: a secret value the env file computes or imports. Write the string at the key, or read it there yourself as `process.env.<NAME>`.",
     );
   });
 

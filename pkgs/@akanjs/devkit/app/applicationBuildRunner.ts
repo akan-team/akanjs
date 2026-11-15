@@ -15,8 +15,8 @@ import {
   SsrBaseArtifactBuilder,
   VendorImportScanner,
 } from "../frontendBuild";
-import { ServerBundleSecrets } from "../mobile/serverBundleSecrets";
 import { SecretEnvDeclaration, type SecretEnvDeclared } from "../transforms/secretEnvDeclaration";
+import { SecretEnvFile } from "../transforms/secretEnvFile";
 import { ServerEnvEvaluationError } from "../transforms/serverEnvEvaluationError";
 import { createServerEnvPlugin } from "../transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
@@ -120,7 +120,7 @@ export class ApplicationBuildRunner {
   #environment?: string;
   #profile?: string;
   #secretEnv?: "read" | "inline";
-  #secrets: SecretEnvDeclared = { variables: [], unmoved: [], held: [] };
+  #secrets: SecretEnvDeclared = { variables: [], unmoved: [] };
   #budget: RouteJsBudgetMode;
   #modulesByRoute?: Record<string, string[]>;
   #spinner?: boolean;
@@ -235,7 +235,6 @@ export class ApplicationBuildRunner {
           : "no files",
     );
     const routeJs = await this.#runBudgetPhase(environment);
-    await this.assertSecretsLeftOut();
     await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
     this.#reportSecretEnv(environment);
     return this.#resultOf(environment, routeJs);
@@ -257,21 +256,22 @@ export class ApplicationBuildRunner {
       );
       this.#secretEnv = undefined;
     }
-  }
-
-  //? Before the metadata phase: a build that still holds a secret gets no Dockerfile to build an image from.
-  async assertSecretsLeftOut() {
-    if (this.#secretEnv !== "read" || !this.#secrets.held.length) return;
-    const { workspaceRoot } = this.#app.workspace;
-    await new ServerBundleSecrets(workspaceRoot, this.#app.cwdPath).assertImageClean(
-      this.#app.dist.cwdPath,
-      path.join(this.#envDir, "env.server.ts"),
-      this.#secrets.held,
-    );
+    //? Before any phase, and by the env's value alone: a search of the files written misses a short or a plain one.
+    if (this.#secretEnv === "read" && this.#secrets.unmoved.length)
+      throw new Error(
+        SecretEnvFile.unmovedStop(
+          this.#app.name,
+          environment,
+          path
+            .relative(this.#app.workspace.workspaceRoot, path.join(this.#envDir, "env.server.ts"))
+            .replaceAll("\\", "/"),
+          this.#secrets.unmoved,
+        ),
+      );
   }
 
   #reportSecretEnv(environment: string) {
-    const { variables, unmoved } = this.#secrets;
+    const { variables } = this.#secrets;
     const { logger, name } = this.#app;
     const names = variables.map((variable) => variable.name).join(", ");
     const count = `${variables.length} secret value${variables.length === 1 ? "" : "s"}`;
@@ -282,10 +282,6 @@ export class ApplicationBuildRunner {
     else if (variables.length)
       logger.info(
         `The server reads ${count} from its process env when it starts, not from this build: ${names}. Set them where it is deployed; \`akan secret-env ${name} --env ${environment}\` lists them and writes them from the env file.`,
-      );
-    if (unmoved.length && this.#secretEnv === "read")
-      logger.warn(
-        `${unmoved.length} secret value${unmoved.length === 1 ? "" : "s"} of the server env stay${unmoved.length === 1 ? "s" : ""} in this build, since the env file computes or imports ${unmoved.length === 1 ? "it" : "them"}: ${unmoved.join(", ")}. Write \`process.env.<NAME>\` there for a build to leave ${unmoved.length === 1 ? "it" : "them"} out.`,
       );
   }
 
