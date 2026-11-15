@@ -1332,6 +1332,10 @@ export declare const routeDefinitionMarker: unique symbol;
 
 export declare const router: Router;
 
+export declare const scriptHashes: (...hashes: string[]) => void;
+
+export declare const scriptNonce: () => string | undefined;
+
 export declare const secretStorage: {
     getItem: (key: string) => Promise<null | string | undefined>;
     setItem: (key: string, value: string) => Promise<undefined | void>;

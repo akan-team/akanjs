@@ -9,7 +9,8 @@ import {
   runsThatDiffer,
   wholeStreamOf,
 } from "./flightSanitize.fixture";
-import { createInlineRscScript, sanitizeFlightForClientStream, sanitizeFlightForSsrStream } from "./ssrFromRscRenderer";
+import { sanitizeFlightForClientStream, sanitizeFlightForSsrStream } from "./ssrFromRscRenderer";
+import { createInlineRscScript } from "./ssrInlineScripts";
 
 const recordedPath = path.join(import.meta.dir, "flightSanitizeRecorded.fixture.json");
 const howToRecord =

@@ -28,6 +28,7 @@
     "/:lang/cheatsheet/general/file": 551,
     "/:lang/cheatsheet/general/mcp-auth": 551,
     "/:lang/cheatsheet/general/schema": 551,
+    "/:lang/cheatsheet/general/script-policy": 555,
     "/:lang/cheatsheet/general/search": 551,
     "/:lang/cheatsheet/general/sso": 551,
     "/:lang/cheatsheet/interface/agent-chat": 551,

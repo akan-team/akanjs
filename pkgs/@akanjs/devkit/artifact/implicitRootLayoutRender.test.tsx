@@ -282,7 +282,10 @@ describe("The generated System root layout, built and rendered", () => {
       "(bare)/bar.tsx": pageSource,
     };
     await withBuiltPages({ routes, unbounded: "(bare)" }, async (render) => {
-      const beforeScripts = (html: string) => html.slice(html.indexOf("<body>"), html.indexOf("<script"));
+      const beforeScripts = (html: string) => {
+        const body = html.indexOf("<body>");
+        return html.slice(body, html.indexOf("<script", body));
+      };
       const bounded = await render("ids");
       const bare = beforeScripts((await render("bar")).html);
       expect(beforeScripts(bounded.html)).toContain('<section id="user"><b id="_R_');
