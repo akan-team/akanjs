@@ -150,7 +150,7 @@ describe("statement metrics", () => {
     await Promise.all([transaction, waiting]);
 
     const stats = statementMetrics.top(50);
-    const outside = stats.find((stat) => stat.op === "updateMany");
+    const outside = stats.find((stat) => stat.text.startsWith("UPDATE"));
     expect(outside?.waitMs).toBeGreaterThanOrEqual(30);
     expect(outside?.totalMs).toBeLessThan(outside?.waitMs ?? 0);
   });
