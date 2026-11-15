@@ -117,6 +117,25 @@ describe("ErrorReporting", () => {
     }
   });
 
+  test("hands over at most three render errors of one request, and other requests' and other sources' as before", async () => {
+    const calls = collect();
+    const first = "0af7651916cd43dd8448eb211c80319c";
+    const second = "4bf92f3577b34da6a3ce929d0e0e4736";
+    for (let i = 0; i < 5; i += 1) ErrorReporting.report(new Error(`row ${i}`), { source: "render", traceId: first });
+    ErrorReporting.report(new Error("another page"), { source: "render", traceId: second });
+    ErrorReporting.report(new Error("its endpoint"), { source: "server", traceId: first });
+    await ErrorReporting.flush();
+
+    expect(ErrorReporting.renderPerRequest).toBe(3);
+    expect(calls.map(([error, context]) => [error.message, context.source])).toEqual([
+      ["row 0", "render"],
+      ["row 1", "render"],
+      ["row 2", "render"],
+      ["another page", "render"],
+      ["its endpoint", "server"],
+    ]);
+  });
+
   test("waits at a flush for a reporter still sending, up to the deadline", async () => {
     let sent = false;
     ErrorReporting.use(async () => {

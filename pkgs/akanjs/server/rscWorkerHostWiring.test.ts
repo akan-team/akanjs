@@ -42,6 +42,15 @@ process.on("message", (message) => {
       process.send?.({ type: "not-found", requestId: message.requestId });
       return;
     }
+    if (url.pathname === "/render-errors") {
+      const traceId = "4bf92f3577b34da6a3ce929d0e0e4736";
+      for (let row = 0; row < 5; row += 1) {
+        const error = { name: "Error", message: "row " + row + " had no price", stack: null, code: null, cause: null };
+        process.send?.({ type: "render-error", error, digest: "d" + row, routeId: "/:lang/orders", traceId });
+      }
+      process.send?.({ type: "not-found", requestId: message.requestId });
+      return;
+    }
     if (url.pathname === "/metrics") {
       process.send?.({ type: "not-found", requestId: message.requestId });
       const renders = Number(url.searchParams.get("renders"));
@@ -204,6 +213,18 @@ describe("RscWorker collaborator wiring", () => {
       accountId: null,
       digest: "a1b2c3d4",
     });
+  }, 20_000);
+
+  test("of the render errors a worker sends for one request, the reporter gets three", async () => {
+    const digests: (string | null)[] = [];
+    ErrorReporting.use((_error, context) => void digests.push(context.digest));
+    cleanups.push(async () => ErrorReporting.use(null));
+    const { rsc } = await startWorker();
+    expect((await rsc.renderWithMeta(new Request("http://localhost/render-errors"))).type).toBe("not-found");
+    expect((await rsc.renderWithMeta(new Request("http://localhost/render-error"))).type).toBe("not-found");
+
+    await until(() => digests.includes("a1b2c3d4"), "the next request's report");
+    expect(digests).toEqual(["d0", "d1", "d2", "a1b2c3d4"]);
   }, 20_000);
 
   test("a cache invalidation reaches the worker", async () => {
