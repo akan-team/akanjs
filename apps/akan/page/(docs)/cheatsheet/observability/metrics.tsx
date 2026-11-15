@@ -1033,7 +1033,9 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                     <strong>fingerprint</strong>, 12 hex characters hashed from its normalized text: every literal is{" "}
                     <code>?</code>, and a placeholder list, an <code>IN (…)</code> list or repeated <code>VALUES</code>{" "}
                     rows collapse to one, so <code>LIMIT 10</code> and <code>LIMIT 20</code>, or three ids and thirty,
-                    are one statement. Only the name is normalized; the text sent is unchanged.
+                    are one statement. Strings of every form, numbers, comments and JSON field paths are replaced too,
+                    so two filters that differ only by field share one entry. Only the name is normalized; the text sent
+                    is unchanged.
                   </span>
                 ),
                 ko: (
@@ -1042,7 +1044,8 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                     span, 이 수치, 느린 문 로그가 모두 이 한 곳을 읽습니다. 문마다 정규화한 텍스트를 해시한 16진수
                     12자리 <strong>fingerprint</strong>가 붙습니다. 리터럴은 모두 <code>?</code>가 되고, placeholder
                     목록, <code>IN (…)</code> 목록, 반복되는 <code>VALUES</code> 행은 하나로 접히므로{" "}
-                    <code>LIMIT 10</code>과 <code>LIMIT 20</code>, id 3개와 30개는 같은 문입니다. 정규화는 이름에만
+                    <code>LIMIT 10</code>과 <code>LIMIT 20</code>, id 3개와 30개는 같은 문입니다. 모든 형태의 문자열,
+                    숫자, 주석, JSON field 경로도 바뀌므로 field만 다른 두 필터는 한 항목을 씁니다. 정규화는 이름에만
                     쓰이고, 실제로 보내는 텍스트는 바뀌지 않습니다.
                   </span>
                 ),
