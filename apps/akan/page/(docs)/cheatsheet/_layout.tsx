@@ -36,6 +36,11 @@ export default layout()
             audience: "both",
           },
           {
+            name: l.trans({ en: "Script Policy", ko: "스크립트 정책" }),
+            href: "/cheatsheet/general/script-policy",
+            audience: "both",
+          },
+          {
             name: l.trans({ en: "File Management", ko: "파일 관리" }),
             href: "/cheatsheet/general/file",
             audience: "both",

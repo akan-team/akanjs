@@ -19,6 +19,8 @@ export interface CsrDevShellRenderOptions {
   lang: string;
   title: string;
   cssHref: string | null;
+  /** The response's script nonce: the three scripts load by URL, which the page's script policy otherwise refuses. */
+  nonce?: string;
 }
 
 export interface CsrDevShellOptions {
@@ -65,10 +67,11 @@ export class CsrDevShell {
     return (await file.json().catch(() => null)) as CsrDevManifest | null;
   }
 
-  async render({ basePath, lang, title, cssHref }: CsrDevShellRenderOptions): Promise<string | null> {
+  async render({ basePath, lang, title, cssHref, nonce }: CsrDevShellRenderOptions): Promise<string | null> {
     const manifest = await this.readManifest();
     const entry = manifest?.entries[basePath];
     if (!manifest || !entry) return null;
+    const nonceAttr = nonce ? ` nonce="${CsrDevShell.#attr(nonce)}"` : "";
     const stylesheet = cssHref
       ? `    <link rel="stylesheet" href="${CsrDevShell.#attr(cssHref)}" data-akan-css="active" />\n`
       : "";
@@ -82,9 +85,9 @@ export class CsrDevShell {
 ${stylesheet}  </head>
   <body>
     <div id="root"></div>
-    <script src="${this.#routePrefix}runtime.js?v=${CsrDevShell.#runtimeHash}"></script>
-    <script src="${this.#routePrefix}${CsrDevShell.#attr(manifest.vendorFile)}"></script>
-    <script src="${this.#routePrefix}${CSR_DEV_APP_FILE}?g=${manifest.generation}" data-akan-csr-entry="${CsrDevShell.#attr(entry)}"></script>
+    <script${nonceAttr} src="${this.#routePrefix}runtime.js?v=${CsrDevShell.#runtimeHash}"></script>
+    <script${nonceAttr} src="${this.#routePrefix}${CsrDevShell.#attr(manifest.vendorFile)}"></script>
+    <script${nonceAttr} src="${this.#routePrefix}${CSR_DEV_APP_FILE}?g=${manifest.generation}" data-akan-csr-entry="${CsrDevShell.#attr(entry)}"></script>
   </body>
 </html>
 `;

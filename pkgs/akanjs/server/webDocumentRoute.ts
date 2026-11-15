@@ -1,4 +1,4 @@
-import { type AkanRequestStore, createRequestStore } from "akanjs/fetch";
+import { type AkanRequestStore, createRequestStore, SCRIPT_NONCE_HEADER } from "akanjs/fetch";
 import { SignalContext } from "../signal/signalContext";
 import type { MergedManifest, ModulePreloadPlan } from "./artifact";
 import { encodedBodyResponse } from "./contentEncoding";
@@ -9,8 +9,10 @@ import { SsrDevShim } from "./hmr/ssrDevShim";
 import type { HtmlResultCache } from "./htmlResultCache";
 import { PageCall } from "./metrics/requestMetrics";
 import type { RscRedirectStatus, RscRenderResult, RscWorker } from "./rscWorkerHost";
+import { MAX_RESPONSE_SCRIPT_HASHES, ScriptPolicy, type ScriptPolicySources } from "./scriptPolicy";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
+import { SsrInlineScripts } from "./ssrInlineScripts";
 import { WebRouteContext } from "./webRouteContext";
 
 type RscStreamResult = Extract<RscRenderResult, { type: "stream" }>;
@@ -28,6 +30,7 @@ interface HtmlRenderInput {
   manifest: MergedManifest;
   isCrawler: boolean;
   hostRequestStore: AkanRequestStore;
+  nonce: string;
 }
 
 // A render's redirect follows the request's cookies, so no cache between here and the browser may keep it.
@@ -86,19 +89,22 @@ export class WebDocumentRoute {
     const htmlCacheEntry = htmlCacheDecision.entry;
     const cachedHtml = htmlCacheEntry ? this.#htmlCache.get(htmlCacheEntry) : null;
     if (cachedHtml) {
-      const cachedHeaders = context.htmlResponseHeaders(200, req);
+      const cachedHeaders = context.htmlResponseHeaders(200, req, { hashes: cachedHtml.scriptHashes });
       cachedHeaders.set("X-Akan-Cache", "HIT");
-      return encodedBodyResponse(req, cachedHtml, { headers: cachedHeaders });
+      return encodedBodyResponse(req, cachedHtml.body, { headers: cachedHeaders });
     }
-    const rscResult = await this.#rsc.renderWithMeta(req, {
+    const nonce = ScriptPolicy.createNonce();
+    const renderReq = WebDocumentRoute.#withScriptNonce(req, nonce);
+    const rscResult = await this.#rsc.renderWithMeta(renderReq, {
       clientManifest: manifest.clientManifest,
       signal: req.signal,
       clientIp: SignalContext.clientIpOf(req),
     });
     if (rscResult.type === "redirect") return createDocumentRedirectResponse(rscResult.location, url, rscResult.status);
     if (rscResult.type === "not-found") return "not-found";
-    const hostRequestStore = createRequestStore(req);
-    const htmlStream = await this.#renderHtml(req, url, { rscResult, manifest, isCrawler, hostRequestStore });
+    const hostRequestStore = createRequestStore(renderReq);
+    const scripts = this.#scriptSources(nonce, page.route, rscResult.trace?.scriptHashes);
+    const htmlStream = await this.#renderHtml(req, url, { rscResult, manifest, isCrawler, hostRequestStore, nonce });
     //? A not-found or redirect the page raised after the stream started is known here only if the host still held the
     //? response (a blocking or crawler render, or one raised before the shell was ready); then it is a real one.
     const lateControl = await Promise.race([rscResult.lateControl, Promise.resolve(null)]);
@@ -107,7 +113,7 @@ export class WebDocumentRoute {
       return createDocumentRedirectResponse(lateControl.location, url, lateControl.status);
     }
     const responseStatus = lateControl?.type === "not-found" ? 404 : (rscResult.status ?? 200);
-    const responseHeaders = context.htmlResponseHeaders(responseStatus, req);
+    const responseHeaders = context.htmlResponseHeaders(responseStatus, req, scripts);
     if (req.method === "HEAD") {
       const headers = new Headers(responseHeaders);
       if (htmlCacheEntry && responseStatus === 200) headers.set("X-Akan-Cache", "MISS");
@@ -128,6 +134,7 @@ export class WebDocumentRoute {
         cacheState: rscResult.cacheState,
         hostRequestStore,
         logger: context.logger,
+        scripts,
       });
       return new Response(body, {
         status: responseStatus,
@@ -145,18 +152,33 @@ export class WebDocumentRoute {
     });
   }
 
+  //? The worker reads only the request's line and headers, and a page's head reads the nonce as one of them
+  //? (`scriptNonce()`); set, never appended, so a header of that name off the wire is not what a page gets.
+  static #withScriptNonce(req: Request, nonce: string): Request {
+    const headers = new Headers(req.headers);
+    headers.set(SCRIPT_NONCE_HEADER, nonce);
+    return new Request(req.url, { method: req.method, headers });
+  }
+
+  #scriptSources(nonce: string, route: string, declared: string[] = []): ScriptPolicySources {
+    const own = SsrInlineScripts.policyHashes(this.#context.artifact.vendorMap);
+    const added = declared.flatMap((hash) => ScriptPolicy.hashSource(hash) ?? []);
+    const hashes = [...new Set([...own, ...added])];
+    if (hashes.length > MAX_RESPONSE_SCRIPT_HASHES && ScriptPolicy.firstReport("declared", route))
+      this.#context.logger.warn(
+        `script policy: route ${route} names ${hashes.length} script hashes and a response names ` +
+          `${MAX_RESPONSE_SCRIPT_HASHES}, so its last ${hashes.length - MAX_RESPONSE_SCRIPT_HASHES} are left out`,
+      );
+    return { nonce, hashes: hashes.slice(0, MAX_RESPONSE_SCRIPT_HASHES) };
+  }
+
   async #renderHtml(req: Request, url: URL, input: HtmlRenderInput): Promise<ReadableStream<Uint8Array>> {
-    const { rscResult, manifest, isCrawler, hostRequestStore } = input;
+    const { rscResult, manifest, isCrawler, hostRequestStore, nonce } = input;
     const { artifact, prodMode } = this.#context;
     // First-paint data-theme: cookie is no longer a React <html> prop (RSC cache would replay it).
     const cookieTheme = WebRouteContext.cookieValue(req, "theme");
     const dictionaryUrl = this.#context.dictionaryUrlOf(req.headers, url.pathname);
-    const extraBootstrapInline = [
-      rscResult.trace?.routeState
-        ? `self.__AKAN_RSC_INITIAL_STATE__=${JSON.stringify(rscResult.trace.routeState)};`
-        : "",
-      dictionaryUrl ? `self.__AKAN_DICT_URL__=${JSON.stringify(dictionaryUrl)};` : "",
-      `self.__AKAN_IMPORT_MAP_KEY__=${JSON.stringify(this.#importMapKey)};`,
+    const devBootstrapInline = [
       this.#ssrDevShell
         ? SsrDevShim.script(await this.#ssrDevShell.readManifest(), Object.keys(artifact.vendorMap))
         : "",
@@ -172,7 +194,9 @@ export class WebDocumentRoute {
       bootstrapModules: [artifact.rscClientUrl],
       modulePreloads: dictionaryUrl ? [dictionaryUrl] : undefined,
       modulePreloadPlan: this.#modulePreloadPlan,
-      extraBootstrapInline: extraBootstrapInline || undefined,
+      bootstrapData: { routeState: rscResult.trace?.routeState, dictionaryUrl, importMapKey: this.#importMapKey },
+      devBootstrapInline: devBootstrapInline || undefined,
+      nonce,
       importmap: artifact.vendorMap,
       //? Read once the shell has rendered: the root layout's theme arrives after the stream starts.
       get theme() {
