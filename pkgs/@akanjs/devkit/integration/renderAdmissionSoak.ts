@@ -93,6 +93,7 @@ export interface SoakRunResult {
 // Every row is a fresh server: RSS only grows within a process, so a shared one would carry the last cap's peak.
 export class RenderAdmissionSoak {
   static readonly #pagePath = "soak/io";
+  static readonly #markerName = ".render-admission-soak.json";
   static readonly #page = `import { page } from "akanjs/client";
 
 export default page()
@@ -155,6 +156,9 @@ export default page()
   readonly #options: RenderAdmissionSoakOptions;
   readonly #statusToken = randomBytes(32).toString("hex");
   #serverPid = 0;
+  #server: { kill: (signal: NodeJS.Signals) => void } | null = null;
+  #build: { kill: (signal: NodeJS.Signals) => void } | null = null;
+  #injected = false;
 
   constructor(options: RenderAdmissionSoakOptions) {
     this.#options = options;
@@ -164,7 +168,54 @@ export default page()
     return `http://127.0.0.1:${this.#options.port}`;
   }
 
+  static pageDirOf(workspaceRoot: string, appName: string): string {
+    return path.join(workspaceRoot, "apps", appName, "page", path.dirname(RenderAdmissionSoak.#pagePath));
+  }
+
+  //? The marker lists what this script wrote, so a `page/soak` an app owns is neither overwritten nor removed.
+  static injectPage(pageDir: string): void {
+    const marker = path.join(pageDir, RenderAdmissionSoak.#markerName);
+    if (fs.existsSync(pageDir) && !fs.existsSync(marker))
+      throw new Error(`${pageDir} already exists and this script did not create it; the soak page needs that name`);
+    RenderAdmissionSoak.removePage(pageDir);
+    const file = `${path.basename(RenderAdmissionSoak.#pagePath)}.tsx`;
+    fs.mkdirSync(pageDir, { recursive: true });
+    fs.writeFileSync(marker, JSON.stringify({ files: [file] }));
+    fs.writeFileSync(path.join(pageDir, file), RenderAdmissionSoak.#page);
+  }
+
+  static removePage(pageDir: string): void {
+    const marker = path.join(pageDir, RenderAdmissionSoak.#markerName);
+    if (!fs.existsSync(marker)) return;
+    const { files } = JSON.parse(fs.readFileSync(marker, "utf8")) as { files: string[] };
+    for (const file of files) fs.rmSync(path.join(pageDir, path.basename(file)), { force: true });
+    fs.rmSync(marker, { force: true });
+    if (fs.readdirSync(pageDir).length === 0) fs.rmdirSync(pageDir);
+  }
+
   async run(): Promise<SoakRunResult[]> {
+    const stop = () => void this.#stop().finally(() => process.exit(130));
+    process.once("SIGINT", stop);
+    process.once("SIGTERM", stop);
+    try {
+      return await this.#measure();
+    } finally {
+      process.off("SIGINT", stop);
+      process.off("SIGTERM", stop);
+    }
+  }
+
+  async #stop(): Promise<void> {
+    this.#build?.kill("SIGTERM");
+    if (this.#injected) RenderAdmissionSoak.removePage(this.#pageDir);
+    if (this.#server) await DevResourceProbe.killTree(this.#server, () => this.#sampleTree());
+  }
+
+  get #pageDir(): string {
+    return RenderAdmissionSoak.pageDirOf(this.#options.workspaceRoot, this.#options.appName);
+  }
+
+  async #measure(): Promise<SoakRunResult[]> {
     const { appName, distDir, caps, mixes, runs, outPath } = this.#options;
     if (this.#options.prepare) await this.#prepare();
     if (!fs.existsSync(path.join(distDir, "main.js")))
@@ -190,19 +241,20 @@ export default page()
 
   async #prepare(): Promise<void> {
     const { appName, workspaceRoot, cliEntry } = this.#options;
-    const file = path.join(workspaceRoot, "apps", appName, "page", `${RenderAdmissionSoak.#pagePath}.tsx`);
-    if (fs.existsSync(file)) throw new Error(`${file} already exists; the soak page would overwrite it`);
-    fs.mkdirSync(path.dirname(file), { recursive: true });
-    fs.writeFileSync(file, RenderAdmissionSoak.#page);
+    RenderAdmissionSoak.injectPage(this.#pageDir);
+    this.#injected = true;
     try {
       const build = Bun.spawn(["bun", cliEntry, "build", appName], {
         cwd: workspaceRoot,
         stdout: "inherit",
         stderr: "inherit",
       });
+      this.#build = build;
       if ((await build.exited) !== 0) throw new Error(`akan build ${appName} failed`);
     } finally {
-      fs.rmSync(path.dirname(file), { recursive: true, force: true });
+      this.#build = null;
+      RenderAdmissionSoak.removePage(this.#pageDir);
+      this.#injected = false;
     }
   }
 
@@ -233,6 +285,7 @@ export default page()
   ): Promise<SoakRunResult> {
     const server = this.#spawn(cap);
     this.#serverPid = server.pid;
+    this.#server = server;
     try {
       if (!(await this.#waitForReady(120_000)))
         throw new Error(`the server did not become ready within 120s — see ${this.#options.logPath}`);
@@ -261,6 +314,7 @@ export default page()
       ]);
     } finally {
       await DevResourceProbe.killTree(server, () => this.#sampleTree());
+      this.#server = null;
     }
   }
 
