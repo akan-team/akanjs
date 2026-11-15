@@ -23,7 +23,7 @@ export type CodeTranscriptPart =
     }
   | { kind: "notice"; id: string; level: "info" | "warning" | "error"; text: string }
   | { kind: "question"; id: string; question: CodeAgentQuestion; rendered?: string }
-  | { kind: "approval"; id: string; request: CodeAgentApprovalRequest; approved?: boolean }
+  | { kind: "approval"; id: string; request: CodeAgentApprovalRequest; approved?: boolean; remembered?: string[] }
   | { kind: "host"; id: string; hostKind: string; text: string };
 
 // Rows are upserted by id and the first is index 0, so a looked-up index is tested against `undefined`, not truthiness.
@@ -170,7 +170,9 @@ export class CodeTranscript {
       case "approval_resolved":
         if (this.#approval?.approvalId === event.approvalId) this.#approval = undefined;
         return this.#patch(event.approvalId, (part) => {
-          if (part.kind === "approval") part.approved = event.approved;
+          if (part.kind !== "approval") return;
+          part.approved = event.approved;
+          if (event.remembered?.length) part.remembered = event.remembered;
         });
       case "context":
         this.#context = { used: event.used, max: event.max };

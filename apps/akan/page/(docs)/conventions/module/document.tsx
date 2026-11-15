@@ -2088,6 +2088,26 @@ export class UserModel extends into(
                 {l.trans({
                   en: (
                     <span>
+                      <strong>Do not keep a loader whose answer decides access.</strong> With more than one instance, a
+                      membership or a role removed on one is still answered on the others until the key expires, and
+                      under <code>cache: true</code> until they restart. Leave such a loader at the default, and where
+                      several instances run give a short time rather than <code>true</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>권한을 판단하는 로더는 기억시키지 마세요.</strong> 인스턴스가 둘 이상이면, 한쪽에서 지운
+                      멤버십이나 역할을 다른 쪽은 키가 만료될 때까지, <code>cache: true</code>라면 재시작할 때까지
+                      그대로 답합니다. 그런 로더는 기본값으로 두고, 인스턴스가 여러 개라면 <code>true</code> 대신 짧은
+                      시간을 주세요.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
                       <strong>A transaction reads past the cache.</strong> A load inside <code>this.transaction()</code>{" "}
                       always asks the database, so it sees its own writes, and what it reads is not kept, since it may
                       be rolled back.

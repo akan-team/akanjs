@@ -188,6 +188,33 @@ describe("CodeTranscript", () => {
     expect(drawn(transcript).some((line) => line.includes("denied"))).toBe(true);
   });
 
+  test("an approval answered for the session says which commands stop being asked about", () => {
+    const transcript = feed(new CodeTranscript(), [
+      {
+        type: "approval",
+        request: {
+          approvalId: "a1",
+          toolCallId: "c0",
+          name: "bash",
+          summary: "run: bun test",
+          policy: "commands",
+          remember: ["bun test"],
+        },
+      },
+      { type: "approval_resolved", approvalId: "a1", approved: true, remembered: ["bun test"] },
+      {
+        type: "approval",
+        request: { approvalId: "a2", toolCallId: "c1", name: "bash", summary: "run: ls", policy: "commands" },
+      },
+      { type: "approval_resolved", approvalId: "a2", approved: true },
+    ]);
+    const lines = drawn(transcript);
+    expect(lines.filter((line) => line.includes("approved"))).toEqual([
+      "  approved · bun test runs unasked until this session ends",
+      "  approved",
+    ]);
+  });
+
   test("a host frame carrying an id is one row through its whole lifecycle", () => {
     const transcript = feed(new CodeTranscript(), [
       { type: "host", kind: "step", id: "s1", payload: "pending" },

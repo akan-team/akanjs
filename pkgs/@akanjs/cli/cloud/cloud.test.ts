@@ -814,7 +814,7 @@ describe("CloudRunner", () => {
       spawn: async (command: string, args: string[], options: { cwd: string }) => {
         recorder.record("workspace.spawn", command, args, options);
         const library = path.relative("/repo/dist/pkgs", options.cwd);
-        return JSON.stringify([{ filename: `${library.replace("@", "").replace(/[\\/]/, "-")}-3.1.2-rc.5.tgz` }]);
+        return JSON.stringify([{ filename: `${library.replace("@", "").replace(/[\\/]/g, "-")}-3.1.2-rc.5.tgz` }]);
       },
     });
 
