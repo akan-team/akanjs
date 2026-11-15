@@ -37,7 +37,7 @@ normalized to `info` with one warning.
   sampleRate })`, off unless set, adds what pages hit in the browser as a `BrowserError` through
   `/_akan/client-report`: a report is taken only with the signed id the page's `Server-Timing` gave that page view,
   for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. With
-  more than one gateway or pod, set `AKAN_LOG_DEBUG_HEADER` (32+ characters) so each takes the others' ids.
+  more than one gateway or pod, set `AKAN_CLIENT_REPORT_KEY` (a secret, 32+ characters, the same on each) so each takes the others' ids.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
   lines wrap the traced handler from outside; gateway lines written outside a request have none. `akan logs

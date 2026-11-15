@@ -1,4 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { Logger } from "akanjs/common";
 
 //? Security: a report is taken only with the id its page view was given. Signed rather than stored, so every replica
 //? takes an id another issued; the time is signed in, so an id is taken for one to two buckets and no longer.
@@ -8,6 +9,22 @@ export class ClientReportId {
   static readonly minSecretLength = 32;
   static readonly #shape = /^([0-9a-f]{32})\.([\w-]{22})$/;
   static readonly #processKey = randomBytes(32);
+  static #warnedShort = false;
+
+  static operatorKey(): string | null {
+    const value = process.env[ClientReportId.keyEnv];
+    if (!value) return null;
+    if (value.length >= ClientReportId.minSecretLength) return value;
+    if (!ClientReportId.#warnedShort) {
+      ClientReportId.#warnedShort = true;
+      Logger.emit({
+        level: "warn",
+        name: "ClientReportId",
+        message: `${ClientReportId.keyEnv} is ignored: it must be at least ${ClientReportId.minSecretLength} characters`,
+      });
+    }
+    return null;
+  }
 
   static sign(traceId: string, now = Date.now()): string {
     return `${traceId}.${ClientReportId.#mac(traceId, ClientReportId.#bucketOf(now)).toString("base64url")}`;
@@ -32,15 +49,9 @@ export class ClientReportId {
     return createHmac("sha256", ClientReportId.#key()).update(`${traceId}\n${bucket}`).digest().subarray(0, 16);
   }
 
-  //? `AKAN_LOG_DEBUG_HEADER` is the secret every server of a deployment already shares (devtools signs its unlock with
-  //? it); without it the gateway's replicas share the key it made at start, and a lone process keeps its own. The app
-  //? and environment are signed in, so apps or environments sharing one secret do not take each other's ids.
+  //? The app and environment are signed in, so apps or environments sharing one key do not take each other's ids.
   static #key(): Buffer {
-    const shared = process.env.AKAN_LOG_DEBUG_HEADER;
-    const material =
-      shared && shared.length >= ClientReportId.minSecretLength
-        ? shared
-        : process.env[ClientReportId.keyEnv] || ClientReportId.#processKey;
+    const material = ClientReportId.operatorKey() ?? ClientReportId.#processKey;
     const scope = ["akan-client-report", process.env.AKAN_PUBLIC_APP_NAME ?? "", process.env.AKAN_PUBLIC_ENV ?? ""];
     return createHmac("sha256", material).update(JSON.stringify(scope)).digest();
   }
