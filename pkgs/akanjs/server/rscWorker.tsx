@@ -131,7 +131,7 @@ export class RscRenderer {
   readonly #caches = new RscResultCaches(this.#logger);
   readonly #renderManifest = new RscRenderManifest();
   readonly #flights = new RscFlightRenderer(this.#logger, (message) => this.#send(message));
-  readonly #admission = new RscRenderAdmission();
+  readonly #admission = new RscRenderAdmission(RscRenderAdmission.options(process.env, this.#logger));
   readonly #staticApps = new RscStaticApp(this.#logger, this.#flights);
   readonly #send: (message: unknown) => void;
   readonly #pagePrompts = new RscPagePrompts({
@@ -227,7 +227,7 @@ export class RscRenderer {
       case "cancel":
         this.#logger.verbose(`received cancel requestId=${msg.requestId}`);
         this.#flights.handleCancel(msg.requestId);
-        this.#admission.leave(msg.requestId);
+        this.#admission.abandon(msg.requestId);
         return;
       case "reload":
         this.#logger.verbose(`received reload buildId=${msg.buildId}`);

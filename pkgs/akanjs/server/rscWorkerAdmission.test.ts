@@ -310,26 +310,94 @@ describe("RscWorker render admission", () => {
   }, 30_000);
 
   test("refuses a render that waited as long as the idle timeout, without starting it", async () => {
-    await withAdmissionWorker(
-      { ...oneSlot, AKAN_IDLE_TIMEOUT: "1" },
-      async ({ raise, body, started, sample, settled }) => {
-        const held = body("held/holder");
-        await settled(1, 0);
-        const startedAt = performance.now();
-        const refused = await body("quick/late").catch((error: unknown) => error);
-        expect(refused).toMatchObject({ code: "renderQueueTimeout", statusCode: 503 });
-        expect(performance.now() - startedAt).toBeGreaterThanOrEqual(900);
-        expect(started("late")).toBe(0);
+    const env = { ...oneSlot, AKAN_IDLE_TIMEOUT: "1", AKAN_RSC_WORKER_MAX_QUEUE: "8" };
+    await withAdmissionWorker(env, async ({ raise, body, started, sample, settled }) => {
+      const held = body("held/holder");
+      await settled(1, 0);
+      const second = body("held/second");
+      await settled(1, 1);
+      await Bun.sleep(300);
+      const startedAt = performance.now();
+      const refused = await body("quick/late").catch((error: unknown) => error);
+      expect(refused).toMatchObject({ code: "renderQueueTimeout", statusCode: 503 });
+      expect(performance.now() - startedAt).toBeGreaterThanOrEqual(900);
+      expect(started("late")).toBe(0);
 
-        raise("release-holder");
-        await held;
-        await settled(0, 0);
-        await until(
-          () => sample("akan_rsc_render_refusals_total", { reason: "wait-timeout" }) === 1,
-          "the refusal to be counted",
-        );
-      },
-    );
+      raise("release-holder");
+      raise("release-second");
+      await Promise.all([held, second]);
+      await settled(0, 0);
+      await until(
+        () => sample("akan_rsc_render_refusals_total", { reason: "wait-timeout" }) === 1,
+        "the refusal to be counted",
+      );
+    });
+  }, 30_000);
+
+  test("takes the slot back from a page that held it as long as the idle timeout, and lets that page finish", async () => {
+    await withAdmissionWorker({ ...oneSlot, AKAN_IDLE_TIMEOUT: "1" }, async ({ raise, body, sample, settled }) => {
+      const stuck = body("held/stuck");
+      await settled(1, 0);
+      await Bun.sleep(300);
+      const startedAt = performance.now();
+      expect(await body("quick/next")).toContain("quick next");
+      expect(performance.now() - startedAt).toBeGreaterThanOrEqual(500);
+      await until(
+        () =>
+          sample("akan_rsc_render_refusals_total", { reason: "hold-timeout" }) === 1 &&
+          sample("akan_rsc_renders_abandoned") === 1,
+        "the slot taken back to be counted",
+      );
+      await settled(0, 0);
+
+      raise("release-stuck");
+      expect(await stuck).toContain("held stuck");
+      await until(() => sample("akan_rsc_renders_abandoned") === 0, "the page that kept running to end");
+    });
+  }, 30_000);
+
+  test("renders a page once for every request that waited for it, the rest replaying what the first stored", async () => {
+    const cached = { ...oneSlot, AKAN_RSC_RESULT_CACHE: "1", AKAN_RSC_RESULT_CACHE_PATHS: "/en/quick/shared" };
+    await withAdmissionWorker(cached, async ({ raise, render, body, started, settled }) => {
+      const held = body("held/holder");
+      await settled(1, 0);
+      const waiting = [1, 2, 3, 4].map(async () => {
+        const result = await render("quick/shared");
+        if (result.type !== "stream") throw new Error(`expected a page, got ${result.type}`);
+        return { cache: result.trace?.cache, text: await new Response(result.stream).text() };
+      });
+      await settled(1, 4);
+
+      raise("release-holder");
+      await held;
+      const answers = await Promise.all(waiting);
+      expect(answers.map(({ cache }) => cache)).toEqual(["miss", "hit", "hit", "hit"]);
+      for (const { text } of answers) expect(text).toContain("quick shared");
+      await until(() => started("shared") > 0, "the render to be reported");
+      await Bun.sleep(100);
+      expect(started("shared")).toBe(1);
+      await settled(0, 0);
+    });
+  }, 30_000);
+
+  test("counts pages their clients gave up on as abandoned while their code runs on, not as holding a slot", async () => {
+    await withAdmissionWorker({ AKAN_RSC_WORKER_MAX_CONCURRENCY: "2" }, async ({ raise, body, sample, settled }) => {
+      const aborts = [new AbortController(), new AbortController()];
+      const given = ["first", "second"].map((name, index) =>
+        body(`held/${name}`, aborts[index]?.signal).catch((error: unknown) => error),
+      );
+      await settled(2, 0);
+      for (const abort of aborts) abort.abort();
+      await Promise.all(given);
+      await settled(0, 0);
+      await until(() => sample("akan_rsc_renders_abandoned") === 2, "both abandoned pages to be counted");
+      expect(await body("quick/next")).toContain("quick next");
+
+      raise("release-first");
+      await until(() => sample("akan_rsc_renders_abandoned") === 1, "the first abandoned page to end");
+      raise("release-second");
+      await until(() => sample("akan_rsc_renders_abandoned") === 0, "the second abandoned page to end");
+    });
   }, 30_000);
 
   test("with the cap off every render starts as it arrives", async () => {
