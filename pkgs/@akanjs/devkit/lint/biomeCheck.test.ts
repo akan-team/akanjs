@@ -134,4 +134,12 @@ describe.skipIf(!hasBiome)("BiomeCheck", () => {
     expect(output).toMatch(/env\.server\.main\.ts:\d+:\d+ error plugin - the text is withheld/);
     expect(error).not.toBeNull();
   }, 60_000);
+
+  test("drops a group's own summary lines, coloured or not", () => {
+    const coloured = "\u001b[1mChecked 100 files in 1s.\u001b[0m\n\u001b[31mFound 3 errors.\u001b[39m\na.ts:1:1 lint/x";
+    expect(BiomeCheck.withoutSummary(coloured)).toBe("a.ts:1:1 lint/x");
+    expect(BiomeCheck.withoutSummary("Checked 1 file in 2ms.\nFound 1 warning.\nb.ts:2:1 lint/y")).toBe(
+      "b.ts:2:1 lint/y",
+    );
+  });
 });

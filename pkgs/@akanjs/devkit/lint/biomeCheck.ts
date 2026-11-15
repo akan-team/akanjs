@@ -16,6 +16,9 @@ export interface BiomeCheckOptions {
 //* diagnostics are printed from it by position and rule alone; Biome prints the rest again, from the files that have any.
 export class BiomeCheck {
   static readonly #groupSize = 100;
+  static readonly #summary = /^(?:Checked \d+ files? in |Found \d+ (?:errors?|warnings?|info))/;
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: an ANSI colour sequence starts with the escape character
+  static readonly #colour = /\u001b\[[0-9;]*m/g;
 
   static async run({ root, target, configPath, write, maxDiagnostics, print }: BiomeCheckOptions) {
     const [biome, ...biomeArgs] = Linter.biomeCommand(root);
@@ -84,7 +87,7 @@ export class BiomeCheck {
         new Response(second.stderr).text(),
         second.exited,
       ]);
-      print(BiomeCheck.#withoutSummary(`${out}${err}`));
+      print(BiomeCheck.withoutSummary(`${out}${err}`));
       remaining -= Math.min(group.count, remaining);
     }
     for (const diagnostic of rest.filter(({ location }) => !location?.path)) print(diagnostic.message);
@@ -102,10 +105,10 @@ export class BiomeCheck {
   }
 
   //? Each group's summary counts only its own files; the one printed at the end counts the whole run.
-  static #withoutSummary(text: string) {
+  static withoutSummary(text: string) {
     return text
       .split("\n")
-      .filter((line) => !/^(?:Checked \d+ files? in |Found \d+ (?:errors?|warnings?|info))/.test(line))
+      .filter((line) => !BiomeCheck.#summary.test(line.replace(BiomeCheck.#colour, "")))
       .join("\n")
       .trim();
   }
