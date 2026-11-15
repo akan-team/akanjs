@@ -80,7 +80,8 @@ paths:
 Do not narrate code. Do document the thing the code cannot say. Both halves are the rule.
 
 - Never restate the identifier, the signature, or the control flow; prefer names and structure. No JSDoc, section
-  banners, or "why/how" comments on ordinary logic.
+  banners, or "why/how" comments on ordinary logic. `akan verify` flags each new comment as `akan.comment.added`, a
+  `// TODO: <issue url>` aside.
 - Density tracks the layer: pages carry none, product `lib/` and `ui/` stay under 1 %, `srvkit/` adapters and
   `guards.ts` (what would leak without each guard) carry what the external constraints require. `akan quality scan`
   reports a `lib/` module or `ui/` entry past 1 % once it holds five comment lines (`akan.comment.density`).
