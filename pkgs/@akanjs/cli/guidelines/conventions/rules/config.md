@@ -27,6 +27,13 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
   `NativeSecret` (the OS credential store), never in a file.
 - **`database: { modes: [...] }`** (`single`, `multiple`, `cluster`), chosen by `AKAN_DATABASE_MODE`; an app running
   in two modes avoids `q.raw`.
+- **`akan build` leaves the server env's secrets out of the image.** Keep writing `env/env.server.<env>.ts` as before:
+  a string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is
+  read at boot from a variable named after its key path (`security.sso.google.clientSecret` is
+  `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` is `JWT_SECRET`). `akan secret-env <app> --env <env>`
+  lists what the deployment must set, and `--out <file>` writes it as a Kubernetes Secret or dotenv. A secret the env
+  file computes or imports stops the build: write `process.env.<NAME>` there. `akan start`, `akan test`, `--profile`
+  and desktop and mobile builds read the file as written.
 - **`i18n: { localePrefix: "as-needed" }`** serves the default locale at unprefixed paths (`/books/x`, and `<Link>`
   renders them so) while other locales keep `/<locale>/…`. Use it, not a raw `<a>`, for a single-language app or URLs
   fixed from outside (OAuth callbacks, QR codes, mail links, a migrated site).
@@ -35,7 +42,8 @@ Declared in `akan.config.ts`, narrowed — never widened — by an env at boot; 
 
 - After changing application code, run `bun run akan start <appName>` (`a,b`, `a b`, or `all` for several); check
   the production build with `bun run akan build <appName>`, and serve it without Docker with
-  `cd dist/apps/<appName> && bun main.js` (`PORT` or any variable you set overrides the build's env).
+  `cd dist/apps/<appName> && bun main.js` (`PORT` or any variable you set overrides the build's env; it warns of
+  each secret variable not set).
 - A supervised session writes `local/apps/<app>/runtime/dev.log` (previous: `dev.prev.log`) — hand over that path,
   not a paste of the repainting full-screen view. Keys, `--plain`, boot waves, `--kill`, watch scope, running a
   built artifact, booting a server in a test: `runtimeRule`.

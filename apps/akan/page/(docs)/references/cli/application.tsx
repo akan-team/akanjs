@@ -363,6 +363,14 @@ export default page()
               ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다.",
             }),
           },
+          {
+            name: "secret-env",
+            href: "#secret-env",
+            desc: l.trans({
+              en: "List the secret variables a built server reads, or write them for its deployment.",
+              ko: "빌드된 서버가 읽는 비밀 환경변수를 나열하거나, 배포에 넣을 파일로 씁니다.",
+            }),
+          },
         ],
       },
       {
@@ -1376,7 +1384,7 @@ akan test util`,
       {
         name: "build",
         signature:
-          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>]",
+          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>] [--inline-secrets <boolean>]",
         desc: l.trans({
           en: "Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.",
           ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다. 타입을 검사한 뒤 백엔드, SSR 라우트, CSR 번들을 차례로 만듭니다.",
@@ -1442,9 +1450,25 @@ akan test util`,
               ko: "앱의 `akan.budget.json`을 모든 라우트의 지금 잰 크기로 다시 쓰고, 커진 라우트의 항목을 올리며 그 라우트들을 알려 줍니다. 라우트를 일부러 키우는 변경에서 실행하고, 그 파일을 함께 커밋합니다. 세 예산 옵션은 하나만 줄 수 있습니다.",
             }),
           },
+          {
+            name: "--inline-secrets",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Keep the server env's secret values in the build, as before 3.4.0, for a deployment that does not set their variables yet. A variable that is set still wins. Version 3.5.0 removes the flag.",
+              ko: "서버 env의 비밀 값을 3.4.0 이전처럼 빌드에 그대로 둡니다. 아직 그 환경변수를 넣지 못한 배포를 위한 옵션이며, 환경변수가 있으면 그 값이 우선합니다. 3.5.0에서 없어집니다.",
+            }),
+          },
         ],
         notes: [
           aliasNote("b"),
+          {
+            name: l.trans({ en: "server env secrets", ko: "서버 env의 비밀 값" }),
+            desc: l.trans({
+              en: "The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path: `security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` from `JWT_SECRET`, an array holding a secret from one JSON variable. `akan.env.json` and the Dockerfile list the names in `AKAN_SECRET_ENV`, the build prints them, and a server started without one warns by name and runs without it (3.5.0 will refuse to start). A secret the env file computes or imports stops the build: write `process.env.<NAME>` there. A `--profile` build and a desktop or mobile build bundle their env files as written. See `secret-env`.",
+              ko: "빌드는 `env/env.server.<env>.ts`의 비밀 값을 `dist/apps/<app>`에 넣지 않습니다. 비밀 이름의 키(password, secret, token, apiKey, privateKey 등) 아래의 문자열과 비밀번호가 든 URL은 서버가 시작할 때 키 경로에서 이름을 딴 환경변수에서 읽습니다. `security.sso.google.clientSecret`은 `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret`은 `JWT_SECRET`에서 읽고, 비밀 값이 든 배열은 JSON을 담은 변수 하나에서 읽습니다. `akan.env.json`과 Dockerfile의 `AKAN_SECRET_ENV`에 그 이름들이 적히고 빌드가 이를 출력하며, 변수가 없는 채로 시작한 서버는 이름을 들어 경고하고 그 값 없이 돕니다(3.5.0부터는 시작을 거부합니다). env 파일이 계산하거나 import한 비밀 값이 있으면 빌드가 멈추므로, 그 자리에 `process.env.<NAME>`을 적습니다. `--profile` 빌드와 데스크톱·모바일 빌드는 env 파일을 적힌 그대로 번들합니다. `secret-env`를 참고하세요.",
+            }),
+          },
           {
             name: l.trans({ en: "lib defaults", ko: "lib 기본값" }),
             desc: l.trans({
@@ -1472,7 +1496,83 @@ akan build myapp --write true --fast false --quiet false
 akan build myapp --profile edge
 akan build myapp --check-budget
 akan build myapp --update-budget
-akan build myapp --raise-budget`,
+akan build myapp --raise-budget
+akan build myapp --inline-secrets`,
+      },
+      {
+        name: "secret-env",
+        signature:
+          "akan secret-env <app> [--env <env>] [--out <file>] [--format <k8s|dotenv>] [--name <name>] [--force <boolean>]",
+        desc: l.trans({
+          en: "List the environment variables a build of the app reads its server env secrets from. With `--out`, write their values from the env file to a file for the deployment.",
+          ko: "앱의 빌드가 서버 env의 비밀 값을 읽어 오는 환경변수를 나열합니다. `--out`을 주면 env 파일의 값을 배포에 넣을 파일로 씁니다.",
+        }),
+        options: [
+          {
+            name: "--env",
+            type: "String",
+            enumOrFlag: "local | debug | develop | main",
+            desc: l.trans({
+              en: "The environment whose server env is read. Without it, `AKAN_PUBLIC_ENV` of the shell, or of the workspace `.env`.",
+              ko: "서버 env를 읽을 환경입니다. 주지 않으면 셸의 `AKAN_PUBLIC_ENV`를, 없으면 워크스페이스 `.env`의 값을 따릅니다.",
+            }),
+          },
+          {
+            name: "--out",
+            type: "String",
+            desc: l.trans({
+              en: "Write the values to this file, readable by its user alone. A path under `dist/`, a path git would track and an existing file are refused. Without it only names are printed.",
+              ko: "값을 이 파일에 쓰며, 파일은 만든 사용자만 읽을 수 있습니다. `dist/` 아래의 경로, git이 추적할 경로, 이미 있는 파일은 거부합니다. 주지 않으면 이름만 출력합니다.",
+            }),
+          },
+          {
+            name: "--format",
+            type: "String",
+            enumOrFlag: "k8s | dotenv",
+            defaultValue: "k8s",
+            desc: l.trans({
+              en: "`k8s` writes a Kubernetes `Secret` with base64 `data`. `dotenv` writes `NAME=value` lines that Bun's loader (`bun --env-file`) reads back unchanged.",
+              ko: "`k8s`는 `data`를 base64로 담은 Kubernetes `Secret`을 씁니다. `dotenv`는 Bun의 로더(`bun --env-file`)가 그대로 읽는 `NAME=value` 줄을 씁니다.",
+            }),
+          },
+          {
+            name: "--name",
+            type: "String",
+            defaultValue: "<app>-env",
+            desc: l.trans({
+              en: "`metadata.name` of the Kubernetes Secret.",
+              ko: "Kubernetes Secret의 `metadata.name`입니다.",
+            }),
+          },
+          {
+            name: "--force",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "Replace the `--out` file when it exists.",
+              ko: "`--out` 파일이 이미 있으면 바꿔 씁니다.",
+            }),
+          },
+        ],
+        notes: [
+          {
+            name: l.trans({ en: "listing", ko: "목록" }),
+            desc: l.trans({
+              en: "One row per variable: its name, its kind (`string`, `json` for an array, `multiline` for a value with line breaks), whether the shell sets it, and its key in the env file. It never prints a value. A secret the env file computes or imports is named below the table, since no variable is read for it.",
+              ko: "변수마다 한 줄씩 이름, 종류(`string`, 배열은 `json`, 줄바꿈이 있는 값은 `multiline`), 셸에 설정돼 있는지, env 파일에서의 키를 보여 줍니다. 값은 출력하지 않습니다. env 파일이 계산하거나 import한 비밀 값은 읽어 올 변수가 없으므로 표 아래에 따로 알려 줍니다.",
+            }),
+          },
+          {
+            name: l.trans({ en: "deploying", ko: "배포" }),
+            desc: l.trans({
+              en: "Kubernetes: apply the file in the app's namespace and name the Secret in the container's `envFrom`. Docker: pass each variable with `-e`; `docker run --env-file` reads each line as written, so it carries no quoted or multi-line value. A host: `bun --env-file=<file> main.js`. The file holds the secrets, so delete it once it is applied.",
+              ko: "Kubernetes에서는 파일을 앱의 네임스페이스에 apply하고 컨테이너의 `envFrom`에 그 Secret을 적습니다. Docker에서는 변수마다 `-e`로 넘깁니다. `docker run --env-file`은 줄을 적힌 그대로 읽으므로 따옴표가 있거나 여러 줄인 값은 넘기지 못합니다. 호스트에서 직접 돌릴 때는 `bun --env-file=<file> main.js`로 실행합니다. 파일에는 비밀 값이 들어 있으니 적용한 뒤 지웁니다.",
+            }),
+          },
+        ],
+        examples: `akan secret-env myapp --env main
+akan secret-env myapp --env main --out local/myapp-main.yaml --name myapp-env
+akan secret-env myapp --env main --format dotenv --out local/myapp-main.env`,
       },
       {
         name: "start-ios",

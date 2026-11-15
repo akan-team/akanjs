@@ -19,7 +19,7 @@
 1. Run `akan secret-env <app> --env <env>` for each app and environment you deploy. It lists the variables the server now expects. It prints names, never values.
 2. Give the server those variables.
    - Kubernetes: `akan secret-env <app> --env <env> --format k8s --name <secret-name> --out <file>`, `kubectl apply -f <file>` in the app's namespace, reference the Secret from the container with `envFrom: [{ secretRef: { name: <secret-name> } }]`, then delete the file.
-   - Docker: `docker run -e NAME=value …`, or Compose with `env_file` and `akan secret-env <app> --env <env> --format dotenv --out <file>`. `docker run --env-file` takes each line as written, so it carries no quoted or multi-line value: pass those with `-e`.
+   - Docker: `docker run -e NAME=value …`. `docker run --env-file` takes each line as written, so of a `--format dotenv` file it reads the values written without quotes and no quoted or multi-line one: pass those with `-e`.
    - `bun main.js` on a host: `bun --env-file=<file> main.js` with the dotenv file, or set the variables in the service's environment. Keep the file outside `dist/apps/<app>`, which the image copies whole.
    - Another platform: set them in its secret settings.
 3. Deploy. At start the server logs one warning naming any variable it is missing, and runs without it. Version 3.5.0 will refuse to start instead.
