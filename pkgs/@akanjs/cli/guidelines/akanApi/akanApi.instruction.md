@@ -3,7 +3,7 @@
 Generated from the akanjs sources of this release: the import paths and signatures a first app needs, so none of
 them has to be looked up in `node_modules`. A stage's return type is the same chain, left out below.
 
-## Imports
+## Imports (`akanjs/*`, `@apps/<app>/client`, `../cnst`, `../dict`, `../srv`, layer barrels)
 
 ```ts
 import { Any, Binary, dayjs, Float, ID, Int, Upload } from "akanjs/base";
@@ -75,9 +75,14 @@ external?: boolean;
 
 ```ts
 Link({ className, href, disabled, children, ...props }: CommonLinkProps): Element
+Link.Back({ className, children, fallback }: BackProps): Element
+Link.Close({ className, children }: ActionProps): Element
+Link.Lang({ className, lang, children }: LangProps): Element
 ```
 
 ### `CommonLinkProps`
+
+Every prop of `Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href">`, and:
 
 ```ts
 /** Omitted, or with `disabled`, Link renders a plain div around the same children. */
@@ -244,7 +249,7 @@ errors?: EndpointErrors;
 /** A slow subscriber of a `pubsub(Binary)`: `"coalesce"` (default) keeps only the newest frame per room, `"queue"` delivers every frame and grows the send buffer with the slowest subscriber. */
 backpressure?: "coalesce" | "queue";
 enabled?: boolean;
-operationMode?: ("local" | "edge" | "cloud" | (string & {}))[];
+operationMode?: ((string & {}) | "local" | "edge" | "cloud")[];
 ```
 
 ## Dictionaries (`*.dictionary.ts`)

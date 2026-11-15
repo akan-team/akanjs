@@ -70,12 +70,14 @@ declared params and search keys plus `lang`.
 - `useState`, `useEffect`, comments, a named export beside the chain, or the legacy `export default async function`.
 - Editing a lib page through its link in `page/(libs)/` — edit the lib's own `page/` source.
 
-Full detail: `get_guideline` with `pageRule`, or `ssrRule` for what may render on the server; every stage's
-signature, the router's methods, Link's props and every import path: `akanApi`.
+Full detail: `get_guideline` with `pageRule`, or `ssrRule` for what may render on the server. Every stage's
+signature, the router's methods, Link's props and every import path are in the `akanApi-*` references below.
 
 ## References
 
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
 - `.agents/skills/akan-page/references/pageRule.md` — Route Files · The Route Chain · Route Guards — `.guard()` · MCP Apps — `.app()` · Heads · …
-- `.agents/skills/akan-page/references/akanApi.md` — Imports · Routes (`page/`) · Services and adapters (`lib/_<service>/`, `srvkit/`) · Endpoints (`*.signal.ts`) · Dictionaries (`*.dictionary.ts`) · …
+- `.agents/skills/akan-page/references/akanApi-imports.md` — Imports (`akanjs/*`, `@apps/<app>/client`, `../cnst`, `../dict`, `../srv`, layer barrels)
+- `.agents/skills/akan-page/references/akanApi-routes.md` — Routes (`page/`): `page`, `layout`, `rootLayout`, `RouteBaseArgs`, `router`, `RouteOptions`, `Link`, `CommonLinkProps`, `usePageLocation`, Route stages
+- `.agents/skills/akan-page/references/akanApi-app-config.md` — App config (`akan.config.ts`): `AppConfig`, `AppConfigInput`, `AkanWebOption`, `AkanI18nConfig`

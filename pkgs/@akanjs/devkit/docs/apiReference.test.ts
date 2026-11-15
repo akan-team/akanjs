@@ -28,6 +28,11 @@ describe("ApiReference", () => {
     expect(rendered).toMatch(/^\/\*\* .+ \*\/\nserverMode\?: "batch" \| "federation";$/m);
   });
 
+  test("says what Link takes beyond its own props, and names its static parts", () => {
+    expect(rendered).toContain('Every prop of `Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href">`, and:');
+    expect(rendered).toMatch(/^Link\.Back\(.+\): Element$/m);
+  });
+
   test("lists the keys of akan.config.ts, so the web and i18n shapes have a field to belong to", () => {
     const appConfig = rendered.slice(rendered.indexOf("### `AppConfigInput`"));
     expect(appConfig).toMatch(/^web\?: AkanWebOption;$/m);

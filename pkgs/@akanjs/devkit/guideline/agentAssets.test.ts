@@ -46,6 +46,16 @@ describe("AgentAssets", () => {
     expect(references.filter((asset) => asset.path.includes("/agentRule")).length).toBeGreaterThan(1);
   });
 
+  test("ships a guideline section on its own, and the skill's index names every entry in it", async () => {
+    const assets = await AgentAssets.skills();
+    const read = (file: string) => assets.find((asset) => asset.path === file)?.content ?? "";
+    const routes = read(".agents/skills/akan-page/references/akanApi-routes.md");
+    expect(read(".agents/skills/akan-page/SKILL.md")).toMatch(/akanApi-routes\.md` — Routes .*`Link`/);
+    expect(routes).toContain("### `Link` · `akanjs/ui`");
+    expect(routes).toContain("none of\nthem has to be looked up in `node_modules`");
+    expect(routes).not.toContain("## Endpoints");
+  });
+
   test("names no rule or skill file that a new workspace's .gitignore would keep out of git", async () => {
     const assets = [...(await AgentAssets.rules()), ...(await AgentAssets.skills())];
     const root = await fsPromise.mkdtemp(path.join(os.tmpdir(), "akan-agent-ignore-"));

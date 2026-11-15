@@ -68,5 +68,5 @@ declared params and search keys plus `lang`.
 - `useState`, `useEffect`, comments, a named export beside the chain, or the legacy `export default async function`.
 - Editing a lib page through its link in `page/(libs)/` — edit the lib's own `page/` source.
 
-Full detail: `get_guideline` with `pageRule`, or `ssrRule` for what may render on the server; every stage's
-signature, the router's methods, Link's props and every import path: `akanApi`.
+Full detail: `get_guideline` with `pageRule`, or `ssrRule` for what may render on the server. Every stage's
+signature, the router's methods, Link's props and every import path are in the `akanApi-*` references below.
