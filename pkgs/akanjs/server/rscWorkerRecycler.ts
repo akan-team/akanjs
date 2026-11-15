@@ -2,7 +2,7 @@ import type { Logger } from "akanjs/common";
 import type { AkanMetricsReport } from "akanjs/service";
 import { MemoryLimit } from "./memoryLimit";
 import type { RscHostRequests } from "./rscHostRequests";
-import type { RscProcess, RscWorkerProcess } from "./rscWorkerProcess";
+import { type RscProcess, RscWorkerProcess } from "./rscWorkerProcess";
 
 interface RscRollingRecycle {
   oldProc: RscProcess;
@@ -68,7 +68,7 @@ export class RscWorkerRecycler {
   stop(): void {
     if (this.#recycleTimer) clearTimeout(this.#recycleTimer);
     this.#recycleTimer = null;
-    this.rollingRecycle?.oldProc.kill();
+    if (this.rollingRecycle) RscWorkerProcess.terminate(this.rollingRecycle.oldProc);
     this.rollingRecycle = null;
   }
 
@@ -79,7 +79,7 @@ export class RscWorkerRecycler {
     this.#logger.info(
       `[rsc] rolling recycle ready reason=${recycle.reason} oldPid=${recycle.oldProc.pid} newPid=${this.#worker.proc.pid}`,
     );
-    recycle.oldProc.kill();
+    RscWorkerProcess.terminate(recycle.oldProc);
     this.#worker.lastWorkerMetrics = {};
   }
 

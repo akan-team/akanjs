@@ -3,7 +3,11 @@ import { AkanError, type BackendEnv, normalizeRoutePrefix } from "akanjs/base";
 import { parseBasePaths } from "akanjs/common";
 import type { AkanLib } from "./akanLib";
 import type { AkanServerOptions, McpServerOption } from "./akanServer";
+import { GatewayConfig } from "./gateway/gatewayConfig";
+import { LogForwarder } from "./logging/logForwarder";
 import { type McpAuthOption, McpRateLimiter } from "./mcp";
+
+const exitMarginMs = 250;
 
 export class ServerConfig {
   static requireRoutePrefix(value: string, field: string) {
@@ -128,5 +132,13 @@ export class ServerConfig {
     const configured = Number(process.env.AKAN_SHUTDOWN_TIMEOUT_MS);
     if (Number.isFinite(configured) && configured > 0) return configured;
     return process.env.AKAN_COMMAND_TYPE === "start" ? 3_000 : 30_000;
+  }
+
+  //? A gateway child is SIGKILLed when the gateway's wait runs out, and the log close after the export needs its own share.
+  static exportFlushBudgetMs(stoppingSince: number, capMs: number) {
+    if (!process.env.AKAN_CHILD_SOCKET) return capMs;
+    const elapsed = Date.now() - stoppingSince;
+    const left = GatewayConfig.childShutdownWaitMs() - elapsed - LogForwarder.closeTimeoutMs - exitMarginMs;
+    return Math.max(0, Math.min(capMs, left));
   }
 }

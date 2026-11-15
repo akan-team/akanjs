@@ -1,3 +1,5 @@
+import { RscFirstRenderMemory } from "./rscFirstRenderMemory";
+
 export interface RouteRenderStats {
   routeId: string;
   count: number;
@@ -19,6 +21,7 @@ export class RscRenderStats {
   totalFlightChunks = 0;
   pagesBundleBuildId = 0;
   readonly routeStats = new Map<string, RouteRenderStats>();
+  readonly firstRenderMemory = new RscFirstRenderMemory();
 
   recordFlight({ bytes, chunksCount }: { bytes: number; chunksCount: number }): void {
     this.lastFlightBytes = bytes;

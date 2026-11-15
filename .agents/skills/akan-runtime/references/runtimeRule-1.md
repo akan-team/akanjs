@@ -261,6 +261,16 @@ normalized to `info` with one warning.
   `Server-Timing` — under the local dev runtime, or with the `AKAN_LOG_DEBUG_HEADER` secret. A local runtime sends
   `Server-Timing` on every signal response. Spans carry ids, parents and start offsets; under `AKAN_TRACE=1` each
   SQL statement sent is a `db:<model>.<op>` span, never its text or values.
+- **`OTEL_EXPORTER_OTLP_ENDPOINT` (or `…_TRACES_ENDPOINT` / `…_LOGS_ENDPOINT`) turns on OTLP/HTTP JSON export**;
+  with none set nothing is created. Each process sends its own spans and log records with `akan.process.role`, the
+  RSC worker included, batched in a bounded queue that drops its oldest and never blocks or throws into a request.
+  `OTEL_TRACES_SAMPLER` (`always_on`, `always_off`, `traceidratio` and their `parentbased_` forms, default
+  `parentbased_always_on`; any other value exports no spans) decides at the first TCP hop, and the sampled flag of
+  `traceparent` carries it to the replica and the worker. Logs go only with `OTEL_LOGS_EXPORTER=otlp` or
+  `…_LOGS_ENDPOINT`, never from the generic endpoint alone, their message text as written; only secret-named attrs are
+  redacted. Stage spans wait for `AKAN_TRACE=1`. `OTEL_EXPORTER_OTLP_HEADERS` values are credentials, never
+  logged; `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SDK_DISABLED` work as in the OTel spec. It is
+  separate from `AKAN_TRACE` and `x-akan-debug`: neither changes what is sampled.
 - **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,
   the ssr-dev and csr-dev module registries, `/__rsc/manifest` — and is mounted through `DevRoutes.mount`, which
   refuses a path the list lacks. Each answers only localhost, an IP address, the app's own hosts and
@@ -272,46 +282,3 @@ normalized to `info` with one warning.
   before the record exists.
 - **Never log per delivered record in anything that delivers records.** The control socket and the hub do not,
   and a subscriber asking for everything is the test.
-
-## The Generated Image — `docker` In `akan.config.ts`
-
-**`docker` is `string | { image, preRuns, postRuns, command }`** — a whole Dockerfile, or the parts Akan
-assembles one from. There is no `content` field; the string *is* the content.
-
-```ts
-const config: AppConfig = {
-  docker: { preRuns: ["apt-get update && apt-get install -y --no-install-recommends ffmpeg"] },
-};
-const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbatim, nothing merged in
-```
-
-- `image` and each run entry take `string | { amd64?, arm64? }`; the object form compiles to a
-  `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
-  before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
-  and before the app files are copied.
-- **The server runs as `USER 1000:1000`, oven/bun's `bun` user, and owns only the directories it writes.** The
-  build steps (`apt-get`, `preRuns`, `bun install`, `postRuns`) run as root and the app files stay root's, so
-  `main.js`, `server.js`, `public/` and `node_modules` are read-only to the server. After the copy, uid 1000 gets
-  `/workspace/sqlite`, `/workspace/local`, `/workspace/runtime` (the control socket), `/workspace/data` and
-  `/workspace/.akan/artifact/image-cache`; `/tmp` and `/home/bun` are writable too. A directory a `postRuns` step
-  makes for the server to write needs `chown 1000:1000`. An empty named volume takes the owner of the directory it
-  mounts over; one a root image already wrote is owned by root, so the server stops at boot with
-  `directoryNotWritable`, naming the directory and the `chown -R 1000:1000` that fixes it.
-- **The base image is pinned by digest**, `oven/bun:<bun>-slim@sha256:…`, the multi-arch index's, so amd64 and
-  arm64 build from the same release; a test holds the tag to the Bun version the workspace's `package.json` pins.
-- **The image installs the versions the workspace locked.** `akan build` writes a `bun.lock` beside the image's
-  `package.json`, cut down from the workspace's to what the server needs, and the image installs it
-  `--frozen-lockfile`. A workspace without a root `bun.lock` gets a warning and an unlocked install; a Dockerfile
-  written whole copies `bun.lock` itself.
-- **A lib declares the steps its own runtime needs**, and every app that mounts it inherits them:
-  `libs/<lib>/akan.config.ts` takes `docker: { preRuns, postRuns }` and nothing else — the base image and the
-  command belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
-  becomes one layer.
-- **The string form takes no contributions.** A Dockerfile handed over whole is used exactly as written, so a
-  lib's `preRuns` are dropped rather than spliced into a file Akan does not own. An app that needs both writes
-  the parts instead.
-- Like `externalLibs`, lib steps are collected from **every lib in the workspace**, not just this app's
-  dependency closure — narrowing that set needs the dependency scan, and this config is re-read on every file
-  change in dev. Keep a lib's steps to what its runtime genuinely requires.
-- `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
-  to `dist/apps/<app>/Dockerfile`.

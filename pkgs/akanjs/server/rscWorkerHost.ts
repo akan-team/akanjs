@@ -246,7 +246,7 @@ export class RscWorker {
     this.#worker.status = "stopped";
     this.#worker.restart.cancel();
     this.#recycler.stop();
-    this.#worker.proc.kill();
+    RscWorkerProcess.terminate(this.#worker.proc);
   }
 
   setLogLevel(minSev: number | null) {
@@ -388,7 +388,7 @@ export class RscWorker {
             this.#worker.rejectReady(new AkanError("rscWorkerFailed", String(message.message)));
           } else {
             this.#bootFailed(proc, String(message.message));
-            proc.kill();
+            RscWorkerProcess.terminate(proc);
           }
           return;
         }

@@ -155,6 +155,15 @@ export interface AkanMetricsReport {
   rscLastRenderRouteId?: string;
   rscLastRenderLoadedModuleDelta?: number;
   rscLastRenderLoadedModules?: string[];
+  /** Only under `AKAN_MEMORY_LOG=1`: what each route's first render in this worker grew it by, largest RSS first. */
+  rscFirstRenderMemory?: Array<{
+    routeId: string;
+    rssDeltaBytes: number;
+    heapUsedDeltaBytes: number;
+    externalDeltaBytes: number;
+    arrayBuffersDeltaBytes: number;
+    loadedModules: string[];
+  }>;
   rscResultCacheEntries?: number;
   rscResultCacheBytes?: number;
   rscPatchResultCacheEntries?: number;
