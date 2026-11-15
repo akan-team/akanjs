@@ -77,6 +77,20 @@ describe("pageErrorReporter", () => {
     expect(bodies().map(({ kind, digest }) => [kind, digest])).toEqual([["recoverable", "a1b2c3d4"]]);
   });
 
+  test("sends a message and a stack without their query strings, email addresses and credentials", async () => {
+    openPage([{ name: "akan-report", description: pageId }]);
+    const report = pageErrorReporter(() => null);
+    const failure = new Error("no cart for ada@example.com at /en/cart?token=s3cret with Bearer abc.def");
+    failure.stack = "Error: no cart\n    at Cart (http://shop.test/en/cart?token=s3cret:3:15)";
+    report?.(failure, "uncaught");
+    await sleep(50);
+
+    expect(bodies()[0]).toMatchObject({
+      message: "no cart for [email] at /en/cart with Bearer [redacted]",
+      stack: "Error: no cart\n    at Cart (http://shop.test/en/cart:3:15)",
+    });
+  });
+
   test("cuts a stack that would carry the report past what the server reads", async () => {
     openPage([{ name: "akan-report", description: pageId }]);
     const report = pageErrorReporter(() => null);

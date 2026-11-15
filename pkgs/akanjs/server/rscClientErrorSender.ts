@@ -1,4 +1,5 @@
 import type { BrowserErrorKind } from "../signal/browserError";
+import { ReportText } from "./reportText";
 
 export class RscClientErrorSender {
   static readonly path = "/_akan/client-report";
@@ -47,9 +48,18 @@ export class RscClientErrorSender {
 
   static #fields(error: unknown) {
     const limits = RscClientErrorSender.#limits;
-    const text = (value: unknown, limit: number) => (typeof value === "string" ? value.slice(0, limit) : null);
+    //? Best effort before anything leaves the page; the server scrubs what arrives again.
+    const text = (value: unknown, limit: number) =>
+      typeof value === "string"
+        ? ReportText.scrub(value.slice(0, RscClientErrorSender.maxBytes)).slice(0, limit)
+        : null;
     if (!(error instanceof Error))
-      return { name: "NonError", message: RscClientErrorSender.#describe(error), stack: null, digest: null };
+      return {
+        name: "NonError",
+        message: text(RscClientErrorSender.#describe(error), limits.message) ?? "",
+        stack: null,
+        digest: null,
+      };
     return {
       name: text(error.name, limits.name) ?? "Error",
       message: text(error.message, limits.message) ?? "",

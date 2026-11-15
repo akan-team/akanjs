@@ -113,6 +113,36 @@ describe("ClientErrorReport route", () => {
     }
   });
 
+  test("hands the reporter no query string, email address, credential or reordering character a report carried", async () => {
+    ClientErrorReport.configure(true);
+    const emitted = spyOn((await import("akanjs/common")).Logger, "emit").mockImplementation(() => undefined);
+    try {
+      await answerOf(
+        post({
+          ...report,
+          name: "CartError\u202e",
+          message: "no cart for ada@example.com at /en/cart?token=s3cret with Bearer abc.def-123",
+          stack:
+            "CartError: no cart\n    at Cart (/en/cart?token=s3cret:3:15)\n    eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhY2NvdW50LTcifQ.c2ln",
+        }),
+      );
+      await ErrorReporting.flush();
+
+      expect(reported[0]?.[0]).toMatchObject({
+        data: {
+          name: "CartError",
+          message: "no cart for [email] at /en/cart with Bearer [redacted]",
+          stack: "CartError: no cart\n    at Cart (/en/cart:3:15)\n    [redacted]",
+        },
+      });
+      expect(String(emitted.mock.calls[0]?.[0].message)).toBe(
+        "Browser error (uncaught) on /:lang/orders/:orderId: CartError: no cart for [email] at /en/cart with Bearer [redacted]",
+      );
+    } finally {
+      emitted.mockRestore();
+    }
+  });
+
   test("answers a cross-site, malformed or oversized report with the same 204 and reports none of them", async () => {
     ClientErrorReport.configure({ perAddress: 100 });
     const chunked = new ReadableStream<Uint8Array>({

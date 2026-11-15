@@ -8,6 +8,7 @@ import { SignalContext } from "../signal/signalContext";
 import { ClientReport } from "./hmr/clientReport";
 import { AppInfo } from "./ops/appInfo";
 import { FailureLimiter } from "./ops/failureLimiter";
+import { ReportText } from "./reportText";
 import type { HttpRoutes } from "./types";
 
 export interface ClientReportSetting {
@@ -43,8 +44,6 @@ export class ClientErrorReport {
   ]);
   static readonly #routeIdShape = /^\/[\p{L}\p{N}_\-.:*~@+()[\]/]{0,255}$/u;
   static readonly #digestShape = /^[\w-]{1,64}$/;
-  //? Inline code names the page's own URL in a stack, and its query string or fragment can carry a token.
-  static readonly #urlQuery = /(https?:\/\/[^\s?#)]+)[?#][^\s)]*?((?::\d+){0,2})(?=[\s)]|$)/g;
   //? Only a page no cache may hand on unasked names its request id: a stored copy would give it to the next visitor.
   static readonly #uncachedPage = /\b(?:no-store|no-cache|private)\b/i;
   static #setting: Required<ClientReportSetting> | null = null;
@@ -180,7 +179,7 @@ export class ClientErrorReport {
 
   static #scrub(value: unknown, limit: number, multiline: boolean): string {
     if (typeof value !== "string") return "";
-    const text = value.replace(ClientErrorReport.#urlQuery, "$1$2");
-    return multiline ? ClientReport.clean(text, limit) : ClientReport.line(text, limit);
+    const text = ReportText.scrub(ClientReport.clean(value, ClientErrorReport.maxBodyBytes));
+    return multiline ? text.slice(0, limit) : ClientReport.line(text, limit);
   }
 }
