@@ -130,6 +130,33 @@ describe("AccountMiddleware", () => {
     expect((await httpCall({ cookie, authorization: await accessToken("bearer") })).me?.id).toBe("bearer");
   });
 
+  test("a Bearer token past its expiry yields to the session cookie, and no other refused token does", async () => {
+    const { appName, environment } = getEnv();
+    const cookie = `${authTokenKey()}=${await tokenOf("renewed")}`;
+    const lapsed = dayjs().subtract(1, "minute");
+    const signedWith = async (secret: string) =>
+      `Bearer ${await utilSrvkit.jwtSign({ appName, environment, tokenType: "access", sid: "x", me: { id: "x" } }, secret, { expiresAt: lapsed })}`;
+
+    expect((await httpCall({ cookie, authorization: await accessToken("stale", lapsed) })).me?.id).toBe("renewed");
+    expect((await httpCall({ authorization: await accessToken("stale", lapsed) })).me).toBeUndefined();
+    expect((await httpCall({ cookie, authorization: await signedWith("another-secret") })).me).toBeUndefined();
+    expect((await httpCall({ cookie, authorization: "Bearer not-a-token" })).me).toBeUndefined();
+
+    RevokedSessions.use(async (sid) => sid === "signed-out");
+    expect((await httpCall({ cookie, authorization: await accessToken("signed-out") })).me).toBeUndefined();
+    expect((await httpCall({ cookie, authorization: await accessToken("live") })).me?.id).toBe("live");
+  });
+
+  test("a socket whose frames carry a token past its expiry is read by its handshake's session cookie", async () => {
+    const cookie = `${authTokenKey()}=${await tokenOf("renewed")}`;
+    const socket = {
+      headers: new Headers({ cookie, authorization: await accessToken("stale", dayjs().subtract(1, "minute")) }),
+      cookies: new Bun.CookieMap(cookie),
+    };
+    expect((await frame(socket)).me?.id).toBe("renewed");
+    expect((await frame(socket)).me?.id).toBe("renewed");
+  });
+
   test("an OAuth client's token is refused off the MCP shelf, and a token an app mints for itself is not", async () => {
     await expect(oauthCall("dcr_client", { mcp: false })).rejects.toEqual(offShelfRefusal);
     await expect(oauthCall("https://client.example.com/meta.json", { mcp: false })).rejects.toEqual(offShelfRefusal);

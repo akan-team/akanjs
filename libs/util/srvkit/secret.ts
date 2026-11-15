@@ -2,25 +2,32 @@ import { createHash } from "node:crypto";
 import { type BaseEnv, type Environment, getEnv } from "akanjs/base";
 import { bearerTokenOf, Logger } from "akanjs/common";
 import { Err } from "../lib/dict";
-import { jwtVerify } from "./jwt";
+import { expiredJwtClaims, jwtVerify } from "./jwt";
 
 interface ResolvedToken {
   appName: string;
   environment: Environment;
 }
+const isOwnToken = (claims: Record<string, unknown>) =>
+  claims.appName === getEnv().appName && claims.environment === getEnv().environment;
+
 export const resolveJwt = async <Resolved extends ResolvedToken>(
   secret: string,
   authorization: string | undefined,
   defaultResolved: Resolved,
+  afterExpiry?: string,
 ): Promise<Resolved> => {
   // McpAuth's parse, exactly: a token read here that /mcp's gate ignores would skip its aud and expiry checks.
   const token = bearerTokenOf(authorization);
   if (!token) return defaultResolved;
   try {
     const resolved = (await jwtVerify(token, secret)) as Resolved;
-    if (resolved.appName !== getEnv().appName || resolved.environment !== getEnv().environment) return defaultResolved;
+    if (!isOwnToken(resolved as unknown as Record<string, unknown>)) return defaultResolved;
     return resolved;
   } catch (e) {
+    //? Security: only this app's own expired token yields to `afterExpiry`, which its caller could have sent alone.
+    const expired = afterExpiry ? expiredJwtClaims(e) : null;
+    if (expired && isOwnToken(expired)) return await resolveJwt(secret, afterExpiry, defaultResolved);
     const message = e instanceof Error ? e.message : String(e);
     Logger.verbose(`failed to verify a bearer token: ${message}`);
     return defaultResolved;
