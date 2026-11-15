@@ -1,5 +1,6 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
+import type { SecretEnvHeld } from "../transforms/secretEnvDeclaration";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 
 interface SecretValue {
@@ -64,6 +65,27 @@ export class ServerBundleSecrets {
         `The server this app carries holds secret values of the workspace's env files, so the release stops here:\n  ${[...new Set(leaks)].join("\n  ")}\nBuild its server with a profile (native.desktop.server.profile), whose bundle leaves the env files' secrets out. A value a profile build still holds sits in code or a file the server carries: take it out there.`,
       );
     return unread;
+  }
+
+  //* An image's own check, for the one env its server runs on: `held` are the secrets the env file computes or imports,
+  //* which the build could not turn into reads. Every other secret of that env is a read, by construction.
+  async assertImageClean(bundleDir: string, envFile: string, held: readonly SecretEnvHeld[]): Promise<void> {
+    if (!held.length) return;
+    const sought = held.map((secret) => ({ secret, needles: ServerBundleSecrets.#needles(secret.value) }));
+    const found: { bundled: string; secret: SecretEnvHeld }[] = [];
+    for (const bundled of await ServerBundleSecrets.#files(bundleDir)) {
+      const text = await readFile(bundled, "latin1");
+      for (const { secret, needles } of sought)
+        if (needles.some((needle) => text.includes(needle))) found.push({ bundled, secret });
+    }
+    const coded = found.length ? await this.#coded(found.map(({ secret }) => secret.value)) : new Set<string>();
+    const leaks = found
+      .filter(({ secret }) => !coded.has(secret.value))
+      .map(({ bundled, secret }) => `${ServerBundleSecrets.#relative(bundleDir, bundled)} holds ${secret.path}`);
+    if (leaks.length)
+      throw new Error(
+        `The build holds secret values of the server env (${ServerBundleSecrets.#relative(this.workspaceRoot, envFile)}), so it stops here:\n  ${[...new Set(leaks)].join("\n  ")}\nThe env file computes or imports each of them, so the build could not turn it into a read from the process env. Write \`process.env.<NAME>\` there and set that variable where the server is deployed, or build with --inline-secrets, which akanjs 3.5.0 removes.`,
+      );
   }
 
   //? A short or plain value the app's or a lib's own code holds as well (a default password) is that code's, which

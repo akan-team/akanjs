@@ -15,8 +15,8 @@ const makeTempRoot = tempDirs("akan-devkit-secret-env-");
 describe("SecretEnvDeclaration", () => {
   test("lists each secret of the environment's server env with its variable, kind and value, a lib's default included", async () => {
     const { envDir } = await writeSecretEnvFixture(await makeTempRoot());
-    const { variables, unmoved } = await SecretEnvDeclaration.of(envDir, "main");
-    expect(unmoved).toEqual([]);
+    const { variables, unmoved, held } = await SecretEnvDeclaration.of(envDir, "main");
+    expect({ unmoved, held }).toEqual({ unmoved: [], held: [] });
     expect(variables.map(({ name }) => name)).toEqual(secretEnvFixtureNames);
     expect(Object.fromEntries(variables.map(({ name, kind, path: at, value }) => [name, { kind, at, value }]))).toEqual(
       {
@@ -95,6 +95,7 @@ describe("SecretEnvDeclaration", () => {
     });
     const declared = await SecretEnvDeclaration.of(envDir, "main");
     expect(declared.unmoved).toEqual(["llm.apiKey"]);
+    expect(declared.held).toEqual([{ path: "llm.apiKey", value: "sentinel-computed-0a73" }]);
     expect(declared.variables.map(({ name }) => name)).toEqual(secretEnvFixtureNames);
     const listing = SecretEnvFile.listing(declared);
     expect(holdsSentinel(listing)).toBe(false);

@@ -11,7 +11,7 @@
 - **What the build writes.** `akan.env.json` and the Dockerfile gain `AKAN_SECRET_ENV`, the names the server reads (never a value), and the build prints them.
 - **`akan secret-env <app> [--env <env>]`** lists each variable, its kind, its key in the env file and whether the shell sets it. With `--out <file>` it writes the values from the env file: `--format k8s` (the default) a Kubernetes Secret named by `--name` (default `<app>-env`), `--format dotenv` `NAME=value` lines that Bun's loader reads back unchanged. The file is readable by its user alone; a path under `dist/`, a path git would track, and an existing file without `--force` are refused.
 - **At boot** (`AkanApp.start`, before the server is loaded or a replica is spawned) a variable that is not set is one warning naming every such variable, and the server runs without them. A JSON variable that does not parse is refused with the code `secretEnvInvalid`. A multi-line value that arrives with a backslash and an n in place of its line breaks is warned about by name.
-- **A secret the env file computes or imports** rather than writes as a plain string stays in the build, which warns naming its key. Write `process.env.<NAME>` there for the build to leave it out.
+- **The build refuses** a secret it could not turn into a read and that the built files still hold: one the env file computes or imports rather than writes as a plain string. It names the file and the key, never the value.
 - **Unchanged:** your env files, `akan start`, `akan test`, `--profile` builds, and desktop and mobile builds, whose carried server still bundles its env file as written.
 
 **Upgrading.** This changes how every app deploys. Before you deploy an image built with this version:
@@ -25,6 +25,7 @@
 3. Deploy. At start the server logs one warning naming any variable it is missing, and runs without it. Version 3.5.0 will refuse to start instead.
 4. When the new images are live, rotate those secrets and delete the old image tags. Images built before this version still contain the values.
 5. If you cannot change your deployment yet, build with `akan build <app> --inline-secrets`. The image then carries the values as before, and a variable you set still wins. Version 3.5.0 removes the flag.
-6. If a build stops at a key "a build would read from the environment variable …", two keys map to one variable name, or the name is one the platform or akan owns (`PWD`, `HOSTNAME`, `AKAN_*`, …). Rename the key, or write `process.env.<NAME>` there yourself.
+6. If a build stops with "holds secret values of the server env", the named key is not a plain string in the env file (it is computed or imported). Write `process.env.<NAME>` there and set that variable in the deployment.
+7. If a build stops at a key "a build would read from the environment variable …", two keys map to one variable name, or the name is one the platform or akan owns (`PWD`, `HOSTNAME`, `AKAN_*`, …). Rename the key, or write `process.env.<NAME>` there yourself.
 
 A key file an env value points at by path (an Apple sign-in key under `private/`) is not an env value and still ships in the image: mount it instead. A key the rule does not recognise (`stripeKey`, a `salt`) stays in the build; write `process.env.<NAME>` for it.

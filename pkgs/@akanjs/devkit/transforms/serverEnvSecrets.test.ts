@@ -4,9 +4,11 @@ import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import { ServerBundleSecrets } from "../mobile/serverBundleSecrets";
 import {
   holdsSentinel,
+  importedSecret,
   secretEnvFixtureNames,
   secretEnvPlain,
   secretEnvSentinels,
+  writeImportedSecretFixture,
   writeSecretEnvFixture,
 } from "../test/secretEnvFixture";
 import { tempDirs, writeText } from "../test/testHelpers";
@@ -30,9 +32,11 @@ interface Built {
 const build = async (
   root: string,
   secrets?: "read" | "inline",
-  { mainExtra = "", overSwitch = false } = {},
+  { mainExtra = "", overSwitch = false, imported = false } = {},
 ): Promise<Built> => {
-  const { appDir, envDir } = await writeSecretEnvFixture(root, { mainExtra });
+  const { appDir, envDir } = imported
+    ? await writeImportedSecretFixture(root)
+    : await writeSecretEnvFixture(root, { mainExtra });
   if (overSwitch)
     await writeText(path.join(envDir, "env.server.ts"), await Bun.file(path.join(envDir, "env.server.main.ts")).text());
   const entry = path.join(appDir, "server.ts");
@@ -177,6 +181,36 @@ describe("createServerEnvPlugin for an image", () => {
     const booted = boot(built.file, { AKAN_SECRET_ENV: list, ...values });
     expect(booted.warnings).toEqual([]);
     expect(booted.env).toEqual((await evaluated(built)) as { [key: string]: unknown });
+  });
+
+  test("a secret the env file imports stays in the built server, which the image check refuses by file and key alone", async () => {
+    const built = await build(await makeTempRoot(), "read", { imported: true });
+    expect(built.text).toContain(importedSecret);
+    expect(built.text).not.toContain(secretEnvSentinels.jwt);
+    const { held, unmoved } = await SecretEnvDeclaration.of(built.envDir, "main");
+    expect(unmoved).toEqual(["llm.apiKey"]);
+    const failure = await new ServerBundleSecrets(built.root, built.appDir)
+      .assertImageClean(built.outDir, path.join(built.envDir, "env.server.ts"), held)
+      .then(
+        () => "",
+        (error: Error) => error.message,
+      );
+    expect(failure).toBe(
+      [
+        "The build holds secret values of the server env (apps/demo/env/env.server.ts), so it stops here:",
+        "  server.js holds llm.apiKey",
+        "The env file computes or imports each of them, so the build could not turn it into a read from the process env. Write `process.env.<NAME>` there and set that variable where the server is deployed, or build with --inline-secrets, which akanjs 3.5.0 removes.",
+      ].join("\n"),
+    );
+    expect(holdsSentinel(failure)).toBe(false);
+
+    const clean = await build(await makeTempRoot(), "read");
+    const declared = await SecretEnvDeclaration.of(clean.envDir, "main");
+    await new ServerBundleSecrets(clean.root, clean.appDir).assertImageClean(
+      clean.outDir,
+      path.join(clean.envDir, "env.server.ts"),
+      declared.held,
+    );
   });
 
   test("without the setting, as for the server a desktop app carries, the env files are bundled as written", async () => {

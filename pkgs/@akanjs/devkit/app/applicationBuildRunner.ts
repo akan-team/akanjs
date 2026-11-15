@@ -15,6 +15,7 @@ import {
   SsrBaseArtifactBuilder,
   VendorImportScanner,
 } from "../frontendBuild";
+import { ServerBundleSecrets } from "../mobile/serverBundleSecrets";
 import { SecretEnvDeclaration, type SecretEnvDeclared } from "../transforms/secretEnvDeclaration";
 import { createServerEnvPlugin } from "../transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
@@ -118,7 +119,7 @@ export class ApplicationBuildRunner {
   #environment?: string;
   #profile?: string;
   #secretEnv?: "read" | "inline";
-  #secrets: SecretEnvDeclared = { variables: [], unmoved: [] };
+  #secrets: SecretEnvDeclared = { variables: [], unmoved: [], held: [] };
   #budget: RouteJsBudgetMode;
   #modulesByRoute?: Record<string, string[]>;
   #spinner?: boolean;
@@ -233,9 +234,21 @@ export class ApplicationBuildRunner {
           : "no files",
     );
     const routeJs = await this.#runBudgetPhase(environment);
+    await this.assertSecretsLeftOut();
     await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
     this.#reportSecretEnv(environment);
     return this.#resultOf(environment, routeJs);
+  }
+
+  //? Before the metadata phase: a build that still holds a secret gets no Dockerfile to build an image from.
+  async assertSecretsLeftOut() {
+    if (this.#secretEnv !== "read" || !this.#secrets.held.length) return;
+    const { workspaceRoot } = this.#app.workspace;
+    await new ServerBundleSecrets(workspaceRoot, this.#app.cwdPath).assertImageClean(
+      this.#app.dist.cwdPath,
+      path.join(this.#envDir, "env.server.ts"),
+      this.#secrets.held,
+    );
   }
 
   #reportSecretEnv(environment: string) {

@@ -8,7 +8,12 @@ import type { App } from "../commandDecorators";
 import { AppExecutor, Executor } from "../executors";
 import { AllRoutesBuilder, type BuildAllRoutesResult, VendorNarrowing } from "../frontendBuild";
 import { bundleDefine } from "../frontendBuild/bundleDefine";
-import { holdsSentinel, writeSecretEnvFixture } from "../test/secretEnvFixture";
+import {
+  holdsSentinel,
+  importedSecret,
+  writeImportedSecretFixture,
+  writeSecretEnvFixture,
+} from "../test/secretEnvFixture";
 import { createTempApp } from "../test/testHelpers";
 import { ProjectTypecheck } from "../typecheck/projectTypecheck";
 import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS, ApplicationBuildRunner } from "./applicationBuildRunner";
@@ -200,6 +205,49 @@ console.info(new SampleService().name);
       expect(failure).toContain("`pwd` is a secret a build would read from the environment variable PWD");
       expect(holdsSentinel(String(failure))).toBe(false);
       expect(prepared).toBe(false);
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an image build stops before its metadata when the files it wrote hold a secret the env file imports", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeImportedSecretFixture(root, "portal");
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    const runnerOf = async (secretEnv: "read" | "inline") => {
+      const app = AppExecutor.from(workspace, "portal");
+      app.prepareCommand = async () => {
+        throw new Error("stopped before the phases");
+      };
+      const runner = new ApplicationBuildRunner(app, { secretEnv });
+      await expect(runner.build()).rejects.toThrow("stopped before the phases");
+      return { app, runner };
+    };
+    try {
+      const { app, runner } = await runnerOf("read");
+      await mkdir(app.dist.cwdPath, { recursive: true });
+      await writeFile(path.join(app.dist.cwdPath, "server.js"), 'const env = { hostname: "app.example.test" };\n');
+      await runner.assertSecretsLeftOut();
+      await writeFile(path.join(app.dist.cwdPath, "chunk-a.js"), `const key = ${JSON.stringify(importedSecret)};\n`);
+      const failure = await runner.assertSecretsLeftOut().then(
+        () => "",
+        (error: Error) => error.message,
+      );
+      expect(failure).toStartWith(
+        "The build holds secret values of the server env (apps/portal/env/env.server.ts), so it stops here:\n  chunk-a.js holds llm.apiKey\n",
+      );
+      expect(holdsSentinel(failure)).toBe(false);
+      await (await runnerOf("inline")).runner.assertSecretsLeftOut();
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];

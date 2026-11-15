@@ -10,10 +10,17 @@ export interface SecretEnvVariable extends SecretEnvEntry {
   value: string;
 }
 
+export interface SecretEnvHeld {
+  path: string;
+  value: string;
+}
+
 export interface SecretEnvDeclared {
   variables: SecretEnvVariable[];
   /** Secret values the env holds that are not literals of an env file, so no build can read them from a variable. */
   unmoved: string[];
+  /** The values of `unmoved` long enough to look for in the files a build wrote. */
+  held: SecretEnvHeld[];
 }
 
 //* Evaluated with each secret literal marked as a build replaces it, so the list is the reads the built server holds.
@@ -28,7 +35,7 @@ export class SecretEnvDeclaration {
       (envFile) => SecretEnvDeclaration.source(envFile, "mark"),
       { environment, loads: ServerEnvProfile.envModulePattern },
     );
-    const declared: SecretEnvDeclared = { variables: [], unmoved: [] };
+    const declared: SecretEnvDeclared = { variables: [], unmoved: [], held: [] };
     SecretEnvDeclaration.#collect(marked, [], false, declared);
     const variables = new Map<string, SecretEnvVariable>();
     for (const variable of declared.variables) {
@@ -39,7 +46,20 @@ export class SecretEnvDeclaration {
         );
       variables.set(variable.name, variable);
     }
-    return { variables: [...variables.values()], unmoved: declared.unmoved };
+    const held = ServerEnvProfile.secretValues(SecretEnvDeclaration.#withoutMarks(marked));
+    return { variables: [...variables.values()], unmoved: declared.unmoved, held };
+  }
+
+  static #withoutMarks(value: unknown): unknown {
+    if (!value || typeof value !== "object") return value;
+    if (Array.isArray(value)) return value.map((item) => SecretEnvDeclaration.#withoutMarks(item));
+    return Object.fromEntries(
+      Object.entries(value).flatMap(([key, child]) =>
+        Array.isArray((child as { [key: string]: unknown } | null)?.[SecretEnvSource.markKey])
+          ? []
+          : [[key, SecretEnvDeclaration.#withoutMarks(child)]],
+      ),
+    );
   }
 
   static async source(file: string, mode: SecretEnvMode): Promise<ServerEnvSource> {
@@ -49,7 +69,12 @@ export class SecretEnvDeclaration {
     return { loader: "ts", contents: SecretEnvSource.rewrite(file, contents, mode) };
   }
 
-  static #collect(value: unknown, keys: string[], underSecret: boolean, declared: SecretEnvDeclared): void {
+  static #collect(
+    value: unknown,
+    keys: string[],
+    underSecret: boolean,
+    declared: Pick<SecretEnvDeclared, "variables" | "unmoved">,
+  ): void {
     const at = keys.join(".");
     if (typeof value === "string") {
       if (ServerEnvProfile.isSecret(value, underSecret)) declared.unmoved.push(at);

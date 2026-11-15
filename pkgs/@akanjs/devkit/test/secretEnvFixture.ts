@@ -22,7 +22,7 @@ export const secretEnvPlain = { hostname: "app.example.test", clientID: "plain-c
 
 const s = secretEnvSentinels;
 
-const mainEnv = (extra = "") => `import { libEnv } from "./env.server.type";
+const mainEnv = (extra = "", head = "") => `${head}import { libEnv } from "./env.server.type";
 
 export const env = {
   ...libEnv,
@@ -49,7 +49,7 @@ export interface SecretEnvFixture {
 
 export const writeSecretEnvFixture = async (
   root: string,
-  { app = "demo", mainExtra = "" } = {},
+  { app = "demo", mainExtra = "", mainHead = "" } = {},
 ): Promise<SecretEnvFixture> => {
   const appDir = path.join(root, "apps", app);
   const envDir = path.join(appDir, "env");
@@ -72,7 +72,7 @@ export const writeSecretEnvFixture = async (
     libEnvFile,
     `export const env = {\n  hostname: null,\n  security: { jwtSecret: ${JSON.stringify(s.libJwt)}, verifies: [["password"]] },\n  mailer: { address: "noreply@example.test", auth: { user: "mailer", pass: ${JSON.stringify(s.libPass)} } },\n};\n`,
   );
-  await writeText(path.join(envDir, "env.server.main.ts"), mainEnv(mainExtra));
+  await writeText(path.join(envDir, "env.server.main.ts"), mainEnv(mainExtra, mainHead));
   await writeText(
     path.join(envDir, "env.server.local.ts"),
     `export const env = { hostname: "localhost", llm: { apiKey: ${JSON.stringify(s.local)} } };\n`,
@@ -94,3 +94,17 @@ export const secretEnvFixtureNames = [
 ];
 
 export const holdsSentinel = (text: string) => text.includes("sentinel-");
+
+export const importedSecret = "sentinel-imported-llm-key-0a73";
+
+export const writeImportedSecretFixture = async (root: string, app = "demo"): Promise<SecretEnvFixture> => {
+  await writeText(
+    path.join(root, "apps", app, "srvkit/keys.ts"),
+    `export const llmKey = ${JSON.stringify(importedSecret)};\n`,
+  );
+  return await writeSecretEnvFixture(root, {
+    app,
+    mainHead: 'import { llmKey } from "../srvkit/keys";\n',
+    mainExtra: "\n  llm: { apiKey: llmKey },",
+  });
+};
