@@ -112,7 +112,7 @@ describe("NativeFile", () => {
 
     const refusal = await NativeFile.resolveIn("f3", "notes.txt/x").catch((error: unknown) => error);
     expect(refusal).toMatchObject({ code: "fileGrantRefused", statusCode: 403 });
-    expect((refusal as Error).cause).toMatchObject({ code: "ENOTDIR" });
+    expect((refusal as Error).cause).toMatchObject({ code: process.platform === "win32" ? "ENOENT" : "ENOTDIR" });
   });
 
   test("answers 503 while the desktop app does not answer for a grant", async () => {

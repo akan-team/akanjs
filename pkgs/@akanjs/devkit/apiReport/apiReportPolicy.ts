@@ -37,9 +37,10 @@ export class ApiReportPolicy {
     const mergeBase = (await this.#git(["merge-base", base, "HEAD"]))?.trim();
     if (!mergeBase) return null;
     const before = new Map<string, string>();
-    const listed = (await this.#git(["ls-tree", "--name-only", `${mergeBase}:${this.#reportDir}`])) ?? "";
+    const treeDir = this.#reportDir.split(path.sep).join("/");
+    const listed = (await this.#git(["ls-tree", "--name-only", `${mergeBase}:${treeDir}`])) ?? "";
     for (const file of listed.split("\n").filter((name) => name.endsWith(ApiReport.extension)))
-      before.set(file, (await this.#git(["show", `${mergeBase}:${this.#reportDir}/${file}`])) ?? "");
+      before.set(file, (await this.#git(["show", `${mergeBase}:${treeDir}/${file}`])) ?? "");
     const breaks = ApiReportDiff.breaks(before, await this.readReports());
     if (!breaks.length) return { breaks, bumped: false };
     const added = [

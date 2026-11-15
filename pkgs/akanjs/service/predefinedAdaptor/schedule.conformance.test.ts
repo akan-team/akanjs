@@ -51,15 +51,16 @@ for (const kind of kinds) {
       let running = 0;
       let overlap = 0;
       let runs = 0;
+      //? The lease lives one period and is renewed every third of one, so a 50 ms period failed on a loop stalled ~35 ms.
       for (const scheduler of [instance(), instance()])
-        scheduler.registerInterval(key, 50, async () => {
+        scheduler.registerInterval(key, 100, async () => {
           running += 1;
           overlap = Math.max(overlap, running);
-          await Bun.sleep(160);
+          await Bun.sleep(320);
           running -= 1;
           runs += 1;
         });
-      await Bun.sleep(600);
+      await Bun.sleep(1200);
       expect(overlap).toBe(1);
       expect(runs).toBeGreaterThanOrEqual(2);
     });

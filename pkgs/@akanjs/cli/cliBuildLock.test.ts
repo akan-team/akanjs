@@ -50,7 +50,7 @@ const holdAs = async (lockDir: string, owner: string) => {
 const ownerOf = (lockDir: string) => Bun.file(path.join(lockDir, "owner")).text();
 const ownerPidOf = async (lockDir: string) => (await ownerOf(lockDir)).split("\n")[0];
 const deadPid = async () => {
-  const proc = Bun.spawn(["true"]);
+  const proc = Bun.spawn([process.execPath, "-e", "0"]);
   await proc.exited;
   return proc.pid;
 };

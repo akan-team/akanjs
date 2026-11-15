@@ -9,7 +9,18 @@ const track = tempRoots();
 
 const git = (cwd: string, args: string[]) => {
   const proc = Bun.spawnSync(
-    ["git", "-c", "user.email=dev@example.com", "-c", "user.name=dev", "-c", "commit.gpgsign=false", ...args],
+    [
+      "git",
+      "-c",
+      "user.email=dev@example.com",
+      "-c",
+      "user.name=dev",
+      "-c",
+      "commit.gpgsign=false",
+      "-c",
+      "core.autocrlf=false",
+      ...args,
+    ],
     { cwd, env: { ...process.env, GIT_CEILING_DIRECTORIES: path.dirname(cwd) } },
   );
   if (proc.exitCode !== 0) throw new Error(`git ${args.join(" ")} failed: ${proc.stderr.toString()}`);

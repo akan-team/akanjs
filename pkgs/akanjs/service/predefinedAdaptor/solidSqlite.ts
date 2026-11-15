@@ -45,13 +45,15 @@ export const openSolidDatabase = async (config: Required<SolidConfig>) => {
   DirectoryNotWritableError.assertFileDir(config.filePath);
   let lastError: unknown;
   for (let attempt = 0; attempt < 8; attempt++) {
+    let db: Database | undefined;
     try {
-      const db = new Database(config.filePath, { strict: true, create: true });
+      db = new Database(config.filePath, { strict: true, create: true });
       db.run(`PRAGMA busy_timeout = ${config.busyTimeoutMs}`);
       db.run(`PRAGMA journal_mode = ${config.journalMode}`);
       db.run(`PRAGMA synchronous = ${config.synchronous}`);
       return db;
     } catch (error) {
+      db?.close();
       lastError = error;
       if (!String(error instanceof Error ? error.message : error).includes("locked")) throw error;
       await wait(50 * (attempt + 1));

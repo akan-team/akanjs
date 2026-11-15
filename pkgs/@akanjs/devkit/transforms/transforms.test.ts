@@ -231,7 +231,7 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     expect(map?.get("C")).toEqual({ subpath: "@scope/pkg/cycleA", originalName: "C" });
     expect(
       (await analyzer.filesOf("@scope/pkg"))
-        .map((file) => path.relative(pkgDir, file))
+        .map((file) => path.relative(pkgDir, file).split(path.sep).join("/"))
         .sort((a, b) => a.localeCompare(b)),
     ).toEqual(["cycleA.ts", "cycleB.ts", "index.ts", "sub/a.ts", "sub/b.ts", "sub/index.ts"]);
   });
