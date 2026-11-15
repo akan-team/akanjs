@@ -593,12 +593,12 @@ REDIS_URI=redis://redis.internal:6379`}
                   }),
                 },
                 {
-                  key: "AKAN_SECRET_ENV",
+                  key: "AKAN_ENV_NAMES",
                   type: "string",
                   default: l.trans({ en: "written by the build", ko: "빌드가 기록" }),
                   desc: l.trans({
-                    en: "The names the built server reads, in `akan.env.json` and the Dockerfile. At boot a name that is not set is one warning naming it, and the server runs without it; version 3.5.0 will refuse to start.",
-                    ko: "빌드된 서버가 읽는 변수 이름 목록이며 `akan.env.json`과 Dockerfile에 적힙니다. 시작할 때 설정되지 않은 이름이 있으면 그 이름을 들어 한 번 경고하고 그 값 없이 돕니다. 3.5.0부터는 시작을 거부합니다.",
+                    en: "The names the built server reads, in `akan.env.json` and the Dockerfile. At boot a name that is not set is one warning naming it. The framework does not stop for it, though whatever reads the value may; version 3.5.0 will refuse to start.",
+                    ko: "빌드된 서버가 읽는 변수 이름 목록이며 `akan.env.json`과 Dockerfile에 적힙니다. 시작할 때 설정되지 않은 이름이 있으면 그 이름을 들어 한 번 경고합니다. 프레임워크는 이 때문에 멈추지 않지만 그 값을 읽는 코드는 멈출 수 있습니다. 3.5.0부터는 시작을 거부합니다.",
                   }),
                 },
               ]}
