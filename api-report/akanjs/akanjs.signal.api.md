@@ -1588,8 +1588,8 @@ export declare class SignalTrace {
     error: unknown;
     debugSev: null | number;
     flight: LogFlightRecorder | null;
+    readonly aggregated: boolean;
     link: null | string;
-    exported: boolean;
     constructor(endpointKey: string, endpointType: string, { mode, origin, parent, }?: {
         mode?: TraceMode;
         origin?: TraceOrigin;
@@ -1598,6 +1598,7 @@ export declare class SignalTrace {
     get traceId(): string;
     get spanId(): string;
     get parentSpanId(): null | string;
+    get exported(): boolean;
     get sampled(): boolean;
     get traceparent(): string;
     static create(endpointKey: string, endpointType: string, origin: TraceOrigin, parent?: TraceParentRef | null): SignalTrace | null;

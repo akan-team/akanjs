@@ -259,8 +259,9 @@ normalized to `info` with one warning.
   RSC worker included, batched in a bounded queue that drops its oldest and never blocks or throws into a request.
   `OTEL_TRACES_SAMPLER` (`always_on`, `always_off`, `traceidratio` and their `parentbased_` forms, default
   `parentbased_always_on`; any other value exports no spans) decides at the first TCP hop, and the sampled flag of
-  `traceparent` carries it to the replica and the worker. Logs go whenever a logs endpoint resolves, the generic one
-  included; `OTEL_LOGS_EXPORTER=none` stops them. `OTEL_EXPORTER_OTLP_HEADERS` values are credentials, never
+  `traceparent` carries it to the replica and the worker. Logs go only with `OTEL_LOGS_EXPORTER=otlp` or
+  `…_LOGS_ENDPOINT`, never from the generic endpoint alone, their message text as written; only secret-named attrs are
+  redacted. Stage spans wait for `AKAN_TRACE=1`. `OTEL_EXPORTER_OTLP_HEADERS` values are credentials, never
   logged; `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SDK_DISABLED` work as in the OTel spec. It is
   separate from `AKAN_TRACE` and `x-akan-debug`: neither changes what is sampled.
 - **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,

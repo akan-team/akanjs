@@ -20,14 +20,16 @@ export class RequestTrace implements TraceParentRef {
   readonly parentSpanId: string | null;
   readonly sampled: boolean;
   readonly link: string | null;
+  readonly linkSpanId: string | null;
   #spanId: string | null = null;
   #logContext: LogContextSnapshot | null = null;
 
-  constructor({ traceId, parentSpanId, sampled, link }: AdoptedTrace) {
+  constructor({ traceId, parentSpanId, sampled, link, linkSpanId = null }: AdoptedTrace) {
     this.traceId = traceId;
     this.parentSpanId = parentSpanId;
     this.sampled = sampled;
     this.link = link;
+    this.linkSpanId = link ? linkSpanId : null;
   }
 
   get spanId(): string {

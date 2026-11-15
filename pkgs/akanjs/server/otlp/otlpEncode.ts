@@ -73,7 +73,7 @@ export class OtlpEncode {
       kind: span.kind,
       startTimeUnixNano: unixNano(epochOffsetMs + span.startMs),
       endTimeUnixNano,
-      attributes: keyValues(span.attrs),
+      attributes: keyValues(span.link ? { ...span.attrs, "akan.trace.link": span.link } : span.attrs),
       ...(span.exception
         ? {
             events: [
@@ -88,7 +88,8 @@ export class OtlpEncode {
             ],
           }
         : {}),
-      ...(span.link ? { links: [{ traceId: span.link, spanId: "" }] } : {}),
+      //? A link's SpanContext is valid only with a span id, so an id with none goes as the attribute above alone.
+      ...(span.link && span.linkSpanId ? { links: [{ traceId: span.link, spanId: span.linkSpanId }] } : {}),
       ...(span.failed ? { status: { code: statusError } } : {}),
     };
   }

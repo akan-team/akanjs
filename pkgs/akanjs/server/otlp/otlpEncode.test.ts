@@ -14,6 +14,7 @@ const span = (overrides: Partial<ExportSpan> = {}): ExportSpan => ({
   endMs: 12.5,
   attrs: { "http.request.method": "GET", "http.response.status_code": 200, ratio: 0.25, ok: true },
   link: null,
+  linkSpanId: null,
   failed: false,
   exception: null,
   ...overrides,
@@ -69,7 +70,7 @@ describe("OTLP/JSON bodies", () => {
     });
   });
 
-  test("a root span leaves parentSpanId out, a failure sets status ERROR with an exception event, a link has the trace id", () => {
+  test("a root span leaves parentSpanId out, a failure sets status ERROR with an exception event, a link has both ids", () => {
     const body = JSON.parse(
       OtlpEncode.traces(
         {},
@@ -77,6 +78,7 @@ describe("OTLP/JSON bodies", () => {
           span({
             parentSpanId: null,
             link: "0af7651916cd43dd8448eb211c80319c",
+            linkSpanId: "b7ad6b7169203331",
             failed: true,
             exception: { type: "TypeError", message: "internalServerError" },
           }),
@@ -88,7 +90,7 @@ describe("OTLP/JSON bodies", () => {
 
     expect(encoded.parentSpanId).toBeUndefined();
     expect(encoded.status).toEqual({ code: 2 });
-    expect(encoded.links).toEqual([{ traceId: "0af7651916cd43dd8448eb211c80319c", spanId: "" }]);
+    expect(encoded.links).toEqual([{ traceId: "0af7651916cd43dd8448eb211c80319c", spanId: "b7ad6b7169203331" }]);
     expect(encoded.events).toEqual([
       {
         timeUnixNano: encoded.endTimeUnixNano,
@@ -102,6 +104,14 @@ describe("OTLP/JSON bodies", () => {
     expect(
       JSON.parse(OtlpEncode.traces({}, [span()], 0)).resourceSpans[0].scopeSpans[0].spans[0].status,
     ).toBeUndefined();
+  });
+
+  test("a link with no span id, from x-request-id or a job, is sent as an attribute and never as a link", () => {
+    const link = "0af7651916cd43dd8448eb211c80319c";
+    const [encoded] = JSON.parse(OtlpEncode.traces({}, [span({ link })], 0)).resourceSpans[0].scopeSpans[0].spans;
+
+    expect(encoded.links).toBeUndefined();
+    expect(encoded.attributes).toContainEqual({ key: "akan.trace.link", value: { stringValue: link } });
   });
 
   test("a log body is resourceLogs → scopeLogs → logRecords with severity, a string body and the request's ids", () => {

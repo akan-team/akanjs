@@ -17,8 +17,9 @@ export interface ExportSpan {
   startMs: number;
   endMs: number;
   attrs: ExportAttrs;
-  /** A trace id this span was handed and did not continue; no span id travels with it. */
+  /** A trace id this span was handed and did not continue. */
   link: string | null;
+  linkSpanId: string | null;
   failed: boolean;
   exception: { type: string; message: string } | null;
 }
@@ -34,6 +35,7 @@ interface ServedTrace {
   readonly spanId: string;
   readonly parentSpanId: string | null;
   readonly link: string | null;
+  readonly linkSpanId?: string | null;
 }
 
 // Pinned to `process` like the trace ALS: the worker's app bundle and the framework runtime are separate realms.
@@ -93,6 +95,7 @@ export class SpanExport {
         endMs: performance.now(),
         attrs,
         link: trace.link,
+        linkSpanId: trace.linkSpanId ?? null,
         failed,
         exception,
       });
@@ -129,6 +132,7 @@ export class SpanExport {
             ? { "db.collection.name": String(span.attrs?.model), "db.operation.name": String(span.attrs?.op) }
             : {},
         link: root ? trace.link : null,
+        linkSpanId: null,
         failed: root && failed,
         exception: root ? exception : null,
       });

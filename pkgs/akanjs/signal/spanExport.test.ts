@@ -49,6 +49,22 @@ describe("head sampling for the OTLP exporter", () => {
     expect(asked).toEqual([false, null]);
   });
 
+  test("a server span links the outside caller's trace, and its span only when a traceparent named one", () => {
+    const { spans } = exporting();
+    for (const headers of [{ traceparent: `00-${inbound}-${inboundSpan}-01` }, { "x-request-id": inbound }] as Record<
+      string,
+      string
+    >[]) {
+      const request = RequestTrace.accept(new Headers(headers), outside);
+      SpanExport.openServerSpan(request, new Request("http://shop.test/"), null)?.(new Response(null));
+    }
+
+    expect(spans.map((span) => [span.link, span.linkSpanId])).toEqual([
+      [inbound, inboundSpan],
+      [inbound, null],
+    ]);
+  });
+
   test("with no exporter a request is accepted as before and opens no span", () => {
     const request = RequestTrace.accept(new Headers(), outside);
 
@@ -68,6 +84,33 @@ describe("signal traces the exporter records", () => {
     expect([trace?.mode, trace?.exported, trace?.traceparent.endsWith("-01")]).toEqual(["full", true, true]);
     expect(spans.map((span) => span.name)).toEqual(["handler", "query:getUser"]);
     expect(traceAggregator.snapshot().endpoints).toEqual([]);
+  });
+
+  test("a sampled call leaves out the per-stage spans unless AKAN_TRACE or a passed x-akan-debug asks for them", () => {
+    setLogContextEnabled(false);
+    exporting();
+    const savedSecret = process.env.AKAN_LOG_DEBUG_HEADER;
+    process.env.AKAN_LOG_DEBUG_HEADER = "debug-secret";
+    try {
+      const sampled = () =>
+        RequestTrace.run(RequestTrace.fresh(), () => SignalTrace.create("getUser", "query", "http"));
+      const exported = sampled();
+      const debugged = sampled();
+      debugged?.applyDebugHeader("debug-secret");
+      setTraceEnabled(true);
+      const traced = sampled();
+
+      const stages = (trace: SignalTrace | null) =>
+        trace?.mode === "full" && (trace.aggregated || trace.debugSev !== null);
+
+      expect([exported?.mode, exported?.exported, stages(exported)]).toEqual(["full", true, false]);
+      expect(() => Object.assign(exported ?? {}, { exported: false })).toThrow(TypeError);
+      expect([debugged?.exported, stages(debugged)]).toEqual([true, true]);
+      expect([traced?.exported, stages(traced)]).toEqual([true, true]);
+    } finally {
+      if (savedSecret === undefined) delete process.env.AKAN_LOG_DEBUG_HEADER;
+      else process.env.AKAN_LOG_DEBUG_HEADER = savedSecret;
+    }
   });
 
   test("a call under an unsampled request is not recorded, and a job with no parent is sampled on its own", () => {

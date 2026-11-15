@@ -168,11 +168,10 @@ export class SignalTrace {
   #flightRing: FlightEntry[] | null = null;
   #flightEvicted = 0;
   #finalized = false;
-  readonly #aggregated: boolean;
+  readonly aggregated: boolean;
   /** An id this call was handed but did not take: an untrusted caller's, or the trace that enqueued a job. */
   link: string | null;
-  /** Head-sampled for the OTLP exporter: its spans are recorded and sent once it finalizes. */
-  exported = false;
+  #exported = false;
   readonly #parent: TraceParentRef | null;
   #traceId: string | null = null;
   #spanId: string | null = null;
@@ -191,7 +190,7 @@ export class SignalTrace {
     this.mode = mode;
     this.origin = origin;
     this.startedAt = performance.now();
-    this.#aggregated = mode === "full";
+    this.aggregated = mode === "full";
     this.#parent = parent;
     this.link = parent?.link ?? null;
   }
@@ -210,8 +209,13 @@ export class SignalTrace {
     return this.#parent?.spanId ?? null;
   }
 
+  /** Head-sampled for the OTLP exporter: its spans are recorded and sent once it finalizes. */
+  get exported(): boolean {
+    return this.#exported;
+  }
+
   get sampled(): boolean {
-    return this.exported || (this.#parent?.sampled ?? false);
+    return this.#exported || (this.#parent?.sampled ?? false);
   }
 
   get traceparent(): string {
@@ -233,8 +237,8 @@ export class SignalTrace {
       parent !== undefined ? parent : origin === "internal" ? null : (als.getStore() ?? RequestTrace.current() ?? null);
     const trace = new SignalTrace(endpointKey, endpointType, { mode: mode ?? "context", origin, parent: opener });
     //? Set after construction, so a sampled call records spans without joining the `AKAN_TRACE` aggregate.
-    if (sink) trace.exported = opener ? opener.sampled === true : sink.sample(trace.traceId, null);
-    if (trace.exported) trace.mode = "full";
+    if (sink) trace.#exported = opener ? opener.sampled === true : sink.sample(trace.traceId, null);
+    if (trace.#exported) trace.mode = "full";
     else if (!mode) return null;
     if (isFlightRecorderEnabled()) trace.startFlightRecorder();
     return trace;
@@ -374,8 +378,8 @@ export class SignalTrace {
     this.#emitCanonicalLine(totalMs);
     if (this.mode !== "full") return;
     this.spans.push({ id: this.spanId, parentId: this.parentSpanId, name: "total", startMs: 0, durationMs: totalMs });
-    if (this.exported) SpanExport.exportTrace(this);
-    if (!this.#aggregated) return;
+    if (this.#exported) SpanExport.exportTrace(this);
+    if (!this.aggregated) return;
     traceAggregator.ingest(this);
     maybeFlushTraceFile();
   }
