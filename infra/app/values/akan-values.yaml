@@ -1,3 +1,13 @@
 appName: akan
+# `app.secretName` is the Secret Jenkins writes from the branch's server env file before each deploy
+# (`akan secret-env akan --env <branch> --format k8s --name app-env`): the image holds the names of those values only.
+debug:
+  app:
+    secretName: app-env
+develop:
+  app:
+    secretName: app-env
 main:
   domains: ["www.akanjs.com", "akanjs.com"]
+  app:
+    secretName: app-env

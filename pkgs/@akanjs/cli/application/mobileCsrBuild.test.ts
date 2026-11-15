@@ -4,20 +4,21 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AppExecutor } from "@akanjs/devkit/executors";
 
-const built: { environment?: string; budget?: string; publicEnv?: string }[] = [];
+const built: { environment?: string; budget?: string; publicEnv?: string; secretEnv?: string }[] = [];
 let buildFails = true;
 let afterBuild: (() => Promise<void>) | null = null;
 mock.module("@akanjs/devkit/app/applicationBuildRunner", () => ({
   ApplicationBuildRunner: class {
     constructor(
       _app: unknown,
-      readonly options: { environment?: string; budget?: string } = {},
+      readonly options: { environment?: string; budget?: string; secretEnv?: string } = {},
     ) {}
     async build() {
       built.push({
         environment: this.options.environment,
         budget: this.options.budget,
         publicEnv: process.env.AKAN_PUBLIC_ENV,
+        ...("secretEnv" in this.options ? { secretEnv: String(this.options.secretEnv) } : {}),
       });
       if (buildFails) throw new Error("built");
       await afterBuild?.();
@@ -59,6 +60,8 @@ describe("ApplicationRunner mobile builds", () => {
       { environment: "debug", budget: "off", publicEnv: "debug" },
       { environment: "local", budget: "off", publicEnv: "local" },
     ]);
+    //? A carried server runs on a user's computer, where nothing sets a variable: its env file is bundled as written.
+    expect(built.filter((each) => "secretEnv" in each)).toEqual([]);
     expect(process.env.AKAN_PUBLIC_ENV).toBe(shellEnv);
   });
 

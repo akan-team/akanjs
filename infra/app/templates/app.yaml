@@ -99,10 +99,19 @@ spec:
             limits:
               memory: {{ $config.app.resources.limits.memory }}
               cpu: {{ $config.app.resources.limits.cpu }}
-          {{- with $database.secretName }}
+          {{- if or $config.app.secretName $database.secretName }}
+          # The server env's secrets, which the image holds only the names of (`akan secret-env <app> --format k8s`),
+          # then the database's: when both name a variable, the later Secret wins, and where the data lives is the
+          # deployment's to say.
           envFrom:
+            {{- with $config.app.secretName }}
             - secretRef:
                 name: {{ . }}
+            {{- end }}
+            {{- with $database.secretName }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
           {{- end }}
           env:
             - name: AKAN_PUBLIC_ENV

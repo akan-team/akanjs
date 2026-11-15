@@ -195,13 +195,16 @@ worker per web-serving replica.
   and neither does a save in a sibling app. An import that makes a new lib a dependency needs a fresh
   `akan start`, because it needs a `sync` first anyway. Before the first `sync` the manifests do not exist yet and
   the whole `libs/` container is watched, which is the safe direction.
-- **A built artifact runs from the generated app directory, without Docker and without an env.** `akan build`
+- **A built artifact runs from the generated app directory, without Docker.** `akan build`
   writes `akan.env.json` beside `main.js` with the values the Dockerfile's `ENV` lines set, and `main.js` takes
   each one the process was not started with, so a variable you set (or the image's `ENV`) wins. Start it from that
-  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd.
+  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd. The secrets
+  of its server env are not in it (see "Server Env Secrets" below): give them in the env, or it warns and runs
+  without them.
 
   ```bash
   cd dist/apps/<appName> && PORT=3100 bun main.js
+  cd dist/apps/<appName> && bun --env-file=/path/outside/dist/<appName>.env main.js
   ```
 
 - **A server a test boots in-process takes `start({ listen: false, schedules: false })`** to run no internal
@@ -350,6 +353,78 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   change in dev. Keep a lib's steps to what its runtime genuinely requires.
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
+
+## Server Env Secrets — Read From The Process Env
+
+`akan build <app>` puts no secret value of the server env into the server it builds. The env file stays the one
+place a developer writes them; the build turns each into a read of an environment variable the deployment sets.
+
+- **What is a secret.** A string under a secret-named key at any depth below it, unless blank, or a URL carrying a
+  password or a secret-named query parameter. The names are the ones the logger masks: `password`, `pass`, `pwd`,
+  `token`, `jwt`, `secret`, `cookie`, `authorization`, `apiKey`, `aesKey`, `privateKey`, `accessKey`, `authKey`,
+  `hashKey`, a signing, encryption, master or session key, `webhook`, `credential`, a `dsn`, a connection string,
+  `iapVerify`, `serviceAccount`, `cred(s)`. Numbers, booleans and `null` never are. The rule over-matches
+  (`cookieDomain`, `tokenTtl` as a string), which only means the deployment sets that value too; it misses a key such
+  as `stripeKey` or `salt`, which stays in the build unless the env file reads `process.env.<NAME>` itself.
+- **Its variable** is its key path, each key in upper snake case and joined with `__`:
+  `security.sso.google.clientSecret` is `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `iapVerify.google.private_key` is
+  `IAP_VERIFY__GOOGLE__PRIVATE_KEY`. Four keep the names the framework already reads ahead of the env file:
+  `security.jwtSecret` is `JWT_SECRET`, `database.postgres.url` is `POSTGRES_URL` (`POSTGRES_URI` satisfies it),
+  `database.postgres.password` is `POSTGRES_PASSWORD`, `database.postgres.insightUrl` is `POSTGRES_INSIGHT_URL`.
+  An array holding a secret moves whole into one variable holding JSON (`discord.tokens` is `DISCORD__TOKENS`,
+  `["a","b"]`). An object is never one variable: each secret string in it is its own. A multi-line value (a PEM key)
+  is carried with its real line breaks.
+- **What the build rewrites** is source text: a string literal that is the value of a key in the object
+  `export const env` holds, in the app's `env.server.<env>.ts`, in `env.server.ts` itself where a pipeline copies an
+  env file over it, and in each lib's `env.server.<name>.ts`. In `process.env.MY_URL ?? "literal"` only the literal
+  becomes the read, so the developer's own variable comes first. Two keys that map to one name (`apiKey` and
+  `api_key`), and a name the platform or akan owns (`PATH`, `HOME`, `HOSTNAME`, `PORT`, `USER`, `PWD`, `TZ`,
+  `NODE_ENV`, `AKAN_*`, `BUN_*`), stop the build before it starts.
+- **What stops a build.** Before any phase the build loads the env file with each literal marked, to list the
+  variables and to see what it cannot move. A secret-named key whose value is computed, imported or spread from
+  another file stops it there, whatever the value's length or shape, naming the app, the env file and the keys:
+  write the string at the key, or `process.env.<NAME>`. A key the env file reads from `process.env` itself is the
+  developer's own: it is not moved, never stops the build, and the bundle holds the read and no value, set in the
+  build's shell or not. After the bundles are written the build looks in `dist/apps/<app>` for each secret string it
+  left out, eight characters or longer: a long mixed one found there stops the build, naming its key, its variable
+  and a plain key of the env that holds it too; a short or plain one (a password equal to a database's name) is a
+  warning by the same names, as is a shorter string a plain key holds as well. No message prints a value.
+- **How the env file is loaded.** In a process with `PATH`, `HOME` and `AKAN_PUBLIC_ENV` alone, so the list is the
+  same from any shell and `process.env.X ?? fallback` reads as the fallback the bundle carries. A file that cannot
+  load so (`process.env.HOSTS!.split(",")`) is loaded again with the build shell's variables, where a value a
+  variable gave counts as the developer's read. One that loads neither way stops the build with the error's class
+  and its file and line, never its message, which could quote a value; loading has a 60 second limit, and a file
+  that leaves a timer or a server open still ends when its answer is in.
+- **What the image carries** is the list: `AKAN_SECRET_ENV` in `akan.env.json` and the Dockerfile, names with
+  `:json` or `:multiline` after an array or a multi-line value, never a value. The build prints the names.
+- **At boot**, in `AkanApp.start` before the server is loaded or a replica is spawned, the list is compared with the
+  process env. A variable not set, or set empty, is one warning naming every such variable, and the server runs
+  with `undefined` in its place; version 3.5.0 will refuse to boot. A `:json` variable that does not parse as an
+  array is refused (`secretEnvInvalid`). A `:multiline` variable holding a backslash and an n in place of its line
+  breaks is warned about by name. No message carries a value. `bun console.js` and `bun main.js ops …` do not
+  check.
+- **`akan secret-env <app> [--env <env>]`** lists each variable with its kind, whether the shell sets it, and its key
+  in the env file. `--out <file>` writes the values the env file evaluates to: `--format k8s` (the default) a
+  `kind: Secret` with base64 `data`, named by `--name` (default `<app>-env`); `--format dotenv` `NAME=value` lines
+  quoted so that Bun's loader reads each back unchanged. The file is created readable by its user alone. A path
+  under `dist/`, a path git would track and an existing file (without `--force`) are refused. The file holds the
+  secrets: apply or import it, then delete it.
+- **Giving the server its variables.** Kubernetes: apply the Secret and name it in the container's `envFrom`; a
+  Secret that is missing stops the container before boot. Docker: `-e NAME=value`; `docker run --env-file` takes
+  each line as written, so of the dotenv file it reads the unquoted values and no quoted or multi-line one.
+  A host: `bun --env-file=<file> main.js`, with the file outside `dist/apps/<app>`, which an image copies whole.
+  Every replica and the RSC worker inherit the gateway's env, so a changed Secret reaches a pod only when it
+  restarts.
+- **`akan build <app> --inline-secrets`** keeps each value in the build as what its read falls back to, for a
+  deployment that does not set the variables yet; a variable that is set still wins, the boot warning says the
+  built-in values are in use, and nothing above stops it: a computed or imported secret stays, the files written are
+  not searched, and an env file that cannot be loaded is a warning, after which the env files are bundled as
+  written and no variable is read. Version 3.5.0 removes the flag.
+- **Read as written, as before:** `akan start` and `akan test` (the env file is imported from source), a
+  `--profile` build (its profile file may hold no secret at all), and the server a desktop or mobile build carries.
+- **Not covered:** a key file an env value names by path (`security.sso.apple.keyFilePath` under `private/`) ships
+  with `private/`; mount it instead. Images built before 3.4.0 still hold the values: rotate the secrets once the
+  new images are live.
 
 ## Native Apps — The `native` Section
 

@@ -589,17 +589,17 @@ export class AkanAppConfig implements AppConfigResult {
     "ARG AKAN_ALLOW_LOCAL_IMAGE",
     `RUN if [ "$AKAN_ALLOW_LOCAL_IMAGE" != "1" ]; then echo "This build ran with AKAN_PUBLIC_ENV=local, so the server runs without endpoint rate limits and on local defaults for Redis and the database mode. Build for the environment it deploys to with akan build --env, or pass --build-arg AKAN_ALLOW_LOCAL_IMAGE=1." >&2; exit 1; fi`,
   ].join("\n");
-  dockerfileFor(environment: string, { lockfile = true }: { lockfile?: boolean } = {}): string {
-    return this.#makeDockerfile(environment, lockfile);
+  dockerfileFor(environment: string, options: { lockfile?: boolean; env?: Record<string, string> } = {}): string {
+    return this.#makeDockerfile(environment, options.lockfile ?? true, options.env);
   }
-  #makeDockerfile(environment?: string, lockfile = true): string {
+  #makeDockerfile(environment?: string, lockfile = true, env = this.getProductionEnv(environment)): string {
     if (typeof this.docker === "string") return this.docker;
     const { image, preRuns, postRuns, command } = this.docker;
     const preRunScripts = this.#getDockerRunScripts(preRuns);
     const postRunScripts = this.#getDockerRunScripts(postRuns);
     const imageScript = this.#getDockerImageScript(image, DEFAULT_DOCKER_IMAGE);
     const isLocal = (environment ?? this.baseDevEnv.env) === "local";
-    const envLines = Object.entries(this.getProductionEnv(environment)).map(([key, value]) => `ENV ${key}=${value}`);
+    const envLines = Object.entries(env).map(([key, value]) => `ENV ${key}=${value}`);
     return `${imageScript}${isLocal ? `\n${AkanAppConfig.localImageGuard}` : ""}
 RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
