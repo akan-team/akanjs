@@ -1,3 +1,4 @@
+import { accessTokenSeconds } from "@libs/util/common";
 import { createOpaqueToken, hashToken, jwtSign, jwtVerify } from "@libs/util/srvkit";
 import { type Dayjs, dayjs, getEnv } from "akanjs/base";
 import { serve } from "akanjs/service";
@@ -21,7 +22,11 @@ export class SecurityService extends serve("security" as const, ({ use }) => ({
   }
   async signAccessToken(
     data: Record<string, unknown>,
-    { sid, jti, expiresAt = dayjs().add(7, "day") }: { sid: string; jti: string; expiresAt?: Dayjs },
+    {
+      sid,
+      jti,
+      expiresAt = dayjs().add(accessTokenSeconds, "second"),
+    }: { sid: string; jti: string; expiresAt?: Dayjs },
   ): Promise<{
     jwt: string;
     expiresAt: Dayjs;

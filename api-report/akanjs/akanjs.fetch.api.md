@@ -263,6 +263,7 @@ export declare class HttpClient {
     setRetry(retry: RetryPolicy | false): void;
     get retry(): RetryPolicy | false;
     static traceHeaders(): Record<string, string>;
+    static callerHeaders(ownOrigin: boolean): Record<string, string>;
     get<Returns = unknown>(url: string, options?: FetchOptions): Promise<Returns>;
     send<Returns = unknown>(method: HttpMutationMethod, url: string, data: FormData | Record<string, unknown>, options?: FetchOptions): Promise<Returns>;
     put<Returns = unknown>(url: string, data: FormData | Record<string, unknown>, options?: FetchOptions): Promise<Returns>;
@@ -401,7 +402,9 @@ export declare class WsClient {
     get state(): WsClientState;
     setJwt(jwt: null | string): void;
     connectOnUse(): void;
-    connect(): void;
+    connect({ fresh }?: {
+        fresh?: boolean;
+    }): void;
     destroy(): void;
     on<Data = unknown>(key: string, callback: (data: Data) => void): this;
     once<Data = unknown>(key: string, callback: (data: Data) => void): this;

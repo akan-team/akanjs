@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { accessTokenSeconds } from "@libs/util/common";
+import { dayjs } from "akanjs/base";
 import { decodeJwtPayload } from "akanjs/common";
 
 import { SecurityService } from "./security.service";
+
+process.env.AKAN_PUBLIC_APP_NAME ??= "util";
+process.env.AKAN_PUBLIC_REPO_NAME ??= "akan";
+process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "localhost";
 
 const serviceOf = () => {
   const service = new SecurityService();
@@ -25,5 +31,20 @@ describe("SecurityService.sign", () => {
     expect(await service.verify<typeof message>(jwt)).toMatchObject(message);
     const { jwt: expired } = await service.sign(message, { expiresIn: -60 });
     await expect(service.verify(expired)).rejects.toThrow();
+  });
+});
+
+describe("SecurityService.signAccessToken", () => {
+  test("signs an access token for one hour unless the caller names another expiry", async () => {
+    const service = serviceOf();
+    const { jwt, expiresAt } = await service.signAccessToken({}, { sid: "s1", jti: "j1" });
+    const { exp, iat } = decodeJwtPayload<{ exp: number; iat: number }>(jwt);
+    expect(accessTokenSeconds).toBe(60 * 60);
+    expect(Math.abs(exp - iat - accessTokenSeconds)).toBeLessThanOrEqual(1);
+    expect(expiresAt.unix()).toBe(exp);
+
+    const named = await service.signAccessToken({}, { sid: "s1", jti: "j2", expiresAt: dayjs().add(5, "minute") });
+    const longer = decodeJwtPayload<{ exp: number; iat: number }>(named.jwt);
+    expect(Math.abs(longer.exp - longer.iat - 300)).toBeLessThanOrEqual(1);
   });
 });

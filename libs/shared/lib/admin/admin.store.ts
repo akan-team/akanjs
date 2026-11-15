@@ -42,8 +42,9 @@ export class AdminStore extends store(sig.admin, () => ({
     const { accountId, password } = this.get().adminForm;
     if (!accountId || !password) return;
     const accessToken = await fetch.signinAdmin(accountId, password);
+    setAuth(accessToken);
     await saveRefreshToken("admin", accessToken.refreshToken);
-    await (this as unknown as RootStore).login({ auth: "admin", jwt: accessToken.jwt, redirect });
+    await (this as unknown as RootStore).login({ auth: "admin", redirect });
   }
   // The callback reads these cookies to tell an operator's sign-in from a user's and to know where to land.
   async ssoSigninAdmin(ssoType: cnst.SsoType["value"], { redirect = "/admin" }: { redirect?: string } = {}) {

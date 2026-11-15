@@ -4,7 +4,7 @@ import { getAuthToken, getSessionClaims, secretStorage, setAuth } from "akanjs/c
 import { authTokenKey, decodeJwtPayload } from "akanjs/common";
 
 type RefreshScope = "user" | "admin";
-type RefreshCall = (refreshToken: string | null) => Promise<{ jwt: string; refreshToken?: string | null }>;
+type RefreshCall = (refreshToken: string | null) => Promise<{ jwt?: string | null; refreshToken?: string | null }>;
 
 export const refreshBeforeMs = 2 * 60 * 1000;
 

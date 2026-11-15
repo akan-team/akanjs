@@ -1,3 +1,4 @@
+import { accessTokenSeconds } from "@libs/util/common";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { Logger } from "akanjs/common";
 
@@ -13,8 +14,8 @@ const logger = new Logger("RevokedSessions");
  * check registered means nothing was ever revoked.
  */
 export class RevokedSessions {
-  //? Must stay at least `SecurityService.signAccessToken`'s default lifetime: a denial that ends early revives the token.
-  static readonly accessTokenDays = 7;
+  //? A denial that ends before its token revives it: tokens signed before 3.4.0 and an OAuth client's outlive an hour.
+  static readonly deniedSeconds = Math.max(accessTokenSeconds, 7 * 24 * 60 * 60);
   static #check: RevokedSessionCheck | null = null;
   static #mark: RevokedSessionMark | null = null;
 
@@ -39,7 +40,7 @@ export class RevokedSessions {
     }
   }
 
-  static async markRevoked(sessionIds: string[], until = dayjs().add(RevokedSessions.accessTokenDays, "day")) {
+  static async markRevoked(sessionIds: string[], until = dayjs().add(RevokedSessions.deniedSeconds, "second")) {
     const mark = RevokedSessions.#mark;
     if (!mark) return;
     await Promise.all(sessionIds.map((sessionId) => mark(sessionId, until)));

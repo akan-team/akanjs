@@ -1,6 +1,14 @@
 import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
+import * as base from "akanjs/base";
 import { AkanError, Any, DataList, getEnv, ID, Int, Upload } from "akanjs/base";
-import { AbortSignals, Err, Logger, websocketBinaryFrameContract, websocketCredentialContract } from "akanjs/common";
+import {
+  AbortSignals,
+  Err,
+  Logger,
+  sessionTokenContract,
+  websocketBinaryFrameContract,
+  websocketCredentialContract,
+} from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import {
   buildEndpoint,
@@ -1719,11 +1727,43 @@ describe("FetchClient HTTP generation", () => {
     expect(fetchCalls[0]?.init?.headers).toMatchObject({ Authorization: "Bearer explicit" });
     expect(fetchCalls[1]?.init?.headers).toMatchObject({ Authorization: "Bearer request-token" });
     expect(fetchCalls[2]?.init?.body).toBeInstanceOf(FormData);
-    expect(fetchCalls[2]?.init?.headers).toEqual({ Accept: "application/json" });
+    expect(fetchCalls[2]?.init?.headers).toEqual({ Accept: "application/json", ...sessionTokenContract.makeHeaders() });
     expect(fetchCalls[3]).toMatchObject({
       url: "https://clone.example/custom/bbbbbbbbbbbbbbbbbbbbbbbb",
       init: { headers: { "Content-Type": "application/json", Authorization: "Bearer clone-jwt" } },
     });
+  });
+
+  test("asks its own server for body tokens from everywhere but a server-rendered page, which sends no token either", async () => {
+    setMockFetch();
+    jsonResponses.push("page", "csr", "server", "partner", "signed-in page");
+    setAkanPublicEnv();
+    const env = getEnv();
+    const pinned = spyOn(base, "getEnv");
+    const sent = (idx: number) => new Headers(fetchCalls[idx]?.init?.headers as HeadersInit);
+    try {
+      const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+      const callFrom = async (side: "client" | "server", renderMode: "ssr" | "csr", option?: { origin: string }) => {
+        pinned.mockReturnValue({ ...env, side, renderMode });
+        await client.handler.getThing("abcdefabcdefabcdefabcdef", [], null, option);
+      };
+      await callFrom("client", "ssr");
+      await callFrom("client", "csr");
+      await callFrom("server", "ssr");
+      await callFrom("server", "ssr", { origin: "https://partner.example" });
+      client.setJwt(null);
+      await callFrom("client", "ssr");
+    } finally {
+      pinned.mockRestore();
+    }
+    expect([0, 1, 2, 3, 4].map((idx) => sent(idx).get(sessionTokenContract.header))).toEqual([
+      null,
+      sessionTokenContract.body,
+      sessionTokenContract.body,
+      null,
+      null,
+    ]);
+    expect(sent(4).get("authorization")).toBeNull();
   });
 
   test("reads the SSR credential from one app-scoped cookie, never the bare key or a duplicated one", async () => {
@@ -3265,6 +3305,42 @@ describe("WsClient", () => {
       await new Promise((resolve) => originalSetTimeout(resolve, 5));
       expect(warnings).toEqual([]);
     });
+  });
+
+  test("a fresh connect replaces the open socket with a new handshake and subscribes its rooms again", () => {
+    setFakeWebSocket();
+    const client = new WsClient("ws://example/ws").configure({ reconnect: { min: 60_000, jitter: 0 } });
+    const events: unknown[] = [];
+    const lifecycle: string[] = [];
+    client.on("connect", () => lifecycle.push("connect"));
+    client.on("disconnect", () => lifecycle.push("disconnect"));
+    client.subscribe({ key: "roomKey", data: ["r1"], handleEvent: (data) => events.push(data) });
+    client.connect();
+    const first = FakeWebSocket.instances[0];
+    first.open();
+    client.connect();
+    expect(FakeWebSocket.instances).toHaveLength(1);
+
+    client.connect({ fresh: true });
+    expect(FakeWebSocket.instances).toHaveLength(2);
+    expect(first.readyState).toBe(FakeWebSocket.CLOSED);
+    expect(client.connected).toBe(false);
+    expect(client.state).toBe("connecting");
+    const second = FakeWebSocket.instances[1];
+    second.open();
+    expect(client.connected).toBe(true);
+    expect(second.sent.map((frame) => JSON.parse(frame))).toContainEqual(
+      expect.objectContaining({ key: "roomKey", data: ["r1"], subscribe: true }),
+    );
+    first.receive({ type: "pub", roomId: "roomKey-r1", data: { title: "from the replaced socket" } });
+    second.receive({ type: "pub", roomId: "roomKey-r1", data: { title: "event" } });
+    expect(events).toEqual([{ title: "event" }]);
+    expect(lifecycle).toEqual(["connect", "connect"]);
+    expect(FakeWebSocket.instances).toHaveLength(2);
+
+    const idle = new WsClient("ws://example/ws");
+    idle.connect({ fresh: true });
+    expect(FakeWebSocket.instances).toHaveLength(3);
   });
 
   test("queues an emit issued before connect and replays it on open without warning", async () => {

@@ -9,6 +9,7 @@ import {
   isBcryptHash,
   isPasswordMatch,
   RevokedSessions,
+  type RotateRefreshSessionOptions,
   SignChallenge,
 } from "@libs/shared/srvkit";
 import { getEnv } from "akanjs/base";
@@ -98,12 +99,14 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     refreshToken: string,
     account?: Account,
     readSelf: (userId: string) => Promise<Self | null> = async () => null,
+    options: Pick<RotateRefreshSessionOptions, "graceMs"> = {},
   ) {
     const nextRefreshToken = this.securityService.createRefreshToken();
     const session = await this.adminModel.rotateRefreshSession(
       this.securityService.hashRefreshToken(refreshToken),
       nextRefreshToken.refreshTokenHash,
       nextRefreshToken.refreshTokenExpiresAt,
+      options,
     );
     const admin = await this.adminModel.getAdmin(session.subjectId);
     const me = this._makeMe(admin);

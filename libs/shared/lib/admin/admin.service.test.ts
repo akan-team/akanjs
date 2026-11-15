@@ -36,7 +36,7 @@ const serviceOn = (cache: CacheDatabase) => {
         return { refreshToken, refreshTokenHash: `hash:${refreshToken}`, refreshTokenExpiresAt: expiresAt() };
       },
       hashRefreshToken: (refreshToken: string) => `hash:${refreshToken}`,
-      signAccessToken: async () => ({ jwt: "jwt", expiresAt: dayjs().add(7, "day") }),
+      signAccessToken: async () => ({ jwt: "jwt", expiresAt: dayjs().add(1, "hour") }),
     },
   });
   return { service, adminModel };
@@ -84,7 +84,7 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
           ...(service as unknown as { securityService: object }).securityService,
           signAccessToken: async (payload: { self?: { id: string } }) => {
             payloads.push(payload);
-            return { jwt: "jwt", expiresAt: dayjs().add(7, "day") };
+            return { jwt: "jwt", expiresAt: dayjs().add(1, "hour") };
           },
         },
       });
@@ -111,6 +111,17 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
       const browserToken = crypto.randomUUID();
       await adminModel.createRefreshSession(admin.id, `hash:${browserToken}`, expiresAt());
       expect((await service.refreshAdminToken(browserToken)).refreshToken).toBeTruthy();
+    });
+
+    test("a page load's renewal answers a token used twice within its window, and a plain refresh reads it as reuse", async () => {
+      const window = { graceMs: 10_000 };
+      const pageToken = crypto.randomUUID();
+      await adminModel.createRefreshSession(admin.id, `hash:${pageToken}`, expiresAt());
+      const first = await service.refreshAdminToken(pageToken, undefined, undefined, window);
+      const second = await service.refreshAdminToken(pageToken, undefined, undefined, window);
+      expect(second.refreshToken).not.toBe(first.refreshToken);
+      expect((await service.refreshAdminToken(first.refreshToken ?? "")).refreshToken).toBeTruthy();
+      await expect(service.refreshAdminToken(pageToken)).rejects.toThrow("shared.error.refreshTokenReuseDetected");
     });
   });
 }

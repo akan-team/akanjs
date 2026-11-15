@@ -1,6 +1,7 @@
 import {
   createRefreshSession,
   hashPassword,
+  type RotateRefreshSessionOptions,
   revokeRefreshSessionBySid,
   revokeRefreshSessions,
   rotateRefreshSession,
@@ -90,8 +91,13 @@ export class AdminModel extends into(Admin, AdminFilter, cnst.admin, ({ byField 
       clientId,
     });
   }
-  async rotateRefreshSession(refreshTokenHash: string, nextRefreshTokenHash: string, nextExpiresAt: Date) {
-    return await rotateRefreshSession(this.adminCache, refreshTokenHash, nextRefreshTokenHash, nextExpiresAt);
+  async rotateRefreshSession(
+    refreshTokenHash: string,
+    nextRefreshTokenHash: string,
+    nextExpiresAt: Date,
+    options: Pick<RotateRefreshSessionOptions, "graceMs"> = {},
+  ) {
+    return await rotateRefreshSession(this.adminCache, refreshTokenHash, nextRefreshTokenHash, nextExpiresAt, options);
   }
   async revokeRefreshSession(adminId: string, sessionId?: string) {
     await revokeRefreshSessionBySid(this.adminCache, "admin", adminId, sessionId);

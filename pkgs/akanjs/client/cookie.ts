@@ -155,25 +155,35 @@ export interface GetOption {
   unauthorize: string;
 }
 interface SetAuthOption {
-  jwt: string;
+  /** Absent from a sign-in or refresh answer when the server kept the session in its HttpOnly cookies alone. */
+  jwt?: string | null;
 }
 const announceAuth = () => {
   if (typeof window !== "undefined") window.dispatchEvent(new Event("akan:auth"));
 };
+//? A socket authenticates at its handshake, so one opened before the server set the session cookies stays signed out.
+const reopenSocket = () => {
+  const { ws } = fetch;
+  if (ws?.state === "open" || ws?.state === "connecting") ws.connect?.({ fresh: true });
+};
 /** Sets the active auth token on fetch, then keeps it where the next launch finds it: client storage on a CSR client,
- * the session cookie elsewhere unless the server already holds it there (`SessionCookie.issue`). */
-export const setAuth = ({ jwt }: SetAuthOption) => {
-  fetch.setJwt(jwt);
+ * the session cookie elsewhere unless the server already holds it there (`SessionCookie.issue`). An answer with no
+ * token beside a session the server holds is a cookie-only session: fetch sends no token and the socket reconnects. */
+export const setAuth = ({ jwt }: SetAuthOption = {}) => {
+  const token = jwt ?? "";
+  const cookieOnly = !token && serverHoldsSession();
+  fetch.setJwt(cookieOnly ? null : token);
   // A CSR client authenticates with the bearer header alone; a cookie copy would only leave the token in a jar.
-  if (isCsrClient()) void secretStorage.setItem(storedAuthTokenKey(), jwt);
+  if (isCsrClient()) void secretStorage.setItem(storedAuthTokenKey(), token);
   else {
     //? Security: a page that sends the cookie needs no copy in localStorage, which outlives the session and any sign-out.
     void secretStorage.removeItem(storedAuthTokenKey());
-    if (!serverHoldsSession()) setCookie(authTokenKey(), jwt);
+    if (!serverHoldsSession()) setCookie(authTokenKey(), token);
   }
   // Jars written before the key was scoped or prefixed still hold it under an older name.
   for (const key of retiredAuthTokenKeys()) removeCookie(key);
   void secretStorage.removeItem(legacyAuthTokenKey);
+  if (cookieOnly) reopenSocket();
   announceAuth();
 };
 

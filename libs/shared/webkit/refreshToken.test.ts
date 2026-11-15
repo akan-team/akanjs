@@ -4,6 +4,7 @@ const envState = { side: "client" as "client" | "server", renderMode: "csr" as "
 const stored = new Map<string, string>();
 const authToken = { value: null as string | null };
 const sessionClaims = { value: undefined as string | undefined };
+const authAnswers: Array<string | null | undefined> = [];
 const jwtExpiringIn = (seconds: number) =>
   `h.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + seconds, self: { id: "u1" } })).toString("base64url")}.s`;
 
@@ -14,8 +15,9 @@ beforeAll(() => {
   mock.module("akanjs/client", () => ({
     getAuthToken: () => authToken.value ?? undefined,
     getSessionClaims: () => sessionClaims.value,
-    setAuth: ({ jwt }: { jwt: string }) => {
-      authToken.value = jwt;
+    setAuth: ({ jwt }: { jwt?: string | null }) => {
+      authAnswers.push(jwt);
+      authToken.value = jwt || null;
     },
     secretStorage: {
       getItem: async (key: string) => stored.get(key) ?? null,
@@ -35,6 +37,7 @@ afterEach(() => {
   stored.clear();
   authToken.value = null;
   sessionClaims.value = undefined;
+  authAnswers.length = 0;
 });
 
 describe("refresh token keeping", () => {
@@ -108,6 +111,24 @@ describe("refreshSession", () => {
     await refreshSession("user", refresh);
     expect(calls).toHaveLength(0);
     sessionClaims.value = jwtExpiringIn(30).split(".").slice(0, 2).join(".");
+    await refreshSession("user", refresh);
+    expect(calls).toHaveLength(1);
+  });
+
+  test("a tab holding only the claims of an expired session renews it from the refresh cookie, token or no token in the answer", async () => {
+    envState.renderMode = "ssr";
+    const { refreshSession } = await import("./refreshToken");
+    const calls: Array<string | null> = [];
+    const refresh = async (refreshToken: string | null) => {
+      calls.push(refreshToken);
+      sessionClaims.value = jwtExpiringIn(3600).split(".").slice(0, 2).join(".");
+      return { jwt: "" };
+    };
+    sessionClaims.value = jwtExpiringIn(-3600).split(".").slice(0, 2).join(".");
+    await refreshSession("user", refresh);
+    expect(calls).toEqual([null]);
+    expect(authAnswers).toEqual([""]);
+    expect(stored.size).toBe(0);
     await refreshSession("user", refresh);
     expect(calls).toHaveLength(1);
   });

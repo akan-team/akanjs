@@ -81,8 +81,9 @@ export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, 
     .body("accountId", String)
     .body("password", String)
     .with(Ip, { nullable: true })
-    .exec(async function (accountId, password, ip) {
-      return makeAccessTokenResponse(await this.adminService.signinAdmin(accountId, password, ip)) as never;
+    .with(Req)
+    .exec(async function (accountId, password, ip, req) {
+      return makeAccessTokenResponse(await this.adminService.signinAdmin(accountId, password, ip), { req }) as never;
     }),
   signoutAdmin: mutation(cnst.util.AccessToken, { guards: [Staff], mcp: false })
     .with(Account)
@@ -102,7 +103,9 @@ export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, 
           const signable = user ? await this.userService._assertSignable(user).catch(() => null) : null;
           return signable ? await this.userService.makeSelf(signable) : null;
         };
-        return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account, readSelf)) as never;
+        return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account, readSelf), {
+          req,
+        }) as never;
       } catch (error) {
         if (
           !refreshToken &&

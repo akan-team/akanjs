@@ -39,7 +39,10 @@ export class SignEndpoint extends endpoint(srv.sign, ({ mutation }) => ({
     .body("phone", String)
     .body("phoneCode", String)
     .with(Account)
-    .exec(async function (phone, phoneCode, account) {
-      return makeAccessTokenResponse(await this.signService.signinWithPhoneCode(phone, phoneCode, account)) as never;
+    .with(Req)
+    .exec(async function (phone, phoneCode, account, req) {
+      return makeAccessTokenResponse(await this.signService.signinWithPhoneCode(phone, phoneCode, account), {
+        req,
+      }) as never;
     }),
 })) {}
