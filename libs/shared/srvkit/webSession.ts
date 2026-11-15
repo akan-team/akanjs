@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import { accessTokenSeconds } from "@libs/util/common";
 import { dayjs } from "akanjs/base";
-import { CookieJar, hostFromRequest, SessionCookies, sessionTokenContract } from "akanjs/common";
+import { CookieJar, SessionCookies, sessionTokenContract } from "akanjs/common";
 import { CrossSiteGuard } from "akanjs/signal";
 
 export interface SessionOptions {
@@ -53,8 +53,9 @@ export class WebSession {
     return CrossSiteGuard.corsOrigin(req) !== null && !WebSession.#isOwnHostPage(req);
   }
 
+  //? A browser's same-origin GET carries no `Origin`; `Sec-Fetch-Site` is a header no page script can set.
   static #isOwnHostPage(req: Request) {
-    const origin = req.headers.get("origin");
-    return !!origin && URL.parse(origin)?.host === hostFromRequest(req.headers, new URL(req.url));
+    if (req.headers.get("sec-fetch-site") === "same-origin") return true;
+    return CrossSiteGuard.isFromOwnHost(req, new URL(req.url));
   }
 }

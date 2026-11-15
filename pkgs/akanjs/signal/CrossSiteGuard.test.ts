@@ -110,6 +110,24 @@ describe("CrossSiteGuard", () => {
     );
   });
 
+  test("tells a page on the serving host by its Origin, whatever the port spelling or case, even when disabled", () => {
+    const fromOwnHost = (headers: Record<string, string>) => {
+      const req = new Request("http://akan-child/api/refreshJwt", { method: "POST", headers });
+      return CrossSiteGuard.isFromOwnHost(req, new URL(req.url));
+    };
+    CrossSiteGuard.configure({ enabled: false, allowedOrigins: ["https://csr.example.com"] });
+    const origin = "https://app.example.com";
+    expect(fromOwnHost({ host: "app.example.com", origin })).toBe(true);
+    expect(fromOwnHost({ host: "app.example.com:443", origin })).toBe(true);
+    expect(fromOwnHost({ host: "APP.Example.com", origin })).toBe(true);
+    expect(fromOwnHost({ "x-forwarded-host": "app.example.com:443, 10.0.0.7", host: "10.0.0.7", origin })).toBe(true);
+    expect(fromOwnHost({ host: "app.example.com:8443", origin })).toBe(false);
+    expect(fromOwnHost({ host: "app.example.com", origin: "https://csr.example.com" })).toBe(false);
+    expect(fromOwnHost({ host: "app.example.com", origin: "app://localhost" })).toBe(false);
+    expect(fromOwnHost({ host: "app.example.com", origin: "null" })).toBe(false);
+    expect(fromOwnHost({ host: "app.example.com" })).toBe(false);
+  });
+
   test("passes everything through when disabled", () => {
     CrossSiteGuard.configure({ enabled: false });
     expect(() => assert({ host: "app.example.com", origin: "https://evil.example" })).not.toThrow();

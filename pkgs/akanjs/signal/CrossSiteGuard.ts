@@ -59,6 +59,11 @@ export class CrossSiteGuard {
     throw new Exception.Forbidden("This request was not permitted.");
   }
 
+  static isFromOwnHost(req: Request, url: URL): boolean {
+    const origin = req.headers.get("origin");
+    return origin !== null && origin !== "null" && CrossSiteGuard.#isSameSite(origin, req, url);
+  }
+
   /** The origin a cross-origin caller may read answers from: an allowlisted one, never the serving host's neighbours. */
   static corsOrigin(req: Request): string | null {
     const origin = req.headers.get("origin");

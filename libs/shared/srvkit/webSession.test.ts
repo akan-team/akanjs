@@ -114,6 +114,45 @@ describe("WebSession", () => {
     }
   });
 
+  test("gives a page on the server's own host one hour however the host is spelled, and a same-origin GET that carries no Origin", async () => {
+    const getWith = (headers: Record<string, string>) =>
+      new Request("https://app.example.com/api/user/refreshJwt", { headers });
+    const origin = "https://app.example.com";
+    for (const cookieOnly of [false, true]) {
+      WebSession.configure({ cookieOnly });
+      for (const req of [
+        requestWith({ ...asking, origin, "x-forwarded-host": "app.example.com:443" }),
+        requestWith({ ...asking, origin, host: "app.example.com:443" }),
+        requestWith({ ...asking, origin, host: "APP.example.com" }),
+        requestWith({ ...asking, origin, "x-forwarded-host": "app.example.com, 10.0.0.7" }),
+        requestWith({ ...asking, origin, host: "10.0.0.7", "sec-fetch-site": "same-origin" }),
+        getWith({ ...asking, "sec-fetch-site": "same-origin" }),
+      ])
+        expect({ cookieOnly, headers: [...req.headers], seconds: await secondsFor(req) }).toEqual({
+          cookieOnly,
+          headers: [...req.headers],
+          seconds: accessTokenSeconds,
+        });
+    }
+  });
+
+  test("keeps seven days for a caller that names no origin at all, and for a page on another origin of the same site", async () => {
+    const getWith = (headers: Record<string, string>) =>
+      new Request("https://app.example.com/api/user/refreshJwt", { headers });
+    CrossSiteGuard.configure({ allowedOrigins: ["https://csr.example.com"] });
+    for (const req of [
+      getWith(asking),
+      requestWith({ ...asking, host: "app.example.com:443" }),
+      requestWith({ ...asking, origin: "https://csr.example.com", "sec-fetch-site": "same-site" }),
+      requestWith({ ...asking, origin: "https://elsewhere.test", "sec-fetch-site": "cross-site" }),
+      requestWith({ ...asking, origin: "https://app.example.com", host: "app.example.com:8443" }),
+    ])
+      expect({ headers: [...req.headers], seconds: await secondsFor(req) }).toEqual({
+        headers: [...req.headers],
+        seconds: WebSession.cookielessAccessTokenSeconds,
+      });
+  });
+
   test("keeps each request's lifetime to itself while two are answered at once", async () => {
     const [cookieless, browser] = await Promise.all([
       WebSession.answering(requestWith(asking), async () => {
