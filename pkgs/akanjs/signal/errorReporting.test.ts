@@ -85,6 +85,38 @@ describe("ErrorReporting", () => {
     expect(calls).toBe(1);
   });
 
+  test("hands over at most its caps a minute, process errors the fewest, and says once when it starts skipping", async () => {
+    const calls = collect();
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    const clock = spyOn(Date, "now").mockReturnValue(1_000_000);
+    const sources = () => calls.map(([, context]) => context.source);
+    try {
+      for (let i = 0; i < ErrorReporting.processPerMinute + 5; i += 1)
+        ErrorReporting.report(new Error(`rejection ${i}`), { source: "process" });
+      await ErrorReporting.flush();
+      expect(sources()).toEqual(Array.from({ length: ErrorReporting.processPerMinute }, () => "process"));
+
+      const room = ErrorReporting.perMinute - ErrorReporting.processPerMinute;
+      for (let i = 0; i < room + 5; i += 1) ErrorReporting.report(new Error(`crash ${i}`), { source: "server" });
+      ErrorReporting.report(new Error("a page failed"), { source: "render" });
+      ErrorReporting.report(new Error("a browser failed"), { source: "client" });
+      await ErrorReporting.flush();
+      expect(calls).toHaveLength(ErrorReporting.perMinute);
+      expect(warn.mock.calls.map(([line]) => line)).toEqual([
+        "The error reporter got 10 process errors within a minute; further ones are skipped until the rate falls",
+        "The error reporter got 600 errors within a minute; further ones are skipped until the rate falls",
+      ]);
+
+      clock.mockReturnValue(1_000_000 + 60_000);
+      ErrorReporting.report(new Error("a minute later"), { source: "process" });
+      await ErrorReporting.flush();
+      expect(calls).toHaveLength(ErrorReporting.perMinute + 1);
+    } finally {
+      clock.mockRestore();
+      warn.mockRestore();
+    }
+  });
+
   test("waits at a flush for a reporter still sending, up to the deadline", async () => {
     let sent = false;
     ErrorReporting.use(async () => {

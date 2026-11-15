@@ -21,19 +21,34 @@ export type ErrorReportInput = Pick<ErrorReportContext, "source"> & Partial<Omit
 
 export type ErrorReporter = (error: Error, context: ErrorReportContext) => void | Promise<void>;
 
+interface MinuteCap {
+  limit: number;
+  what: string;
+  taken: number[];
+  dropping: boolean;
+}
+
 export class ErrorReporting {
   static readonly flushTimeoutMs = 2_000;
+  static readonly perMinute = 600;
+  static readonly processPerMinute = 10;
   static #reporter: ErrorReporter | null = null;
   static #failureLogged = false;
   static readonly #reported = new WeakSet<object>();
   static readonly #pending = new Set<Promise<void>>();
-  //? Bun runs a process error handler in the async context that raised it, so a reporter's own rejection is known here.
+  //? Knows a report raised inside the reporter's own call. Bun runs `unhandledRejection` outside that context, so a
+  //? reporter's detached rejection is not known here, and the caps below are what bounds it.
   static readonly #inReporter = new AsyncLocalStorage<true>();
   static readonly #logger = new Logger("ErrorReporter");
+  static readonly #caps: Record<"all" | "process", MinuteCap> = {
+    all: { limit: ErrorReporting.perMinute, what: "errors", taken: [], dropping: false },
+    process: { limit: ErrorReporting.processPerMinute, what: "process errors", taken: [], dropping: false },
+  };
 
   static use(reporter: ErrorReporter | null) {
     ErrorReporting.#reporter = reporter;
     ErrorReporting.#failureLogged = false;
+    for (const cap of Object.values(ErrorReporting.#caps)) Object.assign(cap, { taken: [], dropping: false });
   }
 
   static get enabled(): boolean {
@@ -47,6 +62,7 @@ export class ErrorReporting {
       if (ErrorReporting.#reported.has(error)) return;
       ErrorReporting.#reported.add(error);
     }
+    if (!ErrorReporting.#admitted(input.source)) return;
     const reported =
       error instanceof Error
         ? error
@@ -75,6 +91,29 @@ export class ErrorReporting {
     clearTimeout(timer);
   }
 
+  static #admitted(source: ErrorReportSource): boolean {
+    const now = Date.now();
+    const caps =
+      source === "process" ? [ErrorReporting.#caps.process, ErrorReporting.#caps.all] : [ErrorReporting.#caps.all];
+    if (!caps.every((cap) => ErrorReporting.#hasRoom(cap, now))) return false;
+    for (const cap of caps) cap.taken.push(now);
+    return true;
+  }
+
+  static #hasRoom(cap: MinuteCap, now: number): boolean {
+    while (cap.taken.length && now - (cap.taken[0] ?? now) >= 60_000) cap.taken.shift();
+    if (cap.taken.length < cap.limit) {
+      cap.dropping = false;
+      return true;
+    }
+    if (!cap.dropping)
+      ErrorReporting.#logger.warn(
+        `The error reporter got ${cap.limit} ${cap.what} within a minute; further ones are skipped until the rate falls`,
+      );
+    cap.dropping = true;
+    return false;
+  }
+
   static #call(reporter: ErrorReporter, error: Error, context: ErrorReportContext) {
     try {
       const result = ErrorReporting.#inReporter.run(true, () => reporter(error, context));
@@ -91,6 +130,7 @@ export class ErrorReporting {
   }
 
   static #failed(failure: unknown) {
+    if (typeof failure === "object" && failure !== null) ErrorReporting.#reported.add(failure);
     if (ErrorReporting.#failureLogged) return;
     ErrorReporting.#failureLogged = true;
     ErrorReporting.#logger.warn(
