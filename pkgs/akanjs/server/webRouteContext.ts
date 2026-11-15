@@ -14,6 +14,8 @@ import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { HmrWsHub } from "./hmr/wsHub";
 import type { PageCall } from "./metrics/requestMetrics";
 import { normalizeHost } from "./proxy/hostBasePathWebProxy";
+import { RenderBusyResponse } from "./renderBusyResponse";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
 import type { BaseBuildArtifact, RenderState } from "./types";
@@ -49,6 +51,7 @@ export class WebRouteContext {
   readonly seedIndex: RouteSeedIndex;
   readonly routeCache: RouteClientCache;
   readonly #hub: () => HmrWsHub | null;
+  readonly #busy = new RenderBusyResponse(this.logger);
   #runtimeManifest: { revision: number; manifest: MergedManifest } | null = null;
 
   constructor({ artifact, prodMode, renderState, subRoutes, seedIndex, routeCache, hub }: WebRouteContextOptions) {
@@ -166,6 +169,7 @@ export class WebRouteContext {
 
   errorPageResponse(req: Request, scope: string, err: unknown): Promise<Response> {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return Promise.resolve(WebRouteContext.#clientClosedResponse());
+    if (RscRenderRefusal.is(err)) return Promise.resolve(this.#busy.document(req, err));
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
     this.#hub()?.broadcast({ type: "error", message });
@@ -184,6 +188,7 @@ export class WebRouteContext {
 
   rscErrorResponse(scope: string, err: unknown): Response {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return WebRouteContext.#clientClosedResponse();
+    if (RscRenderRefusal.is(err)) return this.#busy.rsc(err);
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
     this.#hub()?.broadcast({ type: "error", message });
