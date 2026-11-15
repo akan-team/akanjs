@@ -491,8 +491,8 @@ export class AkanServer {
 
   async #teardown() {
     if (this.status === "stopped") return;
+    const now = Date.now();
     try {
-      const now = Date.now();
       this.logger.info("Shutting down gracefully...");
       this.status = "stopping";
       this.#metrics.stop();
@@ -511,7 +511,7 @@ export class AkanServer {
       this.status = "stopped";
       throw error;
     } finally {
-      await OtlpExporter.shutdown();
+      await OtlpExporter.shutdown(ServerConfig.exportFlushBudgetMs(now, OtlpExporter.shutdownBudgetMs));
       // Last, so the lines above still have a hub — and in ndjson mode a stdout — to reach.
       await this.#logging.stop();
     }
