@@ -149,10 +149,8 @@ ${AgentAssets.marker}
   }
 
   static slug(heading: string) {
-    return heading
-      .replace(/\s*\(.*$/, "")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-");
+    const paren = heading.indexOf("(");
+    return (paren === -1 ? heading : heading.slice(0, paren).trimEnd()).toLowerCase().replace(/[^a-z0-9]+/g, "-");
   }
 
   static sections(markdown: string): ReferencePart[] {
