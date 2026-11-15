@@ -113,7 +113,7 @@ export class CodeTuiCommandRunner {
 
   static allowedList(names: string[]) {
     const always =
-      "A networking command, git push, rm and a command that runs another (sudo, xargs, sh …) are asked about every time.";
+      "A networking command, a push or publish, rm and a command that runs another (sudo, xargs, sh …) are asked about every time.";
     if (!names.length)
       return [
         "Nothing is allowed for this session yet.",

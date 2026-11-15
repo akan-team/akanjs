@@ -153,18 +153,28 @@ sandbox; `pod` in a container is.
 An approval for a shell command reads `approve? run: <command>  [y/n/a]`. `y` runs it once, `n` or esc refuses
 it, and `a` runs it and stops asking about that command until the session ends. What `a` remembers is the
 program, and the sub-command too for `git`, `bun`, `bunx`, `npm`, `npx`, `pnpm`, `yarn`, `akan`, `docker`,
-`kubectl`, `helm`, `gh`, `cargo` and `go`: allowing `git status` leaves `git diff` asked about, and allowing
-`bun test` leaves `bun x` asked about. A line of several commands (`&&`, `;`, `|`, `$(…)`, a subshell) runs
-unasked only once every command in it is allowed, and its prompt names the ones `a` would add. `/allowed` lists
-what the session has allowed and `/allowed clear` forgets it. Nothing is written down: a resumed, forked or
-reloaded session asks again.
+`kubectl`, `helm`, `cargo` and `go`: allowing `git status` leaves `git diff` asked about, and allowing
+`bun test` leaves `bun x` asked about. `gh` is remembered two words deep, so allowing `gh pr view` leaves
+`gh pr merge` asked about. A line of several commands (`&&`, `;`, `|`, `$(…)`, a subshell) runs unasked only
+once every command in it is allowed, and its prompt names the ones `a` would add. `/allowed` lists what the
+session has allowed and `/allowed clear` forgets it. Nothing is written down: a resumed, forked or reloaded
+session asks again.
 
-Some commands are asked about every time and their prompt offers only `[y/n]`: a networking command (`curl`,
-`wget`, `nc`, `ncat`, `netcat`, `socat`, `telnet`, `ssh`, `scp`, `sftp`, `rsync`, `ftp`), `git push`, `rm`, a
-command that runs another (`sudo`, `env`, `command`, `exec`, `nohup`, `time`, `timeout`, `nice`, `watch`,
-`stdbuf`, `xargs`, `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`, `eval`, `find -exec`), a line that writes a file
-with `>` or `>>` (other than to `/dev/null`), and a line the reader cannot split with confidence (a loop or
-`if`, backticks, a here-document, a program named by a variable, a flag between `git` and its sub-command).
+Some lines are asked about every time and their prompt offers only `[y/n]`:
+
+- a networking command: `curl`, `wget`, `nc`, `ncat`, `netcat`, `socat`, `telnet`, `ssh`, `scp`, `sftp`,
+  `rsync`, `ftp`, and a redirection to or from `/dev/tcp/…` or `/dev/udp/…`;
+- a command that sends something out of the machine: `git push`, `npm publish`, `pnpm publish`,
+  `yarn publish`, `yarn npm`, `bun publish`, `cargo publish`, `docker push`, `gh api`;
+- `rm`;
+- a command that runs another, or sets what a later one runs: `sudo`, `env`, `command`, `exec`, `nohup`,
+  `time`, `timeout`, `nice`, `watch`, `stdbuf`, `xargs`, `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`, `eval`,
+  `builtin`, `source`, `.`, `trap`, `alias`, `coproc`, `export`, `declare`, `typeset`, `readonly`, `find -exec`;
+- a variable set in front of a command, other than `CI`, `NODE_ENV`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`,
+  `LC_ALL`, `TERM`, `DEBUG` or `PORT` given one plain word (`CI=1 bun test` is read as `bun test`);
+- a line that writes a file with `>` or `>>` (other than to `/dev/null`);
+- a line the reader cannot split with confidence: a loop or `if`, backticks, a here-document, a program named
+  by a variable, a flag between `git` and its sub-command.
 
 `--no-ask` is `--no-ask-commands --no-ask-network` under one name, for a run where the user has decided not to
 be asked: it prints one line at start saying so. It changes nothing else: the secret files stay refused, this

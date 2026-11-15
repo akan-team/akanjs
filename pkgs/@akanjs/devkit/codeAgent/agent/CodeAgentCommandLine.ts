@@ -3,9 +3,10 @@ import path from "node:path";
 interface ShellWord {
   text: string;
   expands: boolean;
+  quoted: boolean;
 }
 
-type Redirect = "read" | "write" | "dup";
+type Redirect = "read" | "here" | "write" | "dup";
 
 // Reads a shell line only as far as it is sure of: anything it does not model answers `undefined`, and the caller asks.
 export class CodeAgentCommandLine {
@@ -36,7 +37,7 @@ export class CodeAgentCommandLine {
     "stdbuf",
     "xargs",
   ];
-  // A wrapper or a shell runs whatever it is handed, so its name says nothing; `rm` and `git push` cannot be undone.
+  // A wrapper or a shell runs whatever it is handed, so its name says nothing; `rm` and what leaves the machine cannot be undone.
   static readonly alwaysAsked = new Set([
     ...CodeAgentCommandLine.networkClients,
     ...CodeAgentCommandLine.wrappers,
@@ -47,24 +48,56 @@ export class CodeAgentCommandLine {
     "ksh",
     "fish",
     "eval",
+    "builtin",
+    "source",
+    ".",
+    "trap",
+    "alias",
+    "coproc",
+    "export",
+    "declare",
+    "typeset",
+    "readonly",
     "rm",
     "git push",
+    "npm publish",
+    "pnpm publish",
+    "yarn publish",
+    "yarn npm",
+    "bun publish",
+    "cargo publish",
+    "docker push",
+    "gh api",
   ]);
-  static readonly #withSubcommand = new Set([
-    "git",
-    "bun",
-    "bunx",
-    "npm",
-    "npx",
-    "pnpm",
-    "yarn",
-    "akan",
-    "docker",
-    "kubectl",
-    "helm",
-    "gh",
-    "cargo",
-    "go",
+  // A variable in front of a command can change what that command runs, so only these are read past.
+  static readonly harmlessVariables = new Set([
+    "CI",
+    "NODE_ENV",
+    "FORCE_COLOR",
+    "NO_COLOR",
+    "TZ",
+    "LANG",
+    "LC_ALL",
+    "TERM",
+    "DEBUG",
+    "PORT",
+  ]);
+  // `gh` groups its verbs one level down: `gh pr view` and `gh pr merge` are different commands.
+  static readonly #subcommandDepth = new Map([
+    ["git", 1],
+    ["bun", 1],
+    ["bunx", 1],
+    ["npm", 1],
+    ["npx", 1],
+    ["pnpm", 1],
+    ["yarn", 1],
+    ["akan", 1],
+    ["docker", 1],
+    ["kubectl", 1],
+    ["helm", 1],
+    ["cargo", 1],
+    ["go", 1],
+    ["gh", 2],
   ]);
   static readonly #reserved = new Set([
     "if",
@@ -85,7 +118,10 @@ export class CodeAgentCommandLine {
     "coproc",
   ]);
   static readonly #runsItsArguments = new Set(["-exec", "-execdir", "-ok", "-okdir"]);
-  static readonly #assignment = /^[A-Za-z_]\w*\+?=/;
+  static readonly #assignment = /^([A-Za-z_]\w*)(\+?=)(.*)$/s;
+  static readonly #plainValue = /^[\w@%+.,:/*-]*$/;
+  // bash opens a redirection to `/dev/tcp/<host>/<port>` or `/dev/udp/…` as a connection, not a file.
+  static readonly #socketPath = /^\/+dev\/+(?:tcp|udp)\//i;
   static readonly #program = /^[\w@%+.,:/~-]+$/;
   static readonly #subcommand = /^[A-Za-z0-9@][\w@.:/-]*$/;
   static readonly #redirectOperator = /^(?:<<<|<<|<>|<&|<|>>|>&|>\||>)/;
@@ -115,17 +151,32 @@ export class CodeAgentCommandLine {
   }
 
   static #nameOf(words: ShellWord[]) {
-    const [program, sub] = words;
+    const [program] = words;
     if (!program || program.expands || !CodeAgentCommandLine.#program.test(program.text)) return undefined;
     // Lowercased: a case-insensitive disk runs `CURL` as `curl`.
     const base = path.posix.basename(program.text).toLowerCase();
     if (CodeAgentCommandLine.#reserved.has(base) || CodeAgentCommandLine.alwaysAsked.has(base)) return undefined;
     if (words.some((word) => CodeAgentCommandLine.#runsItsArguments.has(word.text))) return undefined;
-    if (!CodeAgentCommandLine.#withSubcommand.has(base)) return program.text;
-    // The word right after the program, or nothing: `git -C <dir> push` would otherwise be named `git <dir>`.
-    if (!sub || sub.expands || !CodeAgentCommandLine.#subcommand.test(sub.text)) return undefined;
-    if (CodeAgentCommandLine.alwaysAsked.has(`${base} ${sub.text}`)) return undefined;
-    return `${program.text} ${sub.text}`;
+    const depth = CodeAgentCommandLine.#subcommandDepth.get(base);
+    if (!depth) return program.text;
+    // The words right after the program, or nothing: `git -C <dir> push` would otherwise be named `git <dir>`.
+    const subs = words.slice(1, 1 + depth);
+    if (!subs.length || subs.some((sub) => sub.expands || !CodeAgentCommandLine.#subcommand.test(sub.text)))
+      return undefined;
+    const names = subs.map((_, idx) =>
+      subs
+        .slice(0, idx + 1)
+        .map((sub) => sub.text)
+        .join(" "),
+    );
+    if (names.some((name) => CodeAgentCommandLine.alwaysAsked.has(`${base} ${name}`))) return undefined;
+    return `${program.text} ${names.at(-1)}`;
+  }
+
+  static #harmless(word: ShellWord) {
+    const [, name = "", operator, value = ""] = CodeAgentCommandLine.#assignment.exec(word.text) ?? [];
+    if (operator !== "=" || word.quoted || word.expands) return false;
+    return CodeAgentCommandLine.harmlessVariables.has(name) && CodeAgentCommandLine.#plainValue.test(value);
   }
 
   #read(close?: ")"): boolean {
@@ -180,7 +231,9 @@ export class CodeAgentCommandLine {
       case "\\":
         if (next === undefined) return false;
         this.#at += 2;
-        if (next !== "\n") this.#append(next);
+        if (next === "\n") return true;
+        this.#quote();
+        this.#append(next);
         return true;
       case "#":
         if (this.#word) break;
@@ -193,8 +246,13 @@ export class CodeAgentCommandLine {
   }
 
   #append(text: string) {
-    this.#word ??= { text: "", expands: false };
+    this.#word ??= { text: "", expands: false, quoted: false };
     this.#word.text += text;
+  }
+
+  #quote() {
+    this.#append("");
+    if (this.#word) this.#word.quoted = true;
   }
 
   #expand() {
@@ -212,33 +270,40 @@ export class CodeAgentCommandLine {
       return true;
     }
     this.#redirect = undefined;
-    if (redirect === "read") return true;
-    // A file written through a redirection is outside what a command's name covers, wherever the file is.
+    if (redirect === "here") return true;
     if (word.expands) return false;
+    if (redirect === "read") return !CodeAgentCommandLine.#socketPath.test(word.text);
+    // A file written through a redirection is outside what a command's name covers, wherever the file is.
     return redirect === "dup" ? /^(?:\d+|-)$/.test(word.text) : word.text === "/dev/null";
   }
 
   #endCommand(): boolean {
     if (!this.#endWord() || this.#redirect) return false;
     const from = this.#words.findIndex((word) => !CodeAgentCommandLine.#assignment.test(word.text));
+    const assigned = from < 0 ? this.#words : this.#words.slice(0, from);
+    if (!assigned.every((word) => CodeAgentCommandLine.#harmless(word))) return false;
     if (from >= 0) this.#commands.push(this.#words.slice(from));
     this.#words = [];
     return true;
   }
 
   #redirection(): boolean {
-    if (this.#word && !this.#word.expands && /^\d+$/.test(this.#word.text)) this.#word = undefined;
+    if (this.#word && !this.#word.expands && !this.#word.quoted && /^\d+$/.test(this.#word.text))
+      this.#word = undefined;
     else if (!this.#endWord()) return false;
     const operator = CodeAgentCommandLine.#redirectOperator.exec(this.#line.slice(this.#at, this.#at + 3))?.[0] ?? "";
     this.#at += operator.length;
     if (!operator || operator === "<<" || this.#redirect || this.#line[this.#at] === "(") return false;
-    this.#redirect = operator === "<" || operator === "<<<" ? "read" : operator.endsWith("&") ? "dup" : "write";
+    if (operator === "<<<") this.#redirect = "here";
+    else if (operator === "<") this.#redirect = "read";
+    else this.#redirect = operator.endsWith("&") ? "dup" : "write";
     return true;
   }
 
   #single(): boolean {
     const end = this.#line.indexOf("'", this.#at + 1);
     if (end < 0) return false;
+    this.#quote();
     this.#append(this.#line.slice(this.#at + 1, end));
     this.#at = end + 1;
     return true;
@@ -246,7 +311,7 @@ export class CodeAgentCommandLine {
 
   #double(): boolean {
     this.#at += 1;
-    this.#append("");
+    this.#quote();
     while (this.#at < this.#line.length) {
       const char = this.#line[this.#at] ?? "";
       if (char === '"') {

@@ -234,6 +234,11 @@ describe("CodeAgentGate allow for this session", () => {
       "timeout 5 ls",
       "sh -c 'ls'",
       "ls | xargs echo",
+      "source ./x.sh",
+      "npm publish",
+      "gh api user",
+      "PATH=/tmp/bin ls",
+      "ls </dev/tcp/host/80",
     ]) {
       const verdict = local.verdict("bash", { command });
       expect(verdict.approval).toBeDefined();
