@@ -32,6 +32,7 @@ import {
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
 import type { ServerListener } from "./routing/serverListener";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import {
   createRscNavigationStreamResponse,
   createRscNotFoundFallbackResponse,
@@ -1341,6 +1342,70 @@ describe("WebRouter page request metrics", () => {
     expect(countOf("/docs") - docsBefore).toBe(1);
     expect(timedOf("/docs") - timedBefore).toBe(1);
     expect(countOf("unmatched") - unmatchedBefore).toBe(1);
+  });
+
+  test("answers a render the worker refused with a 503 to retry, never stored, and counts it under the route as 5xx", async () => {
+    const failedOf = (route: string) =>
+      pageSamples("akan_page_requests_total")
+        .filter((sample) => sample.labels.route === route && sample.labels.status_class === "5xx")
+        .reduce((total, sample) => total + ("value" in sample ? sample.value : 0), 0);
+    const failedBefore = failedOf("/docs");
+    const worker = createFakeRscWorker();
+    worker.renderWithMeta = async () => {
+      throw new RscRenderRefusal("renderQueueFull", "render queue is full: 480 renders wait for 4 slots");
+    };
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    const error = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    try {
+      await withFullSsrCacheHarness(
+        async ({ fullSsr, renderEnvRoutes }) => {
+          const ask = (accept: string) => fullSsr(new Request("https://example.test/docs", { headers: { accept } }));
+          const [page, json, text, payload] = [
+            await ask("text/html,application/xhtml+xml"),
+            await ask("application/json"),
+            await ask("*/*"),
+            await renderEnvRoutes["/__rsc"](new Request("https://example.test/__rsc?url=%2Fdocs")),
+          ];
+          for (const response of [page, json, text, payload]) {
+            expect(response.status).toBe(503);
+            expect(response.headers.get("Retry-After")).toBe("1");
+            expect(response.headers.get("Cache-Control")).toBe("no-store");
+            expect(response.headers.get("X-Akan-Cache")).toBeNull();
+          }
+          expect(page.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+          expect(await page.text()).toContain("Server is busy");
+          expect(await json.json()).toEqual({
+            error: "base.error.serverUnavailable",
+            statusCode: 503,
+            data: { status: 503 },
+            details: "Too many pages are waiting to render",
+          });
+          expect(await text.text()).toBe("Too many pages are waiting to render");
+          expect(payload.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+          expect(await payload.text()).toBe("Service Unavailable");
+        },
+        {
+          worker,
+          htmlCacheEnabled: "1",
+          htmlCachePaths: "/docs",
+          seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] },
+          prebuilt: {
+            routeIds: ["/docs"],
+            clientManifest: {},
+            ssrManifest: { moduleLoading: null, moduleMap: {} },
+            knownEntries: [],
+          },
+        },
+      );
+      expect(failedOf("/docs") - failedBefore).toBe(4);
+      expect(error).not.toHaveBeenCalled();
+      expect(warn.mock.calls.filter(([message]) => String(message).includes("answered 503"))).toEqual([
+        ["[SSR] 1 render(s) answered 503 code=renderQueueFull: render queue is full: 480 renders wait for 4 slots"],
+      ]);
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
   });
 });
 

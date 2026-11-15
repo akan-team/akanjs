@@ -25,7 +25,9 @@ import {
 } from "./htmlResponseHeaders.fixture";
 import { HtmlResultCache } from "./htmlResultCache";
 import { OAuthErrors } from "./oauth/OAuthErrors";
+import { RenderBusyResponse } from "./renderBusyResponse";
 import { RouteCacheTally } from "./routeCacheTally";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import { RscWorker } from "./rscWorkerHost";
 import { MAX_RESPONSE_SCRIPT_HASHES, SCRIPT_POLICY_REPORT_ONLY_HEADER, ScriptPolicy } from "./scriptPolicy";
 import { SsrInlineScripts } from "./ssrInlineScripts";
@@ -385,6 +387,15 @@ const responseClasses: Record<string, { env: typeof production; scripts: number;
         headers: GatewayStatusPage.headers("text/html; charset=utf-8"),
       }),
   },
+  "the page a full render queue answers": {
+    env: production,
+    scripts: 1,
+    get: async () =>
+      new RenderBusyResponse({ warn: () => undefined } as unknown as Logger).document(
+        new Request("https://example.test/docs", { headers: { accept: "text/html" } }),
+        new RscRenderRefusal("renderQueueFull", "render queue is full"),
+      ),
+  },
   "the OAuth error page": {
     env: production,
     scripts: 0,
@@ -566,6 +577,14 @@ describe("HTML response classes", () => {
         "cache-control": "no-store",
         "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
         "content-security-policy-report-only": "script-src 'self' 'strict-dynamic'",
+        "referrer-policy": "strict-origin-when-cross-origin",
+        "x-content-type-options": "nosniff",
+        "x-frame-options": "SAMEORIGIN",
+      },
+      "the page a full render queue answers": {
+        "cache-control": "no-store",
+        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
+        "content-security-policy-report-only": "script-src 'self' 'sha256-<script of this page>' 'strict-dynamic'",
         "referrer-policy": "strict-origin-when-cross-origin",
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
@@ -765,6 +784,7 @@ describe("HTML response classes", () => {
       "mcp/McpApps.ts",
       "oauth/OAuthErrors.ts",
       "remote/RemoteSource.ts",
+      "renderBusyResponse.ts",
       "systemPages.tsx",
       "webRouteContext.ts",
     ]);

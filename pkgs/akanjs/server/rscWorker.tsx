@@ -17,6 +17,7 @@ import { RscDocumentHead } from "./rscDocumentHead";
 import { RscFlightRenderer } from "./rscFlightRenderer";
 import { RscPagePrompts } from "./rscPagePrompts";
 import { RscPatchPlanner } from "./rscPatchPlanner";
+import { RscRenderAdmission } from "./rscRenderAdmission";
 import { RscRenderFallbacks } from "./rscRenderFallbacks";
 import { RscRenderHandler } from "./rscRenderHandler";
 import { RscRenderManifest } from "./rscRenderManifest";
@@ -131,6 +132,7 @@ export class RscRenderer {
   readonly #caches = new RscResultCaches(this.#logger);
   readonly #renderManifest = new RscRenderManifest();
   readonly #flights = new RscFlightRenderer(this.#logger, (message) => this.#send(message));
+  readonly #admission = new RscRenderAdmission(RscRenderAdmission.options(process.env, this.#logger));
   readonly #staticApps = new RscStaticApp(this.#logger, this.#flights);
   readonly #send: (message: unknown) => void;
   readonly #pagePrompts = new RscPagePrompts({
@@ -171,6 +173,7 @@ export class RscRenderer {
     stats: this.#stats,
     caches: this.#caches,
     flights: this.#flights,
+    admission: this.#admission,
     documents: this.#documents,
     fallbacks: this.#fallbacks,
     patchPlanner: this.#patchPlanner,
@@ -227,6 +230,7 @@ export class RscRenderer {
       case "cancel":
         this.#logger.verbose(`received cancel requestId=${msg.requestId}`);
         this.#flights.handleCancel(msg.requestId);
+        this.#admission.abandon(msg.requestId);
         return;
       case "reload":
         this.#logger.verbose(`received reload buildId=${msg.buildId}`);
@@ -403,6 +407,7 @@ export class RscRenderer {
 
   async #sendMetricsReport() {
     const routeStats = RouteTreeBuilder.getCacheStats();
+    this.#admission.sample();
     const metrics = await ProcessMetricsCollector.collect({
       role: "rsc-worker",
       rscRenderCount: this.#stats.renderCount,

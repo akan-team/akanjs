@@ -71,8 +71,11 @@ export class RscResultCaches {
     cache: LruTtlCache<CachedRscResult>,
     cacheKey: string,
     reason: RouteCacheLookupReason,
+    { again = false }: { again?: boolean } = {},
   ): CachedRscResult | null {
     const cached = cache.get(cacheKey);
+    //? Looked up `again` after a wait for a render slot, a second miss is the one already counted.
+    if (!cached && again) return null;
     if (cached) this.resultCacheHits += 1;
     else this.resultCacheMisses += 1;
     //? A patch entry found can still be refused for the target's router state, so only full lookups are an outcome.

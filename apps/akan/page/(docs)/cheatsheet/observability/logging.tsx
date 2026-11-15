@@ -401,6 +401,13 @@ export default page()
         }),
       },
       {
+        name: "queueMs",
+        desc: l.trans({
+          en: "On a page's line, how long its render waited for a render slot under `AKAN_RSC_WORKER_MAX_CONCURRENCY`; absent when it did not wait. With `AKAN_TRACE=1` the wait is also the span `renderQueue`.",
+          ko: "페이지 줄에서, `AKAN_RSC_WORKER_MAX_CONCURRENCY` 아래 렌더가 slot을 기다린 시간입니다. 기다리지 않았으면 붙지 않습니다. `AKAN_TRACE=1`이면 같은 대기가 `renderQueue` span으로도 남습니다.",
+        }),
+      },
+      {
         name: ["db", "dbMs", "cacheHit"],
         desc: l.trans({
           en: "SQL statements sent, their time with any wait, and the cache hit ratio, only under `AKAN_TRACE=1`. A statement slower than `AKAN_LOG_SLOW_STATEMENT_MS` writes its own `SlowStatement` line with this call's `traceId` (see Metrics, Find Slow Statements).",
