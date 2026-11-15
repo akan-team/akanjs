@@ -24,6 +24,7 @@ export interface CodeRunOptions {
   trustWorkspace?: boolean;
   askNetwork?: boolean;
   askCommands?: boolean;
+  ask?: boolean;
   rpcBindAny?: boolean;
   rpcToken?: boolean;
 }
@@ -140,7 +141,7 @@ export class CodeRunner extends runner("code") {
       model: CodeRunner.modelOf(options.model),
       ...(options.compactAt !== undefined ? { autoCompactAt: options.compactAt } : {}),
     };
-    return { agent, warnings: [...CodeRunner.startWarnings(profile), ...trust] };
+    return { agent, warnings: [...CodeRunner.startWarnings(profile, options.ask === false), ...trust] };
   }
 
   static profileOf(
@@ -154,10 +155,12 @@ export class CodeRunner extends runner("code") {
       : options.workspace.workspaceRoot;
     const profile = codeAgentPresets[options.profile](root);
     const { askOutside: _ask, ...network } = profile.network;
+    const askNetwork = options.ask !== false && options.askNetwork !== false;
+    const askCommands = options.ask !== false && options.askCommands !== false;
     return {
       ...profile,
-      ...(options.askNetwork === false ? { network } : {}),
-      ...(options.askCommands === false && profile.approval === "commands" ? { approval: "never" as const } : {}),
+      ...(askNetwork ? {} : { network }),
+      ...(!askCommands && profile.approval === "commands" ? { approval: "never" as const } : {}),
       ui: { ...profile.ui, canPrompt: CodeRunner.canPrompt(profile, hostAttached, interactive) },
     };
   }
@@ -170,12 +173,14 @@ export class CodeRunner extends runner("code") {
     return hostAttached || (interactive && profile.ui.canPrompt);
   }
 
-  static startWarnings(profile: CodeAgentProfile) {
+  static startWarnings(profile: CodeAgentProfile, unasked = false) {
     return [
       ...AkanCodeEnv.ignored(),
       ...(profile.name === "local"
         ? [
-            "The local profile is not a sandbox: it refuses known secret files and asks before a shell command and an unlisted host, but a command you approve can read anything you can. Use --profile pod inside a container to isolate it.",
+            unasked
+              ? "--no-ask: this session runs shell commands and network requests without asking. The local profile is not a sandbox: it refuses known secret files, but a command can read anything you can. Use --profile pod inside a container to isolate it."
+              : "The local profile is not a sandbox: it refuses known secret files and asks before a shell command and an unlisted host, but a command you approve can read anything you can. Use --profile pod inside a container to isolate it.",
           ]
         : []),
     ];

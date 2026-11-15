@@ -16,6 +16,7 @@ import {
 } from "akanjs/common";
 import { akanCodeModelWarnings } from "./akanCodeModel";
 import { CodeAgentAsks } from "./CodeAgentAsks";
+import { CodeAgentCommandLine } from "./CodeAgentCommandLine";
 import { CodeAgentEventMapper } from "./CodeAgentEventMapper";
 import { CodeAgentGate } from "./CodeAgentGate";
 import { CodeAgentStreamPrinter } from "./CodeAgentStreamPrinter";
@@ -111,7 +112,7 @@ describe("codeAgentPresets", () => {
 
   test("local asks before a shell command and nothing else, and a pod asks about neither", () => {
     const local = new CodeAgentGate(codeAgentPresets.local(root));
-    expect(local.verdict("bash", { command: "git status" })).toEqual({ approval: "run: git status" });
+    expect(local.verdict("bash", { command: "git status" }).approval).toBe("run: git status");
     expect(local.verdict("bash", { command: "curl https://example.com" }).strict).toBe(true);
     expect(local.verdict("write", { path: "a.ts" })).toEqual({});
     expect(local.verdict("read", { path: "a.ts" })).toEqual({});
@@ -181,6 +182,102 @@ describe("CodeAgentGate", () => {
     const gate = new CodeAgentGate({ ...profile, paths: { ...profile.paths, allow: ["apps/**"] } });
     expect(gate.verdict("read", { path: "apps/a/x.ts" }).block).toBeUndefined();
     expect(gate.verdict("read", { path: "libs/b/x.ts" }).block).toContain("allow list");
+  });
+});
+
+describe("CodeAgentGate allow for this session", () => {
+  const gate = () => new CodeAgentGate(codeAgentPresets.local(root));
+  const allow = (target: CodeAgentGate, names: string[]) => {
+    target.allowed.offer("a0", names);
+    target.allowed.settle("a0", true);
+  };
+
+  test("a command asks with the name a session answer would remember", () => {
+    expect(gate().verdict("bash", { command: "git status --short" })).toEqual({
+      approval: "run: git status --short",
+      remember: ["git status"],
+    });
+  });
+
+  test("an allowed command runs unasked, and another sub-command of its program still asks", () => {
+    const local = gate();
+    allow(local, ["git status", "bun test"]);
+    expect(local.verdict("bash", { command: "git status" })).toEqual({});
+    expect(local.verdict("bash", { command: "bun test --isolate ./a.test.ts" })).toEqual({});
+    expect(local.verdict("bash", { command: "git diff" }).remember).toEqual(["git diff"]);
+    expect(local.verdict("bash", { command: "bun x cowsay" }).remember).toEqual(["bun x"]);
+  });
+
+  test("a compound line runs unasked only once every command in it is allowed, and offers the ones that are not", () => {
+    const local = gate();
+    allow(local, ["bun test"]);
+    const line = { command: "cd apps && bun test 2>&1 | tail -20" };
+    expect(local.verdict("bash", line).remember).toEqual(["cd", "tail"]);
+    allow(local, ["cd"]);
+    expect(local.verdict("bash", line).remember).toEqual(["tail"]);
+    allow(local, ["tail"]);
+    expect(local.verdict("bash", line)).toEqual({});
+    expect(local.verdict("bash", { command: "bun test && echo $(git log -1)" }).remember).toEqual(["git log", "echo"]);
+  });
+
+  test("a networking command, git push, rm and a command that runs another are asked every time with no session answer", () => {
+    const local = gate();
+    allow(local, [...CodeAgentCommandLine.alwaysAsked, "git", "ls", "echo"]);
+    for (const command of [
+      "curl https://example.com",
+      "curl http://127.0.0.1:3000/health",
+      "ls && ssh deploy@host",
+      "git push",
+      "git push origin main",
+      "ls; rm -rf build",
+      "sudo ls",
+      "timeout 5 ls",
+      "sh -c 'ls'",
+      "ls | xargs echo",
+    ]) {
+      const verdict = local.verdict("bash", { command });
+      expect(verdict.approval).toBeDefined();
+      expect(verdict.remember).toBeUndefined();
+    }
+  });
+
+  test("a networking command stays asked every time where network requests are not asked about", () => {
+    const { askOutside: _ask, ...network } = codeAgentPresets.local(root).network;
+    const quiet = new CodeAgentGate({ ...codeAgentPresets.local(root), network });
+    expect(quiet.verdict("bash", { command: "curl https://example.com" })).toEqual({
+      approval: "run: curl https://example.com",
+    });
+  });
+
+  test("a line that cannot be split with confidence, or that writes a file by redirection, asks with no session answer", () => {
+    const local = gate();
+    allow(local, ["echo", "ls", "wc"]);
+    for (const command of ["echo `ls`", "for f in a b; do wc -l $f; done", "echo hi > ~/.zshrc", "ls | wc -l > n.txt"])
+      expect(local.verdict("bash", { command })).toEqual({ approval: `run: ${command}` });
+  });
+
+  test("forgetting what was allowed asks again", () => {
+    const local = gate();
+    allow(local, ["ls"]);
+    expect(local.allowed.names).toEqual(["ls"]);
+    expect(local.allowed.clear()).toBe(1);
+    expect(local.verdict("bash", { command: "ls" }).remember).toEqual(["ls"]);
+  });
+
+  test("a file write that waits for approval has no session answer", () => {
+    const web = new CodeAgentGate(codeAgentPresets.web(root));
+    expect(web.verdict("write", { path: "a.ts" })).toEqual({ approval: "write a.ts" });
+  });
+
+  test("an approval still waiting is covered once the names it offered are all allowed", () => {
+    const local = gate();
+    local.allowed.offer("a1", ["bun test"]);
+    local.allowed.offer("a2", ["bun test"]);
+    local.allowed.offer("a3", ["bun test", "cd"]);
+    expect(local.allowed.settle("a1", true)).toEqual(["bun test"]);
+    expect(local.allowed.covered()).toEqual(["a2"]);
+    expect(local.allowed.settle("a2", false)).toEqual([]);
+    expect(local.allowed.covered()).toEqual([]);
   });
 });
 

@@ -76,12 +76,15 @@ export class CodeTuiQuestion {
   }
 
   static promptOf(question: CodeAgentQuestion | undefined, approval: CodeAgentApprovalRequest | undefined) {
-    if (approval) return `approve? ${approval.summary}  [y/n]`;
+    if (approval) return `approve? ${approval.summary}  ${approval.remember?.length ? "[y/n/a]" : "[y/n]"}`;
     return question ? `? ${question.prompt}` : "";
   }
 
   hint(mode: CodeTuiSnapshot["mode"], multiSelect: boolean) {
     if (this.#typing) return "enter answer · esc back to the choices";
+    const remember = this.#transcript.approval?.remember;
+    if (mode === "confirm" && remember?.length)
+      return `y yes · n no · esc no · a yes, and stop asking about ${remember.join(", ")} this session`;
     if (mode === "confirm") return "y yes · n no · esc no";
     if (mode === "select")
       return `↑↓ choose${multiSelect ? " · space toggle" : ""} · enter answer · esc skip · pgup/pgdn scroll`;
@@ -115,6 +118,11 @@ export class CodeTuiQuestion {
     if (approval) return void this.#agent.approve(approval.approvalId, value);
     const question = this.#transcript.question;
     if (question) void this.answer(question.questionId, { text: value ? "yes" : "no" });
+  };
+
+  allowForSession = () => {
+    const approval = this.#transcript.approval;
+    if (approval?.remember?.length) void this.#agent.approve(approval.approvalId, true, "session");
   };
 
   open(question: CodeAgentQuestion) {

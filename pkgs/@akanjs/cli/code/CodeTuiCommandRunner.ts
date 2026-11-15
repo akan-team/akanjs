@@ -100,6 +100,35 @@ export class CodeTuiCommandRunner {
     }
   }
 
+  allowed(argument: string) {
+    if (argument === "clear") {
+      const count = this.#agent.allowed.clear();
+      return this.#host.say(
+        count ? "nothing is allowed any more · every command is asked about again" : "nothing was allowed",
+      );
+    }
+    if (argument) return this.#overlay.open("allowed", "Usage: /allowed [clear]");
+    this.#overlay.open("allowed", CodeTuiCommandRunner.allowedList(this.#agent.allowed.names));
+  }
+
+  static allowedList(names: string[]) {
+    const always =
+      "A networking command, git push, rm and a command that runs another (sudo, xargs, sh …) are asked about every time.";
+    if (!names.length)
+      return [
+        "Nothing is allowed for this session yet.",
+        "",
+        "Answer a at an approval to stop being asked about that command until the session ends.",
+        always,
+      ].join("\n");
+    return [
+      ...names,
+      "",
+      "These run without asking until this session ends. /allowed clear forgets them.",
+      always,
+    ].join("\n");
+  }
+
   // Sign-in is not awaited: it waits minutes on a person in the browser, and would freeze the prompt meanwhile.
   #mcpAuth(verb: "login" | "logout", name: string | undefined) {
     const root = this.#agent.workspaceRoot;

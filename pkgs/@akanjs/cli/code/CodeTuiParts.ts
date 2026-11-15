@@ -53,7 +53,12 @@ export class CodeTuiParts {
           { prefix: { text: "? ", color: "yellow" }, spans: [{ text: part.request.summary, color: "yellow" }] },
           ...(part.approved === undefined
             ? []
-            : [{ prefix: { text: "  " }, spans: [{ text: part.approved ? "approved" : "denied", dim: true }] }]),
+            : [
+                {
+                  prefix: { text: "  " },
+                  spans: [{ text: CodeTuiParts.#verdict(part.approved, part.remembered), dim: true }],
+                },
+              ]),
         ];
       case "host":
         return [{ prefix: { text: "  ", dim: true }, spans: [{ text: `${part.hostKind} ${part.text}`, dim: true }] }];
@@ -148,6 +153,11 @@ export class CodeTuiParts {
         ? []
         : [{ prefix: { text: "  = ", color: "green" }, spans: [{ text: part.rendered, color: "green" }] }]),
     ];
+  }
+
+  static #verdict(approved: boolean, remembered: string[] | undefined) {
+    if (!approved) return "denied";
+    return remembered?.length ? `approved · ${remembered.join(", ")} runs unasked until this session ends` : "approved";
   }
 
   static #noticeStyle(level: "info" | "warning" | "error") {
