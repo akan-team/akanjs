@@ -69,7 +69,7 @@ export class GatewayHttpProxy {
 
   async proxyHttp(req: Request, server: Bun.Server<GatewayWsData>): Promise<Response> {
     const child = await this.#pickReadyFederationChild(req);
-    if (child?.upstream?.type !== "unix") return this.#respondWithUnavailable(req);
+    if (child?.upstream?.type !== "unix") return this.respondWithUnavailable(req);
     // Read once: a concurrent request's failure can clear `child.upstream` while this one awaits the child.
     const { socketPath } = child.upstream;
     const url = new URL(req.url);
@@ -167,7 +167,7 @@ export class GatewayHttpProxy {
   }
 
   // Stays a 503 for ingress/CDN; the self-reloading HTML is for browser navigations a bare 503 would strand.
-  #respondWithUnavailable(req: Request): Response {
+  respondWithUnavailable(req: Request): Response {
     const crashDetail = this.#supervisor.crashLoopDetail();
     const page = crashDetail
       ? {

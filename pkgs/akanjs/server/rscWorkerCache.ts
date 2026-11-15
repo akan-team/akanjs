@@ -20,8 +20,7 @@ import {
 import type { RscTraceMetadata } from "./ssrTypes";
 
 export interface CachedRscResult {
-  chunks: Uint8Array[];
-  bytes: number;
+  body: Uint8Array;
   chunksCount: number;
   pathname: string;
   routeId?: string;
@@ -237,32 +236,31 @@ export type CachedRscReplayMessage =
   | { type: "chunk"; requestId: string; data: Uint8Array }
   | { type: "end"; requestId: string };
 
-function yieldToHostEventLoop(): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, 0));
+export function joinRscChunks(chunks: readonly Uint8Array[]): Uint8Array {
+  const body = new Uint8Array(chunks.reduce((total, chunk) => total + chunk.byteLength, 0));
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
-export async function replayCachedRscResult(input: {
+export function replayCachedRscResult(input: {
   requestId: string;
-  chunks: readonly Uint8Array[];
+  body: Uint8Array;
   theme?: string;
   trace?: RscTraceMetadata;
   cacheState?: RouteCacheRenderState;
   send: (message: CachedRscReplayMessage) => void;
   isCancelled: () => boolean;
-  yieldToHost?: () => Promise<void>;
-}): Promise<boolean> {
-  const yieldToHost = input.yieldToHost ?? yieldToHostEventLoop;
+}): boolean {
   if (input.isCancelled()) return false;
   const metaMessage: CachedRscReplayMessage = { type: "meta", requestId: input.requestId, theme: input.theme };
   if (input.trace) metaMessage.trace = input.trace;
   input.send(metaMessage);
   input.send({ type: "cache-state", requestId: input.requestId, state: input.cacheState ?? { cacheable: true } });
-  for (let index = 0; index < input.chunks.length; index += 1) {
-    if (input.isCancelled()) return false;
-    input.send({ type: "chunk", requestId: input.requestId, data: input.chunks[index] });
-    await yieldToHost();
-  }
-  if (input.isCancelled()) return false;
+  if (input.body.byteLength > 0) input.send({ type: "chunk", requestId: input.requestId, data: input.body });
   input.send({ type: "end", requestId: input.requestId });
   return true;
 }

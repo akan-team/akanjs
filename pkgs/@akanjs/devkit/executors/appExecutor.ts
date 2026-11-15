@@ -1,4 +1,4 @@
-import { cp as cpEntry, lstat, mkdir, readdir as readDirEntries, realpath, symlink } from "node:fs/promises";
+import { cp as cpEntry, lstat, mkdir, readdir as readDirEntries, realpath, rm, stat, symlink } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AkanPlugin, AkanSyncContext } from "akanjs";
@@ -44,8 +44,8 @@ export class AppExecutor extends SysExecutor {
   static from(executor: SysExecutor | WorkspaceExecutor, name: string) {
     return new AppExecutor({ workspace: executor instanceof WorkspaceExecutor ? executor : executor.workspace, name });
   }
-  //* Not dev output: the downloaded `bin` sources.
-  static readonly #keptOnStart = [path.join(".akan", "cache", "bin")];
+  //* Not dev output: the downloaded `bin` sources, and caches whose entries name the akanjs and Bun that wrote them.
+  static readonly #keptOnStart = [path.join(".akan", "cache")];
   //* Native builds moved to dist/native/<app>; the old folder may hold a signed release nobody uploaded yet.
   static readonly #legacyNative = path.join(".akan", "native");
   async #removeDevOutput(dir = ".akan") {
@@ -59,11 +59,26 @@ export class AppExecutor extends SysExecutor {
           );
           return;
         }
-        if (AppExecutor.#keptOnStart.includes(entry)) return;
+        if (AppExecutor.#keptOnStart.includes(entry)) return await this.#removeStaleTemps(entry);
         if (AppExecutor.#keptOnStart.some((kept) => kept.startsWith(`${entry}${path.sep}`)))
           return await this.#removeDevOutput(entry);
         await this.removeDir(entry);
       }),
+    );
+  }
+  //* A start killed between an atomic write and its rename leaves the `.tmp`; a younger one may be another start's.
+  static readonly #staleTempMs = 60_000;
+  async #removeStaleTemps(dir: string) {
+    const root = this.getPath(dir);
+    const names = await readDirEntries(root, { recursive: true }).catch(() => [] as string[]);
+    await Promise.all(
+      names
+        .filter((name) => name.endsWith(".tmp"))
+        .map(async (name) => {
+          const file = path.join(root, name);
+          const stats = await stat(file).catch(() => null);
+          if (stats?.isFile() && Date.now() - stats.mtimeMs > AppExecutor.#staleTempMs) await rm(file, { force: true });
+        }),
     );
   }
   getEnv() {

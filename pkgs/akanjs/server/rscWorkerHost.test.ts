@@ -593,8 +593,7 @@ describe("RscWorker cache invalidation", () => {
     const targetRouterState = makePatchRouterState();
     const patch = makeHeadSafePatch();
     const cacheValue: CachedRscResult = {
-      chunks: [new Uint8Array([1])],
-      bytes: 1,
+      body: new Uint8Array([1]),
       chunksCount: 1,
       pathname: "/docs",
       routeId: "/docs",
@@ -638,8 +637,7 @@ describe("RscWorker cache invalidation", () => {
 
   test("invalidates cached RSC results by tag and path scope", () => {
     const makeResult = (pathname: string, tags: string[]): CachedRscResult => ({
-      chunks: [],
-      bytes: 0,
+      body: new Uint8Array(0),
       chunksCount: 0,
       pathname,
       routeId: pathname,
@@ -669,8 +667,7 @@ describe("RscWorker cache invalidation", () => {
     cache.set(
       "patch-docs",
       {
-        chunks: [new Uint8Array([1])],
-        bytes: 1,
+        body: new Uint8Array([1]),
         chunksCount: 1,
         pathname: "/docs",
         routeId: "/docs",
@@ -682,8 +679,7 @@ describe("RscWorker cache invalidation", () => {
     cache.set(
       "patch-blog",
       {
-        chunks: [new Uint8Array([2])],
-        bytes: 1,
+        body: new Uint8Array([2]),
         chunksCount: 1,
         pathname: "/blog",
         routeId: "/blog",
@@ -701,40 +697,51 @@ describe("RscWorker cache invalidation", () => {
 });
 
 describe("RscWorker cached result replay", () => {
-  test("stops replaying cached chunks when cancellation is observed", async () => {
+  test("replays a cached result as one chunk message between its cache state and its end", () => {
     const messages: CachedRscReplayMessage[] = [];
-    let cancelled = false;
+    const body = new Uint8Array([1, 2]);
 
-    const completed = await replayCachedRscResult({
+    const completed = replayCachedRscResult({
       requestId: "request-1",
-      chunks: [new Uint8Array([1]), new Uint8Array([2])],
+      body,
       theme: "dark",
       cacheState: { cacheable: true, revalidate: 30 },
       send: (message) => {
         messages.push(message);
       },
-      isCancelled: () => cancelled,
-      yieldToHost: async () => {
-        cancelled = true;
+      isCancelled: () => false,
+    });
+
+    expect(completed).toBe(true);
+    expect(messages).toEqual([
+      { type: "meta", requestId: "request-1", theme: "dark" },
+      { type: "cache-state", requestId: "request-1", state: { cacheable: true, revalidate: 30 } },
+      { type: "chunk", requestId: "request-1", data: body },
+      { type: "end", requestId: "request-1" },
+    ]);
+  });
+
+  test("sends nothing for a cached result whose render was cancelled", () => {
+    const messages: CachedRscReplayMessage[] = [];
+
+    const completed = replayCachedRscResult({
+      requestId: "request-1",
+      body: new Uint8Array([1, 2]),
+      send: (message) => {
+        messages.push(message);
       },
+      isCancelled: () => true,
     });
 
     expect(completed).toBe(false);
-    expect(messages.map((message) => message.type)).toEqual(["meta", "cache-state", "chunk"]);
-    expect(messages[0]).toEqual({ type: "meta", requestId: "request-1", theme: "dark", status: undefined });
-    expect(messages[1]).toEqual({
-      type: "cache-state",
-      requestId: "request-1",
-      state: { cacheable: true, revalidate: 30 },
-    });
-    expect(messages[2]).toEqual({ type: "chunk", requestId: "request-1", data: new Uint8Array([1]) });
+    expect(messages).toEqual([]);
   });
 
-  test("forwards cached replay trace metadata in the meta message", async () => {
+  test("forwards cached replay trace metadata in the meta message", () => {
     const messages: CachedRscReplayMessage[] = [];
-    const completed = await replayCachedRscResult({
+    const completed = replayCachedRscResult({
       requestId: "request-2",
-      chunks: [],
+      body: new Uint8Array(0),
       trace: {
         navId: "9",
         pathname: "/en/docs",
@@ -764,12 +771,12 @@ describe("RscWorker cached result replay", () => {
     });
   });
 
-  test("keeps replay cache state separate from patch cache hit trace metadata", async () => {
+  test("keeps replay cache state separate from patch cache hit trace metadata", () => {
     const messages: CachedRscReplayMessage[] = [];
     const cacheState = { cacheable: true, routeId: "/docs", tags: ["docs"], revalidate: 10 };
-    const completed = await replayCachedRscResult({
+    const completed = replayCachedRscResult({
       requestId: "request-3",
-      chunks: [],
+      body: new Uint8Array(0),
       cacheState,
       trace: {
         navId: "10",

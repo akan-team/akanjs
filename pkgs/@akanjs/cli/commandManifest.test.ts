@@ -65,6 +65,14 @@ describe("CommandManifest", () => {
     expect(CommandManifest.resolve(null, ["bun", "akan", "start"])).toBeNull();
     expect(CommandManifest.resolve(manifest, ["bun", "akan", "start"])).toEqual(["application"]);
   });
+
+  test("loads no command module for the version flag", async () => {
+    const manifest = await CommandManifest.generate();
+    for (const flag of ["--version", "-V"]) {
+      expect(CommandManifest.resolve(manifest, ["bun", "akan", flag])).toEqual([]);
+      expect(CommandManifest.resolve(null, ["bun", "akan", flag, "--help"])).toEqual([]);
+    }
+  });
 });
 
 describe("the commands a CLI of another major.minor refuses", () => {

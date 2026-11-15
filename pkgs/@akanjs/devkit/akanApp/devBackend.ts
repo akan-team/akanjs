@@ -30,6 +30,7 @@ interface DevBackendLinks {
   isStopping: () => boolean;
   emit: (state: DevHostState, detail?: string) => void;
   beforeSpawn: () => void;
+  awaitsArtifact: () => boolean;
   toBuilder: (message: BuilderMessage) => void;
 }
 
@@ -129,7 +130,8 @@ export class DevBackend {
     const backend = Bun.spawn(["bun", `apps/${this.#app.name}/main.ts`], {
       cwd: this.#app.workspace.workspaceRoot,
       stdio: this.#stdio === "pipe" ? ["ignore", "pipe", "pipe"] : ["inherit", "inherit", "inherit"],
-      env: this.#env,
+      //? The first base build is still running: the backend boots beside it and holds its web surface for the artifact.
+      env: this.#links.awaitsArtifact() ? { ...this.#env, AKAN_DEV_AWAIT_ARTIFACT: "1" } : this.#env,
       ipc: (msg: BuilderMessage) => {
         if (!msg || typeof msg !== "object") return;
         if (msg.type === "backend-ready") {

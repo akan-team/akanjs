@@ -1,5 +1,10 @@
 import path from "node:path";
 
+interface SourceGraph {
+  chunks: Map<string, string>;
+  imports: Map<string, string[]>;
+}
+
 // A closure walk, not a grep of the entry: `splitting: true` moves eager deps into chunks the entry imports. Only static
 // `from "…"` specifiers are followed, so a dynamic `import("x")` is correctly not counted.
 export class EntryModuleGraph {
@@ -39,21 +44,60 @@ export class EntryModuleGraph {
         (name) => name !== "@akanjs/devkit",
       ),
       plugins: [],
+      metafile: true,
     });
     if (!result.success) throw new AggregateError(result.logs, "entry graph build failed");
     const outputs = new Map<string, string>();
     for (const output of result.outputs) outputs.set(output.path.replace(/^\.\//, ""), await output.text());
-    return new EntryModuleGraph(outputs);
+    const sources: SourceGraph = { chunks: new Map(), imports: new Map() };
+    // Metafile paths are relative to the working directory; a bare `external` path is the package specifier.
+    const resolve = (file: string) => path.resolve(process.cwd(), file);
+    for (const [output, { entryPoint }] of Object.entries(result.metafile?.outputs ?? {}))
+      if (entryPoint) sources.chunks.set(resolve(entryPoint), output.replace(/^\.\//, ""));
+    for (const [input, { imports }] of Object.entries(result.metafile?.inputs ?? {}))
+      sources.imports.set(
+        resolve(input),
+        imports
+          .filter((edge) => edge.kind === "import-statement")
+          .map((edge) => (edge.external ? edge.path : resolve(edge.path))),
+      );
+    return new EntryModuleGraph(outputs, sources);
   }
 
   readonly #outputs: Map<string, string>;
+  readonly #sources: SourceGraph;
 
-  constructor(outputs: Map<string, string>) {
+  constructor(outputs: Map<string, string>, sources: SourceGraph = { chunks: new Map(), imports: new Map() }) {
     this.#outputs = outputs;
+    this.#sources = sources;
   }
 
   hasEntry(entry: string): boolean {
     return this.#outputs.has(entry);
+  }
+
+  chunkOf(source: string): string {
+    const chunk = this.#sources.chunks.get(source);
+    if (!chunk) throw new Error(`no output was built from ${source}`);
+    return chunk;
+  }
+
+  importChain(source: string, dependency: string): string[] {
+    const parents = new Map<string, string | null>([[source, null]]);
+    const queue = [source];
+    for (let current = queue.shift(); current !== undefined; current = queue.shift()) {
+      if (current === dependency || current.startsWith(`${dependency}/`)) {
+        const chain: string[] = [];
+        for (let step: string | null | undefined = current; step; step = parents.get(step)) chain.unshift(step);
+        return chain;
+      }
+      for (const next of this.#sources.imports.get(current) ?? []) {
+        if (parents.has(next)) continue;
+        parents.set(next, current);
+        queue.push(next);
+      }
+    }
+    return [];
   }
 
   /** Every bare specifier statically reachable from `entry` through its chunk closure. */

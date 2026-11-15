@@ -15,6 +15,7 @@ import {
   resolveRouteCacheStoreTtl,
   shouldStoreRouteCache,
 } from "./cachePolicy";
+import { encodeBody } from "./contentEncoding";
 import {
   cacheHtmlWhileStreaming,
   DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
@@ -1621,7 +1622,7 @@ describe("WebRouter HTML cache streaming", () => {
         },
       }),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
       },
     );
     const reader = stream.getReader();
@@ -1647,7 +1648,7 @@ describe("WebRouter HTML cache streaming", () => {
     const stream = cacheHtmlWhileStreaming(
       streamOf("<html>redirect</html>"),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
       },
       {
         shouldCache: () => Promise.resolve(false),
@@ -1665,7 +1666,7 @@ describe("WebRouter HTML cache streaming", () => {
     const stream = cacheHtmlWhileStreaming(
       streamOf("<html>cache</html>"),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
         observedStoreTtl = storeTtl;
       },
       {
@@ -1743,7 +1744,7 @@ describe("WebRouter HTML cache streaming", () => {
     const stream = cacheHtmlWhileStreaming(
       streamOf("<html>too-large</html>"),
       (html) => {
-        cachedHtml = html;
+        cachedHtml = decoder.decode(html);
       },
       {
         maxBodyBytes: 4,
@@ -2100,6 +2101,45 @@ describe("WebRouter full SSR cache orchestration", () => {
         expect(brotliDecompressSync(Buffer.from(await hit.arrayBuffer())).toString()).toBe(firstHtml);
       },
       { renderBody: () => "<p>section</p>".repeat(100) },
+    );
+  });
+
+  test("answers a cache hit, in each encoding, with the bytes and headers the page's text encodes to", async () => {
+    const html = `<html><body>${"<p>한글 문단 😀 &amp; more</p>".repeat(120)}</body></html>`;
+    const streamed = encoder.encode(html);
+    const chunks = Array.from({ length: Math.ceil(streamed.byteLength / 7) }, (_, index) =>
+      streamed.subarray(index * 7, (index + 1) * 7),
+    );
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, router }) => {
+        const first = await fullSsr(new Request("https://example.test/docs"));
+        expect(Buffer.from(await first.arrayBuffer()).equals(Buffer.from(streamed))).toBe(true);
+        const expected = await encodeBody(html);
+        while (router.getMetrics().httpHtmlCacheEntries === 0) await sleep(5);
+
+        expect(router.getMetrics().httpHtmlCacheBytes).toBe(expected.byteLength);
+        for (const encoding of [null, "br", "gzip"] as const) {
+          const headers: Record<string, string> = encoding ? { "accept-encoding": encoding } : {};
+          const hit = await fullSsr(new Request("https://example.test/docs", { headers }));
+          const body = encoding ? expected.encodings[encoding] : expected.bytes;
+          expect(hit.headers.get("X-Akan-Cache")).toBe("HIT");
+          expect(hit.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+          expect(hit.headers.get("Content-Encoding")).toBe(encoding);
+          expect(hit.headers.get("Content-Length")).toBe(encoding && body ? String(body.byteLength) : null);
+          expect(hit.headers.get("Vary")).toBe("Accept-Encoding");
+          expect(hit.headers.get("ETag")).toBeNull();
+          expect(body && Buffer.from(await hit.arrayBuffer()).equals(Buffer.from(body))).toBe(true);
+        }
+      },
+      {
+        renderStream: () =>
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              for (const chunk of chunks) controller.enqueue(chunk);
+              controller.close();
+            },
+          }),
+      },
     );
   });
 

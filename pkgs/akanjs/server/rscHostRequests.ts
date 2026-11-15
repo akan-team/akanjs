@@ -1,7 +1,8 @@
 import { AkanError } from "akanjs/base";
 import type { Logger } from "akanjs/common";
+import type { ClientManifest } from "./artifact";
 import { createRscHostRenderStream, type RscPending, type RscRenderResult } from "./rscHostRenderStream";
-import type { RscWorkerErrorCode, RscWorkerProcess } from "./rscWorkerProcess";
+import type { RscProcess, RscWorkerErrorCode, RscWorkerProcess } from "./rscWorkerProcess";
 import type { RscRenderOptions } from "./ssrTypes";
 
 interface RscCall {
@@ -19,6 +20,7 @@ export class RscHostRequests {
   readonly calls = new Map<string, RscCall>();
   #queuedSends: RscQueuedSend[] = [];
   #hostPendingChunkOverflowCount = 0;
+  #sentManifest: { proc: RscProcess; manifest: ClientManifest; revision: number } | null = null;
   readonly #worker: RscWorkerProcess;
   readonly #logger: Logger;
 
@@ -107,7 +109,20 @@ export class RscHostRequests {
       try {
         const headers = RscHostRequests.workerHeaders(req, clientIp);
         const { url, method } = req;
-        this.#worker.proc.send({ type: "render", requestId, url, method, headers, clientManifest, prefetch });
+        const proc = this.#worker.proc;
+        const named = clientManifest ? this.#revisionOf(proc, clientManifest) : null;
+        proc.send({
+          type: "render",
+          requestId,
+          url,
+          method,
+          headers,
+          manifestRevision: named?.revision,
+          clientManifest: named?.held ? undefined : clientManifest,
+          prefetch,
+        });
+        if (clientManifest && named && !named.held)
+          this.#sentManifest = { proc, manifest: clientManifest, revision: named.revision };
       } catch (err) {
         this.resolvePending(requestId, (p) =>
           p.onError(`rsc worker send failed: ${err instanceof Error ? err.message : String(err)}`, "rscWorkerStopped"),
@@ -120,6 +135,18 @@ export class RscHostRequests {
     } else {
       this.#queuedSends.push({ requestId, send });
     }
+  }
+
+  //? Compared by identity: the route context hands out one copy per route-cache revision and never writes to it.
+  #revisionOf(proc: RscProcess, manifest: ClientManifest): { revision: number; held: boolean } {
+    const sent = this.#sentManifest;
+    if (sent?.proc === proc && sent.manifest === manifest) return { revision: sent.revision, held: true };
+    return { revision: (sent?.revision ?? 0) + 1, held: false };
+  }
+
+  //? The worker refused a revision: whatever it holds, the next render brings the manifest rather than fail the same way.
+  forgetManifest(): void {
+    this.#sentManifest = null;
   }
 
   #cancelRender(requestId: string): void {

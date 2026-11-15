@@ -42,6 +42,14 @@ const traceOf = async (rsc: RscWorker, url: string) => {
   return result.trace;
 };
 
+const messagesOf = async (rsc: RscWorker, url: string) => {
+  const result = await rsc.renderWithMeta(new Request(url));
+  if (result.type !== "stream") throw new Error(`expected a rendered page, got ${result.type}`);
+  const chunks: Uint8Array[] = [];
+  for await (const chunk of result.stream) chunks.push(chunk);
+  return { trace: result.trace, chunks, body: Buffer.concat(chunks) };
+};
+
 describe("RscWorker messages", () => {
   test("a cancel ends the render it names while that render still waits on a component", async () => {
     await withMessagesWorker({}, async (rsc) => {
@@ -53,6 +61,23 @@ describe("RscWorker messages", () => {
 
       await reader.cancel();
       await until(() => rsc.getMetrics().rscInFlightRenderCount === 0);
+    });
+  }, 15_000);
+
+  test("a stored render replays in one message the bytes it streamed in several, and counts as that many bytes", async () => {
+    const env = { AKAN_RSC_RESULT_CACHE: "1", AKAN_RSC_RESULT_CACHE_PATHS: "/en/streamed" };
+    await withMessagesWorker(env, async (rsc) => {
+      const rendered = await messagesOf(rsc, "http://localhost/en/streamed");
+      const replayed = await messagesOf(rsc, "http://localhost/en/streamed");
+
+      expect(rendered.trace).toMatchObject({ cache: "miss" });
+      expect(rendered.chunks.length).toBeGreaterThan(1);
+      expect(rendered.body.toString()).toContain("late body");
+      expect(replayed.trace).toMatchObject({ cache: "hit" });
+      expect(replayed.chunks).toHaveLength(1);
+      expect(replayed.body.equals(rendered.body)).toBe(true);
+      await until(() => rsc.getMetrics().rscResultCacheEntries === 1);
+      expect(rsc.getMetrics().rscResultCacheBytes).toBe(rendered.body.byteLength);
     });
   }, 15_000);
 

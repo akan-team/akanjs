@@ -47,3 +47,16 @@ describe("FileSys.ensurePrivateDir", () => {
     },
   );
 });
+
+describe("FileSys.writeTextAtomic", () => {
+  test("lands one whole write when two writes of one file start together", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "akan-atomic-"));
+    try {
+      const file = path.join(dir, "cache.json");
+      await Promise.all([FileSys.writeTextAtomic(file, "first"), FileSys.writeTextAtomic(file, "second")]);
+      expect(["first", "second"]).toContain(await Bun.file(file).text());
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
