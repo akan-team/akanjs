@@ -2,8 +2,120 @@ import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { tempDirs, writeText as write } from "../test/testHelpers";
 import { CssCompiler, declaredCustomProperties } from "./cssCompiler";
+import { prepareCssAsset } from "./ssrBaseArtifactBuilder";
 
 const makeTempRoot = tempDirs("akan-css-compiler-");
+const TAILWIND_BANNER = "/*! tailwindcss v";
+
+const cssCompilerFor = (root: string, cwdPath: string, app: object = {}) =>
+  new CssCompiler({
+    workspace: { workspaceRoot: root },
+    cwdPath,
+    getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
+    getPageKeys: async () => ["./_index.tsx"],
+    getConfig: async () => ({ barrelImports: [], basePaths: [] }),
+    ...app,
+  } as never);
+
+describe("CssCompiler on a stylesheet that uses no Tailwind", () => {
+  test("passes it through as written, with no banner, before and after the build's optimizer", async () => {
+    const root = await makeTempRoot();
+    const css = "/* brand */\n:root {\n  --brand: #111111;\n}\n\n.card { color: var(--brand); padding: 1rem; }\n";
+    await write(path.join(root, "styles.css"), css);
+
+    const compiled = await cssCompilerFor(root, root).compileCss([path.join(root, "styles.css")], []);
+
+    expect(compiled).toBe(css);
+    const built = prepareCssAsset("build", "", compiled);
+    expect(built).toBe(":root{--brand:#111}.card{color:var(--brand);padding:1rem}");
+  });
+
+  test("inlines its imports through the resolver alone, where Tailwind stamped its banner", async () => {
+    const root = await makeTempRoot();
+    await write(path.join(root, "page/styles.css"), '@import "../ui/reset.css" layer(reset);\n.page { margin: 0; }\n');
+    await write(path.join(root, "ui/reset.css"), "* { box-sizing: border-box; }\n");
+
+    const compiled = await cssCompilerFor(root, root).compileCss([path.join(root, "page/styles.css")], []);
+
+    expect(compiled).toBe("@layer reset {\n* { box-sizing: border-box; }\n\n}\n.page { margin: 0; }\n");
+    expect(prepareCssAsset("build", "", compiled)).not.toContain("tailwind");
+  });
+
+  test("reports its imports like a compiled stylesheet's", async () => {
+    const root = await makeTempRoot();
+    const appDir = path.join(root, "apps/demo");
+    await write(path.join(appDir, "page/_index.tsx"), 'import "./styles.css";\nexport default () => null;\n');
+    await write(path.join(appDir, "page/styles.css"), '@import "../../../libs/shared/ui/brand.css";\n');
+    await write(path.join(root, "libs/shared/ui/brand.css"), ":root { --kakao : #fee500; }\n");
+
+    const compiler = cssCompilerFor(root, appDir);
+    const cssByBasePath = await compiler.getCssByBasePath();
+
+    expect(cssByBasePath[""]).toBe(":root { --kakao : #fee500; }\n\n");
+    expect(compiler.importedStylesheetsByBasePath[""]).toEqual([
+      { cssPath: path.join(root, "libs/shared/ui/brand.css"), declaredNames: ["--kakao"] },
+    ]);
+  });
+
+  test.each([
+    ["@theme", "@theme { --color-brand: red; }"],
+    ["@utility", "@utility tab-4 { tab-size: 4; }"],
+    ["@variant", ".a { @variant hover { color: red; } }"],
+    ["@custom-variant", "@custom-variant pointer-coarse (@media (pointer: coarse));"],
+    ["@source", '@source "./src";'],
+    ["@tailwind", "@tailwind utilities;"],
+    ["@apply", ".a { @apply flex; }"],
+    ["@plugin", '@plugin "./plugin.js";'],
+    ["@config", '@config "./tailwind.config.js";'],
+    ["@reference", '@reference "./plain.css";'],
+    ["--alpha()", ".a { color: --alpha(red / 50%); }"],
+    ["--theme()", ".a { color: --theme(--color-brand, red); }"],
+    ["an import's source()", '@import "./plain.css" source(none);'],
+  ])("compiles with Tailwind when only an imported stylesheet uses %s", async (_, directive) => {
+    const root = await makeTempRoot();
+    await write(path.join(root, "styles.css"), '@import "./part.css";\n.app { margin: 0; }\n');
+    await write(path.join(root, "part.css"), `${directive}\n`);
+    await write(path.join(root, "plain.css"), ".plain { color: red; }\n");
+    await write(path.join(root, "plugin.js"), "export default function () {}\n");
+    await write(path.join(root, "tailwind.config.js"), "export default {};\n");
+
+    const compiled = await cssCompilerFor(root, root).compileCss([path.join(root, "styles.css")], []);
+
+    expect(compiled.startsWith(TAILWIND_BANNER)).toBe(true);
+  });
+
+  test('compiles `@import "tailwindcss"` and the utilities the sources use', async () => {
+    const root = await makeTempRoot();
+    await write(path.join(root, "styles.css"), '@import "tailwindcss";\n');
+    await write(path.join(root, "Page.tsx"), 'export const Page = () => <main className="flex" />;\n');
+
+    const compiled = await cssCompilerFor(root, root).compileCss(
+      [path.join(root, "styles.css")],
+      [path.join(root, "Page.tsx")],
+    );
+
+    expect(compiled.startsWith(TAILWIND_BANNER)).toBe(true);
+    expect(compiled).toContain(".flex {");
+  });
+
+  test("switches to Tailwind on the next rebuild once a stylesheet gains a directive, and back", async () => {
+    const root = await makeTempRoot();
+    const stylesPath = path.join(root, "page/styles.css");
+    await write(path.join(root, "page/_index.tsx"), 'import "./styles.css";\nexport default () => null;\n');
+    await write(stylesPath, '@import "./tokens.css";\n');
+    await write(path.join(root, "page/tokens.css"), ":root { --brand: #111; }\n");
+    const compiler = cssCompilerFor(root, root);
+
+    expect((await compiler.getCssByBasePath({ refresh: true }))[""]).toBe(":root { --brand: #111; }\n\n");
+    await write(
+      path.join(root, "page/tokens.css"),
+      ":root { --brand: #111; }\n@theme { --color-brand: var(--brand); }\n",
+    );
+    expect((await compiler.getCssByBasePath({ refresh: true }))[""]?.startsWith(TAILWIND_BANNER)).toBe(true);
+    await write(path.join(root, "page/tokens.css"), ":root { --brand: #222; }\n");
+    expect((await compiler.getCssByBasePath({ refresh: true }))[""]).toBe(":root { --brand: #222; }\n\n");
+  });
+});
 
 describe("declaredCustomProperties", () => {
   test("names what the regex-based version named", () => {

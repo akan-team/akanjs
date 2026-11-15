@@ -25,13 +25,13 @@ import { Ed25519Key } from "akanjs/server/ed25519Key";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 import { MaintainabilityPaths } from "../workflows/maintainabilityPaths";
 
+//? No `tailwindcss`: the CLI compiles with its own copy, and an app's `@import "tailwindcss"` resolves to it.
 const defaultWorkspacePeerDependencies = new Set([
   "chance",
   "react",
   "react-dom",
   "react-icons",
   "react-server-dom-webpack",
-  "tailwindcss",
   "typescript",
 ]);
 const defaultWorkspaceTypeDependencies = { "@types/react": "^19.3.0", "@types/react-dom": "^19.3.0" } as const;
