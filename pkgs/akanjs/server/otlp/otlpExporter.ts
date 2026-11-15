@@ -9,7 +9,6 @@ import { OtlpEncode, type OtlpLogItem } from "./otlpEncode";
 type Env = Record<string, string | undefined>;
 
 const loggerName = "Otlp";
-const shutdownBudgetMs = 1_500;
 
 // Pinned to `process`: the worker's app bundle and the framework runtime may each load this module.
 const slot = process as unknown as { __akanOtlpExporter?: OtlpExporter };
@@ -22,6 +21,7 @@ const spanOf = (traceId: string): { spanId: string; sampled: boolean } | null =>
 };
 
 export class OtlpExporter {
+  static readonly shutdownBudgetMs = 1_500;
   readonly spans: OtlpBatcher<ExportSpan> | null;
   readonly logs: OtlpBatcher<OtlpLogItem> | null;
   readonly #sink: SpanExportSink | null = null;
@@ -72,8 +72,8 @@ export class OtlpExporter {
     return slot.__akanOtlpExporter;
   }
 
-  static async shutdown(): Promise<void> {
-    await slot.__akanOtlpExporter?.stop();
+  static async shutdown(budgetMs = OtlpExporter.shutdownBudgetMs): Promise<void> {
+    await slot.__akanOtlpExporter?.stop(budgetMs);
   }
 
   static exitAfterFlush(code: number): void {
@@ -82,8 +82,9 @@ export class OtlpExporter {
     void exporter.stop().finally(() => process.exit(code));
   }
 
-  stop(budgetMs = shutdownBudgetMs): Promise<void> {
+  stop(budgetMs = OtlpExporter.shutdownBudgetMs): Promise<void> {
     this.#stopping ??= (async () => {
+      if (slot.__akanOtlpExporter === this) slot.__akanOtlpExporter = undefined;
       if (this.#sink && SpanExport.sink === this.#sink) SpanExport.install(null);
       this.#removeLogSink?.();
       await Promise.all([this.spans?.shutdown(budgetMs), this.logs?.shutdown(budgetMs)]);

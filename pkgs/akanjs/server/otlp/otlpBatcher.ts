@@ -73,9 +73,11 @@ export class OtlpBatcher<T> {
   readonly #fetch: Fetch;
   readonly #queue: Ring<T>;
   readonly #inFlight = new Set<Promise<void>>();
+  readonly #unsettled = new Set<T[]>();
   //? Captured at boot: a flush a request's push starts runs outside that request, so its fetch joins no trace.
   readonly #detached = AsyncLocalStorage.snapshot();
   #timer: ReturnType<typeof setInterval> | null = null;
+  #flushQueued = false;
   #closed = false;
   #failingSince: number | null = null;
   #lastFailingReport = 0;
@@ -101,8 +103,12 @@ export class OtlpBatcher<T> {
   push(item: T): void {
     if (this.#closed) return;
     if (this.#queue.push(item)) this.#stats.dropped += 1;
-    if (this.#queue.size >= this.#config.maxBatch && this.#inFlight.size < maxInFlight)
-      this.#detached(() => this.flush());
+    if (this.#flushQueued || this.#queue.size < this.#config.maxBatch || this.#inFlight.size >= maxInFlight) return;
+    this.#flushQueued = true;
+    setImmediate(() => {
+      this.#flushQueued = false;
+      if (!this.#closed) this.#detached(() => this.flush());
+    });
   }
 
   flush(): void {
@@ -125,6 +131,8 @@ export class OtlpBatcher<T> {
     while (this.#queue.size > 0) finals.push(this.#send(this.#queue.take(this.#config.maxBatch), deadline, false));
     const settled = Promise.allSettled([...this.#inFlight, ...finals]);
     await Promise.race([settled, sleep(budgetMs)]);
+    for (const batch of this.#unsettled) this.#stats.dropped += batch.length;
+    this.#unsettled.clear();
     if (this.#stats.dropped > 0)
       this.#logger.warn(
         `OTLP ${this.#config.signal} exporter stopped: ${this.#stats.exported} exported, ${this.#stats.dropped} dropped`,
@@ -139,7 +147,10 @@ export class OtlpBatcher<T> {
       this.#dropBatch(batch.length, `encoding failed: ${error instanceof Error ? error.name : typeof error}`);
       return;
     }
+    this.#unsettled.add(batch);
     const outcome = await this.#post(body, deadline, retry);
+    //? A batch still out when shutdown's budget ran out was counted as dropped there.
+    if (!this.#unsettled.delete(batch)) return;
     if (!outcome.ok) {
       this.#dropBatch(batch.length, outcome.reason);
       return;

@@ -52,12 +52,13 @@ describe("OTLP batching under a failing collector", () => {
   test("a full queue drops its oldest entries, counts them, and stays at its bound", async () => {
     const { batcher, sent } = harness(never);
     for (let i = 0; i < 23; i++) batcher.push(i);
+    await new Promise((resolve) => setImmediate(resolve));
 
     expect(sent.map((call) => call.body)).toEqual([
-      [0, 1, 2, 3],
-      [4, 5, 6, 7],
+      [13, 14, 15, 16],
+      [17, 18, 19, 20],
     ]);
-    expect(batcher.stats).toEqual({ queued: 10, exported: 0, dropped: 5, failedBatches: 0 });
+    expect(batcher.stats).toEqual({ queued: 2, exported: 0, dropped: 13, failedBatches: 0 });
     await batcher.shutdown(10);
   });
 
@@ -160,6 +161,15 @@ describe("OTLP batching outside a failure", () => {
     await batcher.shutdown(10);
   });
 
+  test("a push that fills a batch sends nothing until the pushing call stack has unwound", async () => {
+    const { batcher, sent } = harness(ok);
+    for (let i = 0; i < 4; i++) batcher.push(i);
+
+    expect(sent).toHaveLength(0);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(sent.map((call) => call.body)).toEqual([[0, 1, 2, 3]]);
+  });
+
   test("a flush a request's push starts sends outside that request, so the export joins no trace", async () => {
     const { batcher, sent } = harness(ok);
     RequestTrace.run(RequestTrace.fresh(), () => {
@@ -189,5 +199,20 @@ describe("OTLP batching outside a failure", () => {
       [0, 1, 2, 3],
       [4, 5],
     ]);
+    expect(hanging.batcher.stats).toEqual({ queued: 0, exported: 0, dropped: 6, failedBatches: 0 });
+    expect(hanging.lines).toEqual(["OTLP traces exporter stopped: 0 exported, 6 dropped"]);
+  });
+
+  test("a batch a flush sent before shutdown, still unanswered at the budget, is counted as dropped once", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const { batcher, lines } = harness(() => new Promise<Response>((resolve) => (answer = resolve)));
+    for (let i = 0; i < 4; i++) batcher.push(i);
+    await until(() => batcher.stats.queued === 0);
+    await batcher.shutdown(50);
+    answer(new Response(null, { status: 200 }));
+    await Bun.sleep(20);
+
+    expect(batcher.stats).toEqual({ queued: 0, exported: 0, dropped: 4, failedBatches: 0 });
+    expect(lines).toEqual(["OTLP traces exporter stopped: 0 exported, 4 dropped"]);
   });
 });
