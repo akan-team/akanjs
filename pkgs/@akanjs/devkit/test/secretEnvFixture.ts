@@ -47,8 +47,11 @@ export interface SecretEnvFixture {
   libEnvFile: string;
 }
 
-export const writeSecretEnvFixture = async (root: string, { mainExtra = "" } = {}): Promise<SecretEnvFixture> => {
-  const appDir = path.join(root, "apps/demo");
+export const writeSecretEnvFixture = async (
+  root: string,
+  { app = "demo", mainExtra = "" } = {},
+): Promise<SecretEnvFixture> => {
+  const appDir = path.join(root, "apps", app);
   const envDir = path.join(appDir, "env");
   const libEnvFile = path.join(root, "libs/util/env/env.server.testing.ts");
   await writeText(

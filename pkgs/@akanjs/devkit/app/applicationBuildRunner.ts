@@ -1,6 +1,7 @@
 import path from "node:path";
 import { toError } from "akanjs/common";
 import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
+import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
 import type { App } from "../commandDecorators";
@@ -14,6 +15,7 @@ import {
   SsrBaseArtifactBuilder,
   VendorImportScanner,
 } from "../frontendBuild";
+import { SecretEnvDeclaration, type SecretEnvDeclared } from "../transforms/secretEnvDeclaration";
 import { createServerEnvPlugin } from "../transforms/serverEnvPlugin";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import { ProjectTypecheck } from "../typecheck/projectTypecheck";
@@ -59,6 +61,12 @@ export interface ApplicationBuildRunnerOptions {
   environment?: string;
   /** Bundles `env/env.server.<environment>.<profile>.ts`, which may hold no secret, in place of the environment's file. */
   profile?: string;
+  /**
+   * An image build's: `read` leaves the server env's secret strings out of the server, which reads each from its process
+   * env, and `inline` keeps them in it as what an unset variable falls back to. Unset, as for the server a desktop app
+   * carries, or under a `profile`, the env files are bundled as written.
+   */
+  secretEnv?: "read" | "inline";
   /**
    * `enforce` fails on an overage, a route with no entry, or a missing or unreadable akan.budget.json; `update` and
    * `raise` rewrite the file first; `report` only warns.
@@ -109,6 +117,8 @@ export class ApplicationBuildRunner {
   #reporter?: BuildProgressReporter;
   #environment?: string;
   #profile?: string;
+  #secretEnv?: "read" | "inline";
+  #secrets: SecretEnvDeclared = { variables: [], unmoved: [] };
   #budget: RouteJsBudgetMode;
   #modulesByRoute?: Record<string, string[]>;
   #spinner?: boolean;
@@ -123,6 +133,7 @@ export class ApplicationBuildRunner {
       reporter,
       environment,
       profile,
+      secretEnv,
       budget = "report",
     }: ApplicationBuildRunnerOptions = {},
   ) {
@@ -132,6 +143,7 @@ export class ApplicationBuildRunner {
     this.#reporter = reporter;
     this.#environment = environment;
     this.#profile = profile;
+    this.#secretEnv = profile ? undefined : secretEnv;
     this.#budget = budget;
   }
 
@@ -171,6 +183,7 @@ export class ApplicationBuildRunner {
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
     if (this.#profile)
       await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile: this.#profile });
+    if (this.#secretEnv) this.#secrets = await SecretEnvDeclaration.of(this.#envDir, environment);
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
     if (!this.#fast) await this.#runPhase("typecheck", "Typechecking", () => this.typecheck());
     await this.#runPhase(
@@ -221,7 +234,27 @@ export class ApplicationBuildRunner {
     );
     const routeJs = await this.#runBudgetPhase(environment);
     await this.#runPhase("metadata", "Writing production metadata", () => this.buildAppMeta());
+    this.#reportSecretEnv(environment);
     return this.#resultOf(environment, routeJs);
+  }
+
+  #reportSecretEnv(environment: string) {
+    const { variables, unmoved } = this.#secrets;
+    const { logger, name } = this.#app;
+    const names = variables.map((variable) => variable.name).join(", ");
+    const count = `${variables.length} secret value${variables.length === 1 ? "" : "s"}`;
+    if (variables.length && this.#secretEnv === "inline")
+      logger.warn(
+        `--inline-secrets keeps ${count} of the server env in this build, where whoever can read the image reads them: ${names}. A variable the deployment sets still wins over the built-in value. akanjs 3.5.0 removes the flag: set them where the server is deployed and build without it.`,
+      );
+    else if (variables.length)
+      logger.info(
+        `The server reads ${count} from its process env when it starts, not from this build: ${names}. Set them where it is deployed; \`akan secret-env ${name} --env ${environment}\` lists them and writes them from the env file.`,
+      );
+    if (unmoved.length && this.#secretEnv === "read")
+      logger.warn(
+        `${unmoved.length} secret value${unmoved.length === 1 ? "" : "s"} of the server env stay${unmoved.length === 1 ? "s" : ""} in this build, since the env file computes or imports ${unmoved.length === 1 ? "it" : "them"}: ${unmoved.join(", ")}. Write \`process.env.<NAME>\` there for a build to leave ${unmoved.length === 1 ? "it" : "them"} out.`,
+      );
   }
 
   #runBudgetPhase(environment: string) {
@@ -304,10 +337,11 @@ export class ApplicationBuildRunner {
     const environment = this.#environment ?? akanConfig.baseDevEnv.env;
     const packageJson = akanConfig.getProductionPackageJson();
     const lockfile = await this.#pruneLockfile(packageJson);
-    const dockerfile = akanConfig.dockerfileFor(environment, { lockfile: lockfile !== null });
+    const env = { ...akanConfig.getProductionEnv(environment), ...this.#secretEnvList() };
+    const dockerfile = akanConfig.dockerfileFor(environment, { lockfile: lockfile !== null, env });
     await Promise.all([
       this.#app.dist.writeJson("package.json", packageJson),
-      this.#app.dist.writeJson(BUILD_ENV_FILE, akanConfig.getProductionEnv(environment)),
+      this.#app.dist.writeJson(BUILD_ENV_FILE, env),
       ...(lockfile !== null
         ? [this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/${ProductionLockfile.fileName}`, lockfile)]
         : []),
@@ -318,6 +352,15 @@ export class ApplicationBuildRunner {
         builtAt: new Date().toISOString(),
       }),
     ]);
+  }
+
+  //? Names and kinds alone: the image carries the list of what its deployment owes, never a value.
+  #secretEnvList(): Record<string, string> {
+    if (!this.#secrets.variables.length) return {};
+    return {
+      [SecretEnv.listKey]: SecretEnv.format(this.#secrets.variables),
+      ...(this.#secretEnv === "inline" ? { [SecretEnv.fallbackKey]: "image" } : {}),
+    };
   }
 
   async #pruneLockfile(packageJson: PackageJson): Promise<string | null> {
@@ -355,6 +398,7 @@ export class ApplicationBuildRunner {
       environment: this.#environment ?? baseEnv,
       environments: ["local", "testing", ...branches],
       profile: this.#profile,
+      secrets: this.#secretEnv,
       onLibEnv: (file, { profileFile, stripped }) => {
         if (profileFile || !stripped.length || this.#warnedLibEnvs.has(file)) return;
         this.#warnedLibEnvs.add(file);

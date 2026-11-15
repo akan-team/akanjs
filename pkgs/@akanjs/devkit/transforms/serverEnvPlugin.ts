@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import type { BunPlugin, OnLoadResult } from "bun";
+import { SecretEnvDeclaration } from "./secretEnvDeclaration";
 import { ServerEnvProfile } from "./serverEnvProfile";
 
 export interface ServerEnvPluginOptions {
@@ -12,6 +13,11 @@ export interface ServerEnvPluginOptions {
   profile?: string;
   /** Under a profile, once per lib env file: whether the lib gave one of the profile's, and what was left out if not. */
   onLibEnv?: (file: string, report: { profileFile: boolean; stripped: string[] }) => void;
+  /**
+   * Without a profile: `read` bundles each env file, a lib's included, with its secret strings replaced by reads of the
+   * process env, and `inline` keeps each string as what its read falls back to. Unset, the files are bundled as written.
+   */
+  secrets?: "read" | "inline";
 }
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -24,6 +30,7 @@ export const createServerEnvPlugin = ({
   environments,
   profile,
   onLibEnv,
+  secrets,
 }: ServerEnvPluginOptions): BunPlugin => {
   const others = [...new Set(environments)].filter((name) => name !== environment);
   //? Bun hands onLoad the real path, which differs from the given one under a symlink (macOS's /var -> /private/var).
@@ -64,6 +71,12 @@ export const createServerEnvPlugin = ({
             ].join("\n"),
           };
         });
+      //? After the stubs, which take the other environments' files first; `env.server.ts` itself is the env file where
+      //? a pipeline copies one over the switch.
+      if (secrets && !profile)
+        build.onLoad({ filter: ServerEnvProfile.envModulePattern }, (args) =>
+          SecretEnvDeclaration.source(args.path, secrets),
+        );
       //? Last: the app's own env files above are taken by the handlers before it, which match them first.
       if (profile)
         build.onLoad({ filter: ServerEnvProfile.envFilePattern }, async (args) => {

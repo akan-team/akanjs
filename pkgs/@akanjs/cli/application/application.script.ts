@@ -210,6 +210,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       profile,
       env,
       budget = "report",
+      inlineSecrets = false,
     }: {
       write?: boolean;
       fast?: boolean;
@@ -217,6 +218,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       profile?: string;
       env?: string;
       budget?: Exclude<RouteJsBudgetMode, "off">;
+      inlineSecrets?: boolean;
     } = {},
   ) {
     await app.scanSync({ write });
@@ -228,6 +230,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         envProfile: profile,
         environment: env,
         budget,
+        secretEnv: inlineSecrets ? "inline" : "read",
       });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (quiet) ApplicationBuildReporter.printRouteJsWarnings(result);

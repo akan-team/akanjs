@@ -8,6 +8,7 @@ import type { App } from "../commandDecorators";
 import { AppExecutor, Executor } from "../executors";
 import { AllRoutesBuilder, type BuildAllRoutesResult, VendorNarrowing } from "../frontendBuild";
 import { bundleDefine } from "../frontendBuild/bundleDefine";
+import { holdsSentinel, writeSecretEnvFixture } from "../test/secretEnvFixture";
 import { createTempApp } from "../test/testHelpers";
 import { ProjectTypecheck } from "../typecheck/projectTypecheck";
 import { AKAN_BACKEND_MINIFY, AKAN_OPTIONAL_BACKEND_EXTERNALS, ApplicationBuildRunner } from "./applicationBuildRunner";
@@ -117,6 +118,93 @@ console.info(new SampleService().name);
       expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_ENV: "local" });
       expect(await builtEnv()).toEqual(await dockerfileEnv());
     } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an image build names the secrets its server reads beside main.js and in its Dockerfile, and holds no value of them", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeSecretEnvFixture(root, { app: "portal" });
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    const metaOf = async (options: ConstructorParameters<typeof ApplicationBuildRunner>[1]) => {
+      const app = AppExecutor.from(workspace, "portal");
+      spyOn(app.logger, "warn").mockImplementation(() => undefined);
+      app.prepareCommand = async () => {
+        throw new Error("stopped before the phases");
+      };
+      const runner = new ApplicationBuildRunner(app, options);
+      await expect(runner.build()).rejects.toThrow("stopped before the phases");
+      await runner.buildAppMeta();
+      const env = JSON.parse(await readFile(path.join(app.dist.cwdPath, "akan.env.json"), "utf8")) as {
+        [key: string]: string;
+      };
+      const dockerfile = await readFile(path.join(app.dist.cwdPath, "Dockerfile"), "utf8");
+      const dockerfileEnv = Object.fromEntries(
+        dockerfile
+          .split("\n")
+          .filter((line) => line.startsWith("ENV "))
+          .map((line) => line.slice("ENV ".length).split(/=(.*)/s).slice(0, 2)),
+      );
+      expect(env).toEqual(dockerfileEnv);
+      expect(holdsSentinel(`${JSON.stringify(env)}${dockerfile}`)).toBe(false);
+      return env;
+    };
+    const names =
+      "JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,MAILER__AUTH__PASS,OBJECT_STORAGE__ENDPOINT,DISCORD__TOKENS:json,DISCORD__WEBHOOK,PUSH_NOTI__FIREBASE__PRIVATE_KEY:multiline,MESSAGE__API_SECRET,MESSAGE__SENDER_PASSWORD,POSTGRES_URL";
+    try {
+      const read = await metaOf({ secretEnv: "read" });
+      expect(read.AKAN_SECRET_ENV).toBe(names);
+      expect(read).not.toHaveProperty("AKAN_SECRET_ENV_FALLBACK");
+      expect(await metaOf({ secretEnv: "inline" })).toMatchObject({
+        AKAN_SECRET_ENV: names,
+        AKAN_SECRET_ENV_FALLBACK: "image",
+      });
+      const carried = await metaOf({});
+      expect(carried).not.toHaveProperty("AKAN_SECRET_ENV");
+      expect(carried).not.toHaveProperty("AKAN_SECRET_ENV_FALLBACK");
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an image build stops before any phase at a secret whose variable the platform owns, without printing it", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeSecretEnvFixture(root, { app: "portal", mainExtra: '\n  pwd: "sentinel-pwd-1b84",' });
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    const app = AppExecutor.from(workspace, "portal");
+    let prepared = false;
+    app.prepareCommand = async () => {
+      prepared = true;
+      throw new Error("prepared");
+    };
+    try {
+      const failure = await new ApplicationBuildRunner(app, { secretEnv: "read" })
+        .build()
+        .catch((error: Error) => error.message);
+      expect(failure).toContain("`pwd` is a secret a build would read from the environment variable PWD");
+      expect(holdsSentinel(String(failure))).toBe(false);
+      expect(prepared).toBe(false);
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
       await rm(root, { recursive: true, force: true });
     }
   });
