@@ -13,7 +13,7 @@ import {
   SignChallenge,
   WebSession,
 } from "@libs/shared/srvkit";
-import { getEnv } from "akanjs/base";
+import { dayjs, getEnv } from "akanjs/base";
 import type { Account } from "akanjs/fetch";
 import { DatabaseAdaptorRole, InsightQuery, serve } from "akanjs/service";
 import * as cnst from "../cnst";
@@ -116,6 +116,16 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
       { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken: nextRefreshToken.refreshToken };
+  }
+  //? Security: signed to the expiry the caller's token already had, so an admin session's end buys the user no time.
+  async dropAdminIdentity(account?: Account, readSelf?: (userId: string) => Promise<Self | null>) {
+    const { exp } = (account ?? {}) as { exp?: number };
+    const { self, selfSid } = await this._carryUserIdentity(account, readSelf);
+    if (!self || !selfSid || !exp) return { jwt: "" };
+    return await this.securityService.signAccessToken(
+      { self, selfSid },
+      { sid: selfSid, jti: crypto.randomUUID(), expiresAt: dayjs(exp * 1000) },
+    );
   }
   async isAdminSystemInitialized() {
     return await this.adminModel.hasAnotherAdmin(this.rootAdminInfo?.accountId ?? "");

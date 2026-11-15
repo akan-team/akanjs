@@ -161,6 +161,14 @@ export const makeSsoSigninResponse = <Signin extends SsoSigninAnswer>(signin: Si
 export const makeAdminSignoutResponse = (accessToken: AccessTokenResponse) =>
   makeTokenEndResponse(accessToken, "admin");
 
+//* The admin session ended alone: what the caller's user session is answered with drops the admin refresh cookie too.
+export const makeAdminSessionEndResponse = (survivor: AccessTokenResponse, option: AccessTokenResponseOption = {}) => {
+  if (!survivor.jwt) return makeTokenEndResponse(survivor, "admin");
+  const response = makeTokenResponse(survivor, "user", option);
+  appendRefreshTokenCookies(response.headers, "admin");
+  return response;
+};
+
 export const makeSignupTicketResponse = (ticket: { signupToken: string }) => {
   const headers = new Headers({ "Content-Type": "application/json" });
   headers.append("Set-Cookie", setHttpOnlyCookie(SignupToken.cookieKey(), ticket.signupToken, SignupToken.seconds));

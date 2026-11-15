@@ -5,6 +5,7 @@ import {
   browserRefreshGraceMs,
   Me,
   makeAdminAccessTokenResponse as makeAccessTokenResponse,
+  makeAdminSessionEndResponse as makeSessionEndResponse,
   makeAdminSignoutResponse as makeSignoutResponse,
   Person,
   PlatformAdminList,
@@ -98,12 +99,12 @@ export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, 
     .exec(async function (refreshToken, account, req) {
       const token = refreshToken ?? readRefreshTokenCookie(req, "admin");
       if (!token) throw new Err("admin.error.noRefreshToken");
+      const readSelf = async (userId: string) => {
+        const user = await this.userService.getUser(userId).catch(() => null);
+        const signable = user ? await this.userService._assertSignable(user).catch(() => null) : null;
+        return signable ? await this.userService.makeSelf(signable) : null;
+      };
       try {
-        const readSelf = async (userId: string) => {
-          const user = await this.userService.getUser(userId).catch(() => null);
-          const signable = user ? await this.userService._assertSignable(user).catch(() => null) : null;
-          return signable ? await this.userService.makeSelf(signable) : null;
-        };
         const options = { graceMs: browserRefreshGraceMs };
         return makeAccessTokenResponse(await this.adminService.refreshAdminToken(token, account, readSelf, options), {
           req,
@@ -114,7 +115,7 @@ export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, 
           error instanceof Error &&
           /^shared\.error\.(expired|revoked|invalid)RefreshToken$/.test(error.message)
         ) {
-          return makeSignoutResponse({ jwt: "" }) as never;
+          return makeSessionEndResponse(await this.adminService.dropAdminIdentity(account, readSelf), { req }) as never;
         }
         throw error;
       }

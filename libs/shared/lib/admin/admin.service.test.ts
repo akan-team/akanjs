@@ -138,6 +138,41 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
       expect(seconds).toEqual([accessTokenSeconds, WebSession.cookielessAccessTokenSeconds, accessTokenSeconds]);
     });
 
+    test("an admin session that ended leaves a live user identity signed alone, to the expiry it already had", async () => {
+      const signed: { payload: Record<string, unknown>; sid: string; expiresAt: Dayjs }[] = [];
+      Object.defineProperty(service, "securityService", {
+        value: {
+          ...(service as unknown as { securityService: object }).securityService,
+          signAccessToken: async (
+            payload: Record<string, unknown>,
+            { sid, expiresAt }: { sid: string; expiresAt: Dayjs },
+          ) => {
+            signed.push({ payload, sid, expiresAt });
+            return { jwt: "survivor", expiresAt };
+          },
+        },
+      });
+      const exp = Math.floor(Date.now() / 1000) + 40 * 60;
+      const selfSid = crypto.randomUUID();
+      const account = { self: { id: "u1", nickname: "before" }, selfSid, me: { id: admin.id }, meSid: "ended", exp };
+      const readSelf = async (userId: string) => ({ id: userId, nickname: "after" }) as never;
+
+      expect(await service.dropAdminIdentity(account as never, readSelf)).toMatchObject({ jwt: "survivor" });
+      expect(signed).toHaveLength(1);
+      expect(signed[0]?.payload).toEqual({ self: { id: "u1", nickname: "after" }, selfSid });
+      expect(signed[0]?.sid).toBe(selfSid);
+      expect(signed[0]?.expiresAt.unix()).toBe(exp);
+
+      expect(await service.dropAdminIdentity(account as never, async () => null)).toEqual({ jwt: "" });
+      expect(await service.dropAdminIdentity({ ...account, self: undefined } as never, readSelf)).toEqual({ jwt: "" });
+      expect(await service.dropAdminIdentity({ ...account, selfSid: undefined } as never, readSelf)).toEqual({
+        jwt: "",
+      });
+      expect(await service.dropAdminIdentity({ ...account, exp: undefined } as never, readSelf)).toEqual({ jwt: "" });
+      expect(await service.dropAdminIdentity(undefined, readSelf)).toEqual({ jwt: "" });
+      expect(signed).toHaveLength(1);
+    });
+
     test("a first-party admin refresh token still rotates", async () => {
       const browserToken = crypto.randomUUID();
       await adminModel.createRefreshSession(admin.id, `hash:${browserToken}`, expiresAt());
@@ -306,6 +341,29 @@ for (const kind of ConformanceEnv.cacheKinds("admin sign-in")) {
           "admin.error.invalidCredentials",
         );
       await expect(service.signinAdmin(accountId, password)).rejects.toThrow("admin.error.tooManySigninAttempts");
+    });
+
+    test("an admin's sign-in token lives as long as its caller's kind does: seven days for one that keeps its tokens itself, an hour for a browser", async () => {
+      const seconds: number[] = [];
+      Object.defineProperty(service, "securityService", {
+        value: {
+          ...(service as unknown as { securityService: object }).securityService,
+          signAccessToken: async (_payload: object, { expiresAt }: { expiresAt: Dayjs }) => {
+            seconds.push(Math.round(expiresAt.diff(dayjs()) / 1000));
+            return { jwt: "jwt", expiresAt };
+          },
+        },
+      });
+      const accountId = rows[0]?.accountId ?? "";
+      const requestWith = (headers: Record<string, string>) =>
+        new Request("https://app.example.com/api/admin/signinAdmin", { method: "POST", headers });
+
+      await WebSession.answering(requestWith(sessionTokenContract.makeHeaders()), () =>
+        service.signinAdmin(accountId, password),
+      );
+      await WebSession.answering(requestWith({}), () => service.signinAdmin(accountId, password));
+
+      expect(seconds).toEqual([WebSession.cookielessAccessTokenSeconds, accessTokenSeconds]);
     });
 
     test("an admin without a password cannot sign in with an empty one", async () => {
