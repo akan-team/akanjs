@@ -16,11 +16,12 @@ interface SecretEnvLogger {
   warn: (message: string) => void;
 }
 
-//* `akan build` writes these reads in place of the server env file's secret strings, and names them in AKAN_SECRET_ENV.
+//* `akan build` writes these reads in place of the server env file's secret strings, and names them in AKAN_ENV_NAMES.
 export class SecretEnv {
-  static readonly listKey = "AKAN_SECRET_ENV";
+  //? Not named for secrets: Docker's build check flags every ENV whose name says secret, and this one holds names only.
+  static readonly listKey = "AKAN_ENV_NAMES";
   //* `image` when `akan build --inline-secrets` kept the values in the build, which a variable left unset falls back to.
-  static readonly fallbackKey = "AKAN_SECRET_ENV_FALLBACK";
+  static readonly fallbackKey = "AKAN_ENV_FALLBACK";
   //? The database adaptor reads either spelling, so a deployment that sets the other one owes nothing new.
   static readonly #aliases: { readonly [name: string]: readonly string[] } = { POSTGRES_URL: ["POSTGRES_URI"] };
 
@@ -94,6 +95,6 @@ export class SecretEnv {
     if (env[SecretEnv.fallbackKey] === "image")
       return `${subject}, so it uses the ${one ? "value" : "values"} built into this image (akan build --inline-secrets): ${missing.join(", ")}. Set ${them} in the deployment's environment and build without the flag; akanjs 3.5.0 removes it.`;
     const command = `akan secret-env ${env.AKAN_PUBLIC_APP_NAME || "<app>"} --env ${env.AKAN_PUBLIC_ENV || "<env>"}`;
-    return `${subject}: ${missing.join(", ")}. It runs without ${them}, and akanjs 3.5.0 will refuse to boot. Set ${them} in the deployment's environment; \`${command}\` lists every name.`;
+    return `${subject}: ${missing.join(", ")}. The framework does not stop for ${them} yet, though whatever reads ${them} may, and akanjs 3.5.0 will refuse to boot. Set ${them} in the deployment's environment; \`${command}\` lists every name.`;
   }
 }

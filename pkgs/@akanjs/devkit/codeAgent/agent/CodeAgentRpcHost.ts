@@ -76,7 +76,7 @@ export class CodeAgentRpcHost {
       case "answer":
         return { handled: await this.#agent.answer(command.questionId, command.answer) };
       case "approve":
-        return { handled: await this.#agent.approve(command.approvalId, command.approved) };
+        return { handled: await this.#agent.approve(command.approvalId, command.approved, command.remember) };
       case "abort":
         await this.#agent.abort();
         return { aborted: true };

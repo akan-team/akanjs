@@ -125,10 +125,16 @@ class FakeAgent {
     return true;
   }
 
-  async approve(approvalId: string, approved: boolean) {
-    this.calls.push(`approve:${approvalId}:${approved}`);
+  async approve(approvalId: string, approved: boolean, remember?: "session") {
+    this.calls.push(["approve", approvalId, approved, ...(remember ? [remember] : [])].join(":"));
     return true;
   }
+
+  readonly allowedNames: string[] = [];
+  readonly allowed = {
+    names: this.allowedNames,
+    clear: () => this.allowedNames.splice(0).length,
+  };
 }
 
 const keys = { backspace: String.fromCharCode(127) };
@@ -528,6 +534,65 @@ describe("CodeTui", () => {
     expect(harness.agent.calls).toEqual([]);
     await harness.press("n");
     await eventually(() => expect(harness.agent.calls).toEqual(["approve:a1:false"]));
+  });
+
+  test("an approval that offers it takes a, which answers yes for the rest of the session", async () => {
+    const harness = mount();
+    await harness.ready();
+    harness.emit({
+      type: "approval",
+      request: {
+        approvalId: "a1",
+        toolCallId: "c0",
+        name: "bash",
+        summary: "run: bun test",
+        policy: "commands",
+        remember: ["bun test"],
+      },
+    });
+    await harness.drawn("approve? run: bun test  [y/n/a]");
+    await harness.drawn("a yes, and stop asking about bun test this session");
+    await harness.press("a");
+    await eventually(() => expect(harness.agent.calls).toEqual(["approve:a1:true:session"]));
+    harness.emit({ type: "approval_resolved", approvalId: "a1", approved: true, remembered: ["bun test"] });
+    await harness.drawn("approved · bun test runs unasked until this session ends");
+  });
+
+  test("an approval that does not offer it ignores a", async () => {
+    const harness = mount();
+    await harness.ready();
+    harness.emit({
+      type: "approval",
+      request: { approvalId: "a1", toolCallId: "c0", name: "bash", summary: "run: git push", policy: "commands" },
+    });
+    await harness.drawn("approve? run: git push  [y/n]");
+    expect(harness.stdout.lastFrame).not.toContain("stop asking");
+    await harness.press("a");
+    expect(harness.agent.calls).toEqual([]);
+    await harness.press("y");
+    await eventually(() => expect(harness.agent.calls).toEqual(["approve:a1:true"]));
+  });
+
+  test("/allowed lists what the session runs without asking, and /allowed clear forgets it", async () => {
+    const harness = mount();
+    await harness.ready();
+    await harness.press("/allowed");
+    await harness.press("\r");
+    await harness.drawn("Nothing is allowed for this session yet.");
+    await harness.press(esc);
+    harness.agent.allowedNames.push("bun test", "git status");
+    await harness.press("/allowed");
+    await harness.press("\r");
+    await eventually(() => {
+      expect(harness.stdout.lastFrame).toContain("bun test");
+      expect(harness.stdout.lastFrame).toContain("git status");
+      expect(harness.stdout.lastFrame).toContain("/allowed clear forgets them");
+    });
+    await harness.press(esc);
+    await harness.press("/allowed clear");
+    await harness.press("\r");
+    await harness.drawn("every command is asked about again");
+    expect(harness.agent.allowedNames).toEqual([]);
   });
 
   test("slash commands reach the core rather than the model", async () => {
@@ -948,7 +1013,7 @@ describe("CodeTui", () => {
     const file = path.join(tmpdir(), "Screenshot at 20.11.02.png");
     await Bun.write(file, new Uint8Array([0x89, 0x50, 0x4e, 0x47]));
     // Escaped spaces, the way a terminal writes a dragged or pasted path.
-    await harness.press(file.replace(/ /g, "\\ "));
+    await harness.press(file.replace(/[\\ ]/g, "\\$&"));
     await harness.drawn("[image #1]");
     expect(harness.stdout.lastFrame).not.toContain("Screenshot at");
     await harness.press("look at this");

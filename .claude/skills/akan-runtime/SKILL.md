@@ -40,11 +40,11 @@ Domain code reaches none of them.
 - Write secrets in `env/env.server.<env>.ts` as before. `akan build` replaces each string under a secret-named key,
   and each URL carrying a password, with a read of an environment variable: `security.sso.google.clientSecret` is
   `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, an array holding a secret is one JSON variable, `security.jwtSecret` is
-  `JWT_SECRET`. The built files hold the names (`AKAN_SECRET_ENV` in `akan.env.json`), never the values.
+  `JWT_SECRET`. The built files hold the names (`AKAN_ENV_NAMES` in `akan.env.json`), never the values.
 - `akan secret-env <app> --env <env>` prints the variables, never a value. `--out <file> --format k8s --name <name>`
   writes a Kubernetes Secret for `envFrom`, `--format dotenv` a file for `bun --env-file`. Never write it
   under `dist/` or a tracked path, and delete it once applied.
-- At boot a variable left unset is one warning naming it, and the server runs without it; 3.5.0 will refuse to boot.
+- At boot a variable left unset is one warning naming it. The framework does not stop for it, though whatever reads the value may; 3.5.0 will refuse to boot.
 - A secret the env file computes or imports stops the build, whatever its length: write the string at the key, or
   `process.env.<NAME>` there, which the build leaves as that read. A secret string a plain key or the app's code
   holds as well stops it too when long and mixed, and is a warning when short. A key the name rule misses

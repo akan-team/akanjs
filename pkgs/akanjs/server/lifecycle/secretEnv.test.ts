@@ -18,38 +18,38 @@ describe("SecretEnv.check", () => {
   test("warns once, naming only the variables the deployment does not set", () => {
     const { warnings, logger } = collect();
     const report = SecretEnv.check(logger, {
-      AKAN_SECRET_ENV: "FIXTURE__TOKEN,MAILER__AUTH__PASS,DISCORD__TOKENS:json,LLM__API_KEY",
+      AKAN_ENV_NAMES: "FIXTURE__TOKEN,MAILER__AUTH__PASS,DISCORD__TOKENS:json,LLM__API_KEY",
       AKAN_PUBLIC_APP_NAME: "portal",
       AKAN_PUBLIC_ENV: "main",
       FIXTURE__TOKEN: sentinel,
     });
     expect(report.missing).toEqual(["MAILER__AUTH__PASS", "DISCORD__TOKENS", "LLM__API_KEY"]);
     expect(warnings).toEqual([
-      "3 secret env values this server declares are not set: MAILER__AUTH__PASS, DISCORD__TOKENS, LLM__API_KEY. It runs without them, and akanjs 3.5.0 will refuse to boot. Set them in the deployment's environment; `akan secret-env portal --env main` lists every name.",
+      "3 secret env values this server declares are not set: MAILER__AUTH__PASS, DISCORD__TOKENS, LLM__API_KEY. The framework does not stop for them yet, though whatever reads them may, and akanjs 3.5.0 will refuse to boot. Set them in the deployment's environment; `akan secret-env portal --env main` lists every name.",
     ]);
   });
 
   test("says nothing when every declared variable is set, or when no build declared one", () => {
     const { warnings, logger } = collect();
-    SecretEnv.check(logger, { AKAN_SECRET_ENV: "FIXTURE__TOKEN", FIXTURE__TOKEN: sentinel });
+    SecretEnv.check(logger, { AKAN_ENV_NAMES: "FIXTURE__TOKEN", FIXTURE__TOKEN: sentinel });
     SecretEnv.check(logger, { FIXTURE__TOKEN: sentinel });
-    SecretEnv.check(logger, { AKAN_SECRET_ENV: "" });
+    SecretEnv.check(logger, { AKAN_ENV_NAMES: "" });
     expect(warnings).toEqual([]);
   });
 
   test("an empty variable counts as not set", () => {
     const { warnings, logger } = collect();
-    expect(SecretEnv.check(logger, { AKAN_SECRET_ENV: "FIXTURE__TOKEN", FIXTURE__TOKEN: "" }).missing).toEqual([
+    expect(SecretEnv.check(logger, { AKAN_ENV_NAMES: "FIXTURE__TOKEN", FIXTURE__TOKEN: "" }).missing).toEqual([
       "FIXTURE__TOKEN",
     ]);
     expect(warnings).toEqual([
-      "1 secret env value this server declares is not set: FIXTURE__TOKEN. It runs without it, and akanjs 3.5.0 will refuse to boot. Set it in the deployment's environment; `akan secret-env <app> --env <env>` lists every name.",
+      "1 secret env value this server declares is not set: FIXTURE__TOKEN. The framework does not stop for it yet, though whatever reads it may, and akanjs 3.5.0 will refuse to boot. Set it in the deployment's environment; `akan secret-env <app> --env <env>` lists every name.",
     ]);
   });
 
   test("the other name the database reads satisfies POSTGRES_URL", () => {
     const { warnings, logger } = collect();
-    SecretEnv.check(logger, { AKAN_SECRET_ENV: "POSTGRES_URL", POSTGRES_URI: sentinel });
+    SecretEnv.check(logger, { AKAN_ENV_NAMES: "POSTGRES_URL", POSTGRES_URI: sentinel });
     expect(warnings).toEqual([]);
     process.env.POSTGRES_URI = sentinel;
     expect(SecretEnv.read("POSTGRES_URL")).toBe(sentinel);
@@ -59,7 +59,7 @@ describe("SecretEnv.check", () => {
     const { warnings, logger } = collect();
     const failure = (() => {
       try {
-        SecretEnv.check(logger, { AKAN_SECRET_ENV: "FIXTURE__TOKENS:json", FIXTURE__TOKENS: `["a", ${sentinel}` });
+        SecretEnv.check(logger, { AKAN_ENV_NAMES: "FIXTURE__TOKENS:json", FIXTURE__TOKENS: `["a", ${sentinel}` });
         return null;
       } catch (error) {
         return error;
@@ -78,7 +78,7 @@ describe("SecretEnv.check", () => {
     const { warnings, logger } = collect();
     const key = `-----BEGIN PRIVATE KEY-----\n${sentinel}\n-----END PRIVATE KEY-----\n`;
     const report = SecretEnv.check(logger, {
-      AKAN_SECRET_ENV: "FIXTURE__PRIVATE_KEY:multiline,OTHER__PRIVATE_KEY:multiline",
+      AKAN_ENV_NAMES: "FIXTURE__PRIVATE_KEY:multiline,OTHER__PRIVATE_KEY:multiline",
       FIXTURE__PRIVATE_KEY: key.replaceAll("\n", "\\n"),
       OTHER__PRIVATE_KEY: key,
     });
@@ -91,8 +91,8 @@ describe("SecretEnv.check", () => {
   test("an image built with --inline-secrets says which built-in values it runs on", () => {
     const { warnings, logger } = collect();
     SecretEnv.check(logger, {
-      AKAN_SECRET_ENV: "FIXTURE__TOKEN,LLM__API_KEY",
-      AKAN_SECRET_ENV_FALLBACK: "image",
+      AKAN_ENV_NAMES: "FIXTURE__TOKEN,LLM__API_KEY",
+      AKAN_ENV_FALLBACK: "image",
       LLM__API_KEY: sentinel,
     });
     expect(warnings).toEqual([

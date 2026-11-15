@@ -110,7 +110,11 @@ export class RichInlineWriter {
       .replace(/_/g, (underscore, at: number) =>
         /[\p{L}\p{N}]/u.test(text[at - 1] ?? "") && /[\p{L}\p{N}]/u.test(text[at + 1] ?? "") ? underscore : "\\_",
       );
-    return this.#pipes ? escaped.replace(/\|/g, "\\|") : escaped;
+    return this.#pipes ? RichInlineWriter.#pipeEscaped(escaped) : escaped;
+  }
+
+  static #pipeEscaped(text: string) {
+    return text.split("|").join("\\|");
   }
 
   static #textOf(segment: Segment | undefined) {
@@ -155,7 +159,7 @@ export class RichInlineWriter {
     if (/\n/.test(text)) return null;
     if (format & RichInlineReader.formatBits.code) {
       if (text.includes("`")) return null;
-      return { text: pipes ? text.replace(/\|/g, "\\|") : text, format };
+      return { text: pipes ? RichInlineWriter.#pipeEscaped(text) : text, format };
     }
     return { text, format };
   }
@@ -171,14 +175,14 @@ export class RichInlineWriter {
     const label = RichInlineWriter.write(Array.isArray(node.children) ? node.children : [], { inTable });
     if (label === null) return null;
     const title = node.title ? ` "${node.title.replace(/(["\\])/g, "\\$1")}"` : "";
-    const url = inTable === "gfm" ? node.url.replace(/\|/g, "\\|") : node.url;
+    const url = inTable === "gfm" ? RichInlineWriter.#pipeEscaped(node.url) : node.url;
     return { raw: `[${label}](${url}${title})` };
   }
 
   // A table row is split on its pipes before anything inside a cell is read, so a raw token has to escape its own.
   static #piped(segment: Segment | null, pipes: boolean): Segment | null {
     if (!segment || !pipes || !("raw" in segment)) return segment;
-    return { raw: segment.raw.replace(/\|/g, "\\|") };
+    return { raw: RichInlineWriter.#pipeEscaped(segment.raw) };
   }
 
   static #autolink(node: WritableNode): Segment | null {

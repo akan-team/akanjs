@@ -395,11 +395,12 @@ place a developer writes them; the build turns each into a read of an environmen
   variable gave counts as the developer's read. One that loads neither way stops the build with the error's class
   and its file and line, never its message, which could quote a value; loading has a 60 second limit, and a file
   that leaves a timer or a server open still ends when its answer is in.
-- **What the image carries** is the list: `AKAN_SECRET_ENV` in `akan.env.json` and the Dockerfile, names with
+- **What the image carries** is the list: `AKAN_ENV_NAMES` in `akan.env.json` and the Dockerfile, names with
   `:json` or `:multiline` after an array or a multi-line value, never a value. The build prints the names.
 - **At boot**, in `AkanApp.start` before the server is loaded or a replica is spawned, the list is compared with the
-  process env. A variable not set, or set empty, is one warning naming every such variable, and the server runs
-  with `undefined` in its place; version 3.5.0 will refuse to boot. A `:json` variable that does not parse as an
+  process env. A variable not set, or set empty, is one warning naming every such variable. The framework does not
+  stop for it, and what reads the value gets `undefined` and may stop (an app that requires its
+  JWT secret does); version 3.5.0 will refuse to boot. A `:json` variable that does not parse as an
   array is refused (`secretEnvInvalid`). A `:multiline` variable holding a backslash and an n in place of its line
   breaks is warned about by name. No message carries a value. `bun console.js` and `bun main.js ops …` do not
   check.

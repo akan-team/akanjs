@@ -8,7 +8,7 @@ import { AkanApp } from "./akanApp";
 const sentinel = "sentinel-7b1e44-value";
 const secretEnvModule = path.join(import.meta.dir, "lifecycle/secretEnv.ts");
 const roots: string[] = [];
-const envKeys = ["AKAN_SECRET_ENV", "FIXTURE__TOKEN", "FIXTURE__SET"];
+const envKeys = ["AKAN_ENV_NAMES", "FIXTURE__TOKEN", "FIXTURE__SET"];
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 const makeRoot = async () => {
@@ -70,7 +70,7 @@ test("a gateway names the secret env values its deployment left unset before it 
   const serverPath = path.join(root, "server.ts");
   const bootsPath = path.join(root, "boots.json");
   await Bun.write(serverPath, replica(bootsPath, false));
-  Object.assign(process.env, { AKAN_SECRET_ENV: "FIXTURE__TOKEN,FIXTURE__SET", FIXTURE__SET: sentinel });
+  Object.assign(process.env, { AKAN_ENV_NAMES: "FIXTURE__TOKEN,FIXTURE__SET", FIXTURE__SET: sentinel });
   const events: string[] = [];
   const spawn = Bun.spawn;
   const spawned = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
@@ -86,7 +86,7 @@ test("a gateway names the secret env values its deployment left unset before it 
     expect(await waitForBoots(bootsPath, 1)).toEqual([null]);
     expect(events).toHaveLength(2);
     expect(events[0]).toStartWith(
-      "1 secret env value this server declares is not set: FIXTURE__TOKEN. It runs without it, and akanjs 3.5.0 will refuse to boot.",
+      "1 secret env value this server declares is not set: FIXTURE__TOKEN. The framework does not stop for it yet, though whatever reads it may, and akanjs 3.5.0 will refuse to boot.",
     );
     expect(events[1]).toBe("spawn");
     expect(events.join(" ")).not.toContain(sentinel);
@@ -103,7 +103,7 @@ test("a replica the gateway respawns reads the secret the gateway started with",
   const serverPath = path.join(root, "server.ts");
   const bootsPath = path.join(root, "boots.json");
   await Bun.write(serverPath, replica(bootsPath, true));
-  Object.assign(process.env, { AKAN_SECRET_ENV: "FIXTURE__TOKEN", FIXTURE__TOKEN: sentinel });
+  Object.assign(process.env, { AKAN_ENV_NAMES: "FIXTURE__TOKEN", FIXTURE__TOKEN: sentinel });
   const app = new AkanApp(serverPath, { replica: 1, runtimeDir: path.join(root, "runtime"), port: 0 });
   const warned = spyOn(app.logger, "warn");
   const running = app.start();
@@ -134,7 +134,7 @@ test("a server that runs in one process names what is unset before it loads the 
   try {
     const proc = Bun.spawn([process.execPath, mainPath], {
       cwd: root,
-      env: { ...process.env, AKAN_SECRET_ENV: "FIXTURE__TOKEN,FIXTURE__SET", FIXTURE__SET: sentinel },
+      env: { ...process.env, AKAN_ENV_NAMES: "FIXTURE__TOKEN,FIXTURE__SET", FIXTURE__SET: sentinel },
       stdout: output,
       stderr: output,
     });

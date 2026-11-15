@@ -134,6 +134,7 @@ export interface CodeAgentApprovalRequest {
     name: string;
     summary: string;
     policy: CodeAgentApprovalPolicy;
+    remember?: string[];
 }
 
 export type CodeAgentBuiltinTool = "bash" | "edit" | "find" | "grep" | "ls" | "read" | "write";
@@ -158,6 +159,7 @@ export type CodeAgentCommand = {
     type: "approve";
     approvalId: string;
     approved: boolean;
+    remember?: "session";
 } | {
     type: "compact";
     instructions?: string;
@@ -200,6 +202,7 @@ export type CodeAgentEventBody = {
     type: "approval_resolved";
     approvalId: string;
     approved: boolean;
+    remembered?: string[];
 } | {
     type: "compaction";
     phase: "end" | "start";
@@ -527,6 +530,7 @@ export type CodeTranscriptPart = {
     id: string;
     request: CodeAgentApprovalRequest;
     approved?: boolean;
+    remembered?: string[];
 } | {
     kind: "assistant";
     id: string;

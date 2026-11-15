@@ -168,15 +168,15 @@ console.info(new SampleService().name);
       "JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,MAILER__AUTH__PASS,OBJECT_STORAGE__ENDPOINT,DISCORD__TOKENS:json,DISCORD__WEBHOOK,PUSH_NOTI__FIREBASE__PRIVATE_KEY:multiline,MESSAGE__API_SECRET,MESSAGE__SENDER_PASSWORD,POSTGRES_URL";
     try {
       const read = await metaOf({ secretEnv: "read" });
-      expect(read.AKAN_SECRET_ENV).toBe(names);
-      expect(read).not.toHaveProperty("AKAN_SECRET_ENV_FALLBACK");
+      expect(read.AKAN_ENV_NAMES).toBe(names);
+      expect(read).not.toHaveProperty("AKAN_ENV_FALLBACK");
       expect(await metaOf({ secretEnv: "inline" })).toMatchObject({
-        AKAN_SECRET_ENV: names,
-        AKAN_SECRET_ENV_FALLBACK: "image",
+        AKAN_ENV_NAMES: names,
+        AKAN_ENV_FALLBACK: "image",
       });
       const carried = await metaOf({});
-      expect(carried).not.toHaveProperty("AKAN_SECRET_ENV");
-      expect(carried).not.toHaveProperty("AKAN_SECRET_ENV_FALLBACK");
+      expect(carried).not.toHaveProperty("AKAN_ENV_NAMES");
+      expect(carried).not.toHaveProperty("AKAN_ENV_FALLBACK");
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];
@@ -265,13 +265,13 @@ console.info(new SampleService().name);
       expect(inlined.warnings[0]).toStartWith("--inline-secrets: env.server.ts could not be evaluated");
       expect(holdsSentinel(inlined.warnings.join())).toBe(false);
       const written = await envOf(inlined);
-      expect(written).not.toHaveProperty("AKAN_SECRET_ENV");
-      expect(written).not.toHaveProperty("AKAN_SECRET_ENV_FALLBACK");
+      expect(written).not.toHaveProperty("AKAN_ENV_NAMES");
+      expect(written).not.toHaveProperty("AKAN_ENV_FALLBACK");
 
       process.env.ZQ_HOSTS = "a.example.test,b.example.test";
       const built = await started("read");
       expect(built.failure).toBe("stopped before the phases");
-      expect((await envOf(built)).AKAN_SECRET_ENV).toStartWith("JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,");
+      expect((await envOf(built)).AKAN_ENV_NAMES).toStartWith("JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,");
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];

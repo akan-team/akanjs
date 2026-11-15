@@ -70,6 +70,33 @@ describe("CodeRunner.profileOf", () => {
     expect(web.approval).toBe("writes");
   });
 
+  test("--no-ask stops the local profile asking about a shell command and an unlisted host, and changes nothing else", () => {
+    const asking = CodeRunner.profileOf(runOptions(), { hostAttached: false });
+    const quiet = CodeRunner.profileOf(runOptions({ ask: false }), { hostAttached: false });
+    expect(quiet.approval).toBe("never");
+    expect(quiet.network.askOutside).toBeUndefined();
+    expect({ ...quiet, approval: asking.approval, network: asking.network }).toEqual(asking);
+    expect(CodeRunner.profileOf(runOptions({ ask: true }), { hostAttached: false })).toEqual(asking);
+  });
+
+  test("--no-ask leaves a profile other than local as it is", () => {
+    for (const profile of ["pod", "review", "web"] as const) {
+      const plain = CodeRunner.profileOf(runOptions({ profile }), { hostAttached: true });
+      expect(CodeRunner.profileOf(runOptions({ profile, ask: false }), { hostAttached: true })).toEqual(plain);
+    }
+  });
+
+  test("a session started with --no-ask says once that it runs commands and network requests without asking", () => {
+    const local = codeAgentPresets.local("/w");
+    const lines = CodeRunner.startWarnings(local, true).filter((line) => line.includes("not a sandbox"));
+    expect(lines).toHaveLength(1);
+    expect(lines[0]).toStartWith("--no-ask: this session runs shell commands and network requests without asking.");
+    expect(CodeRunner.startWarnings(local).join(" ")).not.toContain("--no-ask");
+    expect(CodeRunner.startWarnings(codeAgentPresets.pod("/w"), true)).toEqual(
+      CodeRunner.startWarnings(codeAgentPresets.pod("/w")),
+    );
+  });
+
   test("the local profile warns at start that it is not a sandbox, and a pod does not", () => {
     expect(CodeRunner.startWarnings(codeAgentPresets.local("/w")).join(" ")).toContain("not a sandbox");
     expect(CodeRunner.startWarnings(codeAgentPresets.pod("/w"))).toEqual([]);

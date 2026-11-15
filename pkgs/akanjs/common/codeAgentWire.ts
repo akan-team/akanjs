@@ -81,6 +81,8 @@ export interface CodeAgentApprovalRequest {
   /** Rendered and clipped. */
   summary: string;
   policy: CodeAgentApprovalPolicy;
+  /** The command names an `approve` with `remember: "session"` stops asking about; absent when that is not offered. */
+  remember?: string[];
 }
 
 /** A running `task` sub-agent; `tokens` is read when the frame is made, and a finished one leaves the list. */
@@ -115,7 +117,8 @@ export type CodeAgentEventBody =
   /** A question nobody could be asked — no host attached — answered with nothing; the model continued on its own. */
   | { type: "question_skipped"; question: CodeAgentQuestion; reason: "no-host" }
   | { type: "approval"; request: CodeAgentApprovalRequest }
-  | { type: "approval_resolved"; approvalId: string; approved: boolean }
+  /** `remembered` names the commands this session stopped asking about with that answer. */
+  | { type: "approval_resolved"; approvalId: string; approved: boolean; remembered?: string[] }
   | { type: "context"; used: number; max: number | undefined }
   /** An `end` carrying neither `error` nor `aborted` is the only one that compacted anything. */
   | {
@@ -188,7 +191,8 @@ export const codeAgentSessionName = (text: string, max = 40) => {
 export type CodeAgentCommand =
   | { type: "prompt"; message: string; images?: CodeAgentImage[]; deliverAs?: "steer" | "followUp" }
   | { type: "answer"; questionId: string; answer: CodeAgentAnswer }
-  | { type: "approve"; approvalId: string; approved: boolean }
+  /** `remember` is read only with `approved: true`, on a request that carries `remember`. */
+  | { type: "approve"; approvalId: string; approved: boolean; remember?: "session" }
   | { type: "abort" }
   | { type: "compact"; instructions?: string }
   | { type: "set_model"; provider: string; modelId: string }
@@ -270,6 +274,7 @@ export const codeAgentEventLabel = (event: CodeAgentEventBody): string => {
     case "approval":
       return `approve? ${event.request.summary}`;
     case "approval_resolved":
+      if (event.remembered?.length) return `approved for this session: ${event.remembered.join(", ")}`;
       return event.approved ? "approved" : "denied";
     case "context":
       return `context ${event.used}${event.max ? `/${event.max}` : ""}`;
