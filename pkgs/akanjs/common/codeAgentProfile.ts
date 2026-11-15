@@ -157,7 +157,7 @@ export const codeAgentPresets = {
       subagent: { maxDepth: 2, maxConcurrent: 3, budget: 200_000 },
       web: { fetch: true, search: true },
     },
-    approval: "never",
+    approval: "commands",
     paths: { root, deny: codeAgentDeniedPaths },
     session: { store: "file", crossSession: true },
     interaction: { question: "await", approval: "await" },

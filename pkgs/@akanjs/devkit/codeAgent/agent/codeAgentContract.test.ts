@@ -107,7 +107,15 @@ describe("codeAgentPresets", () => {
 
   test("web asks before writing even though the runner is isolated", () => {
     expect(codeAgentPresets.web(root).approval).toBe("writes");
-    expect(codeAgentPresets.local(root).approval).toBe("never");
+  });
+
+  test("local asks before a shell command and nothing else, and a pod asks about neither", () => {
+    const local = new CodeAgentGate(codeAgentPresets.local(root));
+    expect(local.verdict("bash", { command: "git status" })).toEqual({ approval: "run: git status" });
+    expect(local.verdict("bash", { command: "curl https://example.com" }).strict).toBe(true);
+    expect(local.verdict("write", { path: "a.ts" })).toEqual({});
+    expect(local.verdict("read", { path: "a.ts" })).toEqual({});
+    expect(new CodeAgentGate(codeAgentPresets.pod(root)).verdict("bash", { command: "git status" })).toEqual({});
   });
 
   test("every preset denies env files and secrets", () => {
@@ -133,6 +141,8 @@ describe("codeAgentPresets", () => {
     expect(isCodeAgentPresetName("prod")).toBe(false);
   });
 });
+
+const localUnasked = () => ({ ...codeAgentPresets.local(root), approval: "never" as const });
 
 describe("CodeAgentGate", () => {
   test("blocks a path on the deny list", () => {
@@ -409,15 +419,15 @@ describe("CodeAgentGate bash", () => {
     expect(gate.verdict("bash", { command: "openssl x509 -in server.pem" }).block).toContain(".pem");
   });
 
-  test("leaves an ordinary command alone", () => {
-    const gate = new CodeAgentGate(codeAgentPresets.local(root));
+  test("leaves an ordinary command alone where commands are not asked about", () => {
+    const gate = new CodeAgentGate(localUnasked());
     expect(gate.verdict("bash", { command: "bun test --isolate" })).toEqual({});
     expect(gate.verdict("bash", { command: "grep -r TODO ." })).toEqual({});
   });
 });
 
 describe("CodeAgentGate secrets", () => {
-  const gate = () => new CodeAgentGate(codeAgentPresets.local(root));
+  const gate = () => new CodeAgentGate(localUnasked());
 
   test("a per-environment server env file is refused for read, write and shell, and its loader is not", () => {
     const file = "apps/a/env/env.server.main.ts";
@@ -477,7 +487,7 @@ describe("CodeAgentGate secrets", () => {
 });
 
 describe("CodeAgentGate network", () => {
-  const gate = () => new CodeAgentGate(codeAgentPresets.local(root));
+  const gate = () => new CodeAgentGate(localUnasked());
 
   test("the local profile asks before fetching a host off its list, and not for a listed one or loopback", () => {
     expect(gate().verdict("web_fetch", { url: "https://example.com/x" })).toEqual({
