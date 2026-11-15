@@ -176,6 +176,7 @@ describe("solo app routes", () => {
       totalMs: 1_000,
       waitMs: 2,
       rows: 4,
+      sinceMs: 60_000,
       buckets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0],
       sentBy: [{ endpoint: "query:memoListByOwner", count: 4, totalMs: 1_000 }],
     };
@@ -196,6 +197,7 @@ describe("solo app routes", () => {
       p95Ms: 242.5,
       waitMs: 2,
       rows: 4,
+      sinceMs: 60_000,
       sentBy: statement.sentBy,
     };
     expect(body).toEqual({ byTotalTime: [row], byP95: [row] });

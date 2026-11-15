@@ -97,6 +97,22 @@ describe("statement metrics", () => {
     expect(seriesCount()).toBe(before);
   });
 
+  test("starts a statement's counts and its age over when it is admitted again after being dropped", async () => {
+    const costly = StatementProbe.fixed(`SELECT "again" FROM "readmitted"`);
+    StatementProbe.sent(costly, [], 1, 0, 1);
+    await Bun.sleep(30);
+    const age = () => statementMetrics.top(1000).find((stat) => stat.fingerprint === costly.shape.fingerprint);
+    expect(age()?.sinceMs).toBeGreaterThanOrEqual(25);
+
+    for (let idx = 0; idx < StatementMetrics.maxStatements + 10; idx++)
+      StatementProbe.sent(StatementProbe.fixed(`SELECT "e${idx}" FROM "readmitted"`), [], 5, 0, 1);
+    expect(age()).toBeUndefined();
+    StatementProbe.sent(costly, [], 1, 0, 1);
+
+    expect(age()).toMatchObject({ count: 1 });
+    expect(age()?.sinceMs).toBeLessThan(25);
+  });
+
   test("times a write's wait for the SQLite write turn apart from its run", async () => {
     const { driver, Memo, store } = model;
     let held!: () => void;

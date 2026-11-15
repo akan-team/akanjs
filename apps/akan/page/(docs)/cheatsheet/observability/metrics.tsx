@@ -1085,6 +1085,7 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
       "p95Ms": 8.75,
       "waitMs": 0,
       "rows": 1240,
+      "sinceMs": 86400000,
       "sentBy": [{ "endpoint": "query:memoListByOwner", "count": 1240, "totalMs": 3120.4 }]
     }
   ],
@@ -1142,7 +1143,7 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                       <strong>The table stays bounded.</strong> A process keeps 500 statements, letting the cheapest go
                       first, and 16 senders each. Behind a gateway each replica sends its costliest 50 with every
                       report, every <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>, and the gateway adds them up by
-                      fingerprint; a restarted replica starts its counts over.
+                      fingerprint.
                     </span>
                   ),
                   ko: (
@@ -1150,7 +1151,31 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                       <strong>표의 크기는 묶여 있습니다.</strong> 프로세스는 문 500개와 문마다 보낸 곳 16개까지만 들고,
                       넘치면 가장 싼 문부터 버립니다. gateway가 있으면 replica가{" "}
                       <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>마다 보고할 때 가장 비싼 문 50개를 보내고, gateway가
-                      fingerprint별로 더합니다. 재시작한 replica는 처음부터 다시 셉니다.
+                      fingerprint별로 더합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The report is not a counter.</strong> <code>count</code>, <code>totalMs</code> and the
+                      other sums cover the statements each process lists now, since that process started or since it
+                      last admitted the statement again after dropping it; <code>sinceMs</code> is that span, and behind
+                      a gateway the oldest replica's. A statement dropped from the table or from a replica's top 50
+                      takes its counts with it, so a sum can fall, and a restarted replica starts over. Use the{" "}
+                      <code>akan_db_statement*</code> series, which only grow, for rates and trends.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>보고서는 counter가 아닙니다.</strong> <code>count</code>, <code>totalMs</code> 등의 합은
+                      각 프로세스가 지금 목록에 올린 문을, 그 프로세스가 시작한 뒤부터, 또는 문을 버렸다가 다시 올린
+                      뒤부터 더한 값이고, <code>sinceMs</code>가 그 기간입니다. gateway가 있으면 가장 오래된 replica의
+                      값입니다. 표나 replica의 상위 50개에서 빠진 문은 그 값도 함께 사라지므로 합이 줄 수 있고, 재시작한
+                      replica는 처음부터 다시 셉니다. 비율이나 추이는 늘기만 하는 <code>akan_db_statement*</code>{" "}
+                      series로 보세요.
                     </span>
                   ),
                 })}

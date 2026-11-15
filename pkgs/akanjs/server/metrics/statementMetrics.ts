@@ -95,6 +95,7 @@ export class StatementStat {
   totalMs = 0;
   waitMs = 0;
   rows = 0;
+  readonly admittedAt = Date.now();
   readonly buckets = new Float64Array(STATEMENT_BUCKETS_SECONDS.length + 1);
   slowLoggedAt = Number.NEGATIVE_INFINITY;
   slowSuppressed = 0;
@@ -185,6 +186,7 @@ export class StatementStat {
       totalMs: this.totalMs,
       waitMs: this.waitMs,
       rows: this.rows,
+      sinceMs: Math.max(0, Date.now() - this.admittedAt),
       buckets: [...this.buckets],
       sentBy: sentBy.sort((a, b) => b.totalMs - a.totalMs).slice(0, 3),
     };

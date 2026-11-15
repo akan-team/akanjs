@@ -15,6 +15,8 @@ export interface StatementReportRow {
   p95Ms: number;
   waitMs: number;
   rows: number;
+  /** The report covers the statements this process lists now, since it first listed them or last admitted them again; not a lifetime total. */
+  sinceMs: number;
   sentBy: AkanStatementSender[];
 }
 
@@ -62,6 +64,7 @@ export class StatementReport {
       into.totalMs += stat.totalMs;
       into.waitMs += stat.waitMs;
       into.rows += stat.rows;
+      into.sinceMs = Math.max(into.sinceMs, stat.sinceMs);
       if (into.buckets.length === stat.buckets.length)
         for (const [idx, count] of stat.buckets.entries()) into.buckets[idx] += count;
       for (const sender of stat.sentBy) {
@@ -96,6 +99,7 @@ export class StatementReport {
       p95Ms: round(StatementReport.quantile(buckets, 0.95)),
       waitMs: round(stat.waitMs),
       rows: stat.rows,
+      sinceMs: Math.round(stat.sinceMs),
       sentBy: stat.sentBy.map((sender) => ({ ...sender, totalMs: round(sender.totalMs) })),
     };
   }

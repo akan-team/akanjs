@@ -198,6 +198,7 @@ describe("GatewayStatus statement report", () => {
       totalMs: count * 10,
       waitMs: 0,
       rows: count,
+      sinceMs: 60_000,
       buckets: [0, 0, 0, 0, 0, 0, count, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
       sentBy: [{ endpoint, count, totalMs: count * 10 }],
     });

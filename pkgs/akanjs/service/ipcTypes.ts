@@ -68,6 +68,8 @@ export interface AkanStatementStat {
   totalMs: number;
   waitMs: number;
   rows: number;
+  /** Milliseconds this process has counted the statement: since it first listed it, or last admitted it again after dropping it. */
+  sinceMs: number;
   /** Statements per duration bucket, the last one past every bound. */
   buckets: number[];
   sentBy: AkanStatementSender[];
