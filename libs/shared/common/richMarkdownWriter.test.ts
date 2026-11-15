@@ -145,6 +145,16 @@ describe("RichMarkdownWriter on documents the editor stored", () => {
     );
   });
 
+  it("keeps a backslash, and a backslash before a pipe, in a GFM cell", () => {
+    const inCell = (headerState: number, child: object) =>
+      element("tablecell", [paragraph([child])], { backgroundColor: null, colSpan: 1, headerState, rowSpan: 1 });
+    const table = element("table", [
+      element("tablerow", [inCell(1, text("plain")), inCell(1, text("code"))]),
+      element("tablerow", [inCell(0, text("a\\|b\\")), inCell(0, text("c\\\\|d\\", 16))]),
+    ]);
+    expectLossless(doc(table));
+  });
+
   it("keeps empty paragraphs, empty lines and a trailing line break", () => {
     const markdown = expectLossless(
       doc(paragraph([text("a"), { type: "linebreak", version: 1 }]), paragraph([]), paragraph([text("b")])),
