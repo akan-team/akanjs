@@ -144,6 +144,10 @@ describe("CodeAgentCommandLine.allowable", () => {
       "bun publish",
       "cargo publish",
       "docker push repo/image",
+      "docker image push repo/image",
+      "docker compose push",
+      "docker build --push -t repo/image .",
+      "docker buildx build --push=true .",
       "ls && npm publish",
     ])
       expect(names(line)).toBeUndefined();

@@ -165,7 +165,8 @@ Some lines are asked about every time and their prompt offers only `[y/n]`:
 - a networking command: `curl`, `wget`, `nc`, `ncat`, `netcat`, `socat`, `telnet`, `ssh`, `scp`, `sftp`,
   `rsync`, `ftp`, and a redirection to or from `/dev/tcp/…` or `/dev/udp/…`;
 - a command that sends something out of the machine: `git push`, `npm publish`, `pnpm publish`,
-  `yarn publish`, `yarn npm`, `bun publish`, `cargo publish`, `docker push`, `gh api`;
+  `yarn publish`, `yarn npm`, `bun publish`, `cargo publish`, `gh api`, and a `docker` line with `push` or
+  `--push` in it (`docker push`, `docker image push`, `docker build --push`);
 - `rm`;
 - a command that runs another, or sets what a later one runs: `sudo`, `env`, `command`, `exec`, `nohup`,
   `time`, `timeout`, `nice`, `watch`, `stdbuf`, `xargs`, `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`, `eval`,

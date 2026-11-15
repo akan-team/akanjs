@@ -157,6 +157,9 @@ export class CodeAgentCommandLine {
     const base = path.posix.basename(program.text).toLowerCase();
     if (CodeAgentCommandLine.#reserved.has(base) || CodeAgentCommandLine.alwaysAsked.has(base)) return undefined;
     if (words.some((word) => CodeAgentCommandLine.#runsItsArguments.has(word.text))) return undefined;
+    // docker also pushes as `docker image push`, `docker compose push` and `docker build --push`.
+    if (base === "docker" && words.some((word) => word.text === "push" || word.text.startsWith("--push")))
+      return undefined;
     const depth = CodeAgentCommandLine.#subcommandDepth.get(base);
     if (!depth) return program.text;
     // The words right after the program, or nothing: `git -C <dir> push` would otherwise be named `git <dir>`.
