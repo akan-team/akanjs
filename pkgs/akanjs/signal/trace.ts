@@ -156,7 +156,6 @@ export class SignalTrace {
   readonly spans: SpanRecord[] = [];
   readonly attrs: LogAttrs = {};
   dbQueryCount = 0;
-  #dbSpans = 0;
   dbQueryMs = 0;
   cacheHits = 0;
   cacheMisses = 0;
@@ -348,9 +347,10 @@ export class SignalTrace {
 
   recordDbQuery(model: string, op: string, durationMs: number): void {
     this.countDbQuery(durationMs);
-    if (this.mode !== "full" || this.#dbSpans >= MAX_DB_SPANS_PER_TRACE) return;
-    this.#dbSpans += 1;
-    this.recordSpan(`db:${model}.${op}`, durationMs, { model, op });
+    if (this.mode !== "full" || this.spans.length >= MAX_SPANS_PER_TRACE) return;
+    let dbSpans = 0;
+    for (const span of this.spans) if (span.name.startsWith("db:")) dbSpans += 1;
+    if (dbSpans < MAX_DB_SPANS_PER_TRACE) this.recordSpan(`db:${model}.${op}`, durationMs, { model, op });
   }
 
   countCache(hit: boolean): void {
