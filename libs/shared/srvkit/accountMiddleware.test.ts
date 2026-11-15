@@ -1,12 +1,14 @@
 import { afterEach, describe, expect, setSystemTime, spyOn, test } from "bun:test";
+import { accessTokenSeconds } from "@libs/util/common";
 import * as utilSrvkit from "@libs/util/srvkit";
 import { dayjs, getEnv } from "akanjs/base";
-import { authTokenKey } from "akanjs/common";
+import { authTokenKey, sessionTokenContract } from "akanjs/common";
 import type { SignalContext } from "akanjs/signal";
 import type { ModulesOptions } from "../lib/option";
 import { AccountMiddleware } from "./accountMiddleware";
 import { Every } from "./guards";
 import { RevokedSessions } from "./revokedSessions";
+import { WebSession } from "./webSession";
 
 process.env.AKAN_PUBLIC_APP_NAME ??= "shared";
 process.env.AKAN_PUBLIC_REPO_NAME ??= "akanjs";
@@ -180,6 +182,27 @@ describe("AccountMiddleware", () => {
       "u",
     );
     expect((await oauthCall("dcr_client", {}, { key: "createAgentSession" }))?.self?.id).toBe("u");
+  });
+
+  test("a token minted on a socket frame lives one hour, whatever the handshake asked for; the same headers over HTTP keep seven days", async () => {
+    const headers = sessionTokenContract.makeHeaders();
+    const secondsLeft = async () => Math.round(WebSession.accessTokenExpiresAt().diff(dayjs()) / 1000);
+    const minted = { onFrame: 0, overHttp: 0 };
+    const use = await new AccountMiddleware().use(env);
+
+    const socket = { url: "https://app.example.com/ws", headers: new Headers(headers), cookies: new Bun.CookieMap() };
+    await use(
+      { transport: "websocket", getWebSocketContext: () => ({ ws: { data: socket } }) } as unknown as SignalContext,
+      async () => {
+        minted.onFrame = await secondsLeft();
+      },
+    );
+    const req = new Request("https://app.example.com/api/user/refreshJwt", { method: "POST", headers });
+    await use({ transport: "http", getHttpContext: () => ({ req }) } as unknown as SignalContext, async () => {
+      minted.overHttp = await secondsLeft();
+    });
+
+    expect(minted).toEqual({ onFrame: accessTokenSeconds, overHttp: WebSession.cookielessAccessTokenSeconds });
   });
 
   test("a revocation check that fails drops an admin identity and keeps a user's", async () => {
