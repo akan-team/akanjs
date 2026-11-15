@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { StatementScrub } from "./statementScrub";
 
 export type StatementVerb = "select" | "insert" | "update" | "delete" | "other";
 
@@ -11,9 +12,6 @@ export interface StatementShape {
   readonly changesSchema: boolean;
 }
 
-const TOKEN = /'(?:[^']|'')*'|"(?:[^"]|"")*"|\b\d+(?:\.\d+)?(?:[eE][+-]?\d+)?\b/g;
-//? A path literal names a field, never a value; read as one, a filter on `title` and one on `ownerId` would merge.
-const PATH_LITERAL = /^'(?:\$(?:[.[][^']*)?|\{[^':]*\})'$/;
 const IN_LIST = /\bIN \(\s*\?(?:\s*,\s*\?)*\s*\)/gi;
 const PLACEHOLDER_RUN = /\?(?:\s*,\s*\?)+/g;
 const REPEATED_TUPLE = /(\((?:[^()]|\([^()]*\))*\))(?:\s*,\s*\1)+/g;
@@ -75,15 +73,7 @@ export class StatementFingerprint {
   }
 
   static scrub(text: string): string {
-    return text.replace(TOKEN, (token) => {
-      if (token[0] === '"') return token;
-      if (token[0] === "'") return PATH_LITERAL.test(token) ? token : "?";
-      return "?";
-    });
-  }
-
-  static scrubPlan(text: string): string {
-    return text.replace(TOKEN, (token) => (token[0] === '"' ? token : "?"));
+    return StatementScrub.of(text);
   }
 
   static #shapeOf(fingerprint: string, text: string): StatementShape {

@@ -71,7 +71,7 @@ describe("dev query-plan check", () => {
     const ignoredScan = await (async () => {
       statementMetrics.planCheck = null;
       await large.Memo.count({ score: q.gte(5) } as never);
-      return statementMetrics.top(50).find((stat) => stat.text.includes(`'$.score'`))?.fingerprint ?? "";
+      return statementMetrics.top(50).find((stat) => stat.text.includes("json_extract"))?.fingerprint ?? "";
     })();
     statementMetrics.reset();
     statementMetrics.planCheck = new StatementPlanCheck([ignoredScan]);
@@ -119,7 +119,7 @@ describe("dev query-plan check", () => {
       "Filter: ((_doc #>> '{secretKey}'::text[]) = 'x'::text)",
       "Filter: (json_extract(_doc, '$.secret.path') = 1)",
     ];
-    const shown = lines.map((line) => StatementFingerprint.scrubPlan(line));
+    const shown = lines.map((line) => StatementFingerprint.scrub(line));
     expect(shown).toEqual([
       "Index Cond: (id = ANY (?::text[]))",
       "Filter: (tags && ?::text[])",

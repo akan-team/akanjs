@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { StatementFingerprint } from "./statementFingerprint";
+import { StatementProbe } from "./statementProbe";
 
 describe("StatementFingerprint", () => {
   test("gives one fingerprint to a statement whatever its list length, page or literal values", () => {
@@ -24,16 +25,62 @@ describe("StatementFingerprint", () => {
     expect(shape).toMatchObject({ verb: "insert", table: "memo", changesSchema: false });
   });
 
-  test("replaces string and number literals but keeps a field path, so filters on different fields stay apart", () => {
-    const byTitle = StatementFingerprint.of(
-      `SELECT * FROM "memo" WHERE json_extract("_doc", '$.title') = 'alice@example.com' AND "score" > 42.5`,
-    );
-    const byOwner = StatementFingerprint.of(`SELECT * FROM "memo" WHERE ("_doc" #>> '{ownerId}') = 'u1'`);
+  test("replaces every literal form, so no value, comment or path reaches the text", () => {
+    const cases: [string, string][] = [
+      [`SELECT $$secret$$, $tag$sec ret$tag$`, `SELECT ?, ...`],
+      [`SELECT 1 -- secret comment\nFROM t`, `SELECT ? FROM t`],
+      [`SELECT /* secret */ 1 /* a /* nested */ secret */ FROM t`, `SELECT ? FROM t`],
+      [`SELECT 0x1F, 1_000, 1.5e+3x, 2.5E-3, .5, 7`, `SELECT ?, ...`],
+      [`SELECT 'unterminated secret`, `SELECT ?`],
+      [`SELECT $$unterminated secret`, `SELECT ?`],
+      [`SELECT "unterminated secret`, `SELECT ?`],
+      [`SELECT E'a\\'b secret', e'x\\\\' FROM t`, `SELECT ?, ... FROM t`],
+      [`SELECT 'it''s', 'a' FROM t`, `SELECT ?, ... FROM t`],
+      [`SELECT "col'umn", "a""b" FROM t`, `SELECT "col'umn", "a""b" FROM t`],
+      [`WHERE x = -42 AND y > +1.5 AND z = 3 - 4`, `WHERE x = ? AND y > ? AND z = ? - ?`],
+      [`WHERE name LIKE '%bob%'`, `WHERE name LIKE ?`],
+      [`WHERE d = '2020-01-01'::date`, `WHERE d = ?::date`],
+      [`WHERE id IN ('a','b','c')`, `WHERE id IN (?, ...)`],
+      [`INSERT INTO t VALUES ('x',1),('y',2),('z',3)`, `INSERT INTO t VALUES (?, ...), ...`],
+      [
+        `SELECT "_doc"->>'secretKey', json_extract("_doc", '$.secret.path')`,
+        `SELECT "_doc"->>?, json_extract("_doc", ?)`,
+      ],
+      [`SELECT "_doc" #>> '{secret,path}'`, `SELECT "_doc" #>> ?`],
+      [`SELECT 'has -- dashes', 'has /* star', x FROM t`, `SELECT ?, ..., x FROM t`],
+      [
+        `SELECT col1, t2.c3, a$b FROM t WHERE id = $1 AND x = $2`,
+        `SELECT col1, t2.c3, a$b FROM t WHERE id = $1 AND x = $2`,
+      ],
+      [`SELECT x'ABCD', B'101', N'secret'`, `SELECT ?, ...`],
+    ];
+    for (const [sql, text] of cases) {
+      expect([sql, StatementFingerprint.normalize(sql)]).toEqual([sql, text]);
+    }
+    expect(StatementFingerprint.of(`SELECT 'secret'`).text).not.toContain("secret");
+  });
 
-    expect(byTitle.text).toBe(`SELECT * FROM "memo" WHERE json_extract("_doc", '$.title') = ? AND "score" > ?`);
-    expect(byOwner.text).toBe(`SELECT * FROM "memo" WHERE ("_doc" #>> '{ownerId}') = ?`);
-    expect(byTitle.text).not.toContain("alice");
-    expect(byTitle.fingerprint).not.toBe(byOwner.fingerprint);
+  test("leaves the statement text it was given as it is", () => {
+    const sql = `SELECT 'secret' -- note\nFROM "memo" WHERE "n" = 42`;
+    expect(StatementProbe.fixed(sql).sql).toBe(sql);
+  });
+
+  test("gives filters that differ only by a field path the same text", () => {
+    const byTitle = StatementFingerprint.of(`SELECT * FROM "memo" WHERE json_extract("_doc", '$.title') = 'a'`);
+    const byOwner = StatementFingerprint.of(`SELECT * FROM "memo" WHERE json_extract("_doc", '$.ownerId') = 'b'`);
+
+    expect(byTitle.text).toBe(`SELECT * FROM "memo" WHERE json_extract("_doc", ?) = ?`);
+    expect(byTitle.fingerprint).toBe(byOwner.fingerprint);
+  });
+
+  test("normalises a 1 MB statement in well under 100 ms", () => {
+    const rows = Array.from({ length: 30_000 }, (_, idx) => `('row ${idx}', ${idx}, 'x')`).join(",");
+    const sql = `INSERT INTO "memo" VALUES ${rows}`;
+    expect(sql.length).toBeGreaterThan(700_000);
+    const started = performance.now();
+    const text = StatementFingerprint.normalize(sql);
+    expect(performance.now() - started).toBeLessThan(100);
+    expect(text).toBe(`INSERT INTO "memo" VALUES (?, ...), ...`);
   });
 
   test("names the table by the statement's verb and marks a schema change", () => {
