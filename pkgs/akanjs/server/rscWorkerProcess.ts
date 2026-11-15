@@ -5,10 +5,13 @@ import { Logger, type LogRecord } from "akanjs/common";
 import type { AkanMetricsReport } from "akanjs/service";
 import { RestartSchedule } from "../common/restartSchedule";
 import { ChildOutputReader } from "./logging/childOutputReader";
+import { OtlpExporter } from "./otlp/otlpExporter";
 
 export type RscWorkerStatus = "starting" | "ready" | "restarting" | "stopped";
 export type RscProcess = Bun.Subprocess;
 export type RscWorkerErrorCode = "rscWorkerFailed" | "rscWorkerStopped";
+
+const killGraceMs = OtlpExporter.shutdownBudgetMs + 1_500;
 
 interface RscWorkerProcessEvents {
   onMessage: (message: unknown, proc: RscProcess) => void;
@@ -147,6 +150,16 @@ export class RscWorkerProcess {
     });
     this.#restartCount += 1;
     this.#logger.warn(`[rsc] worker crashed, restarting in ${delay}ms (attempt ${this.restart.attempts})`);
+  }
+
+  //? An exporting worker traps SIGTERM to flush, and one stuck in a synchronous render never runs that handler.
+  static terminate(proc: RscProcess): void {
+    proc.kill();
+    const timer = setTimeout(() => {
+      if (proc.exitCode === null && proc.signalCode === null) proc.kill("SIGKILL");
+    }, killGraceMs);
+    timer.unref?.();
+    void proc.exited.then(() => clearTimeout(timer));
   }
 
   static isAlive(proc: RscProcess): boolean {

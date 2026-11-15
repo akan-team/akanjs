@@ -4,6 +4,7 @@ import {
   getRequestDynamicUsage,
   getRequestFrameState,
   getRequestPolicy,
+  getRequestScriptHashes,
   getRequestTheme,
   setRequestRenderSearch,
   updateRequestPolicy,
@@ -28,6 +29,7 @@ import {
   isAkanRscPartialCommitEnabled,
 } from "./routeState";
 import { RouteTreeBuilder } from "./routeTreeBuilder";
+import type { FirstRenderStart } from "./rscFirstRenderMemory";
 import type { RscFlightRenderer } from "./rscFlightRenderer";
 import type { FlightRenderResult } from "./rscFlightStream";
 import { type ResolvedRouteHead, RscPatchPlanner } from "./rscPatchPlanner";
@@ -80,6 +82,7 @@ interface RscRenderedRoute {
   effectivePatchDecision: AkanRscPatchDecision;
   routeHeadKey: string | undefined;
   ssrBlocking: boolean;
+  scriptHashes: string[] | undefined;
 }
 
 interface RscRenderHandlerProps {
@@ -163,6 +166,7 @@ export class RscRenderHandler {
           );
         else this.#logger.verbose(`render[${requestId}] no route matched pathname=${urlObj.pathname} — rendering 404`);
         const beforeLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
+        const firstRender = this.#stats.firstRenderMemory.begin(routeId);
         const target: RscRenderTarget = { msg, requestId, startedAt, request, url: urlObj, match, routeId };
         const plan = await this.#plan(target);
         if (!plan) return;
@@ -223,10 +227,13 @@ export class RscRenderHandler {
         const traceCacheKey =
           effectivePatchDecision.status === "patch" ? (patchCacheEntry?.key ?? cacheEntry?.key) : cacheEntry?.key;
         const ssrBlocking = getRequestFrameState<PageState>()?.ssr === "block";
+        //? Read once the heads have resolved, which is before the stream starts: the host sends them as a header.
+        const scriptHashes = getRequestScriptHashes();
         const trace: RscTraceMetadata = {
           ...plan.createTraceBase(effectivePatchDecision, traceCacheKey),
           cache: cacheEntry ? "miss" : "bypass",
           ssrBlocking,
+          ...(scriptHashes ? { scriptHashes } : {}),
         };
         //? Only the matched render shows the route head; an error or not-found render sent in its place has none.
         const renderedRouteState = RscPatchPlanner.routeStateWith(plan.targetRouterState, routeHeadKey);
@@ -246,7 +253,12 @@ export class RscRenderHandler {
           notFoundProbe,
           gate,
           onComplete: (rendered) =>
-            this.#storeResult(target, plan, { effectivePatchDecision, routeHeadKey, ssrBlocking }, rendered),
+            this.#storeResult(
+              target,
+              plan,
+              { effectivePatchDecision, routeHeadKey, ssrBlocking, scriptHashes },
+              rendered,
+            ),
         });
         if (result.cancelled) return;
         const control = result.control;
@@ -254,7 +266,7 @@ export class RscRenderHandler {
           await this.#fallbacks.answerControl({ msg, match, url: urlObj, searchParams, trace }, result, control);
           return;
         }
-        this.#recordRendered(target, result, beforeLoadedKeys);
+        this.#recordRendered(target, result, beforeLoadedKeys, firstRender);
       });
     } catch (error) {
       await this.#fallbacks.answerThrown(msg, activeRoute, error);
@@ -376,6 +388,7 @@ export class RscRenderHandler {
       patchHeadSafe: undefined,
       patchHeadSnapshot: undefined,
       ssrBlocking: cached.ssrBlocking,
+      ...(cached.scriptHashes ? { scriptHashes: cached.scriptHashes } : {}),
     });
     return true;
   }
@@ -384,12 +397,14 @@ export class RscRenderHandler {
     { requestId, routeId, startedAt }: RscRenderTarget,
     result: FlightRenderResult,
     beforeLoadedKeys: string[],
+    firstRender: FirstRenderStart | null,
   ): void {
     this.#stats.recordFlight(result);
     this.#stats.lastRenderDurationMs = Date.now() - startedAt;
     const afterLoadedKeys = RouteTreeBuilder.getCacheStats().loadedModuleKeys;
     this.#stats.lastRenderLoadedModules = afterLoadedKeys.filter((key) => !beforeLoadedKeys.includes(key));
     this.#stats.lastRenderLoadedModuleDelta = this.#stats.lastRenderLoadedModules.length;
+    this.#stats.firstRenderMemory.end(firstRender, this.#stats.lastRenderLoadedModules);
     this.#stats.recordRouteStats(routeId, result.bytes, this.#stats.lastRenderDurationMs);
     this.#logger.verbose(
       `render[${requestId}] done chunks=${result.chunksCount} bytes=${result.bytes} theme=${getRequestTheme() ?? "(none)"} in ${
@@ -401,7 +416,7 @@ export class RscRenderHandler {
   #storeResult(
     { url: urlObj, routeId }: RscRenderTarget,
     { cacheEntry, targetRouterState, patchCacheEntry, queryForm }: RscRenderPlan,
-    { effectivePatchDecision, routeHeadKey, ssrBlocking }: RscRenderedRoute,
+    { effectivePatchDecision, routeHeadKey, ssrBlocking, scriptHashes }: RscRenderedRoute,
     { chunks, chunksCount, control, lateControlSent }: Omit<FlightRenderResult, "cancelled">,
   ): RouteCacheRenderState {
     const cacheState: RouteCacheRenderState = {
@@ -422,6 +437,7 @@ export class RscRenderHandler {
       tags: cacheState.tags,
       theme: getRequestTheme(),
       ssrBlocking,
+      scriptHashes,
       cacheState,
       routeHeadKey,
     });

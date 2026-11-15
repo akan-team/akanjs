@@ -1,3 +1,4 @@
+import { applySecurityHeaders } from "../assetHeaders";
 import type {
   OAuthAuthorizeErrorCode,
   OAuthClientCredential,
@@ -50,7 +51,10 @@ export class OAuthErrors {
     const body = `<!doctype html><meta charset="utf-8"><title>${OAuthErrors.#escape(title)}</title><main style="font:16px system-ui;max-width:32rem;margin:4rem auto"><h1>${OAuthErrors.#escape(title)}</h1><p>${OAuthErrors.#escape(detail)}</p></main>`;
     return new Response(body, {
       status,
-      headers: { "content-type": "text/html; charset=utf-8", ...OAuthErrors.noStore },
+      headers: applySecurityHeaders(
+        new Headers({ "content-type": "text/html; charset=utf-8", ...OAuthErrors.noStore }),
+        { html: true },
+      ),
     });
   }
 

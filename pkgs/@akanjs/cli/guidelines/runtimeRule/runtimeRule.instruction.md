@@ -66,9 +66,9 @@ const config: AppConfig = { api: { prefix: "/backend", websocketPrefix: "/socket
   inside it can reach a prebuilt bundle at all. The two jobs need two names.
 - **`new AkanApp({ prefix })` reaches the browser through the page, not through a prop.** `FetchClient` fixes its
   origin when the module graph initializes, before any component renders, so a React prop — a `System.Provider`
-  value, anything out of `implicitRootLayout` — is always too late. The value rides the SSR classic bootstrap
-  script instead, the one thing guaranteed to run ahead of every module script, and is omitted when it matches
-  what the bundle already assumes. `akan.config.ts` is what a native app bundle or a statically served CSR shell
+  value, anything out of `implicitRootLayout` — is always too late. The value rides the data block the SSR classic
+  bootstrap script reads instead, the one thing guaranteed to run ahead of every module script, and is omitted when
+  it matches what the bundle already assumes. `akan.config.ts` is what a native app bundle or a statically served CSR shell
   follows, because neither is rendered by a server that could tell it otherwise.
 - **A prefix is a path segment.** A blank value or a bare `/` is refused: `/` would be mounted ahead of the SSR
   catch-all and swallow every page route. A prefix whose first segment is a declared basePath is refused at
@@ -262,6 +262,16 @@ normalized to `info` with one warning.
   `Server-Timing` — under the local dev runtime, or with the `AKAN_LOG_DEBUG_HEADER` secret. A local runtime sends
   `Server-Timing` on every signal response. Spans carry ids, parents and start offsets; under `AKAN_TRACE=1` each
   database call is a `db:<model>.<op>` span, never its statement or values.
+- **`OTEL_EXPORTER_OTLP_ENDPOINT` (or `…_TRACES_ENDPOINT` / `…_LOGS_ENDPOINT`) turns on OTLP/HTTP JSON export**;
+  with none set nothing is created. Each process sends its own spans and log records with `akan.process.role`, the
+  RSC worker included, batched in a bounded queue that drops its oldest and never blocks or throws into a request.
+  `OTEL_TRACES_SAMPLER` (`always_on`, `always_off`, `traceidratio` and their `parentbased_` forms, default
+  `parentbased_always_on`; any other value exports no spans) decides at the first TCP hop, and the sampled flag of
+  `traceparent` carries it to the replica and the worker. Logs go only with `OTEL_LOGS_EXPORTER=otlp` or
+  `…_LOGS_ENDPOINT`, never from the generic endpoint alone, their message text as written; only secret-named attrs are
+  redacted. Stage spans wait for `AKAN_TRACE=1`. `OTEL_EXPORTER_OTLP_HEADERS` values are credentials, never
+  logged; `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SDK_DISABLED` work as in the OTel spec. It is
+  separate from `AKAN_TRACE` and `x-akan-debug`: neither changes what is sampled.
 - **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,
   the ssr-dev and csr-dev module registries, `/__rsc/manifest` — and is mounted through `DevRoutes.mount`, which
   refuses a path the list lacks. Each answers only localhost, an IP address, the app's own hosts and

@@ -24,6 +24,7 @@ import { ShutdownManager } from "./lifecycle/shutdownManager";
 import { StartGuard } from "./lifecycle/startGuard";
 import { ServerLogging } from "./logging/serverLogging";
 import { AgentTools, type McpAuthOption, type McpRateLimitOption, type McpRouter } from "./mcp";
+import { OtlpExporter } from "./otlp/otlpExporter";
 import { WebProxyRunner } from "./proxy";
 import { SignalResolver } from "./resolver";
 import { BuiltinRoutes } from "./routing/builtinRoutes";
@@ -424,6 +425,7 @@ export class AkanServer {
       throw new AkanError("notInitialized", "AkanServer is not able to listen. Call `init` first.");
     this.status = "starting";
     Logger.role = this.serverMode;
+    OtlpExporter.install();
     return await this.#start.unwound(() => this.#listen(prepared));
   }
 
@@ -476,6 +478,7 @@ export class AkanServer {
       this.status = "running";
       if (isNoListenCommand) return this;
       Logger.role = this.serverMode;
+      OtlpExporter.install();
       this.#metrics.start();
       if (this.#schedules) this.#di.registerSchedule(this.serverMode);
       if (await this.#start.stoppedDuring(() => this.#logging.startTransport())) return this;
@@ -496,8 +499,8 @@ export class AkanServer {
 
   async #teardown() {
     if (this.status === "stopped") return;
+    const now = Date.now();
     try {
-      const now = Date.now();
       this.logger.info("Shutting down gracefully...");
       this.status = "stopping";
       this.#metrics.stop();
@@ -516,6 +519,7 @@ export class AkanServer {
       this.status = "stopped";
       throw error;
     } finally {
+      await OtlpExporter.shutdown(ServerConfig.exportFlushBudgetMs(now, OtlpExporter.shutdownBudgetMs));
       // Last, so the lines above still have a hub — and in ndjson mode a stdout — to reach.
       await this.#logging.stop();
     }

@@ -35,6 +35,10 @@ Key fields:
   the same for the worker. `jscExtra` is off-heap, mostly typed-array backing stores.
 - `rscRenderCount`, `rscInFlightRenderCount`: detect request lifecycle leaks.
 - `rscLoadedRouteModuleCount`, `rscRouteModuleCacheHits`, `rscRouteModuleCacheMisses`: detect route module warm-up.
+- `rscFirstRenderMemory`, only under `AKAN_MEMORY_LOG=1`: per route, what its first render in this worker grew
+  `rss`, `heapUsed`, `external` and `arrayBuffers` by, and the modules it loaded, largest RSS first, at most 20
+  routes. Renders running at the same time land in the same delta, so read it on a quiet pod. It starts with the
+  worker and is not cleared by a pages reload.
 - `ssrChunkRegistrySize`, `ssrChunkLoadCount`: full-document SSR client chunk loading. **`…RegistrySize` counts
   keys, not bytes** — evicting does not unload the module, so it can never fall on its own.
 - `httpHtmlCacheEntries` / `httpHtmlCacheBytes`, `rscResultCacheEntries` / `rscResultCacheBytes`,
