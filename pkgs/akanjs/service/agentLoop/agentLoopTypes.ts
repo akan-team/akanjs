@@ -121,7 +121,8 @@ export interface AgentLoopOptions {
   /**
    * Named groups of `allow` the model adds with `openToolkit({ name })`, a tool this run lists beside them; a tool in no
    * toolkit is listed every round. An opened toolkit's tools are listed from the next round on, `allow` still capping
-   * them, and stay open across a resume and a compaction. `openToolkit` is never asked about and counts as no tool call.
+   * them, after the tools already listed, and stay open across a resume. A compaction closes each toolkit the messages
+   * it keeps neither opened nor called a tool of. `openToolkit` is never asked about and counts as no tool call.
    */
   toolkits?: Record<string, AgentLoopToolkit>;
   /**
@@ -170,10 +171,10 @@ export interface AgentLoopOptions {
    */
   answer?: AgentLoopCallAnswer;
   /**
-   * Summarizes all but the last `keep` messages (6), a batch's results counting as one, once the transcript is
-   * estimated at `at` tokens, and also when a round's call fails as `agent.error.contextOverflow`, which is then asked
-   * again once. A refusal whose data carries `limit` and `requested`, in any one unit, lowers `at` for the rest of the
-   * run to where the request would fit.
+   * Summarizes all but the last `keep` messages (6), a batch's results counting as one, once the round's request,
+   * tools, instructions and context included, is estimated at `at` tokens, and also when a round's call fails as
+   * `agent.error.contextOverflow`, which is then asked again once. A refusal whose data carries `limit` and
+   * `requested`, in any one unit, lowers `at` for the rest of the run to where the request would fit.
    */
   compact?: { at: number; keep?: number };
   /**

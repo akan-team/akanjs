@@ -30,10 +30,15 @@ export class LoopToolkits {
     return this.#kits.size > 0 || this.#external.size > 0;
   }
 
+  //? Prompt caches match a prefix, so a toolkit opened later lists its tools after every tool already listed.
   listed(visible: AgentTool[]): AgentTool[] {
     this.#visible = visible;
     if (!this.#any) return visible;
-    const shown = visible.filter((tool) => this.#isOn(tool.name));
+    const shown = visible.filter((tool) => !this.#inKit(tool.name));
+    for (const kit of this.#open) {
+      const tools = this.#kits.get(kit)?.tools ?? [];
+      shown.push(...visible.filter((tool) => tools.includes(tool.name) && !shown.includes(tool)));
+    }
     const closed = this.#closed();
     return closed.length ? [...shown, this.#metaTool(closed)] : shown;
   }
@@ -80,14 +85,20 @@ export class LoopToolkits {
     this.#open.delete(kit);
   }
 
-  #isOn(name: string): boolean {
-    let inKit = false;
-    for (const [kitName, { tools }] of this.#kits) {
-      if (!tools.includes(name)) continue;
-      if (this.#open.has(kitName)) return true;
-      inKit = true;
+  //? A remote stays open: opening one again lists it from its server, and parks the run once that connection is gone.
+  keepUsed(kept: readonly AgentWireMessage[]) {
+    const calls = kept.flatMap((message) => message.toolCalls ?? []);
+    for (const kit of [...this.#open]) {
+      const tools = this.#kits.get(kit)?.tools;
+      if (!tools) continue;
+      const opens = (call: AgentWireToolCall) => call.name === LoopToolkits.toolName && call.args.name === kit;
+      if (!calls.some((call) => tools.includes(call.name) || opens(call))) this.#open.delete(kit);
     }
-    return !inKit;
+  }
+
+  #inKit(name: string): boolean {
+    for (const { tools } of this.#kits.values()) if (tools.includes(name)) return true;
+    return false;
   }
 
   #toolsOf(kit: string): string[] {

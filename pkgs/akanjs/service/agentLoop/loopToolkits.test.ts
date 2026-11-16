@@ -181,6 +181,53 @@ describe("AgentLoop toolkits", () => {
     expect(namesOf(requests[2])).toEqual(["readPage", "eventList", "updateEvent", "openToolkit"]);
   });
 
+  test("lists a toolkit opened later after the tools already listed, whatever the catalogue order", async () => {
+    const { port, requests } = harness([
+      calling(callOf("c1", "openToolkit", { name: "notes" })),
+      calling(callOf("c2", "openToolkit", { name: "calendar" })),
+      saying("Ok."),
+    ]);
+    await drain(port, ask());
+    expect(namesOf(requests[1])).toEqual(["readPage", "noteList", "openToolkit"]);
+    expect(namesOf(requests[2])).toEqual(["readPage", "noteList", "eventList", "updateEvent"]);
+  });
+
+  test("closes on compaction a toolkit the kept messages neither opened nor used, and a resume keeps it closed", async () => {
+    const stored: AgentWireMessage[] = [
+      { role: "user", text: "Plan the week." },
+      {
+        role: "assistant",
+        toolCalls: [callOf("c1", "openToolkit", { name: "calendar" }), callOf("c2", "openToolkit", { name: "notes" })],
+      },
+      {
+        role: "tool",
+        toolResults: [
+          { id: "c1", name: "openToolkit", result: { opened: "calendar", tools: ["eventList", "updateEvent"] } },
+          { id: "c2", name: "openToolkit", result: { opened: "notes", tools: ["noteList"] } },
+        ],
+      },
+      { role: "assistant", toolCalls: [callOf("c3", "eventList")] },
+      { role: "tool", toolResults: [{ id: "c3", name: "eventList", result: "eventList:ok" }] },
+      { role: "user", text: "And the notes?" },
+      { role: "assistant", toolCalls: [callOf("c4", "noteList")] },
+      { role: "tool", toolResults: [{ id: "c4", name: "noteList", result: "noteList:ok" }] },
+    ];
+    const transcript = [...stored];
+    const { port, requests } = harness([saying("The week is planned."), saying("Here are the notes.")]);
+    const events = await drain(port, {
+      ...ask({ messages: stored, compact: { at: 1, keep: 3 } }),
+      onMessage: (message) => void transcript.push(message),
+    });
+    const compacted = events.find((event) => event.type === "compacted");
+    expect(compacted).toMatchObject({ replaced: 5, summary: { toolkits: ["notes"] } });
+    if (compacted?.type === "compacted") transcript.splice(0, compacted.replaced, compacted.summary);
+    expect(namesOf(requests[1])).toEqual(["readPage", "noteList", "openToolkit"]);
+    expect(metaOf(requests[1])?.parameters).toMatchObject({ properties: { name: { enum: ["calendar"] } } });
+    const { port: resumed, requests: later } = harness([saying("Done.")]);
+    await drain(resumed, ask({ messages: [...transcript, { role: "user", text: "Thanks." }] }));
+    expect(namesOf(later[0])).toEqual(["readPage", "noteList", "openToolkit"]);
+  });
+
   test("lists every tool and no openToolkit without toolkits, and refuses a run whose allow names one", async () => {
     const { port, requests } = harness([saying("Ok.")]);
     await drain(port, ask({ toolkits: undefined }));

@@ -146,9 +146,9 @@ export class AgentLoop {
   }
 
   async *#runRound(): Events<AgentLoopStop | null> {
-    const tools = await this.#listTools();
-    yield* this.#compact();
-    const answer = yield* this.#ask(tools);
+    const listed = await this.#listTools();
+    const compacted = yield* this.#compact(listed);
+    const { answer, tools } = yield* this.#ask(compacted ?? listed);
     //? Security: what the model wrote after reading untrusted text is stored with the mark. A marked context block is
     //? in no stored message, so without it a resume of these calls, or the next ask, would start untainted.
     const mark = this.#tainted ? { tainted: true } : {};
@@ -227,18 +227,21 @@ export class AgentLoop {
     };
   }
 
-  async *#ask(tools: AgentTool[]): Events<AgentLoopAnswer> {
+  async *#ask(listed: AgentTool[]): Events<{ answer: AgentLoopAnswer; tools: AgentTool[] }> {
     const preamble = this.#request.preamble ?? false;
-    const request = this.#turnOf(tools);
+    const request = this.#turnOf(listed);
+    let tools = listed;
     try {
-      return yield* this.#metered(request, preamble, true);
+      return { answer: yield* this.#metered(request, preamble, true), tools };
     } catch (error) {
       if (!this.#request.compact || !Err.is(error, "agent.error.contextOverflow")) throw error;
       this.#learnOverflow(error.data, request);
       //? Once a round: a request refused again after its own summary is not one another summary will fit.
-      if (!(yield* this.#compact(true))) throw error;
+      const compacted = yield* this.#compact(listed, true);
+      if (!compacted) throw error;
+      tools = compacted;
     }
-    return yield* this.#metered(this.#turnOf(tools), preamble, true);
+    return { answer: yield* this.#metered(this.#turnOf(tools), preamble, true), tools };
   }
 
   #turnOf(tools: AgentTool[]): LlmTurnRequest {
@@ -257,8 +260,8 @@ export class AgentLoop {
   #learnOverflow(data: Record<string, unknown> | undefined, request: LlmTurnRequest) {
     const { limit, requested } = data ?? {};
     if (typeof limit !== "number" || typeof requested !== "number" || !(limit > 0 && requested > limit)) return;
-    const frame = LoopCompaction.frameTokensOf(request);
-    const fits = Math.floor(((LoopCompaction.tokensOf(this.#messages) + frame) * limit) / requested) - frame;
+    const sent = LoopCompaction.tokensOf(this.#messages) + LoopCompaction.frameTokensOf(request);
+    const fits = Math.floor((sent * limit) / requested);
     if (fits > 0) this.#overflowAt = Math.min(this.#overflowAt, fits);
   }
 
@@ -298,13 +301,15 @@ export class AgentLoop {
     return answer;
   }
 
-  async *#compact(forced = false): Events<boolean> {
+  async *#compact(tools: AgentTool[], forced = false): Events<AgentTool[] | null> {
     const { compact, model } = this.#request;
-    if (!compact) return false;
+    if (!compact) return null;
+    const sizeOf = (listed: AgentTool[]) =>
+      LoopCompaction.tokensOf(this.#messages) + LoopCompaction.frameTokensOf(this.#turnOf(listed));
     const threshold = Math.min(compact.at, this.#overflowAt);
-    if (!forced && LoopCompaction.tokensOf(this.#messages) < Math.max(threshold, this.#compactFloor)) return false;
+    if (!forced && sizeOf(tools) < Math.max(threshold, this.#compactFloor)) return null;
     const at = LoopCompaction.cutAt(this.#messages, compact.keep ?? LoopCompaction.keep);
-    if (at <= 0) return false;
+    if (at <= 0) return null;
     const digest = LoopCompaction.digest(this.#messages.slice(0, at));
     let text = "";
     try {
@@ -320,16 +325,18 @@ export class AgentLoop {
       if (this.#haltedBy(error)) throw error;
       //? Best effort: the round may still fit, and a failed summary says nothing about whether this transcript can shrink.
       AgentLoop.#logger.warn(`agent loop compaction failed: ${error instanceof Error ? error.message : String(error)}`);
-      return false;
+      return null;
     }
-    if (!text) return false;
+    if (!text) return null;
+    this.#toolkits.keepUsed(this.#messages.slice(at));
     const summary = LoopCompaction.message(text, this.#tainted, this.#toolkits.opened);
     this.#messages.splice(0, at, summary);
-    const after = LoopCompaction.tokensOf(this.#messages);
-    //? Still over after summarizing: one kept message is that large, so wait for another threshold's growth.
-    this.#compactFloor = after >= threshold ? after + threshold : 0;
     yield { type: "compacted", replaced: at, summary };
-    return true;
+    const listed = await this.#listTools();
+    const after = sizeOf(listed);
+    //? Still over after summarizing: a kept message or the tools alone are that large, so wait for a threshold's growth.
+    this.#compactFloor = after >= threshold ? after + threshold : 0;
+    return listed;
   }
 
   async *#runCalls(calls: AgentWireToolCall[], tools: AgentTool[]): Events<AgentLoopStop | null> {
