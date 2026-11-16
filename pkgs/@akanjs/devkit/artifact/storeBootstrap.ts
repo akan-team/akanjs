@@ -1,15 +1,50 @@
+import path from "node:path";
+import type { App } from "../commandDecorators";
 import type { BarrelExportMap } from "../transforms/barrelAnalyzer";
 
 const PAGE_ONLY_NAMES = new Set(["usePage", "msg", "Err"]);
 
+export type ClientRuntimeScope = "whole" | "page";
+
 //* Not a bare `@apps/<app>/client` import: it names nothing the barrel rewrite can narrow, so every module's UI ships.
 export class StoreBootstrap {
-  static importLines(appName: string): string[] {
-    return StoreBootstrap.#lines([`@apps/${appName}/lib/useClient`, `@apps/${appName}/lib/st`]);
+  static readonly pageRuntime = "usePage";
+  //? `akanjs/signal`'s own descriptors, which framework UI on any page calls by a static name (`Reconnect`'s `ping`).
+  static readonly baseDescriptors = "__client/_base.fetch";
+
+  //? `akanjs/ui/modelRuntime` is empty on disk: a framework UI file reaching a store key or a fetch handler by a
+  //? computed name imports it, and a build whose entries load only the page runtime answers it with the app's.
+  static readonly modelRuntimeFilter = /[\\/]akanjs[\\/]ui[\\/]modelRuntime\.[jt]s$/;
+
+  //? `"page"` only where the page runtime files exist: a workspace not synced since it came keeps the whole runtime.
+  static async scopeOf(app: App): Promise<ClientRuntimeScope> {
+    if ((await app.getConfig()).clientRuntime !== "route") return "whole";
+    const lib = path.join(app.cwdPath, "lib");
+    const found = await Promise.all(
+      ["st", StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors].map((file) =>
+        Bun.file(path.join(lib, `${file}.ts`)).exists(),
+      ),
+    );
+    return found.every(Boolean) ? "page" : "whole";
   }
 
-  static source(appName: string): string {
-    return `${StoreBootstrap.importLines(appName).join("\n")}\n`;
+  static importLines(appName: string, scope: ClientRuntimeScope = "whole"): string[] {
+    return StoreBootstrap.#lines(
+      scope === "page"
+        ? [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors].map((file) => `@apps/${appName}/lib/${file}`)
+        : [`@apps/${appName}/lib/useClient`, `@apps/${appName}/lib/st`],
+    );
+  }
+
+  static source(appName: string, scope: ClientRuntimeScope = "whole"): string {
+    return `${StoreBootstrap.importLines(appName, scope).join("\n")}\n`;
+  }
+
+  //? Absolute paths: the marker sits in `akanjs`, where neither a consumer's node_modules nor this repo's package
+  //? tsconfig maps `@apps/*`. Always the app's runtime, never a lib's, so every module's descriptors and stores load.
+  static modelRuntimeSource(app: App): string {
+    const files = ["useClient.ts", "st.ts"].map((file) => path.join(app.cwdPath, "lib", file));
+    return `${StoreBootstrap.#lines(files.map((file) => file.split(path.sep).join("/"))).join("\n")}\n`;
   }
 
   static ofClientBarrel(specifier: string, exports: BarrelExportMap, names: string[] = []): string[] | null {

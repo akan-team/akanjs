@@ -2,7 +2,7 @@ import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import type { BaseBuildArtifact, ClientManifest, ClientManifestEntry, SsrManifest } from "akanjs/server";
 import { SSR_DEV_CHUNK, SSR_DEV_ID_PREFIX } from "akanjs/server/hmr/csrDevManifest";
-import { StoreBootstrap } from "../artifact/storeBootstrap";
+import { type ClientRuntimeScope, StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
@@ -84,12 +84,22 @@ export class RouteClientBuilder {
       ? [...new Set([...discovered, ...(await (await this.#getDiscovery()).discover(this.#graphSeeds))])].sort()
       : discovered.filter((e) => !this.#knownEntries.has(e));
 
-    const bootstrapEntries = await this.#createBootstrapEntries(entries);
     //? Registry mode builds no browser bundle: the SSR bundle has the same entries, exports and imports to read.
     const registry = this.#browser === "registry" ? new CsrDevPaths(this.#app.workspace.workspaceRoot) : null;
-    const browserBundle = registry ? null : await this.#buildBrowserBundle(bootstrapEntries);
-    const ssrBundle = await this.#buildSsrBundle(bootstrapEntries);
+    const scope = registry ? "whole" : await StoreBootstrap.scopeOf(this.#app);
+    const ssrEntries = await this.#createBootstrapEntries(entries, "whole");
+    const browserEntries = registry
+      ? null
+      : scope === "page"
+        ? await this.#createBootstrapEntries(entries, "page")
+        : ssrEntries;
+    const browserBundle = browserEntries ? await this.#buildBrowserBundle(browserEntries, scope) : null;
+    const ssrBundle = await this.#buildSsrBundle(ssrEntries);
     const referenceBundle = browserBundle ?? ssrBundle;
+    const bootstrapEntries = browserEntries ?? ssrEntries;
+    const ssrEntryByOriginal = new Map(
+      [...ssrEntries.originalByBuildEntry].map(([buildEntry, originalEntry]) => [originalEntry, buildEntry]),
+    );
 
     const acceptedEntries = new Set(entries);
     const routeEntries = new Set(discovered);
@@ -111,7 +121,9 @@ export class RouteClientBuilder {
         : bundleRow;
       manifestDelta[manifestEntry.key] = row;
 
-      const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(manifestEntry.buildEntry);
+      const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(
+        ssrEntryByOriginal.get(manifestEntry.originalEntry) ?? manifestEntry.buildEntry,
+      );
       if (!ssrOutput) continue;
 
       ssrModuleMap[row.id] ??= {};
@@ -165,7 +177,7 @@ export class RouteClientBuilder {
     };
   }
 
-  async #buildBrowserBundle(bootstrapEntries: BootstrapEntries) {
+  async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, scope: ClientRuntimeScope) {
     const reactFastRefresh = process.env.AKAN_REACT_FAST_REFRESH !== "0";
     return new ClientEntriesBundler({
       app: this.#app,
@@ -174,6 +186,7 @@ export class RouteClientBuilder {
         await createBarrelImportsPlugin(this.#app, {
           pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
           external: VENDOR_SPECIFIERS,
+          modelRuntime: scope === "page" ? StoreBootstrap.modelRuntimeSource(this.#app) : undefined,
         }),
       ],
       external: VENDOR_SPECIFIERS,
@@ -193,12 +206,13 @@ export class RouteClientBuilder {
     }).bundle();
   }
 
-  async #createBootstrapEntries(entries: string[]): Promise<BootstrapEntries> {
+  async #createBootstrapEntries(entries: string[], scope: ClientRuntimeScope): Promise<BootstrapEntries> {
     if (!(await Bun.file(path.join(this.#app.cwdPath, "lib", "st.ts")).exists())) {
       return { buildEntries: entries, originalByBuildEntry: new Map() };
     }
 
-    const outdir = path.join(this.#app.cwdPath, ".akan", "generated", "client-entry-bootstrap");
+    const dirName = scope === "page" ? "client-entry-bootstrap-route" : "client-entry-bootstrap";
+    const outdir = path.join(this.#app.cwdPath, ".akan", "generated", dirName);
     await mkdir(outdir, { recursive: true });
 
     const originalByBuildEntry = new Map<string, string>();
@@ -215,6 +229,7 @@ export class RouteClientBuilder {
             appName: this.#app.name,
             originalEntry: absEntry,
             exportNames,
+            scope,
           }),
         );
         originalByBuildEntry.set(path.resolve(wrapperEntry), absEntry);
@@ -317,11 +332,12 @@ export class RouteClientBuilder {
     appName: string;
     originalEntry: string;
     exportNames: string[];
+    scope?: ClientRuntimeScope;
   }): string {
     const originalEntry = JSON.stringify(path.resolve(args.originalEntry));
     const namedExports = args.exportNames.filter((name) => name !== "default");
     const lines = [
-      ...StoreBootstrap.importLines(args.appName),
+      ...StoreBootstrap.importLines(args.appName, args.scope),
       ...(namedExports.length > 0 ? [`export { ${namedExports.join(", ")} } from ${originalEntry};`] : []),
     ];
     if (args.exportNames.includes("default")) lines.push(`export { default } from ${originalEntry};`);

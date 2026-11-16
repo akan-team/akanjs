@@ -473,6 +473,15 @@ export interface AppConfigResult {
   bin: AkanBinConfig;
   barrelImports: string[];
   optimizeImports: string[];
+  /**
+   * `"route"` loads a model's descriptors and store in the browser only on a route whose client code imports `fetch`
+   * or `st`, or renders an `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on
+   * every page. Server rendering, CSR bundles and native apps always load the whole runtime, and so does the
+   * development server on a page importing from `akanjs/ui`, so a missing import shows only in a production build.
+   * An app store extending a lib's store adds its actions, state and slices only where the app's runtime loads, so
+   * code using them imports `st` from the app's `client` barrel, not the lib's.
+   */
+  clientRuntime: "all" | "route";
   images: AkanImageConfig;
   i18n: AkanI18nConfig;
   publicEnv: string[];

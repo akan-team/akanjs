@@ -9,6 +9,7 @@ import { type ReactNode, useState } from "react";
 import { agentAttrs } from "../agentAttrs";
 import { Button } from "../Button";
 import { Modal } from "../Modal";
+import "../modelRuntime";
 
 interface RemoveProps {
   className?: string;

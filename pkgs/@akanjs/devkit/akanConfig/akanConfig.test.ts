@@ -163,6 +163,14 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfile).toContain('RUN if [ "$TARGETARCH" = "arm64"');
   });
 
+  test("loads the whole client runtime with every client module unless the app asks for route scope", () => {
+    expect(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).clientRuntime).toBe("all");
+    expect(new AkanAppConfig(app, [], packageJson, { clientRuntime: "route" }, baseDevEnv).clientRuntime).toBe("route");
+    expect(() => new AkanAppConfig(app, [], packageJson, { clientRuntime: "lazy" as never }, baseDevEnv)).toThrow(
+      'sets clientRuntime to "lazy"',
+    );
+  });
+
   test("installs from the build's bun.lock frozen, or unlocked when the build wrote none", () => {
     const config = new AkanAppConfig(app, [], packageJson, { docker: { postRuns: ["echo after"] } }, baseDevEnv);
     const locked = config.dockerfileFor("main");

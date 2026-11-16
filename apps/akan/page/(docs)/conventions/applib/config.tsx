@@ -149,6 +149,14 @@ export default page()
             marks: appOnly,
           },
           {
+            name: "clientRuntime",
+            desc: l.trans({
+              en: "Whether every page loads every model's stores, or only the routes whose client code uses them.",
+              ko: "모든 페이지가 모든 모델의 스토어를 불러올지, 클라이언트 코드가 쓰는 라우트만 불러올지 정합니다.",
+            }),
+            marks: appOnly,
+          },
+          {
             name: "docker",
             desc: l.trans({
               en: "The production image. A library adds `preRuns` and `postRuns` only.",
@@ -2043,6 +2051,137 @@ export default config;`}
                     <span>
                       <strong>직접 만든 barrel은 깔끔하게 유지합니다.</strong> 파일 하나에 export 하나를 지키면 결과를
                       예측하기 쉽습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+            </ul>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="client-runtime" title="clientRuntime">
+          <Docs.Title>clientRuntime</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    <code>clientRuntime</code> decides what the browser code of a page loads before its components. With{" "}
+                    <code>"all"</code>, the default, every page loads every model's endpoint descriptors and stores.
+                    With <code>"route"</code>, a page loads only the page runtime (<code>usePage</code>,{" "}
+                    <code>msg</code>, <code>Err</code>), and the descriptors and stores come with the client modules
+                    that use them:
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>clientRuntime</code>은 페이지의 브라우저 코드가 컴포넌트보다 먼저 불러오는 것을 정합니다.
+                    기본값 <code>"all"</code>이면 모든 페이지가 모든 모델의 엔드포인트 정의와 스토어를 불러옵니다.{" "}
+                    <code>"route"</code>면 페이지는 페이지 런타임(<code>usePage</code>, <code>msg</code>,{" "}
+                    <code>Err</code>)만 불러오고, 엔드포인트 정의와 스토어는 그것을 쓰는 클라이언트 모듈과 함께 옵니다:
+                  </span>
+                ),
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="apps/dashboard/akan.config.ts"
+              code={`import type { AppConfig } from "akanjs";
+
+const config: AppConfig = {
+  clientRuntime: "route",
+};
+
+export default config;`}
+            />
+            <ul className={bullets}>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>What brings the whole runtime.</strong> A client module that imports <code>fetch</code> or{" "}
+                      <code>st</code> from the app's or a lib's <code>client</code> barrel, or a <code>Load</code>,{" "}
+                      <code>Model</code> or <code>Data</code> component on the page. A lib's barrel brings that lib and
+                      the libs under it.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>전체 런타임을 불러오는 것.</strong> 앱이나 라이브러리의 <code>client</code> barrel에서{" "}
+                      <code>fetch</code>나 <code>st</code>를 import하는 클라이언트 모듈, 또는 페이지의 <code>Load</code>
+                      ·<code>Model</code>·<code>Data</code> 컴포넌트입니다. 라이브러리 barrel은 그 라이브러리와 그 아래
+                      라이브러리를 불러옵니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Only the browser code of server-rendered pages changes.</strong> Server rendering, a CSR
+                      build and a native app still load everything.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>바뀌는 것은 서버 렌더링 페이지의 브라우저 코드뿐입니다.</strong> 서버 렌더링, CSR 빌드,
+                      네이티브 앱은 여전히 전부 불러옵니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Check a route in a production build.</strong> The development server keeps{" "}
+                      <code>akanjs/ui</code> whole, so a page importing from it loads the whole runtime there, and a
+                      missing import shows only after <code>akan build</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>라우트는 프로덕션 빌드에서 확인합니다.</strong> 개발 서버는 <code>akanjs/ui</code>를
+                      통째로 불러오므로 그것을 import하는 페이지는 개발 중에 전체 런타임을 불러오고, 빠진 import는{" "}
+                      <code>akan build</code> 뒤에야 드러납니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Read a store only where you import it.</strong> A store's state, persisted keys included,
+                      appears when its code loads, so <code>st.get()</code> of a store no module on the route imports
+                      has no value there.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>스토어는 import한 곳에서만 읽습니다.</strong> 스토어의 상태는 저장된 키까지 그 코드가
+                      로드될 때 생기므로, 라우트의 어떤 모듈도 import하지 않은 스토어를 <code>st.get()</code>으로 읽으면
+                      값이 없습니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Reach an extended lib store through the app.</strong> An app store that extends a lib's
+                      store adds its actions, state and slices only on a route that loads the app's runtime, so code
+                      using them imports <code>st</code> from the app's <code>client</code> barrel, not the lib's.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>확장한 라이브러리 스토어는 앱을 거쳐 씁니다.</strong> 라이브러리 스토어를 확장한 앱
+                      스토어의 액션·상태·슬라이스는 앱 런타임을 불러오는 라우트에만 생기므로, 그것을 쓰는 코드는{" "}
+                      <code>st</code>를 라이브러리가 아닌 앱의 <code>client</code> barrel에서 import합니다.
                     </span>
                   ),
                 })}

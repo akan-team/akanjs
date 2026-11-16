@@ -10,6 +10,7 @@ import { agentAttrs } from "../agentAttrs";
 import { Button } from "../Button";
 import { RecentTime } from "../RecentTime";
 import { createOverridable } from "../UiOverride";
+import "../modelRuntime";
 
 export interface DraftBarViewProps {
   className?: string;

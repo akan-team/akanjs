@@ -14,6 +14,7 @@ import { columnKey } from "./dataExport";
 import { dictLabel } from "./dataText";
 import { Action, convToAntdColumn } from "./Item";
 import DataPagination from "./Pagination";
+import "../modelRuntime";
 
 interface TableListProps<
   _T extends string,

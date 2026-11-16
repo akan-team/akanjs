@@ -15,6 +15,7 @@ import { Dropdown } from "../Dropdown";
 import { Modal } from "../Modal";
 import Remove from "./Remove";
 import View from "./View";
+import "../modelRuntime";
 
 // Declared from whichever face is mounted (the view's body when it offers no edit), so the shared close verb is
 // published once and withdrawn on close.

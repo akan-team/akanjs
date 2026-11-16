@@ -8,6 +8,7 @@ import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { sliceNamesOf } from "../sliceNamesOf";
 import { LightRefCache } from "./lightRefCache";
 import { useRelationWindow } from "./useRelationWindow";
+import "../modelRuntime";
 
 export interface RelationOptionsSource<Light extends { id: string }> {
   slice: SliceMeta;

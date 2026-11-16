@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 import { agentAttrs } from "../agentAttrs";
 import { Popconfirm } from "../Popconfirm";
+import "../modelRuntime";
 
 interface RemoveWrapperProps {
   className?: string;

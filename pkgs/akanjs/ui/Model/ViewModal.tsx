@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import type { ModalSurfaceProps } from "../Dialog/modalSurface";
 import { Modal } from "../Modal";
 import View from "./View";
+import "../modelRuntime";
 
 interface ViewToolsProps {
   modelName: string;

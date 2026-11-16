@@ -12,6 +12,7 @@ import { Pagination as Pagn } from "../Pagination";
 import { sliceNamesOf } from "../sliceNamesOf";
 import Stream from "./Stream";
 import type { StreamError } from "./StreamBoundary";
+import "../modelRuntime";
 
 interface PaginationProps<RefName extends string, Light> {
   className?: string;

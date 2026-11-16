@@ -1,5 +1,6 @@
 import path from "node:path";
 import type { BunPlugin } from "bun";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { loaderFor } from "../transforms/moduleSyntax";
 import { CsrDevFactoryCheck } from "./csrDevFactoryCheck";
@@ -314,6 +315,9 @@ export class CsrDevModuleCompiler {
       name: "akan-csr-registry",
       setup: (build) => {
         build.onLoad({ filter: /\.css$/ }, () => ({ contents: "", loader: "js" }));
+        const { modelRuntime } = this.#context;
+        if (modelRuntime !== undefined)
+          build.onLoad({ filter: StoreBootstrap.modelRuntimeFilter }, () => ({ contents: modelRuntime, loader: "ts" }));
         if (macroOutputs.size > 0) {
           const exact = [...macroOutputs.keys()].map((file) => file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
           build.onLoad({ filter: new RegExp(`^(?:${exact.join("|")})$`) }, (args) => {

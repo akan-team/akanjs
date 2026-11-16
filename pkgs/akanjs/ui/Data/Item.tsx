@@ -14,6 +14,7 @@ import { ObjectId } from "../ObjectId";
 import { Popconfirm } from "../Popconfirm";
 import { RecentTime } from "../RecentTime";
 import { dictLabel, formatCell } from "./dataText";
+import "../modelRuntime";
 
 // By the value, not the column name: a date field under any name is a Dayjs, which React refuses as a child.
 const renderCell = (value: unknown) =>

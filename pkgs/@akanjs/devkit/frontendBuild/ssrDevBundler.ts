@@ -35,6 +35,8 @@ export class SsrDevBundler extends DevRegistryBundler {
     const define = bundleDefine(this.app, "start", "ssr");
     const optimizeImports = [...akanConfig.optimizeImports];
     const barrelImports = workspaceBarrels(akanConfig.barrelImports);
+    const modelRuntime =
+      (await StoreBootstrap.scopeOf(this.app)) === "page" ? StoreBootstrap.modelRuntimeSource(this.app) : undefined;
     const configKey = Bun.hash(
       JSON.stringify([
         "ssr",
@@ -44,6 +46,7 @@ export class SsrDevBundler extends DevRegistryBundler {
         optimizeImports,
         VENDOR_SPECIFIERS,
         barrelImports,
+        ...(modelRuntime === undefined ? [] : [modelRuntime]),
       ]),
     ).toString(36);
     return {
@@ -56,6 +59,7 @@ export class SsrDevBundler extends DevRegistryBundler {
       refreshFile: null,
       externals: VENDOR_SPECIFIERS,
       barrelImports,
+      ...(modelRuntime === undefined ? {} : { modelRuntime }),
     };
   }
 
@@ -66,11 +70,12 @@ export class SsrDevBundler extends DevRegistryBundler {
   }
 
   // Run first in the tab, before any client module the payload names: the store registry must exist by then.
-  async writeEntries(): Promise<{ files: Record<string, string>; changed: string[] }> {
+  async writeEntries(context?: CsrDevContext): Promise<{ files: Record<string, string>; changed: string[] }> {
     await mkdir(this.entryDir, { recursive: true });
     const file = path.join(this.entryDir, "bootstrap.ts");
     const hasStore = await Bun.file(path.join(this.app.cwdPath, "lib", "st.ts")).exists();
-    const source = hasStore ? StoreBootstrap.source(this.app.name) : "export {};\n";
+    const scope = context?.modelRuntime === undefined ? "whole" : "page";
+    const source = hasStore ? StoreBootstrap.source(this.app.name, scope) : "export {};\n";
     const unchanged = (await Bun.file(file).exists()) && (await Bun.file(file).text()) === source;
     if (!unchanged) await Bun.write(file, source);
     const entryFile = CsrDevPaths.realpath(file);

@@ -546,6 +546,17 @@ console.log(JSON.stringify({
 }));
 `;
 
+const basePieceScript = (app: string) => `
+const { ConstantRegistry } = await import("akanjs/constant");
+const { fetch } = await import("./apps/${app}/lib/usePage.ts");
+await import("./apps/${app}/lib/__client/_base.fetch.ts");
+console.log(JSON.stringify({
+  signal: Object.keys(fetch.ownSerializedSignal),
+  ping: typeof fetch.ping,
+  constants: ["item"].filter((name) => ConstantRegistry.getDatabase(name, { allowEmpty: true })),
+}));
+`;
+
 const keptByWholeScript = (app: string) => `
 const { st } = await import("akanjs/store");
 await import("./apps/${app}/lib/__client/demo.st.ts");
@@ -640,6 +651,15 @@ describe("an app's client runtime pieces", () => {
       state: ["noteDraft", "itemCount"],
       appSignal: ["item"],
       libSignal: ["item"],
+    });
+  }, 120_000);
+
+  test("load the framework's own descriptors beside the page runtime without the app's constants", async () => {
+    const { root } = await writeShopWorkspace("kiosk", "shelf");
+    expect(await evaluate(root, basePieceScript("kiosk"), "kiosk")).toEqual({
+      signal: ["base", "agent"],
+      ping: "function",
+      constants: [],
     });
   }, 120_000);
 

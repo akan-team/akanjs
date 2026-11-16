@@ -12,6 +12,7 @@ import { Empty } from "../Empty";
 import { Loading } from "../Loading";
 import Stream from "./Stream";
 import type { StreamError } from "./StreamBoundary";
+import "../modelRuntime";
 
 interface DefaultProps<_T extends string, M> {
   className?: string;

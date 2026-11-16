@@ -4,13 +4,12 @@ import { fileURLToPath } from "node:url";
 import type { AkanPlugin } from "akanjs";
 import { DatabaseModes, normalizeRoutePrefix } from "akanjs/base";
 import { type AkanI18nConfig, resolveAkanI18nConfig, trimSlashes } from "akanjs/common";
-import type { ServerPolicy } from "akanjs/native/api";
 import type { AkanImageConfig } from "akanjs/server";
 import type { App, Lib } from "../commandDecorators";
 import { WorkspaceExecutor } from "../executors/workspaceExecutor";
-import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
+import { DesktopServerConfig } from "./desktopServerConfig";
 import { DEFAULT_DOCKER_IMAGE, DOCKER_RUN_USER, DOCKER_WRITE_DIRS } from "./dockerImage";
 import { nativeKeys } from "./nativeKeys";
 import {
@@ -21,7 +20,6 @@ import {
   type AkanNativeAppConfig,
   type AkanNativeAppResult,
   type AkanNativeDeepLinks,
-  type AkanNativeDesktopConfig,
   type AkanNativeSettings,
   type AkanNativeTarget,
   type AkanNativeUpdatesConfig,
@@ -171,6 +169,7 @@ export class AkanAppConfig implements AppConfigResult {
   libBins: { lib: string; bin: AkanBinConfig }[];
   barrelImports: string[];
   optimizeImports: string[];
+  clientRuntime: "all" | "route";
   images: AkanImageConfig;
   i18n: AkanI18nConfig;
   api: AkanApiConfig;
@@ -223,6 +222,11 @@ export class AkanAppConfig implements AppConfigResult {
       ...(config?.barrelImports ?? []),
     ];
     this.optimizeImports = [...new Set([...DEFAULT_OPTIMIZE_IMPORTS, ...(config?.optimizeImports ?? [])])];
+    this.clientRuntime = config?.clientRuntime ?? "all";
+    if (this.clientRuntime !== "all" && this.clientRuntime !== "route")
+      throw new Error(
+        `${owner} sets clientRuntime to ${JSON.stringify(this.clientRuntime)}; it takes "all" or "route".`,
+      );
     this.images = mergeImageConfig(config?.images as Partial<AkanImageConfig> | undefined);
     this.i18n = resolveAkanI18nConfig(config?.i18n);
     process.env.AKAN_PUBLIC_DEFAULT_LOCALE = this.i18n.defaultLocale;
@@ -323,7 +327,7 @@ export class AkanAppConfig implements AppConfigResult {
             : {}),
           ...(merged.desktop
             ? {
-                desktop: AkanAppConfig.#desktopServer(
+                desktop: DesktopServerConfig.resolve(
                   AkanAppConfig.#platformIndexPath(merged.desktop),
                   `${where}.desktop.server`,
                   configPath,
@@ -340,93 +344,6 @@ export class AkanAppConfig implements AppConfigResult {
       }),
     );
     return { appName, appId, ...(root.fileName ? { fileName: root.fileName } : {}), version, buildNum, targets };
-  }
-  //? `true` or `{ omit, profile, modules }`: lists trimmed once, so two targets that agree on them stage one server.
-  static #desktopServer<T extends { server?: AkanNativeDesktopConfig["server"] }>(
-    desktop: T,
-    where: string,
-    configPath: string,
-  ): T {
-    const { server } = desktop;
-    if (server === undefined || typeof server === "boolean") return desktop;
-    if (!AkanAppConfig.#isPlainObject(server))
-      throw new Error(`${where} in ${configPath} must be true or { omit, profile, modules }.`);
-    const names = (list: unknown, key: string, what: string) => {
-      if (list === undefined) return [];
-      if (!Array.isArray(list) || list.some((name) => typeof name !== "string" || !name.trim()))
-        throw new Error(`${where}.${key} in ${configPath} must be a list of ${what}.`);
-      return [...new Set(list.map((name: string) => name.trim()))].sort();
-    };
-    const { profile } = server;
-    if (profile !== undefined && (typeof profile !== "string" || !ServerEnvProfile.namePattern.test(profile)))
-      throw new Error(
-        `${where}.profile in ${configPath} names env/env.server.<env>.<profile>.ts: a lowercase-first name of letters, digits and dashes.`,
-      );
-    const modules = names(server.modules, "modules", "module names or @<operationMode> selectors");
-    const env = AkanAppConfig.#desktopServerEnv(server.env, where, configPath);
-    const { restart } = server;
-    if (restart !== undefined && restart !== "forever" && !(Number.isInteger(restart) && (restart as number) > 0))
-      throw new Error(`${where}.restart in ${configPath} must be "forever" or a count of crashes in a row from 1.`);
-    const watchdog = AkanAppConfig.#desktopServerWatchdog(server.watchdog, where, configPath);
-    return {
-      ...desktop,
-      server: {
-        omit: names(server.omit, "omit", "package names"),
-        ...(profile ? { profile } : {}),
-        ...(modules.length ? { modules } : {}),
-        ...(Object.keys(env).length ? { env } : {}),
-        ...(restart !== undefined ? { restart } : {}),
-        ...(watchdog ? { watchdog } : {}),
-      },
-    };
-  }
-  //? The stage owns these: the operation mode, the database mode, what is served and the shutdown budget the shell's
-  //? quit waits on are what make it the carried server.
-  static readonly #stagedServerEnv = new Set([
-    "AKAN_PUBLIC_OPERATION_MODE",
-    "AKAN_DATABASE_MODE",
-    "AKAN_DATABASE_MODES",
-    "AKAN_SSR",
-    "AKAN_CSR",
-    "AKAN_MCP",
-    "AKAN_SHUTDOWN_TIMEOUT_MS",
-    "AKAN_MODULES",
-  ]);
-  static #desktopServerEnv(env: unknown, where: string, configPath: string): Record<string, string> {
-    if (env === undefined) return {};
-    if (!AkanAppConfig.#isPlainObject(env) || Object.values(env).some((value) => typeof value !== "string"))
-      throw new Error(`${where}.env in ${configPath} must be an object of strings.`);
-    const staged = Object.keys(env).filter((key) => AkanAppConfig.#stagedServerEnv.has(key.toUpperCase()));
-    if (staged.length)
-      throw new Error(
-        `${where}.env in ${configPath} sets ${staged.join(", ")}, which the carried server's stage owns (modules: desktop.server.modules).`,
-      );
-    const secrets = ServerEnvProfile.secretPaths(env);
-    if (secrets.length)
-      throw new Error(
-        `${where}.env in ${configPath} holds secret-named values (${secrets.join(", ")}), and the app carries its env where anyone on the computer reads it. Leave them out.`,
-      );
-    return env as Record<string, string>;
-  }
-  //? The akan.config.ts shape, which takes `true` and fills in what is left out; the launcher reads what this returns
-  //? with serverPolicyOf in @akanjs/native, which devkit cannot load while it reads a config.
-  static #desktopServerWatchdog(watchdog: unknown, where: string, configPath: string): ServerPolicy["watchdog"] | null {
-    if (watchdog === undefined || watchdog === false) return null;
-    const options = watchdog === true ? {} : watchdog;
-    const whole = (value: unknown) => value === undefined || (Number.isInteger(value) && (value as number) > 0);
-    if (
-      !AkanAppConfig.#isPlainObject(options) ||
-      Object.keys(options).some((key) => key !== "intervalMs" && key !== "failures") ||
-      !whole(options.intervalMs) ||
-      !whole(options.failures)
-    )
-      throw new Error(
-        `${where}.watchdog in ${configPath} must be true or { intervalMs, failures }, whole numbers from 1.`,
-      );
-    return {
-      intervalMs: (options.intervalMs as number | undefined) ?? 10_000,
-      failures: (options.failures as number | undefined) ?? 3,
-    };
   }
   static #platformIndexPath<T extends { indexPath?: string }>(section: T): T {
     const { indexPath: rawIndexPath, ...rest } = section;

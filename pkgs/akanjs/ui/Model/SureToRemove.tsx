@@ -11,6 +11,7 @@ import { agentAttrs } from "../agentAttrs";
 import { buttonRecipe } from "../Button";
 import { Modal } from "../Modal";
 import { inputRecipe } from "../recipe";
+import "../modelRuntime";
 
 interface SureToRemoveProps {
   className?: string;
