@@ -3,6 +3,7 @@ import {
   CookieJar,
   type Logger,
   SessionCookies,
+  trimSlashes,
   websocketAuthContract,
   websocketHeartbeatContract,
 } from "akanjs/common";
@@ -283,7 +284,7 @@ export class ApiRouter {
   static #normalizeRoutePath(path: string): string {
     const trimmed = path.trim();
     if (!trimmed || trimmed === "/") return "/";
-    return `/${trimmed.replace(/^\/+|\/+$/g, "")}`;
+    return `/${trimSlashes(trimmed)}`;
   }
 
   static #wrapRoutesWithWebProxy(
