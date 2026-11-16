@@ -1934,6 +1934,62 @@ describe("StoreInstance with a root added later", () => {
     expect(instance.do.markReplaced).not.toBe(before);
     expect(instance.get().replacedValue).toBe(3);
   });
+
+  test("touches only the keys the added root brings, however many roots were added before it", () => {
+    setupEnv();
+    const browser = installBrowser();
+    const work = { selectors: 0, searches: 0, storageReads: 0, useWrites: 0, doWrites: 0 };
+    const readItem = browser.localStorage.getItem.bind(browser.localStorage);
+    browser.localStorage.getItem = (key: string) => {
+      work.storageReads++;
+      return readItem(key);
+    };
+    const countedRoot = (index: number) => {
+      class CountedStore extends store(
+        `countedStore${index}`,
+        ({ persist }) => ({ [`plain${index}`]: 0, [`kept${index}`]: persist(Int, { default: 0 }) }),
+        ({ computed, search }) => ({
+          [`label${index}`]: computed([`plain${index}`], (plain) => {
+            work.selectors++;
+            return `${plain}`;
+          }),
+          [`query${index}`]: search(`q${index}`, String, { default: "" }),
+        }),
+      ) {}
+      StoreRegistry.register(CountedStore);
+      const searchMeta = CountedStore[STATE_DERIVED_META].search[`query${index}`];
+      const { parseSearch, getDefault } = searchMeta;
+      searchMeta.parseSearch = (searchParams) => {
+        work.searches++;
+        return parseSearch(searchParams);
+      };
+      searchMeta.getDefault = () => {
+        work.searches++;
+        return getDefault();
+      };
+      return makeRoot(`countedRoot${index}`, CountedStore);
+    };
+    const instance = new StoreInstance(countedRoot(0));
+    const counted = <T extends object>(facade: T, key: "useWrites" | "doWrites") =>
+      new Proxy(facade, {
+        set: (target, property, value, receiver) => {
+          work[key]++;
+          return Reflect.set(target, property, value, receiver);
+        },
+      });
+    instance.use = counted(instance.use, "useWrites");
+    instance.do = counted(instance.do, "doWrites");
+    const workPerRoot = Array.from({ length: 40 }, (_, index) => {
+      for (const key of Object.keys(work) as (keyof typeof work)[]) work[key] = 0;
+      instance.addStore(countedRoot(index + 1));
+      return { ...work };
+    });
+
+    expect(workPerRoot[0]).toEqual({ selectors: 2, searches: 2, storageReads: 1, useWrites: 4, doWrites: 2 });
+    expect(workPerRoot.at(-1)).toEqual(workPerRoot[0]);
+    expect(Object.keys(instance.get())).toHaveLength(41 * 4);
+    uninstallBrowser();
+  });
 });
 
 describe("StoreInstance facades on an unknown key", () => {
