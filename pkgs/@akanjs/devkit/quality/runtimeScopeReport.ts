@@ -1,0 +1,128 @@
+import { readdir } from "node:fs/promises";
+import path from "node:path";
+import { RuntimeNameTable } from "./runtimeNameTable";
+import { RuntimeUse, type RuntimeUseProblem } from "./runtimeUse";
+import { WorkspaceSourceFiles } from "./workspaceSourceFiles";
+
+export interface RuntimeScopeNote extends RuntimeUseProblem {
+  file: string;
+  scope: string;
+}
+
+export interface RuntimeScopeSummary {
+  scope: string;
+  table: boolean;
+  tableMs: number;
+  clientFiles: number;
+  readers: number;
+  resolvable: number;
+  wholeScope: number;
+  analysisMs: number;
+  slowestFile: { file: string; ms: number } | null;
+  approximations: string[];
+}
+
+export interface RuntimeScopeResult {
+  scopes: RuntimeScopeSummary[];
+  notes: RuntimeScopeNote[];
+}
+
+const moduleConventionFile = /\/lib\/.+\.(?:constant|dictionary|document|service|signal)\.ts$/;
+const generatedFile =
+  /^(?:apps|libs)\/[^/]+\/(?:client\.ts|server\.ts|lib\/[^/]+\.ts|lib\/__(?:lib|client)\/.*|lib\/.+\/index\.ts|(?:ui|webkit|srvkit|common)\/index\.ts)$/;
+const serverOnlyDir = /^(?:apps|libs)\/[^/]+\/(?:srvkit|env|script|native|plugin)\//;
+const testFile = /\.(?:test|spec)\.tsx?$|\/__(?:fixtures|tests)__\//;
+const useClientDirective = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use client["']/;
+
+export class RuntimeScopeReport {
+  static readonly rule = "akan.runtime.whole-scope";
+
+  static isClientFile(file: string, text: string) {
+    if (!/^(?:apps|libs)\/[^/]+\/.+\.tsx?$/.test(file) || file.endsWith(".d.ts")) return false;
+    if (testFile.test(file) || generatedFile.test(file) || moduleConventionFile.test(file)) return false;
+    if (serverOnlyDir.test(file) || /^(?:apps|libs)\/[^/]+\/(?:akan\.config|main)\.ts$/.test(file)) return false;
+    if (/^(?:apps|libs)\/[^/]+\/page\//.test(file)) return useClientDirective.test(text);
+    return true;
+  }
+
+  static async scan(workspaceRoot: string): Promise<RuntimeScopeResult> {
+    const scopes = await RuntimeScopeReport.#scopesOf(workspaceRoot);
+    const tables = new Map<string, RuntimeNameTable | null>();
+    const tableMs = new Map<string, number>();
+    for (const scope of scopes) {
+      const started = performance.now();
+      tables.set(scope, await RuntimeNameTable.read(workspaceRoot, scope));
+      tableMs.set(scope, performance.now() - started);
+    }
+    const sources = new WorkspaceSourceFiles(workspaceRoot);
+    const summaries = new Map(
+      scopes.map((scope) => [scope, RuntimeScopeReport.#emptySummary(scope, tables.get(scope), tableMs.get(scope))]),
+    );
+    const notes: RuntimeScopeNote[] = [];
+    for (const file of await sources.collect()) {
+      const scope = file.match(/^((?:apps|libs)\/[^/]+)\//)?.[1];
+      const summary = scope && summaries.get(scope);
+      if (!scope || !summary || !/\.tsx?$/.test(file)) continue;
+      const { content, sourceFile } = await sources.read(file);
+      if (!RuntimeScopeReport.isClientFile(file, content)) continue;
+      summary.clientFiles++;
+      const table = tables.get(scope);
+      if (!table) continue;
+      const started = performance.now();
+      const verdict = RuntimeUse.analyze({ fileName: file, text: content, sourceFile }, table);
+      const ms = performance.now() - started;
+      summary.analysisMs += ms;
+      if (!summary.slowestFile || ms > summary.slowestFile.ms) summary.slowestFile = { file, ms };
+      if (verdict.resolvable && !verdict.reads) continue;
+      summary.readers++;
+      if (verdict.resolvable) summary.resolvable++;
+      else {
+        summary.wholeScope++;
+        const { problems: _, resolvable: __, ...problem } = verdict;
+        notes.push({ file, scope, ...problem });
+      }
+    }
+    return { scopes: [...summaries.values()], notes };
+  }
+
+  static format({ scopes, notes }: RuntimeScopeResult) {
+    const noteLines = notes.map(
+      ({ file, line, column, message, scope }) =>
+        `${file}:${line}:${column} - note ${RuntimeScopeReport.rule}: ${message}. The file works; a page that loads it loads ${scope}'s whole client runtime.`,
+    );
+    const scopeLines = scopes.map((summary) => {
+      const timing = `table ${summary.tableMs.toFixed(0)}ms, analysis ${summary.analysisMs.toFixed(0)}ms`;
+      if (!summary.table) return `${summary.scope}: no generated client runtime to read (run akan sync); ${timing}`;
+      const slowest = summary.slowestFile ? `, slowest file ${summary.slowestFile.ms.toFixed(1)}ms` : "";
+      const approximated = summary.approximations.length
+        ? `, ${summary.approximations.length} module declarations read approximately`
+        : "";
+      return `${summary.scope}: ${summary.readers} of ${summary.clientFiles} client files read the runtime, ${summary.resolvable} per module, ${summary.wholeScope} whole (${timing}${slowest}${approximated})`;
+    });
+    return [...noteLines, ...(noteLines.length ? [""] : []), ...scopeLines].join("\n");
+  }
+
+  static #emptySummary(scope: string, table: RuntimeNameTable | null | undefined, ms = 0): RuntimeScopeSummary {
+    return {
+      scope,
+      table: !!table,
+      tableMs: ms,
+      clientFiles: 0,
+      readers: 0,
+      resolvable: 0,
+      wholeScope: 0,
+      analysisMs: 0,
+      slowestFile: null,
+      approximations: table?.approximations ?? [],
+    };
+  }
+
+  static async #scopesOf(workspaceRoot: string) {
+    const scopes: string[] = [];
+    for (const dir of ["apps", "libs"]) {
+      const entries = await readdir(path.join(workspaceRoot, dir), { withFileTypes: true }).catch(() => []);
+      for (const entry of entries) if (entry.isDirectory()) scopes.push(`${dir}/${entry.name}`);
+    }
+    return scopes.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+}

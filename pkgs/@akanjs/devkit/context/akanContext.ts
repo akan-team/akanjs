@@ -275,6 +275,7 @@ const generatedFiles = [
   "*/lib/usePage.ts",
   "*/lib/useClient.ts",
   "*/lib/useServer.ts",
+  "*/lib/__client/*.ts",
   "*/lib/**/index.ts",
   "*/ui/index.ts",
   "*/webkit/index.ts",
