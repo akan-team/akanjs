@@ -61,6 +61,8 @@ export type AkanFrameCssVarName =
   | "--akan-bottom-inset"
   | "--akan-page-padding-top"
   | "--akan-page-padding-bottom"
+  | "--akan-overlay-top"
+  | "--akan-overlay-bottom"
   | "--akan-content-height"
   | `--akan-${"top" | "bottom"}-inset-visibility`
   | `--akan-${"top" | "bottom"}-inset-${InsetBreakpoint}`
@@ -83,11 +85,15 @@ export const isResponsiveFrame = (pageState: PageState, { cssResolved }: { cssRe
  */
 export function getFrameCssVars(pageState: PageState, { cssResolved }: { cssResolved: boolean }): AkanFrameCssVars {
   const safeAreaEnv = cssResolved ? pageState.safeAreaEnv : undefined;
+  const topChrome = "calc(var(--akan-top-safe-area) + var(--akan-top-inset))";
+  const bottomChrome = "calc(var(--akan-bottom-safe-area) + var(--akan-bottom-inset))";
   const vars: AkanFrameCssVars = {
     "--akan-top-safe-area": safeAreaEnv?.top ? "env(safe-area-inset-top, 0px)" : px(pageState.topSafeArea),
     "--akan-bottom-safe-area": safeAreaEnv?.bottom ? "env(safe-area-inset-bottom, 0px)" : px(pageState.bottomSafeArea),
-    "--akan-page-padding-top": "calc(var(--akan-top-safe-area) + var(--akan-top-inset))",
-    "--akan-page-padding-bottom": "calc(var(--akan-bottom-safe-area) + var(--akan-bottom-inset))",
+    "--akan-page-padding-top": pageState.overlay?.top ? "0px" : topChrome,
+    "--akan-page-padding-bottom": pageState.overlay?.bottom ? "0px" : bottomChrome,
+    "--akan-overlay-top": pageState.overlay?.top ? topChrome : "0px",
+    "--akan-overlay-bottom": pageState.overlay?.bottom ? bottomChrome : "0px",
     "--akan-content-height":
       "calc(var(--akan-viewport-height, 100dvh) - var(--akan-page-padding-top) - var(--akan-page-padding-bottom))",
   };

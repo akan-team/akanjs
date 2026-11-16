@@ -83,6 +83,7 @@ export {
   type PageLoadingProps,
   type PageLoadingRender,
   type PageModule,
+  type PageOverlayConfig,
   type PageProps,
   type PageRender,
   type PageSafeAreaConfig,

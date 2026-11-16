@@ -96,6 +96,10 @@ are there on every surface; the three keyboard variables are written only on the
 - `--akan-top-inset` / `--akan-bottom-inset` — the height of the page's top bar and bottom tab slot, per breakpoint
   when the page declares a responsive inset. A slot whose inset is 0 at a width clips its chrome there and hides it
   from the keyboard and screen readers, so a phone-only bar needs no `md:hidden`.
+- `--akan-overlay-top` / `--akan-overlay-bottom` — under a route's `overlay` (`.config({ overlay: "bottom" })`), the
+  safe area plus inset the page runs beneath instead of below; `0px` elsewhere. Pad the page's scroller by it
+  (`pb-(--akan-overlay-bottom)`) so its last row clears a translucent bar; the overlaid side's safe area is transparent
+  unless the route colors it.
 - `--akan-keyboard-inset`, `--akan-viewport-height`, `--akan-viewport-offset-top` — the on-screen keyboard over the
   page's bottom, the visible height, and how far iOS panned the page to show a field (the top slots follow it). Only
   an SSR page in a browser writes them; a CSR bundle and a native app never do, so read them with a fallback

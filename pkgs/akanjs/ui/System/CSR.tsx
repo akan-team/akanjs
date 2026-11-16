@@ -135,7 +135,9 @@ const CSRWrapper = ({
     bottomSafeArea,
     pathRoutes,
     stackEntries,
+    location,
   } = useCsr();
+  const overlay = location?.pathRoute?.pageState?.overlay;
   const csrLoaded = st.use.csrLoaded({ agent: false });
   const { router: reactRouter, history } = useCsr();
   useEffect(() => {
@@ -197,13 +199,19 @@ const CSRWrapper = ({
           : null}
         <TopChromeLayer
           id="topSafeArea"
-          className={cn("akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background")}
+          className={cn(
+            "akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background",
+            overlay?.top && "pointer-events-none",
+          )}
           layerRef={topSafeAreaRef}
           style={topSafeArea?.containerStyle}
         />
         <TopChromeLayer
           id="topInsetContainer"
-          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background")}
+          className={cn(
+            "akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background",
+            overlay?.top && "bg-transparent",
+          )}
           style={topInset?.containerStyle}
         >
           <CSRFrameSlotTargets slot="topInset" />
@@ -245,7 +253,10 @@ const CSRWrapper = ({
         </KeyboardLayer>
         <BottomChromeLayer
           id="bottomSafeArea"
-          className="akan-frame-chrome fixed inset-x-0 max-w-screen bg-background"
+          className={cn(
+            "akan-frame-chrome fixed inset-x-0 max-w-screen bg-background",
+            overlay?.bottom && "pointer-events-none",
+          )}
           layerRef={bottomSafeAreaRef}
           style={bottomSafeArea?.containerStyle}
         />
