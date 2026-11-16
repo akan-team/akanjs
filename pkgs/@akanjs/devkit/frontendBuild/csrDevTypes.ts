@@ -50,6 +50,8 @@ export interface CsrDevContext {
   /** Bare specifiers the page already loads (an SSR page's import map): required as `vendor:<specifier>`, not compiled. */
   externals?: readonly string[];
   barrelImports?: readonly string[];
+  /** What `akanjs/ui/modelRuntime` holds instead of its empty source, when the bootstrap loads only the page runtime. */
+  modelRuntime?: string;
 }
 
 export interface CsrDevSharedHelpers {

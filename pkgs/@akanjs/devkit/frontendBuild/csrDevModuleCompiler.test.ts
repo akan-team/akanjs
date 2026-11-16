@@ -189,6 +189,28 @@ describe("CsrDevModuleCompiler", () => {
     await rm(root, { recursive: true, force: true });
   });
 
+  test("answers the model runtime marker with the context's source, in an installed package and in app code", async () => {
+    const markers = ["node_modules/akanjs/ui/modelRuntime.ts", "pkgs/akanjs/ui/modelRuntime.ts"].map(file);
+    for (const marker of markers) await Bun.write(marker, "export {};\n");
+    await Bun.write(file("apps/demo/lib/st.ts"), 'export const st = "store";\n');
+    const paths = new CsrDevPaths(root);
+    const modelRuntime = `import ${JSON.stringify(file("apps/demo/lib/st.ts"))};\n`;
+    const compiler = new CsrDevModuleCompiler({
+      app: { verbose: () => undefined, logger: { error: (message: string) => logged.push(message) } } as unknown as App,
+      paths,
+      resolver: new CsrDevResolver({ paths, context, entryFiles: [] }),
+      context: { ...context, modelRuntime },
+      outDir: file("out"),
+      routePrefix: "/_akan/registry/",
+    });
+
+    const { modules } = await compiler.compile(markers, new Set());
+
+    for (const marker of markers)
+      expect(modules.find((module) => module.file === marker)?.deps).toEqual([file("apps/demo/lib/st.ts")]);
+    expect(modules.map((module) => module.file)).toContain(file("apps/demo/lib/st.ts"));
+  });
+
   test("a pre-bundled file keeps its own __reExport and __toESM, which Bun leaves in place of its own", async () => {
     const { modules } = await compile("node_modules/prebundled/chunk.mjs");
     const [module] = modules;
