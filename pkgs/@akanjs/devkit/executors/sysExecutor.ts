@@ -9,6 +9,7 @@ import {
   scanScopeRecipes,
   upsertAgentBlock,
 } from "../guideline/agentsIndex";
+import { RuntimeNameTable } from "../quality/runtimeNameTable";
 import { CodegenLock } from "../workspace/codegenLock";
 import { EnvSeed } from "../workspace/envSeed";
 import { ManifestDependencies } from "../workspace/manifestDependencies";
@@ -97,6 +98,14 @@ export class SysExecutor extends Executor {
       ...info.getDatabaseModules(),
       ...info.getServiceModules(),
     ];
+    const scope = `${this.type}s/${this.name}`;
+    const scopesOf = (info: AppInfo | LibInfo, own: string): string[] => [
+      ...[...info.getLibInfos().values()].flatMap((libInfo) => scopesOf(libInfo, `libs/${libInfo.name}`)),
+      own,
+    ];
+    const table = await RuntimeNameTable.readScopes(this.workspace.workspaceRoot, [
+      ...new Set(scopesOf(scanInfo, scope)),
+    ]).catch(() => null);
     const written = (
       await Promise.all([
         this._applyTemplate({ basePath: pieceDir, template: "clientPiece/scope", scanInfo }),
@@ -105,7 +114,11 @@ export class SysExecutor extends Executor {
             basePath: pieceDir,
             template: "clientPiece/module",
             scanInfo,
-            dict: { model, Model: capitalize(model) },
+            dict: {
+              model,
+              Model: capitalize(model),
+              descriptorsFirst: (table?.dependenciesOf(scope, model) ?? []).map(({ module }) => module).join(","),
+            },
           }),
         ),
       ])

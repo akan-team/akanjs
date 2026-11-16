@@ -9,8 +9,10 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
     ? [...scanInfo.getLibInfos().values()].filter((libInfo) => libInfo.file.store.databases.has(dict.model))
     : [];
   const storePath = `../${isDatabase ? "" : "_"}${dict.model}/${dict.model}.store`;
+  //? `store()` reads another module's descriptor while the class is defined: the upload setters, the file module's.
+  const descriptorsFirst = (dict.descriptorsFirst ?? "").split(",").filter(Boolean);
   return `
-${files.has("signal") ? `import "./${dict.model}.fetch";\n` : ""}${libs.map((libInfo) => `import "@libs/${libInfo.name}/lib/__client/${dict.model}.st";\n`).join("")}import { StoreRegistry } from "akanjs/store";
+${descriptorsFirst.map((module) => `import "./${module}.fetch";\n`).join("")}${files.has("signal") ? `import "./${dict.model}.fetch";\n` : ""}${libs.map((libInfo) => `import "@libs/${libInfo.name}/lib/__client/${dict.model}.st";\n`).join("")}import { StoreRegistry } from "akanjs/store";
 import { ${dict.Model}Store } from "${storePath}";
 
 export const ${dict.model} = StoreRegistry.register(${dict.Model}Store);

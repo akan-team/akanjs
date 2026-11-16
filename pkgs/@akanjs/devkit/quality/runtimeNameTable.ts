@@ -91,7 +91,11 @@ export class RuntimeNameTable {
 
   static async read(workspaceRoot: string, scope: string) {
     const scopes = await RuntimeNameTable.#scopesOf(workspaceRoot, scope);
-    if (!scopes) return null;
+    return scopes ? RuntimeNameTable.readScopes(workspaceRoot, scopes) : null;
+  }
+
+  //? `scopes` in load order, each lib before the scope mounting it: what `akan sync` knows before `lib/st.ts` exists.
+  static async readScopes(workspaceRoot: string, scopes: string[]) {
     const layers = await Promise.all(
       scopes.map((layerScope) => RuntimeNameTable.#readLayer(workspaceRoot, layerScope)),
     );
