@@ -94,15 +94,25 @@ export class SsrDevBundler extends DevRegistryBundler {
   // Run first in the tab, before any client module the payload names: the store registry must exist by then.
   async writeEntries(context?: CsrDevContext): Promise<{ files: Record<string, string>; changed: string[] }> {
     await mkdir(this.entryDir, { recursive: true });
-    const file = path.join(this.entryDir, "bootstrap.ts");
     const hasStore = await Bun.file(path.join(this.app.cwdPath, "lib", "st.ts")).exists();
     const scope = context?.modelRuntime === undefined ? "whole" : "page";
-    const owners = context?.routeRuntime?.ownersSource() ?? "";
-    const source = hasStore ? `${StoreBootstrap.source(this.app.name, scope)}${owners}` : "export {};\n";
+    const owners = hasStore ? context?.routeRuntime?.ownersSource() : undefined;
+    const { ownersModule } = DevRouteRuntime;
+    const bootstrap = hasStore
+      ? `${StoreBootstrap.source(this.app.name, scope)}${owners ? `import "./${ownersModule}";\n` : ""}`
+      : "export {};\n";
+    const entryFile = await SsrDevBundler.#writeIfChanged(path.join(this.entryDir, "bootstrap.ts"), bootstrap);
+    const ownersFile = owners
+      ? await SsrDevBundler.#writeIfChanged(path.join(this.entryDir, `${ownersModule}.ts`), owners)
+      : null;
+    const changed = [entryFile, ownersFile].flatMap((written) => (written?.changed ? [written.file] : []));
+    return { files: { [SsrDevBundler.bootstrapKey]: entryFile.file }, changed };
+  }
+
+  static async #writeIfChanged(file: string, source: string): Promise<{ file: string; changed: boolean }> {
     const unchanged = (await Bun.file(file).exists()) && (await Bun.file(file).text()) === source;
     if (!unchanged) await Bun.write(file, source);
-    const entryFile = CsrDevPaths.realpath(file);
-    return { files: { [SsrDevBundler.bootstrapKey]: entryFile }, changed: unchanged ? [] : [entryFile] };
+    return { file: CsrDevPaths.realpath(file), changed: !unchanged };
   }
 
   /** Every `"use client"` entry the app's routes reach, the ones a route build names in its manifest. */

@@ -205,7 +205,28 @@ describe("the dev registry under clientRuntime route", () => {
     expect(await patcher.update([])).toEqual({ kind: "unchanged" });
   });
 
-  test("a production route bundle carries no store owners table, which only the dev bootstrap holds", async () => {
+  test("a store save that adds a key patches the owners table, which takes its own update, and leaves the bootstrap as it was", async () => {
+    const { file, app } = await routeWorkspace();
+    const bundler = new RouteRegistry(app);
+    bundler.roots = [file("ui/Draft.tsx")];
+    await bundler.update([]);
+    const patcher = new CsrDevPatcher(bundler, { resident: true });
+    expect(await patcher.update([])).toEqual({ kind: "unchanged" });
+    const ownersId = "apps/demo/.akan/generated/ssr-dev/storeOwners.ts";
+
+    await write(file("lib/_draft/draft.store.ts"), storeSource("draft", ["draftText", "draftNote"]));
+    const saved = await patcher.update([file("lib/_draft/draft.store.ts")]);
+
+    const update = saved.kind === "update" ? saved.update : null;
+    expect(update?.reload).toBe(false);
+    expect(update?.changedIds).toEqual([ownersId]);
+    const patch = await Bun.file(path.join(bundler.outDir, `patch-${update?.generation}.js`)).text();
+    const owners = patch.slice(patch.indexOf(`"${ownersId}": function`));
+    expect(owners).toContain('"draftNote"');
+    expect(owners).toContain("module.hot.accept()");
+  });
+
+  test("a production route bundle carries no store owners table, which only the dev bootstrap loads", async () => {
     const { root, file, app } = await routeWorkspace();
     const bundler = new SsrDevBundler(app);
     const { files } = await bundler.writeEntries(await bundler.context());
@@ -227,6 +248,10 @@ describe("the dev registry under clientRuntime route", () => {
     expect(bundled).toContain("piece:draft.st");
     expect(bundled).not.toContain("akanjs.store.owners");
     expect(bundled).not.toContain("(apps/demo)");
-    expect(await Bun.file(files[SsrDevBundler.bootstrapKey] ?? "").text()).toContain('"draft (apps/demo)"');
+    const bootstrap = files[SsrDevBundler.bootstrapKey] ?? "";
+    expect(await Bun.file(bootstrap).text()).toContain('import "./storeOwners";');
+    expect(await Bun.file(path.join(path.dirname(bootstrap), "storeOwners.ts")).text()).toContain(
+      '"draft (apps/demo)"',
+    );
   });
 });

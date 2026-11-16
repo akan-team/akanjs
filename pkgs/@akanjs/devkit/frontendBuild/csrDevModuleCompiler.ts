@@ -1,4 +1,5 @@
 import path from "node:path";
+import { SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import type { BunPlugin } from "bun";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
@@ -14,6 +15,7 @@ import type {
   CsrDevSharedHelpers,
 } from "./csrDevTypes";
 import { DevBarrelImports } from "./devBarrelImports";
+import { DevRouteRuntime } from "./devRouteRuntime";
 import { RouteClientBuilder } from "./routeClientBuilder";
 
 interface OutputMetafile {
@@ -54,6 +56,7 @@ export interface CsrDevCompileResult {
 //* modules it changed instead of reloading one scope-hoisted file.
 export class CsrDevModuleCompiler {
   static readonly #storeRoot = /(?:^|\/)lib\/(?:st|__client\/(?:_st|[^/]+\.st))\.ts$/;
+  static readonly #storeOwners = `/.akan/generated/${SSR_DEV_DIRNAME}/${DevRouteRuntime.ownersModule}.ts`;
   static readonly #macroImport = /\b(?:with|assert)\s*\{\s*type\s*:\s*["']macro["']/;
   static readonly #factoryArgument =
     /(?<![\w$.])(?:require|module|exports|__akanImport|\$RefreshReg\$|\$RefreshSig\$)(?![\w$]|\s*:)/;
@@ -439,7 +442,8 @@ export class CsrDevModuleCompiler {
     // StoreRegistry.build merges into one global store instance, so every importer already holds the updated `st`:
     // re-running the store root, or a module's store piece, is the whole update: bubbling past it would only reach the
     // page modules.
-    if (CsrDevModuleCompiler.#storeRoot.test(id)) patched += "\nmodule.hot.accept();";
+    if (CsrDevModuleCompiler.#storeRoot.test(id) || id.endsWith(CsrDevModuleCompiler.#storeOwners))
+      patched += "\nmodule.hot.accept();";
     const shared = CsrDevModuleCompiler.#shareHelpers(patched);
     //? What `import.meta` is in a browser module: a `url` and no `env`, so `import.meta.env` checks (jotai, zustand)
     //? branch as they do in the ESM bundle. On the header line, outside the preamble that modules share.

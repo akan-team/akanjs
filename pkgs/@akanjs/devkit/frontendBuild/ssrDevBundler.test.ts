@@ -66,7 +66,9 @@ describe("SsrDevBundler under clientRuntime route", () => {
     expect(bootstrap).toStartWith(
       `import "@apps/demo/lib/${StoreBootstrap.pageRuntime}";\nimport "@apps/demo/lib/${StoreBootstrap.baseDescriptors}";\n`,
     );
-    expect(bootstrap).toContain('[Symbol.for("akanjs.store.owners")] = {"use":');
+    expect(bootstrap).toEndWith('import "./storeOwners";\n');
+    const owners = path.join(path.dirname(files[SsrDevBundler.bootstrapKey] ?? ""), "storeOwners.ts");
+    expect(await Bun.file(owners).text()).toContain('[Symbol.for("akanjs.store.owners")] = {"use":');
     expect(context.routeRuntime).toBeDefined();
     expect(context.modelRuntime).toBe(
       StoreBootstrap.assembled

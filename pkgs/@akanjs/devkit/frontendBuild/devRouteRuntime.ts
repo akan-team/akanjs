@@ -24,6 +24,8 @@ const workspaceImport = /(\b(?:from|import)\s*)"(@(?:apps|libs)\/[^/"]+\/lib\/(?
 export class DevRouteRuntime {
   //? Read by `StoreFacade` to name the module behind a key the page has not loaded; only a dev bootstrap sets it.
   static readonly ownersKey = "akanjs.store.owners";
+  //? Not in the bootstrap: a store save changes the table, and a change reaching the bootstrap reloads the tab.
+  static readonly ownersModule = "storeOwners";
   readonly #workspaceRoot: string;
   readonly #runtime: RouteRuntime;
   readonly scopes: string[];
