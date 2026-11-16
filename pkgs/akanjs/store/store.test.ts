@@ -1864,6 +1864,31 @@ describe("StoreInstance with a root added later", () => {
     expect(instance.do.setRepeatedValue).toBe(setRepeatedValue);
   });
 
+  test("lets a later root's static silent quiet an action an earlier root built from the same method", async () => {
+    setupEnv();
+    class LoudLibStore extends store("quietedStore" as const, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+      async failThing() {
+        throw new Error("quietedStore.error.failed");
+      }
+    }
+    StoreRegistry.register(LoudLibStore);
+    class QuietAppStore extends store("quietedStore" as const, () => ({}), LoudLibStore) {
+      static silent = ["failThing"] satisfies (keyof QuietAppStore)[];
+    }
+    StoreRegistry.register(QuietAppStore);
+    const instance = new StoreInstance(makeRoot("loudLibRoot", LoudLibStore));
+    const { failThing } = instance.do;
+
+    instance.addStore(makeRoot("quietAppRoot", QuietAppStore));
+
+    await expect(instance.do.failThing()).rejects.toThrow("quietedStore.error.failed");
+    expect(instance.get().messages).toEqual([]);
+    expect(instance.do.failThing).toBe(failThing);
+  });
+
   test("replaces st.do.<action> when a later root brings a different method under its name", async () => {
     setupEnv();
     class ReplacedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {

@@ -393,7 +393,6 @@ export class StoreInstance {
     }
     for (const k of Object.keys(actions)) {
       if (StoreFacade.isBuiltFrom(this.do, k, actions[k])) continue;
-      const silent = this.#actionOwners.get(k)?.silent === true;
       const dispatch = async (...args: unknown[]) => {
         Logger.verbose(`${k} action loading...`);
         const start = Date.now();
@@ -402,6 +401,7 @@ export class StoreInstance {
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          const silent = this.#actionOwners.get(k)?.silent === true;
           if (silent || AbortSignals.isAbortOf(error, args)) Logger.verbose(`${k} action failed silently: ${message}`);
           else {
             this.#showActionErrorMessage(k, error);
