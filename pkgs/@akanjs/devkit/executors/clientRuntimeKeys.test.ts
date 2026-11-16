@@ -1,12 +1,14 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { mkdir, readdir, realpath, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { type RuntimeFamily, RuntimeNameTable, runtimeFamilies } from "../quality/runtimeNameTable";
 import { createTempApp, tempRoots, writeJson, writeText } from "../test/testHelpers";
 
 const trackRoot = tempRoots();
 const akanjsRoot = path.resolve(import.meta.dir, "../../../akanjs");
 const recordedPath = path.join(import.meta.dir, "clientRuntimeKeys.fixture.json");
+const baseModules = ["agent", "base"];
 const howToRecord =
   "The keys an app's whole client runtime answers no longer match clientRuntimeKeys.fixture.json. If the change is " +
   "intended, record them with AKAN_RECORD_CLIENT_RUNTIME_KEYS=1 bun test --isolate ./executors/clientRuntimeKeys.test.ts " +
@@ -232,6 +234,16 @@ export class DemoStore extends store("demo" as const, () => ({ label: kitLabel }
 `,
 };
 
+const kitModuleNamed = (name: string, Name: string) =>
+  Object.fromEntries(
+    Object.entries(kitFiles)
+      .filter(([file]) => file.startsWith("lib/item/"))
+      .map(([file, content]) => [
+        file.replaceAll("item", name),
+        content.replaceAll("item", name).replaceAll("Item", Name),
+      ]),
+  );
+
 const keysScript = `
 import { FetchClient } from "akanjs/fetch";
 const { fetch, sig } = await import("./apps/demo/lib/useClient.ts");
@@ -252,6 +264,25 @@ console.log(JSON.stringify({
 }));
 `;
 
+const moduleKeysScript = `
+import { FetchClient } from "akanjs/fetch";
+import { StoreInstance, StoreRegistry } from "akanjs/store";
+const { fetch, sig } = await import("./apps/demo/lib/useClient.ts");
+await import("./apps/demo/lib/st.ts");
+const modules = {};
+const add = (refName, family, keys) => ((modules[refName] ??= {})[family] ??= []).push(...keys);
+for (const [refName, store] of StoreRegistry.stores) {
+  const own = new StoreInstance(StoreRegistry.merge("own", store));
+  for (const family of ["do", "use", "slice"]) add(refName, "st." + family, Object.keys(own[family]));
+}
+for (const [refName, signal] of Object.entries(fetch.serializedSignal))
+  add(refName, "fetch", FetchClient.claimsOf(refName, signal).handlers.map(({ key }) => key));
+for (const [key, { refName }] of Object.entries(fetch.slice)) add(refName, "fetch.slice", [key]);
+for (const refName of Object.keys(fetch.serializedSignal)) add(refName, "fetch.serializedSignal", [refName]);
+for (const refName of Object.keys(sig)) add(refName, "sig", [refName]);
+console.log(JSON.stringify(modules));
+`;
+
 const browserScript = `
 Object.assign(globalThis, { window: globalThis, location: new URL("http://localhost:4200/") });
 const { FetchClient } = await import("akanjs/fetch");
@@ -266,14 +297,7 @@ console.log(JSON.stringify({
 `;
 
 const pageModuleFiles: Record<string, string> = {
-  ...Object.fromEntries(
-    Object.entries(kitFiles)
-      .filter(([file]) => file.startsWith("lib/item/"))
-      .map(([file, content]) => [
-        file.replaceAll("item", "page"),
-        content.replaceAll("item", "page").replaceAll("Item", "Page"),
-      ]),
-  ),
+  ...kitModuleNamed("page", "Page"),
   "lib/page/Page.Unit.tsx": "export const Card = () => null;\n",
 };
 
@@ -282,8 +306,15 @@ const { Page, st, usePage } = await import("./apps/site/client.ts");
 console.log(JSON.stringify({ unit: typeof Page.Unit.Card, store: typeof st.do.refreshPageCount, usePage: typeof usePage }));
 `;
 
-const writeWorkspace = async ({ app = "demo", lib = "kit", libFiles = kitFiles, appFiles = demoFiles } = {}) => {
-  const temp = trackRoot(await createTempApp(app, await realpath(os.tmpdir())));
+const writeWorkspace = async ({
+  app = "demo",
+  lib = "kit",
+  libFiles = { ...kitFiles, ...kitModuleNamed("tag", "Tag") },
+  appFiles = demoFiles,
+  kept = false,
+} = {}) => {
+  const created = await createTempApp(app, await realpath(os.tmpdir()));
+  const temp = kept ? created : trackRoot(created);
   const { root } = temp;
   const libDir = path.join(root, "libs", lib);
   await mkdir(path.join(root, "node_modules"), { recursive: true });
@@ -302,6 +333,15 @@ const writeWorkspace = async ({ app = "demo", lib = "kit", libFiles = kitFiles, 
   await temp.app.scan();
   return temp;
 };
+
+let demoRoot: Promise<string> | null = null;
+const demoWorkspace = () => {
+  demoRoot ??= writeWorkspace({ kept: true }).then(({ root }) => root);
+  return demoRoot;
+};
+afterAll(async () => {
+  if (demoRoot) await rm(await demoRoot, { recursive: true, force: true });
+});
 
 //? The scan caches each app and lib by name for the process, so a second `demo` or `kit` would reuse the first's.
 const writePageWorkspace = async () => {
@@ -344,7 +384,7 @@ const evaluate = async (root: string, script: string, appName = "demo") => {
 
 describe("an app's whole client runtime", () => {
   test("answers the same store, fetch and signal keys as recorded, and in a browser shares the tab's one fetch client with its lib", async () => {
-    const { root } = await writeWorkspace();
+    const root = await demoWorkspace();
     const keys = await evaluate(root, keysScript);
     if (process.env.AKAN_RECORD_CLIENT_RUNTIME_KEYS === "1")
       await Bun.write(recordedPath, `${JSON.stringify(keys, null, 2)}\n`);
@@ -352,13 +392,65 @@ describe("an app's whole client runtime", () => {
     expect(await evaluate(root, browserScript)).toEqual({
       appIsTab: true,
       libIsTab: true,
-      "fetch.slice": ["item", "itemInPublic", "itemWithNote"],
+      "fetch.slice": ["item", "itemInPublic", "itemWithNote", "tag", "tagInPublic"],
     });
   }, 120_000);
 
   test("loads from the client barrel when a database module is named page, its UI and store included", async () => {
     const loaded = await evaluate(await writePageWorkspace(), clientBarrelScript, "site");
     expect(loaded).toEqual({ unit: "function", store: "function", usePage: "function" });
+  }, 120_000);
+});
+
+describe("the client runtime name table", () => {
+  test("reads from source every name the whole runtime answers, each owned by the module whose own runtime answers it", async () => {
+    const root = await demoWorkspace();
+    const table = await RuntimeNameTable.read(root, "apps/demo");
+    if (!table) throw new Error("the demo app has no generated client runtime");
+    const recorded = (await Bun.file(recordedPath).json()) as Record<string, string[]>;
+    expect(Object.fromEntries(runtimeFamilies.map((family) => [family, table.keysOf(family)]))).toEqual(
+      Object.fromEntries(
+        runtimeFamilies.map((family) => [family, recorded[family === "fetch" ? "FetchClient.claimsOf" : family]]),
+      ),
+    );
+    const modules = (await evaluate(root, moduleKeysScript)) as Record<
+      string,
+      Partial<Record<RuntimeFamily, string[]>>
+    >;
+    const answeredByBase = (family: RuntimeFamily, key: string) =>
+      baseModules.some((module) => modules[module]?.[family]?.includes(key));
+    const misses = runtimeFamilies.flatMap((family) => [
+      ...table.keysOf(family).flatMap((key) => {
+        const entry = table.lookup(family, key);
+        return [
+          ...(entry?.base && !answeredByBase(family, key)
+            ? [`${family}.${key} is a base name no base runtime has`]
+            : []),
+          ...(entry?.owners ?? [])
+            .filter(({ module }) => !modules[module]?.[family]?.includes(key))
+            .map(({ scope, module }) => `${family}.${key} is owned by ${scope}/${module}, whose own runtime lacks it`),
+        ];
+      }),
+      ...Object.entries(modules).flatMap(([refName, keys]) =>
+        (keys[family] ?? [])
+          .filter((key) => {
+            const entry = table.lookup(family, key);
+            return baseModules.includes(refName)
+              ? !entry?.base
+              : !entry?.owners.some(({ module }) => module === refName);
+          })
+          .map((key) => `${family}.${key} is answered by ${refName}'s own runtime, which does not own it`),
+      ),
+    ]);
+    expect(misses).toEqual([]);
+    const owners = runtimeFamilies.flatMap((family) =>
+      table.keysOf(family).flatMap((key) => table.lookup(family, key)?.owners ?? []),
+    );
+    expect([...new Set(owners.map(({ scope, module }) => `${scope}/${module}`))].sort()).toEqual([
+      "apps/demo/demo",
+      "apps/demo/item",
+      "libs/kit/tag",
+    ]);
   }, 120_000);
 });
 
