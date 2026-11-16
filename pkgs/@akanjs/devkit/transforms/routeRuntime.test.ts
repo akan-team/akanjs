@@ -51,7 +51,7 @@ export const Card = () => {
     ]);
     expect(result?.source.split("\n").slice(0, 2)).toEqual([
       '"use client";',
-      'import "@apps/demo/lib/__client/memo.fetch"; import "@apps/demo/lib/__client/memo.st"; import "@libs/kit/lib/__client/util.st"; import { fetch, st } from "@apps/demo/lib/usePage"; import { Memo } from "@apps/demo/client";',
+      'import "@apps/demo/lib/__client/memo.fetch"; import "@apps/demo/lib/__client/memo.st"; import "@libs/kit/lib/__client/util.st"; import { fetch } from "@apps/demo/lib/usePage"; import { st } from "akanjs/store"; import { Memo } from "@apps/demo/client";',
     ]);
     expect(result?.source.split("\n").length).toBe(source.split("\n").length);
   });
@@ -85,14 +85,16 @@ export const count = (value: cnst.Memo) => [fetch.memoNote(), value];
       "libs/kit/lib/__client/tag.st",
     ]);
     expect(result?.source.startsWith('import "@apps/demo/lib/__client/note.fetch";')).toBe(true);
-    expect(result?.source).toContain('import { fetch, st } from "@libs/kit/lib/usePage";');
+    expect(result?.source).toContain(
+      'import { fetch } from "@libs/kit/lib/usePage"; import { st } from "akanjs/store";',
+    );
   });
 
-  test("points a whole-runtime file import at the page runtime", () => {
+  test("points a whole-runtime file import at the page runtime and the tab's store", () => {
     const result = transform(
       'import { st } from "../lib/st";\nimport { fetch } from "@apps/demo/lib/useClient";\nexport const read = () => [st.use.draft(), fetch.memoNote()];\n',
     );
-    expect(result?.source).toContain('import { st } from "@apps/demo/lib/usePage";');
+    expect(result?.source).toContain('import { st } from "akanjs/store";');
     expect(result?.source).toContain('import { fetch } from "@apps/demo/lib/usePage";');
     expect(result?.pieces).toEqual(["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/memo.st"]);
   });

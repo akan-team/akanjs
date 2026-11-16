@@ -5,10 +5,8 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   return `
 import { makePageProto, registerClientRuntime } from "akanjs/client";
 import { FetchClient } from "akanjs/fetch";
-import { st as pageSt } from "akanjs/store";
 ${isApp ? `import { getAllDictionary } from "./dict" with { type: "macro" };\n` : ""}import type * as dict from "./dict";
 import type * as signal from "./sig";
-import type { st as wholeSt } from "./st";
 
 ${
   isApp
@@ -22,7 +20,5 @@ const fetchProto = FetchClient.build<typeof signal>({}, {});
 export const runtime = registerClientRuntime({ ...pageProto, ...fetchProto }, { scope: ${JSON.stringify(scanInfo?.type ?? "lib")} });
 
 export const { msg, Err, usePage, sig, fetch } = runtime;
-//? The tab's one store, typed as this scope's whole store: a key answers once the module owning it has loaded.
-export const st = pageSt as unknown as typeof wholeSt;
 `;
 }

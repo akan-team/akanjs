@@ -24,6 +24,8 @@ const macroAttribute = /with\s*\{\s*type\s*:\s*["']macro["']\s*\}/;
 const storeFile = /^((?:apps|libs)\/[^/]+)\/lib\/_?[^/]+\/([^/]+)\.store\.ts$/;
 const wholeFile = /^((?:apps|libs)\/[^/]+)\/lib\/(useClient|st)\.ts$/;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
+//? The tab's one store: a scope's `lib/st.ts` exports this same object, and a key answers once its module has loaded.
+const tabStore = '"akanjs/store"';
 
 //* What a client module imports under `clientRuntime: "route"`: the page runtime's handles plus the pieces of the
 //* modules it names, or the app's whole runtime assembled from the same pieces.
@@ -149,12 +151,19 @@ export class RouteRuntime {
     const pageRuntime = JSON.stringify(`@${target.scope}/lib/usePage`);
     const specifier = statement.moduleSpecifier;
     if (target.kind === "useClient" || target.kind === "st")
-      return [{ start: specifier.getStart(sourceFile), end: specifier.end, text: pageRuntime }];
+      return [
+        {
+          start: specifier.getStart(sourceFile),
+          end: specifier.end,
+          text: target.kind === "st" ? tabStore : pageRuntime,
+        },
+      ];
     if (target.kind !== "client" || clause.name || !clause.namedBindings || !ts.isNamedImports(clause.namedBindings))
       return [];
     const { elements } = clause.namedBindings;
-    const isHandle = (element: ts.ImportSpecifier) =>
-      !element.isTypeOnly && handleNames.has((element.propertyName ?? element.name).text);
+    const handleOf = (element: ts.ImportSpecifier) =>
+      element.isTypeOnly ? "" : (element.propertyName ?? element.name).text;
+    const isHandle = (element: ts.ImportSpecifier) => handleNames.has(handleOf(element));
     const [handles, rest] = [elements.filter(isHandle), elements.filter((element) => !isHandle(element))];
     if (!handles.length) return [];
     const namesOf = (list: ts.ImportSpecifier[]) => list.map((element) => element.getText(sourceFile)).join(", ");
@@ -162,8 +171,13 @@ export class RouteRuntime {
     const restNames = typesOnly
       ? rest.map((element) => element.getText(sourceFile).replace(/^type\s+/, "")).join(", ")
       : namesOf(rest);
+    const [stores, descriptors] = [
+      handles.filter((element) => handleOf(element) === "st"),
+      handles.filter((element) => handleOf(element) !== "st"),
+    ];
     const lines = [
-      `import { ${namesOf(handles)} } from ${pageRuntime};`,
+      ...(descriptors.length ? [`import { ${namesOf(descriptors)} } from ${pageRuntime};`] : []),
+      ...(stores.length ? [`import { ${namesOf(stores)} } from ${tabStore};`] : []),
       ...(rest.length
         ? [`import ${typesOnly ? "type " : ""}{ ${restNames} } from ${specifier.getText(sourceFile)};`]
         : []),
