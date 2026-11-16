@@ -881,6 +881,25 @@ describe("SsrFromRscRenderer head", () => {
   });
 });
 
+describe("SsrFromRscRenderer output cut by bytes", () => {
+  test("a character React's 4 KB output buffer cuts in two arrives whole", async () => {
+    const text = "가".repeat(1300);
+    for (let pad = 0; pad < 3; pad++) {
+      const head = [["$", "meta", "pad", { name: "pad", content: "a".repeat(300 + pad) }]];
+      const flight = `0:["$","html",null,{"children":[["$","head","head",{"children":${JSON.stringify(head)}}],["$","body","body",{"children":"${text}"}]]}]\n`;
+      const stream = await new SsrFromRscRenderer().render({
+        rscStream: streamOfChunks([encoder.encode(flight)]),
+        ssrManifest: { moduleLoading: null, moduleMap: {} },
+        bootstrapModules: ["/_akan/client/rsc.js"],
+      });
+      const html = await new Response(stream).text();
+
+      expect(html).toContain(`<body>${text}`);
+      expect(html).not.toContain("\uFFFD");
+    }
+  });
+});
+
 describe("SsrFromRscRenderer chunk preloads", () => {
   const renderHeadWithChunkPreloads = async (headChildren: unknown[]): Promise<string> => {
     const plan = new ModulePreloadPlan(
