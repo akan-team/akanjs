@@ -2,6 +2,7 @@ import type { AppInfo, LibInfo } from "akanjs";
 
 const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
 
+//? As a macro module this is evaluated once per bundler thread, so `getSerializedSignalOf` only picks from what it built.
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [key: string]: string } = {}) {
   if (!scanInfo) return null;
   const databaseModules = [...scanInfo.database.entries()]
@@ -12,14 +13,13 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
     .map(([module]) => module);
   const libs = scanInfo.getLibs();
 
-  const inheritedNames = libs.length === 0 ? ["base"] : libs;
-  const signalNames = [...inheritedNames, ...databaseModules, ...serviceModules];
+  const signalNames = [...(libs.length === 0 ? ["base"] : libs), ...databaseModules, ...serviceModules];
   const serverSignalClass = (module: string) =>
     `export class ${capitalize(module)} extends serverSignal(${module}Sig.${capitalize(module)}Endpoint, ${module}Sig.${capitalize(module)}Internal) {}`;
 
   return `
 import { FetchClient, type FetchClientType } from "akanjs/fetch";
-import { SignalRegistry, serverSignal${libs.length === 0 ? ", fetch as base" : ""} } from "akanjs/signal";
+import { SignalRegistry, serverSignal, fetch as ${libs.length === 0 ? "base" : "baseFetch"} } from "akanjs/signal";
 ${libs.map((lib) => `import { fetch as ${lib} } from "@libs/${lib}/lib/sig";`).join("\n")}
 
 ${databaseModules.map((module) => `import * as ${module}Sig from "./${module}/${module}.signal";`).join("\n")}
@@ -40,17 +40,10 @@ export const fetch = FetchClient.from(...fetchSignals) as unknown as Fetch;
 
 export const getSerializedSignal = () => fetch.ownSerializedSignal
 
-let signalOwners: Map<string, string> | undefined;
-export const getSerializedSignalOf = (name: string) => {
+export const getSerializedSignalOf = (name: string): Fetch["ownSerializedSignal"] => {
   const serializedSignal = fetch.ownSerializedSignal;
-  if (!signalOwners) {
-    signalOwners = new Map<string, string>([${[...databaseModules, ...serviceModules].map((module) => `["${module}", "${module}"]`).join(", ")}]);
-    for (const [owner, signal] of Object.entries({ ${inheritedNames.join(", ")} }))
-      for (const refName of Object.keys(signal.ownSerializedSignal))
-        if (!signalOwners.has(refName)) signalOwners.set(refName, owner);
-  }
-  const owners = signalOwners;
-  return Object.fromEntries(Object.entries(serializedSignal).filter(([refName]) => owners.get(refName) === name));
+  const refNames = name === "base" ? Object.keys(${libs.length === 0 ? "base" : "baseFetch"}.ownSerializedSignal) : [name];
+  return Object.fromEntries(refNames.filter((refName) => refName in serializedSignal).map((refName) => [refName, serializedSignal[refName]]));
 };
 `;
 }

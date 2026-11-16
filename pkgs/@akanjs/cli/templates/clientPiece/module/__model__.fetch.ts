@@ -1,10 +1,14 @@
 import type { AppInfo, LibInfo } from "akanjs";
 
+const hasSignal = (scanInfo: AppInfo | LibInfo, model: string): boolean =>
+  !!(scanInfo.database.get(model) ?? scanInfo.service.get(model))?.has("signal") ||
+  [...scanInfo.getLibInfos().values()].some((libInfo) => hasSignal(libInfo, model));
+
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [key: string]: string } = {}) {
-  const files = scanInfo?.database.get(dict.model) ?? scanInfo?.service.get(dict.model);
-  if (!files?.has("signal")) return null;
+  if (!scanInfo || !hasSignal(scanInfo, dict.model)) return null;
+  const libs = [...scanInfo.getLibInfos().values()].filter((libInfo) => hasSignal(libInfo, dict.model));
   return `
-import { FetchClient } from "akanjs/fetch";
+${libs.map((libInfo) => `import "@libs/${libInfo.name}/lib/__client/${dict.model}.fetch";\n`).join("")}import { FetchClient } from "akanjs/fetch";
 import * as cnst from "../cnst";
 import { fetch, sig } from "../usePage";
 import { getSerializedSignalOf } from "../sig" with { type: "macro" };

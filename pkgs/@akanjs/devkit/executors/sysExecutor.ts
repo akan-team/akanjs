@@ -92,10 +92,15 @@ export class SysExecutor extends Executor {
   }
   async #syncClientPieces(scanInfo: AppInfo | LibInfo): Promise<FileContent[]> {
     const pieceDir = "lib/__client";
+    const modulesOf = (info: AppInfo | LibInfo): string[] => [
+      ...[...info.getLibInfos().values()].flatMap(modulesOf),
+      ...info.getDatabaseModules(),
+      ...info.getServiceModules(),
+    ];
     const written = (
       await Promise.all([
-        this._applyTemplate({ basePath: pieceDir, template: "clientPiece/_base.fetch.ts", scanInfo }),
-        ...[...scanInfo.getDatabaseModules(), ...scanInfo.getServiceModules()].map((model) =>
+        this._applyTemplate({ basePath: pieceDir, template: "clientPiece/scope", scanInfo }),
+        ...[...new Set(modulesOf(scanInfo))].map((model) =>
           this._applyTemplate({
             basePath: pieceDir,
             template: "clientPiece/module",
