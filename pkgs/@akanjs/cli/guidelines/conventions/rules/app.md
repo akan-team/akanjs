@@ -57,8 +57,8 @@ each plugin's header and diagnostic carry its full reasoning.
 - `apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md` carry a generated `## Recipes In Scope` block between the
   `akan:agent` markers — never hand-edit it (outside the markers is yours); `akan lint` fails when it is stale.
 - `plugin/<name>.plugin.ts` declares an Akan plugin. No `apps/*/base` or `libs/*/base` — use `common/`.
-- `lib/` root holds only `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`,
-  `useServer.ts` — no hand-written file or test.
+- `lib/` root holds only `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `page.ts`, `sig.ts`, `srv.ts`, `st.ts`,
+  `useClient.ts`, `useServer.ts` — no hand-written file or test.
 - Modules are `lib/<model>`, `lib/_<service>`, `lib/__scalar/<scalar>`; their UI files are
   `<Model>.Template|Unit|Util|View|Zone.tsx`, `<Service>.Util|Zone.tsx`, `<Scalar>.Template|Unit.tsx`. A test is
   named after the one file it covers, so `<model>.<topic>.signal.test.ts` is refused like `<model>.<topic>.signal.ts`.

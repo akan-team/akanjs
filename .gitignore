@@ -98,6 +98,7 @@ apps/*/lib/db.ts
 apps/*/lib/srv.ts
 apps/*/lib/st.ts
 apps/*/lib/sig.ts
+apps/*/lib/page.ts
 apps/*/lib/useClient.ts
 apps/*/lib/useServer.ts
 apps/*/ui/index.ts
@@ -116,6 +117,7 @@ libs/*/lib/db.ts
 libs/*/lib/srv.ts
 libs/*/lib/st.ts
 libs/*/lib/sig.ts
+libs/*/lib/page.ts
 libs/*/lib/useClient.ts
 libs/*/lib/useServer.ts
 libs/*/ui/index.ts

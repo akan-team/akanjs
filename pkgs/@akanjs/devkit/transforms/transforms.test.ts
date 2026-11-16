@@ -448,6 +448,69 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     );
   });
 
+  test("gives a module importing only usePage, msg or Err from a client barrel lib/page, not the descriptors and stores", async () => {
+    const root = await makeTempRoot();
+    await write(
+      path.join(root, "apps/demo/client.ts"),
+      [
+        'export * as cnst from "./lib/cnst";',
+        'export { msg, Err, usePage } from "./lib/page";',
+        'export { fetch, sig } from "./lib/useClient";',
+        'export { st, RootStore } from "./lib/st";',
+        'export { Memo } from "./lib/memo";',
+        "",
+      ].join("\n"),
+    );
+    await write(path.join(root, "apps/demo/lib/cnst.ts"), "export const Sample = 1;\n");
+    await write(path.join(root, "apps/demo/lib/page.ts"), "export const { msg, Err, usePage, fetch, sig } = {};\n");
+    await write(
+      path.join(root, "apps/demo/lib/useClient.ts"),
+      [
+        'import { fetch as pageFetch, sig as pageSig } from "./page";',
+        "export const fetch = pageFetch;",
+        "export const sig = pageSig;",
+        'export { Err, msg, usePage } from "./page";',
+        "",
+      ].join("\n"),
+    );
+    await write(path.join(root, "apps/demo/lib/st.ts"), "export class RootStore {}\nexport const st = {};\n");
+    await write(path.join(root, "apps/demo/lib/memo/index.ts"), "export const Memo = {};\n");
+    const analyzer = new BarrelAnalyzer({
+      resolvePackage: await createTsconfigPackageResolver({
+        workspace: { workspaceRoot: root },
+        getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"] } } }),
+      } as never),
+    });
+    const rewrite = async (source: string) => await rewriteBarrelImports(source, ["@apps/demo/client"], analyzer);
+
+    expect(await rewrite('import { usePage, msg as toast, Err, type cnst } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/page";',
+        'import { type cnst } from "@apps/demo/client";',
+        'import { usePage, msg as toast, Err } from "@apps/demo/lib/page";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { fetch, usePage } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/useClient";',
+        'import "@apps/demo/lib/st";',
+        'import { fetch } from "@apps/demo/lib/useClient";',
+        'import { usePage } from "@apps/demo/lib/page";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { Memo, usePage } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/useClient";',
+        'import "@apps/demo/lib/st";',
+        'import { Memo } from "@apps/demo/lib/memo";',
+        'import { usePage } from "@apps/demo/lib/page";',
+        "",
+      ].join("\n"),
+    );
+  });
+
   test("keeps each statement's line count and writes the specifier specifierOf gives a target", async () => {
     const analyzer = fakeAnalyzer([
       ["A", { subpath: "@scope/pkg/leaf", originalName: "A" }],

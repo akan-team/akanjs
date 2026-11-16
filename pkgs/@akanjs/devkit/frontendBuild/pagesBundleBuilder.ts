@@ -171,9 +171,11 @@ export class PagesBundleBuilder {
     return {
       name: "akan-server-use-client-fetch",
       setup(build) {
-        build.onLoad({ filter: /[/\\]lib[/\\]useClient\.(ts|tsx|js|jsx)$/ }, async (args) => {
+        build.onLoad({ filter: /[/\\]lib[/\\](?:useClient|page)\.(ts|tsx|js|jsx)$/ }, async (args) => {
           const source = await Bun.file(args.path).text();
-          const transformed = PagesBundleBuilder.transformServerUseClientFetchSource(source);
+          const transformed = path.basename(args.path).startsWith("page.")
+            ? PagesBundleBuilder.transformServerPageFetchSource(source)
+            : PagesBundleBuilder.transformServerUseClientFetchSource(source);
           if (transformed === source) return undefined;
           return { contents: transformed, loader: loaderFor(args.path) };
         });
@@ -200,6 +202,16 @@ export class PagesBundleBuilder {
         end: fetchProtoEnd.end,
         text: "const fetchProto = FetchClient.build<typeof signal>(cnst, serverFetch.serializedSignal, { base: serverFetch });",
       });
+    const macroCallAt =
+      fetchProtoAt === -1 && importAt !== -1
+        ? PagesBundleBuilder.#indexOfTokens(tokens, PagesBundleBuilder.#macroCallTokens)
+        : -1;
+    if (macroCallAt !== -1)
+      edits.push({
+        start: tokens[macroCallAt].start,
+        end: tokens[macroCallAt + PagesBundleBuilder.#macroCallTokens.length - 1].end,
+        text: "serverFetch.serializedSignal",
+      });
     let transformed = source;
     for (const { start, end, text } of edits.sort((a, b) => b.start - a.start))
       transformed = transformed.slice(0, start) + text + transformed.slice(end);
@@ -222,6 +234,41 @@ export class PagesBundleBuilder {
     ";",
   ] as const;
   static readonly #fetchProtoTokens = ["const", "fetchProto", "=", "FetchClient", ".", "build", "<"] as const;
+  static readonly #macroCallTokens = ["getSerializedSignal", "(", ")"] as const;
+  static readonly #pageFetchProtoTokens = [
+    "const",
+    "fetchProto",
+    "=",
+    "FetchClient",
+    ".",
+    "build",
+    "<",
+    "typeof",
+    "signal",
+    ">",
+    "(",
+    "{",
+    "}",
+    ",",
+    "{",
+    "}",
+    ")",
+    ";",
+  ] as const;
+
+  static transformServerPageFetchSource(source: string): string {
+    if (!source.includes("FetchClient.build")) return source;
+    const tokens = PagesBundleBuilder.#tokenize(source);
+    const at = PagesBundleBuilder.#indexOfTokens(tokens, PagesBundleBuilder.#pageFetchProtoTokens);
+    if (at === -1) return source;
+    const end = tokens[at + PagesBundleBuilder.#pageFetchProtoTokens.length - 1].end;
+    return [
+      `import { fetch as serverFetch } from "./sig";\n`,
+      source.slice(0, tokens[at].start),
+      "const fetchProto = FetchClient.build<typeof signal>({}, {}, { base: serverFetch });",
+      source.slice(end),
+    ].join("");
+  }
 
   //? The scanner, not the parser: parsing recurses per nesting level and overflows the stack on a deep `{` run.
   static #tokenize(source: string): TextSpan[] {

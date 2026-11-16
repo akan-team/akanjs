@@ -35,8 +35,8 @@ module. Collection-level helpers go `static` on the full model.
 - A module is for data that must be **stored**. Static page content is a page.
 - Keep business decisions in constant, document and service; API exposure in signal; client coordination in
   store; rendering in UI.
-- Never hand-edit a generated registry file — `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`,
-  `st.ts`, `useClient.ts`, `useServer.ts`, and every `index.ts` barrel. They are scanner output; run
+- Never hand-edit a generated registry file — `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `page.ts`, `sig.ts`,
+  `srv.ts`, `st.ts`, `useClient.ts`, `useServer.ts`, and every `index.ts` barrel. They are scanner output; run
   `akan sync <app>` or `repair_generated`.
 - Read the module's `<module>.abstract.md` before changing it, and update it when an invariant or workflow
   changes — not for formatting.

@@ -79,6 +79,7 @@ local.properties
 */*/lib/srv.ts
 */*/lib/st.ts
 */*/lib/sig.ts
+*/*/lib/page.ts
 */*/lib/useClient.ts
 */*/lib/useServer.ts
 */*/lib/*/index.ts*

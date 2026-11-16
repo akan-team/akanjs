@@ -76,6 +76,7 @@ export const libFacetRootAllowedFiles = new Set([
   "db.ts",
   "dict.ts",
   "option.ts",
+  "page.ts",
   "sig.ts",
   "srv.ts",
   "st.ts",
