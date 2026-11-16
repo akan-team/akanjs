@@ -775,7 +775,7 @@ export declare class StoreInstance {
     get derivedKeys(): ReadonlySet<string>;
     get generatedSetters(): ReadonlySet<string>;
     constructor(store?: RootStoreCls);
-    addStore(store: RootStoreCls): this;
+    addStore(store: RootStoreCls, outgrown?: RootStoreCls): this;
     flushDrafts: () => void;
 }
 

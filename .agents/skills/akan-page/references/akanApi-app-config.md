@@ -27,7 +27,7 @@ externalLibs?: string[];
 trustedDependencies?: string[];
 barrelImports?: string[];
 optimizeImports?: string[];
-/** `"route"` loads a model's descriptors and store in the browser only on a route whose client code imports `fetch` or `st`, or renders an `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on every page. */
+/** `"route"` loads a model's descriptors and store in the browser only on a route whose client code names that model (`st.use.memoList()`, `fetch.memo(id)`), and every model's where it picks a name at run time or renders an `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on every page. */
 clientRuntime?: "all" | "route";
 images?: DeepPartial<AkanImageConfig>;
 i18n?: DeepPartial<AkanI18nConfig>;
