@@ -31,7 +31,7 @@ by `akan agent install`; edit anything outside the markers freely.
   `pkgs/@akanjs/devkit/codeAgent/skills/`. Edit those sources, then run `akan agent install`.
 
 <!-- akan:agent:start -->
-<!-- akan:agent:version 3.1.1 -->
+<!-- akan:agent:version 3.2.0 -->
 
 ## Workspace
 
@@ -132,17 +132,12 @@ contract. Path rules name their checks the same way.
 
 ## Code Style
 
-- `const` arrow functions over `function`; `interface` for shapes, `type` for unions; no non-null assertions
-  (`as unknown as T`, never `as any`); `#private`, but `private` in `*.{constant,document,service,store}.ts`.
-- One class per file, named after it; TypeScript files are camelCase, component and convention files excepted.
-- Identifiers, endpoint names and logs are English; everything a user reads goes through `l("model.field")` or
-  `l.trans({ en, ko })`, and dictionary entries are `[en, ko]` pairs.
-- Comment only what the code cannot say (`akan verify` flags each new one as `akan.comment.added`, a
-  `// TODO: <issue url>` aside) — a vendor quirk, an infrastructure constraint, security reasoning, a domain field's
-  meaning, a state transition, a rejected alternative. Never restate code, label a section or add JSDoc; retire a
-  symbol with `/** @deprecated <what instead> */`.
-- Server rendering is the default: `"use client"` only for a hook, an event handler, the store, a browser global or
-  a client-only package.
+- `const` arrows, `interface` for shapes, no non-null assertions or `as any`, `#private` (but `private` in
+  `*.{constant,document,service,store}.ts`), one class per file [ts].
+- Identifiers and logs are English; what a user reads goes through `l("model.field")` or `l.trans({ en, ko })` [ts].
+- Comment only what the code cannot say — a vendor quirk, an infrastructure constraint, security reasoning, a domain
+  field's meaning, a state transition, a rejected alternative (`akan.comment.added`) [ts].
+- `"use client"` only for a hook, an event handler, the store, a browser global or a client-only package [ssr].
 
 ## Where Code Goes
 

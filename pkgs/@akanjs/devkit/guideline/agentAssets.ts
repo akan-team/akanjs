@@ -31,7 +31,15 @@ export class AgentAssets {
     "akan-scaffold": ["workspaceRecipes"],
     "akan-module": ["moduleOverview", "modelConstant", "modelDictionary", "fieldRule"],
     "akan-scalar": ["scalarModule", "scalarConstant", "scalarDictionary"],
-    "akan-service": ["modelService", "modelSignal", "modelDocument", "akanApi"],
+    "akan-service": [
+      "modelService",
+      "modelSignal",
+      "modelDocument",
+      "akanApi#imports",
+      "akanApi#services-and-adapters",
+      "akanApi#endpoints",
+      "akanApi#dictionaries",
+    ],
     "akan-store": ["modelStore"],
     "akan-ui": [
       "ssrRule",
@@ -48,7 +56,7 @@ export class AgentAssets {
     "akan-err": ["errorCodes"],
     "akan-deps": [],
     "akan-debug": [],
-    "akan-page": ["pageRule", "akanApi"],
+    "akan-page": ["pageRule", "akanApi#imports", "akanApi#routes", "akanApi#app-config"],
     "akan-query": ["queryRule"],
     "akan-transport": ["transportRule"],
     "akan-runtime": ["runtimeRule"],
@@ -101,14 +109,12 @@ ${AgentAssets.marker}
     for (const [name, guidelines] of Object.entries(AgentAssets.skillReferences)) {
       const source = await fsPromise.readFile(path.join(dir, name, "SKILL.md"), "utf-8");
       const index: string[] = [];
-      for (const guideline of guidelines) {
-        const parts = AgentAssets.split(await Prompter.getInstruction(guideline));
-        parts.forEach((part, idx) => {
-          const file = parts.length === 1 ? `${guideline}.md` : `${guideline}-${idx + 1}.md`;
+      for (const reference of guidelines) {
+        for (const { file, text, summary } of await AgentAssets.#referenceFiles(reference)) {
           const referencePath = `.agents/skills/${name}/references/${file}`;
-          assets.push({ path: referencePath, content: `${AgentAssets.marker}\n\n${part.text.trim()}\n` });
-          index.push(`- \`${referencePath}\` — ${AgentAssets.#summarize(part.headings)}`);
-        });
+          assets.push({ path: referencePath, content: `${AgentAssets.marker}\n\n${text.trim()}\n` });
+          index.push(`- \`${referencePath}\` — ${summary}`);
+        }
       }
       const skill = AgentAssets.#skillFile(source, index);
       for (const root of AgentAssets.skillRoots) assets.push({ path: `${root}/${name}/SKILL.md`, content: skill });
@@ -116,7 +122,38 @@ ${AgentAssets.marker}
     return assets;
   }
 
-  static split(markdown: string): ReferencePart[] {
+  static async #referenceFiles(reference: string) {
+    const [guideline = reference, slug] = reference.split("#");
+    const text = await Prompter.getInstruction(guideline);
+    if (slug) {
+      const sections = AgentAssets.sections(text);
+      const preamble = sections[0]?.headings.length === 0 ? sections[0].text : "";
+      const section = sections.find((each) => each.headings[0] && AgentAssets.slug(each.headings[0]) === slug);
+      if (!section) throw new Error(`Guideline ${guideline} has no section ${slug}`);
+      const entries = [...section.text.matchAll(/^### (.+?)(?: · .*)?$/gm)].map((match) => match[1]);
+      const title = section.headings[0];
+      return [
+        {
+          file: `${guideline}-${slug}.md`,
+          text: preamble ? `${preamble.trim()}\n\n${section.text.trim()}` : section.text,
+          summary: entries.length ? `${title}: ${entries.join(", ")}` : title,
+        },
+      ];
+    }
+    const parts = AgentAssets.split(text);
+    return parts.map((part, idx) => ({
+      file: parts.length === 1 ? `${guideline}.md` : `${guideline}-${idx + 1}.md`,
+      text: part.text,
+      summary: AgentAssets.#summarize(part.headings),
+    }));
+  }
+
+  static slug(heading: string) {
+    const paren = heading.indexOf("(");
+    return (paren === -1 ? heading : heading.slice(0, paren).trimEnd()).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  }
+
+  static sections(markdown: string): ReferencePart[] {
     const sections: ReferencePart[] = [];
     let fenced = false;
     for (const line of markdown.trim().split("\n")) {
@@ -126,8 +163,12 @@ ${AgentAssets.marker}
       if (heading !== null || !last) sections.push({ text: line, headings: heading === null ? [] : [heading] });
       else last.text += `\n${line}`;
     }
+    return sections;
+  }
+
+  static split(markdown: string): ReferencePart[] {
     const parts: ReferencePart[] = [];
-    for (const section of sections) {
+    for (const section of AgentAssets.sections(markdown)) {
       const last = parts.at(-1);
       if (last && last.text.length + section.text.length + 1 <= AgentAssets.referenceLimit) {
         last.text += `\n${section.text}`;

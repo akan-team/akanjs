@@ -91,7 +91,34 @@ export class DeclarationReader {
     const type = this.#checker.getTypeOfSymbol(symbol);
     const signatures = type.getCallSignatures();
     if (signatures.length === 0) throw new Error(`${name} is not callable`);
-    return signatures.map((signature) => `${name}${this.#checker.signatureToString(signature, undefined, typeFlags)}`);
+    const statics = this.#checker.getPropertiesOfType(type).flatMap((property) => {
+      const [declaration] = property.declarations ?? [];
+      if (!declaration || DeclarationReader.#isInternalName(property.name)) return [];
+      return this.#checker
+        .getTypeOfSymbolAtLocation(property, declaration)
+        .getCallSignatures()
+        .map((each) => `${name}.${property.name}${this.#checker.signatureToString(each, undefined, typeFlags)}`);
+    });
+    return [
+      ...signatures.map((signature) => `${name}${this.#checker.signatureToString(signature, undefined, typeFlags)}`),
+      ...statics,
+    ];
+  }
+
+  foreignBases(symbol: ts.Symbol): string[] {
+    const [declaration] = symbol.declarations ?? [];
+    const nodes =
+      declaration && ts.isTypeAliasDeclaration(declaration) && ts.isIntersectionTypeNode(declaration.type)
+        ? declaration.type.types.filter((each) => !ts.isTypeLiteralNode(each))
+        : declaration && ts.isInterfaceDeclaration(declaration)
+          ? (declaration.heritageClauses ?? []).flatMap((clause) => [...clause.types])
+          : [];
+    return nodes
+      .filter((node) => {
+        const properties = this.#checker.getPropertiesOfType(this.#checker.getTypeFromTypeNode(node));
+        return properties.length > 0 && properties.every((each) => !each.declarations?.some((d) => this.#isOwn(d)));
+      })
+      .map((node) => DeclarationReader.#print(node, node.getSourceFile()));
   }
 
   props(type: ts.Type, omit: string[] = []): string[] {
