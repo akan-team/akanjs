@@ -465,6 +465,45 @@ describe("route client store bootstrap", () => {
       for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
     });
 
+    test("a file naming one module's state brings that module's store piece, no other module's and no assembled runtime", async () => {
+      const { appDir, app } = await routeFixture();
+      for (const [name, key] of [
+        ["draft", "draftText"],
+        ["tally", "tallyCount"],
+      ]) {
+        await write(
+          path.join(appDir, `lib/_${name}/${name}.store.ts`),
+          `import { store } from "akanjs/store";\nexport class ${name}Store extends store("${name}" as const, () => ({ ${key}: 0 })) {}\n`,
+        );
+        await write(
+          path.join(appDir, `lib/__client/${name}.st.ts`),
+          `export const piece = Object.freeze({ mark: "piece:${name}.st" });\n(globalThis as { pieces?: unknown[] }).pieces?.push(piece);\n`,
+        );
+      }
+      await write(
+        path.join(appDir, `lib/${StoreBootstrap.pageRuntime}.ts`),
+        'export const st = Object.freeze({ mark: "page-runtime-only", use: { draftText: () => 0 } });\n',
+      );
+      const entry = path.join(appDir, "ui/Draft.tsx");
+      await write(
+        entry,
+        '"use client";\nimport { st } from "@apps/demo/client";\nexport const Draft = () => [st.use.draftText(), "draft-ui-marker"];\n',
+      );
+
+      await build(app, entry);
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ["draft-ui-marker", "page-runtime-only", "piece:draft.st"])
+        expect(browser).toContain(marker);
+      for (const marker of [
+        "piece:tally.st",
+        ...StoreBootstrap.assembled.map((file) => `assembled:${file}`),
+        '"runtime-marker"',
+        '"store-marker"',
+      ])
+        expect(browser).not.toContain(marker);
+    });
+
     for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors, ...StoreBootstrap.assembled])
       test(`an app not synced to lib/${file}.ts keeps the whole runtime in its browser chunks`, async () => {
         const { appDir, app } = await routeFixture();
