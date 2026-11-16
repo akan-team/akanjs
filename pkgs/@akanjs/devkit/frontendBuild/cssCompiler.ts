@@ -9,6 +9,7 @@ import { CsrEntryFiles } from "./csrEntryFiles";
 import { CssBlockParser } from "./cssBlockParser";
 import { CssCandidateCache } from "./cssCandidateCache";
 import { CssImportResolver } from "./cssImportResolver";
+import { PlainStylesheet } from "./plainStylesheet";
 
 const NON_SOURCE_EXT_RE = /\.(json|svg|png|jpe?g|webp|gif|avif|ico|woff2?|ttf|otf|mp3|mp4|wav)$/i;
 const NODE_MODULES_RE = /[\\/]node_modules[\\/]/;
@@ -22,6 +23,13 @@ interface CssDiscovery {
 export interface ImportedStylesheet {
   cssPath: string;
   declaredNames: string[];
+}
+
+interface CompiledStylesheet {
+  cssPath: string;
+  compiler: Awaited<ReturnType<typeof compile>> | null;
+  plainCss: string;
+  imported: Map<string, string>;
 }
 
 export class CssCompiler {
@@ -233,38 +241,30 @@ export class CssCompiler {
     if (cssPaths.length === 0) return { css: "", imported: [] };
 
     const compileStarted = Date.now();
-    const compilers = await Promise.all(
-      cssPaths.map(async (cssPath) => {
-        const css = await Bun.file(cssPath).text();
-        const base = path.dirname(cssPath);
-        const imported = new Map<string, string>();
-        const compiler = await compile(css, {
-          base,
-          loadStylesheet: (id, fromBase) => this.#loadStylesheet(id, fromBase, imported),
-          loadModule: (id, fromBase) => this.#loadModule(id, fromBase),
-        });
-        return { cssPath, compiler, imported };
-      }),
-    );
+    const compilers = await Promise.all(cssPaths.map((cssPath) => this.#compileStylesheet(cssPath)));
 
     const sourceDirs = new Set<string>();
     for (const entry of compilers) {
-      for (const s of entry.compiler.sources as { base: string }[]) sourceDirs.add(s.base);
+      for (const s of (entry.compiler?.sources ?? []) as { base: string }[]) sourceDirs.add(s.base);
     }
-    const scanStarted = Date.now();
-    const candidates = await this.#scanCandidates(sourcePaths, [...sourceDirs]);
-    this.#logger.verbose(
-      `css candidates scanned count=${candidates.length} sources=${sourcePaths.length} dirs=${sourceDirs.size} in ${Date.now() - scanStarted}ms`,
-    );
+    let candidates: string[] = [];
+    if (compilers.some((entry) => entry.compiler)) {
+      const scanStarted = Date.now();
+      candidates = await this.#scanCandidates(sourcePaths, [...sourceDirs]);
+      this.#logger.verbose(
+        `css candidates scanned count=${candidates.length} sources=${sourcePaths.length} dirs=${sourceDirs.size} in ${Date.now() - scanStarted}ms`,
+      );
+    }
     const parts: string[] = [];
     const imported: ImportedStylesheet[] = [];
     for (const entry of compilers) {
-      const part = entry.compiler.build(candidates);
+      const part = entry.compiler ? entry.compiler.build(candidates) : entry.plainCss;
       parts.push(part);
       for (const [cssPath, content] of entry.imported) {
         const declaredNames = declaredCustomProperties(content);
         imported.push({ cssPath, declaredNames });
-        if (declaredNames.length === 0 || declaredNames.some((name) => part.includes(`${name}:`))) continue;
+        if (!entry.compiler || declaredNames.length === 0 || declaredNames.some((name) => part.includes(`${name}:`)))
+          continue;
         this.#logger.warn(
           `css @import ${cssPath} was loaded by ${entry.cssPath} but none of its ${declaredNames.length} declaration(s) reached the compiled CSS`,
         );
@@ -274,6 +274,26 @@ export class CssCompiler {
       `css compiled paths=${cssPaths.length} candidates=${candidates.length} in ${Date.now() - compileStarted}ms`,
     );
     return { css: parts.join("\n"), imported };
+  }
+
+  // `compile()` stamps its banner on any stylesheet with an `@import`, so one that needs no Tailwind never reaches it.
+  async #compileStylesheet(cssPath: string): Promise<CompiledStylesheet> {
+    const css = await Bun.file(cssPath).text();
+    const base = path.dirname(cssPath);
+    const imported = new Map<string, string>();
+    const loadStylesheet = (id: string, fromBase: string) => this.#loadStylesheet(id, fromBase, imported);
+    const plainCss = await PlainStylesheet.bundle(css, base, loadStylesheet);
+    if (plainCss !== null) {
+      this.#logger.verbose(`css ${cssPath} uses no Tailwind; passed through with ${imported.size} import(s) inlined`);
+      return { cssPath, compiler: null, plainCss, imported };
+    }
+    imported.clear();
+    const compiler = await compile(css, {
+      base,
+      loadStylesheet,
+      loadModule: (id, fromBase) => this.#loadModule(id, fromBase),
+    });
+    return { cssPath, compiler, plainCss: "", imported };
   }
 
   async #loadStylesheet(id: string, fromBase: string, imported?: Map<string, string>) {

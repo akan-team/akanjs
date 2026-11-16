@@ -80,6 +80,7 @@ Screen code is invariant — a plain `<Button variant="primary">` never changes.
 - Declare plain custom properties under `:root`, not a Tailwind `@theme` extension: the color vocabulary is closed per stylesheet, so `bg-kakao` would generate no CSS. Reference them as `bg-[var(--kakao)]` / `text-[var(--kakao-foreground)]`, which `no-arbitrary-color` allows by design (a `var()` reference is not an arbitrary color literal).
 - Theme-following colors still belong to the app: a lib token is for a color that must **not** change with `data-theme`.
 - An `@import` the CSS pipeline cannot resolve fails the build; it is never dropped. A stylesheet under `page/` that no route imports is compiled by nothing and warns at build time.
+- A stylesheet whose import graph uses no Tailwind (no `@import "tailwindcss"`, no `@theme`, `@apply`, `@plugin` or other Tailwind at-rule, no `theme()`/`--alpha()`/`--spacing()`) skips the Tailwind compiler: only its imports are inlined and the build minifies it, with no Tailwind banner; one Tailwind feature anywhere in that graph compiles the whole stylesheet with Tailwind.
 
 ## Frame Variables (the page's chrome and the device's insets)
 
