@@ -2092,6 +2092,19 @@ describe("StoreInstance facades on an unknown key", () => {
       expect(instance.slice.missingSlice).toBeUndefined();
     }
   });
+
+  test("calling a key of a store the page did not load throws in production, naming the key", () => {
+    setupEnv();
+    class LoadedStore extends store("loadedStore" as const, () => ({ loadedValue: 1 })) {}
+    StoreRegistry.register(LoadedStore);
+    const instance = withNodeEnv("production", () => new StoreInstance(makeRoot("loadedRoot", LoadedStore)));
+
+    expect(() => instance.use.absentValue()).toThrow(TypeError);
+    expect(() => instance.use.absentValue()).toThrow("use.absentValue is not a function");
+    expect(() => instance.do.setAbsentValue(2)).toThrow("do.setAbsentValue is not a function");
+    expect(() => instance.slice.absentSlice.use.absentList()).toThrow("slice.absentSlice");
+    expect(instance.do.setLoadedValue).toBeInstanceOf(Function);
+  });
 });
 
 describe("live sync store action", () => {
