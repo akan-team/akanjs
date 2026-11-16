@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { Logger } from "akanjs/common";
 import { RequestTrace } from "../../signal/requestTrace";
 import { type Fetch, OtlpBatcher } from "./otlpBatcher";
@@ -109,9 +109,12 @@ describe("OTLP batching under a failing collector", () => {
       },
       { timeoutMs: 400 },
     );
+    //? The first backoff is drawn from 0 to 500 ms, so one draw in five leaves no room for a retry inside 400 ms.
+    const random = spyOn(Math, "random").mockReturnValue(0.1);
     const startedAt = performance.now();
     for (let i = 0; i < 8; i++) batcher.push(i);
     await until(() => batcher.stats.failedBatches === 2);
+    random.mockRestore();
 
     expect(performance.now() - startedAt).toBeLessThan(1_000);
     expect(sent.length).toBeGreaterThan(2);
