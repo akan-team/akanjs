@@ -2136,6 +2136,24 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
+                      <strong>Check a route in a production build.</strong> The development server keeps{" "}
+                      <code>akanjs/ui</code> whole, so a page importing from it loads the whole runtime there, and a
+                      missing import shows only after <code>akan build</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>라우트는 프로덕션 빌드에서 확인합니다.</strong> 개발 서버는 <code>akanjs/ui</code>를
+                      통째로 불러오므로 그것을 import하는 페이지는 개발 중에 전체 런타임을 불러오고, 빠진 import는{" "}
+                      <code>akan build</code> 뒤에야 드러납니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
                       <strong>Read a store only where you import it.</strong> A store's state, persisted keys included,
                       appears when its code loads, so <code>st.get()</code> of a store no module on the route imports
                       has no value there.
