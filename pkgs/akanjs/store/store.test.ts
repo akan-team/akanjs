@@ -1938,13 +1938,13 @@ describe("StoreInstance with a root added later", () => {
   test("touches only the keys the added root brings, however many roots were added before it", () => {
     setupEnv();
     const browser = installBrowser();
-    const work = { selectors: 0, searches: 0, storageReads: 0, useWrites: 0, doWrites: 0 };
+    const work = { selectors: 0, searches: 0, storageReads: 0, useWrites: 0, doWrites: 0, derivedMetaReads: 0 };
     const readItem = browser.localStorage.getItem.bind(browser.localStorage);
     browser.localStorage.getItem = (key: string) => {
       work.storageReads++;
       return readItem(key);
     };
-    const countedRoot = (index: number) => {
+    const countedStore = (index: number) => {
       class CountedStore extends store(
         `countedStore${index}`,
         ({ persist }) => ({ [`plain${index}`]: 0, [`kept${index}`]: persist(Int, { default: 0 }) }),
@@ -1967,9 +1967,16 @@ describe("StoreInstance with a root added later", () => {
         work.searches++;
         return getDefault();
       };
-      return makeRoot(`countedRoot${index}`, CountedStore);
+      const { computed } = CountedStore[STATE_DERIVED_META];
+      computed[`label${index}`] = new Proxy(computed[`label${index}`], {
+        get: (target, property, receiver) => {
+          work.derivedMetaReads++;
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      return CountedStore;
     };
-    const instance = new StoreInstance(countedRoot(0));
+    const instance = new StoreInstance(makeRoot("countedRoot0", countedStore(0)));
     const counted = <T extends object>(facade: T, key: "useWrites" | "doWrites") =>
       new Proxy(facade, {
         set: (target, property, value, receiver) => {
@@ -1979,13 +1986,28 @@ describe("StoreInstance with a root added later", () => {
       });
     instance.use = counted(instance.use, "useWrites");
     instance.do = counted(instance.do, "doWrites");
-    const workPerRoot = Array.from({ length: 40 }, (_, index) => {
+    const workOf = (root: RootStoreCls) => {
       for (const key of Object.keys(work) as (keyof typeof work)[]) work[key] = 0;
-      instance.addStore(countedRoot(index + 1));
+      instance.addStore(root);
       return { ...work };
+    };
+    const workPerRoot = Array.from({ length: 40 }, (_, index) => {
+      const added = countedStore(index + 1);
+      return {
+        added: workOf(makeRoot(`countedRoot${index + 1}`, added)),
+        repeated: workOf(makeRoot(`repeatedRoot${index + 1}`, added)),
+      };
     });
 
-    expect(workPerRoot[0]).toEqual({ selectors: 2, searches: 2, storageReads: 1, useWrites: 4, doWrites: 2 });
+    expect(workPerRoot[0].added).toEqual({
+      selectors: 2,
+      searches: 2,
+      storageReads: 1,
+      useWrites: 4,
+      doWrites: 2,
+      derivedMetaReads: 6,
+    });
+    expect(workPerRoot[0].repeated).toMatchObject({ selectors: 0, searches: 0, storageReads: 0 });
     expect(workPerRoot.at(-1)).toEqual(workPerRoot[0]);
     expect(Object.keys(instance.get())).toHaveLength(41 * 4);
     uninstallBrowser();
