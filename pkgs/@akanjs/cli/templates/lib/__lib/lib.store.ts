@@ -4,7 +4,6 @@ const capitalize = (str: string) => str.charAt(0).toUpperCase() + str.slice(1);
 
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [key: string]: string } = {}) {
   if (!scanInfo) return null;
-  const libs = scanInfo.getLibs();
   const libInfos = [...scanInfo.getLibInfos().values()];
   const extendedModels = Object.fromEntries(
     [...scanInfo.file.store.databases]
@@ -19,13 +18,20 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   );
   return `
 import * as base from "akanjs/store";
-${libs.map((lib) => `import { store as ${lib} } from "@libs/${lib}/client";`).join("\n")}
+${Object.entries(extendedModels)
+  .flatMap(([modelName, libNames]) =>
+    libNames.map(
+      (libName) =>
+        `import { ${capitalize(modelName)}Store as ${libName}${capitalize(modelName)}Store } from "@libs/${libName}/lib/${modelName}/${modelName}.store";`,
+    ),
+  )
+  .join("\n")}
 
 ${Object.entries(extendedModels)
   .map(([modelName, extendedModels]) => {
     const ModelName = capitalize(modelName);
     return `export const ${modelName} = {
-  stores: [${extendedModels.map((libName) => `${libName}.${ModelName}Store`).join(", ")}] as const,
+  stores: [${extendedModels.map((libName) => `${libName}${ModelName}Store`).join(", ")}] as const,
 }`;
   })
   .join("\n")}

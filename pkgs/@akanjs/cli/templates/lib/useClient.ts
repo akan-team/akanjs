@@ -2,14 +2,15 @@ import type { AppInfo, LibInfo } from "akanjs";
 
 //? `fetch` and `sig` are declared, not re-exported: the barrel rewrite maps a re-export to `./usePage`, skipping these.
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [key: string]: string } = {}) {
+  const signalModules = scanInfo
+    ? [...scanInfo.database.entries(), ...scanInfo.service.entries()]
+        .filter(([_, files]) => files.has("signal"))
+        .map(([module]) => module)
+    : [];
   return `
-import { FetchClient } from "akanjs/fetch";
-import * as cnst from "./cnst";
+import "./__client/_base.fetch";
+${signalModules.map((module) => `import "./__client/${module}.fetch";`).join("\n")}
 import { fetch as pageFetch, sig as pageSig } from "./usePage";
-import { getSerializedSignal } from "./sig" with { type: "macro" };
-import type * as signal from "./sig";
-
-Object.assign(pageSig, FetchClient.build<typeof signal>(cnst, getSerializedSignal(), { base: pageFetch }).sig);
 
 export const fetch = pageFetch;
 export const sig = pageSig;

@@ -111,7 +111,9 @@
         "libs/*/index.ts",
         "libs/*/lib/*/index.tsx",
         "apps/*/lib/__lib/**",
-        "libs/*/lib/__lib/**"
+        "libs/*/lib/__lib/**",
+        "apps/*/lib/__client/**",
+        "libs/*/lib/__client/**"
       ],
       "linter": { "enabled": false },
       "formatter": { "enabled": false },

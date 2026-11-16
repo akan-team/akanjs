@@ -12,7 +12,8 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
     .map(([module]) => module);
   const libs = scanInfo.getLibs();
 
-  const signalNames = [...(libs.length === 0 ? ["base"] : libs), ...databaseModules, ...serviceModules];
+  const inheritedNames = libs.length === 0 ? ["base"] : libs;
+  const signalNames = [...inheritedNames, ...databaseModules, ...serviceModules];
   const serverSignalClass = (module: string) =>
     `export class ${capitalize(module)} extends serverSignal(${module}Sig.${capitalize(module)}Endpoint, ${module}Sig.${capitalize(module)}Internal) {}`;
 
@@ -38,5 +39,18 @@ export type Fetch = FetchClientType<typeof fetchSignals>;
 export const fetch = FetchClient.from(...fetchSignals) as unknown as Fetch;
 
 export const getSerializedSignal = () => fetch.ownSerializedSignal
+
+let signalOwners: Map<string, string> | undefined;
+export const getSerializedSignalOf = (name: string) => {
+  const serializedSignal = fetch.ownSerializedSignal;
+  if (!signalOwners) {
+    signalOwners = new Map<string, string>([${[...databaseModules, ...serviceModules].map((module) => `["${module}", "${module}"]`).join(", ")}]);
+    for (const [owner, signal] of Object.entries({ ${inheritedNames.join(", ")} }))
+      for (const refName of Object.keys(signal.ownSerializedSignal))
+        if (!signalOwners.has(refName)) signalOwners.set(refName, owner);
+  }
+  const owners = signalOwners;
+  return Object.fromEntries(Object.entries(serializedSignal).filter(([refName]) => owners.get(refName) === name));
+};
 `;
 }

@@ -10,21 +10,20 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const serviceModules = [...scanInfo.service.entries()]
     .filter(([_, fileTypes]) => fileTypes.has("store"))
     .map(([key]) => key);
+  const modules = [...databaseModules, ...serviceModules];
   const libs = scanInfo.getLibs();
   return `
 import { ${libs.length === 0 ? "RootStore as base, " : ""}StoreRegistry } from "akanjs/store";
 ${libs.map((lib) => `import { RootStore as ${lib} } from "@libs/${lib}/client";`).join("\n")}
+import "./useClient";
 
-${databaseModules.map((module) => `import { ${capitalize(module)}Store } from "./${module}/${module}.store";`).join("\n")}
-${serviceModules.map((module) => `import { ${capitalize(module)}Store } from "./_${module}/${module}.store";`).join("\n")}
+${modules.map((module) => `import { ${module} } from "./__client/${module}.st";`).join("\n")}
 
 ${databaseModules.map((module) => `export { ${capitalize(module)}Store } from "./${module}/${module}.store";`).join("\n")}
 ${serviceModules.map((module) => `export { ${capitalize(module)}Store } from "./_${module}/${module}.store";`).join("\n")}
+${modules.length > 0 ? `export { ${modules.join(", ")} };` : ""}
 
-${databaseModules.map((module) => `export const ${module} = StoreRegistry.register(${capitalize(module)}Store);`).join("\n")}
-${serviceModules.map((module) => `export const ${module} = StoreRegistry.register(${capitalize(module)}Store);`).join("\n")}
-
-export class RootStore extends StoreRegistry.merge("${scanInfo.name}" as const, ${[...(libs.length === 0 ? ["base"] : libs), ...databaseModules, ...serviceModules].join(",\n  ")}) {}
+export class RootStore extends StoreRegistry.merge("${scanInfo.name}" as const, ${[...(libs.length === 0 ? ["base"] : libs), ...modules].join(",\n  ")}) {}
   
 export const st = StoreRegistry.build(RootStore);
 `;
