@@ -27,9 +27,9 @@ export interface RuntimeScopeResult {
   notes: RuntimeScopeNote[];
 }
 
-const moduleConventionFile = /\/lib\/.+\.(?:constant|dictionary|document|service|signal|store)\.ts$/;
+const moduleConventionFile = /\/lib\/.+\.(?:constant|dictionary|document|service|signal)\.ts$/;
 const generatedFile =
-  /^(?:apps|libs)\/[^/]+\/(?:client\.ts|server\.ts|lib\/[^/]+\.ts|lib\/__lib\/.*|lib\/.+\/index\.ts|(?:ui|webkit|srvkit|common)\/index\.ts)$/;
+  /^(?:apps|libs)\/[^/]+\/(?:client\.ts|server\.ts|lib\/[^/]+\.ts|lib\/__(?:lib|client)\/.*|lib\/.+\/index\.ts|(?:ui|webkit|srvkit|common)\/index\.ts)$/;
 const serverOnlyDir = /^(?:apps|libs)\/[^/]+\/(?:srvkit|env|script|native|plugin)\//;
 const testFile = /\.(?:test|spec)\.tsx?$|\/__(?:fixtures|tests)__\//;
 const useClientDirective = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use client["']/;
@@ -66,13 +66,14 @@ export class RuntimeScopeReport {
       const { content, sourceFile } = await sources.read(file);
       if (!RuntimeScopeReport.isClientFile(file, content)) continue;
       summary.clientFiles++;
-      if (!RuntimeUse.mayUseRuntime(content)) continue;
+      const table = tables.get(scope);
+      if (!table) continue;
       const started = performance.now();
-      const verdict = RuntimeUse.analyze({ fileName: file, text: content, sourceFile }, (at) => tables.get(at) ?? null);
+      const verdict = RuntimeUse.analyze({ fileName: file, text: content, sourceFile }, table);
       const ms = performance.now() - started;
       summary.analysisMs += ms;
       if (!summary.slowestFile || ms > summary.slowestFile.ms) summary.slowestFile = { file, ms };
-      if (verdict.resolvable && !verdict.owners.length && !verdict.scopes.length) continue;
+      if (verdict.resolvable && !verdict.reads) continue;
       summary.readers++;
       if (verdict.resolvable) summary.resolvable++;
       else {

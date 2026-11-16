@@ -12,14 +12,16 @@ describe("RuntimeScopeReport", () => {
         ["apps/demo/page/_index.tsx", clientFile],
         ["apps/demo/page/_index.tsx", serverPage],
         ["apps/demo/lib/memo/memo.store.ts", clientFile],
+        ["apps/demo/lib/memo/memo.signal.ts", clientFile],
         ["apps/demo/lib/st.ts", clientFile],
+        ["apps/demo/lib/__client/memo.st.ts", clientFile],
         ["apps/demo/ui/index.ts", clientFile],
         ["apps/demo/srvkit/token.ts", clientFile],
         ["apps/demo/ui/Card.test.tsx", clientFile],
         ["apps/demo/akan.config.ts", clientFile],
         ["pkgs/akanjs/ui/Card.tsx", clientFile],
       ].map(([file = "", text = ""]) => RuntimeScopeReport.isClientFile(file, text)),
-    ).toEqual([true, true, true, false, false, false, false, false, false, false, false]);
+    ).toEqual([true, true, true, false, true, false, false, false, false, false, false, false, false]);
   });
 
   test("prints a note per file that loads its scope's whole runtime, then one line per scope", () => {

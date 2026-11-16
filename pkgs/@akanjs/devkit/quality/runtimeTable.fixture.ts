@@ -38,6 +38,29 @@ import { sig } from "../useClient";
 
 export class NoteStore extends store(sig.note, () => ({ noteCount: 0 })) {}
 `,
+  "libs/kit/lib/tag/tag.constant.ts": `import { via } from "akanjs/constant";
+
+export class TagInput extends via((field) => ({ label: field(String) })) {}
+export class TagObject extends via(TagInput, (field) => ({})) {}
+export class LightTag extends via(TagObject, ["label"] as const, (resolve) => ({})) {}
+export class Tag extends via(TagObject, LightTag, (resolve) => ({})) {}
+`,
+  "libs/kit/lib/tag/tag.signal.ts": `import { endpoint, Public, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class TagSlice extends slice(srv.tag, { guards: { root: Public, get: Public, cru: Public } }, () => ({})) {}
+
+export class TagEndpoint extends endpoint(srv.tag, ({ query }) => ({
+  tagCount: query(Int, { guards: [Public] }).exec(() => 0),
+})) {}
+`,
+  "libs/kit/lib/tag/tag.store.ts": `import { store } from "akanjs/store";
+
+import { sig } from "../useClient";
+
+export class TagStore extends store(sig.tag, () => ({ tagFilter: "" })) {}
+`,
 };
 
 const demoFiles: Record<string, string> = {
@@ -111,9 +134,5 @@ export const runtimeFixtureTables = async () => {
   const kitLayer = runtimeFixtureLayer("libs/kit", kitFiles);
   const kit = RuntimeNameTable.fromLayers([kitLayer], base);
   const demo = RuntimeNameTable.fromLayers([kitLayer, runtimeFixtureLayer("apps/demo", demoFiles)], base);
-  const tables = new Map([
-    ["libs/kit", kit],
-    ["apps/demo", demo],
-  ]);
-  return { kit, demo, tableOf: (scope: string) => tables.get(scope) ?? null };
+  return { kit, demo };
 };

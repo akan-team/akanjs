@@ -121,7 +121,6 @@ export class RuntimeNameTable {
     };
   }
 
-  //? `layers` runs innermost first: each lib after the libs it loads, the scope itself last.
   static fromLayers(layers: RuntimeLayer[], base: RuntimeLayer) {
     return new RuntimeNameTable(layers, base);
   }

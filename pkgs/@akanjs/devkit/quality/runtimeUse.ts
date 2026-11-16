@@ -1,7 +1,16 @@
-import path from "node:path";
 import ts from "typescript";
+import {
+  type RuntimeBinding,
+  type RuntimeHandle,
+  type RuntimeHandleKind,
+  RuntimeImports,
+  type RuntimeImportTarget,
+  type RuntimeImportUse,
+} from "./runtimeImports";
 import { RuntimeLexicalScope } from "./runtimeLexicalScope";
 import type { RuntimeFamily, RuntimeNameTable } from "./runtimeNameTable";
+
+export type { RuntimeImportKind, RuntimeImportTarget } from "./runtimeImports";
 
 export const runtimeUseReasons = [
   "computed-access",
@@ -29,108 +38,77 @@ export interface RuntimeUseProblem {
 }
 
 export type RuntimeUseVerdict =
-  | { resolvable: true; owners: RuntimeUseOwner[]; base: boolean; scopes: string[] }
+  | { resolvable: true; owners: RuntimeUseOwner[]; base: boolean; reads: boolean }
   | ({ resolvable: false; problems: RuntimeUseProblem[] } & RuntimeUseProblem);
 
 export interface RuntimeUseOptions {
   runtimeOf?: (specifier: string, fileName: string) => RuntimeImportTarget | null;
 }
 
-export type RuntimeImportKind = "client" | "useClient" | "usePage" | "st" | "sig" | "framework-store";
-
-export interface RuntimeImportTarget {
-  scope: string | null;
-  kind: RuntimeImportKind;
-}
-
-type HandleKind = "st" | "root" | "state" | "fetch" | Exclude<RuntimeFamily, "fetch">;
-
-interface Handle {
-  kind: HandleKind;
-  scope: string;
-}
-
-type Binding =
-  | { type: "handle"; handle: Handle }
-  | { type: "rootStore"; scope: string }
-  | { type: "whole"; scope: string; name: string }
-  | { type: "unknown"; scope: string; name: string };
+type StoreMethod = "get" | "set" | "sel" | "ref" | "sub" | "pick";
 
 type Step =
-  | { leaf: RuntimeFamily; key: string }
-  | { handle: Handle }
-  | { method: "get" | "set" | "sel" | "ref" | "sub" }
+  | { leaf: RuntimeFamily; key: string; next?: RuntimeHandle }
+  | { handle: RuntimeHandle }
+  | { method: StoreMethod }
   | { none: true }
-  | { unknown: true };
+  | { unknown: true }
+  | { whole: true };
 
-type TableOf = (scope: string) => RuntimeNameTable | null;
-
-const runtimeSpecifierPattern = /\/(?:client|useClient|usePage|st|sig)(?:\.tsx?)?["']|RootStore|["']akanjs\/store["']/;
-const runtimePathPattern = /^((?:apps|libs)\/[^/]+)\/(client|lib\/useClient|lib\/usePage|lib\/st|lib\/sig)$/;
-const quietExports = new Set(["usePage", "msg", "Err", "cnst"]);
-const storeMethods = new Set(["get", "set", "sel", "ref", "sub"]);
+const stMethods = new Set(["get", "set", "sel", "ref", "sub"]);
 const agenticMembers = new Set(["tool", "expose", "useState"]);
+const signalData = new Set(["refName", "cnst", "slices", "serializedSignal", "_slice"]);
+const nothingRead: RuntimeUseVerdict = { resolvable: true, owners: [], base: false, reads: false };
 
 export class RuntimeUse {
   readonly #source: ts.SourceFile;
   readonly #fileName: string;
-  readonly #tableOf: TableOf;
+  readonly #consumer: RuntimeNameTable | null;
   readonly #options: RuntimeUseOptions;
+  readonly #storeFile: boolean;
   readonly #lexical = new RuntimeLexicalScope();
-  readonly #bindings = new Map<ts.Identifier, Binding>();
+  readonly #bindings = new Map<ts.Identifier, RuntimeBinding>();
   readonly #owners = new Map<string, RuntimeUseOwner>();
   readonly #problems: (RuntimeUseProblem & { position: number })[] = [];
-  readonly #scopes = new Set<string>();
   #base = false;
+  #reads = false;
   #recording: boolean = false;
 
-  static mayUseRuntime(text: string) {
-    return runtimeSpecifierPattern.test(text);
+  static targetOf(specifier: string, fileName: string) {
+    return RuntimeImports.targetOf(specifier, fileName);
   }
 
-  //? `fileName` is relative to the workspace root, as `apps/<app>/ui/Card.tsx`: it decides the file's own scope.
   static analyze(
     input: { fileName: string; text: string; sourceFile?: ts.SourceFile },
-    tableOf: TableOf,
+    consumer: RuntimeNameTable | null,
     options: RuntimeUseOptions = {},
   ): RuntimeUseVerdict {
-    if (!RuntimeUse.mayUseRuntime(input.text)) return { resolvable: true, owners: [], base: false, scopes: [] };
+    const storeFile = input.fileName.endsWith(".store.ts");
+    if (!options.runtimeOf && !storeFile && !RuntimeImports.mayUseRuntime(input.text, input.fileName))
+      return nothingRead;
     const source =
       input.sourceFile ??
       ts.createSourceFile(input.fileName, input.text, ts.ScriptTarget.Latest, true, RuntimeUse.#kindOf(input.fileName));
-    return new RuntimeUse(source, input.fileName, tableOf, options).#run();
+    return new RuntimeUse(source, input.fileName, consumer, options, storeFile).#run();
   }
 
-  static targetOf(specifier: string, fileName: string): RuntimeImportTarget | null {
-    const fileScope = fileName.match(/^((?:apps|libs)\/[^/]+)\//)?.[1] ?? null;
-    if (specifier === "akanjs/store") return { scope: fileScope, kind: "framework-store" };
-    const aliased = specifier.match(/^@(apps|libs)\/(.+)$/);
-    const resolved = aliased
-      ? `${aliased[1]}/${aliased[2]}`
-      : specifier.startsWith(".")
-        ? path.posix.normalize(path.posix.join(path.posix.dirname(fileName), specifier))
-        : null;
-    const match = resolved
-      ?.replace(/\.(?:tsx?|jsx?)$/, "")
-      .replace(/\/index$/, "")
-      .match(runtimePathPattern);
-    if (!match?.[1] || !match[2]) return null;
-    return { scope: match[1], kind: match[2].replace(/^lib\//, "") as RuntimeImportKind };
-  }
-
-  private constructor(source: ts.SourceFile, fileName: string, tableOf: TableOf, options: RuntimeUseOptions) {
+  private constructor(
+    source: ts.SourceFile,
+    fileName: string,
+    consumer: RuntimeNameTable | null,
+    options: RuntimeUseOptions,
+    storeFile: boolean,
+  ) {
     this.#source = source;
     this.#fileName = fileName;
-    this.#tableOf = tableOf;
+    this.#consumer = consumer;
     this.#options = options;
+    this.#storeFile = storeFile;
   }
 
   #run(): RuntimeUseVerdict {
     this.#readImports();
-    if (!this.#bindings.size && !this.#problems.length && !/\bimport\s*\(/.test(this.#source.text))
-      return { resolvable: true, owners: [], base: false, scopes: [] };
-    //? A use may sit above the alias it reads, inside a function declared first: walk until no new alias appears.
-    for (let round = 0, size = -1; round < 4 && size !== this.#bindings.size; round++) {
+    for (let size = -1; size !== this.#bindings.size; ) {
       size = this.#bindings.size;
       this.#visit(this.#source);
     }
@@ -144,11 +122,11 @@ export class RuntimeUse {
     const owners = [...this.#owners.values()].sort((a, b) =>
       `${a.scope}/${a.module}` < `${b.scope}/${b.module}` ? -1 : 1,
     );
-    return { resolvable: true, owners, base: this.#base, scopes: [...this.#scopes].sort() };
+    return { resolvable: true, owners, base: this.#base, reads: this.#reads };
   }
 
   #targetOf(specifier: string) {
-    return this.#options.runtimeOf?.(specifier, this.#fileName) ?? RuntimeUse.targetOf(specifier, this.#fileName);
+    return this.#options.runtimeOf?.(specifier, this.#fileName) ?? RuntimeImports.targetOf(specifier, this.#fileName);
   }
 
   #readImports() {
@@ -156,6 +134,12 @@ export class RuntimeUse {
     for (const statement of this.#source.statements) {
       if (ts.isImportDeclaration(statement)) this.#readImport(statement);
       else if (ts.isExportDeclaration(statement)) this.#readReexport(statement);
+      else if (ts.isImportEqualsDeclaration(statement) && !statement.isTypeOnly) {
+        const reference = statement.moduleReference;
+        const specifier = ts.isExternalModuleReference(reference) ? reference.expression : null;
+        if (specifier && ts.isStringLiteralLike(specifier) && this.#targetOf(specifier.text))
+          this.#problem("whole-runtime-import", statement, "the import loads the runtime module whole");
+      }
     }
     this.#recording = false;
   }
@@ -163,55 +147,56 @@ export class RuntimeUse {
   #readImport(statement: ts.ImportDeclaration) {
     if (!ts.isStringLiteral(statement.moduleSpecifier)) return;
     const target = this.#targetOf(statement.moduleSpecifier.text);
-    if (!target) return;
     const clause = statement.importClause;
-    if (!target.scope) return this.#problem("whole-runtime-import", statement, "this file belongs to no app or lib");
-    const scope = target.scope;
-    if (!clause) return this.#problem("whole-runtime-import", statement, `the import runs ${scope}'s client runtime`);
-    const typeOnly = clause.isTypeOnly;
-    if (clause.name && !typeOnly) this.#bindings.set(clause.name, { type: "whole", scope, name: clause.name.text });
-    const bindings = clause.namedBindings;
-    if (bindings && ts.isNamespaceImport(bindings)) {
-      if (!typeOnly) this.#bindings.set(bindings.name, { type: "whole", scope, name: bindings.name.text });
-      return;
-    }
-    for (const element of bindings?.elements ?? []) {
+    if (!target || (!clause && target.kind.startsWith("framework-"))) return;
+    if (!clause?.isTypeOnly && !target.kind.startsWith("framework-") && !this.#loads(target, statement)) return;
+    const named = clause?.namedBindings && ts.isNamedImports(clause.namedBindings) ? clause.namedBindings.elements : [];
+    const values = clause?.isTypeOnly ? [] : named.filter((element) => !element.isTypeOnly);
+    const namespace = clause?.namedBindings && ts.isNamespaceImport(clause.namedBindings) ? clause.namedBindings : null;
+    const wholeImport = !clause || (!clause.isTypeOnly && !clause.name && !namespace && !values.length);
+    if (wholeImport && !target.kind.startsWith("framework-"))
+      return this.#problem("whole-runtime-import", statement, `the import runs ${target.scope}'s client runtime whole`);
+    for (const name of clause?.isTypeOnly ? [] : [clause?.name, namespace?.name])
+      if (name) this.#use(name, RuntimeImports.namespaceUse(target.kind, name.text));
+    for (const element of named) {
       const imported = (element.propertyName ?? element.name).text;
-      const binding = RuntimeUse.#bindingOf(target, scope, imported, typeOnly || element.isTypeOnly);
-      if (binding) this.#bindings.set(element.name, binding);
+      this.#use(element, RuntimeImports.useOf(target, imported, !!clause?.isTypeOnly || element.isTypeOnly));
     }
   }
 
-  static #bindingOf(target: RuntimeImportTarget, scope: string, imported: string, typeOnly: boolean): Binding | null {
-    if (imported === "RootStore" && target.kind !== "framework-store") return { type: "rootStore", scope };
-    if (typeOnly) return null;
-    if (target.kind === "framework-store")
-      return imported === "st" ? { type: "handle", handle: { kind: "st", scope } } : null;
-    if (target.kind === "sig") return { type: "whole", scope, name: imported };
-    if (imported === "st" && (target.kind === "client" || target.kind === "st"))
-      return { type: "handle", handle: { kind: "st", scope } };
-    if (target.kind === "st") return { type: "whole", scope, name: imported };
-    if (imported === "fetch" || imported === "sig") return { type: "handle", handle: { kind: imported, scope } };
-    if (imported === "runtime") return { type: "unknown", scope, name: imported };
-    if (imported === "store") return { type: "whole", scope, name: imported };
-    return null;
+  #use(node: ts.ImportSpecifier | ts.Identifier, use: RuntimeImportUse) {
+    if (!use) return;
+    if ("binding" in use) this.#bindings.set(ts.isIdentifier(node) ? node : node.name, use.binding);
+    else this.#problem(use.reason, node, use.why);
+  }
+
+  #loads(target: RuntimeImportTarget, statement: ts.ImportDeclaration) {
+    const consumer = this.#consumer;
+    const loaded = !!consumer?.layers.some((layer) => layer.scope === target.scope);
+    if (!loaded) {
+      const why = !target.scope
+        ? "this file belongs to no app or lib"
+        : consumer
+          ? `${consumer.scope} does not load ${target.scope}'s client runtime`
+          : "there is no generated client runtime to read names from";
+      this.#problem("whole-runtime-import", statement.moduleSpecifier, why);
+    }
+    return loaded;
   }
 
   #readReexport(statement: ts.ExportDeclaration) {
-    if (statement.isTypeOnly) return;
     const specifier = statement.moduleSpecifier;
-    if (!specifier || !ts.isStringLiteral(specifier)) return;
+    if (statement.isTypeOnly || !specifier || !ts.isStringLiteral(specifier)) return;
     const target = this.#targetOf(specifier.text);
     if (!target) return;
     const clause = statement.exportClause;
-    const names = clause && ts.isNamedExports(clause) ? clause.elements.map((element) => element) : null;
-    const handed = names
-      ? names.filter((element) => {
-          const imported = (element.propertyName ?? element.name).text;
-          return !element.isTypeOnly && !quietExports.has(imported) && /^[a-z]/.test(imported);
-        })
-      : [statement];
-    for (const node of handed) this.#problem("re-exported", node, "other files read the runtime through this one");
+    const why = "other files read the runtime through this one";
+    if (!clause || ts.isNamespaceExport(clause)) return this.#problem("re-exported", statement, why);
+    for (const element of clause.elements) {
+      const imported = (element.propertyName ?? element.name).text;
+      if (!element.isTypeOnly && RuntimeImports.useOf(target, imported, false))
+        this.#problem("re-exported", element, why);
+    }
   }
 
   #localExport(statement: ts.ExportDeclaration) {
@@ -221,159 +206,241 @@ export class RuntimeUse {
       const local = element.propertyName ?? element.name;
       const declaration = ts.isIdentifier(local) && !element.isTypeOnly ? this.#lexical.resolve(local) : null;
       const binding = declaration && this.#bindings.get(declaration);
-      if (binding && binding.type !== "rootStore")
+      if (binding && binding.type !== "storeFactory")
         this.#problem("re-exported", element, "other files read the runtime through this one");
     }
   }
 
   #visit(node: ts.Node) {
     if (ts.isExportDeclaration(node)) return this.#localExport(node);
-    if (ts.isImportDeclaration(node)) return;
+    if (ts.isImportDeclaration(node) || ts.isImportEqualsDeclaration(node)) return;
     if (ts.isHeritageClause(node) && node.token === ts.SyntaxKind.ImplementsKeyword) return;
-    if ((ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) && this.#castsToRootStore(node.type)) {
-      this.#visit(node.expression);
-      this.#follow(node, { kind: "root", scope: this.#castScope(node.type) });
+    if ((ts.isAsExpression(node) || ts.isTypeAssertionExpression(node)) && this.#isRootStoreType(node.type)) {
+      const inner = RuntimeUse.#castInner(node.expression);
+      if (inner.kind !== ts.SyntaxKind.ThisKeyword) this.#visit(node.expression);
+      this.#followRead(node, { kind: "root" });
       return;
     }
     if (ts.isTypeNode(node) && !ts.isExpressionWithTypeArguments(node)) return;
-    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword) this.#dynamicImport(node);
-    if (ts.isIdentifier(node) && RuntimeLexicalScope.isReference(node)) this.#reference(node);
+    if (node.kind === ts.SyntaxKind.ThisKeyword || node.kind === ts.SyntaxKind.SuperKeyword)
+      this.#storeSelf(node as ts.Expression);
+    else if (this.#isLoader(node)) this.#loader(node as ts.Expression);
+    else if (ts.isIdentifier(node) && RuntimeLexicalScope.isReference(node)) this.#reference(node);
+    else if (ts.isStringLiteralLike(node)) this.#literalArgument(node);
     ts.forEachChild(node, (child) => this.#visit(child));
-  }
-
-  #dynamicImport(node: ts.CallExpression) {
-    const [specifier] = node.arguments;
-    const target = specifier && ts.isStringLiteralLike(specifier) ? this.#targetOf(specifier.text) : null;
-    if (target)
-      this.#problem("whole-runtime-import", node, `the import loads ${target.scope ?? "a"} client runtime whole`);
   }
 
   #reference(identifier: ts.Identifier) {
     const declaration = this.#lexical.resolve(identifier);
     const binding = declaration && this.#bindings.get(declaration);
-    if (!binding) return;
-    if (binding.type === "handle") {
-      this.#scopes.add(binding.handle.scope);
-      return this.#follow(identifier, binding.handle);
-    }
-    if (binding.type === "rootStore" || binding.type === "whole")
-      return this.#problem(
-        "whole-runtime-import",
-        identifier,
-        `${binding.type === "rootStore" ? "RootStore" : binding.name} holds ${binding.scope}'s whole client runtime`,
-      );
-    this.#problem("unknown-name", identifier, `${binding.name} reaches past the names a module answers`);
+    if (!binding || binding.type === "storeFactory" || binding.type === "rootStore") return;
+    if (binding.type === "whole")
+      return this.#problem("whole-runtime-import", identifier, `${binding.name} hands out the whole client runtime`);
+    this.#followRead(identifier, binding.handle);
   }
 
-  #castsToRootStore(type: ts.TypeNode) {
-    if (!ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return false;
+  #followRead(node: ts.Expression, handle: RuntimeHandle) {
+    if (this.#recording) this.#reads = true;
+    this.#follow(node, handle);
+  }
+
+  #storeSelf(node: ts.Expression) {
+    const owner = RuntimeLexicalScope.thisOwnerOf(node);
+    if (node.kind === ts.SyntaxKind.SuperKeyword && ts.isCallExpression(node.parent) && node.parent.expression === node)
+      return;
+    if (owner?.kind === "class" && this.#isStoreClass(owner.node)) {
+      if (owner.isStatic)
+        return this.#problem("unknown-name", node, "a static member's `this` is the store class, not a module name");
+      const members = node.kind === ts.SyntaxKind.ThisKeyword ? RuntimeUse.#membersOf(owner.node) : new Set<string>();
+      return this.#followRead(node, { kind: "self", members });
+    }
+    const [first] = owner?.kind === "function" ? owner.node.parameters : [];
+    const typedThis = first && ts.isIdentifier(first.name) && first.name.text === "this" && first.type;
+    if (typedThis && this.#isRootStoreType(typedThis)) return this.#followRead(node, { kind: "root" });
+    if (this.#storeFile && owner)
+      this.#problem(
+        "passed-on",
+        node,
+        "outside a store class member `this` may be the store, and its reads are not followed",
+      );
+  }
+
+  #isStoreClass(node: ts.ClassLikeDeclaration) {
+    if (this.#storeFile) return true;
+    const heritage = node.heritageClauses?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)?.types[0];
+    const base = heritage && RuntimeUse.#unwrap(heritage.expression);
+    return !!base && ts.isCallExpression(base) && this.#isStoreFactory(base.expression);
+  }
+
+  #isStoreFactory(expression: ts.Expression) {
+    const callee = RuntimeUse.#unwrap(expression);
+    const declaration = ts.isIdentifier(callee) ? this.#lexical.resolve(callee) : null;
+    return !!declaration && this.#bindings.get(declaration)?.type === "storeFactory";
+  }
+
+  #isRootStoreType(type: ts.TypeNode) {
+    if (!ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName) || type.typeArguments) return false;
     const declaration = this.#lexical.resolve(type.typeName);
     return !!declaration && this.#bindings.get(declaration)?.type === "rootStore";
   }
 
-  #castScope(type: ts.TypeNode) {
-    const name = ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName) ? type.typeName : null;
-    const declaration = name && this.#lexical.resolve(name);
-    const binding = declaration && this.#bindings.get(declaration);
-    return binding?.type === "rootStore" ? binding.scope : "";
+  #isLoader(node: ts.Node) {
+    if (node.kind === ts.SyntaxKind.ImportKeyword) return true;
+    const free = (expression: ts.Expression) => ts.isIdentifier(expression) && !this.#lexical.resolve(expression);
+    if (ts.isIdentifier(node)) return node.text === "require" && RuntimeLexicalScope.isReference(node) && free(node);
+    const member =
+      ts.isPropertyAccessExpression(node) ||
+      (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression));
+    if (!member || RuntimeUse.#memberName(node) !== "require") return false;
+    return ts.isMetaProperty(node.expression) || free(node.expression);
   }
 
-  #follow(node: ts.Expression, handle: Handle): void {
+  #loader(node: ts.Expression) {
+    const { current, parent } = RuntimeUse.#climb(node);
+    const called = ts.isCallExpression(parent) && parent.expression === current;
+    const [specifier] = called ? parent.arguments : [];
+    if (!called) this.#problem("whole-runtime-import", node, "a module loader taken as a value may load any module");
+    else if (!specifier || !ts.isStringLiteralLike(specifier))
+      this.#problem("whole-runtime-import", parent, "the module it loads is picked at run time");
+    else if (this.#targetOf(specifier.text))
+      this.#problem("whole-runtime-import", parent, "the import loads the runtime module whole");
+  }
+
+  #literalArgument(literal: ts.StringLiteralLike) {
+    const parent = literal.parent;
+    if (!(ts.isCallExpression(parent) || ts.isNewExpression(parent)) || !parent.arguments?.includes(literal)) return;
+    if (!this.#isLoader(RuntimeUse.#unwrap(parent.expression)) && this.#targetOf(literal.text))
+      this.#problem("whole-runtime-import", literal, "the runtime module is handed to code that may load it whole");
+  }
+
+  #follow(node: ts.Expression, handle: RuntimeHandle) {
     const { current, parent } = RuntimeUse.#climb(node);
     if (ts.isPropertyAccessExpression(parent) && parent.expression === current)
-      this.#apply(parent, handle, RuntimeUse.#step(handle, parent.name.text));
-    else if (ts.isElementAccessExpression(parent) && parent.expression === current) {
+      return this.#apply(parent, this.#step(handle, parent.name.text));
+    if (ts.isElementAccessExpression(parent) && parent.expression === current) {
       const key = parent.argumentExpression;
       if (ts.isStringLiteralLike(key) || ts.isNumericLiteral(key))
-        this.#apply(parent, handle, RuntimeUse.#step(handle, key.text));
-      else this.#problem("computed-access", parent, "the name is picked at run time");
-    } else if (ts.isCallExpression(parent) && parent.expression === current) {
+        return this.#apply(parent, this.#step(handle, key.text));
+      return this.#problem("computed-access", parent, "the name is picked at run time");
+    }
+    if (ts.isCallExpression(parent) && parent.expression === current) {
       if (handle.kind !== "fetch") this.#problem("unknown-name", parent, "the runtime object itself is called");
-    } else if (
+      return;
+    }
+    const storeOfSignal = handle.kind === "signal" && ts.isCallExpression(parent) && parent.arguments[0] === current;
+    if (storeOfSignal && this.#isStoreFactory(parent.expression)) return;
+    if (
       (ts.isAsExpression(parent) || ts.isTypeAssertionExpression(parent) || ts.isSatisfiesExpression(parent)) &&
       parent.expression === current
     )
-      this.#problem("cast", parent, "the names read through the cast are not checked against the runtime");
-    else if (ts.isVariableDeclaration(parent) && parent.initializer === current) this.#declare(parent, handle);
-    else if (ts.isExportAssignment(parent))
-      this.#problem("re-exported", parent, "other files read the runtime through this one");
-    else this.#problem("passed-on", current, "the names read from it where it goes are not visible here");
+      return this.#problem("cast", parent, "the names read through the cast are not checked against the runtime");
+    if (ts.isVariableDeclaration(parent) && parent.initializer === current) return this.#declare(parent, handle);
+    if (ts.isExportAssignment(parent))
+      return this.#problem("re-exported", parent, "other files read the runtime through this one");
+    this.#problem("passed-on", current, "the names read from it where it goes are not visible here");
   }
 
-  #apply(node: ts.Expression, handle: Handle, step: Step): void {
-    if ("leaf" in step) this.#record(handle.scope, step.leaf, step.key, node);
-    else if ("handle" in step) this.#follow(node, step.handle);
-    else if ("method" in step) this.#callMethod(node, step.method, handle.scope);
-    else if ("unknown" in step) this.#problem("unknown-name", node, "the store has no such member");
+  #apply(node: ts.Expression, step: Step) {
+    if ("leaf" in step) {
+      this.#record(step.leaf, step.key, node);
+      if (step.next) this.#follow(node, step.next);
+    } else if ("handle" in step) this.#follow(node, step.handle);
+    else if ("method" in step) this.#callMethod(node, step.method);
+    else if ("unknown" in step) this.#problem("unknown-name", node, "the runtime has no such member");
+    else if ("whole" in step) this.#problem("whole-runtime-import", node, "it hands out the whole client runtime");
   }
 
-  static #step(handle: Handle, name: string): Step {
-    const to = (kind: HandleKind): Step => ({ handle: { kind, scope: handle.scope } });
+  #step(handle: RuntimeHandle, name: string): Step {
+    const to = (kind: RuntimeHandleKind): Step => ({ handle: { kind } });
     switch (handle.kind) {
       case "st":
         if (name === "do" || name === "use" || name === "slice") return to(`st.${name}`);
-        if (storeMethods.has(name)) return { method: name as "get" };
+        if (stMethods.has(name)) return { method: name as StoreMethod };
         return agenticMembers.has(name) ? { none: true } : { unknown: true };
       case "root":
-        if (name === "get" || name === "set") return { method: name };
-        return name === "slice" ? to("st.slice") : { leaf: "st.do", key: name };
+      case "self":
+        if (name === "get" || name === "set" || name === "pick") return { method: name };
+        if (name === "slice") return to("st.slice");
+        if (handle.members?.has(name) && !this.#consumer?.lookup("st.do", name)) return { none: true };
+        return { leaf: "st.do", key: name };
       case "state":
         return { leaf: "st.use", key: name };
       case "fetch":
         if (name === "slice" || name === "serializedSignal") return to(`fetch.${name}`);
         return { leaf: "fetch", key: name };
+      case "sig":
+        return { leaf: "sig", key: name, next: { kind: "signal" } };
+      case "signal":
+        if (name === "fetch") return to("fetch");
+        return signalData.has(name) ? { none: true } : { unknown: true };
+      case "akanjs/store":
+        if (name === "st") return to("st");
+        return RuntimeImports.frameworkWholeNames.has(name) ? { whole: true } : { none: true };
+      case "akanjs/client":
+        return name === "fetch" || name === "sig" ? to(name) : { none: true };
       default:
         return { leaf: handle.kind, key: name };
     }
   }
 
-  #callMethod(node: ts.Expression, method: "get" | "set" | "sel" | "ref" | "sub", scope: string): void {
+  #callMethod(node: ts.Expression, method: StoreMethod) {
     const { current, parent } = RuntimeUse.#climb(node);
-    if (!ts.isCallExpression(parent) || parent.expression !== current) {
-      this.#problem("passed-on", node, "the store method is taken off the store");
-      return;
-    }
-    const state: Handle = { kind: "state", scope };
+    if (!ts.isCallExpression(parent) || parent.expression !== current)
+      return this.#problem("passed-on", node, "the store method is taken off the store");
     const [first, second] = parent.arguments;
-    if (method === "get") this.#follow(parent, state);
+    if (method === "get") return this.#follow(parent, { kind: "state" });
+    if (method === "pick")
+      for (const key of parent.arguments) {
+        if (ts.isStringLiteralLike(key)) this.#record("st.use", key.text, key);
+        else this.#problem("computed-access", key, "the state key is picked at run time");
+      }
     else if (method === "set") {
-      if (first) this.#written(first, scope);
+      if (first) this.#written(first);
     } else {
       const selector = first && RuntimeUse.#inlineFunction(first);
       if (first && !selector) this.#problem("passed-on", first, "the selector is not written inline");
-      if (!selector) return;
-      this.#bindParameter(selector.parameters[0], state);
-      if (method === "sub" && !second) this.#bindParameter(selector.parameters[1], state);
+      if (selector) this.#bindCallback(selector, method === "sub" && !second ? 2 : 1);
     }
   }
 
-  #written(argument: ts.Expression, scope: string): void {
+  #bindCallback(callback: ts.ArrowFunction | ts.FunctionExpression, count: number) {
+    if (ts.isFunctionExpression(callback)) {
+      const own = RuntimeUse.#ownArguments(callback);
+      if (own) this.#problem("hidden-by-destructuring", own, "`arguments` hides which names it reads");
+    }
+    const parameters = callback.parameters.filter(
+      (parameter) => !(ts.isIdentifier(parameter.name) && parameter.name.text === "this"),
+    );
+    for (const parameter of parameters.slice(0, count)) this.#bindParameter(parameter, { kind: "state" });
+  }
+
+  #written(argument: ts.Expression) {
     const value = RuntimeUse.#unwrap(argument);
     const updater = RuntimeUse.#inlineFunction(value);
     if (updater) {
-      this.#bindParameter(updater.parameters[0], { kind: "state", scope });
+      this.#bindCallback(updater, 1);
       const returned = ts.isBlock(updater.body) ? RuntimeUse.#returnsOf(updater.body) : [updater.body as ts.Expression];
-      for (const expression of returned) this.#written(expression, scope);
+      for (const expression of returned) this.#written(expression);
     } else if (ts.isConditionalExpression(value)) {
-      this.#written(value.whenTrue, scope);
-      this.#written(value.whenFalse, scope);
+      this.#written(value.whenTrue);
+      this.#written(value.whenFalse);
     } else if (ts.isBinaryExpression(value) && value.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
-      this.#written(value.right, scope);
+      this.#written(value.right);
     else if (!ts.isObjectLiteralExpression(value))
       this.#problem("computed-access", argument, "the state keys it writes are not written out");
     else
       for (const property of value.properties) {
         if (ts.isSpreadAssignment(property)) {
-          this.#written(property.expression, scope);
+          this.#written(property.expression);
           continue;
         }
         const name = property.name && RuntimeUse.#staticName(property.name);
         if (name === null) this.#problem("computed-access", property, "the state key is computed");
-        else this.#record(scope, "st.use", name, property);
+        else this.#record("st.use", name, property);
       }
   }
 
-  #declare(declaration: ts.VariableDeclaration, handle: Handle) {
+  #declare(declaration: ts.VariableDeclaration, handle: RuntimeHandle) {
     const list = declaration.parent;
     const statement = list.parent;
     const exported =
@@ -385,14 +452,14 @@ export class RuntimeUse {
     this.#bindName(declaration.name, handle);
   }
 
-  #bindParameter(parameter: ts.ParameterDeclaration | undefined, handle: Handle) {
+  #bindParameter(parameter: ts.ParameterDeclaration | undefined, handle: RuntimeHandle) {
     if (!parameter) return;
     if (parameter.dotDotDotToken)
       return this.#problem("hidden-by-destructuring", parameter, "a rest parameter hides which names it reads");
     this.#bindName(parameter.name, handle);
   }
 
-  #bindName(name: ts.BindingName, handle: Handle) {
+  #bindName(name: ts.BindingName, handle: RuntimeHandle) {
     if (ts.isIdentifier(name)) {
       this.#bindings.set(name, { type: "handle", handle });
       return;
@@ -406,26 +473,29 @@ export class RuntimeUse {
         this.#problem("hidden-by-destructuring", element, "a rest or computed key hides which names it reads");
         continue;
       }
-      const step = RuntimeUse.#step(handle, keyName);
-      if ("leaf" in step) this.#record(handle.scope, step.leaf, step.key, element);
-      else if ("handle" in step) this.#bindName(element.name, step.handle);
+      const step = this.#step(handle, keyName);
+      if ("leaf" in step) {
+        this.#record(step.leaf, step.key, element);
+        if (step.next) this.#bindName(element.name, step.next);
+      } else if ("handle" in step) this.#bindName(element.name, step.handle);
       else if ("method" in step) this.#problem("passed-on", element, "the store method is taken off the store");
-      else if ("unknown" in step) this.#problem("unknown-name", element, "the store has no such member");
+      else if ("unknown" in step) this.#problem("unknown-name", element, "the runtime has no such member");
+      else if ("whole" in step) this.#problem("whole-runtime-import", element, "it hands out the whole client runtime");
     }
   }
 
-  #record(scope: string, family: RuntimeFamily, key: string, node: ts.Node) {
+  #record(family: RuntimeFamily, key: string, node: ts.Node) {
     if (!this.#recording) return;
-    const table = this.#tableOf(scope);
+    const table = this.#consumer;
     if (!table)
-      return this.#problem(
-        "whole-runtime-import",
-        node,
-        `${scope || "this file"} has no generated client runtime to read`,
-      );
+      return this.#problem("whole-runtime-import", node, "there is no generated client runtime to read names from");
     const entry = table.lookup(family, key);
     if (!entry)
-      return this.#problem("unknown-name", node, `${family}.${key} is not a name ${scope}'s client runtime answers`);
+      return this.#problem(
+        "unknown-name",
+        node,
+        `${family}.${key} is not a name ${table.scope}'s client runtime answers`,
+      );
     if (entry.base) this.#base = true;
     const needs = family.startsWith("st.") ? "store" : "descriptor";
     for (const owner of entry.owners) {
@@ -450,6 +520,42 @@ export class RuntimeUse {
       message: `\`${text}\`: ${why}`,
       position,
     });
+  }
+
+  static #membersOf(node: ts.ClassLikeDeclaration) {
+    const members = new Set<string>();
+    for (const member of node.members) {
+      const name = member.name && RuntimeUse.#staticName(member.name);
+      const isStatic = !!(ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static);
+      if (name !== null && name !== undefined && !isStatic) members.add(name);
+    }
+    return members;
+  }
+
+  static #ownArguments(callback: ts.FunctionExpression) {
+    let found: ts.Identifier | null = null;
+    const visit = (node: ts.Node) => {
+      if (found || (ts.isFunctionLike(node) && !ts.isArrowFunction(node))) return;
+      if (ts.isIdentifier(node) && node.text === "arguments" && RuntimeLexicalScope.isReference(node)) found = node;
+      ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(callback.body, visit);
+    return found as ts.Identifier | null;
+  }
+
+  static #castInner(expression: ts.Expression): ts.Expression {
+    const value = RuntimeUse.#unwrap(expression);
+    if (
+      (ts.isAsExpression(value) || ts.isTypeAssertionExpression(value)) &&
+      value.type.kind === ts.SyntaxKind.UnknownKeyword
+    )
+      return RuntimeUse.#unwrap(value.expression);
+    return value;
+  }
+
+  static #memberName(node: ts.PropertyAccessExpression | ts.ElementAccessExpression) {
+    if (ts.isPropertyAccessExpression(node)) return node.name.text;
+    return ts.isStringLiteralLike(node.argumentExpression) ? node.argumentExpression.text : null;
   }
 
   static #climb(node: ts.Expression) {

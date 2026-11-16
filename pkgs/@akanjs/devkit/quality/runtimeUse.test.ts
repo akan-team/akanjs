@@ -1,12 +1,17 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import type { RuntimeNameTable } from "./runtimeNameTable";
 import { runtimeFixtureTables } from "./runtimeTable.fixture";
 import { RuntimeUse, type RuntimeUseOptions, type RuntimeUseVerdict } from "./runtimeUse";
 
-let tableOf: Awaited<ReturnType<typeof runtimeFixtureTables>>["tableOf"];
+let demo: RuntimeNameTable;
+let kit: RuntimeNameTable;
 
 beforeAll(async () => {
-  ({ tableOf } = await runtimeFixtureTables());
+  ({ demo, kit } = await runtimeFixtureTables());
 });
+
+const ownTableOf = (fileName: string) =>
+  fileName.startsWith("apps/demo/") ? demo : fileName.startsWith("libs/kit/") ? kit : null;
 
 const appImport = 'import { fetch, sig, st } from "@apps/demo/client";\n';
 
@@ -18,8 +23,12 @@ const summaryOf = (verdict: RuntimeUseVerdict) =>
       ]
     : `${verdict.reason}: ${verdict.text}`;
 
-const analyze = (text: string, fileName = "apps/demo/ui/Card.tsx", options?: RuntimeUseOptions) =>
-  summaryOf(RuntimeUse.analyze({ fileName, text }, tableOf, options));
+const analyze = (
+  text: string,
+  fileName = "apps/demo/ui/Card.tsx",
+  options?: RuntimeUseOptions,
+  consumer = ownTableOf(fileName),
+) => summaryOf(RuntimeUse.analyze({ fileName, text }, consumer, options));
 
 interface UseCase {
   shape: string;
@@ -270,7 +279,7 @@ describe("RuntimeUse.analyze", () => {
   test("owns a descriptor read by the signal module and a store read by the store module, a lib name by the lib", () => {
     expect(
       analyze(
-        `${appImport}export const load = () => [fetch.slice.memoInBoard, sig.note, fetch.memoNote(), st.do.pickLabel("x")];\n`,
+        `${appImport}export const load = () => [fetch.slice.memoInBoard, sig.note.refName, fetch.memoNote(), st.do.pickLabel("x")];\n`,
       ),
     ).toEqual(["apps/demo/memo descriptor", "apps/demo/note descriptor", "libs/kit/util store"]);
     expect(analyze(`${appImport}export const count = () => [fetch.memoNote(), st.use.memo()];\n`)).toEqual([
@@ -301,7 +310,7 @@ describe("RuntimeUse.analyze", () => {
         'import { st } from "@apps/other/client";\nexport const reset = () => st.do.clearDraft();\n',
         "apps/other/ui/X.tsx",
       ),
-    ).toBe("whole-runtime-import: st.do.clearDraft");
+    ).toBe('whole-runtime-import: "@apps/other/client"');
     expect(analyze('import "@apps/demo/client";\n')).toBe('whole-runtime-import: import "@apps/demo/client";');
   });
 
@@ -318,11 +327,208 @@ describe("RuntimeUse.analyze", () => {
         fileName: "apps/demo/ui/Card.tsx",
         text: `${appImport}export const a = (k: string) => st.do[k];\nexport const b = () => <Panel sig={sig} />;\n`,
       },
-      tableOf,
+      demo,
     );
     expect(
       verdict.resolvable ? [] : verdict.problems.map(({ reason, line, column }) => `${reason} ${line}:${column}`),
     ).toEqual(["computed-access 2:33", "passed-on 3:36"]);
+  });
+
+  test("follows the framework's own fetch and sig as it follows the scope's", () => {
+    expect(
+      analyze(
+        'import { st } from "@apps/demo/client";\nimport { fetch as f } from "akanjs/client";\nexport const x = () => [st.use.draft(), f.noteCount()];\n',
+      ),
+    ).toEqual(["apps/demo/memo store", "apps/demo/note descriptor"]);
+    expect(analyze('import { sig as s } from "akanjs/client";\nexport const ref = () => s.memo.refName;\n')).toEqual([
+      "apps/demo/memo descriptor",
+    ]);
+  });
+
+  test("follows a store's `this` only as itself or through the sanctioned cast to its RootStore", () => {
+    const file = "apps/demo/lib/memo/memo.store.ts";
+    const storeOf = (body: string, head = 'import type { RootStore } from "../st";\n') =>
+      analyze(
+        `import { store } from "akanjs/store";\n${head}import { sig } from "../useClient";\n\nexport class MemoStore extends store(sig.memo, () => ({ draft: "" })) {\n${body}\n}\n`,
+        file,
+      );
+    expect(
+      storeOf(
+        "  clearDraft() {\n    this.set({ draft: '' });\n    (this as unknown as RootStore).setPinned(true);\n  }",
+      ),
+    ).toEqual(["apps/demo/memo store", "apps/demo/note store"]);
+    expect(storeOf("  pin() {\n    this.setPinned(true);\n  }")).toEqual([
+      "apps/demo/memo descriptor",
+      "apps/demo/note store",
+    ]);
+    expect([
+      storeOf("  pin() {\n    (this as any).setPinned(true);\n  }"),
+      storeOf(
+        "  pin() {\n    (this as unknown as Root).setPinned(true);\n  }",
+        'import type { RootStore } from "../st";\ntype Root = RootStore;\n',
+      ),
+      storeOf("  pin() {\n    (this as unknown as RootStore & {}).setPinned(true);\n  }"),
+      storeOf(
+        "  pin() {\n    (this as unknown as RootStore).setPinned(true);\n  }",
+        'import type { RootStore } from "akanjs/store";\n',
+      ),
+      storeOf(
+        "  pin() {\n    (this as unknown as RootStore).setPinned(true);\n  }",
+        'import type { RootStore } from "./root";\n',
+      ),
+      storeOf("  pin() {\n    pin(this);\n  }"),
+      storeOf("  pin() {\n    return (this.get() as any).pinned;\n  }"),
+      storeOf("  static pin() {\n    return this.name;\n  }"),
+      storeOf("  pin() {\n    return this.pinEverything();\n  }"),
+    ]).toEqual([
+      "cast: this as any",
+      "cast: this as unknown",
+      "cast: this as unknown",
+      "cast: this as unknown",
+      "cast: this as unknown",
+      "passed-on: this",
+      "cast: this.get() as any",
+      "unknown-name: this",
+      "unknown-name: this.pinEverything",
+    ]);
+  });
+
+  test("reads a runtime import written with an extension, an index or a specifier the caller maps", () => {
+    expect(analyze('import { st } from "@apps/demo/client.js";\nexport const r = () => st.do.clearDraft();\n')).toEqual(
+      ["apps/demo/memo store"],
+    );
+    expect(
+      analyze(
+        'import { fetch } from "../useClient.js";\nexport const r = () => fetch.memoNote();\n',
+        "apps/demo/lib/memo/memoNote.ts",
+      ),
+    ).toEqual(["apps/demo/memo descriptor"]);
+    const runtimeOf = (specifier: string) =>
+      specifier === "#app" ? { scope: "apps/demo", kind: "client" as const } : null;
+    expect(
+      analyze('import { st } from "#app";\nexport const r = () => st.do.clearDraft();\n', undefined, { runtimeOf }),
+    ).toEqual(["apps/demo/memo store"]);
+  });
+
+  test("follows an alias chain to its end, however many aliases sit below their use", () => {
+    expect(
+      analyze(`${appImport}export const run = () => {
+  const inner = () => y6.clearEverything();
+  return inner();
+};
+const y6 = y5;
+const y5 = y4;
+const y4 = y3;
+const y3 = y2;
+const y2 = y1;
+const y1 = st.do;
+`),
+    ).toBe("unknown-name: y6.clearEverything");
+  });
+
+  test("loads the whole runtime for a reach it cannot follow, and follows a name a method parameter does not hide", () => {
+    expect(analyze('export const n = () => require("@apps/demo/client").fetch.noteCount();\n')).toBe(
+      'whole-runtime-import: require("@apps/demo/client")',
+    );
+    expect(
+      analyze(`${appImport}export const Pinned = () => st.sel(function () {\n  return arguments[0].pinned;\n});\n`),
+    ).toBe("hidden-by-destructuring: arguments");
+    expect(
+      analyze(`${appImport}export class Pins {\n  [st.do.setPinned.name](st: unknown) {\n    return st;\n  }\n}\n`),
+    ).toEqual(["apps/demo/note store"]);
+    expect(analyze('import {} from "@apps/demo/client";\n')).toBe(
+      'whole-runtime-import: import {} from "@apps/demo/client";',
+    );
+  });
+
+  test("answers a lib file's names from the scope that loads it, and refuses a runtime that scope does not load", () => {
+    const file = "libs/kit/ui/AddNote.tsx";
+    const text =
+      'import { fetch, st } from "../client";\nexport const add = () => [st.do.createNote(), fetch.tagCount()];\n';
+    expect(analyze(text, file, undefined, demo)).toEqual(["apps/demo/note store", "libs/kit/tag descriptor"]);
+    expect(analyze(text, file, undefined, kit)).toEqual(["libs/kit/note store", "libs/kit/tag descriptor"]);
+    expect(analyze('import { st } from "@apps/demo/client";\nexport const a = () => st.do.clearDraft();\n', file)).toBe(
+      'whole-runtime-import: "@apps/demo/client"',
+    );
+    expect(analyze(text, file, undefined, null)).toBe('whole-runtime-import: "../client"');
+  });
+
+  test("loads the whole runtime for every reach past a named import", () => {
+    expect(
+      [
+        'export * from "@apps/demo/client";\n',
+        'export * as client from "@apps/demo/client";\n',
+        'export { RootStore } from "@apps/demo/client";\n',
+        'import client = require("@apps/demo/client");\n',
+        "export const load = (name: string) => import(name);\n",
+        "const load = require;\nexport const n = () => load('x');\n",
+        'export const n = () => import.meta.require("@apps/demo/lib/useClient");\n',
+        'export const n = () => globalThis["require"]("@apps/demo/client");\n',
+        'export const worker = () => new Worker("@apps/demo/client");\n',
+        'import { st as root } from "akanjs/store/baseSt";\nexport const n = () => root;\n',
+        'import { StoreRegistry } from "akanjs/store";\nexport const n = () => StoreRegistry.build;\n',
+        'import * as framework from "akanjs/store";\nexport const n = () => framework.StoreRegistry;\n',
+        'import { RootStore } from "../st";\nexport const n = (self: unknown) => (self as RootStore).clearDraft();\n',
+        'import { runtime } from "@apps/demo/lib/usePage";\nexport const n = () => runtime;\n',
+        'import { memo } from "../st";\nexport const n = () => memo;\n',
+      ].map((text) => analyze(text, "apps/demo/lib/memo/memoLoad.ts")),
+    ).toEqual([
+      're-exported: export * from "@apps/demo/client";',
+      're-exported: export * as client from "@apps/demo/client";',
+      "re-exported: RootStore",
+      'whole-runtime-import: import client = require("@apps/demo/client");',
+      "whole-runtime-import: import(name)",
+      "whole-runtime-import: require",
+      'whole-runtime-import: import.meta.require("@apps/demo/lib/useClient")',
+      'whole-runtime-import: globalThis["require"]("@apps/demo/client")',
+      'whole-runtime-import: "@apps/demo/client"',
+      "whole-runtime-import: st as root",
+      "whole-runtime-import: StoreRegistry",
+      "whole-runtime-import: framework.StoreRegistry",
+      "whole-runtime-import: RootStore",
+      "unknown-name: runtime",
+      "whole-runtime-import: memo",
+    ]);
+  });
+
+  test("follows a namespace of the framework, a signal handed to its store, and a function typed to the root store", () => {
+    const head = 'import * as framework from "akanjs/client";\nimport { store } from "akanjs/store";\n';
+    expect(
+      analyze(
+        `${head}import type { RootStore } from "../st";
+import { sig } from "../useClient";
+export class Draft extends store(sig.memo, () => ({ draftOf: "" })) {}
+export function pin(this: RootStore) {
+  this.setPinned(this.pick("draft").draft === "");
+}
+export const n = () => [framework.fetch.memoNote(), framework.cn, sig.note.fetch.noteCount()];
+`,
+        "apps/demo/lib/memo/memoPin.ts",
+      ),
+    ).toEqual(["apps/demo/memo store", "apps/demo/note store"]);
+    expect(analyze('import { sig } from "@apps/demo/client";\nexport const n = () => sig.memo.fetch;\n')).toBe(
+      "passed-on: sig.memo.fetch",
+    );
+  });
+
+  test("leaves `this` alone outside a store class, and loads the whole runtime when a store file's helper may be the store", () => {
+    expect(
+      analyze(
+        `${appImport}export class Timer {\n  tick() {\n    return this.anything();\n  }\n}\nexport const n = () => st.do.clearDraft();\n`,
+      ),
+    ).toEqual(["apps/demo/memo store"]);
+    expect(
+      analyze(
+        'import { store } from "akanjs/store";\n\nfunction pinAll(this: { setPinned: (pin: boolean) => void }) {\n  this.setPinned(true);\n}\n\nexport class MemoStore extends store("memo" as const, () => ({ draft: "" })) {\n  pinAll = pinAll;\n}\n',
+        "apps/demo/lib/memo/memo.store.ts",
+      ),
+    ).toBe("passed-on: this");
+    expect(
+      analyze(
+        'import { store } from "akanjs/store";\n\nexport class MemoStore extends store("memo" as const, () => ({ draft: "" })) {\n  reset() {\n    super.set({ draft: "" });\n    return [this.reset, this.slice.memoInBoard];\n  }\n}\n',
+        "apps/demo/lib/memo/memo.store.ts",
+      ),
+    ).toEqual(["apps/demo/memo store"]);
   });
 
   test("reads the scope and runtime kind of an import specifier", () => {
@@ -343,7 +549,7 @@ describe("RuntimeUse.analyze", () => {
       { scope: "libs/kit", kind: "client" },
       { scope: "apps/demo", kind: "usePage" },
       { scope: "apps/demo", kind: "framework-store" },
-      null,
+      { scope: "apps/demo", kind: "framework-client" },
       null,
     ]);
   });

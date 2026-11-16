@@ -1,15 +1,46 @@
 import ts from "typescript";
 
+export type RuntimeThisOwner =
+  | { kind: "class"; node: ts.ClassLikeDeclaration; isStatic: boolean }
+  | { kind: "function"; node: ts.SignatureDeclaration };
+
 export class RuntimeLexicalScope {
   readonly #declared = new WeakMap<ts.Node, Map<string, ts.Identifier>>();
 
   resolve(identifier: ts.Identifier): ts.Identifier | null {
     for (let node: ts.Node | undefined = identifier.parent; node; node = node.parent) {
+      if (ts.isFunctionLike(node) && RuntimeLexicalScope.evaluatedOutside(node, identifier)) continue;
       const names = this.#namesOf(node);
       const found = names?.get(identifier.text);
       if (found) return found;
     }
     return null;
+  }
+
+  static thisOwnerOf(node: ts.Node): RuntimeThisOwner | null {
+    for (let at: ts.Node | undefined = node.parent; at; at = at.parent) {
+      if (ts.isArrowFunction(at) || ts.isClassLike(at)) continue;
+      if (ts.isClassElement(at) && ts.isClassLike(at.parent)) {
+        if (RuntimeLexicalScope.evaluatedOutside(at, node)) continue;
+        const isStatic =
+          ts.isClassStaticBlockDeclaration(at) || !!(ts.getCombinedModifierFlags(at) & ts.ModifierFlags.Static);
+        return { kind: "class", node: at.parent, isStatic };
+      }
+      if (ts.isFunctionLike(at)) return { kind: "function", node: at };
+      if (ts.isSourceFile(at) || ts.isModuleBlock(at)) return null;
+    }
+    return null;
+  }
+
+  //? A computed member name and a decorator run where the member is defined, outside its own scope and `this`.
+  static evaluatedOutside(member: ts.Node, node: ts.Node) {
+    const within = (outer: ts.Node) => node.pos >= outer.pos && node.end <= outer.end;
+    const name = (member as ts.NamedDeclaration).name;
+    if (name && ts.isComputedPropertyName(name) && within(name)) return true;
+    const parameters = ts.isFunctionLike(member) ? member.parameters : [];
+    return [member, ...parameters].some(
+      (decorated) => ts.canHaveDecorators(decorated) && (ts.getDecorators(decorated) ?? []).some(within),
+    );
   }
 
   static isReference(identifier: ts.Identifier) {
@@ -79,9 +110,9 @@ export class RuntimeLexicalScope {
     else if (ts.isCaseBlock(node)) for (const clause of node.clauses) addStatements(clause.statements);
     else if (ts.isFunctionLike(node)) {
       for (const parameter of node.parameters) addBinding(parameter.name);
-      if ((ts.isFunctionExpression(node) || ts.isClassExpression(node)) && node.name)
-        names.set(node.name.text, node.name);
-    } else if (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isForOfStatement(node)) {
+      if (ts.isFunctionExpression(node) && node.name) names.set(node.name.text, node.name);
+    } else if (ts.isClassExpression(node) && node.name) names.set(node.name.text, node.name);
+    else if (ts.isForStatement(node) || ts.isForInStatement(node) || ts.isForOfStatement(node)) {
       const initializer = node.initializer;
       if (initializer && ts.isVariableDeclarationList(initializer))
         for (const declaration of initializer.declarations) addBinding(declaration.name);
