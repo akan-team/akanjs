@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdir, realpath, rm, symlink } from "node:fs/promises";
+import { mkdir, readdir, realpath, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { type RuntimeFamily, RuntimeNameTable, runtimeFamilies } from "../quality/runtimeNameTable";
@@ -306,31 +306,37 @@ const { Page, st, usePage } = await import("./apps/site/client.ts");
 console.log(JSON.stringify({ unit: typeof Page.Unit.Card, store: typeof st.do.refreshPageCount, usePage: typeof usePage }));
 `;
 
-const writeWorkspace = async () => {
-  const temp = await createTempApp("demo", await realpath(os.tmpdir()));
+const writeWorkspace = async ({
+  app = "demo",
+  lib = "kit",
+  libFiles = { ...kitFiles, ...kitModuleNamed("tag", "Tag") },
+  appFiles = demoFiles,
+  kept = false,
+} = {}) => {
+  const created = await createTempApp(app, await realpath(os.tmpdir()));
+  const temp = kept ? created : trackRoot(created);
   const { root } = temp;
-  const kitDir = path.join(root, "libs/kit");
+  const libDir = path.join(root, "libs", lib);
   await mkdir(path.join(root, "node_modules"), { recursive: true });
   await symlink(akanjsRoot, path.join(root, "node_modules/akanjs"));
   await writeJson(path.join(root, "tsconfig.json"), {
     compilerOptions: { target: "ESNext", paths: { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] } },
     references: [],
   });
-  for (const dir of [path.join(root, "apps/demo"), kitDir])
+  for (const dir of [path.join(root, "apps", app), libDir])
     await writeJson(path.join(dir, "tsconfig.json"), { extends: "../../tsconfig.json" });
-  await writeJson(path.join(kitDir, "package.json"), { type: "module", name: "@kit", version: "0.0.1" });
-  await writeText(path.join(kitDir, "akan.config.ts"), "export default {};\n");
-  await writeText(path.join(kitDir, "lib/__scalar/.keep"), "");
-  for (const [file, content] of Object.entries({ ...kitFiles, ...kitModuleNamed("tag", "Tag") }))
-    await writeText(path.join(kitDir, file), content);
-  for (const [file, content] of Object.entries(demoFiles)) await writeText(path.join(root, "apps/demo", file), content);
+  await writeJson(path.join(libDir, "package.json"), { type: "module", name: `@${lib}`, version: "0.0.1" });
+  await writeText(path.join(libDir, "akan.config.ts"), "export default {};\n");
+  await writeText(path.join(libDir, "lib/__scalar/.keep"), "");
+  for (const [file, content] of Object.entries(libFiles)) await writeText(path.join(libDir, file), content);
+  for (const [file, content] of Object.entries(appFiles)) await writeText(path.join(root, "apps", app, file), content);
   await temp.app.scan();
-  return root;
+  return temp;
 };
 
 let demoRoot: Promise<string> | null = null;
 const demoWorkspace = () => {
-  demoRoot ??= writeWorkspace();
+  demoRoot ??= writeWorkspace({ kept: true }).then(({ root }) => root);
   return demoRoot;
 };
 afterAll(async () => {
@@ -445,5 +451,223 @@ describe("the client runtime name table", () => {
       "apps/demo/item",
       "libs/kit/tag",
     ]);
+  }, 120_000);
+});
+
+const serviceFiles = (name: string, endpointName: string): Record<string, string> => {
+  const Name = name.charAt(0).toUpperCase() + name.slice(1);
+  return {
+    [`lib/_${name}/${name}.dictionary.ts`]: `import { serviceDictionary } from "akanjs/dictionary";
+
+import type { ${Name}Endpoint } from "./${name}.signal";
+
+export const dictionary = serviceDictionary(["en", "ko"])
+  .endpoint<${Name}Endpoint>((fn) => ({
+    ${endpointName}: fn(["${Name}", "${Name}"]),
+  }))
+  .translate({});
+`,
+    [`lib/_${name}/${name}.service.ts`]: `import { serve } from "akanjs/service";
+
+export class ${Name}Service extends serve("${name}" as const, () => ({})) {}
+`,
+    [`lib/_${name}/${name}.signal.ts`]: `import { endpoint, internal, Public } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class ${Name}Internal extends internal(srv.${name}, () => ({})) {}
+
+export class ${Name}Endpoint extends endpoint(srv.${name}, ({ query }) => ({
+  ${endpointName}: query(String, { guards: [Public], mcp: false }).exec(() => ""),
+})) {}
+`,
+  };
+};
+
+//? `audit` follows `item` in the lib's signal, so an app that extends `item` shows whether its pieces keep that order.
+const stockFiles = { ...kitFiles, ...serviceFiles("audit", "auditTrail") };
+const shopFilesOf = (lib: string) => ({
+  ...Object.fromEntries(
+    Object.entries(demoFiles).map(([file, content]) => [file, content.replaceAll("@libs/kit/", `@libs/${lib}/`)]),
+  ),
+  ...serviceFiles("ping", "pingAt"),
+  "lib/_note/note.dictionary.ts": `import { serviceDictionary } from "akanjs/dictionary";
+
+export const dictionary = serviceDictionary(["en", "ko"]).translate({});
+`,
+  "lib/_note/note.store.ts": `import { store } from "akanjs/store";
+
+export class NoteStore extends store("note" as const, () => ({ noteText: "" })) {}
+`,
+});
+const writeShopWorkspace = (app: string, lib: string) =>
+  writeWorkspace({ app, lib, libFiles: stockFiles, appFiles: shopFilesOf(lib) });
+
+//? Rewrites files instead of redirecting with a runtime `Bun.plugin`, under which Bun 1.4 leaves macro calls un-inlined.
+const pointScopes = async (root: string, scopes: string[], targets: Record<string, string>) => {
+  for (const scope of scopes)
+    for (const [file, target] of Object.entries(targets))
+      await writeText(path.join(root, scope, "lib", file), `export * from "${target}";\n`);
+};
+
+const runtimeKeysScript = (app: string, { browser = false } = {}) => `
+${browser ? `Object.assign(globalThis, { window: globalThis, location: new URL("http://localhost:4200/") });\n` : ""}const { FetchClient } = await import("akanjs/fetch");
+const { fetch, sig } = await import("./apps/${app}/lib/useClient.ts");
+const { st } = await import("./apps/${app}/lib/st.ts");
+const serializedSignal = fetch.serializedSignal;
+console.log(JSON.stringify({
+  "st.get": Object.keys(st.get()),
+  "st.do": Object.keys(st.do),
+  "st.use": Object.keys(st.use),
+  "st.slice": Object.keys(st.slice),
+  "fetch.slice": Object.keys(fetch.slice),
+  sig: Object.keys(sig),
+  "fetch.serializedSignal": Object.keys(serializedSignal),
+  "FetchClient.claimsOf": Object.entries(serializedSignal).flatMap(([refName, signal]) =>
+    FetchClient.claimsOf(refName, signal).handlers.map(({ key }) => key),
+  ),
+}));
+`;
+
+const lonePieceScript = (app: string, lib: string, piece: string) => `
+const { StoreRegistry, st } = await import("akanjs/store");
+const storesBefore = new Set(StoreRegistry.stores.keys());
+await import("./apps/${app}/lib/__client/${piece}.st.ts");
+const appPage = await import("./apps/${app}/lib/usePage.ts");
+const libPage = await import("./libs/${lib}/lib/usePage.ts");
+const moduleActions = ["pickLabel", "loadItemNote", "refreshItemCount"];
+const moduleState = ["label", "noteDraft", "itemCount", "noteText"];
+console.log(JSON.stringify({
+  stores: [...StoreRegistry.stores.keys()].filter((key) => !storesBefore.has(key)),
+  actions: moduleActions.filter((key) => key in st.do),
+  state: moduleState.filter((key) => key in st.get()),
+  appSignal: Object.keys(appPage.fetch.ownSerializedSignal),
+  libSignal: Object.keys(libPage.fetch.ownSerializedSignal),
+}));
+`;
+
+const keptByWholeScript = (app: string) => `
+const { st } = await import("akanjs/store");
+await import("./apps/${app}/lib/__client/demo.st.ts");
+const pickLabel = st.do.pickLabel;
+await pickLabel("picked");
+await import("./apps/${app}/lib/st.ts");
+console.log(JSON.stringify({ samePickLabel: st.do.pickLabel === pickLabel, label: st.get().label }));
+`;
+
+const appStoreAloneScript = (app: string) => `
+const { StoreRegistry } = await import("akanjs/store");
+const { ItemStore } = await import("./apps/${app}/lib/item/item.store.ts");
+StoreRegistry.register(ItemStore);
+const actions = ItemStore[Symbol.for("akan.action")];
+console.log(JSON.stringify({ actions: ["refreshItemCount", "loadItemNote"].filter((key) => key in actions) }));
+`;
+
+const orderPath = path.join(import.meta.dir, "clientRuntimeKeyOrder.fixture.json");
+const howToRecordOrder =
+  "The order of the keys an app's whole client runtime answers no longer matches clientRuntimeKeyOrder.fixture.json. " +
+  "If the change is intended, record it with AKAN_RECORD_CLIENT_RUNTIME_KEYS=1 and review the fixture's diff.";
+
+//? A workspace per test: the temp root goes after each test, and the scan caches an app or lib by name.
+describe("an app's client runtime pieces", () => {
+  test("leave the whole client runtime answering its keys in the order it did before the pieces, in a browser and outside one", async () => {
+    const { root } = await writeShopWorkspace("bazaar", "crate");
+    const order = {
+      node: await evaluate(root, runtimeKeysScript("bazaar"), "bazaar"),
+      browser: await evaluate(root, runtimeKeysScript("bazaar", { browser: true }), "bazaar"),
+    };
+    if (process.env.AKAN_RECORD_CLIENT_RUNTIME_KEYS === "1")
+      await Bun.write(orderPath, `${JSON.stringify(order, null, 2)}\n`);
+    expect(order, howToRecordOrder).toEqual(await Bun.file(orderPath).json());
+  }, 120_000);
+
+  test("give each module a fetch piece for its signal and a store piece for its store, and leave with the module", async () => {
+    const { root, app } = await writeShopWorkspace("shop", "stock");
+    const appPieces = path.join(root, "apps/shop/lib/__client");
+    const read = (file: string) => Bun.file(path.join(appPieces, file)).text();
+    const scopePieces = ["_base.fetch.ts", "_st.ts", "_useClient.ts", "audit.fetch.ts"];
+    const modulePieces = ["demo.fetch.ts", "demo.st.ts", "item.fetch.ts", "item.st.ts", "note.st.ts"];
+    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces, "ping.fetch.ts"]);
+    expect((await readdir(path.join(root, "libs/stock/lib/__client"))).sort()).toEqual([
+      ...scopePieces,
+      "item.fetch.ts",
+      "item.st.ts",
+    ]);
+    expect(await read("_base.fetch.ts")).not.toContain("@libs/");
+    expect(await read("_base.fetch.ts")).toContain('getSerializedSignalOf("base")');
+    expect(await read("audit.fetch.ts")).toContain('import "@libs/stock/lib/__client/audit.fetch";');
+    expect(await read("item.fetch.ts")).toContain('import "@libs/stock/lib/__client/item.fetch";');
+    expect(await read("ping.fetch.ts")).not.toContain("@libs/");
+    expect(await read("ping.fetch.ts")).toContain('getSerializedSignalOf("ping")');
+    expect(await read("demo.st.ts")).toContain('import "./demo.fetch";');
+    expect(await read("demo.st.ts")).toContain('import { DemoStore } from "../_demo/demo.store";');
+    expect(await read("item.st.ts")).toContain(
+      'import "@libs/stock/lib/__client/item.st";\nimport { StoreRegistry } from "akanjs/store";\nimport { ItemStore } from "../item/item.store";',
+    );
+    expect(await read("note.st.ts")).not.toContain(".fetch");
+    expect((await read("_useClient.ts")).match(/(?<=import "\.\/)[^"]+(?=";)/g)).toEqual([
+      "_base.fetch",
+      "item.fetch",
+      "audit.fetch",
+      "demo.fetch",
+      "ping.fetch",
+    ]);
+    expect(await read("_st.ts")).toContain('import { RootStore as stock } from "@libs/stock/lib/__client/_st";');
+    for (const whole of ["useClient.ts", "st.ts", "usePage.ts"])
+      expect(await Bun.file(path.join(root, "apps/shop/lib", whole)).text()).not.toContain("__client");
+
+    await rm(path.join(root, "apps/shop/lib/_ping"), { recursive: true });
+    await writeText(path.join(appPieces, "stale.st.ts"), "export {};\n");
+    await app.scan({ refresh: true });
+    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces]);
+    expect(await read("_useClient.ts")).not.toContain("ping");
+  }, 120_000);
+
+  test("load one module's store piece with only that module's store and descriptors, lib modules included", async () => {
+    const { root } = await writeShopWorkspace("mall", "depot");
+    expect(await evaluate(root, lonePieceScript("mall", "depot", "demo"), "mall")).toEqual({
+      stores: ["demo"],
+      actions: ["pickLabel"],
+      state: ["label"],
+      appSignal: ["demo"],
+      libSignal: [],
+    });
+    expect(await evaluate(root, keptByWholeScript("mall"), "mall")).toEqual({ samePickLabel: true, label: "picked" });
+    await pointScopes(root, ["apps/mall", "libs/depot"], { "useClient.ts": "./usePage" });
+    expect(await evaluate(root, lonePieceScript("mall", "depot", "item"), "mall")).toEqual({
+      stores: ["item"],
+      actions: ["loadItemNote", "refreshItemCount"],
+      state: ["noteDraft", "itemCount"],
+      appSignal: ["item"],
+      libSignal: ["item"],
+    });
+  }, 120_000);
+
+  test("let an app store file imported on its own keep the actions of the lib store it extends", async () => {
+    const { root } = await writeShopWorkspace("plaza", "cargo");
+    expect(await evaluate(root, appStoreAloneScript("plaza"), "plaza")).toEqual({
+      actions: ["refreshItemCount", "loadItemNote"],
+    });
+  }, 120_000);
+
+  test("assemble the same store, fetch and signal keys as the whole client runtime, in a browser and outside one", async () => {
+    const { root } = await writeShopWorkspace("arcade", "vault");
+    const evaluateBoth = async () => ({
+      node: await evaluate(root, runtimeKeysScript("arcade"), "arcade"),
+      browser: await evaluate(root, runtimeKeysScript("arcade", { browser: true }), "arcade"),
+    });
+    const sorted = (keys: Record<string, Record<string, unknown>>) =>
+      Object.fromEntries(
+        Object.entries(keys).map(([env, byKey]) => [
+          env,
+          Object.fromEntries(Object.entries(byKey).map(([key, value]) => [key, [...(value as string[])].sort()])),
+        ]),
+      );
+    const whole = await evaluateBoth();
+    await pointScopes(root, ["apps/arcade", "libs/vault"], {
+      "useClient.ts": "./__client/_useClient",
+      "st.ts": "./__client/_st",
+    });
+    expect(sorted(await evaluateBoth())).toEqual(sorted(whole));
   }, 120_000);
 });

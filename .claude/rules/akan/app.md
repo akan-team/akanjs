@@ -62,6 +62,7 @@ each plugin's header and diagnostic carry its full reasoning.
 - `plugin/<name>.plugin.ts` declares an Akan plugin. No `apps/*/base` or `libs/*/base` — use `common/`.
 - `lib/` root holds only `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`,
   `usePage.ts`, `useServer.ts` — no hand-written file or test.
+- `lib/__lib/` and `lib/__client/` (each module's client runtime piece) are generated; never hand-edit them.
 - Modules are `lib/<model>`, `lib/_<service>`, `lib/__scalar/<scalar>`; their UI files are
   `<Model>.Template|Unit|Util|View|Zone.tsx`, `<Service>.Util|Zone.tsx`, `<Scalar>.Template|Unit.tsx`. A test is
   named after the one file it covers, so `<model>.<topic>.signal.test.ts` is refused like `<model>.<topic>.signal.ts`.

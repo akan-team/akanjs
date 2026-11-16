@@ -16,7 +16,13 @@ import type { RootStoreCls } from "./rootStore";
 import { sliceKeysOf } from "./sliceKeys";
 import type { SliceActionKey, SliceActionRole, SliceStateRole } from "./sliceRole";
 import type { DraftState, SliceStateKey } from "./state";
-import { type DraftMeta, evaluateInitializers, type SearchParamsState, type StateDerivedMeta } from "./stateBuilder";
+import {
+  type ComputedMeta,
+  type DraftMeta,
+  evaluateInitializers,
+  type SearchParamsState,
+  type StateDerivedMeta,
+} from "./stateBuilder";
 import { StoreFacade } from "./storeFacade";
 import type { StoreUseOptions } from "./types";
 
@@ -322,29 +328,43 @@ export class StoreInstance {
   }
 
   addStore(store: RootStoreCls) {
-    this.#mergeDerivedMeta(store[STATE_DERIVED_META]);
-    const newState = evaluateInitializers(store[STATE_INIT_META] ?? {});
-    this.#serverState = this.#withNewKeys(
-      this.#serverState,
-      this.#materializeDerived({ ...this.#serverState, ...newState }, this.#serverState, true),
-    );
-    const hydratedState = this.#hydratePersistSession(newState);
-    const derivedState = this.#materializeDerived({ ...this.#state, ...hydratedState }, this.#state);
-    const nextState = this.#withNewKeys(this.#state, derivedState);
+    const meta = store[STATE_DERIVED_META];
+    this.#mergeDerivedMeta(meta);
+    const rootState = evaluateInitializers(store[STATE_INIT_META] ?? {});
+    const searchKeys = Object.keys(meta?.search ?? {});
+    const computedKeys = Object.keys(meta?.computed ?? {});
+    const rootKeys = { state: rootState, search: searchKeys, computed: computedKeys };
+    this.#serverState = this.#withRootKeys(this.#serverState, rootKeys, { server: true, hydrate: false });
+    const nextState = this.#withRootKeys(this.#state, rootKeys, {
+      server: typeof window === "undefined",
+      hydrate: true,
+    });
     const hasNewStateKey = nextState !== this.#state;
     this.#state = nextState;
     for (const [key, owner] of Object.entries(store[ACTION_OWNER_META] ?? {})) this.#actionOwners.set(key, owner);
     this.#mergeActions(store[ACTION_META]);
-    this.#extendAccessors(derivedState, store[ACTION_META]);
+    this.#extendAccessors([...Object.keys(rootState), ...searchKeys, ...computedKeys], store[ACTION_META]);
     this.#buildSlices(store);
     if (hasNewStateKey) this.#notify();
     return this;
   }
 
-  #withNewKeys(state: StoreStateRecord, additions: StoreStateRecord) {
-    const newKeys = Object.keys(additions).filter((key) => !(key in state));
-    if (!newKeys.length) return state;
-    return { ...state, ...Object.fromEntries(newKeys.map((key) => [key, additions[key]])) };
+  #withRootKeys(
+    state: StoreStateRecord,
+    root: { state: StoreStateRecord; search: string[]; computed: string[] },
+    { server, hydrate }: { server: boolean; hydrate: boolean },
+  ) {
+    const addedKeys = Object.keys(root.state).filter((key) => !(key in state));
+    const searchKeys = root.search.filter((key) => !(key in state));
+    const computedKeys = root.computed.filter((key) => !(key in state));
+    if (!addedKeys.length && !searchKeys.length && !computedKeys.length) return state;
+    const next = { ...state };
+    for (const key of addedKeys) next[key] = root.state[key];
+    if (hydrate) this.#hydratePersistSession(next, addedKeys);
+    const changedKeys = new Set(addedKeys);
+    for (const key of searchKeys) this.#writeSearch(next, key, changedKeys, server);
+    for (const key of computedKeys) this.#writeComputed(next, key, changedKeys);
+    return next;
   }
 
   static #formRefNameOf(key: string) {
@@ -360,9 +380,9 @@ export class StoreInstance {
     }
   }
 
-  #extendAccessors(state: StoreStateRecord, actions: { [key: string]: StoreAction }) {
-    for (const k of Object.keys(state)) {
-      if (typeof state[k] !== "function") {
+  #extendAccessors(keys: string[], actions: { [key: string]: StoreAction }) {
+    for (const k of keys) {
+      if (typeof this.#state[k] !== "function") {
         // Subscribing a `<model>Form` publishes its fill tool: the component that shows the form opts it in.
         const formRefName = StoreInstance.#formRefNameOf(k);
         this.use[k] = formRefName
@@ -497,37 +517,41 @@ export class StoreInstance {
     Object.assign(this.#derivedMeta.drafts, meta.drafts);
     Object.assign(this.#derivedMeta.persistSession, meta.persistSession);
     Object.assign(this.#derivedMeta.search, meta.search);
-    Object.assign(this.#derivedMeta.computed, meta.computed);
+    for (const computed of Object.values(meta.computed)) this.#mergeComputed(computed);
     for (const key of meta.derivedKeys) this.#derivedMeta.derivedKeys.add(key);
-    this.#computedByDep.clear();
-    this.#computedOrder.clear();
-    for (const [order, { key, deps }] of Object.values(this.#derivedMeta.computed).entries()) {
-      this.#computedOrder.set(key, order);
-      for (const dep of deps) this.#computedByDep.set(dep, [...(this.#computedByDep.get(dep) ?? []), key]);
-    }
-    this.#draftByKey.clear();
-    for (const draft of Object.values(this.#derivedMeta.drafts)) {
+    for (const draft of Object.values(meta.drafts)) {
       this.#draftByKey.set(draft.formKey, draft);
       this.#draftByKey.set(draft.draftKey, draft);
     }
   }
 
-  #hydratePersistSession(state: StoreStateRecord) {
-    const next = { ...state };
-    for (const [key, meta] of Object.entries(this.#derivedMeta.persistSession)) {
-      if (!(key in next)) continue;
+  #mergeComputed(computed: ComputedMeta) {
+    const { key, deps } = computed;
+    for (const dep of this.#derivedMeta.computed[key]?.deps ?? [])
+      this.#computedByDep.set(
+        dep,
+        (this.#computedByDep.get(dep) ?? []).filter((dependent) => dependent !== key),
+      );
+    this.#derivedMeta.computed[key] = computed;
+    if (!this.#computedOrder.has(key)) this.#computedOrder.set(key, this.#computedOrder.size);
+    for (const dep of deps) this.#computedByDep.set(dep, [...(this.#computedByDep.get(dep) ?? []), key]);
+  }
+
+  #hydratePersistSession(state: StoreStateRecord, keys: string[]) {
+    for (const key of keys) {
+      if (!Object.hasOwn(this.#derivedMeta.persistSession, key)) continue;
+      const meta = this.#derivedMeta.persistSession[key];
       const storage = this.#getStorage(meta.kind);
       if (!storage) continue;
       try {
         const raw = storage.getItem(meta.storageKey);
         if (raw === null) continue;
-        next[key] = meta.parse(JSON.parse(raw));
+        state[key] = meta.parse(JSON.parse(raw));
       } catch (error) {
         Logger.warn(`Failed to hydrate ${meta.kind} state ${key}: ${String(error)}`);
-        next[key] = meta.getDefault();
+        state[key] = meta.getDefault();
       }
     }
-    return next;
   }
 
   #syncPersistSession(next: StoreStateRecord, changedKeys: ReadonlySet<string>) {
@@ -640,25 +664,13 @@ export class StoreInstance {
       );
   }
 
-  #materializeDerived(next: StoreStateRecord, prev: StoreStateRecord, server = typeof window === "undefined") {
-    const materialized = { ...next };
-    const changedKeys = new Set(Object.keys(materialized).filter((key) => !Object.is(materialized[key], prev[key])));
-    this.#derive(materialized, changedKeys, { server, initial: true });
-    return materialized;
-  }
-
-  #derive(
-    state: StoreStateRecord,
-    changedKeys: Set<string>,
-    { server = typeof window === "undefined", initial = false }: { server?: boolean; initial?: boolean } = {},
-  ) {
+  #derive(state: StoreStateRecord, changedKeys: Set<string>, server = typeof window === "undefined") {
     const { search, computed } = this.#derivedMeta;
-    const searchKeys =
-      initial || changedKeys.has("searchParams")
-        ? Object.keys(search)
-        : [...changedKeys].filter((key) => Object.hasOwn(search, key));
+    const searchKeys = changedKeys.has("searchParams")
+      ? Object.keys(search)
+      : [...changedKeys].filter((key) => Object.hasOwn(search, key));
     for (const key of searchKeys) this.#writeSearch(state, key, changedKeys, server);
-    const pending = new Set(initial ? Object.keys(computed).filter((key) => !(key in state)) : []);
+    const pending = new Set<string>();
     for (const key of changedKeys) {
       if (Object.hasOwn(computed, key)) pending.add(key);
       for (const dependent of this.#computedByDep.get(key) ?? []) pending.add(dependent);

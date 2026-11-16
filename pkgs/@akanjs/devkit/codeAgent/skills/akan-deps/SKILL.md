@@ -9,7 +9,8 @@ description: "Fix an import, dependency, or barrel problem in an Akan workspace 
 
 Every `index.ts` under `ui/`, `webkit/`, `srvkit/`, `common/`, `plugin/` and `lib/**` is scanner output, as
 are `cnst.ts`, `db.ts`, `dict.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`, `usePage.ts`, `useServer.ts`,
-`client.ts` and `server.ts`. Do not hand-edit them and do not rely on their exact contents.
+`client.ts`, `server.ts`, `lib/__lib/` and `lib/__client/`. Do not hand-edit them and do not rely on their exact
+contents.
 
 **If an import "cannot be found" but the file exists, the barrel is stale** — run `akan sync <app-or-lib>`,
 or `repair_generated`. A `ui/<Folder>/index.tsx` that builds a namespace is hand-written source; the
