@@ -163,8 +163,8 @@ export default page()
       {
         name: "backOrFallback(href?)",
         desc: l.trans({
-          en: "Goes back, or replaces with `href` when there is no history. Defaults to the index path.",
-          ko: "뒤로 갈 기록이 있으면 뒤로 가고, 없으면 `href`로 교체합니다. 기본값은 index 경로입니다.",
+          en: "Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.",
+          ko: "뒤로 갈 기록이 있으면 뒤로 가고, 없으면 `href`로 교체합니다. 기본값은 index 경로입니다. 이 앱이 연 브라우저 탭이고 돌아갈 기록이 없으면 대신 그 탭을 닫습니다.",
         }),
       },
       {

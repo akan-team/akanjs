@@ -205,8 +205,8 @@ export default page()
         key: "Link.Back",
         type: "{ className?, children?, fallback? }",
         desc: l.trans({
-          en: "A `<button>` that calls `router.back()`. With `fallback`, it goes there when there is no history.",
-          ko: "`router.back()`을 호출하는 `<button>`입니다. `fallback`을 주면 뒤로 갈 기록이 없을 때 그 경로로 갑니다.",
+          en: "A `<button>` that calls `router.back()`. With `fallback`, it goes there when there is no history, unless this app opened the tab, which it closes.",
+          ko: "`router.back()`을 호출하는 `<button>`입니다. `fallback`을 주면 뒤로 갈 기록이 없을 때 그 경로로 갑니다. 단, 이 앱이 연 탭이면 탭을 닫습니다.",
         }),
       },
       {

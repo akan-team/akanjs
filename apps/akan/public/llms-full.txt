@@ -1435,7 +1435,7 @@ Method
 
 - postPathChange(change): Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.
 
-- backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path.
+- backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.
 
 - refresh(): Renders the current route again. Browser only.
 

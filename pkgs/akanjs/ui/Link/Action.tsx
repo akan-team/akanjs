@@ -8,7 +8,8 @@ export interface ActionProps {
 }
 
 export interface BackProps extends ActionProps {
-  /** Where to go when there is no history to go back to, as on a deep link or a freshly opened app. */
+  /** Where to go when there is no history to go back to, as on a deep link or a freshly opened app; a browser tab this
+   * app opened closes instead. */
   fallback?: string;
 }
 

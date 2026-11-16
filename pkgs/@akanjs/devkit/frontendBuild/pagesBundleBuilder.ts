@@ -13,6 +13,7 @@ import { createUseClientBundlePlugin } from "../transforms/useClientBundlePlugin
 import { bundleDefine } from "./bundleDefine";
 import { CsrDevPaths } from "./csrDevPaths";
 import { PagesEntrySourceGenerator } from "./pagesEntrySourceGenerator";
+import { RscServerRendererGuard } from "./rscServerRendererGuard";
 import { ServerGraphFile } from "./serverGraphFile";
 
 export interface BuildPagesBundleResult {
@@ -74,7 +75,7 @@ export class PagesBundleBuilder {
         asset: "assets/[name]-[hash].[ext]",
       },
       define: bundleDefine(this.#app, this.#command, "ssr"),
-      metafile: dev,
+      metafile: true,
       plugins: [
         //? First: the use-client plugins below load every module, and an env file must be swapped before they do.
         ...(this.#serverEnv ? [this.#serverEnv] : []),
@@ -96,6 +97,7 @@ export class PagesBundleBuilder {
     });
 
     if (!result.success) throw new AggregateError(result.logs, "[PagesBundleBuilder] Bun.build failed");
+    RscServerRendererGuard.assert(result.metafile, workspaceRoot);
 
     const entryArtifact = result.outputs.find((a) => a.kind === "entry-point");
     if (!entryArtifact) throw new Error("[PagesBundleBuilder] Bun.build emitted no entry-point artifact");
