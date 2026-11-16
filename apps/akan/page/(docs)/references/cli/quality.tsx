@@ -122,6 +122,11 @@ export default page()
                 <li>
                   <code>ssr</code> prints the SSR balance first, then only the warnings whose scope is <code>ssr</code>.
                 </li>
+                <li>
+                  <code>runtime</code> counts, per app and library, the client files that read <code>st</code>,{" "}
+                  <code>fetch</code> or <code>sig</code> only by names a module answers, and notes each file that ties
+                  itself to its scope&apos;s whole client runtime.
+                </li>
               </ul>
             </>
           ),
@@ -135,6 +140,11 @@ export default page()
                 <li>
                   <code>ssr</code>은 SSR 비율을 먼저 출력하고, 경고는 scope가 <code>ssr</code>인 것만 남깁니다.
                 </li>
+                <li>
+                  <code>runtime</code>은 앱과 라이브러리마다 <code>st</code>, <code>fetch</code>, <code>sig</code>를
+                  모듈이 답하는 이름으로만 읽는 클라이언트 파일 수를 세고, 스코프의 클라이언트 런타임 전체에 묶이는
+                  파일마다 노트를 남깁니다.
+                </li>
               </ul>
             </>
           ),
@@ -145,10 +155,10 @@ export default page()
             type: "String",
             required: "no",
             defaultValue: "scan",
-            enumOrFlag: "scan | ssr | baseline",
+            enumOrFlag: "scan | ssr | runtime | baseline",
             desc: l.trans({
-              en: "`scan` reports everything, `ssr` the render balance alone; `baseline` writes `akan.baseline.json`.",
-              ko: "`scan`은 전부를, `ssr`은 렌더 비율만 보고하고, `baseline`은 `akan.baseline.json`을 씁니다.",
+              en: "`scan` reports everything, `ssr` the render balance alone, `runtime` how client files read the client runtime; `baseline` writes `akan.baseline.json`.",
+              ko: "`scan`은 전부를, `ssr`은 렌더 비율만, `runtime`은 클라이언트 파일이 클라이언트 런타임을 읽는 방식을 보고하고, `baseline`은 `akan.baseline.json`을 씁니다.",
             }),
           },
         ],
@@ -215,6 +225,7 @@ export default page()
 akan quality scan
 akan quality ssr
 akan quality ssr --format json
+akan quality runtime
 akan quality baseline`,
       },
     ];
@@ -422,6 +433,13 @@ akan quality baseline`,
         desc: l.trans({
           en: "A `.tsx` in a module folder whose name is not an allowed role, such as `OrderCard.tsx`.",
           ko: "모듈 폴더의 `.tsx` 이름이 허용된 역할이 아닙니다. `OrderCard.tsx` 같은 경우입니다.",
+        }),
+      },
+      {
+        name: "akan.runtime.whole-scope",
+        desc: l.trans({
+          en: "`akan quality runtime` only, as a note: a client file reads `st`, `fetch` or `sig` by a computed key, through a cast, or hands it on or re-exports it, so a page that loads the file loads its scope's whole client runtime. The file works as it is.",
+          ko: "`akan quality runtime`에서만 노트로 뜹니다. 클라이언트 파일이 `st`, `fetch`, `sig`를 계산된 키나 타입 단언으로 읽거나, 다른 곳에 넘기거나 다시 export해서, 그 파일을 불러오는 페이지가 스코프의 클라이언트 런타임 전체를 불러옵니다. 파일은 그대로 동작합니다.",
         }),
       },
       {
