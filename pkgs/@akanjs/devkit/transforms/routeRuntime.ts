@@ -135,7 +135,8 @@ export class RouteRuntime {
       const descriptor = descriptorOf(scope, module);
       if (descriptor) descriptors.add(descriptor);
       else if (needs === "descriptor") return null;
-      if (needs !== "store" || (scope === ownScope && module === ownModule)) continue;
+      //? A lib store an app extends reads names the app's store owns, and the app's store piece imports the lib's.
+      if (needs !== "store" || module === ownModule) continue;
       const store = `${scope}/lib/__client/${module}.st`;
       if (!this.#pieces.has(store)) return null;
       stores.add(store);
