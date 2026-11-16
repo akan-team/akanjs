@@ -171,9 +171,9 @@ export class PagesBundleBuilder {
     return {
       name: "akan-server-use-client-fetch",
       setup(build) {
-        build.onLoad({ filter: /[/\\]lib[/\\](?:useClient|page)\.(ts|tsx|js|jsx)$/ }, async (args) => {
+        build.onLoad({ filter: /[/\\]lib[/\\](?:useClient|usePage)\.(ts|tsx|js|jsx)$/ }, async (args) => {
           const source = await Bun.file(args.path).text();
-          const transformed = path.basename(args.path).startsWith("page.")
+          const transformed = path.basename(args.path).startsWith("usePage.")
             ? PagesBundleBuilder.transformServerPageFetchSource(source)
             : PagesBundleBuilder.transformServerUseClientFetchSource(source);
           if (transformed === source) return undefined;

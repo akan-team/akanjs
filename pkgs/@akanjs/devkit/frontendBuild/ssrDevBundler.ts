@@ -59,7 +59,7 @@ export class SsrDevBundler extends DevRegistryBundler {
     };
   }
 
-  //? The client runtime of an SSR page inlines no dictionary (`lib/page.ts` reads one only when rendering csr), so
+  //? The client runtime of an SSR page inlines no dictionary (`lib/usePage.ts` reads one only when rendering csr), so
   //? a dictionary save is none of this registry's business.
   override isMetadataFile(file: string): boolean {
     return super.isMetadataFile(file) && !file.endsWith(".dictionary.ts") && path.basename(file) !== "dict.ts";

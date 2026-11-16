@@ -96,7 +96,7 @@ describe("PagesBundleBuilder.transformServerUseClientFetchSource", () => {
   });
 });
 
-describe("PagesBundleBuilder on the generated layout with lib/page.ts", () => {
+describe("PagesBundleBuilder on the generated layout with lib/usePage.ts", () => {
   const emptyBuild = "const fetchProto = FetchClient.build<typeof signal>({}, {});";
   const generatedPage = (fetchProtoLine = emptyBuild) =>
     [
@@ -118,7 +118,7 @@ describe("PagesBundleBuilder on the generated layout with lib/page.ts", () => {
     [
       'import { FetchClient } from "akanjs/fetch";',
       'import * as cnst from "./cnst";',
-      'import { fetch as pageFetch, sig as pageSig } from "./page";',
+      'import { fetch as pageFetch, sig as pageSig } from "./usePage";',
       lines.importLine ?? macroImport,
       'import type * as signal from "./sig";',
       "",
@@ -126,11 +126,11 @@ describe("PagesBundleBuilder on the generated layout with lib/page.ts", () => {
       "",
       "export const fetch = pageFetch;",
       "export const sig = pageSig;",
-      'export { Err, msg, runtime, usePage } from "./page";',
+      'export { Err, msg, runtime, usePage } from "./usePage";',
       "",
     ].join("\n");
 
-  test("builds page.ts's client onto the live server fetch, so a server render calls what it calls today", () => {
+  test("builds usePage.ts's client onto the live server fetch, so a server render calls what it calls today", () => {
     expect(PagesBundleBuilder.transformServerPageFetchSource(generatedPage())).toBe(
       `${serverImport}\n${generatedPage("const fetchProto = FetchClient.build<typeof signal>({}, {}, { base: serverFetch });")}`,
     );
@@ -142,7 +142,7 @@ describe("PagesBundleBuilder on the generated layout with lib/page.ts", () => {
     );
   });
 
-  test("leaves a page.ts or useClient.ts it does not recognise unchanged", () => {
+  test("leaves a usePage.ts or useClient.ts it does not recognise unchanged", () => {
     const withDescriptors = generatedPage("const fetchProto = FetchClient.build<typeof signal>(cnst, {});");
     expect(PagesBundleBuilder.transformServerPageFetchSource(withDescriptors)).toBe(withDescriptors);
     const commented = generatedPage(`// ${emptyBuild}`);

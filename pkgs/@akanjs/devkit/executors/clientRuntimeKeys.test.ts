@@ -252,6 +252,23 @@ console.log(JSON.stringify({
 }));
 `;
 
+const pageModuleFiles: Record<string, string> = {
+  ...Object.fromEntries(
+    Object.entries(kitFiles)
+      .filter(([file]) => file.startsWith("lib/item/"))
+      .map(([file, content]) => [
+        file.replaceAll("item", "page"),
+        content.replaceAll("item", "page").replaceAll("Item", "Page"),
+      ]),
+  ),
+  "lib/page/Page.Unit.tsx": "export const Card = () => null;\n",
+};
+
+const clientBarrelScript = `
+const { Page, st, usePage } = await import("./apps/site/client.ts");
+console.log(JSON.stringify({ unit: typeof Page.Unit.Card, store: typeof st.do.refreshPageCount, usePage: typeof usePage }));
+`;
+
 const writeWorkspace = async () => {
   const temp = trackRoot(await createTempApp("demo", await realpath(os.tmpdir())));
   const { root } = temp;
@@ -273,12 +290,29 @@ const writeWorkspace = async () => {
   return root;
 };
 
-const keysOf = async (root: string) => {
-  const proc = Bun.spawn([process.execPath, "-e", keysScript], {
+//? The scan caches each app and lib by name for the process, so a second `demo` or `kit` would reuse the first's.
+const writePageWorkspace = async () => {
+  const temp = trackRoot(await createTempApp("site", await realpath(os.tmpdir())));
+  const { root } = temp;
+  await mkdir(path.join(root, "node_modules"), { recursive: true });
+  await symlink(akanjsRoot, path.join(root, "node_modules/akanjs"));
+  await writeJson(path.join(root, "tsconfig.json"), {
+    compilerOptions: { target: "ESNext", paths: { "@apps/*": ["./apps/*"] } },
+    references: [],
+  });
+  await writeJson(path.join(root, "apps/site/tsconfig.json"), { extends: "../../tsconfig.json" });
+  for (const [file, content] of Object.entries({ "lib/option.ts": option, ...pageModuleFiles }))
+    await writeText(path.join(root, "apps/site", file), content);
+  await temp.app.scan();
+  return root;
+};
+
+const evaluate = async (root: string, script: string, appName = "demo") => {
+  const proc = Bun.spawn([process.execPath, "-e", script], {
     cwd: root,
     env: {
       ...process.env,
-      AKAN_PUBLIC_APP_NAME: "demo",
+      AKAN_PUBLIC_APP_NAME: appName,
       AKAN_PUBLIC_REPO_NAME: "repo",
       AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
       AKAN_PUBLIC_ENV: "local",
@@ -292,14 +326,19 @@ const keysOf = async (root: string) => {
     new Response(proc.stderr).text(),
   ]);
   if (code !== 0) throw new Error(`the generated runtime did not load:\n${stderr}`);
-  return JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as Record<string, string[]>;
+  return JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}") as Record<string, unknown>;
 };
 
 describe("an app's whole client runtime", () => {
   test("answers the same store, fetch and signal keys as recorded, lib model and service store included", async () => {
-    const keys = await keysOf(await writeWorkspace());
+    const keys = await evaluate(await writeWorkspace(), keysScript);
     if (process.env.AKAN_RECORD_CLIENT_RUNTIME_KEYS === "1")
       await Bun.write(recordedPath, `${JSON.stringify(keys, null, 2)}\n`);
     expect(keys, howToRecord).toEqual(await Bun.file(recordedPath).json());
+  }, 120_000);
+
+  test("loads from the client barrel when a database module is named page, its UI and store included", async () => {
+    const loaded = await evaluate(await writePageWorkspace(), clientBarrelScript, "site");
+    expect(loaded).toEqual({ unit: "function", store: "function", usePage: "function" });
   }, 120_000);
 });

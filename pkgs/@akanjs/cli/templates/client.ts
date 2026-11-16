@@ -13,7 +13,7 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const serviceModules = uiModules(scanInfo.service);
   return `
 export * as cnst from "./lib/cnst";
-export { msg, Err, usePage } from "./lib/page";
+export { msg, Err, usePage } from "./lib/usePage";
 export { fetch, sig } from "./lib/useClient";
 export { st, RootStore } from "./lib/st";
 export * as store from "./lib/st";
