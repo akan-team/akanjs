@@ -1,6 +1,9 @@
 import { type ReactNode, Suspense } from "react";
 import { page } from "../client/route/routeBuilders";
+import { metricRegistry } from "./metrics/metricRegistry";
 import type { PagesContext } from "./routeTreeBuilder";
+
+const countedRenders = metricRegistry.counter("akan_test_counted_renders_total", "Renders of the counted page.");
 
 const Pending = async () => {
   await new Promise<never>(() => undefined);
@@ -15,6 +18,12 @@ const Late = async () => {
 export const pages: PagesContext = {
   "./__root_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
   "./cached.tsx": async () => ({ default: page().render(() => <p>cached body</p>) }),
+  "./counted.tsx": async () => ({
+    default: page().render(() => {
+      countedRenders.inc();
+      return <p>counted body</p>;
+    }),
+  }),
   "./streamed.tsx": async () => ({
     default: page().render(() => (
       <main>

@@ -1,6 +1,7 @@
 import type { Logger } from "akanjs/common";
 import type { AkanRequestStore } from "akanjs/fetch";
 import {
+  createRouteCacheKey,
   hasRouteCacheInvalidationScope,
   LruTtlCache,
   parsePositiveInt,
@@ -13,6 +14,8 @@ import {
   shouldStoreRouteCache,
 } from "./cachePolicy";
 import { type EncodedBody, encodeBody } from "./contentEncoding";
+import { canonicalRouteCacheUrl, type RouteCacheQueryForm } from "./routeCacheQuery";
+import { type RouteCacheLookupReason, RouteCacheTally } from "./routeCacheTally";
 import type { SsrLateControl } from "./ssrTypes";
 import { WebRouteContext } from "./webRouteContext";
 
@@ -95,6 +98,12 @@ interface CachedHtmlResult {
   pathname: string;
   routeId?: string;
   tags?: string[];
+  queryForm: RouteCacheQueryForm;
+}
+
+//? The host learns a route's query form only from its render, so it looks a page up under both its query's keys.
+export interface HtmlCacheEntry extends RouteCacheEntry {
+  exactKey: string;
 }
 
 interface HtmlResultCacheOptions {
@@ -103,7 +112,7 @@ interface HtmlResultCacheOptions {
 }
 
 interface HtmlStoreInput {
-  entry: RouteCacheEntry;
+  entry: HtmlCacheEntry;
   pathname: string;
   lateControl: Promise<SsrLateControl | null>;
   cacheState: Promise<RouteCacheRenderState>;
@@ -131,18 +140,21 @@ export class HtmlResultCache {
     this.#devRegistry = devRegistry;
   }
 
-  entryFor(req: Request, url: URL, isCrawler: boolean): { entry: RouteCacheEntry | null; reason?: string } {
+  entryFor(req: Request, url: URL, isCrawler: boolean): { entry: HtmlCacheEntry | null; reason?: string } {
     //? The dev registry's shim config is part of the HTML: a cached page would boot every reload beside the vendor file
     //? it was rendered with, and a tab that reloads onto the current pair would reload again until the entry expired.
     if (this.#devRegistry) {
       this.#bypass += 1;
+      RouteCacheTally.bypass("html", "dev-registry");
       return { entry: null, reason: "dev-registry" };
     }
+    const theme = WebRouteContext.cookieValue(req, "theme");
+    const variant = isCrawler ? "crawler" : undefined;
     const decision = resolvePublicRouteCacheEntryDecision({
       request: req,
-      url,
-      theme: WebRouteContext.cookieValue(req, "theme"),
-      variant: isCrawler ? "crawler" : undefined,
+      url: canonicalRouteCacheUrl(url),
+      theme,
+      variant,
       defaultEnabled: this.#prodMode,
       defaultAllow: this.#prodMode,
       env: {
@@ -152,25 +164,45 @@ export class HtmlResultCache {
         deny: process.env.AKAN_HTML_RESULT_CACHE_EXCLUDE_PATHS,
       },
     });
-    if (!decision.entry) this.#bypass += 1;
-    return decision;
+    if (!decision.entry) {
+      this.#bypass += 1;
+      RouteCacheTally.bypass("html", decision.reason);
+      return decision;
+    }
+    return { entry: { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) } };
   }
 
-  get(cacheKey: string): EncodedBody | null {
-    const cached = this.#cache.get(cacheKey);
+  get(entry: HtmlCacheEntry): EncodedBody | null {
+    const cached = this.#lookup(entry);
     if (!cached) {
       this.#misses += 1;
       return null;
     }
     this.#hits += 1;
+    RouteCacheTally.lookup("html", true, HtmlResultCache.#lookupReason(entry, cached.queryForm));
     return cached.body;
+  }
+
+  static #lookupReason({ key, exactKey }: HtmlCacheEntry, queryForm: RouteCacheQueryForm): RouteCacheLookupReason {
+    return queryForm === "canonical" && key !== exactKey ? "rewritten-query" : "requested-query";
+  }
+
+  //? An exact route's render of the canonical URL sits under the canonical key too, and answers only that URL.
+  #lookup({ key, exactKey }: HtmlCacheEntry): CachedHtmlResult | null {
+    const canonical = this.#cache.get(key);
+    if (canonical && (canonical.queryForm === "canonical" || key === exactKey)) return canonical;
+    return key === exactKey ? null : this.#cache.get(exactKey);
   }
 
   storeWhileStreaming(htmlStream: ReadableStream<Uint8Array>, input: HtmlStoreInput): ReadableStream<Uint8Array> {
     const { entry, pathname, hostRequestStore, logger } = input;
     let htmlStoreTtl = entry.ttl;
-    let htmlCacheMetadata: Omit<CachedHtmlResult, "body"> = { pathname };
+    let htmlStoreKey = entry.exactKey;
+    let htmlCacheMetadata: Omit<CachedHtmlResult, "body"> = { pathname, queryForm: "exact" };
     const shouldCacheHtml = Promise.all([input.lateControl, input.cacheState]).then(([control, cacheState]) => {
+      const queryForm = cacheState.queryForm ?? "exact";
+      //? The host learns how a route is keyed only from its render, so a miss is counted here rather than at lookup.
+      RouteCacheTally.lookup("html", false, HtmlResultCache.#lookupReason(entry, queryForm));
       const storeTtl = resolveHtmlRouteCacheStoreTtl({
         baseTtl: entry.ttl,
         workerCacheState: cacheState,
@@ -179,17 +211,21 @@ export class HtmlResultCache {
       });
       if (storeTtl === null) return false;
       htmlStoreTtl = storeTtl;
+      htmlStoreKey = queryForm === "canonical" ? entry.key : entry.exactKey;
       htmlCacheMetadata = {
         pathname,
         routeId: cacheState.routeId,
         tags: cacheState.tags,
+        queryForm,
       };
       return true;
     });
     return cacheHtmlWhileStreaming(
       htmlStream,
       (bytes) => {
-        void encodeBody(bytes).then((body) => this.#cache.set(entry.key, { body, ...htmlCacheMetadata }, htmlStoreTtl));
+        void encodeBody(bytes).then((body) =>
+          this.#cache.set(htmlStoreKey, { body, ...htmlCacheMetadata }, htmlStoreTtl),
+        );
       },
       {
         shouldCache: () => shouldCacheHtml,

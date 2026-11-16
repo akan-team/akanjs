@@ -597,6 +597,59 @@ describe("makeAkanChildProxyHeaders", () => {
     expect(unlisted.get("x-forwarded-proto")).toBe("https");
   });
 
+  test("hands the child one id for the request: its own, with a caller's as a link unless the operator lets a listed proxy choose", () => {
+    const inbound = "0af7651916cd43dd8448eb211c80319c";
+    const traceparent = `00-${inbound}-b7ad6b7169203331-01`;
+    const req = (headers: Record<string, string>) => new Request("https://app.example/api/x", { headers });
+    const stranger = { address: "198.51.100.7", port: 40_000, family: "IPv4" };
+    const ingress = { address: "10.0.0.5", port: 443, family: "IPv4" };
+    const idsOf = (headers: Headers) => ({
+      requestId: headers.get("x-request-id"),
+      traceId: headers.get("traceparent")?.split("-")[1],
+      parent: headers.get("traceparent")?.split("-")[2],
+      link: headers.get("x-akan-trace-link"),
+    });
+
+    const bare = idsOf(makeAkanChildProxyHeaders(req({}), 0, stranger));
+    const forged = [
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, stranger)),
+      idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, stranger)),
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent, "x-akan-trace-link": "c".repeat(32) }), 0)),
+    ];
+    const loopback = { address: "127.0.0.1", port: 50_000, family: "IPv4" };
+    const byDefault = [
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress)),
+      idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, ingress)),
+      idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, loopback)),
+    ];
+    const viaUnixSocket = idsOf(makeAkanChildProxyHeaders(req({ "x-request-id": inbound }), 0, null));
+    process.env.AKAN_TRACE_ADOPT = "trusted-proxies";
+    const optedInUnlisted = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    TrustedProxy.configure("10.0.0.5");
+    const relayed = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    const malformed = idsOf(
+      makeAkanChildProxyHeaders(req({ "x-request-id": "req-1\tx", traceparent: "00-1-2-3" }), 0, ingress),
+    );
+    TrustedProxy.configure("192.0.2.1/32");
+    const unlisted = idsOf(makeAkanChildProxyHeaders(req({ traceparent }), 0, ingress));
+    delete process.env.AKAN_TRACE_ADOPT;
+
+    expect(bare.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(bare).toMatchObject({ traceId: bare.requestId, link: null });
+    const minted = [...forged, ...byDefault, optedInUnlisted, unlisted];
+    for (const ids of minted) {
+      expect(ids.requestId).toMatch(/^[0-9a-f]{32}$/);
+      expect(ids.requestId).not.toBe(inbound);
+      expect(ids).toMatchObject({ traceId: ids.requestId, link: inbound });
+    }
+    expect(new Set(minted.map((ids) => ids.requestId)).size).toBe(minted.length);
+    expect(relayed).toMatchObject({ requestId: inbound, traceId: inbound, link: null });
+    expect(relayed.parent).not.toBe("b7ad6b7169203331");
+    expect(viaUnixSocket).toMatchObject({ requestId: inbound, traceId: inbound });
+    expect(malformed.requestId).toMatch(/^[0-9a-f]{32}$/);
+    expect(malformed).toMatchObject({ traceId: malformed.requestId, link: null });
+  });
+
   test("relays a trusted proxy's host and scheme, even when it recorded no client address", () => {
     const req = () =>
       new Request("http://akan-internal/api/x", {
@@ -1604,6 +1657,78 @@ describe("AkanApp", () => {
       }
     }
   }, 20_000);
+
+  const onDeployedGateway = async (
+    name: string,
+    env: Record<string, string | undefined>,
+    run: (at: (pathname: string, host: string) => Promise<Response>, port: number) => Promise<void>,
+  ) => {
+    const { root, serverPath, runtimeDir } = await makeRoot(name);
+    await writeOkChild(serverPath, "page");
+    await Bun.write(
+      path.join(root, ".akan", "artifact", "base-artifact.json"),
+      JSON.stringify({ domains: ["shop.example.com"] }),
+    );
+    const identity: Record<string, string | undefined> = {
+      AKAN_PUBLIC_APP_NAME: "alpha",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+      AKAN_PUBLIC_ENV: "debug",
+      NODE_ENV: "production",
+      AKAN_COMMAND_TYPE: undefined,
+      AKAN_ALLOWED_HOSTS: undefined,
+      AKAN_DEVTOOLS: undefined,
+      AKAN_LOG_DEBUG_HEADER: undefined,
+      AKAN_EXPOSE_RSC_MANIFEST: undefined,
+      ...env,
+    };
+    const saved = Object.fromEntries(Object.keys(identity).map((key) => [key, process.env[key]]));
+    const restore = (values: Record<string, string | undefined>) => {
+      for (const [key, value] of Object.entries(values)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    };
+    restore(identity);
+    resetEnvCache();
+    const app = new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 });
+    const running = app.start();
+    try {
+      const port = await portOf(app);
+      await waitForReady(port);
+      await run((pathname, host) => fetch(`http://127.0.0.1:${port}${pathname}`, { headers: { host } }), port);
+    } finally {
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+      restore(saved);
+      resetEnvCache();
+    }
+  };
+
+  test("on a deployed server answers a dev route only for the app's own hosts, and any Host for the rest", async () => {
+    const devtools = { AKAN_DEVTOOLS: "true", AKAN_LOG_DEBUG_HEADER: "a-debug-secret-of-at-least-32-characters" };
+    await onDeployedGateway("akan-app-deployed-dev-hosts-", devtools, async (at, port) => {
+      for (const pathname of ["/_akan/studio", "/_akan//devtools", "/__rsc/manifest", "/_akan/ssr-dev/page.js"]) {
+        const refused = await at(pathname, `evil.test:${port}`);
+        expect([pathname, refused.status]).toEqual([pathname, 403]);
+      }
+      expect(await upgradeStatusOf(port, "/_akan/hmr", `evil.test:${port}`)).toBe(403);
+      expect(await (await at("/en/tasks", `evil.test:${port}`)).text()).toBe("page");
+      for (const host of ["localhost", "127.0.0.1", "alpha-debug.akanjs.com", "shop.example.com"])
+        expect([host, await (await at("/_akan/studio", `${host}:${port}`)).text()]).toEqual([host, "page"]);
+    });
+  }, 20_000);
+
+  test("on a deployed server with every dev surface closed, relays a dev path like any path the app does not know", async () => {
+    await onDeployedGateway("akan-app-deployed-closed-", {}, async (at, port) => {
+      for (const pathname of ["/_akan/studio", "/_akan/devtools", "/__rsc/manifest", "/_akan/ssr-dev/page.js"])
+        expect([pathname, await (await at(pathname, `evil.test:${port}`)).text()]).toEqual([pathname, "page"]);
+    });
+    await onDeployedGateway("akan-app-deployed-manifest-", { AKAN_EXPOSE_RSC_MANIFEST: "1" }, async (at, port) => {
+      expect((await at("/__rsc/manifest", `evil.test:${port}`)).status).toBe(403);
+      expect(await (await at("/__rsc/manifest", `localhost:${port}`)).text()).toBe("page");
+    });
+  }, 30_000);
 
   test("answers ready 503 until a replica is ready and again once the last one dies, while health stays 200", async () => {
     const { root, serverPath, runtimeDir } = await makeRoot("akan-app-ready-");

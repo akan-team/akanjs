@@ -2,6 +2,7 @@ import { renameSync } from "node:fs";
 import { isAbsolute, parse, relative, resolve, sep } from "node:path";
 import { AkanError, getApiPrefix, getEnv } from "akanjs/base";
 import { adapt } from "../adapt";
+import { DirectoryNotWritableError } from "./directoryNotWritableError";
 
 export interface DownloadRequest {
   path: string;
@@ -90,6 +91,10 @@ export class BlobStorage
       "storageNotShared",
       `${storage} keeps files on this instance's own disk, which the other instances of a ${databaseMode} deployment cannot read. Configure object storage, or mount one volume on every instance and set AKAN_STORAGE_SHARED=true.`,
     );
+  }
+  override onInit() {
+    DirectoryNotWritableError.assert(this.root);
+    DirectoryNotWritableError.assert(this.privateRoot);
   }
   #localPathToUrl(path: string) {
     return `${this.urlPrefix}/${path}`;

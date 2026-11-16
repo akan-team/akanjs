@@ -4,15 +4,19 @@ import { type AkanI18nConfig, DEFAULT_AKAN_I18N, Logger } from "akanjs/common";
 import { RenderScope, requestStorage } from "akanjs/fetch";
 import { toManifestJson } from "../client/webManifest";
 import type { PagePromptRunInput, PagePromptVisibleInput } from "../signal/mcp/pagePrompt";
+import type { TraceParentRef } from "../signal/requestTrace";
 import { runTraced, SignalTrace } from "../signal/trace";
 import type { ClientManifest } from "./artifact";
 import { LogForwarder } from "./logging/logForwarder";
+import { metricRegistry } from "./metrics/metricRegistry";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
+import { RouteCacheTally } from "./routeCacheTally";
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
 import { RscDocumentHead } from "./rscDocumentHead";
 import { RscFlightRenderer } from "./rscFlightRenderer";
 import { RscPagePrompts } from "./rscPagePrompts";
 import { RscPatchPlanner } from "./rscPatchPlanner";
+import { RscRenderAdmission } from "./rscRenderAdmission";
 import { RscRenderFallbacks } from "./rscRenderFallbacks";
 import { RscRenderHandler } from "./rscRenderHandler";
 import { RscRenderManifest } from "./rscRenderManifest";
@@ -21,6 +25,7 @@ import { RscResultCaches } from "./rscResultCaches";
 import { RscRouteDocument } from "./rscRouteDocument";
 import { RscStaticApp } from "./rscStaticApp";
 import { invalidateCachedRscResults } from "./rscWorkerCache";
+import type { RscRenderTrace } from "./ssrTypes";
 
 export { isAkanNotFoundError, isAkanRedirectError } from "./rscRenderControl";
 
@@ -33,7 +38,7 @@ interface InitMsg {
   basePaths?: string[];
   i18n?: AkanI18nConfig;
 }
-interface RenderMsg {
+interface RenderMsg extends RscRenderTrace {
   type: "render";
   requestId: string;
   url: string;
@@ -126,6 +131,7 @@ export class RscRenderer {
   readonly #caches = new RscResultCaches(this.#logger);
   readonly #renderManifest = new RscRenderManifest();
   readonly #flights = new RscFlightRenderer(this.#logger, (message) => this.#send(message));
+  readonly #admission = new RscRenderAdmission(RscRenderAdmission.options(process.env, this.#logger));
   readonly #staticApps = new RscStaticApp(this.#logger, this.#flights);
   readonly #send: (message: unknown) => void;
   readonly #pagePrompts = new RscPagePrompts({
@@ -166,13 +172,14 @@ export class RscRenderer {
     stats: this.#stats,
     caches: this.#caches,
     flights: this.#flights,
+    admission: this.#admission,
     documents: this.#documents,
     fallbacks: this.#fallbacks,
     patchPlanner: this.#patchPlanner,
     routes: () => this.#pathRoutes,
     fallbackRoutes: () => this.#fallbackRoutes,
     clientManifest: () => this.#clientManifest,
-    runWithRequest: (request, routeId, fn) => this.#runWithRequest(request, routeId, fn),
+    runWithRequest: (request, routeId, parent, fn) => this.#runWithRequest(request, routeId, fn, parent),
   });
 
   constructor() {
@@ -220,6 +227,7 @@ export class RscRenderer {
       case "cancel":
         this.#logger.verbose(`received cancel requestId=${msg.requestId}`);
         this.#flights.handleCancel(msg.requestId);
+        this.#admission.abandon(msg.requestId);
         return;
       case "reload":
         this.#logger.verbose(`received reload buildId=${msg.buildId}`);
@@ -396,6 +404,7 @@ export class RscRenderer {
 
   async #sendMetricsReport() {
     const routeStats = RouteTreeBuilder.getCacheStats();
+    this.#admission.sample();
     const metrics = await ProcessMetricsCollector.collect({
       role: "rsc-worker",
       rscRenderCount: this.#stats.renderCount,
@@ -426,12 +435,19 @@ export class RscRenderer {
       rscResultCacheHits: this.#caches.resultCacheHits,
       rscResultCacheMisses: this.#caches.resultCacheMisses,
       rscResultCacheBypass: this.#caches.resultCacheBypass,
+      startedAt: Math.round(performance.timeOrigin),
+      metricFamilies: [...metricRegistry.snapshot(), RouteCacheTally.family("rsc")],
     });
     this.#send({ type: "metrics", metrics });
   }
 
-  #runWithRequest<T>(request: Request, routeId: string, fn: () => Promise<T>): Promise<T> {
-    return this.#runInRequestScope(request, () => runTraced(SignalTrace.create(routeId, "page", "page"), fn));
+  #runWithRequest<T>(
+    request: Request,
+    routeId: string,
+    fn: () => Promise<T>,
+    parent?: TraceParentRef | null,
+  ): Promise<T> {
+    return this.#runInRequestScope(request, () => runTraced(SignalTrace.create(routeId, "page", "page", parent), fn));
   }
 
   #runInRequestScope<T>(request: Request, fn: () => Promise<T>): Promise<T> {

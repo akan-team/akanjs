@@ -79,6 +79,7 @@ const mount = (patch: Partial<CodeTuiSnapshot> = {}): Harness => {
     move: (delta) => calls.push(`move:${delta}`),
     toggle: () => calls.push("toggle"),
     answerConfirm: (value) => calls.push(`answerConfirm:${value}`),
+    allowForSession: () => calls.push("allowForSession"),
     cancel: () => calls.push("cancel"),
     interrupt: () => calls.push("interrupt"),
   };
@@ -204,6 +205,16 @@ describe("CodeTuiApp", () => {
     await harness.press("n");
     await harness.press(keys.escape);
     expect(harness.calls).toEqual(["answerConfirm:true", "answerConfirm:false", "cancel"]);
+  });
+
+  test("a at an approval is the answer for the rest of the session, and is not typed anywhere else", async () => {
+    const confirm = mount({ mode: "confirm", prompt: "approve? run: bun test  [y/n/a]", bodyHeight: 14 });
+    await confirm.press("a");
+    await confirm.press("A");
+    expect(confirm.calls).toEqual(["allowForSession", "allowForSession"]);
+    const input = mount();
+    await input.press("a");
+    expect(input.calls).toEqual(["type:a"]);
   });
 
   test("a confirm question does not treat a stray letter as text", async () => {

@@ -1,13 +1,13 @@
 {
   "akan.size.file": {
-    "akanConfig/akanConfig.ts": 907,
+    "akanConfig/akanConfig.ts": 854,
     "quality/qualityScanner.ts": 917
   },
   "akan.size.function": {
     "frontendBuild/csrDevPatcher.ts#CsrDevPatcher.#patch": 165
   },
   "akan.size.class": {
-    "akanConfig/akanConfig.ts#AkanAppConfig": 66,
+    "akanConfig/akanConfig.ts#AkanAppConfig": 65,
     "codeAgent/agent/CodeAgent.ts#CodeAgent": 67
   }
 }

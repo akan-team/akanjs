@@ -73,6 +73,15 @@ jobs:
       - run: bun test --isolate ./infra/test/audit
       - run: bun run audit:deps
 
+  helm-chart:
+    name: Helm chart
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: ./.github/actions/setup
+      - run: bun test --isolate ./infra/test/chart
+
   typecheck-libs:
     name: Typecheck libs
     runs-on: ubuntu-latest

@@ -24,7 +24,8 @@ contract: `runtimeRule`.
   `getWsPrefix()` (`akanjs/base`); never write `/api` or `/ws`, never pass one as a prop.
 - A single-language app, or URLs fixed from outside (OAuth callbacks, QR codes, mail links, a migrated site), gets
   unprefixed paths from `i18n: { localePrefix: "as-needed" }` and `<Link>`, never from a raw `<a>`.
-- The generated Docker image installs only `ca-certificates` and `tzdata`; add the rest in `docker.preRuns`.
+- The generated Docker image installs only `ca-certificates` and `tzdata` (add the rest in `docker.preRuns`) and
+  runs the server as uid 1000 (`bun`) after its root build steps.
 - An app running in two database modes avoids `q.raw`.
 - Give every log sink a floor (`Logger.addSink(sink, { minLevel })`), and never log per delivered record in anything
   that delivers records.

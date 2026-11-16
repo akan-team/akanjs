@@ -35,6 +35,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `consoleDisabled` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `databaseLocked` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `desktopAppRequired` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `directoryNotWritable` | 500 | `DirectoryNotWritableError` | no | yes | `service/predefinedAdaptor/directoryNotWritableError.ts` |
 | `documentNotFound` | 404 | `NoDocumentError` | yes | no | `document/noDocumentError.ts` |
 | `duplicateRegistration` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `failed` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
@@ -62,6 +63,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `invalidInsightQuery` | 400 | `InsightQueryError` | yes | yes | `service/insightQueryError.ts` |
 | `invalidKey` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `invalidMessage` | 400 | `AkanError` | no | yes | `base/akanError.ts` |
+| `invalidMetric` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `invalidParam` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `invalidPrompt` | 500 | `PromptError` | no | yes | `signal/mcp/promptError.ts` |
 | `invalidQuery` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
@@ -105,6 +107,8 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `remoteUnavailable` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
 | `remoteUrlRejected` | 502 | `RemoteError` | no | yes | `server/remote/remoteError.ts` |
 | `renderAborted` | 499 | `AkanError` | no | yes | `base/akanError.ts` |
+| `renderQueueFull` | 503 | `RscRenderRefusal` | no | yes | `server/rscRenderRefusal.ts` |
+| `renderQueueTimeout` | 503 | `RscRenderRefusal` | no | yes | `server/rscRenderRefusal.ts` |
 | `routeConflict` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `AkanError` | no | yes | `base/akanError.ts` |
 | `routeNotFound` | 404 | `RscRouteNotFound` | no | yes | `server/rscClient.tsx` |

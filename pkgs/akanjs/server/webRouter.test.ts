@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { brotliCompressSync, brotliDecompressSync } from "node:zlib";
 import { AkanError } from "akanjs/base";
-import { DEFAULT_AKAN_I18N } from "akanjs/common";
+import { DEFAULT_AKAN_I18N, Logger } from "akanjs/common";
 import { createRequestStore } from "akanjs/fetch";
 import type { RouteSeedIndex, RoutesManifest } from "./artifact";
 import {
@@ -21,6 +21,8 @@ import {
   DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
   resolveHtmlRouteCacheStoreTtl,
 } from "./htmlResultCache";
+import { metricRegistry } from "./metrics/metricRegistry";
+import { RouteCacheTally } from "./routeCacheTally";
 import {
   AKAN_RSC_DICTIONARY_HEADER,
   AKAN_RSC_IMPORT_MAP_HEADER,
@@ -29,6 +31,8 @@ import {
   encodeAkanRouterState,
   encodeAkanRscPatchSegmentPath,
 } from "./routeState";
+import type { ServerListener } from "./routing/serverListener";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import {
   createRscNavigationStreamResponse,
   createRscNotFoundFallbackResponse,
@@ -36,6 +40,7 @@ import {
   createRscStreamResponse,
 } from "./rscResponse";
 import type { RscRenderResult } from "./rscWorkerHost";
+import { ServerMetrics } from "./serverMetrics";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
 import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
@@ -90,6 +95,7 @@ interface FakeRscWorker {
   kill(): void;
   reload(): Promise<unknown>;
   getMetrics(): Record<string, unknown>;
+  metricFamilies(): never[];
 }
 
 function createFakeRscWorker(
@@ -129,6 +135,9 @@ function createFakeRscWorker(
     async reload() {},
     getMetrics() {
       return {};
+    },
+    metricFamilies() {
+      return [];
     },
   };
 }
@@ -1266,6 +1275,140 @@ describe("WebRouter RSC request counts", () => {
   });
 });
 
+describe("WebRouter page request metrics", () => {
+  const pageSamples = (name: string) => metricRegistry.snapshot().find((family) => family.name === name)?.samples ?? [];
+  const countOf = (route: string) =>
+    pageSamples("akan_page_requests_total")
+      .filter((sample) => sample.labels.route === route && sample.labels.status_class === "2xx")
+      .reduce((total, sample) => total + ("value" in sample ? sample.value : 0), 0);
+  const timedOf = (route: string) => {
+    const sample = pageSamples("akan_page_request_duration_seconds").find(({ labels }) => labels.route === route);
+    return sample && "count" in sample ? sample.count : 0;
+  };
+  const routesSeen = () => new Set(pageSamples("akan_page_requests_total").map((sample) => sample.labels.route));
+
+  test("counts a page and its RSC payload under the route id, and every path no route matches under one series", async () => {
+    const [docsBefore, unmatchedBefore, timedBefore] = [countOf("/docs"), countOf("unmatched"), timedOf("/docs")];
+    const seen = await withFullSsrCacheHarness(
+      async ({ fullSsr, renderEnvRoutes }) => {
+        expect((await fullSsr(new Request("https://example.test/docs"))).status).toBe(200);
+        expect((await renderEnvRoutes["/__rsc"](new Request("https://example.test/__rsc?url=%2Fdocs"))).status).toBe(
+          200,
+        );
+        const known = routesSeen();
+        for (const path of ["/a", "/b/c", "/users/42?token=x", "/docs/missing"])
+          await fullSsr(new Request(`https://example.test${path}`));
+        return { known, after: routesSeen() };
+      },
+      {
+        seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] },
+        prebuilt: {
+          routeIds: ["/docs"],
+          clientManifest: {},
+          ssrManifest: { moduleLoading: null, moduleMap: {} },
+          knownEntries: [],
+        },
+      },
+    );
+
+    expect(countOf("/docs") - docsBefore).toBe(2);
+    expect(countOf("unmatched") - unmatchedBefore).toBe(4);
+    expect(timedOf("/docs") - timedBefore).toBe(2);
+    expect(seen.after).toEqual(new Set([...seen.known, "unmatched"]));
+  });
+
+  test("counts a CSR document under its route id, and one no route matches as unmatched", async () => {
+    const cwd = process.cwd();
+    const appDir = fs.mkdtempSync(path.join(os.tmpdir(), "akan-webrouter-csr-"));
+    fs.mkdirSync(path.join(appDir, "csr"));
+    fs.writeFileSync(path.join(appDir, "csr", "index.html"), "<html><body>csr shell</body></html>");
+    const [docsBefore, unmatchedBefore, timedBefore] = [countOf("/docs"), countOf("unmatched"), timedOf("/docs")];
+    try {
+      process.chdir(appDir);
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          const shell = await fullSsr(new Request("https://example.test/docs?csr=true"));
+          expect(shell.status).toBe(200);
+          expect(await shell.text()).toContain("csr shell");
+          expect((await fullSsr(new Request("https://example.test/users/42?csr=true"))).status).toBe(200);
+        },
+        { seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] } },
+      );
+    } finally {
+      process.chdir(cwd);
+      fs.rmSync(appDir, { recursive: true, force: true });
+    }
+
+    expect(countOf("/docs") - docsBefore).toBe(1);
+    expect(timedOf("/docs") - timedBefore).toBe(1);
+    expect(countOf("unmatched") - unmatchedBefore).toBe(1);
+  });
+
+  test("answers a render the worker refused with a 503 to retry, never stored, and counts it under the route as 5xx", async () => {
+    const failedOf = (route: string) =>
+      pageSamples("akan_page_requests_total")
+        .filter((sample) => sample.labels.route === route && sample.labels.status_class === "5xx")
+        .reduce((total, sample) => total + ("value" in sample ? sample.value : 0), 0);
+    const failedBefore = failedOf("/docs");
+    const worker = createFakeRscWorker();
+    worker.renderWithMeta = async () => {
+      throw new RscRenderRefusal("renderQueueFull", "render queue is full: 480 renders wait for 4 slots");
+    };
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    const error = spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    try {
+      await withFullSsrCacheHarness(
+        async ({ fullSsr, renderEnvRoutes }) => {
+          const ask = (accept: string) => fullSsr(new Request("https://example.test/docs", { headers: { accept } }));
+          const [page, json, text, payload] = [
+            await ask("text/html,application/xhtml+xml"),
+            await ask("application/json"),
+            await ask("*/*"),
+            await renderEnvRoutes["/__rsc"](new Request("https://example.test/__rsc?url=%2Fdocs")),
+          ];
+          for (const response of [page, json, text, payload]) {
+            expect(response.status).toBe(503);
+            expect(response.headers.get("Retry-After")).toBe("1");
+            expect(response.headers.get("Cache-Control")).toBe("no-store");
+            expect(response.headers.get("X-Akan-Cache")).toBeNull();
+          }
+          expect(page.headers.get("Content-Type")).toBe("text/html; charset=utf-8");
+          expect(await page.text()).toContain("Server is busy");
+          expect(await json.json()).toEqual({
+            error: "base.error.serverUnavailable",
+            statusCode: 503,
+            data: { status: 503 },
+            details: "Too many pages are waiting to render",
+          });
+          expect(await text.text()).toBe("Too many pages are waiting to render");
+          expect(payload.headers.get("Content-Type")).toBe("text/plain; charset=utf-8");
+          expect(await payload.text()).toBe("Service Unavailable");
+        },
+        {
+          worker,
+          htmlCacheEnabled: "1",
+          htmlCachePaths: "/docs",
+          seedIndex: { entries: [{ routeId: "/docs", pattern: "/docs", seeds: [] }], globalLayoutFiles: [] },
+          prebuilt: {
+            routeIds: ["/docs"],
+            clientManifest: {},
+            ssrManifest: { moduleLoading: null, moduleMap: {} },
+            knownEntries: [],
+          },
+        },
+      );
+      expect(failedOf("/docs") - failedBefore).toBe(4);
+      expect(error).not.toHaveBeenCalled();
+      expect(warn.mock.calls.filter(([message]) => String(message).includes("answered 503"))).toEqual([
+        ["[SSR] 1 render(s) answered 503 code=renderQueueFull: render queue is full: 480 renders wait for 4 slots"],
+      ]);
+    } finally {
+      warn.mockRestore();
+      error.mockRestore();
+    }
+  });
+});
+
 describe("WebRouter RSC redirect response", () => {
   test("uses the Akan RSC redirect envelope with status metadata", async () => {
     const response = createRscRedirectResponse("/target", "push", 308);
@@ -2070,6 +2213,132 @@ describe("WebRouter full SSR cache orchestration", () => {
     } finally {
       setEnv("AKAN_EXPOSE_RSC_MANIFEST", previous);
     }
+  });
+
+  test("serves one stored page to requests that differ only in parameter order or a tracking parameter", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, fakeWorker }) => {
+        const cacheOf = async (href: string) => {
+          const response = await fullSsr(new Request(`https://example.test${href}`));
+          await response.text();
+          return response.headers.get("X-Akan-Cache");
+        };
+
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("MISS");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("HIT");
+        expect(await cacheOf("/docs?utm_source=news&a=1&fbclid=x&b=2")).toBe("HIT");
+        expect(await cacheOf("/docs?a=1&b=3")).toBe("MISS");
+        expect(fakeWorker.renderCalls).toHaveLength(2);
+      },
+      { worker },
+    );
+  });
+
+  test("keeps a stored page per query as requested for a route keyed on its exact query", async () => {
+    const worker = createFakeRscWorker(() => ({ cacheState: { cacheable: true, revalidate: 5, queryForm: "exact" } }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, fakeWorker }) => {
+        const cacheOf = async (href: string) => {
+          const response = await fullSsr(new Request(`https://example.test${href}`));
+          await response.text();
+          return response.headers.get("X-Akan-Cache");
+        };
+
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("MISS");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("MISS");
+        expect(await cacheOf("/docs?utm_source=news&a=1&b=2")).toBe("MISS");
+        expect(await cacheOf("/docs?b=2&a=1")).toBe("HIT");
+        expect(await cacheOf("/docs?a=1&b=2")).toBe("HIT");
+        expect(fakeWorker.renderCalls).toHaveLength(3);
+      },
+      { worker },
+    );
+  });
+
+  test("tallies the HTML cache's hits and misses by how the route keyed the query and its bypasses by reason", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const before = RouteCacheTally.snapshot().html;
+        for (const [href, headers] of [
+          ["/docs?b=2&a=1", {}],
+          ["/docs?a=1&b=2", {}],
+          ["/docs?a=1&b=2&utm_source=news", {}],
+          ["/docs?a=1&b=3", { cookie: "jwt=1" }],
+        ] as const)
+          await (await fullSsr(new Request(`https://example.test${href}`, { headers }))).text();
+        const after = RouteCacheTally.snapshot().html;
+
+        expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(1);
+        expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(1);
+        expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(1);
+        expect(after.bypass["request-not-public"] - before.bypass["request-not-public"]).toBe(1);
+      },
+      { worker },
+    );
+  });
+
+  test("exposes the HTML cache's hits, misses and bypasses in the server's scrape", async () => {
+    const worker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: true, revalidate: 5, queryForm: "canonical" },
+    }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr, router }) => {
+        const scrape = new ServerMetrics(
+          { logger: new Logger("test"), serverMode: "solo" } as unknown as ConstructorParameters<
+            typeof ServerMetrics
+          >[0],
+          {} as unknown as ServerListener,
+          () => router,
+        );
+        const lookups = () => {
+          const family = scrape.families().find((each) => each.name === "akan_route_cache_lookups_total");
+          const samples = family?.type === "counter" ? family.samples : [];
+          const sum = (outcome: string) =>
+            samples
+              .filter(({ labels }) => labels.cache === "html" && labels.role === "solo" && labels.outcome === outcome)
+              .reduce((total, sample) => total + sample.value, 0);
+          return { hit: sum("hit"), miss: sum("miss"), bypass: sum("bypass") };
+        };
+        const before = lookups();
+        await (await fullSsr(new Request("https://example.test/docs?b=2&a=1"))).text();
+        const missed = lookups();
+        await (await fullSsr(new Request("https://example.test/docs?a=1&b=2"))).text();
+        const hit = lookups();
+        await (
+          await fullSsr(new Request("https://example.test/docs?a=1&b=3", { headers: { cookie: "jwt=1" } }))
+        ).text();
+        const bypassed = lookups();
+
+        expect(missed).toEqual({ ...before, miss: before.miss + 1 });
+        expect(hit).toEqual({ ...missed, hit: missed.hit + 1 });
+        expect(bypassed).toEqual({ ...hit, bypass: hit.bypass + 1 });
+      },
+      { worker },
+    );
+  });
+
+  test("tallies a route keyed on its exact query under the query as requested, whatever order it was asked in", async () => {
+    const worker = createFakeRscWorker(() => ({ cacheState: { cacheable: true, revalidate: 5, queryForm: "exact" } }));
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const before = RouteCacheTally.snapshot().html;
+        for (const href of ["/docs?b=2&a=1", "/docs?a=1&b=2", "/docs?b=2&a=1"])
+          await (await fullSsr(new Request(`https://example.test${href}`))).text();
+        const after = RouteCacheTally.snapshot().html;
+
+        expect(after.miss["requested-query"] - before.miss["requested-query"]).toBe(2);
+        expect(after.hit["requested-query"] - before.hit["requested-query"]).toBe(1);
+        expect(after.miss["rewritten-query"] - before.miss["rewritten-query"]).toBe(0);
+        expect(after.hit["rewritten-query"] - before.hit["rewritten-query"]).toBe(0);
+      },
+      { worker },
+    );
   });
 
   test("stores completed full SSR HTML and serves the next request from cache", async () => {

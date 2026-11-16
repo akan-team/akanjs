@@ -8,7 +8,9 @@ import { definePlugin, type FileRef } from "../../../packages/core/src/index.ts"
  * profile (cookies, storage, cache), so `clearData` never touches the app's, and its top level navigates only to
  * `allowOrigins` (its frames load http, https, data, blob and about URLs from anywhere); popups, downloads, device
  * permissions and links another program would open (`mailto:`, a custom scheme) are refused. Listing the plugin in
- * `native.plugins` is what lets an app open one.
+ * `native.plugins` is what lets an app open one, and `native.desktop.externalView` in `akan.config.ts` what for:
+ * `allowOrigins`, the origins any view may be opened for (none by default), and `evaluate` and `sendKey`, off by
+ * default, whether a page may run script in a view or type into it. The shell checks each again.
  *
  * Windows has every method. Linux has every method and sends no `consoleMessage`; there the visible view shown last
  * also holds the keyboard focus inside its window, so the user's own keys reach it, until a click on the page takes the
@@ -23,13 +25,18 @@ export interface ExternalViewOpenOptions {
   /** Names the view in every later call: letters, digits, `-` and `_`. */
   id: string;
   url: string;
-  /** The origins it may navigate to (`https://host[:port]`); `url` must be on one. */
+  /**
+   * The origins it may navigate to (`https://host[:port]`); `url` must be on one. Each must be one of
+   * `native.desktop.externalView.allowOrigins`, compared as parsed (a punycode host, no trailing dot or default port),
+   * else NOT_ALLOWED.
+   */
   allowOrigins: string[];
   /** Logical pixels in the window's content area; "fill" (default) follows the window's size. */
   bounds?: ExternalViewBounds;
   /**
    * Runs at the start of every top document, never in its frames, before the page's own scripts; read what it keeps
-   * with `evaluate`. It may not declare `__akanTopOnly`, and an empty one registers nothing.
+   * with `evaluate`. It may not declare `__akanTopOnly`, and an empty one registers nothing. NOT_ALLOWED unless
+   * `native.desktop.externalView.evaluate` is true.
    */
   initScript?: string;
   /** macOS refuses `true` as UNSUPPORTED. */
@@ -38,7 +45,7 @@ export interface ExternalViewOpenOptions {
   autoplay?: boolean;
   /** Sends the page's console as `consoleMessage` from this level up (`true` is "warn"); off by default. */
   console?: boolean | ExternalViewConsoleLevel;
-  /** The window it is laid over; the calling page's window by default. */
+  /** The window it is laid over: only the calling page's own (the default); another is NOT_ALLOWED. */
   window?: number;
 }
 
@@ -55,10 +62,13 @@ export interface ExternalViewApi {
   /**
    * Opens the view, or brings an open one with this id to these options (a page that mounts again finds it). Another
    * `initScript` builds the view again and loads its page anew, as does another `console` on Windows and another
-   * `autoplay` on macOS and Linux; Windows refuses another `autoplay` as UNSUPPORTED, before anything is built.
+   * `autoplay` on macOS and Linux; Windows refuses another `autoplay` as UNSUPPORTED, before anything is built. While
+   * open, the view keeps its `allowOrigins` or narrows to fewer of them: one it was not open for is NOT_ALLOWED. Closed,
+   * the id opens again for any origins of `native.desktop.externalView.allowOrigins`, with the same profile (its
+   * cookies and storage belong to the id).
    */
   open(args: ExternalViewOpenOptions): Promise<ExternalViewState>;
-  /** Rejects NOT_ALLOWED for a URL on none of its `allowOrigins`. */
+  /** Rejects NOT_ALLOWED for a URL on none of its `allowOrigins`. The view loads the URL as the URL parser writes it. */
   navigate(args: { id: string; url: string }): Promise<void>;
   reload(args: { id: string }): Promise<void>;
   close(args: { id: string }): Promise<void>;
@@ -69,14 +79,16 @@ export interface ExternalViewApi {
    * The script's completion value as JSON has it (a Date as its ISO string, a lone surrogate as U+FFFD), and `null`
    * for undefined, NaN, a cycle or an exception: catch it in the script. macOS and Linux answer `null` past 128 levels
    * of nesting too. A promise is not awaited. CANCELLED: a close or a rebuild of the view cut the call off. TIMEOUT: no
-   * answer within 30 s, as from a page busy in a loop; `sendKey` and `capture` time out the same way.
+   * answer within 30 s, as from a page busy in a loop; `sendKey` and `capture` time out the same way. NOT_ALLOWED
+   * unless `native.desktop.externalView.evaluate` is true.
    */
   evaluate(args: { id: string; script: string }): Promise<{ value: unknown }>;
   /**
    * A trusted key press (`{ key: "z", code: "KeyZ" }`), whether or not the view has the focus. Not on macOS; on Linux
    * UNSUPPORTED while the view's window is hidden. On Linux a Tab past the page's last element takes the page's focus
    * out of it, as in a browser, but the keyboard stays with the view or the app's page, whichever had it; `Dead` is
-   * INVALID_ARGS there, since GTK's input method would compose it with the next key into one character.
+   * INVALID_ARGS there, since GTK's input method would compose it with the next key into one character. NOT_ALLOWED
+   * unless `native.desktop.externalView.sendKey` is true.
    */
   sendKey(args: { id: string; key: string; code: string }): Promise<void>;
   /** The view's own sound only; the system volume is the volume plugin's. Not on macOS. */

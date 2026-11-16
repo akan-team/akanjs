@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import type { Logger } from "akanjs/common";
-import type { AkanIpcMessage, AkanRscWorkerStatus } from "akanjs/service";
+import type { AkanIpcMessage, AkanMetricFamily, AkanRscWorkerStatus } from "akanjs/service";
 import { RestartSchedule } from "../../common/restartSchedule";
+import { MetricRegistry } from "../metrics/metricRegistry";
 import { ChildSupervisor } from "./childSupervisor";
 import type { DevHostChannel } from "./devHostChannel";
 import { type ChildState, GatewayChildren } from "./gatewayChildren";
@@ -29,7 +30,12 @@ const gatewayOf = (replicas: number) => {
       restartCount: 0,
       restartPending: false,
     });
-  const rooms = { removeChildRooms: () => undefined } as unknown as GatewayRooms;
+  const rooms = {
+    removeChildRooms: () => undefined,
+    roomCountOf: () => 0,
+    roomCount: 0,
+    socketCount: 0,
+  } as unknown as GatewayRooms;
   const supervisor = new ChildSupervisor({
     config,
     children,
@@ -127,5 +133,55 @@ describe("GatewayStatus readiness", () => {
     } finally {
       for (const upstream of upstreams) upstream.close();
     }
+  });
+});
+
+describe("GatewayStatus metric families", () => {
+  const replicaReport = (pid: number, startedAt: number, calls: { ok: number; failed: number; seconds: number[] }) => {
+    const registry = new MetricRegistry();
+    const requests = registry.counter("akan_endpoint_requests_total", "Calls.", ["endpoint", "status_class"]);
+    const duration = registry.histogram("akan_endpoint_request_duration_seconds", "Call time.", ["endpoint"]);
+    requests.inc({ endpoint: "query:getTitle", status_class: "2xx" }, calls.ok);
+    requests.inc({ endpoint: "query:getTitle", status_class: "5xx" }, calls.failed);
+    for (const seconds of calls.seconds) duration.observe(seconds, { endpoint: "query:getTitle" });
+    registry.gauge("akan_rsc_renders_pending", "Renders waiting.").set(calls.ok);
+    return { pid, startedAt, metricFamilies: registry.snapshot({ role: "all" }) };
+  };
+  const sampleOf = (families: AkanMetricFamily[], name: string, labels: Record<string, string> = {}) =>
+    families
+      .find((family) => family.name === name)
+      ?.samples.find((sample) => Object.entries(labels).every(([label, value]) => sample.labels[label] === value));
+
+  test("adds two replicas' counters and buckets, never averaging them", () => {
+    const { children, status } = gatewayOf(2);
+    children.updateMetrics(0, replicaReport(1000, 1, { ok: 3, failed: 1, seconds: [0.002, 0.2] }));
+    children.updateMetrics(1, replicaReport(1001, 1, { ok: 5, failed: 0, seconds: [0.002, 4] }));
+    const families = status.metricsStatus().metricFamilies;
+
+    expect(sampleOf(families, "akan_endpoint_requests_total", { status_class: "2xx" })).toMatchObject({ value: 8 });
+    expect(sampleOf(families, "akan_endpoint_requests_total", { status_class: "5xx" })).toMatchObject({ value: 1 });
+    expect(sampleOf(families, "akan_endpoint_request_duration_seconds")).toMatchObject({
+      labels: { role: "all", endpoint: "query:getTitle" },
+      counts: [0, 2, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
+      count: 4,
+    });
+    expect(sampleOf(families, "akan_rsc_renders_pending")).toMatchObject({ value: 8 });
+    expect(status.metricsStatus().children[1]?.metrics.metricFamilies).toEqual(
+      replicaReport(1001, 1, { ok: 5, failed: 0, seconds: [0.002, 4] }).metricFamilies,
+    );
+  });
+
+  test("keeps a restarted replica's earlier counts in the sum, so it never drops, and none of its old gauges", () => {
+    const { children, status } = gatewayOf(2);
+    children.updateMetrics(0, replicaReport(1000, 1, { ok: 3, failed: 1, seconds: [0.002] }));
+    children.updateMetrics(1, replicaReport(1001, 1, { ok: 5, failed: 0, seconds: [0.002] }));
+    children.updateMetrics(0, replicaReport(1000, 1, { ok: 4, failed: 1, seconds: [0.002, 0.002] }));
+    children.updateMetrics(0, replicaReport(2000, 9, { ok: 1, failed: 0, seconds: [0.002] }));
+    const families = status.metricsStatus().metricFamilies;
+
+    expect(sampleOf(families, "akan_endpoint_requests_total", { status_class: "2xx" })).toMatchObject({ value: 10 });
+    expect(sampleOf(families, "akan_endpoint_requests_total", { status_class: "5xx" })).toMatchObject({ value: 1 });
+    expect(sampleOf(families, "akan_endpoint_request_duration_seconds")).toMatchObject({ count: 4 });
+    expect(sampleOf(families, "akan_rsc_renders_pending")).toMatchObject({ value: 6 });
   });
 });

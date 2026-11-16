@@ -14,6 +14,8 @@ crate-type = ["cdylib"]
 wry = { version = "=0.57.0", default-features = false, features = ["devtools"] }
 # tao defaults = rwh_06 + x11 + dbus. macOS needs only rwh_06 (wry uses raw-window-handle 0.6).
 tao = { version = "=0.37.0", default-features = false, features = ["rwh_06"] }
+# The WHATWG URL parser, already in the tao tree: an external view's origins compared as a browser reads them.
+url = "2.5"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 # Already in the wry/tao dependency tree; we only enable more features (menu, appearance, workspace,

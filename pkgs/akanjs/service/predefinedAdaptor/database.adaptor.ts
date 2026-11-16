@@ -8,6 +8,7 @@ import type { DatabaseModel, DocumentSchema, SchemaOf } from "akanjs/document";
 import type { ReservedSql, Sql, TransactionSql } from "postgres";
 import { adapt } from "../adapt";
 import { InsightQueryError } from "../insightQueryError";
+import { DirectoryNotWritableError } from "./directoryNotWritableError";
 import { ScheduleAdaptorRole } from "./role.adaptor";
 import {
   DEFAULT_SEARCH_MAX_LENGTH,
@@ -129,6 +130,7 @@ export class SqliteDatabase
   override async onInit() {
     // Resolved first: Bun on Windows fails a recursive mkdir of "." (":memory:", a bare file name) with EEXIST.
     await mkdir(path.dirname(path.resolve(this.config.filePath)), { recursive: true });
+    DirectoryNotWritableError.assertFileDir(this.config.filePath);
     this.#db = new Database(this.config.filePath, { strict: true, create: true });
     this.#inMemory = !this.#mainFile();
     this.#client = new BunSqliteClient(

@@ -278,6 +278,12 @@ export interface AkanNativeDesktopConfig {
    * icon's center in points from the window's top left; the default background lines up with the default positions.
    */
   dmg?: AkanNativeDmgConfig;
+  /**
+   * The external-view plugin: `allowOrigins`, the exact origins (`scheme://host[:port]`, no path or wildcard) a view
+   * may be opened for — a view's own `allowOrigins` narrow within them, and without any no view opens; `evaluate`, a
+   * page may run script in a view (`evaluate`, `initScript`); `sendKey`, a page may type into one.
+   */
+  externalView?: { allowOrigins?: string[]; evaluate?: boolean; sendKey?: boolean };
 }
 
 export interface AkanNativeDmgConfig {

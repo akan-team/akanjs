@@ -777,7 +777,7 @@ export class AgentSession {
     const frame = this.#frame();
     this.#overhead = Compaction.frameTokensOf(frame);
     this.#listed = frame.tools.map((tool) => tool.name);
-    const request: RunnerRequest = { messages: Transcript.wire(this.#messages), ...frame, signal };
+    const request = this.#tools.sending({ messages: Transcript.wire(this.#messages), ...frame, signal });
     this.#append({ role: "assistant" });
     let text = "";
     const toolCalls: ToolCallRequest[] = [];

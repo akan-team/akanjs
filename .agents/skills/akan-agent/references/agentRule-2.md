@@ -84,7 +84,13 @@
   pointed at — leaving a live reference showing the result with no record of what it was changed from.
   `refName`/`refId`/`path` travel so a tool can read the current value when the answer needs it, and
   `AgentService.referenced` folds the whole lot into the message text in one place, so every provider carries a
-  reference without either adaptor knowing the word. **The value is masked on the way in and nowhere else**: masking
+  reference without either adaptor knowing the word. **A reference is the record's own text, not the user's**: its
+  pointer, label, value and note reach the model together in one `<page-content …>` block under a heading, the
+  token in the user's words is sent as `@[pointer](mention:pointer)` so the title is in that block only — or as
+  `@[ref-1a2b3c4d](mention:ref-1a2b3c4d)`, with the pointer spelled in the block, when the id or path is not a
+  token, as a slug is not — and a
+  message that carries one counts as a page read, so the first change after a mention asks the user first, as after
+  `readScreen`. **The value is masked on the way in and nowhere else**: masking
   needs the model class, which no wire carries, so the model a host names when it stages the reference is the whole
   of the decision about what leaves the browser — name the class that actually holds the field, because a `Light`
   one usually does not. **The ceiling is 20,000 characters per reference**, applied as it is staged and again on
@@ -193,7 +199,8 @@
   `AgentConfirm.set({ byName })` moves that default app-wide. After a tool marked `taint: "source"` (`readScreen`,
   `readState`, `viewImage`) returns text the user did not write, the next call that changes something asks once,
   whatever its own `confirm` says, until the user approves a call; `taint: "exempt"` marks a tool that only moves the
-  view, and `AgentConfirm.set({ afterScreenRead: false })` turns the rule off. `st.tool("x", { label:
+  view, and `AgentConfirm.set({ afterScreenRead: false })` turns the rule off. A message that points at a record
+  with an `@` mention counts as such a read, and so does a turn whose context holds a block marked `untrusted`. `st.tool("x", { label:
   l("ticket.archive") })` gives the action a name a person reads — `Agent.useScreenActions()` hands it to a command
   palette, and the model never sees it. Reach a store action
   from the body — `.exec((id) => st.do.removeX(id))` — which is how an agent gets CRUD; `st.do` on its own

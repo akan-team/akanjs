@@ -642,8 +642,8 @@ akan plan-slice myapp --format json`,
           {
             name: l.trans({ en: "Akan Studio", ko: "Akan Studio" }),
             desc: l.trans({
-              en: "`/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. `--share` hides it.",
-              ko: "개발 URL의 `/_akan/studio`가 ERD, 요청 경로, Change Map, 프레임워크 지도를 소스 링크와 함께 그리고, 실행 중인 서버의 DI 그래프와 job도 그립니다. `--share`로는 열리지 않습니다.",
+              en: "`/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. It answers localhost, IP addresses and the app's own hosts only, and `--share` hides it.",
+              ko: "개발 URL의 `/_akan/studio`가 ERD, 요청 경로, Change Map, 프레임워크 지도를 소스 링크와 함께 그리고, 실행 중인 서버의 DI 그래프와 job도 그립니다. localhost, IP 주소, 앱 자신의 호스트에만 응답하며 `--share`로는 열리지 않습니다.",
             }),
           },
         ],
@@ -1040,8 +1040,8 @@ kubectl exec -it -n prod pod/myapp-xxxxx -c myapp -- sh -lc 'AKAN_CONSOLE=1 bun 
             name: "--trace",
             type: "String",
             desc: l.trans({
-              en: "One request's traceId; collects every line that request wrote.",
-              ko: "요청 하나의 traceId입니다. 그 요청이 남긴 모든 줄을 모읍니다.",
+              en: "One request's traceId, or the id its caller sent, as sent; collects every line that request wrote.",
+              ko: "요청 하나의 traceId, 또는 호출자가 보낸 id(보낸 모양 그대로)입니다. 그 요청이 남긴 모든 줄을 모읍니다.",
             }),
           },
           {

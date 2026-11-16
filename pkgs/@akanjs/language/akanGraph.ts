@@ -6,7 +6,7 @@ import type {
   AkanGraphLocation,
   AkanGraphNode,
   AkanGraphNodeKind,
-} from "akanjs/common/akanGraph.ts";
+} from "akanjs/common";
 import type * as TS from "typescript";
 import { AdaptorResolver } from "./adaptorResolver";
 import type { Ts } from "./ast";

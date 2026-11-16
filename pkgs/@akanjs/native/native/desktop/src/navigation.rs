@@ -53,6 +53,10 @@ pub fn set_acl(acl: Option<crate::acl::Acl>) {
   let _ = ACL.set(acl);
 }
 
+pub fn acl() -> Option<&'static crate::acl::Acl> {
+  ACL.get().and_then(Option::as_ref)
+}
+
 /// kernel.ts externalOpenPermitted: a link or window.open leaves only where opener.openUrl may open it.
 pub fn opener_permits(url: &str, window: u32) -> bool {
   ACL.get().and_then(Option::as_ref).is_none_or(|acl| acl.opener_permits(url, window))

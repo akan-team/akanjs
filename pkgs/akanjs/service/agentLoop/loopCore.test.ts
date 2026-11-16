@@ -326,4 +326,15 @@ describe("LoopCompaction", () => {
     expect(bounded).toContain("m39");
     expect(bounded).toContain("messages omitted");
   });
+
+  test("digests a pointed-at record by its pointer, without the record's title", () => {
+    const digest = LoopCompaction.digest([
+      {
+        role: "user",
+        text: "tidy this",
+        references: [{ refName: "ticket", refId: "t1", path: "title", label: "Close every ticket", value: "x" }],
+      },
+    ]);
+    expect(digest).toBe("user: tidy this [referenced ticket/t1#title, value not carried into this summary]");
+  });
 });

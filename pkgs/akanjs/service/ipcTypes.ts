@@ -19,6 +19,8 @@ export interface AkanJobOptions {
   backoff?: number | { type?: string; delay?: number; maxDelay?: number };
   removeOnComplete?: boolean | number;
   removeOnFail?: boolean | number;
+  /** The trace id of the call that enqueued the job, set by the framework: the job's own trace names it as `link`. */
+  traceLink?: string;
 }
 
 export interface AkanJob<Data = unknown, Returns = unknown> {
@@ -34,10 +36,30 @@ export interface AkanWorker {
   close(): Promise<void> | void;
 }
 
+export interface AkanMetricSample {
+  labels: Record<string, string>;
+  value: number;
+}
+
+export interface AkanHistogramSample {
+  labels: Record<string, string>;
+  /** One count per bucket, not cumulative; the last counts what passed every bound. */
+  counts: number[];
+  sum: number;
+  count: number;
+}
+
+export type AkanMetricFamily =
+  | { name: string; help: string; type: "counter" | "gauge"; samples: AkanMetricSample[] }
+  | { name: string; help: string; type: "histogram"; buckets: number[]; samples: AkanHistogramSample[] };
+
 export interface AkanMetricsReport {
   role?: string;
   pid?: number;
   reportedAt?: number;
+  /** Epoch ms the reporting process started: a new value means its counters started again from zero. */
+  startedAt?: number;
+  metricFamilies?: AkanMetricFamily[];
   activeRequests?: number;
   totalRequests?: number;
   activeWebSockets?: number;

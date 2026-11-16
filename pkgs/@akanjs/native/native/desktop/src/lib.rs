@@ -1750,7 +1750,7 @@ impl Windows {
       "externalView.list" => Ok(self.external.list()),
       "externalView.open" => {
         let (window, _) = self.external_host(cmd)?;
-        let opts = external::OpenOptions::from_cmd(cmd, window)?;
+        let opts = external::OpenOptions::from_cmd(cmd, window, navigation::acl())?;
         let (data, devtools) = (self.external_data.clone(), self.shell.devtools);
         let win = &self.map[&window];
         let hidden = win.cursor_hidden;
@@ -1803,11 +1803,11 @@ impl Windows {
       if op == "externalView.evaluate" {
         let script = cmd.get("script").and_then(|v| v.as_str()).ok_or("script must be a string")?;
         //? Sent on as a JSON string: the engine's text is spliced into the reply, and not every engine's is JSON.
-        return self.external.evaluate(view, script, move |result| reply(id, result.map(|text| json::quote(&text))));
+        return self.external.evaluate(view, script, navigation::acl(), move |result| reply(id, result.map(|text| json::quote(&text))));
       }
       let method = cmd.get("method").and_then(|v| v.as_str()).ok_or("method must be a string")?;
       let params = cmd.get("params").map(json::stringify).unwrap_or_else(|| "{}".into());
-      self.external.cdp(view, method, &params, move |result| reply(id, result.map(|text| json::quote(&text))))
+      self.external.cdp(view, method, &params, navigation::acl(), move |result| reply(id, result.map(|text| json::quote(&text))))
     })();
     if let Err(e) = started {
       reply(id, Err(e));

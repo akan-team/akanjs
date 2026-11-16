@@ -189,6 +189,13 @@ describe("frameConfig", () => {
     expect(mergePageConfigs([{ prefetch: false }, { cache: true }]).prefetch).toBe(false);
     expect(mergePageConfigs([{ prefetch: false }, { prefetch: true }]).prefetch).toBe(true);
   });
+
+  test("takes pageConfig.canonicalQuery as a boolean that a layout hands down", () => {
+    expect(() => validatePageConfig("bad.tsx", { canonicalQuery: "no" as never })).toThrow(
+      "pageConfig.canonicalQuery in bad.tsx must be a boolean.",
+    );
+    expect(mergePageConfigs([{ canonicalQuery: false }, { cache: true }]).canonicalQuery).toBe(false);
+  });
 });
 
 describe("overlay", () => {
