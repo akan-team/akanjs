@@ -792,7 +792,7 @@ describe("an app's client runtime pieces", () => {
   }, 120_000);
 
   test("bundle for a browser with each named module's descriptors once, no other module's and nothing its signal runs on the server", async () => {
-    const files = shopFilesOf("depotkit");
+    const files: Record<string, string> = shopFilesOf("depotkit");
     const pingSignal = "lib/_ping/ping.signal.ts";
     const { root } = await writeWorkspace({
       app: "kiosk",
@@ -800,7 +800,7 @@ describe("an app's client runtime pieces", () => {
       libFiles: stockFiles,
       appFiles: {
         ...files,
-        [pingSignal]: files[pingSignal].replace('.exec(() => "")', '.exec(() => "ran-on-the-server")'),
+        [pingSignal]: `${files[pingSignal]}`.replace('.exec(() => "")', '.exec(() => "ran-on-the-server")'),
         "ui/Card.tsx":
           'import { fetch, st } from "@apps/kiosk/client";\nexport const Card = () => [st.use.label(), fetch.pingAt()];\n',
         "ui/Tile.tsx": 'import { fetch } from "@apps/kiosk/client";\nexport const Tile = () => fetch.pingAt();\n',

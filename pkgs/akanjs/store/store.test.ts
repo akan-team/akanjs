@@ -2102,7 +2102,7 @@ describe("StoreInstance facades on an unknown key", () => {
     expect(() => instance.use.absentValue()).toThrow(TypeError);
     expect(() => instance.use.absentValue()).toThrow("use.absentValue is not a function");
     expect(() => instance.do.setAbsentValue(2)).toThrow("do.setAbsentValue is not a function");
-    expect(() => instance.slice.absentSlice.use.absentList()).toThrow("slice.absentSlice");
+    expect(() => (instance.slice.absentSlice as { use: unknown }).use).toThrow("slice.absentSlice");
     expect(instance.do.setLoadedValue).toBeInstanceOf(Function);
   });
 });
