@@ -59,4 +59,17 @@ describe("StoreFacade on a key no loaded store declares", () => {
       "st.slice.memoInSelf is not registered: no store loaded on this page declares it. Check the name, or import st from the app's client barrel in a client component of this route.",
     );
   });
+
+  test("leaves the owners lookup and its messages out of a production bundle", async () => {
+    const built = await Bun.build({
+      entrypoints: [Bun.resolveSync("./storeFacade.ts", import.meta.dir)],
+      define: { "process.env.NODE_ENV": JSON.stringify("production") },
+      minify: true,
+    });
+    const output = await built.outputs[0]?.text();
+
+    expect(output).toContain("guard");
+    expect(output).not.toContain("akanjs.store.owners");
+    expect(output).not.toContain("is not registered");
+  });
 });
