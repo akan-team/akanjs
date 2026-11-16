@@ -509,6 +509,18 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
         "",
       ].join("\n"),
     );
+    expect(
+      await rewriteBarrelImports('import { cnst, Memo } from "@apps/demo/client";\n', ["@apps/demo/client"], analyzer, {
+        perModule: true,
+      }),
+    ).toBe(
+      [
+        'import "@apps/demo/lib/usePage";',
+        'import { Memo } from "@apps/demo/lib/memo";',
+        'import * as cnst from "@apps/demo/lib/cnst";',
+        "",
+      ].join("\n"),
+    );
   });
 
   test("keeps each statement's line count and writes the specifier specifierOf gives a target", async () => {

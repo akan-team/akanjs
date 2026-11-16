@@ -5,6 +5,7 @@ import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap, type PackageEntry } from "./barrelAnalyzer";
 import { loaderFor, type NamedItem } from "./moduleSyntax";
+import type { RouteRuntime } from "./routeRuntime";
 
 export interface BarrelImportsPluginOptions {
   /** Absolute paths whose content is returned unchanged (e.g. node_modules). */
@@ -17,6 +18,8 @@ export interface BarrelImportsPluginOptions {
   barrels?: readonly string[];
   /** What `akanjs/ui/modelRuntime` holds instead of its empty source, in a build loading only the page runtime. */
   modelRuntime?: string;
+  /** Gives each client module the runtime pieces of the modules it names, in a build loading only the page runtime. */
+  routeRuntime?: RouteRuntime | null;
 }
 
 export const createBarrelImportsPlugin = async (
@@ -27,6 +30,7 @@ export const createBarrelImportsPlugin = async (
     external = [],
     barrels: only,
     modelRuntime,
+    routeRuntime,
   }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
   const barrels = [...new Set(only ?? (await app.getConfig()).barrelImports)].filter(
@@ -54,13 +58,20 @@ export const createBarrelImportsPlugin = async (
           if (!(await file.exists())) return undefined;
           if (modelRuntime !== undefined && StoreBootstrap.modelRuntimeFilter.test(realPath))
             return { contents: modelRuntime, loader };
+          const whole = routeRuntime?.redirectOf(realPath);
+          if (whole) return { contents: whole, loader };
           let source = await file.text();
           if (skipPath(realPath)) return { contents: source, loader };
 
           // Bun's macro evaluator races when a rewritten module holds `with { type: "macro" }` imports while another
           // macro host evaluates (a macro identifier ends up undefined), so macro hosts keep their barrel imports.
-          if (!MACRO_ATTR_RE.test(source) && barrels.length > 0) {
-            const rewritten = await rewriteBarrelImports(source, barrels, analyzer);
+          if (!MACRO_ATTR_RE.test(source)) {
+            const routed = routeRuntime?.transform(source, realPath);
+            if (routed) source = routed.source;
+            const rewritten =
+              barrels.length > 0
+                ? await rewriteBarrelImports(source, barrels, analyzer, { perModule: routed?.perModule })
+                : null;
             if (rewritten !== null) source = rewritten;
           }
 
@@ -250,6 +261,8 @@ export interface RewriteBarrelImportsOptions {
   specifierOf?: (subpath: string) => string;
   /** Called for each import of a listed barrel with the value names whose rewrite reads its export map. */
   onImport?: (barrel: string, names: string[]) => void;
+  /** The file names its runtime per module, so a client barrel stands for the page runtime alone. */
+  perModule?: boolean;
 }
 
 export const workspaceBarrels = (barrels: readonly string[]): string[] =>
@@ -259,7 +272,12 @@ export const rewriteBarrelImports = async (
   source: string,
   barrels: string[],
   analyzer: BarrelAnalyzer,
-  { keepLines = false, specifierOf = (subpath: string) => subpath, onImport }: RewriteBarrelImportsOptions = {},
+  {
+    keepLines = false,
+    specifierOf = (subpath: string) => subpath,
+    onImport,
+    perModule = false,
+  }: RewriteBarrelImportsOptions = {},
 ): Promise<string | null> => {
   // Sound pre-filter before the costly parse: a static import cannot name a specifier absent from the text.
   if (!barrels.some((barrel) => source.includes(barrel))) return null;
@@ -277,7 +295,7 @@ export const rewriteBarrelImports = async (
     if (names.length > 0) onImport?.(stmt.specifier, names);
     const map = await analyzer.analyze(stmt.specifier);
     if (!map || map.size === 0) continue;
-    const lines = rewriteSingleStatement(stmt, map, specifierOf);
+    const lines = rewriteSingleStatement(stmt, map, specifierOf, perModule);
     if (lines === null) continue;
     const replacement = keepLines
       ? `${lines.join(" ")}${"\n".repeat(source.slice(stmt.start, stmt.end).split("\n").length - 1)}`
@@ -354,6 +372,7 @@ const rewriteSingleStatement = (
   stmt: ImportStatement,
   map: BarrelExportMap,
   specifierOf: (subpath: string) => string,
+  perModule: boolean,
 ): string[] | null => {
   const { clause } = stmt;
   if (!clause) return null;
@@ -388,7 +407,7 @@ const rewriteSingleStatement = (
   if (rewrites.size === 0 && namespaceLines.length === 0) return null;
 
   //? An app or lib client barrel's import-time side effects are its client runtime and store, not its module UI.
-  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map, valueNamesOf(clause)) ?? []).map(
+  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map, valueNamesOf(clause), { perModule }) ?? []).map(
     (specifier) => `import ${JSON.stringify(specifierOf(specifier))};`,
   );
 

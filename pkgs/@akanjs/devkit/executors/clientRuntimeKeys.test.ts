@@ -3,7 +3,9 @@ import { mkdir, readdir, realpath, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { type RuntimeFamily, RuntimeNameTable, runtimeFamilies } from "../quality/runtimeNameTable";
+import { RuntimeUse } from "../quality/runtimeUse";
 import { createTempApp, tempRoots, writeJson, writeText } from "../test/testHelpers";
+import { RouteRuntime } from "../transforms/routeRuntime";
 
 const trackRoot = tempRoots();
 const akanjsRoot = path.resolve(import.meta.dir, "../../../akanjs");
@@ -580,6 +582,54 @@ const howToRecordOrder =
   "If the change is intended, record it with AKAN_RECORD_CLIENT_RUNTIME_KEYS=1 and review the fixture's diff.";
 
 //? A workspace per test: the temp root goes after each test, and the scan caches an app or lib by name.
+const uploadFilesOf = () => {
+  const file = kitModuleNamed("file", "File");
+  const user = kitModuleNamed("user", "User");
+  return {
+    ...stockFiles,
+    ...file,
+    ...user,
+    "lib/file/file.signal.ts": (file["lib/file/file.signal.ts"] ?? "")
+      .replace('import { Int } from "akanjs/base";', 'import { Int, Upload } from "akanjs/base";')
+      .replace('import * as srv from "../srv";', 'import * as cnst from "../cnst";\nimport * as srv from "../srv";')
+      .replace("({ query }) => ({", "({ query, mutation }) => ({")
+      .replace(
+        "  fileCount:",
+        `  addFiles: mutation([cnst.File], { guards: [Public], fileUpload: true, mcp: false })
+    .body("files", [Upload])
+    .exec(() => []),
+  fileCount:`,
+      ),
+    "lib/user/user.constant.ts": (user["lib/user/user.constant.ts"] ?? "")
+      .replace(
+        'import { via } from "akanjs/constant";',
+        'import { via } from "akanjs/constant";\n\nimport { File } from "../file/file.constant";',
+      )
+      .replace("  name: field(String),", "  name: field(String),\n  image: field(File, { nullable: true }),"),
+  };
+};
+
+const uploadSetterScript = (lib: string) => `
+const { st } = await import("akanjs/store");
+await import("./libs/${lib}/lib/__client/user.st.ts");
+const page = await import("./libs/${lib}/lib/usePage.ts");
+console.log(JSON.stringify({
+  upload: typeof st.do.uploadImageOnUser,
+  signal: Object.keys(page.fetch.ownSerializedSignal).sort(),
+}));
+`;
+
+const routeRuntimeScript = (app: string, pieces: string[]) => `
+const { StoreRegistry } = await import("akanjs/store");
+const storesBefore = new Set(StoreRegistry.stores.keys());
+${pieces.map((piece) => `await import("./${piece}.ts");`).join("\n")}
+const page = await import("./apps/${app}/lib/usePage.ts");
+console.log(JSON.stringify({
+  stores: [...StoreRegistry.stores.keys()].filter((key) => !storesBefore.has(key)).sort(),
+  signal: Object.keys(page.fetch.ownSerializedSignal).sort(),
+}));
+`;
+
 describe("an app's client runtime pieces", () => {
   test("leave the whole client runtime answering its keys in the order it did before the pieces, in a browser and outside one", async () => {
     const { root } = await writeShopWorkspace("bazaar", "crate");
@@ -667,6 +717,48 @@ describe("an app's client runtime pieces", () => {
     const { root } = await writeShopWorkspace("plaza", "cargo");
     expect(await evaluate(root, appStoreAloneScript("plaza"), "plaza")).toEqual({
       actions: ["refreshItemCount", "loadItemNote"],
+    });
+  }, 120_000);
+
+  test("load the upload module's descriptors before a store whose model holds a file, so its piece alone has the upload action", async () => {
+    const { root } = await writeWorkspace({
+      app: "studio",
+      lib: "locker",
+      libFiles: uploadFilesOf(),
+      appFiles: shopFilesOf("locker"),
+    });
+    const piece = await Bun.file(path.join(root, "libs/locker/lib/__client/user.st.ts")).text();
+    expect(piece.trimStart().startsWith('import "./file.fetch";\nimport "./user.fetch";\n')).toBe(true);
+    expect(await Bun.file(path.join(root, "libs/locker/lib/__client/item.st.ts")).text()).not.toContain("file.fetch");
+    await pointScopes(root, ["apps/studio", "libs/locker"], { "useClient.ts": "./usePage" });
+    expect(await evaluate(root, uploadSetterScript("locker"), "studio")).toEqual({
+      upload: "function",
+      signal: ["file", "user"],
+    });
+  }, 120_000);
+
+  test("give a client file exactly the pieces of the modules it names, each generated and each loading only its module", async () => {
+    const { root } = await writeShopWorkspace("outlet", "pallet");
+    const runtime = await RouteRuntime.read(root, "apps/outlet");
+    if (!runtime) throw new Error("the fixture app has no assembled runtime pieces");
+    const file = "apps/outlet/ui/Card.tsx";
+    const text =
+      'import { fetch, st } from "@apps/outlet/client";\nexport const Card = () => [st.use.label(), fetch.pingAt()];\n';
+    const verdict = RuntimeUse.analyze({ fileName: file, text }, runtime.table);
+    const result = runtime.transform(text, path.join(root, file));
+
+    expect(
+      verdict.resolvable ? new Set(verdict.owners.map(({ module, needs }) => `${module} ${needs}`)) : null,
+    ).toEqual(new Set(["demo store", "ping descriptor"]));
+    expect(result?.pieces).toEqual([
+      "apps/outlet/lib/__client/demo.fetch",
+      "apps/outlet/lib/__client/ping.fetch",
+      "apps/outlet/lib/__client/demo.st",
+    ]);
+    await pointScopes(root, ["apps/outlet", "libs/pallet"], { "useClient.ts": "./usePage" });
+    expect(await evaluate(root, routeRuntimeScript("outlet", result?.pieces ?? []), "outlet")).toEqual({
+      stores: ["demo"],
+      signal: ["demo", "ping"],
     });
   }, 120_000);
 

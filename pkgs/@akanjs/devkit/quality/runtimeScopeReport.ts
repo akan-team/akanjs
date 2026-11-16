@@ -29,7 +29,7 @@ export interface RuntimeScopeResult {
 
 const moduleConventionFile = /\/lib\/.+\.(?:constant|dictionary|document|service|signal)\.ts$/;
 const generatedFile =
-  /^(?:apps|libs)\/[^/]+\/(?:client\.ts|server\.ts|lib\/[^/]+\.ts|lib\/__(?:lib|client)\/.*|lib\/.+\/index\.ts|(?:ui|webkit|srvkit|common)\/index\.ts)$/;
+  /^(?:apps|libs)\/[^/]+\/(?:\.akan\/.*|client\.ts|server\.ts|lib\/[^/]+\.ts|lib\/__(?:lib|client)\/.*|lib\/.+\/index\.ts|(?:ui|webkit|srvkit|common)\/index\.ts)$/;
 const serverOnlyDir = /^(?:apps|libs)\/[^/]+\/(?:srvkit|env|script|native|plugin)\//;
 const testFile = /\.(?:test|spec)\.tsx?$|\/__(?:fixtures|tests)__\//;
 const useClientDirective = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use client["']/;
@@ -37,10 +37,14 @@ const useClientDirective = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use client
 export class RuntimeScopeReport {
   static readonly rule = "akan.runtime.whole-scope";
 
-  static isClientFile(file: string, text: string) {
+  static isRuntimeSource(file: string) {
     if (!/^(?:apps|libs)\/[^/]+\/.+\.tsx?$/.test(file) || file.endsWith(".d.ts")) return false;
     if (testFile.test(file) || generatedFile.test(file) || moduleConventionFile.test(file)) return false;
-    if (serverOnlyDir.test(file) || /^(?:apps|libs)\/[^/]+\/(?:akan\.config|main)\.ts$/.test(file)) return false;
+    return !serverOnlyDir.test(file) && !/^(?:apps|libs)\/[^/]+\/(?:akan\.config|main)\.ts$/.test(file);
+  }
+
+  static isClientFile(file: string, text: string) {
+    if (!RuntimeScopeReport.isRuntimeSource(file)) return false;
     if (/^(?:apps|libs)\/[^/]+\/page\//.test(file)) return useClientDirective.test(text);
     return true;
   }

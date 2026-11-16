@@ -45,6 +45,7 @@ describe("SsrDevBundler under clientRuntime route", () => {
     "useClient.ts",
     `${StoreBootstrap.pageRuntime}.ts`,
     `${StoreBootstrap.baseDescriptors}.ts`,
+    ...StoreBootstrap.assembled.map((file) => `${file}.ts`),
   ];
 
   test("boots the page runtime with the framework's own descriptors and answers the model runtime marker with the app's runtime", async () => {

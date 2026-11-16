@@ -398,6 +398,17 @@ describe("route client store bootstrap", () => {
         path.join(fixture.appDir, `lib/${StoreBootstrap.baseDescriptors}.ts`),
         'export const base = Object.freeze({ mark: "base-descriptors" });\n',
       );
+      for (const file of StoreBootstrap.assembled)
+        await write(
+          path.join(fixture.appDir, `lib/${file}.ts`),
+          `export const st = Object.freeze({ mark: "assembled:${file}" });\nexport const { fetch, sig } = st as never;\n`,
+        );
+      const akanjsRoot = path.dirname(Bun.resolveSync("akanjs/package.json", import.meta.dir));
+      for (const file of ["package.json", "store/baseSt.ts", "signal/base.signal.ts", "signal/agent.signal.ts"])
+        await write(
+          path.join(fixture.root, "node_modules/akanjs", file),
+          await Bun.file(path.join(akanjsRoot, file)).text(),
+        );
       const app = {
         ...(fixture.app as object),
         getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [], clientRuntime: "route" }),
@@ -424,7 +435,7 @@ describe("route client store bootstrap", () => {
       expect(result.ssrManifestDelta.moduleMap[row?.id ?? ""]?.A?.id).toContain(`${path.sep}client-ssr${path.sep}`);
     });
 
-    test("a framework file importing the model runtime marker brings the app's descriptors and stores", async () => {
+    test("a framework file importing the model runtime marker brings the app's assembled descriptors and stores", async () => {
       const { root, appDir, app } = await routeFixture();
       const entry = path.join(root, "node_modules/akanjs/ui/Data/List.tsx");
       await write(path.join(root, "node_modules/akanjs/ui/modelRuntime.ts"), "export {};\n");
@@ -433,11 +444,28 @@ describe("route client store bootstrap", () => {
       await build(app, entry);
 
       const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
-      for (const marker of ["list-marker", '"runtime-marker"', '"store-marker"', "lib-store-marker"])
+      for (const marker of ["list-marker", ...StoreBootstrap.assembled.map((file) => `assembled:${file}`)])
         expect(browser).toContain(marker);
+      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
     });
 
-    for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors])
+    test("a file reading a store by a name picked at run time brings the assembled runtime, not a second copy", async () => {
+      const { appDir, app } = await routeFixture();
+      const entry = path.join(appDir, "ui/Pick.tsx");
+      await write(
+        entry,
+        '"use client";\nimport { st } from "@apps/demo/client";\nexport const Pick = (name: string) => [st.use[name], "pick-marker"];\n',
+      );
+
+      await build(app, entry);
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ["pick-marker", ...StoreBootstrap.assembled.map((file) => `assembled:${file}`)])
+        expect(browser).toContain(marker);
+      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
+    });
+
+    for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors, ...StoreBootstrap.assembled])
       test(`an app not synced to lib/${file}.ts keeps the whole runtime in its browser chunks`, async () => {
         const { appDir, app } = await routeFixture();
         await Bun.file(path.join(appDir, `lib/${file}.ts`)).delete();
