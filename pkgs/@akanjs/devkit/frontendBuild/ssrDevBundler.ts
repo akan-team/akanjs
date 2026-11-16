@@ -25,6 +25,7 @@ export class SsrDevBundler extends DevRegistryBundler {
   #discovery: ClientEntryDiscovery | null = null;
   readonly #sharedDiscovery: (() => ClientEntryDiscovery) | null;
   #route: { inputs: string; runtime: DevRouteRuntime | null } | null = null;
+  #wholeWarned = false;
 
   /** `discovery` is the resident builder's, which it keeps current with every save; a worker discovers afresh. */
   constructor(app: App, { discovery }: { discovery?: () => ClientEntryDiscovery } = {}) {
@@ -46,6 +47,7 @@ export class SsrDevBundler extends DevRegistryBundler {
       : workspaceBarrels(akanConfig.barrelImports);
     const routeRuntime =
       routed && (await StoreBootstrap.scopeOf(this.app)) === "page" ? await this.#routeRuntime() : null;
+    this.#warnWhole(routed && !routeRuntime);
     const modelRuntime = routeRuntime?.wholeSource;
     const configKey = Bun.hash(
       JSON.stringify([
@@ -83,6 +85,15 @@ export class SsrDevBundler extends DevRegistryBundler {
     const moved = runtime && JSON.stringify(runtime.scopes) !== JSON.stringify(scopes);
     this.#route = { inputs: moved ? DevRouteRuntime.inputsOf(root, runtime.scopes) : inputs, runtime };
     return runtime;
+  }
+
+  #warnWhole(whole: boolean) {
+    const { name } = this.app;
+    if (whole && !this.#wholeWarned)
+      this.app.logger.warn(
+        `[client-runtime] clientRuntime: "route" is set, but the per-module runtime files of ${name} or a lib it mounts are missing, so every page of the development server loads the whole client runtime. Run \`akan sync ${name}\`.`,
+      );
+    this.#wholeWarned = whole;
   }
 
   //? The client runtime of an SSR page inlines no dictionary (`lib/usePage.ts` reads one only when rendering csr), so

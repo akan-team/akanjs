@@ -27,7 +27,7 @@ describe("SsrDevBundler bootstrap", () => {
 });
 
 describe("SsrDevBundler under clientRuntime route", () => {
-  const appOf = (root: string, clientRuntime: "all" | "route") =>
+  const appOf = (root: string, clientRuntime: "all" | "route", warnings: string[] = []) =>
     ({
       name: "demo",
       cwdPath: path.join(root, "apps/demo"),
@@ -35,6 +35,7 @@ describe("SsrDevBundler under clientRuntime route", () => {
       basePaths: new Set<string>(),
       getConfig: async () => ({ clientRuntime, optimizeImports: [], barrelImports: [], basePaths: new Set<string>() }),
       getPublicEnv: () => ({}),
+      logger: { warn: (message: string) => warnings.push(message) },
     }) as never;
   const writeLib = async (root: string, files: string[]) => {
     for (const file of files) await write(path.join(root, "apps/demo/lib", file), "export {};\n");
@@ -58,9 +59,12 @@ describe("SsrDevBundler under clientRuntime route", () => {
     const root = await makeTempRoot();
     await writeLib(root, pageFiles);
     await writeFrameworkBase(root);
-    const bundler = new SsrDevBundler(appOf(root, "route"));
+    const warnings: string[] = [];
+    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
     const context = await bundler.context();
     const { files } = await bundler.writeEntries(context);
+
+    expect(warnings).toEqual([]);
 
     const bootstrap = await Bun.file(files[SsrDevBundler.bootstrapKey] ?? "").text();
     expect(bootstrap).toStartWith(
@@ -100,4 +104,25 @@ describe("SsrDevBundler under clientRuntime route", () => {
         'import "@apps/demo/lib/useClient";\nimport "@apps/demo/lib/st";\n',
       );
     });
+
+  test("says once, not on every save, that a route app missing its runtime files loads the whole runtime", async () => {
+    const root = await makeTempRoot();
+    await writeLib(root, pageFiles.slice(0, -1));
+    await writeFrameworkBase(root);
+    const warnings: string[] = [];
+    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
+
+    await bundler.context();
+    await bundler.context();
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("loads the whole client runtime. Run `akan sync demo`.");
+
+    await writeLib(root, pageFiles.slice(-1));
+    expect((await bundler.context()).routeRuntime).toBeDefined();
+    await Bun.file(path.join(root, "apps/demo/lib", pageFiles.at(-1) ?? "")).delete();
+    await bundler.context();
+    expect(warnings).toHaveLength(2);
+    expect((await new SsrDevBundler(appOf(root, "all", warnings)).context()).routeRuntime).toBeUndefined();
+    expect(warnings).toHaveLength(2);
+  });
 });
