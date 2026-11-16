@@ -156,14 +156,21 @@ export const useCsrKeyboard = ({
 
 export type CsrKeyboard = ReturnType<typeof useCsrKeyboard>;
 
-//? On the root, so overlays portalled out of the page can move with the keys too.
+//? On the root, so overlays portalled out of the page can move with the keys too; `Device` sets them itself, sooner,
+//? where the iOS shell left the keyboard to the page.
 const useKeyboardRoot = (keyboardFrame: KeyboardFrameState) => {
   useLayoutEffect(() => {
+    if (keyboardFrame.avoidsContent) return;
     const root = document.documentElement;
     root.style.setProperty("--akan-keyboard-duration", `${keyboardFrame.animationDuration ?? 0}ms`);
     root.style.setProperty("--akan-keyboard-easing", keyboardFrame.animationEasing ?? "ease");
     root.toggleAttribute("data-akan-keyboard", keyboardFrame.visible);
-  }, [keyboardFrame.animationDuration, keyboardFrame.animationEasing, keyboardFrame.visible]);
+  }, [
+    keyboardFrame.avoidsContent,
+    keyboardFrame.animationDuration,
+    keyboardFrame.animationEasing,
+    keyboardFrame.visible,
+  ]);
 };
 
 //? With the shell's pan gone nothing brings a field the keys cover back into view; the frame does, once they are up.

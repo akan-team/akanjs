@@ -119,7 +119,14 @@ export {
   type WebAppManifestIcon,
 } from "./csrTypes";
 export { Toast } from "./decorators";
-export { Device, debugFrame, isMobileDevice, isNativeTarget } from "./device";
+export {
+  Device,
+  debugFrame,
+  IOS_KEYBOARD_ANIMATION_EASING,
+  isMobileDevice,
+  isNativeTarget,
+  isPageKeyboardAvoidance,
+} from "./device";
 export {
   breakpointQuery,
   type DevicePlatform,

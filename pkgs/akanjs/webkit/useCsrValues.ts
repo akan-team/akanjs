@@ -227,10 +227,14 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   // Merged here, not in CSR: CSR renders one container per path route and would rebuild it for each on every render.
   const contentResizeStyle = useMemo(() => {
     if (!keyboardFrame.avoidsContent && (!shouldAnchorContentBottom || !keyboardFrame.sticky)) return null;
-    const duration = keyboardFrame.animationDuration ?? 420;
-    const easing = keyboardFrame.animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)";
+    const duration = keyboardFrame.avoidsContent
+      ? "var(--akan-keyboard-duration, 250ms)"
+      : `${keyboardFrame.animationDuration ?? 420}ms`;
+    const easing = keyboardFrame.avoidsContent
+      ? "var(--akan-keyboard-easing, ease)"
+      : (keyboardFrame.animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)");
     return {
-      transition: `height ${duration}ms ${easing}, padding-bottom ${duration}ms ${easing}`,
+      transition: `height ${duration} ${easing}, padding-bottom ${duration} ${easing}`,
       willChange: "height, padding-bottom",
     };
   }, [
