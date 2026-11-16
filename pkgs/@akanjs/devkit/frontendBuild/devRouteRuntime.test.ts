@@ -71,7 +71,7 @@ const sortedIds = (modules: { id: string }[]) =>
   modules.map((module) => module.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
 describe("DevRouteRuntime", () => {
-  test("a file naming one module's state imports the page runtime and that module's store piece by relative paths", async () => {
+  test("a file naming one module's state imports the tab's store and that module's store piece by a relative path", async () => {
     const { root, file } = await routeWorkspace();
     const runtime = await DevRouteRuntime.read(root, "apps/demo");
     const source = await Bun.file(file("ui/Draft.tsx")).text();
@@ -79,7 +79,7 @@ describe("DevRouteRuntime", () => {
     const routed = runtime?.transform(source, file("ui/Draft.tsx"));
 
     expect(routed?.perModule).toBe(true);
-    expect(routed?.contents).toContain('"../lib/usePage.ts"');
+    expect(routed?.contents).toContain('import { st } from "akanjs/store";');
     expect(routed?.contents).toContain('"../lib/__client/draft.st.ts"');
     expect(routed?.contents).not.toContain('"@apps/');
     expect(routed?.contents).not.toContain("tally.st");
@@ -122,6 +122,20 @@ describe("DevRouteRuntime", () => {
     expect(routed?.contents).toContain(`${root}/apps/demo/lib/__client/_useClient.ts`);
     expect(routed?.contents).toContain(`${root}/apps/demo/lib/__client/_st.ts`);
   });
+
+  test("a lib's store piece or store names the app's piece of that module and the app's assembled store to run after it", async () => {
+    const { root } = await routeWorkspace();
+    const runtime = await DevRouteRuntime.read(root, "apps/demo");
+
+    expect(runtime?.appStoresAfter("libs/shared/lib/__client/draft.st.ts")).toEqual([
+      "apps/demo/lib/__client/draft.st.ts",
+      "apps/demo/lib/__client/_st.ts",
+    ]);
+    expect(runtime?.appStoresAfter("libs/shared/lib/st.ts")).toEqual(["apps/demo/lib/__client/_st.ts"]);
+    expect(runtime?.appStoresAfter("libs/shared/lib/__client/_st.ts")).toEqual(["apps/demo/lib/__client/_st.ts"]);
+    expect(runtime?.appStoresAfter("apps/demo/lib/__client/draft.st.ts")).toEqual([]);
+    expect(runtime?.appStoresAfter("libs/shared/lib/_draft/draft.store.ts")).toEqual([]);
+  });
 });
 
 describe("the dev registry under clientRuntime route", () => {
@@ -149,7 +163,6 @@ describe("the dev registry under clientRuntime route", () => {
     expect(sortedIds(modules)).toEqual([
       "apps/demo/lib/__client/draft.st.ts",
       "apps/demo/lib/__client/tally.st.ts",
-      "apps/demo/lib/usePage.ts",
       "apps/demo/ui/Draft.tsx",
       "apps/demo/ui/Tally.tsx",
     ]);
@@ -174,6 +187,25 @@ describe("the dev registry under clientRuntime route", () => {
     const code = modules.map((module) => module.factory).join("\n");
     expect(code).not.toContain("whole-store");
     expect(code).not.toContain("whole-client");
+  });
+
+  test("a lib's lib/st.ts loads as the lib's assembled store followed by the app's", async () => {
+    const { root, file, app } = await routeWorkspace();
+    const lib = (relative: string) => path.join(root, "libs/shared", relative);
+    await write(file("lib/st.ts"), 'export { st as shared } from "@libs/shared/client";\nexport const st = {};\n');
+    await write(lib("lib/st.ts"), 'export const st = { mark: "whole-lib-store" };\n');
+    await write(lib("lib/__client/_st.ts"), 'export const st = { mark: "assembled-lib-store" };\n');
+    await write(lib("lib/_shelf/shelf.store.ts"), storeSource("shelf", ["shelfSize"]));
+    await write(lib("lib/__client/shelf.st.ts"), piece("shelf.st"));
+
+    const modules = await compile(app, root, [lib("lib/st.ts")]);
+
+    expect(sortedIds(modules)).toEqual([
+      "apps/demo/lib/__client/_st.ts",
+      "libs/shared/lib/__client/_st.ts",
+      "libs/shared/lib/st.ts",
+    ]);
+    expect(modules.map((module) => module.factory).join("\n")).not.toContain("whole-lib-store");
   });
 
   class RouteRegistry extends SsrDevBundler {
@@ -224,6 +256,32 @@ describe("the dev registry under clientRuntime route", () => {
     const owners = patch.slice(patch.indexOf(`"${ownersId}": function`));
     expect(owners).toContain('"draftNote"');
     expect(owners).toContain("module.hot.accept()");
+  });
+
+  test("a lib store piece's save runs the app's piece of that module and the app's assembled store again after it", async () => {
+    const { root, file, app } = await routeWorkspace();
+    const libPiece = path.join(root, "libs/shared/lib/__client/draft.st.ts");
+    await write(libPiece, piece("shared-draft.st"));
+    await write(
+      file("lib/__client/draft.st.ts"),
+      `import "../../../../libs/shared/lib/__client/draft.st";\n${piece("draft.st")}`,
+    );
+    const bundler = new RouteRegistry(app);
+    bundler.roots = [file("ui/Draft.tsx"), file("ui/Tally.tsx"), file("client.ts")];
+    await bundler.update([]);
+    const patcher = new CsrDevPatcher(bundler, { resident: true });
+    expect(await patcher.update([])).toEqual({ kind: "unchanged" });
+
+    await write(libPiece, piece("shared-draft.st-saved"));
+    const saved = await patcher.update([libPiece]);
+
+    const update = saved.kind === "update" ? saved.update : null;
+    expect(update?.reload).toBe(false);
+    expect(update?.changedIds.toSorted()).toEqual([
+      "apps/demo/lib/__client/_st.ts",
+      "apps/demo/lib/__client/draft.st.ts",
+      "libs/shared/lib/__client/draft.st.ts",
+    ]);
   });
 
   test("a production route bundle carries no store owners table, which only the dev bootstrap loads", async () => {

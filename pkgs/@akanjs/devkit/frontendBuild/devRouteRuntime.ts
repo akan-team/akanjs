@@ -26,6 +26,7 @@ export class DevRouteRuntime {
   static readonly ownersKey = "akanjs.store.owners";
   //? Not in the bootstrap: a store save changes the table, and a change reaching the bootstrap reloads the tab.
   static readonly ownersModule = "storeOwners";
+  static readonly #libStoreRoot = /^libs\/[^/]+\/lib\/(?:st|__client\/(_st|[^/]+\.st))\.ts$/;
   readonly #workspaceRoot: string;
   readonly #runtime: RouteRuntime;
   readonly scopes: string[];
@@ -82,6 +83,14 @@ export class DevRouteRuntime {
           });
     const stamp = Bun.hash(`${routed.perModule}\n${contents}`).toString(36);
     return { contents, perModule: routed.perModule, stamp };
+  }
+
+  //? A lib store run again takes its registry entry and actions back from the app's store extending it.
+  appStoresAfter(id: string): string[] {
+    const [libRoot, piece = "_st"] = id.match(DevRouteRuntime.#libStoreRoot) ?? [];
+    if (!libRoot) return [];
+    const appClient = `${this.#runtime.table.scope}/lib/__client`;
+    return [...new Set([`${appClient}/${piece}.ts`, `${appClient}/_st.ts`])];
   }
 
   get owners(): StoreOwners {

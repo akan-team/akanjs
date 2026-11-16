@@ -111,6 +111,7 @@ export class CsrDevPatcher {
     const changed = onlyRoots ? new Set<string>() : await this.#changedModules(graph, changedFiles, present);
     const restamped = onlyRoots ? null : await this.#renarrowed(context, graph, changedFiles, changed);
     const routeTable = onlyRoots ? undefined : await this.#rerouted(context, graph, changed);
+    for (const id of CsrDevPatcher.#extendingAppStores(context, graph, changed)) changed.add(id);
     for (const id of this.#withoutFactory(state, present)) changed.add(id);
     for (const file of entries.changed) changed.add(paths.idOf(file));
     const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
@@ -557,6 +558,12 @@ export class CsrDevPatcher {
       if (routeRuntime.transform(await Bun.file(file).text(), file)?.stamp !== module.routed) changed.add(id);
     }
     return routeRuntime.digest;
+  }
+
+  static #extendingAppStores(context: CsrDevContext, graph: CsrDevGraph, changed: Set<string>): string[] {
+    const { routeRuntime } = context;
+    if (!routeRuntime) return [];
+    return [...changed].flatMap((id) => routeRuntime.appStoresAfter(id)).filter((id) => !!graph.modules[id]);
   }
 
   static #remember(code: CsrDevCode, compiled: CsrDevCompileResult["modules"]) {
