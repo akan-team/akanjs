@@ -1,0 +1,25 @@
+# uid and gid 1000 are oven/bun's `bun` user, which owns the directories the generated image's server writes.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  # The kubelet hands a volume whose root another group owns to group 1000, except hostPath and NFS volumes.
+  fsGroup: 1000
+  fsGroupChangePolicy: OnRootMismatch
+  seccompProfile:
+    type: RuntimeDefault
+# No readOnlyRootFilesystem: the server writes /workspace/runtime, /workspace/.akan, /workspace/data and /tmp in the image.
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+ingress:
+  # The server's own upload limit (`AKAN_MAX_UPLOAD_BODY`, 128 MiB); raise the two together.
+  proxyBodySize: 128m
+  # The app answers CORS itself; ingress-nginx's answer to a preflight and its headers would replace the app's.
+  cors:
+    enabled: false
+# Single mode: before the app starts, a root init container hands the sqlite-data claim to runAsUser:runAsGroup.
+volumePermissions:
+  enabled: true

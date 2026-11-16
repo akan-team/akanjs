@@ -9,12 +9,15 @@ import {
 import type { InjectRegistry, LiveRegistry } from "akanjs/service";
 import { CrossSiteGuard, isExceptionLike, SignalContext, SignalFailure, type WebsocketReqData } from "akanjs/signal";
 import { websocketRoomContract } from "../../common/websocketContract";
+import { HttpPeer } from "../../signal/httpPeer";
+import { RequestTrace } from "../../signal/requestTrace";
 import { compressResponse, compressStreamResponse } from "../contentEncoding";
 import type { HmrWsData, HmrWsHub } from "../hmr/wsHub";
 import { copyBunRequestFields, type WebProxyRunner } from "../proxy";
 import { SignalResolver } from "../resolver";
 import type { HttpRoutes, SignalRouteOptions, WebsocketRoutes } from "../types";
 import { AppWsData } from "./appWsData";
+import { DevSurfacePolicy } from "./devSurfacePolicy";
 import type { HostAllowlist } from "./hostAllowlist";
 import { ServerLimits } from "./serverLimits";
 import { WsCredentialExpiry } from "./wsCredentialExpiry";
@@ -83,12 +86,14 @@ export class ApiRouter {
     countChunkedBodies = true,
     idleTimeout = 0,
   }: ApiRouteInputs): NonNullHttpRoutes {
-    const endpointEntries = Object.entries(routes ?? {}).map(
-      ([p, handler]) =>
-        [
-          ApiRouter.applyGlobalPrefix(prefix, p, routeOptions?.[p]),
-          ApiRouter.#corsRoute(ApiRouter.#compressRoute(handler)),
-        ] as const,
+    const endpoints = Object.entries(routes ?? {}).map(
+      ([p, handler]) => [ApiRouter.applyGlobalPrefix(prefix, p, routeOptions?.[p]), handler] as const,
+    );
+    DevSurfacePolicy.checkReserved("An endpoint", [...endpoints, [`${prefix}${websocketPrefix}`, null]]);
+    DevSurfacePolicy.checkReserved("A framework route", Object.entries(builtinRoutes ?? {}));
+    DevSurfacePolicy.checkReserved("A web route", Object.entries(renderEnvRoutes ?? {}));
+    const endpointEntries = endpoints.map(
+      ([path, handler]) => [path, ApiRouter.#corsRoute(ApiRouter.#compressRoute(handler))] as const,
     );
     const builtinEntries = Object.entries(builtinRoutes ?? {}).map(
       ([path, handler]) => [path, ApiRouter.#compressRoute(handler)] as const,
@@ -122,10 +127,28 @@ export class ApiRouter {
       new Set([...endpointEntries.map(([path]) => path), ...Object.keys(renderEnvRoutes ?? {})]),
     );
     const limited = bodyLimits ? ApiRouter.#limitBodies(swept, bodyLimits, countChunkedBodies) : swept;
-    const routed = ApiRouter.#dropForgedForwarding(
-      hostAllowlist ? ApiRouter.#guardHosts(limited, hostAllowlist) : limited,
+    const routed = ApiRouter.#identifyRequests(
+      ApiRouter.#dropForgedForwarding(hostAllowlist ? ApiRouter.#guardHosts(limited, hostAllowlist) : limited),
     );
     return idleTimeout ? ApiRouter.#holdOpen(routed, idleTimeout) : routed;
+  }
+
+  //? Outermost, so a wrapper's own refusal names the request too.
+  static #identifyRequests(routes: NonNullHttpRoutes): NonNullHttpRoutes {
+    return Object.fromEntries(
+      Object.entries(routes).map(([path, route]) => [
+        path,
+        route instanceof Response
+          ? route
+          : ApiRouter.#mapRoute(route, (handler) => (req) => {
+              const trace = RequestTrace.accept(req.headers, HttpPeer.of(req));
+              const answer = RequestTrace.run(trace, () => handler(req));
+              return answer instanceof Promise
+                ? answer.then((response) => RequestTrace.echo(response, trace))
+                : RequestTrace.echo(answer, trace);
+            }),
+      ]),
+    ) as NonNullHttpRoutes;
   }
 
   static buildWebsocketHandlers({
@@ -171,7 +194,8 @@ export class ApiRouter {
           return;
         }
         //? Named on an error frame, so a client can tell which subscribe or message the refusal answers.
-        let failed: { key?: string; requestRoomId?: string; token?: number } = {};
+        let failed: { key?: string; requestRoomId?: string; token?: number; traceId?: string } = {};
+        const trace = (ws.data as { trace?: RequestTrace | null } | undefined)?.trace;
         try {
           const msg = ApiRouter.#frameOf(message);
           failed = {
@@ -202,9 +226,11 @@ export class ApiRouter {
           }
           const eventType =
             typeof msg.subscribe === "boolean" ? (msg.subscribe ? "subscribe" : "unsubscribe") : "message";
-          const result = await wsRoute(ws, msg.data, eventType, { since: msg.since });
+          const call = () => wsRoute(ws, msg.data, eventType, { since: msg.since });
+          const result = await (trace ? RequestTrace.run(trace, call) : call());
           ws.send(JSON.stringify(result));
         } catch (error) {
+          if (trace) failed = { ...failed, traceId: trace.traceId };
           if (isExceptionLike(error)) {
             ws.send(JSON.stringify({ ...error.toJSON(), ...failed, timestamp: new Date().toISOString() }));
             return;

@@ -1,4 +1,5 @@
-//! core/src/acl.ts as far as the links the shell hands to the OS need it; vectors.rs runs the shared vectors on it.
+//! core/src/acl.ts as far as the shell needs it: the links it hands to the OS (vectors.rs runs the shared vectors on
+//! them) and what an external view may be opened for and sent.
 
 use crate::json::V;
 
@@ -65,24 +66,43 @@ impl Acl {
     parsed().unwrap_or(Acl { grants: Vec::new(), denied: Vec::new() })
   }
 
-  pub fn opener_permits(&self, url: &str, window: u32) -> bool {
-    let (plugin, item) = ("opener", "openUrl");
+  /// aclCheck: the grants that allow `item` of `plugin` in `window`, None when it is not allowed.
+  fn granted(&self, plugin: &str, item: &str, window: u32) -> Option<Vec<&Grant>> {
     if self.denied.iter().any(|(p, items)| p == plugin && items.iter().any(|i| i == item)) {
-      return false;
+      return None;
     }
     let matching: Vec<&Grant> = self
       .grants
       .iter()
       .filter(|g| g.plugin == plugin && g.items.as_ref().is_none_or(|i| i.iter().any(|x| x == item)) && g.windows.as_ref().is_none_or(|w| w.contains(&window)))
       .collect();
-    if matching.is_empty() {
-      return false;
-    }
-    let matches = |e: &Entry, deny: bool| e.iter().all(|(field, pattern)| field == "url" && url_match(pattern, url, deny));
+    (!matching.is_empty()).then_some(matching)
+  }
+
+  pub fn permits(&self, plugin: &str, item: &str, window: u32) -> bool {
+    self.granted(plugin, item, window).is_some()
+  }
+
+  /// aclCheck, then scopePermits: no deny entry matches, and the grants have no allow list or one of its entries matches.
+  pub fn scope_permits(&self, plugin: &str, item: &str, window: u32, matches: impl Fn(&[(String, String)], bool) -> bool) -> bool {
+    let Some(matching) = self.granted(plugin, item, window) else { return false };
     if matching.iter().any(|g| g.deny.iter().any(|e| matches(e, true))) {
       return false;
     }
     matching.iter().any(|g| g.allow.is_none()) || matching.iter().flat_map(|g| g.allow.iter().flatten()).any(|e| matches(e, false))
+  }
+
+  /// scope_permits for a scope the app must list: a grant without an allow list, and an entry naming no field, give nothing.
+  pub fn scope_lists(&self, plugin: &str, item: &str, window: u32, matches: impl Fn(&[(String, String)], bool) -> bool) -> bool {
+    let Some(matching) = self.granted(plugin, item, window) else { return false };
+    if matching.iter().any(|g| g.deny.iter().any(|e| matches(e, true))) {
+      return false;
+    }
+    matching.iter().flat_map(|g| g.allow.iter().flatten()).any(|e| !e.is_empty() && matches(e, false))
+  }
+
+  pub fn opener_permits(&self, url: &str, window: u32) -> bool {
+    self.scope_permits("opener", "openUrl", window, |e, deny| e.iter().all(|(field, pattern)| field == "url" && url_match(pattern, url, deny)))
   }
 }
 

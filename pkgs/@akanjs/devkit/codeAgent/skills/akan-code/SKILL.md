@@ -139,13 +139,48 @@ akan code -i "<prompt>"         open the session with the prompt already sent
 --compact-at <percent>          compact once the window is this full (10, 20, … 100)
 --trust-workspace               start this repo's MCP servers and extensions without asking
 --no-ask-network                never ask before an unlisted host (local profile)
+--no-ask-commands               run shell commands without asking (local profile)
+--no-ask                        both of those at once: this session asks before nothing it runs (local profile)
 --rpc-listen unix:<path>|tcp:[host:]<port>   serve the RPC wire on a socket instead of stdio
 ```
 
 `local` runs as the user: it refuses known secret files and the home credential stores, and asks before it
-fetches a page from a host off a short documentation list or a shell command that reaches the network
-(`curl`, `ssh`, …) — refused outright where nobody can answer, as in a one-shot `akan code "<prompt>"`. It is
-not a sandbox; `pod` in a container is.
+runs a shell command, fetches a page from a host off a short documentation list, or runs a shell command that
+reaches the network (`curl`, `ssh`, …). Where nobody can answer, as in a one-shot `akan code "<prompt>"` or
+inside a sub-agent, an ordinary command runs unasked and those network calls are refused outright. It is not a
+sandbox; `pod` in a container is.
+
+An approval for a shell command reads `approve? run: <command>  [y/n/a]`. `y` runs it once, `n` or esc refuses
+it, and `a` runs it and stops asking about that command until the session ends. What `a` remembers is the
+program, and the sub-command too for `git`, `bun`, `bunx`, `npm`, `npx`, `pnpm`, `yarn`, `akan`, `docker`,
+`kubectl`, `helm`, `cargo` and `go`: allowing `git status` leaves `git diff` asked about, and allowing
+`bun test` leaves `bun x` asked about. `gh` is remembered two words deep, so allowing `gh pr view` leaves
+`gh pr merge` asked about. A line of several commands (`&&`, `;`, `|`, `$(…)`, a subshell) runs unasked only
+once every command in it is allowed, and its prompt names the ones `a` would add. `/allowed` lists what the
+session has allowed and `/allowed clear` forgets it. Nothing is written down: a resumed, forked or reloaded
+session asks again.
+
+Some lines are asked about every time and their prompt offers only `[y/n]`:
+
+- a networking command: `curl`, `wget`, `nc`, `ncat`, `netcat`, `socat`, `telnet`, `ssh`, `scp`, `sftp`,
+  `rsync`, `ftp`, and a redirection to or from `/dev/tcp/…` or `/dev/udp/…`;
+- a command that sends something out of the machine: `git push`, `npm publish`, `pnpm publish`,
+  `yarn publish`, `yarn npm`, `bun publish`, `cargo publish`, `gh api`, and a `docker` line with `push` or
+  `--push` in it (`docker push`, `docker image push`, `docker build --push`);
+- `rm`;
+- a command that runs another, or sets what a later one runs: `sudo`, `env`, `command`, `exec`, `nohup`,
+  `time`, `timeout`, `nice`, `watch`, `stdbuf`, `xargs`, `sh`, `bash`, `zsh`, `dash`, `ksh`, `fish`, `eval`,
+  `builtin`, `source`, `.`, `trap`, `alias`, `coproc`, `export`, `declare`, `typeset`, `readonly`, `find -exec`;
+- a variable set in front of a command, other than `CI`, `NODE_ENV`, `FORCE_COLOR`, `NO_COLOR`, `TZ`, `LANG`,
+  `LC_ALL`, `TERM`, `DEBUG` or `PORT` given one plain word (`CI=1 bun test` is read as `bun test`);
+- a line that writes a file with `>` or `>>` (other than to `/dev/null`);
+- a line the reader cannot split with confidence: a loop or `if`, backticks, a here-document, a program named
+  by a variable, a flag between `git` and its sub-command.
+
+`--no-ask` is `--no-ask-commands --no-ask-network` under one name, for a run where the user has decided not to
+be asked: it prints one line at start saying so. It changes nothing else: the secret files stay refused, this
+repo's MCP servers and extensions still wait for their own approval (`--trust-workspace`), the agent's own
+questions are still asked, and the other profiles behave as they did.
 
 A `tcp:` listener asks every connection to open with `{"auth":"<token>"}` on its first line; the token is a
 fresh one in `~/.akan/code/rpc/<port>.token`, or the one in the file `AKAN_CODE_RPC_TOKEN_FILE` names.

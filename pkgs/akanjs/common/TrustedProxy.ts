@@ -11,6 +11,7 @@ interface Cidr {
 interface TrustPolicy {
   trustAll: boolean;
   privateRanges: boolean;
+  namesPrivate: boolean;
   strict: boolean;
   cidrs: Cidr[];
 }
@@ -75,6 +76,7 @@ export class TrustedProxy {
     return {
       trustAll,
       privateRanges: !entries.length || keywords.has("private"),
+      namesPrivate: keywords.has("private"),
       strict: entries.length > 0 && !trustAll,
       cidrs,
     };
@@ -97,6 +99,15 @@ export class TrustedProxy {
     const policy = TrustedProxy.#load();
     if (TrustedProxy.#isLoopback(bytes)) return true;
     if (policy.privateRanges && TrustedProxy.#isPrivateRange(bytes)) return true;
+    return policy.cidrs.some((cidr) => TrustedProxy.#inRange(bytes, cidr));
+  }
+
+  //? Security: only what the list spells, never the unset default, `*` or loopback: no operator chose those peers.
+  static isListed(address: string | null | undefined): boolean {
+    const bytes = address ? IpBytes.of(normalizeIpAddress(address)) : null;
+    if (!bytes) return false;
+    const policy = TrustedProxy.#load();
+    if (policy.namesPrivate && TrustedProxy.#isPrivateRange(bytes)) return true;
     return policy.cidrs.some((cidr) => TrustedProxy.#inRange(bytes, cidr));
   }
 

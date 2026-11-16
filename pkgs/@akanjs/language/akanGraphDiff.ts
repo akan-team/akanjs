@@ -1,10 +1,4 @@
-import type {
-  AkanGraph,
-  AkanGraphChange,
-  AkanGraphEdge,
-  AkanGraphField,
-  AkanGraphNode,
-} from "akanjs/common/akanGraph.ts";
+import type { AkanGraph, AkanGraphChange, AkanGraphEdge, AkanGraphField, AkanGraphNode } from "akanjs/common";
 
 export interface AkanGraphChanges extends AkanGraph {
   summary: { [change in AkanGraphChange]: number };

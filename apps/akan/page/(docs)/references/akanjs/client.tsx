@@ -684,6 +684,15 @@ export default page()
         }),
       },
       {
+        key: "canonicalQuery",
+        type: "boolean",
+        default: "true",
+        desc: l.trans({
+          en: "`false` keys the page in the RSC and HTML result caches on its query exactly as requested, instead of sorted and without the `AKAN_ROUTE_CACHE_TRACKING_PARAMS`. On a layout, it covers every page below.",
+          ko: "`false`면 RSC·HTML 결과 캐시가 페이지를 정렬하고 `AKAN_ROUTE_CACHE_TRACKING_PARAMS`를 뺀 쿼리 대신 요청 그대로의 쿼리로 저장합니다. layout에 두면 그 아래 모든 페이지에 적용됩니다.",
+        }),
+      },
+      {
         key: "devOnly",
         type: "boolean",
         default: "false",

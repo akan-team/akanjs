@@ -134,6 +134,7 @@ export interface CodeAgentApprovalRequest {
     name: string;
     summary: string;
     policy: CodeAgentApprovalPolicy;
+    remember?: string[];
 }
 
 export type CodeAgentBuiltinTool = "bash" | "edit" | "find" | "grep" | "ls" | "read" | "write";
@@ -158,6 +159,7 @@ export type CodeAgentCommand = {
     type: "approve";
     approvalId: string;
     approved: boolean;
+    remember?: "session";
 } | {
     type: "compact";
     instructions?: string;
@@ -200,6 +202,7 @@ export type CodeAgentEventBody = {
     type: "approval_resolved";
     approvalId: string;
     approved: boolean;
+    remembered?: string[];
 } | {
     type: "compaction";
     phase: "end" | "start";
@@ -527,6 +530,7 @@ export type CodeTranscriptPart = {
     id: string;
     request: CodeAgentApprovalRequest;
     approved?: boolean;
+    remembered?: string[];
 } | {
     kind: "assistant";
     id: string;
@@ -786,6 +790,7 @@ export interface LogContextSnapshot {
     traceId: null | string;
     endpoint: null | string;
     origin: null | string;
+    link?: null | string;
     flight?: LogFlightRecorder | null;
     debugSev?: null | number;
 }
@@ -816,6 +821,7 @@ export interface LogRecord {
     origin: null | string;
     traceId: null | string;
     endpoint: null | string;
+    link?: string;
     attrs?: LogAttrs;
 }
 
@@ -1324,6 +1330,7 @@ export declare class TrustedProxy {
     static configure(list: null | string | undefined): void;
     static reset(): void;
     static isTrusted(address: null | string | undefined): boolean;
+    static isListed(address: null | string | undefined): boolean;
     static clientAddress(headers: Headers, peerAddress: null | string | undefined): null | string;
     static resolve(headers: Headers, peerAddress: null | string | undefined): ResolvedClient;
     static isPrivateAddress(address: string): boolean;

@@ -70,6 +70,15 @@ export interface CodeAgentOptions {
   resume?: string;
 }
 
+const textOf = (content: unknown) => {
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => (typeof part === "object" && part && "text" in part ? String(part.text) : ""))
+    .join("")
+    .trim();
+};
+
 export class CodeAgent {
   readonly #profile: CodeAgentProfile;
   readonly #gate: CodeAgentGate;
@@ -171,6 +180,10 @@ export class CodeAgent {
     return this.#profile;
   }
 
+  get allowed() {
+    return this.#gate.allowed;
+  }
+
   get canSeeImages() {
     const model = this.#session?.model;
     return model ? akanCodeModelSupportsImages(model) : false;
@@ -269,19 +282,10 @@ export class CodeAgent {
     const turnId = `restored:${session.sessionId}`;
     for (const message of session.messages) {
       if (message.role !== "user" && message.role !== "assistant") continue;
-      const text = CodeAgent.#textOf(message.content);
+      const text = textOf(message.content);
       if (text) this.#emit({ type: "message", turnId, role: message.role, text });
     }
     this.#emitContextNow();
-  }
-
-  static #textOf(content: unknown) {
-    if (typeof content === "string") return content.trim();
-    if (!Array.isArray(content)) return "";
-    return content
-      .map((part) => (typeof part === "object" && part && "text" in part ? String(part.text) : ""))
-      .join("")
-      .trim();
   }
 
   on(listener: (event: CodeAgentEvent) => void) {
@@ -339,9 +343,13 @@ export class CodeAgent {
     return true;
   }
 
-  async approve(approvalId: string, approved: boolean) {
+  async approve(approvalId: string, approved: boolean, remember?: "session") {
     if (this.#asks.resolveApproval(approvalId, approved)) {
-      this.#emit({ type: "approval_resolved", approvalId, approved });
+      const remembered = this.allowed.settle(approvalId, approved && remember === "session");
+      this.#emit({ type: "approval_resolved", approvalId, approved, ...(remembered.length ? { remembered } : {}) });
+      for (const covered of this.allowed.covered())
+        if (this.#asks.resolveApproval(covered, true))
+          this.#emit({ type: "approval_resolved", approvalId: covered, approved: true });
       return true;
     }
     if (this.#profile.interaction.approval !== "suspend") return false;
@@ -542,7 +550,12 @@ export class CodeAgent {
               event.input,
               "This reaches a host outside the profile's list, which needs the user's approval, and nobody can be asked in this session. Use a listed host, or say what you need fetched.",
             );
-          const approved = await this.#requestApproval(event.toolCallId, event.toolName, event.input, verdict.approval);
+          const approved = await this.#requestApproval(
+            event.toolCallId,
+            event.toolName,
+            verdict.approval,
+            verdict.remember,
+          );
           if (approved) return undefined;
           return this.#refuse(event.toolCallId, event.toolName, event.input, "The user declined this action.");
         });
@@ -555,24 +568,31 @@ export class CodeAgent {
     return { block: true, reason };
   }
 
-  async #requestApproval(toolCallId: string, name: string, args: unknown, summary: string) {
+  async #requestApproval(toolCallId: string, name: string, summary: string, offered?: string[]) {
     // Nobody to ask means nobody to refuse: a pod would otherwise deny every write it was created to make.
     if (!this.#profile.ui.canPrompt) return true;
     const approvalId = this.#asks.nextId("a");
+    const suspends = this.#profile.interaction.approval === "suspend";
+    // A suspended approval ends its turn, and the retry is a new call, so there is no session answer to offer.
+    const remember = suspends ? undefined : offered;
     const request = {
       approvalId,
       toolCallId,
       name,
       summary: codeAgentClip(summary, codeAgentLabelChars),
       policy: this.#profile.approval,
+      ...(remember ? { remember } : {}),
     };
     this.#emit({ type: "approval", request });
-    if (this.#profile.interaction.approval === "suspend") {
+    if (suspends) {
       this.#suspended.addApproval(request);
       this.#mapper.noteOutcome("awaiting");
       return false;
     }
-    return await this.#asks.openApproval(approvalId);
+    if (remember) this.allowed.offer(approvalId, remember);
+    const approved = await this.#asks.openApproval(approvalId);
+    this.allowed.settle(approvalId, false);
+    return approved;
   }
 
   /** The rendered answer; `undefined` when skipped, suspended, or nobody can be prompted. */

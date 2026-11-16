@@ -9,6 +9,7 @@ import type {
 } from "akanjs/service";
 import type { RestartSchedule } from "../../common/restartSchedule";
 import type { BuilderMessage } from "../artifact";
+import { MetricAggregate } from "../metrics/metricAggregate";
 
 export interface ChildState {
   idx: number;
@@ -37,6 +38,7 @@ export interface ChildState {
 export class GatewayChildren {
   readonly #logger: Logger;
   readonly #children = new Map<number, ChildState>();
+  readonly metricAggregate = new MetricAggregate();
   #rrIdx = 0;
   #federationChildCache: ChildState[] | null = null;
   #renderingChildCache: ChildState[] | null = null;
@@ -123,6 +125,7 @@ export class GatewayChildren {
     const child = this.#children.get(childIdx);
     if (!child) return;
     child.metrics = { ...child.metrics, pid: metrics.pid ?? child.pid, ...metrics };
+    this.metricAggregate.update(childIdx, child.metrics);
   }
 
   fanoutToFederation(message: AkanIpcMessage | BuilderMessage, exceptIdx?: number) {

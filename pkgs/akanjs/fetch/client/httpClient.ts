@@ -1,5 +1,6 @@
 import { AbortSignals, Backoff, isRecord, Logger, type RetryPolicy } from "akanjs/common";
 import type { HttpMutationMethod, SerializedArg } from "akanjs/signal";
+import { TraceContext } from "../../common/TraceContext";
 import {
   type ErrorConstructor,
   type ErrorResponsePayload,
@@ -12,8 +13,6 @@ export interface HttpClientOptions {
   headers?: Record<string, string>;
   /** Milliseconds before the request is abandoned; `false` waits as long as the browser will. */
   timeout?: number | false;
-  /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is. */
-  ErrorCls?: ErrorConstructor;
 }
 
 interface FetchOptions extends Pick<HttpClientOptions, "headers" | "timeout"> {
@@ -54,17 +53,10 @@ export class HttpClient {
   #headers: Record<string, string>;
   #timeout?: number | false;
   #retry: RetryPolicy | false = false;
-  private ErrorCls?: ErrorConstructor;
   constructor(baseUrl: string, options: HttpClientOptions = {}) {
     this.baseUrl = baseUrl;
     this.#headers = options.headers ?? {};
     this.#timeout = options.timeout;
-    this.ErrorCls = options.ErrorCls;
-  }
-
-  /** @deprecated Every `Err` is `akanjs/common`'s, which a restored error already is; drop the call. */
-  setErrorConstructor(ErrorCls?: ErrorConstructor) {
-    this.ErrorCls = ErrorCls;
   }
   /** The budget every call that names none takes. `false` waits as long as the runtime will. */
   setTimeout(timeout?: number | false) {
@@ -79,6 +71,10 @@ export class HttpClient {
   }
   get retry(): RetryPolicy | false {
     return this.#retry;
+  }
+  static traceHeaders(): Record<string, string> {
+    const traceparent = TraceContext.outbound();
+    return traceparent ? { traceparent } : {};
   }
   #resolveUrl(url: string, options: FetchOptions) {
     return `${(options.baseUrl ?? this.baseUrl).replace(/\/$/, "")}${url}`;
@@ -174,7 +170,7 @@ export class HttpClient {
   }
 
   abortError(signal: AbortSignal): unknown {
-    return HttpClient.abortErrorOf(signal, this.ErrorCls);
+    return HttpClient.abortErrorOf(signal);
   }
 
   static abortErrorOf(signal: AbortSignal, ErrorCls?: ErrorConstructor): unknown {
@@ -328,7 +324,7 @@ export class HttpClient {
   }
 
   #restoreError(body: unknown, fallbackStatusCode: number): RestoredError {
-    return restoreRemoteError(body, fallbackStatusCode, this.ErrorCls);
+    return restoreRemoteError(body, fallbackStatusCode);
   }
   static makePath(key: string, paramArgs: SerializedArg[], prefix?: string) {
     const paramPath = paramArgs.length > 0 ? `/${paramArgs.map((arg) => `:${arg.name}`).join("/")}` : "";

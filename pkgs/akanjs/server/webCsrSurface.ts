@@ -5,6 +5,8 @@ import type { BuilderRpc } from "./artifact";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import { CSR_DEV_ROUTE_PREFIX } from "./hmr/csrDevManifest";
 import type { CsrDevShell } from "./hmr/csrDevShell";
+import { PageCall, UNMATCHED_ROUTE } from "./metrics/requestMetrics";
+import { DevRoutes } from "./routing/devRoutes";
 import { resolveStaticPath } from "./staticPath";
 import type { BaseBuildArtifact, HttpRoutes } from "./types";
 import { WebRouteContext } from "./webRouteContext";
@@ -33,7 +35,7 @@ export class WebCsrSurface {
       "/__csr": async (req) => {
         stats.csr += 1;
         if (this.devShell) return await this.#serveDevShell(req, "/", this.devShell);
-        const csrHtml = await this.#resolveCsrHtml(csrOutputDir, "/");
+        const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, "/");
         const csrFile = csrHtml ? Bun.file(csrHtml) : null;
         const htmlText =
           csrFile && (await csrFile.exists())
@@ -54,12 +56,12 @@ export class WebCsrSurface {
         return new Response(this.#withCsrHmr(htmlText), { headers: this.#context.htmlResponseHeaders(200, req) });
       },
       ...(this.devShell
-        ? {
+        ? DevRoutes.mount({
             [`${CSR_DEV_ROUTE_PREFIX}*`]: async (req: Request) => {
               stats.staticAsset += 1;
               return (await this.devShell?.serve(req)) ?? new Response("Not Found", { status: 404 });
             },
-          }
+          })
         : {}),
     };
   }
@@ -69,11 +71,9 @@ export class WebCsrSurface {
     const isCsr = url.searchParams.get("csr") === "true";
     if (isCsr) {
       stats.csr += 1;
-      if (this.devShell) return await this.#serveDevShell(req, url.pathname, this.devShell);
-      const csrHtml = await this.#resolveCsrHtml(csrOutputDir, url.pathname);
-      if (!csrHtml) return this.#unavailableResponse(url.pathname);
-      const html = await Bun.file(csrHtml).text();
-      return new Response(this.#withCsrHmr(html), { headers: this.#context.htmlResponseHeaders(200, req) });
+      const page = new PageCall();
+      page.route = this.#context.exactRouteIdOf(url.pathname) ?? UNMATCHED_ROUTE;
+      return page.finish(await this.#shell(req, url, csrOutputDir));
     }
 
     const csrAssetPath = path.extname(url.pathname) ? resolveStaticPath(csrOutputDir, url.pathname) : null;
@@ -87,6 +87,14 @@ export class WebCsrSurface {
     return null;
   }
 
+  async #shell(req: Request, url: URL, csrOutputDir: string): Promise<Response> {
+    if (this.devShell) return await this.#serveDevShell(req, url.pathname, this.devShell);
+    const csrHtml = await this.#resolveCsrHtml(req, csrOutputDir, url.pathname);
+    if (!csrHtml) return this.#unavailableResponse(url.pathname);
+    const html = await Bun.file(csrHtml).text();
+    return new Response(this.#withCsrHmr(html), { headers: this.#context.htmlResponseHeaders(200, req) });
+  }
+
   #withCsrHmr(html: string): string {
     if (this.#context.prodMode) return html;
     const csrGeneration = this.#context.renderState.csrGeneration ?? null;
@@ -95,7 +103,7 @@ export class WebCsrSurface {
   }
   // Armed before the first render: the builder keeps the registry bundle current only after something asked for it.
   async #serveDevShell(req: Request, pathname: string, shell: CsrDevShell): Promise<Response> {
-    await this.armArtifact(pathname);
+    await this.#armFor(req, pathname);
     const { artifact } = this.#context;
     const basePath = getBasePathFromPathname(pathname, { basePaths: artifact.basePaths, i18n: artifact.i18n }) ?? "";
     const html = await shell.render({
@@ -107,11 +115,15 @@ export class WebCsrSurface {
     if (!html) return this.#unavailableResponse(pathname);
     return new Response(this.#withCsrHmr(html), { headers: this.#context.htmlResponseHeaders(200, req) });
   }
-  async #resolveCsrHtml(csrOutputDir: string, pathname: string): Promise<string | null> {
+  async #resolveCsrHtml(req: Request, csrOutputDir: string, pathname: string): Promise<string | null> {
     const resolved = WebCsrSurface.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#context.artifact);
     if (resolved) return resolved;
-    await this.armArtifact(pathname);
+    await this.#armFor(req, pathname);
     return WebCsrSurface.#resolveCsrHtmlPath(csrOutputDir, pathname, this.#context.artifact);
+  }
+  //? Security: only a Host a dev route answers may start a dev build, as a page on a rebound name could otherwise.
+  #armFor(req: Request, reason: string): Promise<unknown> {
+    return DevRoutes.admitsHost(req) ? this.armArtifact(reason) : Promise.resolve();
   }
   armArtifact(reason: string): Promise<unknown> {
     const rpc = this.#builderRpc();

@@ -14,9 +14,10 @@ at every event.
   the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
   asked about nor run. A request with no `allow` array is an `error`.
 - **Toolkits.** `toolkits: { calendar: { description, tools } }` groups names of `allow` so a round need not carry
-  every tool. A tool in no toolkit is listed every round, beside one more, `openToolkit({ name })`, whose description
-  lists the toolkits. An opened toolkit's tools are listed from the next round on; `openToolkit` never reaches
-  `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
+  every tool. A tool in no toolkit is listed every round, beside `openToolkit({ name })`, whose description lists the
+  toolkits. An opened toolkit's tools are listed from the next round on, until a compaction keeps no message using
+  it; `openToolkit` never reaches `approve` and counts as no tool call. A resume reopens what stored calls and a
+  summary opened.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
   counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or
@@ -55,7 +56,13 @@ at every event.
   reaches `approve(call, { tainted, tool, client })` with `tainted` set, and `client: true` when the call is to a
   page's tool. `askUser`'s answer, `openToolkit`'s and a call the run refused without running taint nothing. A
   remote is the exception on each count: opening one taints the run, and so does any call into one, refused or not,
-  whatever `untrusted` returns and with none given. A batch is judged before it runs, since the model wrote it
+  whatever `untrusted` returns and with none given. Text the request itself carries from another party taints the
+  run before any tool has run: a `context` block marked `untrusted: true`, and a user message's `references`, the
+  records it points at. With no `approve`, a write in such a run is answered with the code `writeAfterPageText`
+  for the rest of the conversation, as the stored messages keep the reference: only `approve` decides it.
+  `context` reaches the model as data in a user turn, never in the system prompt, and a marked block is fenced as
+  page content. The run stores `tainted: true` on each assistant message it writes while tainted, so a resume and
+  the next ask in that conversation keep the taint without the block being passed again. A batch is judged before it runs, since the model wrote it
   before reading its results. Without `approve`, a `needsConfirm`
   tool — on this catalogue, a mutation with the `destructive` hint above — is refused, and so is every write once
   tainted: such a run writes only in the batch written before any result, and a later write is answered with the

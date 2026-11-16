@@ -11,6 +11,8 @@ import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
+import { DEFAULT_DOCKER_IMAGE, DOCKER_RUN_USER, DOCKER_WRITE_DIRS } from "./dockerImage";
+import { nativeKeys } from "./nativeKeys";
 import {
   type AkanApiConfig,
   type AkanAssetsConfig,
@@ -47,8 +49,6 @@ const DEFAULT_OPTIMIZE_IMPORTS = [
   "@material-ui/icons @tabler/icons-react mui-core react-icons/*",
 ].flatMap((line) => line.split(" "));
 const WORKSPACE_BARREL_FACETS = ["ui", "webkit", "common", "client", "server"] as const;
-// `1-slim` floats to whichever Bun is newest at build time, one the framework was never tested on.
-const DEFAULT_DOCKER_IMAGE = "oven/bun:1.4.4-slim";
 const SSR_RUNTIME_PACKAGES = ["react", "react-dom", "react-server-dom-webpack"] as const;
 const DEFAULT_AKAN_IMAGE_CONFIG: AkanImageConfig = {
   deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048, 3840],
@@ -452,56 +452,6 @@ export class AkanAppConfig implements AppConfigResult {
   static #isPlainObject(value: unknown): value is Record<string, unknown> {
     return typeof value === "object" && value !== null && !Array.isArray(value);
   }
-  static readonly #nativeKeys = {
-    native: [
-      "basePath",
-      "indexPath",
-      "appName",
-      "appId",
-      "fileName",
-      "version",
-      "buildNum",
-      "icon",
-      "splash",
-      "backgroundColor",
-      "permissions",
-      "plugins",
-      "deepLinks",
-      "updates",
-      "devtools",
-      "csp",
-      "openUrls",
-      "ios",
-      "android",
-      "desktop",
-    ],
-    ios: ["indexPath", "teamId", "infoPlist", "entitlements", "privacy", "files", "hideFormAccessoryBar"],
-    android: [
-      "indexPath",
-      "sha256CertFingerprints",
-      "googleServices",
-      "push",
-      "autoplay",
-      "manifest",
-      "application",
-      "activity",
-      "files",
-    ],
-    desktop: [
-      "indexPath",
-      "server",
-      "recovery",
-      "window",
-      "screenCapture",
-      "webview2",
-      "publisher",
-      "entitlements",
-      "dmg",
-    ],
-    desktopServer: ["omit", "profile", "modules", "env", "restart", "watchdog"],
-    dmg: ["background", "background2x", "window", "iconSize", "textSize", "app", "applications"],
-    deepLinks: ["schemes", "domains"],
-  } as const;
   //* Settings that moved when `mobile` became `native` are named with where they went, instead of "unknown".
   static readonly #movedKeys: Readonly<Record<string, string>> = {
     native: "the platform sections and plugins sit directly in the native section: ios, android, desktop, plugins",
@@ -526,19 +476,15 @@ export class AkanAppConfig implements AppConfigResult {
         );
       }
     };
-    check(section, AkanAppConfig.#nativeKeys.native, where, "native");
+    check(section, nativeKeys.native, where, "native");
     const settings = section as AkanNativeSettings;
-    check(settings.ios, AkanAppConfig.#nativeKeys.ios, `${where}.ios`, "ios");
-    check(settings.android, AkanAppConfig.#nativeKeys.android, `${where}.android`, "android");
-    check(settings.desktop, AkanAppConfig.#nativeKeys.desktop, `${where}.desktop`, "desktop");
-    check(
-      settings.desktop?.server,
-      AkanAppConfig.#nativeKeys.desktopServer,
-      `${where}.desktop.server`,
-      "desktopServer",
-    );
-    check(settings.desktop?.dmg, AkanAppConfig.#nativeKeys.dmg, `${where}.desktop.dmg`, "dmg");
-    check(settings.deepLinks, AkanAppConfig.#nativeKeys.deepLinks, `${where}.deepLinks`, "deepLinks");
+    check(settings.ios, nativeKeys.ios, `${where}.ios`, "ios");
+    check(settings.android, nativeKeys.android, `${where}.android`, "android");
+    check(settings.desktop, nativeKeys.desktop, `${where}.desktop`, "desktop");
+    check(settings.desktop?.server, nativeKeys.desktopServer, `${where}.desktop.server`, "desktopServer");
+    check(settings.desktop?.dmg, nativeKeys.dmg, `${where}.desktop.dmg`, "dmg");
+    check(settings.desktop?.externalView, nativeKeys.externalView, `${where}.desktop.externalView`, "externalView");
+    check(settings.deepLinks, nativeKeys.deepLinks, `${where}.deepLinks`, "deepLinks");
   }
   static readonly #androidFilePattern = /^(?:res\/[^/]+\/[^/]+|assets\/.+)$/;
   static #assertFiles(settings: AkanNativeSettings, where: string, configPath: string) {
@@ -659,13 +605,14 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-reco
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
 ARG TARGETARCH
 ${preRunScripts.join("\n")}
-RUN mkdir -p /workspace
 WORKDIR /workspace
 ${lockfile ? "COPY ./package.json ./bun.lock ./" : "COPY ./package.json ./package.json"}
 RUN bun install --production${lockfile ? " --frozen-lockfile" : ""}
 ${postRunScripts.join("\n")}
 COPY . .
+RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}
 ${envLines.join("\n")}
+USER ${DOCKER_RUN_USER}
 CMD [${command.map((c) => `"${c}"`).join(",")}]`;
   }
   static #importGeneration = 0;

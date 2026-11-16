@@ -1,21 +1,11 @@
+import { DevSurfaces } from "akanjs/server/routing/devSurfaces";
+
 interface GateSocketData {
   upstream: WebSocket;
   client: Bun.ServerWebSocket<GateSocketData> | null;
   pending: (string | ArrayBuffer)[];
   closed: { code: number; reason: string } | null;
 }
-
-const devRoutePrefixes = [
-  "/_akan/devtools",
-  "/_akan/signal",
-  "/_akan/constant",
-  "/_akan/deps",
-  "/_akan/dictionary",
-  "/_akan/hmr",
-  "/_akan/app",
-  "/_akan/ops",
-  "/_akan/studio",
-];
 
 // The gate answers the caller's handshake itself, so these never reach the dial to the app.
 const handshakeHeaders = new Set([
@@ -33,17 +23,7 @@ const relayableCloseCode = (code: number) =>
 
 export class TunnelGate {
   static isDevRoute(pathname: string) {
-    let decoded: string;
-    try {
-      decoded = decodeURIComponent(pathname);
-    } catch {
-      return true;
-    }
-    // Bun's router serves `//_akan/x` as `/_akan/x`, so repeated slashes collapse before the match.
-    const route = decoded.replace(/\/{2,}/g, "/").toLowerCase();
-    return (
-      route.endsWith(".map") || devRoutePrefixes.some((prefix) => route === prefix || route.startsWith(`${prefix}/`))
-    );
+    return DevSurfaces.refusedThroughTunnel(pathname);
   }
 
   readonly #target: string;
@@ -82,7 +62,7 @@ export class TunnelGate {
   async #handle(req: Request, server: Bun.Server<GateSocketData>): Promise<Response | undefined> {
     const url = new URL(req.url);
     if (TunnelGate.isDevRoute(url.pathname)) return new Response("Not Found", { status: 404 });
-    const target = `${this.#target}${url.pathname}${url.search}`;
+    const target = `${this.#target}${url.pathname}${DevSurfaces.searchThroughTunnel(url.search)}`;
     if (req.headers.get("upgrade")?.toLowerCase() === "websocket") return await this.#upgrade(req, server, target);
     const headers = new Headers(req.headers);
     headers.delete("x-akan-debug");

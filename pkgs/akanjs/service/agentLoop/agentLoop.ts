@@ -23,6 +23,7 @@ import { DeltaStream } from "./deltaStream";
 import { LoopAnswer, type LoopPark } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
+import { LoopContext } from "./loopContext";
 import { LoopRemotes } from "./loopRemotes";
 import { LoopRequest } from "./loopRequest";
 import { LoopStored } from "./loopStored";
@@ -124,7 +125,7 @@ export class AgentLoop {
   async *#drive(): Events<AgentLoopStop> {
     //? Security: a remote the stored messages opened is listed again, and its listing is that party's text.
     const reopened = this.#toolkits.restore(this.#messages);
-    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages);
+    this.#tainted = reopened || LoopTranscript.markedTainted(this.#messages) || LoopContext.marked(this.#request);
     const { answer } = this.#request;
     if (answer !== undefined || LoopTranscript.pending(this.#messages).length) {
       if (!(await this.#authorize())) return "unauthorized";
@@ -145,18 +146,22 @@ export class AgentLoop {
   }
 
   async *#runRound(): Events<AgentLoopStop | null> {
-    const tools = await this.#listTools();
-    yield* this.#compact();
-    const answer = yield* this.#ask(tools);
+    const listed = await this.#listTools();
+    const compacted = yield* this.#compact(listed);
+    const { answer, tools } = yield* this.#ask(compacted ?? listed);
+    //? Security: what the model wrote after reading untrusted text is stored with the mark. A marked context block is
+    //? in no stored message, so without it a resume of these calls, or the next ask, would start untainted.
+    const mark = this.#tainted ? { tainted: true } : {};
     if (answer.stop === "length") {
       //? Calls in an answer the provider cut off may be cut mid-argument, so only its text is kept.
-      if (answer.text) await this.#append({ role: "assistant", text: answer.text });
+      if (answer.text) await this.#append({ role: "assistant", text: answer.text, ...mark });
       return "length";
     }
     const message: AgentWireMessage = {
       role: "assistant",
       ...(answer.text ? { text: answer.text } : {}),
       ...(answer.toolCalls.length ? { toolCalls: answer.toolCalls } : {}),
+      ...mark,
     };
     if (LoopTranscript.carries(message)) await this.#append(message);
     if (!answer.toolCalls.length) return "end";
@@ -222,18 +227,21 @@ export class AgentLoop {
     };
   }
 
-  async *#ask(tools: AgentTool[]): Events<AgentLoopAnswer> {
+  async *#ask(listed: AgentTool[]): Events<{ answer: AgentLoopAnswer; tools: AgentTool[] }> {
     const preamble = this.#request.preamble ?? false;
-    const request = this.#turnOf(tools);
+    const request = this.#turnOf(listed);
+    let tools = listed;
     try {
-      return yield* this.#metered(request, preamble, true);
+      return { answer: yield* this.#metered(request, preamble, true), tools };
     } catch (error) {
       if (!this.#request.compact || !Err.is(error, "agent.error.contextOverflow")) throw error;
       this.#learnOverflow(error.data, request);
       //? Once a round: a request refused again after its own summary is not one another summary will fit.
-      if (!(yield* this.#compact(true))) throw error;
+      const compacted = yield* this.#compact(listed, true);
+      if (!compacted) throw error;
+      tools = compacted;
     }
-    return yield* this.#metered(this.#turnOf(tools), preamble, true);
+    return { answer: yield* this.#metered(this.#turnOf(tools), preamble, true), tools };
   }
 
   #turnOf(tools: AgentTool[]): LlmTurnRequest {
@@ -252,8 +260,8 @@ export class AgentLoop {
   #learnOverflow(data: Record<string, unknown> | undefined, request: LlmTurnRequest) {
     const { limit, requested } = data ?? {};
     if (typeof limit !== "number" || typeof requested !== "number" || !(limit > 0 && requested > limit)) return;
-    const frame = LoopCompaction.frameTokensOf(request);
-    const fits = Math.floor(((LoopCompaction.tokensOf(this.#messages) + frame) * limit) / requested) - frame;
+    const sent = LoopCompaction.tokensOf(this.#messages) + LoopCompaction.frameTokensOf(request);
+    const fits = Math.floor((sent * limit) / requested);
     if (fits > 0) this.#overflowAt = Math.min(this.#overflowAt, fits);
   }
 
@@ -293,13 +301,15 @@ export class AgentLoop {
     return answer;
   }
 
-  async *#compact(forced = false): Events<boolean> {
+  async *#compact(tools: AgentTool[], forced = false): Events<AgentTool[] | null> {
     const { compact, model } = this.#request;
-    if (!compact) return false;
+    if (!compact) return null;
+    const sizeOf = (listed: AgentTool[]) =>
+      LoopCompaction.tokensOf(this.#messages) + LoopCompaction.frameTokensOf(this.#turnOf(listed));
     const threshold = Math.min(compact.at, this.#overflowAt);
-    if (!forced && LoopCompaction.tokensOf(this.#messages) < Math.max(threshold, this.#compactFloor)) return false;
+    if (!forced && sizeOf(tools) < Math.max(threshold, this.#compactFloor)) return null;
     const at = LoopCompaction.cutAt(this.#messages, compact.keep ?? LoopCompaction.keep);
-    if (at <= 0) return false;
+    if (at <= 0) return null;
     const digest = LoopCompaction.digest(this.#messages.slice(0, at));
     let text = "";
     try {
@@ -315,16 +325,18 @@ export class AgentLoop {
       if (this.#haltedBy(error)) throw error;
       //? Best effort: the round may still fit, and a failed summary says nothing about whether this transcript can shrink.
       AgentLoop.#logger.warn(`agent loop compaction failed: ${error instanceof Error ? error.message : String(error)}`);
-      return false;
+      return null;
     }
-    if (!text) return false;
+    if (!text) return null;
+    this.#toolkits.keepUsed(this.#messages.slice(at));
     const summary = LoopCompaction.message(text, this.#tainted, this.#toolkits.opened);
     this.#messages.splice(0, at, summary);
-    const after = LoopCompaction.tokensOf(this.#messages);
-    //? Still over after summarizing: one kept message is that large, so wait for another threshold's growth.
-    this.#compactFloor = after >= threshold ? after + threshold : 0;
     yield { type: "compacted", replaced: at, summary };
-    return true;
+    const listed = await this.#listTools();
+    const after = sizeOf(listed);
+    //? Still over after summarizing: a kept message or the tools alone are that large, so wait for a threshold's growth.
+    this.#compactFloor = after >= threshold ? after + threshold : 0;
+    return listed;
   }
 
   async *#runCalls(calls: AgentWireToolCall[], tools: AgentTool[]): Events<AgentLoopStop | null> {
@@ -448,9 +460,9 @@ export class AgentLoop {
     if (tool.needsConfirm) return { deny: AgentLoop.needsPerson };
     //? Security: a call's arguments leave for the remote, and "read-only" is the remote's own word for its tool.
     if (this.#tainted && remote) return { deny: AgentLoop.taintedRemote };
-    if (this.#tainted && !tool.readOnly && !this.#request.untrusted) return this.#writeAfterRead(call);
-    if (this.#tainted && !tool.readOnly) return { deny: AgentLoop.taintedWrite };
-    return "allow";
+    if (!this.#tainted || tool.readOnly) return "allow";
+    if (LoopContext.carried(this.#request, this.#messages)) return LoopContext.held(this.#request, call.name);
+    return this.#request.untrusted ? { deny: AgentLoop.taintedWrite } : this.#writeAfterRead(call);
   }
 
   #writeAfterRead({ name }: AgentWireToolCall): Verdict {

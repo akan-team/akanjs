@@ -90,7 +90,7 @@ const configKeys = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1.4.4-slim",
+    default: "oven/bun:1.4.4-slim@sha256:…",
     en: "A whole Dockerfile as a string, or the parts akan build assembles one from.",
     ko: "Dockerfile 전체 문자열이거나, akan build가 Dockerfile을 조립할 재료입니다.",
   },
@@ -455,6 +455,27 @@ const nativeFields = [
     ko: "Windows에서 앱을 배포하는 주체이며, 설치된 앱의 게시자와 실행 파일의 회사 이름으로 쓰입니다.",
   },
   {
+    key: "desktop.externalView.allowOrigins",
+    type: "string[]",
+    default: "[]",
+    en: "The exact origins (scheme://host[:port], no path or wildcard) an external-view may be opened for; a view's own allowOrigins narrow within them. With none, no view opens.",
+    ko: "external-view를 열 수 있는 정확한 오리진(scheme://host[:port], 경로·와일드카드 없음)입니다. 뷰의 allowOrigins는 이 안에서만 좁힐 수 있고, 비어 있으면 어떤 뷰도 열리지 않습니다.",
+  },
+  {
+    key: "desktop.externalView.evaluate",
+    type: "boolean",
+    default: "false",
+    en: "Lets a page run script in an external view: evaluate and open's initScript.",
+    ko: "페이지가 external-view 안에서 스크립트를 실행하게 합니다(evaluate와 open의 initScript).",
+  },
+  {
+    key: "desktop.externalView.sendKey",
+    type: "boolean",
+    default: "false",
+    en: "Lets a page type into an external view with sendKey.",
+    ko: "페이지가 sendKey로 external-view에 키를 입력하게 합니다.",
+  },
+  {
     key: "targets",
     type: "Record<string, AkanNativeSettings>",
     default: "{ default: {} }",
@@ -537,7 +558,7 @@ const buildFields = [
   {
     key: "docker",
     type: "string | DockerImageConfig",
-    default: "oven/bun:1.4.4-slim",
+    default: "oven/bun:1.4.4-slim@sha256:…",
     en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.",
     ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, command입니다.",
   },
@@ -1592,6 +1613,30 @@ const config: AppConfig = {
                     <strong>이미지 하나로 여러 배포를 합니다.</strong> <code>{'["single", "cluster"]'}</code>로 선언하면
                     같은 이미지가 엣지 사이트와 클라우드 클러스터를 모두 실행하고, 배포마다{" "}
                     <code>AKAN_DATABASE_MODE</code>로 모드를 정합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The server runs as the image's bun user, uid 1000, and owns only what it writes.</strong>{" "}
+                    apt-get, preRuns, bun install and postRuns still run as root, and the app files,{" "}
+                    <code>node_modules</code> included, stay root's and read-only to the server. bun owns{" "}
+                    <code>/workspace/sqlite</code>, <code>/workspace/local</code>, <code>/workspace/runtime</code>,{" "}
+                    <code>/workspace/data</code> and <code>/workspace/.akan/artifact/image-cache</code>. A directory a
+                    postRuns step makes for the server to write needs <code>chown 1000:1000</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>서버는 이미지의 bun 사용자(uid 1000)로 실행되며, 자기가 쓰는 곳만 소유합니다.</strong>{" "}
+                    apt-get, preRuns, bun install, postRuns는 그대로 root로 실행되고, <code>node_modules</code>를 포함한
+                    앱 파일은 root 소유로 남아 서버는 읽기만 합니다. bun은 <code>/workspace/sqlite</code>,{" "}
+                    <code>/workspace/local</code>, <code>/workspace/runtime</code>, <code>/workspace/data</code>,{" "}
+                    <code>/workspace/.akan/artifact/image-cache</code>를 소유합니다. postRuns 단계가 서버가 쓸
+                    디렉터리를 만든다면 <code>chown 1000:1000</code>을 붙입니다.
                   </span>
                 ),
               })}

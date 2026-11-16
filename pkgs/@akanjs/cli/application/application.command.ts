@@ -215,7 +215,7 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
       desc: "endpoint glob(s), comma-separated: mutation:*, query:userList",
       nullable: true,
     })
-    .option("trace", String, { desc: "one request's traceId", nullable: true })
+    .option("trace", String, { desc: "one request's traceId, or the id its caller sent", nullable: true })
     .option("child", String, { desc: "replica index(es), comma-separated", nullable: true })
     .option("role", String, {
       flag: "R",

@@ -51,6 +51,7 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "ssr",
   "rscPatchHeadSafe",
   "prefetch",
+  "canonicalQuery",
   "topSafeAreaColor",
   "bottomSafeAreaColor",
 ]);
@@ -71,7 +72,7 @@ export const validatePageConfig = (routeKey: string, config?: PageConfig) => {
       throw new Error(`[route-convention] unsupported pageConfig option "${key}" in ${routeKey}`);
     }
   }
-  for (const key of ["devOnly", "prefetch"] as const) {
+  for (const key of ["devOnly", "prefetch", "canonicalQuery"] as const) {
     if (pageConfig[key] !== undefined && typeof pageConfig[key] !== "boolean")
       throw new Error(`[route-convention] pageConfig.${key} in ${routeKey} must be a boolean.`);
   }
@@ -103,8 +104,7 @@ const isValidInsetValue = (value: unknown): value is NonNullable<PageConfig["top
   return Object.entries(value).every(([key, px]) => responsiveInsetKeys.has(key) && isInsetPx(px));
 };
 
-/** @internal */
-export const isResponsiveInset = (inset: PageConfig["topInset"]): inset is ResponsiveInset => isRecord(inset);
+const isResponsiveInset = (inset: PageConfig["topInset"]): inset is ResponsiveInset => isRecord(inset);
 
 /** The inset at each breakpoint, each one the nearest declared value at or below it. */
 export const insetsByBreakpoint = (inset: PageConfig["topInset"]): { [bp in InsetBreakpoint]: number } => {

@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { resolveAcl } from "../../../packages/cli/src/lib/acl.ts";
 import { pluginDecls } from "../../../packages/cli/src/lib/native-plugins.ts";
-import { AkanNativeError } from "../../../packages/core/src/index.ts";
+import { AkanNativeError, aclCheck } from "../../../packages/core/src/index.ts";
 import { appTempDir } from "../../../packages/desktop/src/paths.ts";
 import { fakeHost } from "../../menu/test/fake-host.ts";
 import manifest from "../native-plugin.json";
@@ -26,6 +27,60 @@ describe("external-view plugin", () => {
     expect(pluginDecls([plugin], "windows")).toEqual({
       "external-view": { methods: manifest.methods, events: manifest.events },
     });
+  });
+
+  test("opens no origin and grants neither evaluate nor sendKey until the app's capabilities list them", () => {
+    const plugin = { spec: "external-view", dir: `${import.meta.dir}/..`, manifest: manifest as never };
+    const byDefault = resolveAcl(undefined, [plugin], "windows");
+    expect(aclCheck(byDefault, "external-view", "open")).toEqual({ allowed: true, scope: { allow: [], deny: [] } });
+    for (const item of ["navigate", "close", "capture", "listen:load"])
+      expect(aclCheck(byDefault, "external-view", item).allowed).toBe(true);
+    for (const item of ["evaluate", "sendKey"]) expect(aclCheck(byDefault, "external-view", item).allowed).toBe(false);
+    const granted = resolveAcl(
+      [
+        {
+          identifier: "app",
+          permissions: [
+            { identifier: "external-view:default", allow: [{ origin: "https://board.example" }] },
+            "external-view:allow-evaluate",
+            "external-view:allow-sendKey",
+          ],
+        },
+      ],
+      [plugin],
+      "windows",
+    );
+    expect(aclCheck(granted, "external-view", "open").scope).toEqual({
+      allow: [{ origin: "https://board.example" }],
+      deny: [],
+    });
+    for (const item of ["evaluate", "sendKey"]) expect(aclCheck(granted, "external-view", item).allowed).toBe(true);
+  });
+
+  test("lists an origin only where a grant names it: not through all, allow-open or an entry naming no field", () => {
+    const plugin = { spec: "external-view", dir: `${import.meta.dir}/..`, manifest: manifest as never };
+    const openScope = (permissions: (string | { identifier: string; allow?: Record<string, string>[] })[]) =>
+      aclCheck(resolveAcl([{ identifier: "app", permissions }], [plugin], "linux"), "external-view", "open").scope;
+    expect(openScope(["external-view:all"])).toEqual({ allow: [], deny: [] });
+    expect(openScope(["external-view:allow-open"])).toEqual({ allow: [], deny: [] });
+    expect(openScope(["external-view:default", "external-view:allow-open"])).toEqual({ allow: [], deny: [] });
+    const board = [{ origin: "https://board.example" }];
+    expect(openScope([{ identifier: "external-view:allow-open", allow: board }])).toEqual({ allow: board, deny: [] });
+    for (const identifier of ["external-view:default", "external-view:all", "external-view:allow-open"])
+      expect(() => openScope([{ identifier, allow: [{}] }])).toThrow("names no field");
+  });
+
+  test("opens a view only over the calling page's own window", async () => {
+    const host = fakeHost(createDesktopExternalView(), answer);
+    const args = { id: "board", url: opened.url, allowOrigins: ["https://cus.example"] };
+    expect(await host.call("open", { ...args, window: 2 }, 1)).toMatchObject({
+      ok: false,
+      error: { code: "NOT_ALLOWED" },
+    });
+    expect(host.shell).toEqual([]);
+    expect(await host.call("open", { ...args, window: 2 }, 2)).toMatchObject({ ok: true });
+    expect(await host.call("open", args, 3)).toMatchObject({ ok: true });
+    expect(host.shell.map((s) => s.args?.window)).toEqual([2, 3]);
   });
 
   test("opens with sound on and the console off unless asked, and answers the view under the page's id", async () => {

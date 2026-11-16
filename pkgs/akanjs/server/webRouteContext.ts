@@ -12,7 +12,10 @@ import { getClientFacingOrigin, resolveHtmlCacheControl } from "./cachePolicy";
 import { encodedFileResponse, isCompressibleContentType, matchesIfNoneMatch, varyOnEncoding } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { HmrWsHub } from "./hmr/wsHub";
+import type { PageCall } from "./metrics/requestMetrics";
 import { normalizeHost } from "./proxy/hostBasePathWebProxy";
+import { RenderBusyResponse } from "./renderBusyResponse";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
 import type { BaseBuildArtifact, RenderState } from "./types";
@@ -48,6 +51,7 @@ export class WebRouteContext {
   readonly seedIndex: RouteSeedIndex;
   readonly routeCache: RouteClientCache;
   readonly #hub: () => HmrWsHub | null;
+  readonly #busy = new RenderBusyResponse(this.logger);
   #runtimeManifest: { revision: number; manifest: MergedManifest } | null = null;
 
   constructor({ artifact, prodMode, renderState, subRoutes, seedIndex, routeCache, hub }: WebRouteContextOptions) {
@@ -76,11 +80,15 @@ export class WebRouteContext {
     return null;
   }
 
-  async ensureRoute(url: URL) {
+  exactRouteIdOf(pathname: string): string | undefined {
+    return RouteSeedIndexStore.match(pathname, this.seedIndex.entries)?.entry.routeId;
+  }
+
+  async ensureRoute(url: URL, page?: PageCall) {
     const started = Date.now();
-    const matched =
-      RouteSeedIndexStore.match(url.pathname, this.seedIndex.entries) ??
-      RouteSeedIndexStore.matchPrefix(url.pathname, this.seedIndex.entries);
+    const exact = RouteSeedIndexStore.match(url.pathname, this.seedIndex.entries);
+    const matched = exact ?? RouteSeedIndexStore.matchPrefix(url.pathname, this.seedIndex.entries);
+    if (page && exact) page.route = exact.entry.routeId;
     if (matched) await this.routeCache.ensure(matched.entry.routeId, matched.entry.seeds);
     this.logger.verbose(
       `[route-cache] ensure pathname=${url.pathname} routeId=${matched?.entry.routeId ?? "(none)"} in ${Date.now() - started}ms`,
@@ -161,6 +169,7 @@ export class WebRouteContext {
 
   errorPageResponse(req: Request, scope: string, err: unknown): Promise<Response> {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return Promise.resolve(WebRouteContext.#clientClosedResponse());
+    if (RscRenderRefusal.is(err)) return Promise.resolve(this.#busy.document(req, err));
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
     this.#hub()?.broadcast({ type: "error", message });
@@ -179,6 +188,7 @@ export class WebRouteContext {
 
   rscErrorResponse(scope: string, err: unknown): Response {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return WebRouteContext.#clientClosedResponse();
+    if (RscRenderRefusal.is(err)) return this.#busy.rsc(err);
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
     this.#hub()?.broadcast({ type: "error", message });

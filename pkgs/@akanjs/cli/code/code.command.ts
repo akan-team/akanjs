@@ -37,6 +37,16 @@ export class CodeCommand extends command("code", [CodeScript], ({ public: target
       flag: "N",
       default: true,
     })
+    .option("askCommands", Boolean, {
+      desc: "ask before running a shell command (local profile)",
+      flag: "C",
+      default: true,
+    })
+    .option("ask", Boolean, {
+      desc: "ask before a shell command or a network request; --no-ask runs this session without asking (local profile)",
+      flag: "A",
+      default: true,
+    })
     .option("rpcBindAny", Boolean, {
       desc: "let --rpc-listen bind an address other machines can reach",
       flag: "B",
@@ -63,6 +73,8 @@ export class CodeCommand extends command("code", [CodeScript], ({ public: target
         interactive,
         trustWorkspace,
         askNetwork,
+        askCommands,
+        ask,
         rpcBindAny,
         rpcToken,
         workspace,
@@ -80,6 +92,8 @@ export class CodeCommand extends command("code", [CodeScript], ({ public: target
           resume,
           trustWorkspace,
           askNetwork,
+          askCommands,
+          ask,
           rpcBindAny,
           rpcToken,
         };

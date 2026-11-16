@@ -7,6 +7,7 @@ import {
   type RouteCacheEntry,
   resolvePublicRouteCacheEntryDecision,
 } from "./cachePolicy";
+import { type RouteCacheLookupReason, RouteCacheTally } from "./routeCacheTally";
 import type { CachedRscResult } from "./rscWorkerCache";
 
 /** Well above any sensible TTL: this reclaims a cache nobody is reading, not tracks expiry closely. */
@@ -45,8 +46,16 @@ export class RscResultCaches {
         deny: process.env.AKAN_RSC_RESULT_CACHE_EXCLUDE_PATHS,
       },
     });
-    if (!decision.entry) this.resultCacheBypass += 1;
+    if (!decision.entry) {
+      this.resultCacheBypass += 1;
+      RouteCacheTally.bypass("rsc", decision.reason);
+    }
     return decision;
+  }
+
+  unmatchedEntry(): { entry: null; reason?: string } {
+    RouteCacheTally.bypass("rsc", "no-route");
+    return { entry: null };
   }
 
   static #resultCacheOptions(): LruTtlCacheOptions<CachedRscResult> {
@@ -58,10 +67,19 @@ export class RscResultCaches {
     };
   }
 
-  getCached(cache: LruTtlCache<CachedRscResult>, cacheKey: string): CachedRscResult | null {
+  getCached(
+    cache: LruTtlCache<CachedRscResult>,
+    cacheKey: string,
+    reason: RouteCacheLookupReason,
+    { again = false }: { again?: boolean } = {},
+  ): CachedRscResult | null {
     const cached = cache.get(cacheKey);
+    //? Looked up `again` after a wait for a render slot, a second miss is the one already counted.
+    if (!cached && again) return null;
     if (cached) this.resultCacheHits += 1;
     else this.resultCacheMisses += 1;
+    //? A patch entry found can still be refused for the target's router state, so only full lookups are an outcome.
+    if (cache === this.resultCache) RouteCacheTally.lookup("rsc", cached !== null, reason);
     return cached;
   }
 

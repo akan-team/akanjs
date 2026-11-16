@@ -3,7 +3,7 @@ import path from "node:path";
 import type { AkanWebConfig } from "akanjs";
 import { AkanError } from "akanjs/base";
 import { AppHosts, Logger, type LogRecord, resolveSubRouteHosts } from "akanjs/common";
-import type { AkanMetricsReport } from "akanjs/service";
+import type { AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
 import { PageDefinition } from "../client/route/PageDefinition";
 import type { PagePromptSource } from "../signal/mcp/pagePrompt";
 import {
@@ -24,6 +24,9 @@ import { HtmlResultCache } from "./htmlResultCache";
 import { ImageOptimizer } from "./imageOptimizer";
 import type { McpAppShellSource } from "./mcp/McpApps";
 import { resolveArtifactDir, warnIgnoredSubRouteBasePaths } from "./proxy/hostBasePathWebProxy";
+import { RouteCacheTally } from "./routeCacheTally";
+import { DevRoutes } from "./routing/devRoutes";
+import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
 import { RscWorker, type RscWorkerStatus } from "./rscWorkerHost";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
@@ -61,9 +64,7 @@ export class WebRouter {
   #artifactDir = resolveArtifactDir();
   #rsc: RscWorker;
   #hub: HmrWsHub | null = null;
-  // `akan start` outranks a stray NODE_ENV=production (a Bun-loaded `.env`, a CI default): its artifact has no
-  // routes manifest, so production mode would throw on every request.
-  readonly #prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
+  readonly #prodMode = !DevSurfacePolicy.isDevBuild();
   #builderRpc: BuilderRpc | null;
   #devHmr: DevHmrController | null = null;
   /** Dev only: SSR pages load their client code from the dev module registry it serves. */
@@ -178,20 +179,17 @@ export class WebRouter {
     const renderEnvRoutes: HttpRoutes = {
       ...(this.web.csr ? this.#csr.routes(csrOutputDir) : {}),
       ...(this.#ssrDevShell
-        ? {
+        ? DevRoutes.mount({
             [`${SSR_DEV_ROUTE_PREFIX}*`]: async (req: Request) => {
               context.stats.staticAsset += 1;
               return (await this.#ssrDevShell?.serve(req)) ?? new Response("Not Found", { status: 404 });
             },
-          }
+          })
         : {}),
       ...WebAssetRoutes.build(context, { artifactDir: this.#artifactDir, imageOptimizer }),
-      ...(!this.#prodMode
-        ? {
-            "/_akan/hmr": (req: Request) =>
-              this.#devHmr?.handleWs(req) ?? new Response("HMR unavailable", { status: 404 }),
-          }
-        : {}),
+      ...DevRoutes.mount({
+        "/_akan/hmr": (req: Request) => this.#devHmr?.handleWs(req) ?? new Response("HMR unavailable", { status: 404 }),
+      }),
       ...this.#rscRoute.routes(),
       ...WellKnownRoutes.build(context.artifact, this.#prodMode),
       "/*": SessionRefresh.answering(async (req) => {
@@ -274,6 +272,10 @@ export class WebRouter {
     return this.#rsc.status;
   }
 
+  metricFamilies(): AkanMetricFamily[] {
+    return [RouteCacheTally.family("html"), ...this.#rsc.metricFamilies()];
+  }
+
   getMetrics(): AkanMetricsReport {
     const ssrStats = SsrFromRscRenderer.getChunkRegistryStats();
     const stats = this.#context.stats;
@@ -308,7 +310,7 @@ export class WebRouter {
     if (!builtWeb.ssr) return null;
     const cssBytesByUrl = await WebArtifact.loadCssBytesByUrl(artifact, artifactDir);
     await WebArtifact.seedDictionaries(artifact, artifactDir);
-    const prodMode = process.env.NODE_ENV === "production" && process.env.AKAN_COMMAND_TYPE !== "start";
+    const prodMode = !DevSurfacePolicy.isDevBuild();
     //* Production listens before the bundle loads (renders queue until `ready`) and exits if it cannot load rather
     //* than restart-loop behind a healthy API; dev awaits, as the next rebuild hands the worker a fixed bundle.
     //? The prebuilt route manifest rides the worker's first init: a reload onto it would wait for `ready`, and so would

@@ -1,6 +1,7 @@
 import { Err } from "akanjs/dictionary";
 import { AgentLoop } from "./agentLoop/agentLoop";
 import type { AgentLoopEvent, AgentLoopRequest } from "./agentLoop/agentLoopTypes";
+import { MentionToken } from "./mentionToken";
 import {
   type AgentWireAttachment,
   type AgentWireMessage,
@@ -11,6 +12,7 @@ import {
   type LlmTurnRequest,
   pageContentInstruction,
 } from "./predefinedAdaptor/llm.adaptor";
+import { LlmFence } from "./predefinedAdaptor/llmFence";
 import { LlmSpend } from "./predefinedAdaptor/llmSpend";
 import { AgentToolsRole, LlmAdaptorRole } from "./predefinedAdaptor/role.adaptor";
 import { serve } from "./serve";
@@ -127,16 +129,42 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
 
   /** As text, the one field every provider mapping reads; the heading stays out of `preamble`: most turns lack one. */
   static referenced(request: LlmTurnRequest): LlmTurnRequest {
-    if (!request.messages.some((message) => message.references?.length)) return request;
+    if (!request.messages.some(AgentService.pointsAt)) return request;
     return { ...request, messages: request.messages.map((message) => AgentService.referencedMessage(message)) };
   }
 
-  private static referencedMessage(message: AgentWireMessage): AgentWireMessage {
-    const { references = [], ...rest } = message;
-    if (!references.length) return message;
-    const block = [AgentService.referenceHeading, ...references.map(AgentService.referenceLine)].join("\n\n");
-    return { ...rest, text: [message.text, block].filter(Boolean).join("\n\n") };
+  private static pointsAt(message: AgentWireMessage): boolean {
+    return !!message.references?.length || (message.role === "user" && MentionToken.in(message.text));
   }
+
+  private static referencedMessage(message: AgentWireMessage): AgentWireMessage {
+    if (!AgentService.pointsAt(message)) return message;
+    const { references = [], ...rest } = message;
+    const said = message.role === "user" && message.text ? MentionToken.unlabelled(message.text) : message.text;
+    const lines = [...references.map(AgentService.referenceLine), ...AgentService.renamedLines(message)];
+    if (!lines.length) return { ...message, text: said };
+    //? Security: a record's title, its id, its value and its note are another party's text, so the whole of them is
+    //? fenced as a marked context block is. Only the heading, which is the framework's, stays outside.
+    const pointed = LlmFence.wrap(LlmFence.untrusted, lines.join("\n\n"));
+    return { ...rest, text: [said, AgentService.referenceHeading, pointed].filter(Boolean).join("\n\n") };
+  }
+
+  //? A mention pasted with no reference behind it still has to be found: the name in the user's words is a digest.
+  private static renamedLines({ role, text, references = [] }: AgentWireMessage): string[] {
+    if (role !== "user" || !text) return [];
+    const carried = new Set(references.map(MentionToken.pointerOf));
+    const renamed = MentionToken.pointersIn(text).filter((pointer) => {
+      const spelled = MentionToken.pointerOf(pointer);
+      return MentionToken.nameOf(pointer) !== spelled && !carried.has(spelled);
+    });
+    const lines = renamed.map(
+      (pointer) =>
+        `${MentionToken.nameOf(pointer)} = ${MentionToken.pointerOf(pointer)} [not read: ${AgentService.notCarried}]`,
+    );
+    return [...new Set(lines)];
+  }
+
+  private static readonly notCarried = "the value was not carried into this conversation";
 
   /** Not free to shorten: both halves were observed working — a re-read with a tool, else a caveat. */
   static readonly referenceHeading =
@@ -146,10 +174,10 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
 
   //* A string prints as itself, not escaped JSON; keep the id ahead of the label — two references may share a label.
   private static referenceLine(reference: AgentWireReference): string {
-    const at = `${reference.refName}/${reference.refId}${reference.path ? `#${reference.path}` : ""}`;
-    const head = `${at} (${reference.label}):`;
-    if (reference.value === undefined)
-      return `${head} [not read: ${reference.note ?? "the value was not carried into this conversation"}]`;
+    const at = MentionToken.pointerOf(reference);
+    const name = MentionToken.nameOf(reference);
+    const head = `${name === at ? at : `${name} = ${at}`} (${reference.label}):`;
+    if (reference.value === undefined) return `${head} [not read: ${reference.note ?? AgentService.notCarried}]`;
     const text =
       typeof reference.value === "string" ? reference.value : (JSON.stringify(reference.value, null, 2) ?? "null");
     const body =

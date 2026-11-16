@@ -215,7 +215,10 @@ describe("createOpenApiDocument", () => {
         },
       },
     });
-    expect(document.components.schemas.AkanError).toMatchObject({ required: ["error", "statusCode"] });
+    expect(document.components.schemas.AkanError).toMatchObject({
+      required: ["error", "statusCode"],
+      properties: { traceId: { type: "string" } },
+    });
     const createOnly = createOpenApiDocument({
       openApiItem: {
         prefix: "openApiItem",

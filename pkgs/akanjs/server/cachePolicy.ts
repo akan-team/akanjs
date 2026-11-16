@@ -1,6 +1,7 @@
 import { CookieJar, originFromRequest } from "akanjs/common";
 import type { AkanDynamicUsage, AkanRequestPolicy } from "akanjs/fetch";
 import { isOff } from "./assetHeaders";
+import type { RouteCacheQueryForm } from "./routeCacheQuery";
 
 export const DEFAULT_ROUTE_CACHE_TTL_SECONDS = 30;
 
@@ -18,6 +19,7 @@ export interface RouteCacheRenderState {
   tags?: string[];
   dynamicUsage?: AkanDynamicUsage;
   reason?: string;
+  queryForm?: RouteCacheQueryForm;
 }
 
 export interface RouteCacheMetadata {
@@ -102,7 +104,7 @@ export function isPublicRouteCacheableRequest(request: Request): boolean {
   return request.method === "GET" && !carriesCredentials(request);
 }
 
-//? Anonymous HTML still varies by locale, theme and Accept-Language, which a URL-keyed CDN cannot tell apart.
+//? Anonymous HTML still varies by the theme cookie and a crawler's user agent, which a URL-keyed CDN cannot tell apart.
 export function resolveHtmlCacheControl(
   request: Request,
   raw = process.env.AKAN_HTML_CACHE_CONTROL?.trim(),
@@ -141,7 +143,6 @@ export function createRouteCacheKey({ request, url, theme = "", variant }: Route
     request.headers.get("x-path") ?? "",
     url.pathname,
     url.search,
-    request.headers.get("accept-language") ?? "",
     theme,
     ...(variant ? [variant] : []),
   ].join("\n");

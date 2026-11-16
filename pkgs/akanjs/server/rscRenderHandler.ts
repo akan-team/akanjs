@@ -5,9 +5,11 @@ import {
   getRequestFrameState,
   getRequestPolicy,
   getRequestTheme,
+  setRequestRenderSearch,
   updateRequestPolicy,
 } from "akanjs/fetch";
 import type { ReactNode } from "react";
+import { RequestTrace, type TraceParentRef } from "../signal/requestTrace";
 import type { ClientManifest } from "./artifact";
 import {
   type RouteCacheEntry,
@@ -15,6 +17,8 @@ import {
   resolveRouteCacheStoreTtl,
   shouldStoreRouteCache,
 } from "./cachePolicy";
+import { canonicalRouteCacheUrl, type RouteCacheQueryForm } from "./routeCacheQuery";
+import type { RouteCacheLookupReason } from "./routeCacheTally";
 import { type AdmittedNotFoundFallback, RouteElementComposer } from "./routeElementComposer";
 import { RouteShellGate } from "./routeShellGate";
 import {
@@ -27,8 +31,10 @@ import { RouteTreeBuilder } from "./routeTreeBuilder";
 import type { RscFlightRenderer } from "./rscFlightRenderer";
 import type { FlightRenderResult } from "./rscFlightStream";
 import { type ResolvedRouteHead, RscPatchPlanner } from "./rscPatchPlanner";
-import type { RscRenderRequest } from "./rscRenderControl";
+import type { RscRenderAdmission } from "./rscRenderAdmission";
+import { isAkanRedirectError, type RscRenderRequest } from "./rscRenderControl";
 import type { RscActiveRoute, RscRenderFallbacks } from "./rscRenderFallbacks";
+import { RscRenderRefusal } from "./rscRenderRefusal";
 import type { RscRenderStats } from "./rscRenderStats";
 import type { RscResultCaches } from "./rscResultCaches";
 import type { RscRouteDocument } from "./rscRouteDocument";
@@ -59,6 +65,9 @@ interface RscRenderTarget {
 
 interface RscRenderPlan {
   searchParams: Record<string, string | string[]>;
+  renderUrl: URL;
+  queryForm: RouteCacheQueryForm;
+  lookupReason: RouteCacheLookupReason;
   notFoundFallback: AdmittedNotFoundFallback | null;
   admitted: boolean;
   cacheEntry: RouteCacheEntry | null;
@@ -80,13 +89,19 @@ interface RscRenderHandlerProps {
   stats: RscRenderStats;
   caches: RscResultCaches;
   flights: RscFlightRenderer;
+  admission: RscRenderAdmission;
   documents: RscRouteDocument;
   fallbacks: RscRenderFallbacks;
   patchPlanner: RscPatchPlanner;
   routes: () => PathRoute[];
   fallbackRoutes: () => LayoutFallbackRoute[];
   clientManifest: () => ClientManifest;
-  runWithRequest: <T>(request: Request, routeId: string, fn: () => Promise<T>) => Promise<T>;
+  runWithRequest: <T>(
+    request: Request,
+    routeId: string,
+    parent: TraceParentRef | null,
+    fn: () => Promise<T>,
+  ) => Promise<T>;
 }
 
 export class RscRenderHandler {
@@ -96,6 +111,7 @@ export class RscRenderHandler {
   readonly #stats: RscRenderStats;
   readonly #caches: RscResultCaches;
   readonly #flights: RscFlightRenderer;
+  readonly #admission: RscRenderAdmission;
   readonly #documents: RscRouteDocument;
   readonly #fallbacks: RscRenderFallbacks;
   readonly #patchPlanner: RscPatchPlanner;
@@ -107,6 +123,7 @@ export class RscRenderHandler {
     this.#stats = props.stats;
     this.#caches = props.caches;
     this.#flights = props.flights;
+    this.#admission = props.admission;
     this.#documents = props.documents;
     this.#fallbacks = props.fallbacks;
     this.#patchPlanner = props.patchPlanner;
@@ -130,13 +147,15 @@ export class RscRenderHandler {
     this.#stats.renderCount += 1;
     this.#flights.begin(requestId);
     const activeRoute: RscActiveRoute = { url: null, match: null, request: null };
+    const slot = { asked: false };
     try {
       const request = new Request(url, { method, headers });
       const urlObj = new URL(url);
       const match = RouteTreeBuilder.match(urlObj.pathname, this.#pathRoutes);
       const routeId = match?.pathRoute.path ?? "__not_found__";
+      const parent = RequestTrace.continued(msg.traceparent, msg.traceLink);
       //? Not a helper: unless akanjs resolves into node_modules, each frame down to JSX joins its dev owner stack.
-      await this.#props.runWithRequest(request, routeId, async () => {
+      await this.#props.runWithRequest(request, routeId, parent, async () => {
         activeRoute.url = urlObj;
         activeRoute.request = request;
         this.#stats.lastRenderedPath = urlObj.pathname;
@@ -154,7 +173,11 @@ export class RscRenderHandler {
         const plan = await this.#plan(target);
         if (!plan) return;
         if (this.#replayFromCache(target, plan)) return;
-        const { searchParams, notFoundFallback, admitted, cacheEntry, safePatchDecision, admittedHead } = plan;
+        const admission = this.#admit(slot, requestId);
+        //? Whoever held the slot may have stored this page while it waited.
+        if (admission !== true && (!(await admission) || this.#replayFromCache(target, plan, { again: true }))) return;
+        const { searchParams, renderUrl, notFoundFallback, admitted, cacheEntry, safePatchDecision, admittedHead } =
+          plan;
         let element: ReactNode;
         let routeHead: ResolvedRouteHead | undefined;
         let effectivePatchDecision = safePatchDecision;
@@ -163,7 +186,7 @@ export class RscRenderHandler {
         const gate = new RouteShellGate();
         if (match && safePatchDecision.status === "patch" && safePatchDecision.patch) {
           const suffixElement = await this.#documents.renderMatchedSuffix(
-            urlObj,
+            renderUrl,
             match,
             safePatchDecision.patch.patchStartIndex,
             searchParams,
@@ -176,21 +199,33 @@ export class RscRenderHandler {
               reason: "suffix-compose-fallback",
               commonPrefixLength: safePatchDecision.commonPrefixLength,
             };
-            ({ element, head: routeHead } = await this.#documents.renderMatched(urlObj, match, searchParams, notFound, {
-              guarded: true,
-              head: admittedHead,
-              gate,
-            }));
+            ({ element, head: routeHead } = await this.#documents.renderMatched(
+              renderUrl,
+              match,
+              searchParams,
+              notFound,
+              {
+                guarded: true,
+                head: admittedHead,
+                gate,
+              },
+            ));
           } else {
             element = suffixElement;
             routeHead = admittedHead;
           }
         } else if (match)
-          ({ element, head: routeHead } = await this.#documents.renderMatched(urlObj, match, searchParams, notFound, {
-            guarded: admitted || !!admittedHead,
-            head: admittedHead,
-            gate,
-          }));
+          ({ element, head: routeHead } = await this.#documents.renderMatched(
+            renderUrl,
+            match,
+            searchParams,
+            notFound,
+            {
+              guarded: admitted || !!admittedHead,
+              head: admittedHead,
+              gate,
+            },
+          ));
         else element = await this.#documents.renderNotFound(urlObj, notFoundFallback, gate);
         const { patchCacheEntry } = plan;
         const routeHeadKey = routeHead?.snapshots?.layoutsKey;
@@ -231,9 +266,29 @@ export class RscRenderHandler {
         this.#recordRendered(target, result, beforeLoadedKeys);
       });
     } catch (error) {
-      await this.#fallbacks.answerThrown(msg, activeRoute, error);
+      if (await this.#admitFallback(slot, requestId, error))
+        await this.#fallbacks.answerThrown(msg, activeRoute, error);
     } finally {
       this.#flights.release(requestId);
+      if (slot.asked) this.#admission.leave(requestId, activeRoute.request);
+    }
+  }
+
+  #admit(slot: { asked: boolean }, requestId: string): boolean | Promise<boolean> {
+    slot.asked = true;
+    return this.#admission.enter(requestId, () => this.#flights.isCancelled(requestId));
+  }
+
+  //? An error page is a render too: a throw from before the slot was taken takes one here, a redirect needs none.
+  async #admitFallback(slot: { asked: boolean }, requestId: string, error: unknown): Promise<boolean> {
+    try {
+      if (RscRenderRefusal.is(error)) throw error;
+      if (!slot.asked && !isAkanRedirectError(error)) await this.#admit(slot, requestId);
+      return true;
+    } catch (refusal) {
+      if (!RscRenderRefusal.is(refusal)) throw refusal;
+      this.#send({ type: "error", requestId, code: refusal.code, message: refusal.message });
+      return false;
     }
   }
 
@@ -255,14 +310,17 @@ export class RscRenderHandler {
       return null;
     }
     const admitted = verdict === "admitted";
-    const cacheDecision = match ? this.#caches.getResultCacheEntry(request, urlObj) : { entry: null };
+    const queryForm = match ? await RouteElementComposer.routeCacheQueryForm(match.pathRoute) : "exact";
+    const renderUrl = queryForm === "canonical" ? canonicalRouteCacheUrl(urlObj) : urlObj;
+    if (queryForm === "canonical") setRequestRenderSearch(renderUrl.search);
+    const cacheDecision = match ? this.#caches.getResultCacheEntry(request, renderUrl) : this.#caches.unmatchedEntry();
     const cacheEntry = cacheDecision.entry;
     const {
       targetRouterState,
       currentRouterState,
       decision: safePatchDecision,
       admittedHead,
-    } = await this.#patchPlanner.plan({ request, url: urlObj, match, searchParams, admitted });
+    } = await this.#patchPlanner.plan({ request, url: renderUrl, match, searchParams, admitted });
     const patchCacheEntry = resolveRscWorkerPatchCacheEntry({
       cacheEntry,
       targetRouterState,
@@ -280,6 +338,9 @@ export class RscRenderHandler {
     });
     return {
       searchParams,
+      renderUrl,
+      queryForm,
+      lookupReason: renderUrl === urlObj ? "requested-query" : "rewritten-query",
       notFoundFallback,
       admitted,
       cacheEntry,
@@ -293,10 +354,12 @@ export class RscRenderHandler {
 
   #replayFromCache(
     { requestId, routeId, startedAt }: RscRenderTarget,
-    { cacheEntry, targetRouterState, safePatchDecision, admittedHead, patchCacheEntry, createTraceBase }: RscRenderPlan,
+    plan: RscRenderPlan,
+    lookup: { again?: boolean } = {},
   ): boolean {
+    const { cacheEntry, targetRouterState, safePatchDecision, admittedHead, patchCacheEntry, createTraceBase } = plan;
     const cachedPatch = patchCacheEntry
-      ? this.#caches.getCached(this.#caches.patchResultCache, patchCacheEntry.key)
+      ? this.#caches.getCached(this.#caches.patchResultCache, patchCacheEntry.key, plan.lookupReason, lookup)
       : null;
     if (
       cachedPatch?.patch &&
@@ -326,7 +389,7 @@ export class RscRenderHandler {
     }
     const cached =
       shouldUseRscWorkerFullResultCache({ cacheEntry, patchCacheEntry }) && cacheEntry
-        ? this.#caches.getCached(this.#caches.resultCache, cacheEntry.key)
+        ? this.#caches.getCached(this.#caches.resultCache, cacheEntry.key, plan.lookupReason, lookup)
         : null;
     if (!cached) return false;
     const traceBase = createTraceBase(
@@ -370,16 +433,19 @@ export class RscRenderHandler {
 
   #storeResult(
     { url: urlObj, routeId }: RscRenderTarget,
-    { cacheEntry, targetRouterState, patchCacheEntry }: RscRenderPlan,
+    { cacheEntry, targetRouterState, patchCacheEntry, queryForm }: RscRenderPlan,
     { effectivePatchDecision, routeHeadKey, ssrBlocking }: RscRenderedRoute,
     { chunks, chunksCount, control, lateControlSent }: Omit<FlightRenderResult, "cancelled">,
   ): RouteCacheRenderState {
-    const cacheState = shouldStoreRouteCache({
-      policy: getRequestPolicy(),
-      dynamicUsage: getRequestDynamicUsage(),
-      renderControlType: control?.type,
-      lateRedirect: control?.type === "redirect" && lateControlSent,
-    });
+    const cacheState: RouteCacheRenderState = {
+      ...shouldStoreRouteCache({
+        policy: getRequestPolicy(),
+        dynamicUsage: getRequestDynamicUsage(),
+        renderControlType: control?.type,
+        lateRedirect: control?.type === "redirect" && lateControlSent,
+      }),
+      queryForm,
+    };
     const storeTtl = cacheEntry ? resolveRouteCacheStoreTtl(cacheEntry.ttl, cacheState) : null;
     const stored = (): CachedRscResult => ({
       body: joinRscChunks(chunks),

@@ -62,7 +62,7 @@ const tsc = Bun.spawnSync(["bunx", "tsc", "-p", tsconfigPath], {
 });
 await rm(tsconfigPath);
 if (tsc.exitCode !== 0) fail("[language] declaration emit failed");
-//? tsc also emits the bundled `akanjs/common` files; the public declarations never import them.
+//? tsc also emits every akanjs file the program reaches; the public declarations import only `akanjs/common`.
 const ownTypes = `${typesDir}/@akanjs/language`;
 for (const file of await readdir(ownTypes))
   if (file.endsWith(".d.ts")) await rename(`${ownTypes}/${file}`, `${outdir}/${file}`);

@@ -505,7 +505,18 @@ try {
       ...sampleConfig,
       web: { dir: web },
       plugins: [...(sampleConfig.plugins ?? []), "external-view"],
-      capabilities: [{ ...app0, permissions: [...app0.permissions, "external-view:default"] }, ...rest],
+      capabilities: [
+        {
+          ...app0,
+          permissions: [
+            ...app0.permissions,
+            { identifier: "external-view:default", allow: [{ origin }, { origin: dead }] },
+            "external-view:allow-evaluate",
+            "external-view:allow-sendKey",
+          ],
+        },
+        ...rest,
+      ],
       splash: undefined,
     },
     platform: "linux",
