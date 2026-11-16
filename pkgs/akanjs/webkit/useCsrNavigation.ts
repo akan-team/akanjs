@@ -10,6 +10,7 @@ import {
 } from "akanjs/client";
 import { useCallback } from "react";
 import { CsrStack } from "./CsrStack";
+import { CsrPageReadiness } from "./csrPageReadiness";
 import type { CsrKeyboard } from "./useCsrKeyboard";
 import type { CsrLocationState } from "./useCsrLocationState";
 import { type CsrRefs, currentRouter } from "./useCsrRefs";
@@ -25,6 +26,11 @@ import {
 } from "./useFrameRuntime";
 import type { ResolvedFrame } from "./useResolvedFrame";
 import { useBroadcastSyncNavigation } from "./useSyncNavigation";
+
+//? A page switched in place (`transition: "none"`, a tab bar's tab) is drawn out of sight first and swapped in once its
+//? layers are drawn: swapped at once, it showed each async layer's loading fallback for a frame or more, a flash on
+//? every first visit. A page slower than this swaps in with its fallbacks, as before.
+const PAGE_DRAWN_TIMEOUT_MS = 300;
 
 interface ForwardCommit {
   kind: "push" | "replace";
@@ -225,10 +231,56 @@ export const useCsrNavigation = ({
         toLocation.pathRoute.pageState.transition !== "none";
 
       if (!usePendingNavigation) {
-        setHistoryForward({ type: kind, location: toLocation, scrollTop, scrollToTop });
-        settle(kind === "replace" ? prevLocation : fromLocation);
-        if (kind === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
-        else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
+        const toKey = CsrStack.keyOf(toLocation);
+        //? A replace made while a page was drawn ahead (its guard's redirect, a second tap) takes that page's place.
+        const superseded = cancelPendingNavigation();
+        const move = superseded?.kind === "push" && kind === "replace" ? "push" : kind;
+        const commit = () => {
+          setHistoryForward({ type: move, location: toLocation, scrollTop, scrollToTop });
+          settle(move === "replace" ? prevLocation : fromLocation);
+          promotePendingSlots();
+          if (move === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
+          else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
+        };
+        const isDrawnAtOnce =
+          toKey === CsrStack.keyOf(fromLocation) ||
+          !CsrPageReadiness.drawsLater(toLocation.pathRoute) ||
+          CsrPageReadiness.isDrawn(toKey);
+        if (isDrawnAtOnce) {
+          commit();
+          return;
+        }
+        const intent: NavigationIntent = {
+          id: ++navigationIntentId.current,
+          kind: move,
+          from: fromLocation,
+          to: toLocation,
+          scrollTop,
+          scrollToTop,
+          createdAt: Date.now(),
+        };
+        pendingNavigation.current = intent;
+        debugFrame("navigation.drawAhead", { id: intent.id, kind: move, from: fromLocation.href, to: href });
+        clearPendingSlots();
+        setLocationState({
+          location: fromLocation,
+          prevLocation,
+          pendingLocation: toLocation,
+          navigationIntent: intent,
+          phase: "preparing",
+        });
+        const commitWhenDrawn = () => {
+          if (pendingNavigation.current !== intent) return;
+          const elapsedMs = Date.now() - intent.createdAt;
+          if (!CsrPageReadiness.isDrawn(toKey) && elapsedMs < PAGE_DRAWN_TIMEOUT_MS) {
+            window.setTimeout(commitWhenDrawn, 16);
+            return;
+          }
+          pendingNavigation.current = null;
+          debugFrame("navigation.drawn", { id: intent.id, to: href, elapsedMs });
+          commit();
+        };
+        window.setTimeout(commitWhenDrawn, 16);
         return;
       }
 
@@ -277,6 +329,7 @@ export const useCsrNavigation = ({
       });
     },
     [
+      cancelPendingNavigation,
       clearPendingSlots,
       broadcastSyncNavigation,
       getCurrentLocation,

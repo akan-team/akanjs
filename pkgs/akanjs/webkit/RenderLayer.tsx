@@ -8,12 +8,15 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { CsrGuards } from "./CsrGuards";
+import { CsrStack } from "./CsrStack";
 import { CsrFrameDump } from "./csrFrameDump";
+import { CsrPageReadiness } from "./csrPageReadiness";
 import { CsrRefresh } from "./csrRefresh";
 import { RenderFailure } from "./RenderFailure";
 import { useFetch } from "./useFetch";
@@ -201,10 +204,17 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
       record.subscribed = false;
     };
   }, [record]);
-  if (!routeRender) return null;
-  if (!isAsyncRender && (!guarded || isSyncAdmitted))
-    return createElement(routeRender.render as never, { children, params, searchParams } as never);
+  const isSyncDrawn = !isAsyncRender && (!guarded || isSyncAdmitted);
   const failure = renderedRef.current?.failure;
+  //? A refused location draws nothing of what it refused, whatever the layer drew for another, nor while it is asked again.
+  const isRefused =
+    (!!locationId && renderedRef.current?.refusedAt === locationId) ||
+    (!!renderedRef.current?.afterRefusal && !fulfilled);
+  const drawn = isAsyncRender || isRefused ? null : drawnPropsRef.current;
+  const isLoading = !!routeRender && !isSyncDrawn && !failure && !isRefused && !drawn && (!value || !isAsyncRender);
+  useLayerReadiness(location, isLoading);
+  if (!routeRender) return null;
+  if (isSyncDrawn) return createElement(routeRender.render as never, { children, params, searchParams } as never);
   if (failure)
     return (
       <RenderFailure
@@ -215,16 +225,21 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         }}
       />
     );
-  //? A refused location draws nothing of what it refused, whatever the layer drew for another, nor while it is asked again.
-  const isRefused =
-    (!!locationId && renderedRef.current?.refusedAt === locationId) ||
-    (!!renderedRef.current?.afterRefusal && !fulfilled);
-  const drawn = isAsyncRender || isRefused ? null : drawnPropsRef.current;
   if (drawn) return createElement(routeRender.render as never, { children, ...drawn } as never);
   if (!value || !isAsyncRender || isRefused)
     return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
   return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
 });
+
+const useLayerReadiness = (location: ReturnType<typeof usePathCtx>["location"] | undefined, isLoading: boolean) => {
+  const layerId = useId();
+  //? A page's own wrapper hands its location whole; a bare one (root layouts, a test's) has no page to report for.
+  const pageKey = location?.pathRoute?.pageState ? CsrStack.keyOf(location) : null;
+  useEffect(() => {
+    if (pageKey) CsrPageReadiness.report(pageKey, layerId, isLoading);
+  }, [pageKey, isLoading]);
+  useEffect(() => (pageKey ? () => CsrPageReadiness.drop(pageKey, layerId) : undefined), [pageKey]);
+};
 
 interface LayerRun {
   render: RouteRender["render"];
@@ -274,7 +289,7 @@ function entryPathOf(pathname: string | undefined): string | undefined {
 }
 
 function isAsyncRouteRender(routeRender?: RouteRender): boolean {
-  return Boolean(routeRender?.isAsync || routeRender?.render.constructor.name === "AsyncFunction");
+  return CsrPageReadiness.isAsync(routeRender);
 }
 
 function composeLoadingFallback(renders: RouteRender[], params: Record<string, string>): ReactNode {

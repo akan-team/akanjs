@@ -447,7 +447,7 @@ describe("useCsrValues for a path no page matches", () => {
     ]);
 
     await act(async () => void client.router.push("/detail"));
-    await elapse(100);
+    await elapse(400);
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/404");
     expect(frame.stack()).toEqual(["/en/home", "/en/404"]);

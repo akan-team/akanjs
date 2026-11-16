@@ -138,4 +138,41 @@ describe("NativeNavigation on Android", () => {
     expect(swipes.at(-1)).toEqual({ phase: "cancelled", progress: 0 });
     stop();
   });
+
+  test("closes the newest open dialog before going back, and keeps back from the system while one is open", async () => {
+    const shell = installAndroid();
+    Object.assign(window, { addEventListener: () => undefined, removeEventListener: () => undefined });
+    const backs: string[] = [];
+    const swipes: NativeBackProgress[] = [];
+    const { NativeNavigation } = await import("./nativeNavigation");
+    const { OpenSurfaces } = await import("./useEscapeKey");
+    const stop = new NativeNavigation({
+      historyIdx: () => 0,
+      backState: () => ({
+        path: "/:lang/explore",
+        keyboardHeight: 0,
+        keyboardVisible: false,
+        router: { back: () => backs.push("router") },
+      }),
+      dismissKeyboard: () => undefined,
+      onBackProgress: (swipe) => swipes.push(swipe),
+    }).listen();
+    await settle();
+    const closeSheet = OpenSurfaces.open(() => backs.push("sheet"));
+    const closeDialog = OpenSurfaces.open(() => backs.push("dialog"));
+    await settle();
+    expect(reported.at(-1)).toBe(true);
+
+    shell.emit("app", "backProgress", { phase: "started", progress: 0, swipeEdge: "left" });
+    shell.emit("app", "backButton", {});
+    await settle();
+    expect(backs).toEqual(["dialog"]);
+    expect(swipes).toEqual([]);
+
+    closeDialog();
+    closeSheet();
+    await settle();
+    expect(reported.at(-1)).toBe(false);
+    stop();
+  });
 });
