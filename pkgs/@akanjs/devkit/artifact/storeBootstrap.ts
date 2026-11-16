@@ -9,25 +9,29 @@ export type ClientRuntimeScope = "whole" | "page";
 //* Not a bare `@apps/<app>/client` import: it names nothing the barrel rewrite can narrow, so every module's UI ships.
 export class StoreBootstrap {
   static readonly pageRuntime = "usePage";
+  //? `akanjs/signal`'s own descriptors, which framework UI on any page calls by a static name (`Reconnect`'s `ping`).
+  static readonly baseDescriptors = "__client/_base.fetch";
 
   //? `akanjs/ui/modelRuntime` is empty on disk: a framework UI file reaching a store key or a fetch handler by a
   //? computed name imports it, and a build whose entries load only the page runtime answers it with the app's.
   static readonly modelRuntimeFilter = /[\\/]akanjs[\\/]ui[\\/]modelRuntime\.[jt]s$/;
 
-  //? `"page"` only where the page runtime file exists: a workspace not synced since it came keeps the whole runtime.
+  //? `"page"` only where the page runtime files exist: a workspace not synced since it came keeps the whole runtime.
   static async scopeOf(app: App): Promise<ClientRuntimeScope> {
     if ((await app.getConfig()).clientRuntime !== "route") return "whole";
     const lib = path.join(app.cwdPath, "lib");
-    const [hasStore, hasPage] = await Promise.all(
-      ["st.ts", `${StoreBootstrap.pageRuntime}.ts`].map((file) => Bun.file(path.join(lib, file)).exists()),
+    const found = await Promise.all(
+      ["st", StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors].map((file) =>
+        Bun.file(path.join(lib, `${file}.ts`)).exists(),
+      ),
     );
-    return hasStore && hasPage ? "page" : "whole";
+    return found.every(Boolean) ? "page" : "whole";
   }
 
   static importLines(appName: string, scope: ClientRuntimeScope = "whole"): string[] {
     return StoreBootstrap.#lines(
       scope === "page"
-        ? [`@apps/${appName}/lib/${StoreBootstrap.pageRuntime}`]
+        ? [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors].map((file) => `@apps/${appName}/lib/${file}`)
         : [`@apps/${appName}/lib/useClient`, `@apps/${appName}/lib/st`],
     );
   }

@@ -40,15 +40,22 @@ describe("SsrDevBundler under clientRuntime route", () => {
     for (const file of files) await write(path.join(root, "apps/demo/lib", file), "export {};\n");
   };
 
-  test("boots the page runtime alone and answers the model runtime marker with the app's runtime", async () => {
+  const pageFiles = [
+    "st.ts",
+    "useClient.ts",
+    `${StoreBootstrap.pageRuntime}.ts`,
+    `${StoreBootstrap.baseDescriptors}.ts`,
+  ];
+
+  test("boots the page runtime with the framework's own descriptors and answers the model runtime marker with the app's runtime", async () => {
     const root = await makeTempRoot();
-    await writeLib(root, ["st.ts", "useClient.ts", `${StoreBootstrap.pageRuntime}.ts`]);
+    await writeLib(root, pageFiles);
     const bundler = new SsrDevBundler(appOf(root, "route"));
     const context = await bundler.context();
     const { files } = await bundler.writeEntries(context);
 
     expect(await Bun.file(files[SsrDevBundler.bootstrapKey] ?? "").text()).toBe(
-      `import "@apps/demo/lib/${StoreBootstrap.pageRuntime}";\n`,
+      `import "@apps/demo/lib/${StoreBootstrap.pageRuntime}";\nimport "@apps/demo/lib/${StoreBootstrap.baseDescriptors}";\n`,
     );
     expect(context.modelRuntime).toBe(
       [path.join(root, "apps/demo/lib/useClient.ts"), path.join(root, "apps/demo/lib/st.ts")]
@@ -58,16 +65,20 @@ describe("SsrDevBundler under clientRuntime route", () => {
     expect(context.configKey).not.toBe((await new SsrDevBundler(appOf(root, "all")).context()).configKey);
   });
 
-  test("keeps the whole runtime when the app was not synced to a page runtime yet", async () => {
-    const root = await makeTempRoot();
-    await writeLib(root, ["st.ts", "useClient.ts"]);
-    const bundler = new SsrDevBundler(appOf(root, "route"));
-    const context = await bundler.context();
-    const { files } = await bundler.writeEntries(context);
+  for (const missing of pageFiles.slice(2))
+    test(`keeps the whole runtime when the app was not synced to lib/${missing} yet`, async () => {
+      const root = await makeTempRoot();
+      await writeLib(
+        root,
+        pageFiles.filter((file) => file !== missing),
+      );
+      const bundler = new SsrDevBundler(appOf(root, "route"));
+      const context = await bundler.context();
+      const { files } = await bundler.writeEntries(context);
 
-    expect(context.modelRuntime).toBeUndefined();
-    expect(await Bun.file(files[SsrDevBundler.bootstrapKey] ?? "").text()).toBe(
-      'import "@apps/demo/lib/useClient";\nimport "@apps/demo/lib/st";\n',
-    );
-  });
+      expect(context.modelRuntime).toBeUndefined();
+      expect(await Bun.file(files[SsrDevBundler.bootstrapKey] ?? "").text()).toBe(
+        'import "@apps/demo/lib/useClient";\nimport "@apps/demo/lib/st";\n',
+      );
+    });
 });

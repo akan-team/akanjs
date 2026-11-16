@@ -394,6 +394,10 @@ describe("route client store bootstrap", () => {
         path.join(fixture.appDir, `lib/${StoreBootstrap.pageRuntime}.ts`),
         'export const mark = Object.freeze({ mark: "page-runtime-only" });\n',
       );
+      await write(
+        path.join(fixture.appDir, `lib/${StoreBootstrap.baseDescriptors}.ts`),
+        'export const base = Object.freeze({ mark: "base-descriptors" });\n',
+      );
       const app = {
         ...(fixture.app as object),
         getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [], clientRuntime: "route" }),
@@ -403,7 +407,7 @@ describe("route client store bootstrap", () => {
     const build = (app: never, entry: string) =>
       new RouteClientBuilder({ app, seeds: [], entries: [entry], artifact: {} as never, browser: "chunks" }).build();
 
-    test("a store-free route's browser chunks carry the page runtime alone, its SSR chunks the whole runtime", async () => {
+    test("a store-free route's browser chunks carry the page runtime and the framework's own descriptors, its SSR chunks the whole runtime", async () => {
       const { appDir, app } = await routeFixture();
       const entry = path.join(appDir, "ui/A.tsx");
 
@@ -411,7 +415,7 @@ describe("route client store bootstrap", () => {
 
       const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
       const ssr = await bundledText(path.join(appDir, ".akan/artifact/client-ssr"));
-      expect(browser).toContain("page-runtime-only");
+      for (const marker of ["page-runtime-only", "base-descriptors"]) expect(browser).toContain(marker);
       for (const marker of ['"runtime-marker"', '"store-marker"', "lib-store-marker"])
         expect(browser).not.toContain(marker);
       for (const marker of ['"runtime-marker"', '"store-marker"', "lib-store-marker"]) expect(ssr).toContain(marker);
@@ -433,15 +437,16 @@ describe("route client store bootstrap", () => {
         expect(browser).toContain(marker);
     });
 
-    test("an app not synced to a page runtime keeps the whole runtime in its browser chunks", async () => {
-      const { appDir, app } = await routeFixture();
-      await Bun.file(path.join(appDir, `lib/${StoreBootstrap.pageRuntime}.ts`)).delete();
+    for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors])
+      test(`an app not synced to lib/${file}.ts keeps the whole runtime in its browser chunks`, async () => {
+        const { appDir, app } = await routeFixture();
+        await Bun.file(path.join(appDir, `lib/${file}.ts`)).delete();
 
-      await build(app, path.join(appDir, "ui/A.tsx"));
+        await build(app, path.join(appDir, "ui/A.tsx"));
 
-      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
-      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
-    });
+        const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+        for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
+      });
   });
 
   test("a route reaching a lib's cnst through its client barrel carries no module UI", async () => {
