@@ -136,6 +136,13 @@ const configKeys = [
     en: "Extra packages whose imports the client build rewrites to the exact source file.",
     ko: "클라이언트 빌드가 정확한 원본 파일 import로 바꿔 줄 추가 패키지입니다.",
   },
+  {
+    key: "clientRuntime",
+    type: '"all" | "route"',
+    default: '"all"',
+    en: 'Whether every page loads every model\'s descriptors and stores ("all"), or only a route whose client code uses them ("route").',
+    ko: '모든 페이지가 모든 모델의 엔드포인트 정의와 스토어를 불러올지("all"), 클라이언트 코드가 쓰는 라우트만 불러올지("route") 정합니다.',
+  },
 ];
 
 const nativeFields = [
@@ -519,6 +526,13 @@ const buildFields = [
     default: "akanjs + workspace",
     en: "Extra barrels to flatten while scanning and bundling, for ones outside the workspace.",
     ko: "스캔과 번들링에서 펼칠 추가 barrel 경로이며, 워크스페이스 밖의 barrel에만 씁니다.",
+  },
+  {
+    key: "clientRuntime",
+    type: '"all" | "route"',
+    default: '"all"',
+    en: '"route" leaves a page\'s models and stores out of its browser code unless a client module on it imports fetch or st, or renders a Load, Model or Data component.',
+    ko: '"route"면 그 페이지의 클라이언트 모듈이 fetch나 st를 import하거나 Load·Model·Data 컴포넌트를 렌더링할 때만 모델과 스토어를 브라우저 코드에 싣습니다.',
   },
   {
     key: "database.modes",

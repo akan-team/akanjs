@@ -305,6 +305,8 @@ externalLibs?: string[];
 trustedDependencies?: string[];
 barrelImports?: string[];
 optimizeImports?: string[];
+/** `"route"` loads a model's descriptors and store in the browser only on a route whose client code imports `fetch` or `st` or renders a `Load` / `Model` / `Data` component; `"all"` (the default) loads them on every page. */
+clientRuntime?: "all" | "route";
 images?: DeepPartial<AkanImageConfig>;
 i18n?: DeepPartial<AkanI18nConfig>;
 publicEnv?: string[];
