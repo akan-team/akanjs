@@ -475,12 +475,12 @@ export interface AppConfigResult {
   optimizeImports: string[];
   /**
    * `"route"` loads a model's descriptors and store in the browser only on a route whose client code names that
-   * model (`st.use.memoList()`, `fetch.memo(id)`), and every model's where it picks a name at run time or renders an
-   * `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on every page. Server
-   * rendering, CSR bundles and native apps always load the whole runtime. The development server does not narrow by
-   * model: a client module importing `fetch` or `st` loads its scope's whole runtime there, where an app store's
-   * additions to a lib store exist only once a module importing the app's `client` barrel loads, so a missing name
-   * shows only in a production build.
+   * model, or renders an `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on
+   * every page. Naming is `st.use.memoList()` or `fetch.memo(id)`; a file that picks the name at run time, or renders
+   * such a component, loads every model's. Server rendering, CSR bundles and native apps always load the whole
+   * runtime. The development server does not narrow by model: a client module importing `fetch` or `st` loads its
+   * scope's whole runtime there, where an app store's additions to a lib store exist only once a module importing the
+   * app's `client` barrel loads, so a missing name shows only in a production build.
    */
   clientRuntime: "all" | "route";
   images: AkanImageConfig;
