@@ -5,6 +5,7 @@ import { AbortSignals } from "akanjs/common";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
 import { type ClientSignal, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
+import { isValidElement } from "react";
 import type { RootStoreCls } from "./rootStore";
 import { type StoreCls, store } from "./store";
 import { MemoryStorage, setTestEnv } from "./store.fixture";
@@ -1937,6 +1938,17 @@ describe("StoreInstance facades on an unknown key", () => {
     expect(instance.do.setKnownValue).toBeInstanceOf(Function);
     expect("missingAction" in instance.do).toBe(false);
     expect(instance.do.then).toBeUndefined();
+  });
+
+  test("lets React's element check read a facade handed as a prop in development", () => {
+    setupEnv();
+    class PropStore extends store("propStore" as const, () => ({ propValue: 1 })) {}
+    StoreRegistry.register(PropStore);
+    const instance = withNodeEnv("development", () => new StoreInstance(makeRoot("propRoot", PropStore)));
+
+    expect(isValidElement(instance.use)).toBe(false);
+    expect(isValidElement(instance.do)).toBe(false);
+    expect(isValidElement(instance.slice)).toBe(false);
   });
 
   test("answers undefined in production and under test", () => {

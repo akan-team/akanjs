@@ -2,13 +2,14 @@ type StoreFacadeName = "use" | "do" | "slice";
 
 export class StoreFacade {
   static readonly #sources = new WeakMap<object, unknown>();
-  static readonly #keysAwaitAndJsonStringifyProbe = new Set(["then", "toJSON"]);
+  //? Read on any object they are handed by `await`, `JSON.stringify` and React's element check, so none may throw.
+  static readonly #probedKeys = new Set(["then", "toJSON", "$$typeof"]);
 
   static guard<T extends object>(name: StoreFacadeName, target: T): T {
     if (process.env.NODE_ENV !== "development") return target;
     return new Proxy(target, {
       get: (facade, key, receiver) => {
-        if (typeof key === "symbol" || key in facade || StoreFacade.#keysAwaitAndJsonStringifyProbe.has(key))
+        if (typeof key === "symbol" || key in facade || StoreFacade.#probedKeys.has(key))
           return Reflect.get(facade, key, receiver);
         throw new Error(
           `st.${name}.${key} is not registered: no store loaded on this page declares it. Check the name, or import st from the app's client barrel in a client component of this route.`,
