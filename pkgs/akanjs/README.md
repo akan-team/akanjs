@@ -61,19 +61,10 @@ Node and npm, or URLs given by a spec, a coding agent needs these, and nothing h
 - **Exact URLs:** pages live under `/<locale>/…`. To serve the default locale at the bare path (`/books/OL45804W`),
   set `i18n: { defaultLocale: "en", locales: ["en"], localePrefix: "as-needed" }` in `akan.config.ts`; `<Link>`
   follows.
-- **A host with only Node and npm:** run the creator through npx, which writes nothing global:
-  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. That Bun is not on
-  `PATH` afterwards, so the creator lists `bun` in the workspace's `dependencies` and writes the scripts below; run
-  any other command as `npx akan …`.
-- **Build and run without Docker** through these package scripts; `npm run build`, then `PORT=3000 npm start`:
-
-  ```json
-  "build": "akan build <app>",
-  "start": "cd dist/apps/<app> && bun main.js"
-  ```
-
-  A fresh clone builds as is: the env files stay gitignored and `akan` writes the ones it lacks, so commit none. The
-  build carries the env it needs, and a variable set at start overrides it.
+- **A host with only Node and npm:** `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`,
+  then `npm run build` and `PORT=3000 npm start`. The
+  [`create-akan-workspace` README](https://www.npmjs.com/package/create-akan-workspace#with-only-node-and-npm) has the
+  scripts it writes and what a fresh clone needs.
 - **Build for where it runs.** A variable set in the shell, or in a `.env.local` Bun loads, outranks the workspace `.env`
   (an empty one counts as unset, and the build names each one it took), and `--env` outranks both for `AKAN_PUBLIC_ENV`. A new workspace's `.env` says `local`, which suits your own machine or a test runner, but the
   server runs without endpoint rate limits and on local defaults. For a host others can reach, run

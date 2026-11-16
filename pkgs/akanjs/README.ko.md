@@ -62,19 +62,10 @@ URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩
 - **정해진 URL:** 페이지는 기본적으로 `/<locale>/…` 아래에 있습니다. 기본 로케일을 프리픽스 없는 경로
   (`/books/OL45804W`)로 내보내려면 `akan.config.ts`에 `i18n: { defaultLocale: "en", locales: ["en"], localePrefix:
   "as-needed" }`를 두세요. `<Link>`도 따라갑니다.
-- **Node와 npm만 있는 호스트:** 생성기를 npx로 실행하세요. 전역에 아무것도 쓰지 않습니다:
-  `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`. 그 Bun은 이후
-  `PATH`에 없으므로 생성기가 워크스페이스의 `dependencies`에 `bun`을 넣고 아래 script를 씁니다. 다른 명령은
-  `npx akan …`으로 실행하세요.
-- **Docker 없이 빌드하고 실행하기:** 아래 package script를 두고 `npm run build` 뒤 `PORT=3000 npm start`로 띄웁니다.
-
-  ```json
-  "build": "akan build <app>",
-  "start": "cd dist/apps/<app> && bun main.js"
-  ```
-
-  새로 clone한 사본도 그대로 빌드됩니다. env 파일은 gitignore된 채로 두면 `akan`이 없는 것을 만들어 주므로 커밋할
-  필요가 없습니다. 빌드에 필요한 env가 함께 들어 있고, 실행할 때 지정한 변수가 그 값을 덮어씁니다.
+- **Node와 npm만 있는 호스트:** `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`를
+  실행한 뒤 `npm run build`, `PORT=3000 npm start`로 빌드하고 띄웁니다. 생성기가 쓰는 script와 새로 clone한 사본에
+  필요한 것은 [`create-akan-workspace` README](https://github.com/akan-team/akanjs/blob/main/pkgs/create-akan-workspace/README.ko.md#node와-npm만-있을-때)에
+  있습니다.
 - **실행할 곳에 맞게 빌드하기.** 셸이나 Bun이 읽는 `.env.local`에서 지정한 변수가 워크스페이스 `.env`보다 우선하고(빈
   값은 지정하지 않은 것으로 보며, 빌드는 그렇게 가져간 값을 하나씩 알려 줍니다), `AKAN_PUBLIC_ENV`는 `--env`가 둘보다
   우선합니다. 새 워크스페이스의 `.env`는 `local`이라 내 컴퓨터나 테스트 러너에서는 이대로 맞지만, 서버가

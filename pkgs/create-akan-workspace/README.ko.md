@@ -8,6 +8,13 @@
 bunx create-akan-workspace@latest
 ```
 
+Node와 npm만 있는 호스트에서는 npx로 실행하세요. 전역에 아무것도 설치하지 않습니다
+([자세히](#node와-npm만-있을-때)).
+
+```bash
+npx -y bun@1.4.4 x create-akan-workspace@latest
+```
+
 이 패키지와 같은 버전의 `akan` CLI(`@akanjs/cli`)를 전역으로 설치한 뒤 `akan create-workspace`를 실행합니다.
 이 명령은 다음을 합니다.
 
@@ -37,6 +44,25 @@ bunx create-akan-workspace@latest my-company --app web
 확인하고, 이 명령을 실행하고, 앱까지 띄웁니다. 끝나면 새 워크스페이스 안에서 에이전트를 다시 여세요. MCP 서버와
 규칙은 거기서 로드됩니다.
 
+## Node와 npm만 있을 때
+
+생성기에는 Bun이 필요한데, 그 한 번의 실행은 npx가 Bun을 대신 받아 줍니다. 이름을 넘기면 아무것도 묻지 않습니다.
+
+```bash
+npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false
+```
+
+그 Bun은 이후 `PATH`에 없으므로 생성기가 워크스페이스의 `dependencies`에 `bun`을 넣고 package script 두 개를 씁니다.
+`npm run build`로 빌드하고, `PORT=3000 npm start`로 빌드를 띄우고, 다른 명령은 `npx akan …`으로 실행하세요.
+
+```json
+"build": "akan build <app>",
+"start": "cd dist/apps/<app> && bun main.js"
+```
+
+새로 clone한 사본도 그대로 빌드됩니다. env 파일은 gitignore된 채로 두면 `akan`이 없는 것을 만들어 주므로 커밋할
+필요가 없습니다. 빌드에 필요한 env가 함께 들어 있고, 실행할 때 지정한 변수가 그 값을 덮어씁니다.
+
 ## 기존 폴더에 만들기
 
 워크스페이스 이름을 `.`으로 주면 하위 폴더를 새로 만들지 않고 현재 폴더나 `--dir` 폴더에 바로 만듭니다. 워크스페이스
@@ -64,7 +90,7 @@ bunx create-akan-workspace@latest my-company --app web --sample false   # 샘플
 
 ## 요구사항
 
-- [Bun](https://bun.sh) `>=1.4.4`
+- [Bun](https://bun.sh) `>=1.4.4`. 없으면 Node의 npx로 [위와 같이](#node와-npm만-있을-때) 실행
 - 첫 커밋을 위한 Git
 
 ## 더 알아보기
