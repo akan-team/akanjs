@@ -9,7 +9,6 @@ import {
   scanScopeRecipes,
   upsertAgentBlock,
 } from "../guideline/agentsIndex";
-import { RuntimeNameTable } from "../quality/runtimeNameTable";
 import { CodegenLock } from "../workspace/codegenLock";
 import { EnvSeed } from "../workspace/envSeed";
 import { ManifestDependencies } from "../workspace/manifestDependencies";
@@ -103,6 +102,7 @@ export class SysExecutor extends Executor {
       ...[...info.getLibInfos().values()].flatMap((libInfo) => scopesOf(libInfo, `libs/${libInfo.name}`)),
       own,
     ];
+    const { RuntimeNameTable } = await import("../quality/runtimeNameTable");
     const table = await RuntimeNameTable.readScopes(this.workspace.workspaceRoot, [
       ...new Set(scopesOf(scanInfo, scope)),
     ]).catch(() => null);
