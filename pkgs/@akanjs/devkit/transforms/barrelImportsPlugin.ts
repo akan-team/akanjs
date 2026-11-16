@@ -15,11 +15,19 @@ export interface BarrelImportsPluginOptions {
   external?: readonly string[];
   /** The barrels to rewrite, instead of the app config's `barrelImports`. */
   barrels?: readonly string[];
+  /** What `akanjs/ui/modelRuntime` holds instead of its empty source, in a build loading only the page runtime. */
+  modelRuntime?: string;
 }
 
 export const createBarrelImportsPlugin = async (
   app: App,
-  { skipPath = defaultSkipPath, pipeAfter, external = [], barrels: only }: BarrelImportsPluginOptions = {},
+  {
+    skipPath = defaultSkipPath,
+    pipeAfter,
+    external = [],
+    barrels: only,
+    modelRuntime,
+  }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
   const barrels = [...new Set(only ?? (await app.getConfig()).barrelImports)].filter(
     (barrel) => barrel && !external.includes(barrel),
@@ -44,6 +52,8 @@ export const createBarrelImportsPlugin = async (
           const file = Bun.file(realPath);
           //? A build's `files` entry has no copy on disk: Bun loads it itself.
           if (!(await file.exists())) return undefined;
+          if (modelRuntime !== undefined && StoreBootstrap.modelRuntimeFilter.test(realPath))
+            return { contents: modelRuntime, loader };
           let source = await file.text();
           if (skipPath(realPath)) return { contents: source, loader };
 

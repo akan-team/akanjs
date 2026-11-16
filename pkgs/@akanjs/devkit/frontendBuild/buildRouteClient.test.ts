@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import { tempDirs, writeText as write } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
 import { CLIENT_BUNDLE_NAMING } from "./clientBuildTypes";
@@ -12,8 +13,8 @@ const makeTempRoot = tempDirs("akan-client-entry-");
 
 const fixtureBarrels = ["@apps/demo/client", "@libs/kit/client"];
 
-const writeBarrelFixture = async () => {
-  const root = await makeTempRoot();
+const writeBarrelFixture = async (rootDir?: string) => {
+  const root = rootDir ?? (await makeTempRoot());
   const appDir = path.join(root, "apps/demo");
   const libDir = path.join(root, "libs/kit");
   const paths = { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] };
@@ -384,6 +385,63 @@ describe("route client store bootstrap", () => {
       "store",
       "memo-ui",
     ]);
+  });
+
+  describe("under clientRuntime route", () => {
+    const routeFixture = async () => {
+      const fixture = await writeBarrelFixture(await realpath(await makeTempRoot()));
+      await write(
+        path.join(fixture.appDir, `lib/${StoreBootstrap.pageRuntime}.ts`),
+        'export const mark = Object.freeze({ mark: "page-runtime-only" });\n',
+      );
+      const app = {
+        ...(fixture.app as object),
+        getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [], clientRuntime: "route" }),
+      } as never;
+      return { ...fixture, app };
+    };
+    const build = (app: never, entry: string) =>
+      new RouteClientBuilder({ app, seeds: [], entries: [entry], artifact: {} as never, browser: "chunks" }).build();
+
+    test("a store-free route's browser chunks carry the page runtime alone, its SSR chunks the whole runtime", async () => {
+      const { appDir, app } = await routeFixture();
+      const entry = path.join(appDir, "ui/A.tsx");
+
+      const result = await build(app, entry);
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      const ssr = await bundledText(path.join(appDir, ".akan/artifact/client-ssr"));
+      expect(browser).toContain("page-runtime-only");
+      for (const marker of ['"runtime-marker"', '"store-marker"', "lib-store-marker"])
+        expect(browser).not.toContain(marker);
+      for (const marker of ['"runtime-marker"', '"store-marker"', "lib-store-marker"]) expect(ssr).toContain(marker);
+      expect(Object.keys(result.manifestDelta)).toEqual(["apps/demo/ui/A.tsx#A"]);
+      const row = result.manifestDelta["apps/demo/ui/A.tsx#A"];
+      expect(result.ssrManifestDelta.moduleMap[row?.id ?? ""]?.A?.id).toContain(`${path.sep}client-ssr${path.sep}`);
+    });
+
+    test("a framework file importing the model runtime marker brings the app's descriptors and stores", async () => {
+      const { root, appDir, app } = await routeFixture();
+      const entry = path.join(root, "node_modules/akanjs/ui/Data/List.tsx");
+      await write(path.join(root, "node_modules/akanjs/ui/modelRuntime.ts"), "export {};\n");
+      await write(entry, '"use client";\nimport "../modelRuntime";\nexport const List = () => "list-marker";\n');
+
+      await build(app, entry);
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ["list-marker", '"runtime-marker"', '"store-marker"', "lib-store-marker"])
+        expect(browser).toContain(marker);
+    });
+
+    test("an app not synced to a page runtime keeps the whole runtime in its browser chunks", async () => {
+      const { appDir, app } = await routeFixture();
+      await Bun.file(path.join(appDir, `lib/${StoreBootstrap.pageRuntime}.ts`)).delete();
+
+      await build(app, path.join(appDir, "ui/A.tsx"));
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
+    });
   });
 
   test("a route reaching a lib's cnst through its client barrel carries no module UI", async () => {
