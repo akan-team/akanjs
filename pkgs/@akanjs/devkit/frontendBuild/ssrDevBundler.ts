@@ -12,6 +12,7 @@ import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
 import type { CsrDevContext } from "./csrDevTypes";
 import { DevRegistryBundler } from "./devRegistryBundler";
+import { DevRouteRuntime } from "./devRouteRuntime";
 import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
 
 //* Dev-only client code of SSR pages as a module registry, under `.akan/artifact/ssr-dev`. Its roots are a bootstrap
@@ -23,6 +24,7 @@ export class SsrDevBundler extends DevRegistryBundler {
   readonly reloadsOnEntryChange = false;
   #discovery: ClientEntryDiscovery | null = null;
   readonly #sharedDiscovery: (() => ClientEntryDiscovery) | null;
+  #route: { inputs: string; runtime: DevRouteRuntime | null } | null = null;
 
   /** `discovery` is the resident builder's, which it keeps current with every save; a worker discovers afresh. */
   constructor(app: App, { discovery }: { discovery?: () => ClientEntryDiscovery } = {}) {
@@ -34,9 +36,17 @@ export class SsrDevBundler extends DevRegistryBundler {
     const akanConfig = await this.app.getConfig();
     const define = bundleDefine(this.app, "start", "ssr");
     const optimizeImports = [...akanConfig.optimizeImports];
-    const barrelImports = workspaceBarrels(akanConfig.barrelImports);
-    const modelRuntime =
-      (await StoreBootstrap.scopeOf(this.app)) === "page" ? StoreBootstrap.modelRuntimeSource(this.app) : undefined;
+    const routed = akanConfig.clientRuntime === "route";
+    //? Under "route", the framework barrels narrow as in a route build: `akanjs/ui` whole names every model runtime
+    //? marker, which would load every module's store on every page.
+    const barrelImports = routed
+      ? [...new Set(akanConfig.barrelImports)].filter(
+          (barrel) => barrel && !(VENDOR_SPECIFIERS as readonly string[]).includes(barrel),
+        )
+      : workspaceBarrels(akanConfig.barrelImports);
+    const routeRuntime =
+      routed && (await StoreBootstrap.scopeOf(this.app)) === "page" ? await this.#routeRuntime() : null;
+    const modelRuntime = routeRuntime?.wholeSource;
     const configKey = Bun.hash(
       JSON.stringify([
         "ssr",
@@ -59,8 +69,20 @@ export class SsrDevBundler extends DevRegistryBundler {
       refreshFile: null,
       externals: VENDOR_SPECIFIERS,
       barrelImports,
-      ...(modelRuntime === undefined ? {} : { modelRuntime }),
+      ...(routeRuntime ? { modelRuntime, routeRuntime } : {}),
     };
+  }
+
+  async #routeRuntime(): Promise<DevRouteRuntime | null> {
+    const root = this.app.workspace.workspaceRoot;
+    const scope = `apps/${this.app.name}`;
+    const scopes = this.#route?.runtime?.scopes ?? [scope];
+    const inputs = DevRouteRuntime.inputsOf(root, scopes);
+    if (this.#route?.inputs === inputs) return this.#route.runtime;
+    const runtime = await DevRouteRuntime.read(root, scope);
+    const moved = runtime && JSON.stringify(runtime.scopes) !== JSON.stringify(scopes);
+    this.#route = { inputs: moved ? DevRouteRuntime.inputsOf(root, runtime.scopes) : inputs, runtime };
+    return runtime;
   }
 
   //? The client runtime of an SSR page inlines no dictionary (`lib/usePage.ts` reads one only when rendering csr), so
@@ -75,7 +97,8 @@ export class SsrDevBundler extends DevRegistryBundler {
     const file = path.join(this.entryDir, "bootstrap.ts");
     const hasStore = await Bun.file(path.join(this.app.cwdPath, "lib", "st.ts")).exists();
     const scope = context?.modelRuntime === undefined ? "whole" : "page";
-    const source = hasStore ? StoreBootstrap.source(this.app.name, scope) : "export {};\n";
+    const owners = context?.routeRuntime?.ownersSource() ?? "";
+    const source = hasStore ? `${StoreBootstrap.source(this.app.name, scope)}${owners}` : "export {};\n";
     const unchanged = (await Bun.file(file).exists()) && (await Bun.file(file).text()) === source;
     if (!unchanged) await Bun.write(file, source);
     const entryFile = CsrDevPaths.realpath(file);

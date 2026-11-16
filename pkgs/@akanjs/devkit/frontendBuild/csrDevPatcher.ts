@@ -110,6 +110,7 @@ export class CsrDevPatcher {
     const forgotten = this.#forgetDeletedModules(state, present);
     const changed = onlyRoots ? new Set<string>() : await this.#changedModules(graph, changedFiles, present);
     const restamped = onlyRoots ? null : await this.#renarrowed(context, graph, changedFiles, changed);
+    const routeTable = onlyRoots ? undefined : await this.#rerouted(context, graph, changed);
     for (const id of this.#withoutFactory(state, present)) changed.add(id);
     for (const file of entries.changed) changed.add(paths.idOf(file));
     const rootFiles = [...Object.values(entries.files), ...roots.filter((file) => fs.existsSync(file))];
@@ -124,6 +125,7 @@ export class CsrDevPatcher {
     if (changed.size === 0) {
       //? No importer moved (none compiles), so the restamped barrels already hold.
       if (restamped) graph.barrels = { ...graph.barrels, ...restamped };
+      if (routeTable !== undefined) graph.routeTable = routeTable;
       if (carried.length === 0) return { kind: "unchanged" };
       return await this.#retryCarried(context, state, carried, { announce, allowWholeAppBuilds });
     }
@@ -161,12 +163,7 @@ export class CsrDevPatcher {
       await writer.writeJson("graph.json", graph);
       throw error;
     }
-    const refusal =
-      result.refusedVendors.length > 0
-        ? "an npm module joined the graph"
-        : result.unresolved.length > 0
-          ? `a new import needs the resolution build: ${result.unresolved[0]}`
-          : null;
+    const refusal = CsrDevPatcher.#refusalOf(result);
     if (refusal) {
       //? The entry files are already rewritten, so the worker would see them unchanged and patch a moved route table:
       //? a graph whose entries name none makes it reload instead.
@@ -192,6 +189,7 @@ export class CsrDevPatcher {
     }
     graph.pending = graph.pending.filter((id) => !orphans.includes(id));
     this.#bundler.merge(graph, resolver, compiled, { ...restamped, ...result.barrels });
+    if (routeTable !== undefined) graph.routeTable = routeTable;
     if (!this.#resident) delete graph.failed;
     for (const module of compiled) this.#delegated.delete(module.id);
     graph.entries = entryIds;
@@ -259,6 +257,11 @@ export class CsrDevPatcher {
     if (carried.length === 0) return outcome;
     const retried = await this.#retryCarried(context, state, carried, { announce, allowWholeAppBuilds });
     return retried.kind === "delegate" ? retried : outcome;
+  }
+
+  static #refusalOf(result: CsrDevCompileResult): string | null {
+    if (result.refusedVendors.length > 0) return "an npm module joined the graph";
+    return result.unresolved.length > 0 ? `a new import needs the resolution build: ${result.unresolved[0]}` : null;
   }
 
   //? Compiled apart from the save: a new root that failed to compile, and that no module imports, must not fail every
@@ -538,6 +541,22 @@ export class CsrDevPatcher {
       }
     }
     return barrels;
+  }
+
+  //? A store, signal or constant save can move a name to another module, or make one known: a module whose own text
+  //? did not change may then need other pieces. Each module the route runtime rewrote is rewritten again, and compiles
+  //? when it comes out different. The digest is recorded like a barrel stamp, with the compile that follows.
+  async #rerouted(context: CsrDevContext, graph: CsrDevGraph, changed: Set<string>): Promise<string | undefined> {
+    const { routeRuntime } = context;
+    if (!routeRuntime || graph.routeTable === routeRuntime.digest) return undefined;
+    const { paths } = this.#bundler;
+    for (const [id, module] of Object.entries(graph.modules)) {
+      if (!module.routed || changed.has(id)) continue;
+      const file = paths.fileOf(id);
+      if (!fs.existsSync(file)) continue;
+      if (routeRuntime.transform(await Bun.file(file).text(), file)?.stamp !== module.routed) changed.add(id);
+    }
+    return routeRuntime.digest;
   }
 
   static #remember(code: CsrDevCode, compiled: CsrDevCompileResult["modules"]) {

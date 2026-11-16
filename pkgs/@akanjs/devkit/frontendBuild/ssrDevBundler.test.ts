@@ -48,22 +48,38 @@ describe("SsrDevBundler under clientRuntime route", () => {
     ...StoreBootstrap.assembled.map((file) => `${file}.ts`),
   ];
 
-  test("boots the page runtime with the framework's own descriptors and answers the model runtime marker with the app's runtime", async () => {
+  const writeFrameworkBase = async (root: string) => {
+    const akanjsRoot = path.dirname(Bun.resolveSync("akanjs/package.json", import.meta.dir));
+    for (const file of ["package.json", "store/baseSt.ts", "signal/base.signal.ts", "signal/agent.signal.ts"])
+      await write(path.join(root, "node_modules/akanjs", file), await Bun.file(path.join(akanjsRoot, file)).text());
+  };
+
+  test("boots the page runtime with the framework's own descriptors and answers the model runtime marker with the app's assembled pieces", async () => {
     const root = await makeTempRoot();
     await writeLib(root, pageFiles);
+    await writeFrameworkBase(root);
     const bundler = new SsrDevBundler(appOf(root, "route"));
     const context = await bundler.context();
     const { files } = await bundler.writeEntries(context);
 
-    expect(await Bun.file(files[SsrDevBundler.bootstrapKey] ?? "").text()).toBe(
+    const bootstrap = await Bun.file(files[SsrDevBundler.bootstrapKey] ?? "").text();
+    expect(bootstrap).toStartWith(
       `import "@apps/demo/lib/${StoreBootstrap.pageRuntime}";\nimport "@apps/demo/lib/${StoreBootstrap.baseDescriptors}";\n`,
     );
+    expect(bootstrap).toContain('[Symbol.for("akanjs.store.owners")] = {"use":');
+    expect(context.routeRuntime).toBeDefined();
     expect(context.modelRuntime).toBe(
-      [path.join(root, "apps/demo/lib/useClient.ts"), path.join(root, "apps/demo/lib/st.ts")]
-        .map((file) => `import ${JSON.stringify(file.split(path.sep).join("/"))};\n`)
+      StoreBootstrap.assembled
+        .map(
+          (piece) =>
+            `import ${JSON.stringify(path.join(root, "apps/demo/lib", `${piece}.ts`).split(path.sep).join("/"))};\n`,
+        )
         .join(""),
     );
-    expect(context.configKey).not.toBe((await new SsrDevBundler(appOf(root, "all")).context()).configKey);
+    const whole = await new SsrDevBundler(appOf(root, "all")).context();
+    expect(context.configKey).not.toBe(whole.configKey);
+    expect(whole.routeRuntime).toBeUndefined();
+    expect(whole.modelRuntime).toBeUndefined();
   });
 
   for (const missing of pageFiles.slice(2))
