@@ -24,7 +24,7 @@ export class KeyboardRide {
   static #target = 0;
   static #isOverlay = false;
   static #timer: ReturnType<typeof setTimeout> | null = null;
-  static #insets = new Map<HTMLElement, string>();
+  static #insets = new Map<HTMLElement, { paddingBottom: string; rise: number }>();
 
   static move(height: number, durationMs: number) {
     if (height === KeyboardRide.#target) return;
@@ -47,7 +47,8 @@ export class KeyboardRide {
     const riders = [...document.querySelectorAll<HTMLElement>(RIDE_SELECTOR)].filter(
       (element) => element.getClientRects().length > 0,
     );
-    const drawn = riders.map(bottomOf);
+    //? An inset rider's box reaches past what it shows by the padding it took for the rise; it was drawn that much higher.
+    const drawn = riders.map((rider) => bottomOf(rider) - (KeyboardRide.#insets.get(rider)?.rise ?? 0));
     for (const rider of riders) {
       rider.style.transition = "none";
       rider.style.transform = "";
@@ -98,14 +99,14 @@ export class KeyboardRide {
     riders.forEach((rider, idx) => {
       const rise = laid[idx] - settled[idx];
       if (!isInset(rider) || rise <= 0) return;
-      KeyboardRide.#insets.set(rider, rider.style.paddingBottom);
+      KeyboardRide.#insets.set(rider, { paddingBottom: rider.style.paddingBottom, rise });
       rider.style.paddingBottom = `calc(${getComputedStyle(rider).paddingBottom} + ${rise}px)`;
     });
     for (const scroller of scrollers) scroller.scrollTop = scroller.scrollHeight;
   }
 
   static #releaseInsets() {
-    for (const [rider, paddingBottom] of KeyboardRide.#insets) rider.style.paddingBottom = paddingBottom;
+    for (const [rider, { paddingBottom }] of KeyboardRide.#insets) rider.style.paddingBottom = paddingBottom;
     KeyboardRide.#insets.clear();
   }
 
