@@ -110,6 +110,10 @@ export interface CsrState {
         top: boolean;
         bottom: boolean;
     };
+    overlay?: {
+        top: boolean;
+        bottom: boolean;
+    };
     gesture: boolean;
     cache: boolean;
     ssr: SsrRenderMode;
@@ -510,6 +514,7 @@ export interface PageConfig {
     safeArea?: PageSafeAreaConfig;
     topInset?: ResponsiveInset | boolean | number;
     bottomInset?: ResponsiveInset | boolean | number;
+    overlay?: PageOverlayConfig;
     gesture?: boolean;
     cache?: boolean;
     ssr?: SsrRenderMode;
@@ -589,6 +594,8 @@ export interface PageModule {
     Loading?: PageLoadingRender;
     guard?: RouteGuard;
 }
+
+export type PageOverlayConfig = "bottom" | "top" | boolean;
 
 export interface PageProps {
     params: {

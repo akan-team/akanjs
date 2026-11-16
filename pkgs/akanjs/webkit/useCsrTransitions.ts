@@ -46,23 +46,36 @@ const fadeOut = (progress: Progress) => ({ opacity: progress.to((value) => 1 - v
 const isKeyboardOverContent = ({ keyboard }: RouteState["frameLayout"]) =>
   !!keyboard.avoidsContent && keyboard.visible && !keyboard.sticky;
 
+const chromePadding = (pageState: FramePageState, top: number, bottom: number) => ({
+  paddingTop: pageState.overlay?.top ? 0 : top,
+  paddingBottom: pageState.overlay?.bottom ? 0 : bottom,
+  "--akan-overlay-top": `${pageState.overlay?.top ? top : 0}px`,
+  "--akan-overlay-bottom": `${pageState.overlay?.bottom ? bottom : 0}px`,
+});
+
 const pageContentStyle = ({ frameLayout }: RouteState, pageState: FramePageState) => ({
-  paddingTop: pageState.topSafeArea + pageState.topInset,
-  paddingBottom: isKeyboardOverContent(frameLayout)
-    ? 0
-    : Math.max(
-        pageState.bottomSafeArea,
-        pageState.bottomInset +
-          pageState.bottomSafeArea -
-          (frameLayout.keyboard.sticky ? frameLayout.keyboardAccessory.height : 0),
-      ),
+  ...chromePadding(
+    pageState,
+    pageState.topSafeArea + pageState.topInset,
+    isKeyboardOverContent(frameLayout)
+      ? 0
+      : Math.max(
+          pageState.bottomSafeArea,
+          pageState.bottomInset +
+            pageState.bottomSafeArea -
+            (frameLayout.keyboard.sticky ? frameLayout.keyboardAccessory.height : 0),
+        ),
+  ),
   height: frameLayout.contentViewport.height,
   "--akan-content-height": `${frameLayout.contentViewport.height}px`,
 });
 
 const prevPageContentStyle = (clientHeight: number, prevPageState: FramePageState) => ({
-  paddingTop: prevPageState.topSafeArea + prevPageState.topInset,
-  paddingBottom: prevPageState.bottomInset + prevPageState.bottomSafeArea,
+  ...chromePadding(
+    prevPageState,
+    prevPageState.topSafeArea + prevPageState.topInset,
+    prevPageState.bottomInset + prevPageState.bottomSafeArea,
+  ),
   height: clientHeight,
 });
 
@@ -173,7 +186,7 @@ const useNoneTrans = (routeState: RouteState): UseCsrTransition => {
     },
     prevPage: {
       containerStyle: {
-        paddingTop: prevPageState.topSafeArea + prevPageState.topInset,
+        paddingTop: prevPageState.overlay?.top ? 0 : prevPageState.topSafeArea + prevPageState.topInset,
       },
       contentStyle: { opacity: 0 },
     },

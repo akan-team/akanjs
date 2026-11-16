@@ -1,5 +1,12 @@
 import { isRecord, trimSlashes } from "akanjs/common";
-import type { PageConfig, PageSafeAreaConfig, PageState, ResponsiveInset, SsrRenderMode } from "./csrTypes";
+import type {
+  PageConfig,
+  PageOverlayConfig,
+  PageSafeAreaConfig,
+  PageState,
+  ResponsiveInset,
+  SsrRenderMode,
+} from "./csrTypes";
 import { transitionTypes } from "./transitionTypes";
 
 export type DevicePlatform = "ios" | "android" | "web" | (string & {});
@@ -38,6 +45,7 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "safeArea",
   "topInset",
   "bottomInset",
+  "overlay",
   "gesture",
   "cache",
   "ssr",
@@ -79,6 +87,9 @@ export const validatePageConfig = (routeKey: string, config?: PageConfig) => {
         `[route-convention] pageConfig.${key} in ${routeKey} must be a boolean, a non-negative px number, or { base, sm?, md?, lg?, xl?, "2xl"? } of them.`,
       );
   }
+  const { overlay } = pageConfig;
+  if (overlay !== undefined && typeof overlay !== "boolean" && overlay !== "top" && overlay !== "bottom")
+    throw new Error(`[route-convention] pageConfig.overlay in ${routeKey} must be a boolean, "top" or "bottom".`);
   validateSafeAreaConfig(routeKey, pageConfig.safeArea);
 };
 
@@ -202,6 +213,7 @@ export const resolvePageState = ({
   const transition = config.transition ?? "none";
   const responsive = isResponsiveInset(config.topInset) || isResponsiveInset(config.bottomInset);
   const safeAreaEnv = platform === "web" ? resolveSafeAreaEnv(config.safeArea) : undefined;
+  const overlay = resolveOverlay(config.overlay);
   return {
     transition,
     topSafeArea: safeArea.top,
@@ -219,6 +231,7 @@ export const resolvePageState = ({
         }
       : {}),
     ...(safeAreaEnv ? { safeAreaEnv } : {}),
+    ...(overlay ? { overlay } : {}),
     gesture: explicitKeys.gesture
       ? (config.gesture ?? false)
       : transition === "none"
@@ -226,9 +239,17 @@ export const resolvePageState = ({
         : (config.gesture ?? false),
     cache: config.cache ?? false,
     ssr: config.ssr ?? "stream",
-    topSafeAreaColor: config.topSafeAreaColor ?? defaultPageState.topSafeAreaColor,
-    bottomSafeAreaColor: config.bottomSafeAreaColor ?? defaultPageState.bottomSafeAreaColor,
+    topSafeAreaColor: config.topSafeAreaColor ?? (overlay?.top ? "transparent" : defaultPageState.topSafeAreaColor),
+    bottomSafeAreaColor:
+      config.bottomSafeAreaColor ?? (overlay?.bottom ? "transparent" : defaultPageState.bottomSafeAreaColor),
   };
+};
+
+const resolveOverlay = (overlay?: PageOverlayConfig): { top: boolean; bottom: boolean } | undefined => {
+  if (overlay === true) return { top: true, bottom: true };
+  if (overlay === "top") return { top: true, bottom: false };
+  if (overlay === "bottom") return { top: false, bottom: true };
+  return undefined;
 };
 
 const resolveInset = (inset: PageConfig["topInset"]): number => {

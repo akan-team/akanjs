@@ -134,6 +134,8 @@ One `.config()` object sets the whole page frame: animation, gesture, reserved s
 
 - bottomInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default the chrome's height in the app · 0 on web): Space reserved for a bottom bar, in the same forms and with the same 48px meaning for `true`.
 
+- overlay (boolean | "top" | "bottom", default false): Runs the page under that side's safe area and inset, so a translucent bar shows what scrolls beneath it.
+
 - safeArea (boolean | "top" | "bottom" | { top?, bottom?, android? }, default iOS true · Android { android: "auto" } · web false): Device insets to reserve; `"top"` or `"bottom"` keeps one side. The web needs `fitCover`.
 
 - safeArea.android ("auto" | "edge-to-edge" | "none", default "auto"): How Android measures the safe area; `none` reserves nothing.
@@ -174,15 +176,19 @@ Variable
 
 - --akan-bottom-inset: The `bottomInset` in force at this width, in px.
 
-- --akan-page-padding-top: Top safe area plus top inset: the top padding a page body needs.
+- --akan-page-padding-top: Top safe area plus top inset: the top padding a page body needs; 0 under `overlay`.
 
-- --akan-page-padding-bottom: Bottom safe area plus bottom inset: the bottom padding a page body needs.
+- --akan-page-padding-bottom: Bottom safe area plus bottom inset: the bottom padding a page body needs; 0 under `overlay`.
+
+- --akan-overlay-top: Under `overlay`, the top chrome the page runs beneath, for its scroller to pad by; 0 otherwise.
+
+- --akan-overlay-bottom: Under `overlay`, the bottom chrome the page runs beneath, for its scroller to pad by; 0 otherwise.
 
 - --akan-content-height: The usable height between the page's top and bottom chrome; on the web it follows the keyboard.
 
 - --akan-keyboard-inset: Web only: the on-screen keyboard's height over the page bottom, in px.
 
-Tailwind reads them directly: `h-(--akan-bottom-inset)` sizes a bar to exactly the space the page reserved.
+Tailwind reads them directly: `h-(--akan-bottom-inset)` sizes a bar to exactly the space the page reserved. Under `overlay`, a scroller written `pb-(--akan-overlay-bottom)` lets its last row scroll clear of the bar it passes under, and the overlaid side's safe area is transparent unless the page colors it.
 
 The Keyboard Inset
 
