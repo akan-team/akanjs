@@ -272,6 +272,7 @@ const generatedFiles = [
   "*/lib/sig.ts",
   "*/lib/srv.ts",
   "*/lib/st.ts",
+  "*/lib/usePage.ts",
   "*/lib/useClient.ts",
   "*/lib/useServer.ts",
   "*/lib/**/index.ts",

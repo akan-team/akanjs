@@ -378,7 +378,7 @@ const rewriteSingleStatement = (
   if (rewrites.size === 0 && namespaceLines.length === 0) return null;
 
   //? An app or lib client barrel's import-time side effects are its client runtime and store, not its module UI.
-  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map) ?? []).map(
+  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map, valueNamesOf(clause)) ?? []).map(
     (specifier) => `import ${JSON.stringify(specifierOf(specifier))};`,
   );
 

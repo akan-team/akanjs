@@ -34,7 +34,7 @@ export class AgentHook {
   static readonly generated = [
     "apps/*/client.ts",
     "apps/*/server.ts",
-    "{apps,libs}/*/lib/{cnst,db,dict,sig,srv,st,useClient,useServer}.ts",
+    "{apps,libs}/*/lib/{cnst,db,dict,sig,srv,st,useClient,usePage,useServer}.ts",
     "{apps,libs}/*/lib/**/index.ts",
     "{apps,libs}/*/{ui,webkit,srvkit,common,plugin}/index.ts",
   ] as const;

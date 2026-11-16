@@ -1,9 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-//* The sources `lib/useClient.ts` reads through its macros, which no registry graph lists as a dependency. A registry
-//* records their stamp, so a builder that loads one built before a signal or dictionary save rebuilds it, whichever
-//* process saw that save (a builder restarted for it never finishes the rebuild it started).
+//* The sources `lib/useClient.ts` and `lib/usePage.ts` read through macros, which no registry graph lists as a
+//* dependency. A registry records their stamp, so a builder that loads one built before a signal or dictionary save
+//* rebuilds it, whichever process saw that save (a builder restarted for it never finishes the rebuild it started).
 export class RegistryMetadataFingerprint {
   static readonly #sources = new Bun.Glob("**/*.{signal,dictionary}.ts");
   static readonly #libFiles = ["sig.ts", "dict.ts", "useClient.ts"];

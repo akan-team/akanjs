@@ -17,6 +17,7 @@ import { sliceKeysOf } from "./sliceKeys";
 import type { SliceActionKey, SliceActionRole, SliceStateRole } from "./sliceRole";
 import type { DraftState, SliceStateKey } from "./state";
 import { type DraftMeta, evaluateInitializers, type SearchParamsState, type StateDerivedMeta } from "./stateBuilder";
+import { StoreFacade } from "./storeFacade";
 import type { StoreUseOptions } from "./types";
 
 enableMapSet();
@@ -259,9 +260,9 @@ export class StoreInstance {
     return ref as RefObject<U>;
   };
 
-  use: { [key: string]: (options?: StoreUseOptions) => unknown } = {};
-  do: { [key: string]: StoreAction } = {};
-  slice: { [key: string]: unknown } = {};
+  use: { [key: string]: (options?: StoreUseOptions) => unknown } = StoreFacade.guard("use", {});
+  do: { [key: string]: StoreAction } = StoreFacade.guard("do", {});
+  slice: { [key: string]: unknown } = StoreFacade.guard("slice", {});
 
   readonly #sliceActionRoles = new Map<string, SliceActionRole>();
   readonly #sliceStateRoles = new Map<string, SliceStateRole>();
@@ -369,7 +370,7 @@ export class StoreInstance {
               const publish = options?.agent !== false;
               this.#useLive(k, publish);
               useFormTools(publish ? formRefName : null, (action, value) => {
-                void (this.do[action] as ((value: unknown) => unknown) | undefined)?.(value);
+                void (StoreFacade.peek(this.do, action) as ((value: unknown) => unknown) | undefined)?.(value);
               });
               return this.#sel((s) => s[k]);
             }
@@ -379,15 +380,19 @@ export class StoreInstance {
             };
         if (this.#derivedMeta.derivedKeys.has(k)) continue;
         const setKey = stateSetterName(k);
-        // A declared action of the same name (`setPageOfX` is a slice action) wins the key; no convenience setter.
-        if (setKey in actions) continue;
-        this.do[setKey] = tagAction((value: unknown) => this.set({ [k]: value }), { action: setKey, state: k });
+        // A declared action of the same name (`setPageOfX` is a slice action), from any root added so far, wins the key.
+        if (setKey in this.#ctx) continue;
+        if (!StoreFacade.isBuiltFrom(this.do, setKey, k))
+          this.do[setKey] = StoreFacade.builtFrom(
+            tagAction((value: unknown) => this.set({ [k]: value }), { action: setKey, state: k }),
+            k,
+          );
         this.#actionArity.set(setKey, 1);
         this.#generatedSetters.add(setKey);
       }
     }
     for (const k of Object.keys(actions)) {
-      const silent = this.#actionOwners.get(k)?.silent === true;
+      if (StoreFacade.isBuiltFrom(this.do, k, actions[k])) continue;
       const dispatch = async (...args: unknown[]) => {
         Logger.verbose(`${k} action loading...`);
         const start = Date.now();
@@ -396,6 +401,7 @@ export class StoreInstance {
           Logger.verbose(`=> ${k} action dispatched (${Date.now() - start}ms)`);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
+          const silent = this.#actionOwners.get(k)?.silent === true;
           if (silent || AbortSignals.isAbortOf(error, args)) Logger.verbose(`${k} action failed silently: ${message}`);
           else {
             this.#showActionErrorMessage(k, error);
@@ -405,7 +411,7 @@ export class StoreInstance {
         }
       };
       // Carried over, not rebuilt: a generated setter's tag holds the state path this wrapper cannot know.
-      this.do[k] = tagAction(dispatch, actionTagOf(actions[k]) ?? { action: k });
+      this.do[k] = StoreFacade.builtFrom(tagAction(dispatch, actionTagOf(actions[k]) ?? { action: k }), actions[k]);
     }
   }
 
@@ -453,20 +459,20 @@ export class StoreInstance {
     const args = serializedSlice.args ?? [];
     for (const key of Object.keys(namesOfSliceAction) as SliceActionKey[]) {
       const rootActionKey = namesOfSliceAction[key];
-      if (!this.do[rootActionKey]) continue;
+      if (!StoreFacade.peek(this.do, rootActionKey)) continue;
       targetSlice.do[names.action[key]] = this.do[rootActionKey];
       this.#sliceActionRoles.set(rootActionKey, { role: key, refName, sliceName, args });
     }
 
     for (const key of Object.keys(namesOfSliceState) as SliceStateKey[]) {
       const rootStateKey = namesOfSliceState[key];
-      if (this.use[rootStateKey]) {
+      if (StoreFacade.peek(this.use, rootStateKey)) {
         targetSlice.use[names.state[key]] = this.use[rootStateKey];
         this.#sliceStateRoles.set(rootStateKey, { role: key, refName, sliceName });
       }
       const setRootKey = stateSetterName(rootStateKey);
       const setLocalKey = stateSetterName(names.state[key]);
-      if (this.do[setRootKey]) targetSlice.do[setLocalKey] = this.do[setRootKey];
+      if (StoreFacade.peek(this.do, setRootKey)) targetSlice.do[setLocalKey] = this.do[setRootKey];
     }
 
     targetSlice.get = () => {

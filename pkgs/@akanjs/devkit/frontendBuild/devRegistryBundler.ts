@@ -106,7 +106,7 @@ export abstract class DevRegistryBundler {
     return graph !== null && files.every((file) => graph.modules[this.paths.idOf(file)] !== undefined);
   }
 
-  /** A save of one goes to a whole build: `lib/useClient.ts` inlines what they declare through macros. */
+  /** A save of one goes to a whole build: `lib/useClient.ts` and `lib/usePage.ts` inline what they declare. */
   isMetadataFile(file: string): boolean {
     return isAkanRuntimeMetadataFile(file);
   }

@@ -5,6 +5,7 @@ import { AbortSignals } from "akanjs/common";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
 import { type ClientSignal, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
+import { isValidElement } from "react";
 import type { RootStoreCls } from "./rootStore";
 import { type StoreCls, store } from "./store";
 import { MemoryStorage, setTestEnv } from "./store.fixture";
@@ -1807,6 +1808,181 @@ describe("StoreRegistry and root assembly", () => {
     const setterIsVoid: Exact<ReturnType<typeof built.do.setReturnedValue>, void> = true;
 
     expect([syncIsVoid, asyncIsVoid, argsSurvive, setterIsVoid]).toEqual([true, true, true, true]);
+  });
+});
+
+describe("StoreInstance with a root added later", () => {
+  test("keeps the earlier state, notifies once, hydrates the added persisted key and lets an earlier action reach the added one", async () => {
+    setupEnv();
+    const browser = installBrowser();
+    class EarlyStore extends store("earlyStore" as const, () => ({ earlyValue: 1 })) {
+      async askLate(value: string) {
+        await (this as unknown as { markLate: (value: string) => Promise<void> }).markLate(value);
+      }
+    }
+    class LateStore extends store("lateStore" as const, ({ persist }) => ({
+      lateValue: "initial",
+      lateCount: persist(Int, { default: 1, key: "lateCount" }),
+    })) {
+      markLate(value: string) {
+        this.set({ lateValue: value });
+      }
+    }
+    StoreRegistry.register(EarlyStore);
+    StoreRegistry.register(LateStore);
+    browser.localStorage.setItem(LateStore[STATE_DERIVED_META].persistSession.lateCount.storageKey, JSON.stringify(7));
+    const instance = new StoreInstance(makeRoot("earlyRoot", EarlyStore));
+    instance.set({ earlyValue: 2 });
+    await expect(instance.do.askLate("before")).rejects.toThrow(TypeError);
+    let notified = 0;
+    instance.subscribe(() => notified++);
+
+    instance.addStore(makeRoot("lateRoot", LateStore));
+
+    expect(notified).toBe(1);
+    expect(instance.get()).toMatchObject({ earlyValue: 2, lateValue: "initial", lateCount: 7 });
+    await instance.do.askLate("after");
+    expect(instance.get().lateValue).toBe("after");
+    uninstallBrowser();
+  });
+
+  test("keeps st.do.<action> and a generated setter the same function when a later root repeats their store", () => {
+    setupEnv();
+    class RepeatedStore extends store("repeatedStore" as const, () => ({ repeatedValue: 1 })) {
+      bumpRepeated() {
+        this.set({ repeatedValue: 2 });
+      }
+    }
+    class BesideStore extends store("besideStore" as const, () => ({ besideValue: 1 })) {}
+    StoreRegistry.register(RepeatedStore);
+    StoreRegistry.register(BesideStore);
+    const instance = new StoreInstance(makeRoot("repeatedRoot", RepeatedStore));
+    const { bumpRepeated, setRepeatedValue } = instance.do;
+
+    instance.addStore(makeRoot("besideRoot", RepeatedStore, BesideStore));
+
+    expect(instance.do.bumpRepeated).toBe(bumpRepeated);
+    expect(instance.do.setRepeatedValue).toBe(setRepeatedValue);
+  });
+
+  test("lets a later root's static silent quiet an action an earlier root built from the same method", async () => {
+    setupEnv();
+    class LoudLibStore extends store("quietedStore" as const, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+      async failThing() {
+        throw new Error("quietedStore.error.failed");
+      }
+    }
+    StoreRegistry.register(LoudLibStore);
+    class QuietAppStore extends store("quietedStore" as const, () => ({}), LoudLibStore) {
+      static silent = ["failThing"] satisfies (keyof QuietAppStore)[];
+    }
+    StoreRegistry.register(QuietAppStore);
+    const instance = new StoreInstance(makeRoot("loudLibRoot", LoudLibStore));
+    const { failThing } = instance.do;
+
+    instance.addStore(makeRoot("quietAppRoot", QuietAppStore));
+
+    await expect(instance.do.failThing()).rejects.toThrow("quietedStore.error.failed");
+    expect(instance.get().messages).toEqual([]);
+    expect(instance.do.failThing).toBe(failThing);
+  });
+
+  test("keeps a declared set<Key> action when a later root that does not declare it is added", async () => {
+    setupEnv();
+    class DeclaringStore extends store("declaringStore" as const, () => ({ declaredValue: 1 })) {
+      setDeclaredValue(value: number) {
+        this.set({ declaredValue: value * 10 });
+      }
+    }
+    class UnrelatedStore extends store("unrelatedStore" as const, () => ({ unrelatedValue: 1 })) {}
+    StoreRegistry.register(DeclaringStore);
+    StoreRegistry.register(UnrelatedStore);
+    const instance = new StoreInstance(makeRoot("declaringRoot", DeclaringStore));
+    const { setDeclaredValue } = instance.do;
+
+    instance.addStore(makeRoot("unrelatedRoot", UnrelatedStore));
+    await instance.do.setDeclaredValue(2);
+
+    expect(instance.do.setDeclaredValue).toBe(setDeclaredValue);
+    expect(instance.get().declaredValue).toBe(20);
+    expect(instance.generatedSetters.has("setDeclaredValue")).toBe(false);
+  });
+
+  test("replaces st.do.<action> when a later root brings a different method under its name", async () => {
+    setupEnv();
+    class ReplacedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {
+      markReplaced() {
+        this.set({ replacedValue: 2 });
+      }
+    }
+    StoreRegistry.register(ReplacedStore);
+    const instance = new StoreInstance(makeRoot("replacedRoot", ReplacedStore));
+    const before = instance.do.markReplaced;
+    class EditedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {
+      markReplaced() {
+        this.set({ replacedValue: 3 });
+      }
+    }
+    StoreRegistry.register(EditedStore);
+
+    instance.addStore(makeRoot("editedRoot", EditedStore));
+    await instance.do.markReplaced();
+
+    expect(instance.do.markReplaced).not.toBe(before);
+    expect(instance.get().replacedValue).toBe(3);
+  });
+});
+
+describe("StoreInstance facades on an unknown key", () => {
+  const withNodeEnv = <T>(nodeEnv: string, run: () => T) => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = nodeEnv;
+    try {
+      return run();
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  };
+
+  test("throws in development, naming the facade and the key", () => {
+    setupEnv();
+    class KnownStore extends store("knownStore" as const, () => ({ knownValue: 1 })) {}
+    StoreRegistry.register(KnownStore);
+    const instance = withNodeEnv("development", () => new StoreInstance(makeRoot("knownRoot", KnownStore)));
+
+    expect(() => instance.do.missingAction).toThrow("st.do.missingAction is not registered");
+    expect(() => instance.use.missingValue).toThrow("st.use.missingValue is not registered");
+    expect(() => instance.slice.missingSlice).toThrow("st.slice.missingSlice is not registered");
+    expect(instance.do.setKnownValue).toBeInstanceOf(Function);
+    expect("missingAction" in instance.do).toBe(false);
+    expect(instance.do.then).toBeUndefined();
+  });
+
+  test("lets React's element check read a facade handed as a prop in development", () => {
+    setupEnv();
+    class PropStore extends store("propStore" as const, () => ({ propValue: 1 })) {}
+    StoreRegistry.register(PropStore);
+    const instance = withNodeEnv("development", () => new StoreInstance(makeRoot("propRoot", PropStore)));
+
+    expect(isValidElement(instance.use)).toBe(false);
+    expect(isValidElement(instance.do)).toBe(false);
+    expect(isValidElement(instance.slice)).toBe(false);
+  });
+
+  test("answers undefined in production and under test", () => {
+    setupEnv();
+    class QuietStore extends store("quietStore" as const, () => ({ quietValue: 1 })) {}
+    StoreRegistry.register(QuietStore);
+    for (const nodeEnv of ["production", "test"]) {
+      const instance = withNodeEnv(nodeEnv, () => new StoreInstance(makeRoot("quietRoot", QuietStore)));
+
+      expect(instance.do.missingAction).toBeUndefined();
+      expect(instance.use.missingValue).toBeUndefined();
+      expect(instance.slice.missingSlice).toBeUndefined();
+    }
   });
 });
 

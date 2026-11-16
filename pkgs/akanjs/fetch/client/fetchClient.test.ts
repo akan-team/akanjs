@@ -273,3 +273,33 @@ describe("FetchClient merging a model's fields", () => {
     );
   });
 });
+
+describe("FetchClient.build onto a base client", () => {
+  test("adds the descriptors' handlers, slices and sig entries to the proxy it was handed", () => {
+    const GizmoInput = via((field) => ({ name: field(String) }));
+    const GizmoObject = via(GizmoInput, () => ({}));
+    const LightGizmo = via(GizmoObject, ["name"] as const, () => ({}));
+    class Gizmo extends via(GizmoObject, LightGizmo, () => ({})) {}
+    const GizmoInsight = via(Gizmo, () => ({}));
+    ConstantRegistry.buildModel("gizmo", GizmoInput, GizmoObject, Gizmo, LightGizmo, GizmoInsight, {});
+    const gizmo: SerializedSignal = {
+      prefix: "gizmo",
+      slice: { "": root, inShop: { args: [], guards: ["Public"] } },
+      getGuards: ["Public"],
+      endpoint: { countGizmos: { type: "query", args: [], returns: { refName: "Int" }, guards: ["Public"] } },
+    };
+    const base = FetchClient.build({}, {}, { origin: "https://app.example" });
+    expect(Object.keys(base.sig)).toEqual([]);
+    expect("countGizmos" in base.fetch.instance.handler).toBe(false);
+
+    const later = FetchClient.build({}, { gizmo }, { origin: "https://app.example", base: base.fetch });
+    const laterSig = later.sig as unknown as Record<string, { fetch: unknown; slices: { sliceName: string }[] }>;
+
+    expect(later.fetch).toBe(base.fetch);
+    expect(typeof base.fetch.countGizmos).toBe("function");
+    expect("gizmoListInShop" in base.fetch.instance.handler).toBe(true);
+    expect(Object.keys(base.fetch.slice).sort()).toEqual(["gizmo", "gizmoInShop"]);
+    expect(laterSig.gizmo.fetch).toBe(base.fetch);
+    expect(laterSig.gizmo.slices.map(({ sliceName }) => sliceName)).toEqual(["gizmo", "gizmoInShop"]);
+  });
+});
