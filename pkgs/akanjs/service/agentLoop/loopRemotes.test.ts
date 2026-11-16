@@ -847,7 +847,7 @@ describe("AgentLoop remotes, stored a call at a time", () => {
     ]);
     const { messages, request } = stored(ask([remote], { toolkits }));
     const events = await drain(port, request);
-    expect(namesOf(requests[1])).toEqual(["noteList", "createNote", "shop.orderList", "shop.refundOrder"]);
+    expect(namesOf(requests[1])).toEqual(["createNote", "noteList", "shop.orderList", "shop.refundOrder"]);
     expect(requests[2]?.messages.at(-1)?.toolResults?.map((result) => result.result)).toEqual([
       "orderList:o1",
       "orderList:o2",
@@ -858,7 +858,7 @@ describe("AgentLoop remotes, stored a call at a time", () => {
     const firstOpen = messages.findIndex((message) => message.role === "tool");
     const opened = harness([saying("Opened.")]);
     await drain(opened.port, ask([remote], { toolkits, messages: messages.slice(0, firstOpen + 1) }));
-    expect(namesOf(opened.requests[0])).toEqual(["noteList", "createNote", "shop.orderList", "shop.refundOrder"]);
+    expect(namesOf(opened.requests[0])).toEqual(["createNote", "noteList", "shop.orderList", "shop.refundOrder"]);
 
     state.calls.length = 0;
     const firstCall = messages.findIndex((message) => message.toolResults?.[0]?.id === "c2");

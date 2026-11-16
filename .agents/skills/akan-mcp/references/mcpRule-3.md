@@ -14,9 +14,10 @@ at every event.
   the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
   asked about nor run. A request with no `allow` array is an `error`.
 - **Toolkits.** `toolkits: { calendar: { description, tools } }` groups names of `allow` so a round need not carry
-  every tool. A tool in no toolkit is listed every round, beside one more, `openToolkit({ name })`, whose description
-  lists the toolkits. An opened toolkit's tools are listed from the next round on; `openToolkit` never reaches
-  `approve` and counts as no tool call. A resume reopens what stored calls and a summary's `toolkits` opened.
+  every tool. A tool in no toolkit is listed every round, beside `openToolkit({ name })`, whose description lists the
+  toolkits. An opened toolkit's tools are listed from the next round on, until a compaction keeps no message using
+  it; `openToolkit` never reaches `approve` and counts as no tool call. A resume reopens what stored calls and a
+  summary opened.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
   counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or

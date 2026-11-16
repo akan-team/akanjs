@@ -148,3 +148,33 @@ describe("AgentLoop refusal for length", () => {
     expect(await runOf(false)).toEqual({ refused: 2, compactions: 2, last: { type: "done", stop: "end", rounds: 3 } });
   });
 });
+
+describe("AgentLoop compaction threshold", () => {
+  const short: AgentWireMessage[] = [
+    { role: "user", text: "x".repeat(800) },
+    { role: "assistant", text: "ok" },
+    { role: "user", text: "go" },
+  ];
+
+  test("counts the instructions and tools toward `at`, not the transcript alone", async () => {
+    const runOf = async (instructions?: string) => {
+      const { port } = harness(() => null, [saying("Done.")]);
+      const events = await drain(port, { messages: short, compact: { at: 600, keep: 1 }, instructions });
+      return compactions(events).length;
+    };
+    expect(LoopCompaction.tokensOf(short)).toBeLessThan(600);
+    expect(await runOf()).toBe(0);
+    expect(await runOf("i".repeat(2_000))).toBe(1);
+  });
+
+  test("a frame over `at` by itself compacts once, then waits for a threshold's growth", async () => {
+    const { port } = harness(() => null, [reading("c1"), reading("c2"), saying("Done.")]);
+    const events = await drain(port, {
+      messages: short,
+      compact: { at: 600, keep: 1 },
+      instructions: "i".repeat(4_000),
+    });
+    expect(compactions(events)).toHaveLength(1);
+    expect(events.at(-1)).toEqual({ type: "done", stop: "end", rounds: 3 });
+  });
+});
