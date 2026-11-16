@@ -8,6 +8,7 @@ import { CLIENT_BUNDLE_NAMING } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { RouteClientBuilder } from "./routeClientBuilder";
+import { RouteModulePreloads } from "./routeModulePreloads";
 
 const makeTempRoot = tempDirs("akan-client-entry-");
 
@@ -468,8 +469,7 @@ describe("route client store bootstrap", () => {
       for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
     });
 
-    test("a file naming one module's state brings that module's store piece, no other module's and no assembled runtime", async () => {
-      const { appDir, app } = await routeFixture();
+    const writeStorePieces = async (appDir: string) => {
       for (const [name, key] of [
         ["draft", "draftText"],
         ["tally", "tallyCount"],
@@ -487,24 +487,79 @@ describe("route client store bootstrap", () => {
         path.join(appDir, `lib/${StoreBootstrap.pageRuntime}.ts`),
         'export const st = Object.freeze({ mark: "page-runtime-only", use: { draftText: () => 0 } });\n',
       );
+    };
+    const writeDraftEntry = async (appDir: string) => {
       const entry = path.join(appDir, "ui/Draft.tsx");
       await write(
         entry,
         '"use client";\nimport { st } from "@apps/demo/client";\nexport const Draft = () => [st.use.draftText(), "draft-ui-marker"];\n',
       );
+      return entry;
+    };
+    const wholeOrOtherPieces = [
+      "piece:tally.st",
+      ...StoreBootstrap.assembled.map((file) => `assembled:${file}`),
+      '"runtime-marker"',
+      '"store-marker"',
+    ];
 
-      await build(app, entry);
+    test("a file naming one module's state brings that module's store piece, no other module's and no assembled runtime", async () => {
+      const { appDir, app } = await routeFixture();
+      await writeStorePieces(appDir);
+
+      await build(app, await writeDraftEntry(appDir));
 
       const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
       for (const marker of ["draft-ui-marker", "page-runtime-only", "piece:draft.st"])
         expect(browser).toContain(marker);
+      for (const marker of wholeOrOtherPieces) expect(browser).not.toContain(marker);
+    });
+
+    test("a file importing one module's store piece by hand brings that piece and the assembled runtime, not a second copy", async () => {
+      const { appDir, app } = await routeFixture();
+      await writeStorePieces(appDir);
+      const entry = path.join(appDir, "ui/Hand.tsx");
+      await write(
+        entry,
+        '"use client";\nimport "@apps/demo/lib/__client/draft.st";\nexport const Hand = () => "hand-ui-marker";\n',
+      );
+
+      await build(app, entry);
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
       for (const marker of [
-        "piece:tally.st",
+        "hand-ui-marker",
+        "piece:draft.st",
         ...StoreBootstrap.assembled.map((file) => `assembled:${file}`),
-        '"runtime-marker"',
-        '"store-marker"',
       ])
+        expect(browser).toContain(marker);
+      for (const marker of ["piece:tally.st", '"runtime-marker"', '"store-marker"'])
         expect(browser).not.toContain(marker);
+    });
+
+    test("the files a route is sized by hold the store piece of the module its client code names, and no assembled runtime", async () => {
+      const { root, appDir, app } = await routeFixture();
+      await writeStorePieces(appDir);
+      const entry = await writeDraftEntry(appDir);
+
+      const { manifestDelta } = await build(app, entry);
+
+      const sizedUrls = new RouteModulePreloads({
+        runtimeChunks: { runtime: [], vendors: {} },
+        entriesByRoute: new Map([["/:lang/draft", [entry]]]),
+        clientManifest: manifestDelta,
+        externalsByChunkUrl: {},
+        workspaceRoot: root,
+      }).modulesByRoute()["/:lang/draft"];
+      const sized = (
+        await Promise.all(
+          (sizedUrls ?? []).map((url) =>
+            Bun.file(path.join(appDir, ".akan/artifact", url.replace(/^\/_akan\//, ""))).text(),
+          ),
+        )
+      ).join("\n");
+      for (const marker of ["draft-ui-marker", "page-runtime-only", "piece:draft.st"]) expect(sized).toContain(marker);
+      for (const marker of wholeOrOtherPieces) expect(sized).not.toContain(marker);
     });
 
     for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors, ...StoreBootstrap.assembled])
