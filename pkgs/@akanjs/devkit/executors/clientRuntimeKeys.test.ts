@@ -783,3 +783,66 @@ describe("an app's client runtime pieces", () => {
     expect(sorted(await evaluateBoth())).toEqual(sorted(whole));
   }, 120_000);
 });
+
+const redeclaringLibStore = `import { store } from "akanjs/store";
+
+import { sig } from "../useClient";
+
+export class ItemStore extends store(sig.item, () => ({ itemCount: 1, tally: 0, winner: "" })) {
+  static side = "lib";
+  markWinner() {
+    this.set({ winner: "lib" });
+  }
+}
+`;
+const redeclaringAppStore = `import { store } from "akanjs/store";
+
+import { item } from "../__lib/lib.store";
+import { sig } from "../useClient";
+
+export class ItemStore extends store(sig.item, () => ({ itemCount: 10, noteDraft: "" }), ...item.stores) {
+  static side = "app";
+  markWinner() {
+    this.set({ winner: "app" });
+  }
+  setTally(tally: number) {
+    this.set({ tally: tally * 2 });
+  }
+}
+`;
+const redeclaredScript = (files: string[]) => `
+const { st } = await import("akanjs/store");
+${files.map((file) => `await import("./${file}.ts");`).join("\n")}
+const itemCount = st.get().itemCount;
+await st.do.markWinner();
+await st.do.setTally(3);
+const { instance, store } = globalThis[Symbol.for("akanjs.store.registry")];
+console.log(JSON.stringify({
+  default: itemCount,
+  action: st.get().winner,
+  setter: st.get().tally,
+  generatedSetter: instance.generatedSetters.has("setTally"),
+  registered: store.get("item").side,
+}));
+`;
+
+describe("an app store that redeclares what the lib store it extends declares", () => {
+  test("answers under every load order of its pieces what the whole runtime answers: the lib's default, its own action and its own declared setter", async () => {
+    const [app, lib] = ["grocer", "silo"];
+    const { root } = await writeWorkspace({
+      app,
+      lib,
+      libFiles: { ...stockFiles, "lib/item/item.store.ts": redeclaringLibStore },
+      appFiles: { ...shopFilesOf(lib), "lib/item/item.store.ts": redeclaringAppStore },
+    });
+    const answer = (files: string[]) => evaluate(root, redeclaredScript(files), app);
+    const [appPiece, libPiece] = [`apps/${app}/lib/__client/item.st`, `libs/${lib}/lib/__client/item.st`];
+    const [appWhole, libWhole] = [`apps/${app}/lib/__client/_st`, `libs/${lib}/lib/__client/_st`];
+
+    const whole = await answer([`apps/${app}/lib/st`]);
+    expect(whole).toEqual({ default: 1, action: "app", setter: 6, generatedSetter: true, registered: "app" });
+    await pointScopes(root, [`apps/${app}`, `libs/${lib}`], { "useClient.ts": "./usePage" });
+    for (const order of [[libPiece, appPiece], [appPiece, libPiece], [appPiece, libWhole, appWhole], [appWhole]])
+      expect({ order, answer: await answer(order) }).toEqual({ order, answer: whole });
+  }, 120_000);
+});

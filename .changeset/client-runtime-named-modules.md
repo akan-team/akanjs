@@ -11,7 +11,7 @@ Under `clientRuntime: "route"`, a production page now loads the endpoint descrip
 - A lib file naming a lib module loads the app's piece of it, so a store the app extends arrives with the app's additions.
 - A store piece whose model holds a file loads the upload module's descriptors first, so the piece alone has its upload action (`st.do.upload<Field>On<Model>`).
 - `lib/usePage.ts` also exports `st`, the tab's one store, typed as the scope's `st`.
-- A store that extends a lib store keeps its own actions, defaults and setters whichever of the two loads first. Under `"all"` too, an app store that redeclares a lib store's default now wins even where the lib's whole root was built before it.
+- An app store that extends a lib store answers what it answers under `"all"` whichever pieces a page loads and in whatever order: a default both declare is the lib's, an action or a `set<Key>` both declare is the app's. The store runtime itself is unchanged.
 - The development server is unchanged: it does not narrow by module, and a client module importing `fetch` or `st` loads its scope's whole runtime there. A name a route misses shows only in a production build (`akan build`).
 - An app not yet synced to `lib/__client/_useClient.ts` and `_st.ts`, or whose module names cannot be read from source, builds as `"all"`.
 

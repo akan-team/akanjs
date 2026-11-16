@@ -174,7 +174,14 @@ describe("a file the per-route runtime does not touch", () => {
 describe("a scope's whole runtime file", () => {
   test("is answered from the scope's assembled pieces", () => {
     expect(runtime.redirectOf("/ws/apps/demo/lib/useClient.ts")).toBe('export * from "./__client/_useClient";\n');
-    expect(runtime.redirectOf("/ws/libs/kit/lib/st.ts")).toBe('export * from "./__client/_st";\n');
+    expect(runtime.redirectOf("/ws/apps/demo/lib/st.ts")).toBe('export * from "./__client/_st";\n');
+    expect(runtime.redirectOf("/ws/libs/kit/lib/useClient.ts")).toBe('export * from "./__client/_useClient";\n');
+  });
+
+  test("is followed by the app's store root when it is a lib's, so an app store keeps its actions over the lib's", () => {
+    expect(runtime.redirectOf("/ws/libs/kit/lib/st.ts")).toBe(
+      'export * from "./__client/_st";\nimport "/ws/apps/demo/lib/__client/_st.ts";\n',
+    );
   });
 
   test("stays as written where the scope has no assembled piece, and for every other file", () => {

@@ -60,10 +60,12 @@ export class RouteRuntime {
   }
 
   //? Absolute paths: a framework file imports these too, and neither `akanjs` nor a consumer's node_modules maps `@apps/*`.
+  #importOf(piece: string) {
+    return `import ${JSON.stringify(`${path.join(this.#workspaceRoot, piece).split(path.sep).join("/")}.ts`)};`;
+  }
+
   get wholeImports(): string[] {
-    return this.#wholePieces.map(
-      (piece) => `import ${JSON.stringify(`${path.join(this.#workspaceRoot, piece).split(path.sep).join("/")}.ts`)};`,
-    );
+    return this.#wholePieces.map((piece) => this.#importOf(piece));
   }
 
   get wholeSource() {
@@ -80,7 +82,12 @@ export class RouteRuntime {
     const [, scope, file] = this.fileNameOf(absPath)?.match(wholeFile) ?? [];
     if (!scope || !file) return null;
     const piece = assembled[file as keyof typeof assembled];
-    return this.#pieces.has(`${scope}/lib/__client/${piece}`) ? `export * from "./__client/${piece}";\n` : null;
+    if (!this.#pieces.has(`${scope}/lib/__client/${piece}`)) return null;
+    const own = `export * from "./__client/${piece}";\n`;
+    //? A lib's store root built after an app store's piece puts the lib's actions back over the app's, so the app's root follows it.
+    return file === "st" && scope !== this.#table.scope
+      ? `${own}${this.#importOf(`${this.#table.scope}/lib/__client/${piece}`)}\n`
+      : own;
   }
 
   transform(source: string, absPath: string): RouteRuntimeResult | null {

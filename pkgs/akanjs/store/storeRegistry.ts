@@ -15,7 +15,6 @@ import { attachAgentic } from "./agentic/attachAgentic";
 import type { RootStoreCls } from "./rootStore";
 import type { StoreCls } from "./store";
 import { StoreInstance } from "./storeInstance";
-import { StoreLineage } from "./storeLineage";
 
 export type { ReactAPI } from "./storeInstance";
 
@@ -29,8 +28,6 @@ const STORE_REGISTRY_KEY = Symbol.for("akanjs.store.registry");
 interface StoreRegistryState {
   instance: StoreInstance;
   store: Map<string, StoreCls>;
-  built?: WeakSet<object>;
-  extended?: WeakSet<object>;
 }
 
 function getStoreRegistryState(): StoreRegistryState {
@@ -65,9 +62,7 @@ export class StoreRegistry {
     }
     store[ACTION_META] = actions;
     store[ACTION_OWNER_META] = owners;
-    const registered = StoreRegistry.#state.store.get(store.refName);
-    if (!registered || !StoreLineage.ancestorsOf(registered).has(store))
-      StoreRegistry.#state.store.set(store.refName, store);
+    StoreRegistry.#state.store.set(store.refName, store);
     StoreRegistry.#warnUnknownPostSetHooks(store);
     return store;
   }
@@ -125,27 +120,9 @@ export class StoreRegistry {
       else RootStore.slice[store.refName] = store.slice;
     });
     applyMixins(RootStore, stores);
-    StoreLineage.compose(RootStore as unknown as RootStoreCls, stores);
     return RootStore as unknown as RootStoreCls;
   }
-  //* A store another store extends never replaces the extension, whichever of the two a page loads first.
   static build<RtStoreCls extends RootStoreCls>(store: RtStoreCls): WithSelectors<RtStoreCls> {
-    const state = StoreRegistry.#state;
-    state.built ??= new WeakSet();
-    state.extended ??= new WeakSet();
-    const { built, extended } = state;
-    const parts = StoreLineage.partsOf(store);
-    const ancestors = parts.map((part) => StoreLineage.ancestorsOf(part));
-    const kept = parts.filter(
-      (part, idx) => !extended.has(part) && !ancestors.slice(0, idx).some((earlier) => earlier.has(part as StoreCls)),
-    );
-    const outgrown = [...new Set(ancestors.flatMap((extendedStores) => [...extendedStores]))].filter((ancestor) =>
-      built.has(ancestor),
-    );
-    for (const extendedStores of ancestors) for (const ancestor of extendedStores) extended.add(ancestor);
-    for (const part of kept) built.add(part);
-    const root = kept.length === parts.length ? store : StoreRegistry.merge(store.refName, ...kept);
-    const outgrownRoot = outgrown.length ? StoreRegistry.merge(store.refName, ...outgrown) : undefined;
-    return attachAgentic(state.instance.addStore(root, outgrownRoot)) as unknown as WithSelectors<RtStoreCls>;
+    return attachAgentic(StoreRegistry.#state.instance.addStore(store)) as unknown as WithSelectors<RtStoreCls>;
   }
 }

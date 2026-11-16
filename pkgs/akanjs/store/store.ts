@@ -43,7 +43,6 @@ import {
   type WritableStateBuilder,
   type WritableStateOf,
 } from "./stateBuilder";
-import { StoreLineage } from "./storeLineage";
 import type { InternalSlice, SetGet, SetGetWritable, StoreSliceMap, StoreSliceName, StoreSliceSuffix } from "./types";
 
 type _SliceMap<S extends SliceCls> = StoreSliceMap<S>;
@@ -212,7 +211,6 @@ export function store<Sig extends ClientSignal<any, any, any> | string, State>(
   Object.assign(storeCls[ACTION_META], ...libStores.map((libStore) => libStore[ACTION_META]));
   Object.assign(storeCls[ACTION_OWNER_META], ...libStores.map((libStore) => libStore[ACTION_OWNER_META] ?? {}));
   applyMixins(storeCls, libStores);
-  StoreLineage.extend(storeCls, libStores);
   if (signal) {
     const signalState = {
       ...createDatabaseState(refName),
