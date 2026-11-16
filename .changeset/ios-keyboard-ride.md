@@ -1,0 +1,5 @@
+---
+"akanjs": patch
+---
+
+Under an iOS shell that leaves the keyboard to the page, the page now follows the keys without laying out on every frame. #715 animated the page box's `height`, which re-laid the page out on each frame of the keys' move and dropped frames on a phone, more so under glass (backdrop-filter) surfaces. `KeyboardRide` now changes the box once and carries whatever the page marks `data-akan-keyboard-ride` (a chat's list content, its composer) there as a `transform`, which WebKit hands to Core Animation: keys coming up hold the old box until they are up, since the shorter box would clip a rider still on its way, and keys going down give the taller box at once while the riders start from where they were drawn. A scroller resting at its end stays there. `data-akan-keyboard` on the root follows the keys at once, for what moves with them by transform or opacity; `data-akan-keyboard-layout` and `--akan-keyboard-cover` follow the box, for what changes layout. A page with no rider still gets the box in one step.
