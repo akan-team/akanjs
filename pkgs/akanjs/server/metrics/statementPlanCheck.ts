@@ -50,7 +50,7 @@ export class StatementPlanCheck {
     trace: SignalTrace | undefined,
   ) {
     const { planner, sql } = statement;
-    const variant = createHash("sha1").update(sql).digest("hex").slice(0, 12);
+    const variant = createHash("sha256").update(sql).digest("hex").slice(0, 12);
     const state = stat.planOf(variant);
     if (state.pending || state.epoch === StatementProbe.schemaEpoch || stat.count < state.dueAt) return;
     if (!planner || !this.#checks(stat, planner, params, site, series)) {
