@@ -321,6 +321,12 @@ const nativeFields = [
     ko: "앱 번들에 복사할 파일이며, 키는 번들 안 경로, 값은 앱 폴더 기준 경로입니다.",
   },
   {
+    key: "ios.hideFormAccessoryBar",
+    type: "boolean",
+    en: "Leaves out the bar WebKit shows above the keyboard for a focused field, which a page cannot hide. Default false.",
+    ko: "입력칸에 포커스가 가면 WebKit이 키보드 위에 띄우는 바를 없애며, 페이지에서는 숨길 수 없습니다. 기본값은 false입니다.",
+  },
+  {
     key: "android.sha256CertFingerprints",
     type: "string[]",
     en: "assetlinks.json signing fingerprints: debug for a local build, release for Play Store.",

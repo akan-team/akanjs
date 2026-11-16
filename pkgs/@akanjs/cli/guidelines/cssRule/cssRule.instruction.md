@@ -78,6 +78,7 @@ Screen code is invariant — a plain `<Button variant="primary">` never changes.
 - Declare plain custom properties under `:root`, not a Tailwind `@theme` extension: the color vocabulary is closed per stylesheet, so `bg-kakao` would generate no CSS. Reference them as `bg-[var(--kakao)]` / `text-[var(--kakao-foreground)]`, which `no-arbitrary-color` allows by design (a `var()` reference is not an arbitrary color literal).
 - Theme-following colors still belong to the app: a lib token is for a color that must **not** change with `data-theme`.
 - An `@import` the CSS pipeline cannot resolve fails the build; it is never dropped. A stylesheet under `page/` that no route imports is compiled by nothing and warns at build time.
+- A stylesheet whose import graph uses no Tailwind (no `@import "tailwindcss"`, no `@theme`, `@apply`, `@plugin` or other Tailwind at-rule, no `theme()`/`--alpha()`/`--spacing()`) skips the Tailwind compiler: only its imports are inlined and the build minifies it, with no Tailwind banner; one Tailwind feature anywhere in that graph compiles the whole stylesheet with Tailwind.
 
 ## Frame Variables (the page's chrome and the device's insets)
 
@@ -95,6 +96,8 @@ are there on every surface; the three keyboard variables are written only on the
 - `--akan-top-inset` / `--akan-bottom-inset` — the height of the page's top bar and bottom tab slot, per breakpoint
   when the page declares a responsive inset. A slot whose inset is 0 at a width clips its chrome there and hides it
   from the keyboard and screen readers, so a phone-only bar needs no `md:hidden`.
+- `--akan-overlay-top` / `--akan-overlay-bottom` — the chrome a route's `overlay` runs the page under (`0px`
+  elsewhere); pad the page's scroller by it so its last row clears the bar.
 - `--akan-keyboard-inset`, `--akan-viewport-height`, `--akan-viewport-offset-top` — the on-screen keyboard over the
   page's bottom, the visible height, and how far iOS panned the page to show a field (the top slots follow it). Only
   an SSR page in a browser writes them; a CSR bundle and a native app never do, so read them with a fallback

@@ -189,7 +189,7 @@ const SSRWrapper = ({
           <div
             key="top-safe-area"
             id="topSafeArea"
-            className={cn("fixed inset-x-0 top-0 bg-background")}
+            className={cn("fixed inset-x-0 top-0 bg-background", pageState.overlay?.top && "pointer-events-none")}
             style={topSafeAreaStyle}
           />
           <div key="page-containers" id="pageContainers" className={cn("isolate")}>
@@ -214,6 +214,7 @@ const SSRWrapper = ({
               frameSlotContainerClassNames.topInset,
               layoutStyle === "mobile" && "left-1/2 w-full max-w-[600px] -translate-x-1/2",
               layoutStyle === "web" && "w-full",
+              pageState.overlay?.top && "bg-transparent",
             )}
             style={frameSlotStyles.topInset}
           >
@@ -257,7 +258,7 @@ const SSRWrapper = ({
           <div
             key="bottom-safe-area"
             id="bottomSafeArea"
-            className="fixed inset-x-0 bg-background"
+            className={cn("fixed inset-x-0 bg-background", pageState.overlay?.bottom && "pointer-events-none")}
             style={bottomSafeAreaStyle}
           />
         </ClientPathWrapper>

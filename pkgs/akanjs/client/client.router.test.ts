@@ -386,6 +386,40 @@ describe("router", () => {
     restoreTimeout();
   });
 
+  test("backOrFallback closes a tab the app opened, and replaces to the fallback when the browser keeps it open", async () => {
+    envState.side = "client";
+    installClientWindow("/en/org/thread");
+    Object.assign(installHistory(), { length: 1 });
+    const restoreTimeout = queueTimeouts();
+    const calls: unknown[] = [];
+    let closable = true;
+    const tab = { closes: 0, closed: false };
+    Object.assign(window, {
+      close: () => {
+        tab.closes += 1;
+        tab.closed = closable;
+      },
+    });
+    Object.defineProperty(window, "closed", { get: () => tab.closed, configurable: true });
+    const { router } = await import("./router");
+    router.init({ type: "csr", lang: "en", router: { ...recordingRouter(calls), canGoBack: () => false } });
+
+    try {
+      router.backOrFallback("/org");
+      flushTimeouts();
+      expect(tab.closes).toBe(1);
+      expect(calls).toEqual([]);
+
+      closable = false;
+      router.backOrFallback("/org");
+      flushTimeouts();
+      expect(tab.closes).toBe(2);
+      expect(calls.at(-1)).toEqual(["replace", "/en/org", undefined]);
+    } finally {
+      restoreTimeout();
+    }
+  });
+
   test("posts the path each back lands on once, and waits for no popstate when there is no page to go back to", async () => {
     envState.side = "client";
     installClientWindow("/en/admin/c");

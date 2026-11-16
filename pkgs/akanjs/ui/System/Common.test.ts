@@ -74,4 +74,16 @@ describe("getFrameCssVars", () => {
     expect(vars["--akan-top-inset-md"]).toBeUndefined();
     expect(vars["--akan-top-safe-area"]).toBe("47px");
   });
+
+  test("an overlaid side drops its page padding and hands the chrome's height to the page's scrollers", () => {
+    const vars = getFrameCssVars(
+      { ...defaultPageState, topInset: 48, bottomInset: 64, overlay: { top: false, bottom: true } },
+      { cssResolved: false },
+    );
+
+    expect(vars["--akan-page-padding-bottom"]).toBe("0px");
+    expect(vars["--akan-overlay-bottom"]).toBe("calc(var(--akan-bottom-safe-area) + var(--akan-bottom-inset))");
+    expect(vars["--akan-page-padding-top"]).toBe("calc(var(--akan-top-safe-area) + var(--akan-top-inset))");
+    expect(vars["--akan-overlay-top"]).toBe("0px");
+  });
 });

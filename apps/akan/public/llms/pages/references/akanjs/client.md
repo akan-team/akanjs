@@ -82,7 +82,7 @@ Method
 
 - postPathChange(change): Tells the frame that embeds this page where it went: a new path, or `{ page }` of a paginated list. Posts nothing in an MCP App view.
 
-- backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path.
+- backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.
 
 - refresh(): Renders the current route again. Browser only.
 
@@ -311,6 +311,8 @@ PageConfig
 - topInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default 0; in the app, the chrome's height): Space kept for a fixed top bar: px, or px per breakpoint from its width up. `true` means 48.
 
 - bottomInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default 0; in the app, the chrome's height): Space kept for a fixed bottom bar, in the same forms. `{ base: 48, md: 0 }` reserves a phone-only bar.
+
+- overlay (boolean | "top" | "bottom", default false): Runs the page under that side's safe area and inset, for a translucent bar; scrollers pad by `--akan-overlay-*`.
 
 - gesture (boolean, default on for nested routes on iOS): Allows swipe-back.
 

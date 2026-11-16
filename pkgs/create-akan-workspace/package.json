@@ -8,6 +8,7 @@
   "publishConfig": {
     "access": "public"
   },
+  "description": "Create an Akan.js workspace: bunx create-akan-workspace@latest, or with only Node and npm: npx -y bun@1.4.4 x create-akan-workspace@latest",
   "homepage": "https://akanjs.com",
   "license": "MIT",
   "repository": {

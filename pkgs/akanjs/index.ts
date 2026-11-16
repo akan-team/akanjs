@@ -180,6 +180,8 @@ export interface AkanNativeIosConfig {
   privacy?: AkanNativeConfig["privacy"];
   /** Files copied into the app bundle, keyed by their path there; the value is the source, relative to the app folder. */
   files?: Record<string, string>;
+  /** Leaves out the bar WebKit puts above the keyboard for a focused field, which a page cannot hide. Default false. */
+  hideFormAccessoryBar?: boolean;
 }
 
 export interface AkanNativeAndroidConfig {

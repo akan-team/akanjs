@@ -513,6 +513,7 @@ export class SsrFromRscRenderer {
 
     //? 64 bits no page content can guess while it renders; a cached page replays its own.
     const token = randomBytes(8).toString("base64url");
+    const headPreloads = [...new Set([...(input.bootstrapModules ?? []), ...(input.modulePreloads ?? [])])];
     const withHeadScripts = SsrInlineScripts.injectIntoHead(htmlStream, {
       bootstrap: {
         token,
@@ -523,14 +524,9 @@ export class SsrFromRscRenderer {
       devInline: input.devBootstrapInline,
       nonce: input.nonce,
       importmap: input.importmap,
+      modulePreloads: headPreloads,
       //? The shell has rendered by now, so its client references have arrived; a later boundary's chunks load unpreloaded.
-      modulePreloads: [
-        ...new Set([
-          ...(input.bootstrapModules ?? []),
-          ...(chunkPreloads?.urls ?? []),
-          ...(input.modulePreloads ?? []),
-        ]),
-      ],
+      chunkPreloads: (chunkPreloads?.urls ?? []).filter((src) => !headPreloads.includes(src)),
       theme: input.theme,
       injectThemeInitScript: input.injectThemeInitScript,
     });

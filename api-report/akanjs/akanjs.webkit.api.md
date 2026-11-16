@@ -104,6 +104,8 @@ export declare const createSitemapPage: (clientHttpUri: string, paths: string[])
     lastModified: Date;
 }[];
 
+export declare const isPageKeyboardAvoidance: () => boolean;
+
 export declare const lazy: <Loaded>(loader: () => Promise<Loaded>, option?: LazyOption) => LoadedOf<Loaded>;
 
 export declare const needsBrowser: () => void;

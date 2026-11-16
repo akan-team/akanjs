@@ -883,8 +883,27 @@ describe("SsrFromRscRenderer head", () => {
   });
 });
 
+describe("SsrFromRscRenderer output cut by bytes", () => {
+  test("a character React's 4 KB output buffer cuts in two arrives whole", async () => {
+    const text = "가".repeat(1300);
+    for (let pad = 0; pad < 3; pad++) {
+      const head = [["$", "meta", "pad", { name: "pad", content: "a".repeat(300 + pad) }]];
+      const flight = `0:["$","html",null,{"children":[["$","head","head",{"children":${JSON.stringify(head)}}],["$","body","body",{"children":"${text}"}]]}]\n`;
+      const stream = await new SsrFromRscRenderer().render({
+        rscStream: streamOfChunks([encoder.encode(flight)]),
+        ssrManifest: { moduleLoading: null, moduleMap: {} },
+        bootstrapModules: ["/_akan/client/rsc.js"],
+      });
+      const html = await new Response(stream).text();
+
+      expect(html).toContain(`<body>${text}`);
+      expect(html).not.toContain("\uFFFD");
+    }
+  });
+});
+
 describe("SsrFromRscRenderer chunk preloads", () => {
-  test("preloads the chunks the shell's import rows name, with the runtime and the vendors those chunks import", async () => {
+  const renderHeadWithChunkPreloads = async (headChildren: unknown[]): Promise<string> => {
     const plan = new ModulePreloadPlan(
       {
         runtime: ["/_akan/client/rsc.js", "/_akan/client/chunks/react.js"],
@@ -915,7 +934,7 @@ describe("SsrFromRscRenderer chunk preloads", () => {
       `3:"/_akan/client/chunks/stale.js"\n`,
       `4:I["$1",["$1","$1","$2","$2","$3","$3"],"default"]\n`,
       `5:"/_akan/client/other.js"\n`,
-      `0:["$","html",null,{"children":[["$","head","head",{}],["$","body","body",{"children":["$5"]}]]}]\n`,
+      `0:["$","html",null,{"children":[["$","head","head",{"children":${JSON.stringify(headChildren)}}],["$","body","body",{"children":["$5"]}]]}]\n`,
     ].join("");
     const stream = await new SsrFromRscRenderer().render({
       rscStream: textStream([{ text: flight }]),
@@ -928,17 +947,36 @@ describe("SsrFromRscRenderer chunk preloads", () => {
       modulePreloadPlan: plan,
     });
     const html = await new Response(stream).text();
-    const head = html.slice(html.indexOf("<head>"), html.indexOf("</head>"));
+    return html.slice(html.indexOf("<head>"), html.indexOf("</head>") + "</head>".length);
+  };
+  const preloadedHrefs = (html: string): string[] =>
+    [...html.matchAll(/<link rel="modulepreload" href="([^"]+)">/g)].map(([, href]) => href);
+  const chunkHrefs = [
+    "/_akan/client/chunks/react.js",
+    "/_akan/client/store.js",
+    "/_akan/client/chunks/store-core.js",
+    "/_akan/client/page.js",
+    "/_akan/client/chunks/page.js",
+  ];
 
-    expect([...head.matchAll(/<link rel="modulepreload" href="([^"]+)">/g)].map(([, href]) => href)).toEqual([
-      "/_akan/client/rsc.js",
-      "/_akan/client/chunks/react.js",
-      "/_akan/client/store.js",
-      "/_akan/client/chunks/store-core.js",
-      "/_akan/client/page.js",
-      "/_akan/client/chunks/page.js",
-      "/_akan/dict/en-abc.js",
+  test("preloads the chunks the shell's import rows name, with the runtime and the vendors those chunks import", async () => {
+    const head = await renderHeadWithChunkPreloads([]);
+
+    expect(preloadedHrefs(head)).toEqual(["/_akan/client/rsc.js", "/_akan/dict/en-abc.js", ...chunkHrefs]);
+  });
+
+  test("asks for the page's chunks behind its stylesheet, at the end of a head that arrives in pieces", async () => {
+    const stylesheet = '<link rel="stylesheet" href="/_akan/client/styles.css"/>';
+    const head = await renderHeadWithChunkPreloads([
+      ["$", "link", "css", { rel: "stylesheet", href: "/_akan/client/styles.css" }],
+      ["$", "meta", "long", { name: "description", content: "akan ".repeat(4000) }],
     ]);
+    const [beforeStylesheet, afterStylesheet] = head.split(stylesheet);
+
+    expect(preloadedHrefs(beforeStylesheet)).toEqual(["/_akan/client/rsc.js", "/_akan/dict/en-abc.js"]);
+    expect(preloadedHrefs(afterStylesheet)).toEqual(chunkHrefs);
+    expect(beforeStylesheet).toContain(`content="${"akan ".repeat(4000)}"`);
+    expect(head).toEndWith('<link rel="modulepreload" href="/_akan/client/chunks/page.js"></head>');
   });
 });
 

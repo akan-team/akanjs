@@ -41,7 +41,6 @@ Playbook (warning table, code, checklist: `ssrRule`): ① wrap the interaction a
 `useEffect(…, [])` load; ④ a store-reading `Zone` holds no markup and delegates to a server `View`; ⑤ hand each
 promise across — `const { xInitInY, xListInY } = fetch.initXInY(id)`, `xInitInY` to a `Zone`, `xListInY` to
 `<Load.Stream>` (model instances, server-only) — and `await` only what the shell must contain; ⑥ named `ReactNode`
-slots (`Layout.Navbar`); ⑦ derived display logic on `Light<Model>`; ⑧ `.guard(() => signedIn())`
-(`@libs/shared/webkit`) on `_layout.tsx` (a real 3xx before anything renders; `getSelf({ unauthorize })` in a body
-under a `.loading()` redirects in-page after I/O); ⑨ CSS (`data-*` + `group-data-[…]`, `<details>`) over client
-state for visibility; ⑩ heavy islands behind `index_.tsx` + `lazy()`.
+slots (`Layout.Navbar`); ⑦ derived display logic on `Light<Model>`; ⑧ gate auth with
+`.guard(() => signedIn())` on `_layout.tsx`, not in a body after I/O (the `page` rule); ⑨ CSS (`data-*` +
+`group-data-[…]`, `<details>`) over client state for visibility; ⑩ heavy islands behind `index_.tsx` + `lazy()`.

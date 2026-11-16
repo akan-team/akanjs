@@ -9,6 +9,7 @@ import {
   parseBasePaths,
   trimSlashes,
 } from "akanjs/common";
+import { closeAppOpenedTab } from "./appOpenedTab";
 import { CsrLocation, csrLocation } from "./csrLocation";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
@@ -660,6 +661,7 @@ class Router {
       this.back(routeOptions);
       return undefined as never;
     }
+    if (closeAppOpenedTab()) return undefined as never;
     this.replace(fallbackHref, routeOptions);
     return undefined as never;
   }

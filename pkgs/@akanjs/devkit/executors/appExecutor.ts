@@ -44,6 +44,12 @@ export class AppExecutor extends SysExecutor {
   static from(executor: SysExecutor | WorkspaceExecutor, name: string) {
     return new AppExecutor({ workspace: executor instanceof WorkspaceExecutor ? executor : executor.workspace, name });
   }
+  #verifyBuild: boolean = false;
+  //? `akan verify` builds apart: dist/apps/<app> may hold the full build someone is about to start or deploy.
+  useVerifyDist() {
+    this.dist = new Executor(`dist/verify/${this.name}`, `${this.workspace.workspaceRoot}/dist/verify/${this.name}`);
+    this.#verifyBuild = true;
+  }
   //* Not dev output: the downloaded `bin` sources, and caches whose entries name the akanjs and Bun that wrote them.
   static readonly #keptOnStart = [path.join(".akan", "cache")];
   //* Native builds moved to dist/native/<app>; the old folder may hold a signed release nobody uploaded yet.
@@ -131,13 +137,16 @@ export class AppExecutor extends SysExecutor {
       this.#excludeDevOnlyPages = true;
       this.#pageKeys = null;
       await this.dist.removeDir(this.dist.cwdPath);
-      await Promise.all([this.dist.mkdir("private"), this.dist.mkdir("public")]);
-      //* Lib assets are symlinks, which neither the docker context nor the release tarball follows out of dist.
-      //* Only the web router reads `public/`, so an api-only build leaves it out.
-      await Promise.all([
-        this.cp("private", `${this.dist.cwdPath}/private`, { dereference: true }),
-        ...(akanConfig.web.ssr ? [this.cp("public", `${this.dist.cwdPath}/public`, { dereference: true })] : []),
-      ]);
+      //? A verify build stops before anything reads these copies; the font optimizer falls back to the app's `public/`.
+      if (!this.#verifyBuild) {
+        await Promise.all([this.dist.mkdir("private"), this.dist.mkdir("public")]);
+        //* Lib assets are symlinks, which neither the docker context nor the release tarball follows out of dist.
+        //* Only the web router reads `public/`, so an api-only build leaves it out.
+        await Promise.all([
+          this.cp("private", `${this.dist.cwdPath}/private`, { dereference: true }),
+          ...(akanConfig.web.ssr ? [this.cp("public", `${this.dist.cwdPath}/public`, { dereference: true })] : []),
+        ]);
+      }
     } else {
       await this.#removeDevOutput();
       //? `akan start` keeps the full dev surface: the incremental builder is also the file watcher.

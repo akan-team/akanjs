@@ -177,7 +177,7 @@ Next to the query methods, every model gets these six CRUD methods.
 
 - load<Model>(id?) (Promise<Doc | null>): The same, but resolves to `null` instead of throwing, also for an empty id.
 
-- load<Model>Many(ids) (Promise<Doc[]>): Loads several ids in one batched query.
+- load<Model>Many(ids) (Promise<Doc[]>): Loads several ids in one batched query for every 500 distinct ids.
 
 - create<Model>(data) (Promise<Doc>): Inserts one document. The `save` and `create` hooks run.
 
@@ -289,7 +289,7 @@ An app can add to a model a library already defines, such as `user` from `libs/s
 
 Loaders And Lookups
 
-A loader collects the lookups made in the same tick and answers them with one query, so a hundred `load()` calls cost one round-trip. Declare one in the fourth argument of `into()` for a lookup key you use often.
+A loader collects the lookups made in the same tick and answers them with one query for every 500 distinct keys, so a hundred `load()` calls cost one round-trip. Declare one in the fourth argument of `into()` for a lookup key you use often.
 
 - byField("sku"): One document per value of a field: the match for that key, or `null`.
 

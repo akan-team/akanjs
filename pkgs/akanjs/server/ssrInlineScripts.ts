@@ -1,4 +1,5 @@
 import type { AkanTheme } from "akanjs/fetch";
+import { HeadSplice } from "./headSplice";
 import { ScriptPolicy } from "./scriptPolicy";
 import type { SsrLateRedirect } from "./ssrTypes";
 
@@ -21,6 +22,7 @@ export interface SsrHeadScriptOptions {
   nonce?: string;
   importmap?: Record<string, string>;
   modulePreloads: string[];
+  chunkPreloads?: string[];
   theme?: AkanTheme;
   injectThemeInitScript?: boolean;
 }
@@ -168,25 +170,22 @@ export class SsrInlineScripts {
     const nonceAttr = nonce ? ` nonce="${escapeHtmlAttr(nonce)}"` : "";
     //? After the import map: a script that starts a module load before the map is parsed makes the browser ignore it.
     const devTag = devInline ? `<script${nonceAttr}>${devInline.replace(/<\/script/gi, "<\\/script")}</script>` : "";
-    const preloadTags = modulePreloads
-      .map((src) => `<link rel="modulepreload" href="${escapeHtmlAttr(src)}">`)
-      .join("");
-    return `${bootstrapTags}${importmapTag}${devTag}${preloadTags}`;
+    return `${bootstrapTags}${importmapTag}${devTag}${SsrInlineScripts.#preloadTags(modulePreloads)}`;
+  }
+
+  static #preloadTags(modules: string[]): string {
+    return modules.map((src) => `<link rel="modulepreload" href="${escapeHtmlAttr(src)}">`).join("");
   }
 
   // A stream splice, not a React <head> child: once any module fetch starts, the spec flips the document's
   // "allow-import-maps" bit and no later importmap is acquired.
   static injectIntoHead(stream: ReadableStream<Uint8Array>, options: SsrHeadScriptOptions): ReadableStream<Uint8Array> {
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
     const { theme } = options;
     const htmlTheme = theme && theme !== "css" && theme !== "system" ? theme : undefined;
     const tags = SsrInlineScripts.#headTags(options);
-    if (!tags && !htmlTheme) return stream;
+    const chunkTags = SsrInlineScripts.#preloadTags(options.chunkPreloads ?? []);
+    if (!tags && !chunkTags && !htmlTheme) return stream;
     const htmlOpenRe = /<html(\s[^>]*)?>/i;
-    const headOpenRe = /<head(\s[^>]*)?>/i;
-    let buffered = "";
-    let injected = false;
 
     const withHtmlTheme = (html: string): string => {
       if (!htmlTheme) return html;
@@ -196,36 +195,12 @@ export class SsrInlineScripts {
       });
     };
 
-    return stream.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          if (injected) {
-            controller.enqueue(chunk);
-            return;
-          }
-          buffered += decoder.decode(chunk, { stream: true });
-          const m = headOpenRe.exec(buffered);
-          if (!m) return;
-          const end = m.index + m[0].length;
-          const before = withHtmlTheme(buffered.slice(0, end));
-          const after = buffered.slice(end);
-          controller.enqueue(encoder.encode(before + tags + after));
-          buffered = "";
-          injected = true;
-        },
-        flush(controller) {
-          if (injected) {
-            const tail = decoder.decode();
-            if (tail) controller.enqueue(encoder.encode(tail));
-            return;
-          }
-          // No <head> (e.g. an error shell): emit the buffer rather than swallow the document, after the scripts
-          // its flush calls need.
-          const tail = decoder.decode();
-          const rest = withHtmlTheme(buffered + tail);
-          if (rest) controller.enqueue(encoder.encode(tags + rest));
-        },
-      }),
-    );
+    return HeadSplice.into(stream, {
+      afterOpen: tags,
+      beforeClose: chunkTags,
+      rewriteOpening: withHtmlTheme,
+      //? A document with no <head> (an error shell) still calls the bootstrap script from its flush tags.
+      withoutHead: (html) => tags + withHtmlTheme(html),
+    });
   }
 }

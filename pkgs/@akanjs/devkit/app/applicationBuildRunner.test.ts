@@ -711,10 +711,58 @@ console.info(new SampleService().name);
 
       expect(proc.exitCode).toBe(1);
       expect(proc.stdout.toString()).toBe("");
-      expect(proc.stderr.toString()).toContain("Run `akan build portal` first.");
+      expect(proc.stderr.toString()).toContain(
+        `${path.join("dist", "verify", "portal")} holds the partial output of akan verify, not a build. Run \`akan build portal\` and start dist/apps/portal.`,
+      );
       expect(await Bun.file(path.join(app.dist.cwdPath, "akan.build.json")).json()).toMatchObject({
         profile: "verify",
       });
+    } finally {
+      bundle.mockRestore();
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("a verify build writes to dist/verify/<app> and leaves the full build in dist/apps/<app> as it was", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    const appDir = path.join(root, "apps", "portal");
+    await Promise.all(["main.ts", "server.ts"].map((file) => writeFile(path.join(appDir, file), "")));
+    await mkdir(path.join(appDir, "public"));
+    await writeFile(path.join(appDir, "public", "hero.png"), "image");
+    const built = path.join(root, "dist", "apps", "portal");
+    const fullBuild = {
+      "main.js": 'console.log("booted");\n',
+      "akan.build.json": '{ "buildId": "abc123" }\n',
+      "akan.env.json": '{ "AKAN_PUBLIC_ENV": "local" }\n',
+      "public/hero.png": "image",
+    };
+    for (const [file, content] of Object.entries(fullBuild)) {
+      await mkdir(path.dirname(path.join(built, file)), { recursive: true });
+      await writeFile(path.join(built, file), content);
+    }
+    const app = AppExecutor.from(workspace, "portal");
+    const bundle = spyOn(Bun, "build").mockImplementation(
+      async () => ({ success: true, outputs: [], logs: [] }) as unknown as Bun.BuildOutput,
+    );
+    try {
+      const { outputDir } = await new ApplicationBuildRunner(app, { verify: true }).build();
+
+      for (const [file, content] of Object.entries(fullBuild))
+        expect(await readFile(path.join(built, file), "utf8").catch(() => null)).toBe(content);
+      const verified = path.join(root, "dist", "verify", "portal");
+      expect(outputDir).toBe(verified);
+      expect(await Bun.file(path.join(verified, "akan.build.json")).json()).toMatchObject({ profile: "verify" });
+      expect(await Bun.file(path.join(verified, "console.js")).exists()).toBe(true);
+      expect(await Bun.file(path.join(verified, "public", "hero.png")).exists()).toBe(false);
+      const outdirs = bundle.mock.calls.map(([config]) => config.outdir);
+      expect(outdirs.length).toBeGreaterThan(0);
+      expect(outdirs.every((outdir) => outdir === verified)).toBe(true);
     } finally {
       bundle.mockRestore();
       for (const key of keys) {

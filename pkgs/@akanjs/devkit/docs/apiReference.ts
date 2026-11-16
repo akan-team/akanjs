@@ -153,7 +153,7 @@ export class ApiReference {
       "Generated from the akanjs sources of this release: the import paths and signatures a first app needs, so none of",
       "them has to be looked up in `node_modules`. A stage's return type is the same chain, left out below.",
       "",
-      "## Imports",
+      "## Imports (`akanjs/*`, `@apps/<app>/client`, `../cnst`, `../dict`, `../srv`, layer barrels)",
       "",
       "```ts",
       ...importLines,
@@ -183,8 +183,12 @@ export class ApiReference {
       return [heading, "", "```ts", reader.declarationText(symbol), "```"].join("\n");
     if (item.show.kind === "signature")
       return [heading, "", "```ts", ...reader.signatures(symbol, item.name), "```"].join("\n");
-    if (item.show.kind === "props")
-      return [heading, "", "```ts", ...reader.props(reader.declaredType(symbol), item.show.omit), "```"].join("\n");
+    if (item.show.kind === "props") {
+      const bases = reader.foreignBases(symbol).map((base) => `\`${base}\``);
+      const inherits = bases.length ? ["", `Every prop of ${bases.join(" and ")}, and:`] : [];
+      const props = reader.props(reader.declaredType(symbol), item.show.omit);
+      return [heading, ...inherits, "", "```ts", ...props, "```"].join("\n");
+    }
     const members = reader.members(reader.instanceType(symbol), item.show);
     return [heading, "", "```ts", ...members.map(([, line]) => line), "```"].join("\n");
   }

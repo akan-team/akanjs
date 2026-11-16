@@ -205,15 +205,29 @@ export default page()
       {
         name: "--akan-page-padding-top",
         desc: l.trans({
-          en: "Top safe area plus top inset: the top padding a page body needs.",
-          ko: "상단 safe area와 상단 inset을 더한, 페이지 본문에 필요한 위쪽 여백입니다.",
+          en: "Top safe area plus top inset: the top padding a page body needs; 0 under `overlay`.",
+          ko: "상단 safe area와 상단 inset을 더한, 페이지 본문에 필요한 위쪽 여백입니다. `overlay`에서는 0입니다.",
         }),
       },
       {
         name: "--akan-page-padding-bottom",
         desc: l.trans({
-          en: "Bottom safe area plus bottom inset: the bottom padding a page body needs.",
-          ko: "하단 safe area와 하단 inset을 더한, 페이지 본문에 필요한 아래쪽 여백입니다.",
+          en: "Bottom safe area plus bottom inset: the bottom padding a page body needs; 0 under `overlay`.",
+          ko: "하단 safe area와 하단 inset을 더한, 페이지 본문에 필요한 아래쪽 여백입니다. `overlay`에서는 0입니다.",
+        }),
+      },
+      {
+        name: "--akan-overlay-top",
+        desc: l.trans({
+          en: "Under `overlay`, the top chrome the page runs beneath, for its scroller to pad by; 0 otherwise.",
+          ko: "`overlay`에서 페이지가 밑으로 깔리는 상단 chrome 높이로, 스크롤 영역의 여백입니다. 그 밖에는 0입니다.",
+        }),
+      },
+      {
+        name: "--akan-overlay-bottom",
+        desc: l.trans({
+          en: "Under `overlay`, the bottom chrome the page runs beneath, for its scroller to pad by; 0 otherwise.",
+          ko: "`overlay`에서 페이지가 밑으로 깔리는 하단 chrome 높이로, 스크롤 영역의 여백입니다. 그 밖에는 0입니다.",
         }),
       },
       {
@@ -664,6 +678,15 @@ export default page()
                   }),
                 },
                 {
+                  key: "overlay",
+                  type: 'boolean | "top" | "bottom"',
+                  default: "false",
+                  desc: l.trans({
+                    en: "Runs the page under that side's safe area and inset, so a translucent bar shows what scrolls beneath it.",
+                    ko: "그쪽 safe area와 inset 밑으로 페이지를 깔아, 반투명한 바 뒤로 스크롤되는 내용이 비치게 합니다.",
+                  }),
+                },
+                {
                   key: "safeArea",
                   type: 'boolean | "top" | "bottom" | { top?, bottom?, android? }',
                   default: l.trans({
@@ -876,13 +899,17 @@ export default page()
                 en: (
                   <span>
                     Tailwind reads them directly: <code>h-(--akan-bottom-inset)</code> sizes a bar to exactly the space
-                    the page reserved.
+                    the page reserved. Under <code>overlay</code>, a scroller written{" "}
+                    <code>pb-(--akan-overlay-bottom)</code> lets its last row scroll clear of the bar it passes under,
+                    and the overlaid side's safe area is transparent unless the page colors it.
                   </span>
                 ),
                 ko: (
                   <span>
                     Tailwind에서 바로 읽을 수 있습니다. <code>h-(--akan-bottom-inset)</code>은 바의 높이를 페이지가 비워
-                    둔 공간과 정확히 맞춥니다.
+                    둔 공간과 정확히 맞춥니다. <code>overlay</code>에서는 스크롤 영역에{" "}
+                    <code>pb-(--akan-overlay-bottom)</code>을 주면 마지막 줄이 그 밑을 지나는 바 위까지 올라오고, 색을
+                    정하지 않은 쪽 safe area는 투명해집니다.
                   </span>
                 ),
               })}

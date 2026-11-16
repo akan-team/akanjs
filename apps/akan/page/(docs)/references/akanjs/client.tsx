@@ -163,8 +163,8 @@ export default page()
       {
         name: "backOrFallback(href?)",
         desc: l.trans({
-          en: "Goes back, or replaces with `href` when there is no history. Defaults to the index path.",
-          ko: "뒤로 갈 기록이 있으면 뒤로 가고, 없으면 `href`로 교체합니다. 기본값은 index 경로입니다.",
+          en: "Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.",
+          ko: "뒤로 갈 기록이 있으면 뒤로 가고, 없으면 `href`로 교체합니다. 기본값은 index 경로입니다. 이 앱이 연 브라우저 탭이고 돌아갈 기록이 없으면 대신 그 탭을 닫습니다.",
         }),
       },
       {
@@ -627,6 +627,15 @@ export default page()
         desc: l.trans({
           en: "Space kept for a fixed bottom bar, in the same forms. `{ base: 48, md: 0 }` reserves a phone-only bar.",
           ko: "고정된 하단 바를 위해 비워 둘 높이이며 형식은 같습니다. `{ base: 48, md: 0 }`은 폰에서만 보이는 바의 자리입니다.",
+        }),
+      },
+      {
+        key: "overlay",
+        type: 'boolean | "top" | "bottom"',
+        default: "false",
+        desc: l.trans({
+          en: "Runs the page under that side's safe area and inset, for a translucent bar; scrollers pad by `--akan-overlay-*`.",
+          ko: "반투명한 바를 위해 그쪽 safe area와 inset 밑으로 페이지를 깔며, 스크롤 영역은 `--akan-overlay-*`만큼 여백을 줍니다.",
         }),
       },
       {

@@ -8,6 +8,13 @@ Create a new [Akan.js](https://akanjs.com) workspace with one command.
 bunx create-akan-workspace@latest
 ```
 
+On a host with only Node and npm, run it through npx, which installs nothing global
+([details](#with-only-node-and-npm)):
+
+```bash
+npx -y bun@1.4.4 x create-akan-workspace@latest
+```
+
 It installs the `akan` CLI (`@akanjs/cli`, at this package's own version) globally, then runs
 `akan create-workspace`, which:
 
@@ -38,6 +45,26 @@ The [quick start](https://akanjs.com/docs/intro/quickstart) has a prompt to past
 checks Bun, runs this, and starts the app. Reopen the agent inside the new workspace afterwards: its MCP server and
 rules load from there.
 
+## With Only Node and npm
+
+The creator needs Bun, and npx can supply it for the one run. Pass the names so nothing is asked:
+
+```bash
+npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false
+```
+
+That Bun is not on `PATH` afterwards, so the creator lists `bun` in the workspace's `dependencies` and writes two
+package scripts. Build with `npm run build`, start the build with `PORT=3000 npm start`, and run any other command as
+`npx akan …`.
+
+```json
+"build": "akan build <app>",
+"start": "cd dist/apps/<app> && bun main.js"
+```
+
+A fresh clone builds as is: the env files stay gitignored and `akan` writes the ones it lacks, so commit none. The
+build carries the env it needs, and a variable set at start overrides it.
+
 ## In an Existing Folder
 
 Name the workspace `.` to create it in the current folder, or in `--dir` itself, instead of a new subfolder. The
@@ -66,7 +93,7 @@ bunx create-akan-workspace@latest my-company --app web --sample false   # no sam
 
 ## Requirements
 
-- [Bun](https://bun.sh) `>=1.4.4`
+- [Bun](https://bun.sh) `>=1.4.4`, or Node with npx to run it [as above](#with-only-node-and-npm)
 - Git, for the first commit
 
 ## Learn More

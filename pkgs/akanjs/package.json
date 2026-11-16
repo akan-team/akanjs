@@ -6,6 +6,7 @@
   "publishConfig": {
     "access": "public"
   },
+  "description": "Akan.js, a full-stack TypeScript framework: business code written once reaches web, native apps, server, database and infrastructure. Start with: bunx create-akan-workspace@latest",
   "homepage": "https://akanjs.com",
   "license": "MIT",
   "repository": {

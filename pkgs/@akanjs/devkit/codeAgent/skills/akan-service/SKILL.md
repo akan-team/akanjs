@@ -106,5 +106,5 @@ The page calls it as `await fetch.book(id)` (`fetch` from `@apps/<app>/client`) 
 `common/`, or return a scalar (`akan create-scalar`) for a typed wire shape. A query that answers `null` without
 `nullable: true` fails the render, naming the endpoint.
 
-Full detail: `get_guideline` with `modelService`; every import path and the exact signatures of serve, adapt,
-endpoint and serviceDictionary: `akanApi`.
+Full detail: `get_guideline` with `modelService`. The exact signatures of serve, adapt, endpoint and
+serviceDictionary, and every import path, are in the `akanApi-*` references below.
