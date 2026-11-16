@@ -477,10 +477,9 @@ export interface AppConfigResult {
    * `"route"` loads a model's descriptors and store in the browser only on a route whose client code names that
    * model (`st.use.memoList()`, `fetch.memo(id)`), and every model's where it picks a name at run time or renders an
    * `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on every page. Server
-   * rendering, CSR bundles and native apps always load the whole runtime. The development server does not narrow by
-   * model: a client module importing `fetch` or `st` loads its scope's whole runtime there, where an app store's
-   * additions to a lib store exist only once a module importing the app's `client` barrel loads, so a missing name
-   * shows only in a production build.
+   * rendering, CSR bundles and native apps always load the whole runtime. The development server loads what a
+   * production page loads, so a name a route misses shows there too, and reading a store key the page has not loaded
+   * names the module whose store declares it.
    */
   clientRuntime: "all" | "route";
   images: AkanImageConfig;

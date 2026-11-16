@@ -2100,21 +2100,20 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>What a client module brings.</strong> In a production build, a client module that imports{" "}
-                      <code>fetch</code> or <code>st</code> from the app's or a lib's <code>client</code> barrel brings
-                      the descriptors and stores of only the modules it names (<code>st.use.memoList()</code>,{" "}
-                      <code>fetch.memo(id)</code>). A module that picks a name at run time (<code>st.do[name]</code>),
-                      or a <code>Load</code>, <code>Model</code> or <code>Data</code> component on the page, brings the
-                      app's whole runtime.
+                      <strong>What a client module brings.</strong> A client module that imports <code>fetch</code> or{" "}
+                      <code>st</code> from the app's or a lib's <code>client</code> barrel brings the descriptors and
+                      stores of only the modules it names (<code>st.use.memoList()</code>, <code>fetch.memo(id)</code>).
+                      A module that picks a name at run time (<code>st.do[name]</code>), or a <code>Load</code>,{" "}
+                      <code>Model</code> or <code>Data</code> component on the page, brings the app's whole runtime.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>클라이언트 모듈이 불러오는 것.</strong> 프로덕션 빌드에서 앱이나 라이브러리의{" "}
-                      <code>client</code> barrel에서 <code>fetch</code>나 <code>st</code>를 import하는 클라이언트 모듈은
-                      이름을 적은 모듈(<code>st.use.memoList()</code>, <code>fetch.memo(id)</code>)의 엔드포인트 정의와
-                      스토어만 불러옵니다. 이름을 실행 중에 고르는 모듈(<code>st.do[name]</code>)이나 페이지의{" "}
-                      <code>Load</code>·<code>Model</code>·<code>Data</code> 컴포넌트는 앱의 전체 런타임을 불러옵니다.
+                      <strong>클라이언트 모듈이 불러오는 것.</strong> 앱이나 라이브러리의 <code>client</code> barrel에서{" "}
+                      <code>fetch</code>나 <code>st</code>를 import하는 클라이언트 모듈은 이름을 적은 모듈(
+                      <code>st.use.memoList()</code>, <code>fetch.memo(id)</code>)의 엔드포인트 정의와 스토어만
+                      불러옵니다. 이름을 실행 중에 고르는 모듈(<code>st.do[name]</code>)이나 페이지의 <code>Load</code>·
+                      <code>Model</code>·<code>Data</code> 컴포넌트는 앱의 전체 런타임을 불러옵니다.
                     </span>
                   ),
                 })}
@@ -2139,18 +2138,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Check a route in a production build.</strong> The development server does not narrow by
-                      module: a client module importing <code>fetch</code> or <code>st</code> loads its scope's whole
-                      runtime there, and a page importing from <code>akanjs/ui</code> loads everything. A name a route
-                      misses shows only after <code>akan build</code>.
+                      <strong>A route behaves the same in development.</strong> The development server loads what a
+                      production page loads, so a name a route misses shows while you work: reading a store key the page
+                      has not loaded fails with the name of the module whose store declares it.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>라우트는 프로덕션 빌드에서 확인합니다.</strong> 개발 서버는 모듈 단위로 좁히지 않습니다.{" "}
-                      <code>fetch</code>나 <code>st</code>를 import하는 클라이언트 모듈은 개발 중에 그 앱이나
-                      라이브러리의 전체 런타임을 불러오고, <code>akanjs/ui</code>를 import하는 페이지는 전부 불러옵니다.
-                      라우트에 빠진 이름은 <code>akan build</code> 뒤에야 드러납니다.
+                      <strong>라우트는 개발 중에도 똑같이 동작합니다.</strong> 개발 서버는 프로덕션 페이지가 불러오는
+                      것만 불러오므로, 라우트에 빠진 이름은 작업하는 동안 드러납니다. 페이지가 불러오지 않은 스토어 키를
+                      읽으면 그 키를 선언한 스토어의 모듈 이름과 함께 실패합니다.
                     </span>
                   ),
                 })}
@@ -2177,18 +2174,14 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>An extended lib store loads as the app's.</strong> In a production build, a lib module
-                      naming a store the app extends loads the app's store, with the actions, state and slices the app
-                      adds. On the development server those exist only once a module importing <code>st</code> from the
-                      app's <code>client</code> barrel has loaded.
+                      <strong>An extended lib store loads as the app's.</strong> A lib module naming a store the app
+                      extends loads the app's store, with the actions, state and slices the app adds.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>확장한 라이브러리 스토어는 앱의 것으로 로드됩니다.</strong> 프로덕션 빌드에서 앱이 확장한
-                      스토어의 이름을 적은 라이브러리 모듈은 앱이 더한 액션·상태·슬라이스까지 담긴 앱의 스토어를
-                      불러옵니다. 개발 서버에서는 앱의 <code>client</code> barrel에서 <code>st</code>를 import하는
-                      모듈이 로드된 뒤에야 그것들이 생깁니다.
+                      <strong>확장한 라이브러리 스토어는 앱의 것으로 로드됩니다.</strong> 앱이 확장한 스토어의 이름을
+                      적은 라이브러리 모듈은 앱이 더한 액션·상태·슬라이스까지 담긴 앱의 스토어를 불러옵니다.
                     </span>
                   ),
                 })}
