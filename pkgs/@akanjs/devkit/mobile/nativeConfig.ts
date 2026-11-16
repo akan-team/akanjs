@@ -270,6 +270,7 @@ export class NativeConfig {
           }
         : {}),
       ...(target.ios?.privacy ? { privacy: target.ios.privacy } : {}),
+      ...(target.ios?.hideFormAccessoryBar ? { ios: { hideFormAccessoryBar: true } } : {}),
       //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
       android: {
         debugAppIdSuffix: ".debug",
