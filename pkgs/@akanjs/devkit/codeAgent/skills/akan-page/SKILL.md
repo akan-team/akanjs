@@ -33,18 +33,12 @@ export default page()
    dropped. `lang` reaches every stage and is never declared.
 3. Gate with `.guard(() => signedIn())` on the `_layout.tsx`, and repeat a stricter guard on a page that needs more.
    `.guard((_, { path }) => signedIn({ path }))` sends a refused visitor to `/signin?redirect=<path>`.
-4. In `.render()`: `usePage()`, then fetch, then return. Hand `fetch.init*` / `view*` / `edit*` fields to sections
-   unawaited; await only what the shell reads, in one `Promise.all`.
-5. `.head()` takes JSX (or a function returning it), never a metadata object.
-6. Re-skin an `akanjs/ui` component for a subtree with `_overrides.tsx`:
+4. In `.render()`: `usePage()`, then fetch, then return.
+5. Re-skin an `akanjs/ui` component for a subtree with `_overrides.tsx`:
    `export default override({ Slot: AppComponent })`, no logic. Nested ones merge slot by slot, the closest winning;
    `componentRule` lists the slots.
 
 ## API at a glance
-
-`page`, `layout` and `router` come from `akanjs/client`, `Link` from `akanjs/ui`, `usePageLocation` from
-`akanjs/webkit`, and `fetch`, `usePage` and the model namespaces from `@apps/<app>/client`. A stage receives the
-declared params and search keys plus `lang`.
 
 - Data-driven title: `.head(async ({ id }) => <title>{((await fetch.book(id)) as Book | null)?.title}</title>)`,
   where `Book` is the `common/` interface for the query's `Any` return (`akan-service`).
@@ -65,13 +59,7 @@ declared params and search keys plus `lang`.
   scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`. Shallow
   holds only while the path stays the same; a server `.search()` sees the value at the next full navigation.
 
-## Never
-
-- A `fetch.<mutation>()` while rendering — it throws `base.error.mutationInRender`, because opening a link would
-  perform it. Send writes from a user action.
-- `useState`, `useEffect`, comments, a named export beside the chain, or the legacy `export default async function`.
-- Editing a lib page through its link in `page/(libs)/` — edit the lib's own `page/` source.
-
-Full detail: `get_guideline` with `pageRule` (guards in depth, heads, MCP apps, CSR root layouts, lib pages), or
-`ssrRule` for what may render on the server. Every stage's signature, the router's methods, Link's props and every
-import path are in the `akanApi-*` references below.
+What a route file must never do — write while rendering, hooks, a second export — is the `page` rule, loaded with
+any `page/` file. Full detail: `get_guideline` with `pageRule` (guards in depth, heads, MCP apps, CSR root layouts,
+lib pages), or `ssrRule` for what may render on the server. Every stage's signature, the router's methods, Link's
+props and every import path are in the `akanApi-*` references below.
