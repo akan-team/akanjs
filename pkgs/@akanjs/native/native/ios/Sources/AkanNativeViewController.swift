@@ -85,6 +85,7 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
         webView.navigationDelegate = self
         webView.uiDelegate = self
         self.webView = webView
+        if !keyboardResizes { detachWebKitKeyboardAvoidance() }
 
         bridge.webView = webView
         bridge.viewController = self
@@ -121,7 +122,24 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
     /// Keyboard mode (O6-1, keyboard.setResizeMode): true ("resize", the default) shortens the web view
     /// by the keyboard; false ("none") lets the keyboard cover the page.
     var keyboardResizes = true {
-        didSet { applyKeyboard(duration: 0, options: []) }
+        didSet {
+            if !keyboardResizes { detachWebKitKeyboardAvoidance() }
+            applyKeyboard(duration: 0, options: [])
+        }
+    }
+
+    /// WKWebView meets the keyboard on its own: it insets its scroll view and pans the whole page until the focused
+    /// field clears the keys, taking a fixed header off screen. In "none" the page lays itself out from the keyboard
+    /// plugin's events instead (`__AKAN_NATIVE__.keyboardAvoidance`), so the shell takes those notifications away from
+    /// WebKit, as Capacitor's Keyboard plugin does. Never undone: in "resize" the keys never cover the web view.
+    private func detachWebKitKeyboardAvoidance() {
+        guard let webView else { return }
+        let names: [Notification.Name] = [
+            UIResponder.keyboardWillShowNotification, UIResponder.keyboardDidShowNotification,
+            UIResponder.keyboardWillHideNotification, UIResponder.keyboardDidHideNotification,
+            UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardDidChangeFrameNotification,
+        ]
+        for name in names { NotificationCenter.default.removeObserver(webView, name: name, object: nil) }
     }
 
     /// How much of this view the keyboard covers, in points: its end frame converted from the screen
@@ -276,8 +294,9 @@ final class AkanNativeViewController: UIViewController, WKNavigationDelegate, WK
         }
         // The shell's origin and engine: one value every origin comparison uses (`__AKAN_NATIVE__.origin`).
         let engine = "window.__AKAN_NATIVE__.origin=\"app://localhost\";window.__AKAN_NATIVE__.engine=\"wkwebview\";window.__AKAN_NATIVE__.engineVersion=\"\(UIDevice.current.systemVersion)\";\n"
+        let keyboard = keyboardResizes ? "" : "window.__AKAN_NATIVE__.keyboardAvoidance=\"page\";\n"
         // A new document starts with the current safe area (N14); later changes are pushed.
-        return Data((Self.initPrefix + boot + "," + env + Self.initSuffix + engine + Self.cssInsets(cssInsets)).utf8)
+        return Data((Self.initPrefix + boot + "," + env + Self.initSuffix + engine + keyboard + Self.cssInsets(cssInsets)).utf8)
     }
 
     /// The safe area the page's --akan-native-safe-area-* variables hold (N14), in CSS px.

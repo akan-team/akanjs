@@ -155,6 +155,9 @@ export class Device {
   topSafeArea: number;
   bottomSafeArea: number;
   isMobile = isMobileDevice();
+  keyboardAnimationMs = 0;
+  keyboardHeight = 0;
+  #keyboardSubscribers = new Set<(height: number) => void>();
   #native: NativeControls | null;
   #stopKeyboardListeners: (() => void)[] = [];
   #pageContentRef: RefObject<HTMLDivElement | null> | null = null;
@@ -180,15 +183,24 @@ export class Device {
       debugFrame("keyboard.event", { event, height, previousHeight: currentHeight });
       if (currentHeight === height) return;
       currentHeight = height;
+      this.keyboardHeight = height;
       onKeyboardChanged(height);
+      for (const subscriber of this.#keyboardSubscribers) subscriber(height);
     };
     this.#stopKeyboardListeners.push(
       ...(["willShow", "didShow", "willHide", "didHide"] as const).map((event) =>
-        keyboard.listen(event, ({ height }) => {
+        keyboard.listen(event, ({ height, duration }) => {
+          if (duration > 0) this.keyboardAnimationMs = duration;
           emitKeyboardHeight(event, height);
         }),
       ),
     );
+  }
+  subscribeKeyboard(onKeyboardChanged: (height: number) => void) {
+    this.#keyboardSubscribers.add(onKeyboardChanged);
+    return () => {
+      this.#keyboardSubscribers.delete(onKeyboardChanged);
+    };
   }
   unlistenKeyboardChanged() {
     for (const stop of this.#stopKeyboardListeners.splice(0)) stop();

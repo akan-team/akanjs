@@ -24,4 +24,4 @@ export { usePageTool } from "./usePageTool";
 export type { ScreenScopeItem } from "./useScreenScope";
 export { useScreenScope } from "./useScreenScope";
 export { useThrottle } from "./useThrottle";
-export { useVisualViewportFrame, type VisualViewportFrame } from "./useVisualViewportFrame";
+export { isPageKeyboardAvoidance, useVisualViewportFrame, type VisualViewportFrame } from "./useVisualViewportFrame";

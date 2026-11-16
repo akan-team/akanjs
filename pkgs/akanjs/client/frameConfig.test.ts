@@ -191,6 +191,37 @@ describe("frameConfig", () => {
   });
 });
 
+describe("overlay", () => {
+  const ios = { path: "/home", platform: "ios", deviceSafeArea: { top: 47, bottom: 34 } } as const;
+
+  test("a page runs under the chrome of the sides it names, and a page below a layout may turn it off", () => {
+    expect(resolvePageState({ ...ios, configChain: [{ overlay: true }] }).overlay).toEqual({ top: true, bottom: true });
+    expect(resolvePageState({ ...ios, configChain: [{ overlay: "bottom" }] }).overlay).toEqual({
+      top: false,
+      bottom: true,
+    });
+    expect(resolvePageState({ ...ios, configChain: [{ overlay: "top" }, { overlay: false }] }).overlay).toBeUndefined();
+    expect(resolvePageState({ ...ios, configChain: [] }).overlay).toBeUndefined();
+  });
+
+  test("an overlaid side's safe area is transparent unless the page colours it", () => {
+    const bottom = resolvePageState({ ...ios, configChain: [{ overlay: "bottom" }] });
+    expect(bottom.bottomSafeAreaColor).toBe("transparent");
+    expect(bottom.topSafeAreaColor).toBe("var(--color-background, Canvas)");
+    expect(
+      resolvePageState({ ...ios, configChain: [{ overlay: true, topSafeAreaColor: "#111111" }] }).topSafeAreaColor,
+    ).toBe("#111111");
+  });
+
+  test("is validated as a boolean or one side", () => {
+    expect(() => validatePageConfig("ok.tsx", { overlay: "top" })).not.toThrow();
+    expect(() => validatePageConfig("ok.tsx", { overlay: false })).not.toThrow();
+    expect(() => validatePageConfig("bad.tsx", { overlay: "both" as never })).toThrow(
+      'pageConfig.overlay in bad.tsx must be a boolean, "top" or "bottom".',
+    );
+  });
+});
+
 describe("responsive insets and the web safe area", () => {
   const web = { path: "/office/inbox", platform: "web", deviceSafeArea: { top: 0, bottom: 0 } } as const;
 

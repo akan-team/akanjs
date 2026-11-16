@@ -312,6 +312,8 @@ PageConfig
 
 - bottomInset (number | boolean | { base, sm?, md?, lg?, xl?, "2xl"? }, default 0; in the app, the chrome's height): Space kept for a fixed bottom bar, in the same forms. `{ base: 48, md: 0 }` reserves a phone-only bar.
 
+- overlay (boolean | "top" | "bottom", default false): Runs the page under that side's safe area and inset, for a translucent bar; scrollers pad by `--akan-overlay-*`.
+
 - gesture (boolean, default on for nested routes on iOS): Allows swipe-back.
 
 - cache (boolean, default true for top-level routes): In the app shell, keeps the page's last render to show again on return.

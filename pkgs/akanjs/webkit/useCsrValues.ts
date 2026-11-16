@@ -226,14 +226,20 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const useCsrTransitionMap = useCsrTransitions(routeState);
   // Merged here, not in CSR: CSR renders one container per path route and would rebuild it for each on every render.
   const contentResizeStyle = useMemo(() => {
-    if (!shouldAnchorContentBottom || !keyboardFrame.sticky) return null;
+    if (!keyboardFrame.avoidsContent && (!shouldAnchorContentBottom || !keyboardFrame.sticky)) return null;
     const duration = keyboardFrame.animationDuration ?? 420;
     const easing = keyboardFrame.animationEasing ?? "cubic-bezier(0.16, 1, 0.3, 1)";
     return {
       transition: `height ${duration}ms ${easing}, padding-bottom ${duration}ms ${easing}`,
       willChange: "height, padding-bottom",
     };
-  }, [shouldAnchorContentBottom, keyboardFrame.sticky, keyboardFrame.animationDuration, keyboardFrame.animationEasing]);
+  }, [
+    shouldAnchorContentBottom,
+    keyboardFrame.sticky,
+    keyboardFrame.avoidsContent,
+    keyboardFrame.animationDuration,
+    keyboardFrame.animationEasing,
+  ]);
   const csrTransition = useCsrTransitionMap[resolvedLocation.pathRoute.pageState.transition];
   const page: PageTransition | null =
     contentResizeStyle && csrTransition.page

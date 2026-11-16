@@ -1,6 +1,12 @@
 "use client";
 import { cn, usePage } from "akanjs/client";
-import { useBodyScrollLock, useEscapeKey, usePageActivity } from "akanjs/webkit";
+import {
+  isPageKeyboardAvoidance,
+  useBodyScrollLock,
+  useEscapeKey,
+  usePageActivity,
+  useVisualViewportFrame,
+} from "akanjs/webkit";
 import { type ReactNode, useCallback, useContext, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BiX } from "react-icons/bi";
@@ -48,6 +54,14 @@ export const Modal = ({
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [dragY, setDragY] = useState(0);
   const surface = modalSurfaceOf(presentation, placement);
+  //? Where the iOS shell no longer pans to a focused field, the dialog itself ends at the keys.
+  const { keyboardHeight } = useVisualViewportFrame();
+  const keyboardInset = isPageKeyboardAvoidance()
+    ? {
+        paddingBottom: keyboardHeight,
+        transition: "padding-bottom var(--akan-keyboard-duration, 0ms) var(--akan-keyboard-easing, ease)",
+      }
+    : null;
 
   const requestClose = useCallback(() => {
     if (confirmClose && !window.confirm(l("base.confirmClose"))) return;
@@ -99,7 +113,7 @@ export const Modal = ({
       {...overlayLayerProps}
       ref={setRoot}
       className={cn("fixed inset-0 flex bg-black/40", surface.root)}
-      style={{ zIndex: overlayZ.modal, visibility: isCurrentPage ? undefined : "hidden" }}
+      style={{ zIndex: overlayZ.modal, visibility: isCurrentPage ? undefined : "hidden", ...keyboardInset }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
         requestClose();

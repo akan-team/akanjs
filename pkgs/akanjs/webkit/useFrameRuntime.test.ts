@@ -67,6 +67,66 @@ describe("useFrameRuntime", () => {
     ).toMatchObject({ offset: 0, sticky: false, animationDuration: 420 });
   });
 
+  test("ends the content at the keyboard on its own timing where the ios shell left the keyboard to the page", async () => {
+    const { IOS_KEYBOARD_ANIMATION_EASING, resolveKeyboardFrame, resolveKeyboardLayout } = await import(
+      "./useFrameRuntime"
+    );
+
+    const viewport = { width: 390, height: 844, visualWidth: 390, visualHeight: 844, visualOffsetTop: 0 };
+    const keyboard = resolveKeyboardFrame({
+      keyboardHeight: 336,
+      bottomSafeArea: 34,
+      visualViewportKeyboardHeight: 0,
+      platformProfile: "ios",
+      sticky: false,
+      pageAvoidsKeyboard: true,
+      nativeAnimationDuration: 250,
+    });
+    const layout = resolveKeyboardLayout({ viewport, keyboard, accessoryHeight: 0, bottomSafeArea: 34 });
+
+    expect(keyboard).toMatchObject({
+      offset: 0,
+      visible: true,
+      avoidsContent: true,
+      animationDuration: 250,
+      animationEasing: IOS_KEYBOARD_ANIMATION_EASING,
+    });
+    expect(layout.contentViewport).toMatchObject({ top: 0, bottom: 508, height: 508 });
+
+    const closed = resolveKeyboardFrame({
+      keyboardHeight: 0,
+      bottomSafeArea: 34,
+      visualViewportKeyboardHeight: 0,
+      platformProfile: "ios",
+      sticky: false,
+      pageAvoidsKeyboard: true,
+      nativeAnimationDuration: 250,
+    });
+    expect(closed).toMatchObject({ visible: false, avoidsContent: true, animationDuration: 250 });
+    expect(
+      resolveKeyboardLayout({ viewport, keyboard: closed, accessoryHeight: 0, bottomSafeArea: 34 }).contentViewport,
+    ).toMatchObject({ height: 844 });
+  });
+
+  test("leaves the content whole under a shell that still pans to the field", async () => {
+    const { resolveKeyboardFrame, resolveKeyboardLayout } = await import("./useFrameRuntime");
+
+    const viewport = { width: 390, height: 844, visualWidth: 390, visualHeight: 844, visualOffsetTop: 0 };
+    const keyboard = resolveKeyboardFrame({
+      keyboardHeight: 336,
+      bottomSafeArea: 34,
+      visualViewportKeyboardHeight: 0,
+      platformProfile: "ios",
+      sticky: false,
+      nativeAnimationDuration: 250,
+    });
+
+    expect(keyboard).toMatchObject({ avoidsContent: false, animationDuration: 420 });
+    expect(
+      resolveKeyboardLayout({ viewport, keyboard, accessoryHeight: 0, bottomSafeArea: 34 }).contentViewport,
+    ).toMatchObject({ height: 844 });
+  });
+
   test("uses visual viewport keyboard fallback on ios when native height is missing", async () => {
     const { resolveKeyboardFrame, resolveKeyboardLayout } = await import("./useFrameRuntime");
 
