@@ -30,8 +30,11 @@ ${Object.entries(extendedModels)
 ${Object.entries(extendedModels)
   .map(([modelName, extendedModels]) => {
     const ModelName = capitalize(modelName);
+    //? `store()` copies only a registered lib store's own actions, and an app store file can be imported before the lib's runtime.
+    const registered = (libName: string) =>
+      `base.StoreRegistry.get("${modelName}") === ${libName}${ModelName}Store ? ${libName}${ModelName}Store : base.StoreRegistry.register(${libName}${ModelName}Store)`;
     return `export const ${modelName} = {
-  stores: [${extendedModels.map((libName) => `${libName}${ModelName}Store`).join(", ")}] as const,
+  stores: [${extendedModels.map(registered).join(", ")}] as const,
 }`;
   })
   .join("\n")}

@@ -463,6 +463,14 @@ await import("./apps/${app}/lib/st.ts");
 console.log(JSON.stringify({ samePickLabel: st.do.pickLabel === pickLabel, label: st.get().label }));
 `;
 
+const appStoreAloneScript = (app: string) => `
+const { StoreRegistry } = await import("akanjs/store");
+const { ItemStore } = await import("./apps/${app}/lib/item/item.store.ts");
+StoreRegistry.register(ItemStore);
+const actions = ItemStore[Symbol.for("akan.action")];
+console.log(JSON.stringify({ actions: ["refreshItemCount", "loadItemNote"].filter((key) => key in actions) }));
+`;
+
 const orderPath = path.join(import.meta.dir, "clientRuntimeKeyOrder.fixture.json");
 const howToRecordOrder =
   "The order of the keys an app's whole client runtime answers no longer matches clientRuntimeKeyOrder.fixture.json. " +
@@ -540,6 +548,13 @@ describe("an app's client runtime pieces", () => {
       state: ["noteDraft", "itemCount"],
       appSignal: ["item"],
       libSignal: ["item"],
+    });
+  }, 120_000);
+
+  test("let an app store file imported on its own keep the actions of the lib store it extends", async () => {
+    const { root } = await writeShopWorkspace("plaza", "cargo");
+    expect(await evaluate(root, appStoreAloneScript("plaza"), "plaza")).toEqual({
+      actions: ["refreshItemCount", "loadItemNote"],
     });
   }, 120_000);
 
