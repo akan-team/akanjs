@@ -118,6 +118,47 @@ export class NoteStore extends store(sig.note, () => ({ pinned: false }), ...not
 `,
 };
 
+const uploadFiles: Record<string, string> = {
+  "libs/fk/lib/file/file.constant.ts": `import { via } from "akanjs/constant";
+
+export class FileInput extends via((field) => ({ url: field(String) })) {}
+export class FileObject extends via(FileInput, (field) => ({})) {}
+export class LightFile extends via(FileObject, ["url"] as const, (resolve) => ({})) {}
+export class File extends via(FileObject, LightFile, (resolve) => ({})) {}
+`,
+  "libs/fk/lib/file/file.signal.ts": `import { endpoint, Public, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class FileSlice extends slice(srv.file, { guards: { get: Public, cru: Public } }, () => ({})) {}
+
+export class FileEndpoint extends endpoint(srv.file, ({ mutation }) => ({
+  addFiles: mutation([String], { guards: [Public], fileUpload: true }).exec(() => []),
+})) {}
+`,
+  "libs/fk/lib/user/user.constant.ts": `import { via } from "akanjs/constant";
+
+import { File } from "../file/file.constant";
+
+export class UserInput extends via((field) => ({ image: field(File) })) {}
+export class UserObject extends via(UserInput, (field) => ({})) {}
+export class LightUser extends via(UserObject, ["image"] as const, (resolve) => ({})) {}
+export class User extends via(UserObject, LightUser, (resolve) => ({})) {}
+`,
+  "libs/fk/lib/user/user.signal.ts": `import { Public, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class UserSlice extends slice(srv.user, { guards: { get: Public, cru: Public } }, () => ({})) {}
+`,
+  "libs/fk/lib/user/user.store.ts": `import { store } from "akanjs/store";
+
+import { sig } from "../useClient";
+
+export class UserStore extends store(sig.user, () => ({})) {}
+`,
+};
+
 export const runtimeFixtureLayer = (scope: string, files: Record<string, string>) =>
   RuntimeModuleFacts.layerOf(
     scope,
@@ -136,3 +177,9 @@ export const runtimeFixtureTables = async () => {
   const demo = RuntimeNameTable.fromLayers([kitLayer, runtimeFixtureLayer("apps/demo", demoFiles)], base);
   return { kit, demo };
 };
+
+export const runtimeUploadTable = async () =>
+  RuntimeNameTable.fromLayers(
+    [runtimeFixtureLayer("libs/fk", uploadFiles)],
+    await RuntimeNameTable.readBase(import.meta.dir),
+  );

@@ -35,10 +35,19 @@ export interface RuntimeOwner {
   module: string;
 }
 
+export type RuntimeNeed = "store" | "descriptor";
+
 export interface RuntimeNameEntry {
   owners: RuntimeOwner[];
   definedBy: RuntimeOwner[];
-  base: boolean;
+  base: RuntimeNeed | null;
+  needs: RuntimeNeed;
+  uses: RuntimeOwner[];
+}
+
+interface RuntimeAddOptions {
+  needs?: RuntimeNeed;
+  uses?: RuntimeOwner | null;
 }
 
 interface EffectiveSignal {
@@ -74,6 +83,8 @@ export class RuntimeNameTable {
   readonly #entries = new Map<RuntimeFamily, Map<string, RuntimeNameEntry>>(
     runtimeFamilies.map((family) => [family, new Map()]),
   );
+  readonly #dependencies = new Map<string, RuntimeOwner[]>();
+  readonly #file: { refName: string; owner: RuntimeOwner | null } | null;
   readonly scope: string;
   readonly layers: RuntimeLayer[];
   readonly approximations: string[];
@@ -131,8 +142,11 @@ export class RuntimeNameTable {
     this.approximations = [...base.approximations, ...layers.flatMap((layer) => layer.approximations)];
     const ordered = [base, ...layers];
     const fileRefName = RuntimeNameTable.#fileUploadRefNameOf(ordered);
+    this.#file = fileRefName
+      ? { refName: fileRefName, owner: RuntimeNameTable.#outermostOf(ordered, fileRefName, "signal") }
+      : null;
     ordered.forEach((layer, index) => {
-      for (const module of layer.modules) this.#addModule(ordered, index, module, fileRefName);
+      for (const module of layer.modules) this.#addModule(ordered, index, module);
     });
   }
 
@@ -148,7 +162,12 @@ export class RuntimeNameTable {
     return [...(this.#entries.get(family)?.keys() ?? [])].sort();
   }
 
-  #addModule(ordered: RuntimeLayer[], index: number, module: RuntimeModuleFact, fileRefName: string | null) {
+  //? `store()` picks upload setters from the file module's descriptor when the class is defined, so it loads first.
+  dependenciesOf(scope: string, module: string): RuntimeOwner[] {
+    return this.#dependencies.get(`${scope}/${module}`) ?? [];
+  }
+
+  #addModule(ordered: RuntimeLayer[], index: number, module: RuntimeModuleFact) {
     const definer = RuntimeNameTable.#definerOf(module);
     if (module.signal)
       this.#add(
@@ -157,12 +176,12 @@ export class RuntimeNameTable {
         definer,
         RuntimeNameTable.#outermostOf(ordered, module.module, "signal"),
       );
-    if (module.store) this.#addStore(ordered, index, module, fileRefName);
+    if (module.store) this.#addStore(ordered, index, module);
     if (module.signal && index === RuntimeNameTable.#outermostIndexOf(ordered, module.module, "signal"))
       this.#addSignal(ordered, index, module);
   }
 
-  #addStore(ordered: RuntimeLayer[], index: number, module: RuntimeModuleFact, fileRefName: string | null) {
+  #addStore(ordered: RuntimeLayer[], index: number, module: RuntimeModuleFact) {
     const store = module.store;
     if (!store) return;
     const definer = RuntimeNameTable.#definerOf(module);
@@ -173,8 +192,11 @@ export class RuntimeNameTable {
     for (const key of state) this.#add("st.use", key, definer, owner);
     for (const key of [...setters, ...store.actions]) this.#add("st.do", key, definer, owner);
     if (!store.signal || !module.signal) return;
-    for (const key of this.#generatedActions(ordered, index, module, fileRefName))
-      this.#add("st.do", key, definer, owner);
+    const { actions, uploads } = this.#generatedActions(ordered, index, module);
+    for (const key of actions) this.#add("st.do", key, definer, owner);
+    const uses = this.#fileOwnerFor(module);
+    for (const key of uploads) this.#add("st.do", key, definer, owner, { uses });
+    if (uploads.length && uses) this.#dependencies.set(`${module.scope}/${module.module}`, [uses]);
     //? The root store keeps one slice map per model, the outermost store's.
     if (index !== RuntimeNameTable.#outermostIndexOf(ordered, module.module, "store")) return;
     for (const { suffix, by } of RuntimeNameTable.#effectiveSignalOf(ordered, index, module.module).slices ?? [])
@@ -187,23 +209,29 @@ export class RuntimeNameTable {
     const effective = RuntimeNameTable.#effectiveSignalOf(ordered, index, module.module);
     for (const { name, verb, by } of effective.endpoints) {
       const endpointDefiner = RuntimeNameTable.#definerOf(by);
-      this.#add("fetch", verb === "pubsub" ? endpointNames(name).subscribe : name, endpointDefiner, owner);
-      if (verb === "message") this.#add("fetch", endpointNames(name).listen, endpointDefiner, owner);
+      const plain = { needs: "descriptor" } as const;
+      this.#add("fetch", verb === "pubsub" ? endpointNames(name).subscribe : name, endpointDefiner, owner, plain);
+      if (verb === "message") this.#add("fetch", endpointNames(name).listen, endpointDefiner, owner, plain);
     }
     if (!effective.slices || !effective.guards) return;
     if (module.kind === "database") this.#add("sig", module.module, definer, owner);
     const names = modelNames(module.module);
     const mounted = (verb: keyof RuntimeVerbGuards) => !!effective.guards?.[verb]?.some((guard) => guard !== "None");
     const write = mounted("create") || mounted("update") || mounted("remove");
-    const generated = [
-      ...(mounted("get") ? [names.model, names.lightModel, names.viewModel, names.getModelView] : []),
+    const requests = [
+      ...(mounted("get") ? [names.model, names.lightModel] : []),
       ...(mounted("create") ? [names.createModel] : []),
       ...(mounted("update") ? [names.updateModel, names.mergeModel] : []),
       ...(mounted("remove") ? [names.removeModel] : []),
-      ...(mounted("get") && write ? [names.editModel, names.getModelEdit] : []),
-      names.addModelFiles,
     ];
-    for (const key of generated) this.#add("fetch", key, definer, owner);
+    const handles = [
+      ...(mounted("get") ? [names.viewModel, names.getModelView] : []),
+      ...(mounted("get") && write ? [names.editModel, names.getModelEdit] : []),
+    ];
+    for (const key of requests) this.#add("fetch", key, definer, owner, { needs: "descriptor" });
+    for (const key of handles) this.#add("fetch", key, definer, owner);
+    const uses = this.#fileOwnerFor(module);
+    this.#add("fetch", names.addModelFiles, definer, owner, { needs: "descriptor", uses });
     for (const { suffix, live, by } of effective.slices) {
       const sliceDefiner = RuntimeNameTable.#definerOf(by);
       const { slice, endpoint } = sliceNames(module.module, suffix);
@@ -227,7 +255,13 @@ export class RuntimeNameTable {
     return [...store.state, ...generated, ...store.derived];
   }
 
-  #generatedActions(ordered: RuntimeLayer[], index: number, module: RuntimeModuleFact, fileRefName: string | null) {
+  #fileOwnerFor(module: RuntimeModuleFact) {
+    const owner = this.#file?.owner;
+    return owner && owner.module !== module.module ? owner : null;
+  }
+
+  #generatedActions(ordered: RuntimeLayer[], index: number, module: RuntimeModuleFact) {
+    const fileRefName = this.#file?.refName;
     const names = modelNames(module.module);
     const className = capitalize(module.module);
     const fileTypes = fileRefName
@@ -238,29 +272,39 @@ export class RuntimeNameTable {
         )
       : new Set<string>();
     const fields = RuntimeNameTable.#fieldsOf(ordered, module.module);
-    const setters = fields.flatMap(({ name, type, array }) => {
+    const setters = fields.flatMap(({ name, array }) => {
       const field = formSetterNames(className, name);
       return [
         field.setFieldOnModel,
         ...(array ? [field.addFieldOnModel, field.subFieldOnModel, field.addOrSubFieldOnModel] : []),
-        ...(type && fileTypes.has(type) ? [field.uploadFieldOnModel] : []),
       ];
     });
+    const uploads = fields
+      .filter(({ type }) => type && fileTypes.has(type))
+      .map(({ name }) => formSetterNames(className, name).uploadFieldOnModel);
     const sliceActions = (RuntimeNameTable.#effectiveSignalOf(ordered, index, module.module).slices ?? []).flatMap(
       ({ suffix }) => Object.values(sliceNames(module.module, suffix).action),
     );
-    return [...setters, ...modelActionRoles.map((role) => names[role]), ...sliceActions];
+    return { actions: [...setters, ...modelActionRoles.map((role) => names[role]), ...sliceActions], uploads };
   }
 
-  #add(family: RuntimeFamily, key: string, definedBy: RuntimeOwner | null, owner: RuntimeOwner | null) {
+  #add(
+    family: RuntimeFamily,
+    key: string,
+    definedBy: RuntimeOwner | null,
+    owner: RuntimeOwner | null,
+    { needs = "store", uses = null }: RuntimeAddOptions = {},
+  ) {
     const entries = this.#entries.get(family);
     if (!entries) return;
-    const entry = entries.get(key) ?? { owners: [], definedBy: [], base: false };
-    if (!definedBy) entry.base = true;
+    const entry = entries.get(key) ?? { owners: [], definedBy: [], base: null, needs, uses: [] };
+    if (!definedBy) entry.base = family.startsWith("st.") ? "store" : "descriptor";
+    if (needs === "store") entry.needs = "store";
     const has = (list: RuntimeOwner[], target: RuntimeOwner) =>
       list.some(({ scope, module }) => scope === target.scope && module === target.module);
     if (definedBy && !has(entry.definedBy, definedBy)) entry.definedBy.push(definedBy);
     if (owner && !has(entry.owners, owner)) entry.owners.push(owner);
+    if (uses && !has(entry.uses, uses)) entry.uses.push(uses);
     entries.set(key, entry);
   }
 

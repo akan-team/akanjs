@@ -1,13 +1,15 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { RuntimeNameTable } from "./runtimeNameTable";
-import { runtimeFixtureTables } from "./runtimeTable.fixture";
+import { runtimeFixtureTables, runtimeUploadTable } from "./runtimeTable.fixture";
 import { RuntimeUse, type RuntimeUseOptions, type RuntimeUseVerdict } from "./runtimeUse";
 
 let demo: RuntimeNameTable;
 let kit: RuntimeNameTable;
+let fk: RuntimeNameTable;
 
 beforeAll(async () => {
   ({ demo, kit } = await runtimeFixtureTables());
+  fk = await runtimeUploadTable();
 });
 
 const ownTableOf = (fileName: string) =>
@@ -19,7 +21,8 @@ const summaryOf = (verdict: RuntimeUseVerdict) =>
   verdict.resolvable
     ? [
         ...verdict.owners.map(({ scope, module, needs }) => `${scope}/${module} ${needs}`),
-        ...(verdict.base ? ["base"] : []),
+        ...(verdict.baseStore ? ["base store"] : []),
+        ...(verdict.baseDescriptor ? ["base descriptor"] : []),
       ]
     : `${verdict.reason}: ${verdict.text}`;
 
@@ -276,12 +279,12 @@ describe("RuntimeUse.analyze", () => {
       expect(analyze(whole.text, whole.file)).toEqual(whole.expected);
     });
 
-  test("owns a descriptor read by the signal module and a store read by the store module, a lib name by the lib", () => {
+  test("owns a slice, a signal handle and a store name by the store module, a lib name by the lib", () => {
     expect(
       analyze(
         `${appImport}export const load = () => [fetch.slice.memoInBoard, sig.note.refName, fetch.memoNote(), st.do.pickLabel("x")];\n`,
       ),
-    ).toEqual(["apps/demo/memo descriptor", "apps/demo/note descriptor", "libs/kit/util store"]);
+    ).toEqual(["apps/demo/memo store", "apps/demo/note store", "libs/kit/util store"]);
     expect(analyze(`${appImport}export const count = () => [fetch.memoNote(), st.use.memo()];\n`)).toEqual([
       "apps/demo/memo store",
     ]);
@@ -294,7 +297,82 @@ describe("RuntimeUse.analyze", () => {
       "libs/kit/note store",
     ]);
     expect(analyze(`import { st } from "akanjs/store";\n${count}`)).toEqual(["apps/demo/note store"]);
-    expect(analyze(`${appImport}export const go = () => st.do.setPath("/");\n`)).toEqual(["base"]);
+    expect(analyze(`${appImport}export const go = () => st.do.setPath("/");\n`)).toEqual(["base store"]);
+  });
+
+  test("tells the framework's own store keys, which every page has, from its own descriptors", () => {
+    expect(analyze(`${appImport}export const a = () => st.use.theme();\n`)).toEqual(["base store"]);
+    expect(analyze(`${appImport}export const a = () => fetch.ping();\n`)).toEqual(["base descriptor"]);
+    expect(analyze(`${appImport}export const a = () => [st.do.setTheme("dark"), fetch.ping()];\n`)).toEqual([
+      "base store",
+      "base descriptor",
+    ]);
+  });
+
+  test("needs a module's store for every fetch value that framework UI drives the store with", () => {
+    const remove =
+      '"use client";\nimport { fetch } from "@apps/demo/client";\nimport { Model } from "akanjs/ui";\nexport const Remove = ({ memoId }: { memoId: string }) => <Model.Remove modelId={memoId} slice={fetch.slice.memoInBoard}>x</Model.Remove>;\n';
+    expect(analyze(remove)).toEqual(["apps/demo/memo store"]);
+    expect(
+      [
+        "fetch.slice.memoInBoard",
+        "fetch.initMemoInBoard()",
+        "fetch.getMemoInitInBoard()",
+        "fetch.memoListInBoard()",
+        "fetch.memoInsightInBoard()",
+        "fetch.subscribeMemoLiveInBoard(() => undefined)",
+        "fetch.viewMemo(id)",
+        "fetch.getMemoView(id)",
+        "fetch.editMemo(id)",
+        "fetch.getMemoEdit(id)",
+        "fetch.serializedSignal.memo",
+        "sig.memo.refName",
+        "sig.memo.fetch.memoNote()",
+      ].map((use) => analyze(`${appImport}export const a = (id: string) => ${use};\n`)),
+    ).toEqual(Array(13).fill(["apps/demo/memo store"]));
+  });
+
+  test("needs only a module's descriptor for a plain endpoint, a generated read or write, and a socket", () => {
+    expect(
+      [
+        "fetch.memoNote()",
+        "fetch.memoTyping(true)",
+        "fetch.listenMemoTyping(() => undefined)",
+        "fetch.memo(id)",
+        "fetch.lightMemo(id)",
+        "fetch.createMemo({})",
+        "fetch.updateMemo(id, {})",
+        "fetch.mergeMemo(id, {})",
+      ].map((use) => analyze(`${appImport}export const a = (id: string) => ${use};\n`)),
+    ).toEqual(Array(8).fill(["apps/demo/memo descriptor"]));
+  });
+
+  test("needs the file-upload module's descriptor for an upload, which reads it as it runs", () => {
+    expect(
+      analyze(
+        'import { fetch, st } from "@libs/fk/client";\nexport const up = (files: File[]) => [st.do.uploadImageOnUser(files), fetch.addUserFiles(files)];\n',
+        "libs/fk/ui/Upload.tsx",
+        undefined,
+        fk,
+      ),
+    ).toEqual(["libs/fk/file descriptor", "libs/fk/user store"]);
+  });
+
+  test("loads the whole runtime when a spread argument hides which argument lands where", () => {
+    expect(
+      [
+        "st.sub((s, prev) => prev.memoForm.content.length, ...([] as []))",
+        "st.sel(...([(s: { draft: string }) => s.draft] as const))",
+        "st.ref(...([(s: { draft: string }) => s.draft] as const))",
+        "st.set(...([{ draft: '' }] as const))",
+      ].map((use) => analyze(`${appImport}export const a = () => ${use};\n`).slice(0, 15)),
+    ).toEqual(Array(4).fill("computed-access"));
+    expect(
+      analyze(
+        'import { store } from "akanjs/store";\n\nexport class MemoStore extends store("memo" as const, () => ({ draft: "" })) {\n  read() {\n    return this.pick(...(["draft"] as const));\n  }\n}\n',
+        "apps/demo/lib/memo/memo.store.ts",
+      ).slice(0, 15),
+    ).toBe("computed-access");
   });
 
   test("leaves the global fetch, an agentic member and a file with no runtime import alone", () => {
@@ -341,7 +419,7 @@ describe("RuntimeUse.analyze", () => {
       ),
     ).toEqual(["apps/demo/memo store", "apps/demo/note descriptor"]);
     expect(analyze('import { sig as s } from "akanjs/client";\nexport const ref = () => s.memo.refName;\n')).toEqual([
-      "apps/demo/memo descriptor",
+      "apps/demo/memo store",
     ]);
   });
 
@@ -358,7 +436,7 @@ describe("RuntimeUse.analyze", () => {
       ),
     ).toEqual(["apps/demo/memo store", "apps/demo/note store"]);
     expect(storeOf("  pin() {\n    this.setPinned(true);\n  }")).toEqual([
-      "apps/demo/memo descriptor",
+      "apps/demo/memo store",
       "apps/demo/note store",
     ]);
     expect([

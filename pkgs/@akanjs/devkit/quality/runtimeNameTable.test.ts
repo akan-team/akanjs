@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { type RuntimeFamily, RuntimeNameTable } from "./runtimeNameTable";
-import { runtimeFixtureLayer, runtimeFixtureTables } from "./runtimeTable.fixture";
+import { runtimeFixtureLayer, runtimeFixtureTables, runtimeUploadTable } from "./runtimeTable.fixture";
 
 let demo: RuntimeNameTable;
 let kit: RuntimeNameTable;
@@ -21,7 +21,7 @@ describe("RuntimeNameTable", () => {
     expect(entryOf(demo, "st.use", "noteCount")).toEqual({
       owners: ["apps/demo/note"],
       definedBy: ["libs/kit/note"],
-      base: false,
+      base: null,
     });
     expect(entryOf(demo, "st.do", "setBodyOnNote")?.owners).toEqual(["apps/demo/note"]);
     expect(entryOf(demo, "st.slice", "noteInKit")?.owners).toEqual(["apps/demo/note"]);
@@ -54,8 +54,47 @@ describe("RuntimeNameTable", () => {
   });
 
   test("marks the framework's own names with no owner", () => {
-    expect(entryOf(demo, "st.do", "setPath")).toEqual({ owners: [], definedBy: [], base: true });
-    expect(entryOf(demo, "fetch", "ping")).toEqual({ owners: [], definedBy: [], base: true });
+    expect(entryOf(demo, "st.do", "setPath")).toEqual({ owners: [], definedBy: [], base: "store" });
+    expect(entryOf(demo, "fetch", "ping")).toEqual({ owners: [], definedBy: [], base: "descriptor" });
+    expect(entryOf(demo, "fetch.serializedSignal", "agent")?.base).toBe("descriptor");
+  });
+
+  test("says which names need their module's store and which only its descriptor", () => {
+    const needs = (family: RuntimeFamily, keys: string[]) => keys.map((key) => demo.lookup(family, key)?.needs);
+    expect(needs("fetch", ["memoNote", "listenMemoTyping", "memo", "lightMemo", "createMemo", "mergeMemo"])).toEqual(
+      Array(6).fill("descriptor"),
+    );
+    expect(
+      needs("fetch", [
+        "viewMemo",
+        "getMemoView",
+        "editMemo",
+        "getMemoEdit",
+        "memoListInBoard",
+        "memoInsightInBoard",
+        "initMemoInBoard",
+        "getMemoInitInBoard",
+        "subscribeMemoLiveInBoard",
+      ]),
+    ).toEqual(Array(9).fill("store"));
+    expect([
+      ...needs("st.do", ["clearDraft"]),
+      ...needs("fetch.slice", ["memoInBoard"]),
+      ...needs("sig", ["memo"]),
+      ...needs("fetch.serializedSignal", ["memo"]),
+    ]).toEqual(Array(4).fill("store"));
+  });
+
+  test("names the file-upload module an upload reads as it runs, and as a dependency of each store with a file field", async () => {
+    const fk = await runtimeUploadTable();
+    const usesOf = (family: RuntimeFamily, key: string) =>
+      fk.lookup(family, key)?.uses.map(({ scope, module }) => `${scope}/${module}`);
+    expect(usesOf("st.do", "uploadImageOnUser")).toEqual(["libs/fk/file"]);
+    expect(usesOf("fetch", "addUserFiles")).toEqual(["libs/fk/file"]);
+    expect(usesOf("st.do", "setImageOnUser")).toEqual([]);
+    expect(fk.dependenciesOf("libs/fk", "user")).toEqual([{ scope: "libs/fk", module: "file" }]);
+    expect(fk.dependenciesOf("libs/fk", "file")).toEqual([]);
+    expect(demo.dependenciesOf("apps/demo", "memo")).toEqual([]);
   });
 
   test("names its scope and layers, innermost first, and reads no table for a scope with no generated runtime", async () => {

@@ -8,7 +8,7 @@ import {
   type RuntimeImportUse,
 } from "./runtimeImports";
 import { RuntimeLexicalScope } from "./runtimeLexicalScope";
-import type { RuntimeFamily, RuntimeNameTable } from "./runtimeNameTable";
+import type { RuntimeFamily, RuntimeNameTable, RuntimeNeed, RuntimeOwner } from "./runtimeNameTable";
 
 export type { RuntimeImportKind, RuntimeImportTarget } from "./runtimeImports";
 
@@ -26,7 +26,7 @@ export type RuntimeUseReason = (typeof runtimeUseReasons)[number];
 export interface RuntimeUseOwner {
   scope: string;
   module: string;
-  needs: "store" | "descriptor";
+  needs: RuntimeNeed;
 }
 
 export interface RuntimeUseProblem {
@@ -38,7 +38,7 @@ export interface RuntimeUseProblem {
 }
 
 export type RuntimeUseVerdict =
-  | { resolvable: true; owners: RuntimeUseOwner[]; base: boolean; reads: boolean }
+  | { resolvable: true; owners: RuntimeUseOwner[]; baseStore: boolean; baseDescriptor: boolean; reads: boolean }
   | ({ resolvable: false; problems: RuntimeUseProblem[] } & RuntimeUseProblem);
 
 export interface RuntimeUseOptions {
@@ -58,7 +58,13 @@ type Step =
 const stMethods = new Set(["get", "set", "sel", "ref", "sub"]);
 const agenticMembers = new Set(["tool", "expose", "useState"]);
 const signalData = new Set(["refName", "cnst", "slices", "serializedSignal", "_slice"]);
-const nothingRead: RuntimeUseVerdict = { resolvable: true, owners: [], base: false, reads: false };
+const nothingRead: RuntimeUseVerdict = {
+  resolvable: true,
+  owners: [],
+  baseStore: false,
+  baseDescriptor: false,
+  reads: false,
+};
 
 export class RuntimeUse {
   readonly #source: ts.SourceFile;
@@ -70,7 +76,8 @@ export class RuntimeUse {
   readonly #bindings = new Map<ts.Identifier, RuntimeBinding>();
   readonly #owners = new Map<string, RuntimeUseOwner>();
   readonly #problems: (RuntimeUseProblem & { position: number })[] = [];
-  #base = false;
+  #baseStore = false;
+  #baseDescriptor = false;
   #reads = false;
   #recording: boolean = false;
 
@@ -122,7 +129,13 @@ export class RuntimeUse {
     const owners = [...this.#owners.values()].sort((a, b) =>
       `${a.scope}/${a.module}` < `${b.scope}/${b.module}` ? -1 : 1,
     );
-    return { resolvable: true, owners, base: this.#base, reads: this.#reads };
+    return {
+      resolvable: true,
+      owners,
+      baseStore: this.#baseStore,
+      baseDescriptor: this.#baseDescriptor,
+      reads: this.#reads,
+    };
   }
 
   #targetOf(specifier: string) {
@@ -387,6 +400,8 @@ export class RuntimeUse {
     const { current, parent } = RuntimeUse.#climb(node);
     if (!ts.isCallExpression(parent) || parent.expression !== current)
       return this.#problem("passed-on", node, "the store method is taken off the store");
+    const spread = parent.arguments.find(ts.isSpreadElement);
+    if (spread) return this.#problem("computed-access", spread, "a spread hides which argument lands where");
     const [first, second] = parent.arguments;
     if (method === "get") return this.#follow(parent, { kind: "state" });
     if (method === "pick")
@@ -496,13 +511,16 @@ export class RuntimeUse {
         node,
         `${family}.${key} is not a name ${table.scope}'s client runtime answers`,
       );
-    if (entry.base) this.#base = true;
-    const needs = family.startsWith("st.") ? "store" : "descriptor";
-    for (const owner of entry.owners) {
-      const id = `${owner.scope}/${owner.module}`;
-      const known = this.#owners.get(id);
-      if (!known || (known.needs === "descriptor" && needs === "store")) this.#owners.set(id, { ...owner, needs });
-    }
+    if (entry.base === "store") this.#baseStore = true;
+    if (entry.base === "descriptor") this.#baseDescriptor = true;
+    for (const owner of entry.owners) this.#need(owner, entry.needs);
+    for (const owner of entry.uses) this.#need(owner, "descriptor");
+  }
+
+  #need(owner: RuntimeOwner, needs: RuntimeNeed) {
+    const id = `${owner.scope}/${owner.module}`;
+    const known = this.#owners.get(id);
+    if (!known || (known.needs === "descriptor" && needs === "store")) this.#owners.set(id, { ...owner, needs });
   }
 
   #problem(reason: RuntimeUseReason, node: ts.Node, why: string) {
