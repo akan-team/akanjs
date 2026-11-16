@@ -87,10 +87,7 @@ export class RouteClientBuilder {
 
     //? Registry mode builds no browser bundle: the SSR bundle has the same entries, exports and imports to read.
     const registry = this.#browser === "registry" ? new CsrDevPaths(this.#app.workspace.workspaceRoot) : null;
-    const routeRuntime =
-      !registry && (await StoreBootstrap.scopeOf(this.#app)) === "page"
-        ? await RouteRuntime.read(this.#app.workspace.workspaceRoot, `apps/${this.#app.name}`)
-        : null;
+    const routeRuntime = registry ? null : await this.#readRouteRuntime();
     const scope: ClientRuntimeScope = routeRuntime ? "page" : "whole";
     const ssrEntries = await this.#createBootstrapEntries(entries, "whole");
     const browserEntries = registry
@@ -180,6 +177,20 @@ export class RouteClientBuilder {
       clientDeps: [],
       clientDepsByEntry: {},
     };
+  }
+
+  async #readRouteRuntime(): Promise<RouteRuntime | null> {
+    if ((await this.#app.getConfig()).clientRuntime !== "route") return null;
+    const { name } = this.#app;
+    const routeRuntime =
+      (await StoreBootstrap.scopeOf(this.#app)) === "page"
+        ? await RouteRuntime.read(this.#app.workspace.workspaceRoot, `apps/${name}`)
+        : null;
+    if (!routeRuntime)
+      this.#app.logger.warn(
+        `[client-runtime] clientRuntime: "route" is set, but the per-module runtime files of ${name} or a lib it mounts are missing, so every page of this build loads the whole client runtime. Run \`akan sync ${name}\` and build again.`,
+      );
+    return routeRuntime;
   }
 
   async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, routeRuntime: RouteRuntime | null) {
