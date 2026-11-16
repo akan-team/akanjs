@@ -15,7 +15,7 @@ apps, heads, CSR root layouts, lib pages, `devOnly`: `pageRule`.
 - **A route file exports one chain** — `page()`, `layout()` in a `_layout.tsx`, `rootLayout()` in a root
   `_layout.tsx` — and every setting is a stage (`.param`, `.search`, `.config`, `.guard`, `.head`, `.loading`;
   `.notFound` / `.error` on layouts; `.fonts` / `.theme` / `.manifest` / … on the root; `.prompt` / `.app` on a page).
-  A named export beside it fails the build.
+  A named export beside it fails the build, and the legacy `export default async function Page` is never written anew.
 - **Name every `[x]` segment with `.param("x", Type)`** and read query keys only via `.search("k", Type)`; a layout
   may declare a subset. `akan sync` reads the names off the `export default` chain itself, so it refuses a chain bound
   to a variable first and a `[x]` folder whose page declares no `.param("x")`. `lang` is never declared — every stage
@@ -24,8 +24,6 @@ apps, heads, CSR root layouts, lib pages, `devOnly`: `pageRule`.
   and a canonical link / `og:url` comes only from the page's own `.head()`.
 - In a CSR bundle a root layout's own markup is hidden: what a person must see from it renders through
   `createPortal(…, document.body)`.
-- `_overrides.tsx` is one `export default override({ Slot: AppComponent })` (`akanjs/ui`), no logic, no
-  `"use client"`. The legacy `export default async function Page` shape is never written anew.
 - `libs/<lib>/page` reaches an app through `syncPageLibs`, linked into the generated `page/(libs)/(<lib>)`; edit the
   lib source, never the link. `.config({ devOnly: true })` (a literal) keeps a route out of `akan build`.
 - `.render()` gets the declared args flat and typed (no `PageProps`, no `loader=` prop). Order: `usePage()`, fetch,

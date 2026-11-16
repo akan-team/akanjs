@@ -9,7 +9,12 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
   - Surfaces/text: `bg-background`, `text-foreground`, `bg-muted`, `text-muted-foreground`, `bg-card`, `bg-popover`, `border-border`, `border-input`, `ring-ring`.
   - Brand/status: `primary`, `secondary`, `accent`, `destructive`, `success`, `warning`, `info`, `neutral`, `open` — each with a `-foreground` pair for text on that surface (e.g. `bg-primary text-primary-foreground`).
 - Compose classes with `cn` from `akanjs/client` (token-aware tailwind-merge) — the only class-combining function. No object syntax: write `cond && "x"`.
-- Forward `className` last so callers can extend styles.
+- Static class strings stay plain: `cn` only for a conditional or to merge an incoming `className`.
+- Forward `className` last so callers can extend styles: `cn("base", cond && "extra", className)`.
+- Multi-slot components take named props (`wrapperClassName`), never a `classNames` object.
+- An enum→class lookup is a module-scope `as const` map typed `{ [key in cnst.XStatus["value"]]: string }`, not
+  `Record<...>`. Shared by a second module, the classes become a recipe variant in `ui/Recipe/`; only an enum→variant
+  name map (`BadgeVariants["variant"]`) moves to `webkit/`.
 
 ## Color Vocabulary — What Lint Refuses
 - Vocabulary closure strips the raw Tailwind palette, so these render as no CSS and fail lint: raw palette classes
@@ -34,10 +39,11 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
   - `buttonRecipe({ variant: "primary", size: "lg" }, "w-full rounded-2xl")`
 - Prefer the `akanjs/ui` primitives (`Button`, `Badge`, `Input`, `Field`, `Table` …) over re-implementing a component's look with utility stacks. There is **no `Card`/`Box` primitive** — a card/box is a recipe surface (e.g. `appCard`), not an `akanjs/ui` component; do not `import { Card }`.
 - App-specific repeated surfaces go one-per-file in `apps/<app>/ui/Recipe/` (server-safe, no `"use client"`) via `recipe(tv({ base, variants }))`, imported from `@apps/<app>/ui`. App recipes **extend** (surfaces the lib lacks — chat bubble, tile); they never re-define a lib component in parallel.
-- Full recipe authoring/consumption policy: the `recipeRule` guideline. Never guess recipe names/imports — the authoritative list is `AGENTS.md` `## Recipes` plus the `list_recipes` tool.
+- Full recipe authoring/consumption policy: the `recipeRule` guideline. Never guess recipe names/imports — the authoritative lists are the `style` rule (framework recipes) and each app's or lib's `AGENTS.md` (`## Recipes In Scope`).
 
 ## Customization Decision (where a design delta goes)
-Screen code is invariant — a plain `<Button variant="primary">` never changes. Only these config files do:
+When a request implies a distinct look and feel, do not stop at colors — customize the theme and, when needed, the
+components. Screen code is invariant — a plain `<Button variant="primary">` never changes. Only these config files do:
 - **Theme differs** (color/radius/font) → override token *values* in `apps/<app>/page/styles.css`.
 - **A lib component's look differs** → recipe override: `export default override({ recipes: { button: neonButtonRecipe } })` in a `page/**/_overrides.tsx`. Every `<Button>` in that route subtree re-skins; behavior (async states, focus, a11y) is untouched. The swap recipe must accept the framework recipe's full variant surface.
 - **Structure/behavior differs** (modal → drawer) → component override (`override({ Modal: BrandModal })`), reassembling headless parts.
@@ -70,7 +76,8 @@ Screen code is invariant — a plain `<Button variant="primary">` never changes.
   ```
 - The framework maps these variables to Tailwind color names (`@theme inline` in `akanjs/ui/styles.css`), so a class like `bg-primary` / `text-foreground` resolves to different colors per `data-theme` — the app only sets values, never re-declares the mapping.
 - Switching themes is toggling the `data-theme` attribute. Keep every token defined in both the dark and light blocks.
-- Radius uses `rounded-box` (cards/modals), `rounded-field` (buttons/inputs), `rounded-selector` (toggles/checkboxes).
+- Radius uses `rounded-box` (cards/modals), `rounded-field` (buttons/inputs), `rounded-selector` (toggles/checkboxes);
+  the theme retunes corner rounding through `--radius-box` / `--radius-field`.
 
 ## Lib-Owned Tokens (`libs/<lib>/ui/tokens.css`)
 - A lib that needs colors of its own — vendor brand colors pinned by someone else's guide (Kakao `#fee500`, Naver `#1ec800`), fixed in-game surfaces — declares them **once** in `libs/<lib>/ui/tokens.css`. Never copy the block into each app's stylesheet.

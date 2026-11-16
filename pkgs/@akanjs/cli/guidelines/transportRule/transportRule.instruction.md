@@ -286,6 +286,10 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
 
 - `.body(...)` / `.param(...)` args accept `ConstantFieldTypeInput` only: scalars, model refs, or `enumOf(...)`.
   Numbers are `Int` or `Float` — `Number` is rejected (`pkgs/akanjs/signal/endpointInfo.ts`).
+- **A model or scalar argument is checked against the request schema on every transport**: a wrong JSON type, a
+  value outside its enum or a missing required field answers 400 with `data.name` naming the path
+  (`data.items.2.price`); a defaulted field may be left out, an undeclared key is dropped, and a stored model's input
+  keeps an absent field absent.
 - **`Upload` is valid only inside a mutation flagged for file upload**:
   `mutation([cnst.File], { fileUpload: true }).body("files", [Upload])`, as the `file` module does. It is not a
   model field type. The other body args of such a mutation arrive typed as in a JSON body. A file's `type` on the

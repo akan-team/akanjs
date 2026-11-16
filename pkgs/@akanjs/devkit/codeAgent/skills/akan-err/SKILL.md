@@ -30,9 +30,18 @@ import path at all**, so keep throwing code out of them entirely rather than rea
 
 Best-effort code returns a sentinel (`null`, `undefined`, `{}`) instead of throwing. `try/catch` is rare and
 always converts an exception into a decision: a guard catches, warns, and returns `false`; an adapter
-catches, logs, and returns `null`. A store action never catches — let the framework toast the `Err`, or list it in
-the store's `static silent` when no screen waits on it and its caller handles the rejection.
+catches, logs (`logger.error`), and returns `null`; a UI `try/finally` resets a spinner. A store action never
+catches — let the framework toast the `Err`, or list it in the store's `static silent` when no screen waits on it
+and its caller handles the rejection.
 Client-side validation failure is `msg.error("<key>")` plus an early return, never a throw.
+
+An `srvkit/` adapter belongs to no module: its keys go in the app's or lib's own service dictionary,
+`lib/_<name>/<name>.dictionary.ts`, thrown as `new Err("<name>.error.<key>")` with `Err` from `"../lib/dict"`.
+
+**An endpoint names the errors it throws on purpose** — `errors: { 409: ["ticket.error.locked"] }` in its signal
+option, with keys its dictionary defines and never `base.error.*`. That is the status's OpenAPI response and a line
+of the MCP tool's description; outside production a thrown key it leaves out warns once. A caller narrows with
+`Err.is(error, "ticket.error.locked")`.
 
 **A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(…, { origin })`
 restores the remote `Err` with its class, key and data. Rethrow it as-is — wrapping it in a `new Error`
