@@ -75,7 +75,7 @@ export class CsrDevPatcher {
     if (state.graph.configKey !== context.configKey)
       return this.#handBack("the dev bundle config changed", generation, context);
     const metadataFile = changedFiles.find((file) => this.#bundler.isMetadataFile(file));
-    // `lib/useClient.ts` and `lib/page.ts` inline signal and dictionary metadata through macros at build time.
+    // `lib/useClient.ts` and `lib/usePage.ts` inline signal and dictionary metadata through macros at build time.
     if (metadataFile) return this.#handBack(`${path.basename(metadataFile)} changed`, generation, context);
     //? Only a registry read from disk: one held in memory saw every save since, and a metadata save was handed back.
     if (!resident && state.graph.metadata !== (await this.#bundler.metadataFingerprint()))

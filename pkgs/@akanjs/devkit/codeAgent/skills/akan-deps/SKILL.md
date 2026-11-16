@@ -8,7 +8,7 @@ description: "Fix an import, dependency, or barrel problem in an Akan workspace 
 ## Barrels are generated
 
 Every `index.ts` under `ui/`, `webkit/`, `srvkit/`, `common/`, `plugin/` and `lib/**` is scanner output, as
-are `cnst.ts`, `db.ts`, `dict.ts`, `page.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`, `useServer.ts`,
+are `cnst.ts`, `db.ts`, `dict.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`, `usePage.ts`, `useServer.ts`,
 `client.ts` and `server.ts`. Do not hand-edit them and do not rely on their exact contents.
 
 **If an import "cannot be found" but the file exists, the barrel is stale** — run `akan sync <app-or-lib>`,

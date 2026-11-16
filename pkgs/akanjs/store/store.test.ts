@@ -5,6 +5,7 @@ import { AbortSignals } from "akanjs/common";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
 import { type ClientSignal, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
+import { isValidElement } from "react";
 import type { RootStoreCls } from "./rootStore";
 import { type StoreCls, store } from "./store";
 import { MemoryStorage, setTestEnv } from "./store.fixture";
@@ -1864,6 +1865,52 @@ describe("StoreInstance with a root added later", () => {
     expect(instance.do.setRepeatedValue).toBe(setRepeatedValue);
   });
 
+  test("lets a later root's static silent quiet an action an earlier root built from the same method", async () => {
+    setupEnv();
+    class LoudLibStore extends store("quietedStore" as const, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+      async failThing() {
+        throw new Error("quietedStore.error.failed");
+      }
+    }
+    StoreRegistry.register(LoudLibStore);
+    class QuietAppStore extends store("quietedStore" as const, () => ({}), LoudLibStore) {
+      static silent = ["failThing"] satisfies (keyof QuietAppStore)[];
+    }
+    StoreRegistry.register(QuietAppStore);
+    const instance = new StoreInstance(makeRoot("loudLibRoot", LoudLibStore));
+    const { failThing } = instance.do;
+
+    instance.addStore(makeRoot("quietAppRoot", QuietAppStore));
+
+    await expect(instance.do.failThing()).rejects.toThrow("quietedStore.error.failed");
+    expect(instance.get().messages).toEqual([]);
+    expect(instance.do.failThing).toBe(failThing);
+  });
+
+  test("keeps a declared set<Key> action when a later root that does not declare it is added", async () => {
+    setupEnv();
+    class DeclaringStore extends store("declaringStore" as const, () => ({ declaredValue: 1 })) {
+      setDeclaredValue(value: number) {
+        this.set({ declaredValue: value * 10 });
+      }
+    }
+    class UnrelatedStore extends store("unrelatedStore" as const, () => ({ unrelatedValue: 1 })) {}
+    StoreRegistry.register(DeclaringStore);
+    StoreRegistry.register(UnrelatedStore);
+    const instance = new StoreInstance(makeRoot("declaringRoot", DeclaringStore));
+    const { setDeclaredValue } = instance.do;
+
+    instance.addStore(makeRoot("unrelatedRoot", UnrelatedStore));
+    await instance.do.setDeclaredValue(2);
+
+    expect(instance.do.setDeclaredValue).toBe(setDeclaredValue);
+    expect(instance.get().declaredValue).toBe(20);
+    expect(instance.generatedSetters.has("setDeclaredValue")).toBe(false);
+  });
+
   test("replaces st.do.<action> when a later root brings a different method under its name", async () => {
     setupEnv();
     class ReplacedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {
@@ -1912,6 +1959,17 @@ describe("StoreInstance facades on an unknown key", () => {
     expect(instance.do.setKnownValue).toBeInstanceOf(Function);
     expect("missingAction" in instance.do).toBe(false);
     expect(instance.do.then).toBeUndefined();
+  });
+
+  test("lets React's element check read a facade handed as a prop in development", () => {
+    setupEnv();
+    class PropStore extends store("propStore" as const, () => ({ propValue: 1 })) {}
+    StoreRegistry.register(PropStore);
+    const instance = withNodeEnv("development", () => new StoreInstance(makeRoot("propRoot", PropStore)));
+
+    expect(isValidElement(instance.use)).toBe(false);
+    expect(isValidElement(instance.do)).toBe(false);
+    expect(isValidElement(instance.slice)).toBe(false);
   });
 
   test("answers undefined in production and under test", () => {

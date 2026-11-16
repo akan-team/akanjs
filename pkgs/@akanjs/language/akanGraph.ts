@@ -44,7 +44,7 @@ const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 const lowerFirst = (text: string) => text.charAt(0).toLowerCase() + text.slice(1);
 const memberSourcePattern = /\.(signal|service|store)\.ts$/;
 const skippedPattern =
-  /(?:\.(?:constant|document|dictionary|test|spec)\.tsx?|\/lib\/(?:cnst|db|dict|page|sig|srv|st|useClient|useServer)\.ts|\/index\.tsx?|^(?:apps|libs)\/[^/]+\/(?:client|server)\.ts)$/;
+  /(?:\.(?:constant|document|dictionary|test|spec)\.tsx?|\/lib\/(?:cnst|db|dict|sig|srv|st|useClient|usePage|useServer)\.ts|\/index\.tsx?|^(?:apps|libs)\/[^/]+\/(?:client|server)\.ts)$/;
 const scalarPattern = /\/lib\/__scalar\/([^/]+)\/[^/]+\.constant\.ts$/;
 const moduleDirPattern = /\/lib\/([^/]+)\//;
 const typeKinds = new Set<AkanGraphNodeKind>(["model", "scalar", "enum"]);

@@ -448,13 +448,13 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     );
   });
 
-  test("gives a module importing only usePage, msg or Err from a client barrel lib/page, not the descriptors and stores", async () => {
+  test("gives a module importing only usePage, msg or Err from a client barrel lib/usePage, not the descriptors and stores", async () => {
     const root = await makeTempRoot();
     await write(
       path.join(root, "apps/demo/client.ts"),
       [
         'export * as cnst from "./lib/cnst";',
-        'export { msg, Err, usePage } from "./lib/page";',
+        'export { msg, Err, usePage } from "./lib/usePage";',
         'export { fetch, sig } from "./lib/useClient";',
         'export { st, RootStore } from "./lib/st";',
         'export { Memo } from "./lib/memo";',
@@ -462,14 +462,14 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
       ].join("\n"),
     );
     await write(path.join(root, "apps/demo/lib/cnst.ts"), "export const Sample = 1;\n");
-    await write(path.join(root, "apps/demo/lib/page.ts"), "export const { msg, Err, usePage, fetch, sig } = {};\n");
+    await write(path.join(root, "apps/demo/lib/usePage.ts"), "export const { msg, Err, usePage, fetch, sig } = {};\n");
     await write(
       path.join(root, "apps/demo/lib/useClient.ts"),
       [
-        'import { fetch as pageFetch, sig as pageSig } from "./page";',
+        'import { fetch as pageFetch, sig as pageSig } from "./usePage";',
         "export const fetch = pageFetch;",
         "export const sig = pageSig;",
-        'export { Err, msg, usePage } from "./page";',
+        'export { Err, msg, usePage } from "./usePage";',
         "",
       ].join("\n"),
     );
@@ -485,9 +485,9 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
 
     expect(await rewrite('import { usePage, msg as toast, Err, type cnst } from "@apps/demo/client";\n')).toBe(
       [
-        'import "@apps/demo/lib/page";',
+        'import "@apps/demo/lib/usePage";',
         'import { type cnst } from "@apps/demo/client";',
-        'import { usePage, msg as toast, Err } from "@apps/demo/lib/page";',
+        'import { usePage, msg as toast, Err } from "@apps/demo/lib/usePage";',
         "",
       ].join("\n"),
     );
@@ -496,7 +496,7 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
         'import "@apps/demo/lib/useClient";',
         'import "@apps/demo/lib/st";',
         'import { fetch } from "@apps/demo/lib/useClient";',
-        'import { usePage } from "@apps/demo/lib/page";',
+        'import { usePage } from "@apps/demo/lib/usePage";',
         "",
       ].join("\n"),
     );
@@ -505,7 +505,7 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
         'import "@apps/demo/lib/useClient";',
         'import "@apps/demo/lib/st";',
         'import { Memo } from "@apps/demo/lib/memo";',
-        'import { usePage } from "@apps/demo/lib/page";',
+        'import { usePage } from "@apps/demo/lib/usePage";',
         "",
       ].join("\n"),
     );
