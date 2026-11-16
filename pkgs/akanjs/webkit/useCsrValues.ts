@@ -226,6 +226,8 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
   const useCsrTransitionMap = useCsrTransitions(routeState);
   // Merged here, not in CSR: CSR renders one container per path route and would rebuild it for each on every render.
   const contentResizeStyle = useMemo(() => {
+    //? Where the shell left the keyboard to the page the box changes once and `KeyboardRide` animates the riders.
+    if (keyboardFrame.avoidsContent && !keyboardFrame.sticky) return null;
     if (!keyboardFrame.avoidsContent && (!shouldAnchorContentBottom || !keyboardFrame.sticky)) return null;
     const duration = keyboardFrame.avoidsContent
       ? "var(--akan-keyboard-duration, 250ms)"
