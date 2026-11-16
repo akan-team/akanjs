@@ -1,5 +1,5 @@
 "use client";
-import { Device } from "akanjs/client";
+import { Device, isPageKeyboardAvoidance } from "akanjs/client";
 import { useEffect, useState } from "react";
 
 export interface VisualViewportFrame {
@@ -10,9 +10,7 @@ export interface VisualViewportFrame {
   offsetTop: number;
 }
 
-/** Whether the iOS shell left the keyboard to the page; an older shell still pans to the field, so the page must not. */
-export const isPageKeyboardAvoidance = () =>
-  (globalThis as { __AKAN_NATIVE__?: { keyboardAvoidance?: string } }).__AKAN_NATIVE__?.keyboardAvoidance === "page";
+export { isPageKeyboardAvoidance };
 
 const currentDevice = () => {
   try {

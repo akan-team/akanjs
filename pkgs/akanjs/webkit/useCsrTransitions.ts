@@ -42,10 +42,6 @@ const tween = (progress: Progress, from: number, to: number) => progress.to([0, 
 const fadeIn = (progress: Progress) => ({ opacity: progress.to((value) => value) });
 const fadeOut = (progress: Progress) => ({ opacity: progress.to((value) => 1 - value) });
 
-//? While the keys cover the bottom, the safe area and the bottom chrome lie under them: the content ends at the keys.
-const isKeyboardOverContent = ({ keyboard }: RouteState["frameLayout"]) =>
-  !!keyboard.avoidsContent && keyboard.visible && !keyboard.sticky;
-
 const chromePadding = (pageState: FramePageState, top: number, bottom: number) => ({
   paddingTop: pageState.overlay?.top ? 0 : top,
   paddingBottom: pageState.overlay?.bottom ? 0 : bottom,
@@ -53,22 +49,34 @@ const chromePadding = (pageState: FramePageState, top: number, bottom: number) =
   "--akan-overlay-bottom": `${pageState.overlay?.bottom ? bottom : 0}px`,
 });
 
-const pageContentStyle = ({ frameLayout }: RouteState, pageState: FramePageState) => ({
-  ...chromePadding(
+//? Under a shell that left the keyboard to the page the box follows the root's --akan-keyboard-cover, which the shell's
+//? event sets before any render; the keys cover the safe area and the bottom chrome, so that padding goes under them.
+const keyboardRide = (frameLayout: RouteState["frameLayout"], paddingBottom: number | string) => ({
+  ...(typeof paddingBottom === "number" && paddingBottom > 0
+    ? { paddingBottom: `calc(${paddingBottom}px - min(${paddingBottom}px, var(--akan-keyboard-cover, 0px)))` }
+    : {}),
+  height: `calc(${frameLayout.viewport.height}px - var(--akan-keyboard-cover, 0px))`,
+});
+
+const pageContentStyle = ({ frameLayout }: RouteState, pageState: FramePageState) => {
+  const padding = chromePadding(
     pageState,
     pageState.topSafeArea + pageState.topInset,
-    isKeyboardOverContent(frameLayout)
-      ? 0
-      : Math.max(
-          pageState.bottomSafeArea,
-          pageState.bottomInset +
-            pageState.bottomSafeArea -
-            (frameLayout.keyboard.sticky ? frameLayout.keyboardAccessory.height : 0),
-        ),
-  ),
-  height: frameLayout.contentViewport.height,
-  "--akan-content-height": `${frameLayout.contentViewport.height}px`,
-});
+    Math.max(
+      pageState.bottomSafeArea,
+      pageState.bottomInset +
+        pageState.bottomSafeArea -
+        (frameLayout.keyboard.sticky ? frameLayout.keyboardAccessory.height : 0),
+    ),
+  );
+  const rides = !!frameLayout.keyboard.avoidsContent && !frameLayout.keyboard.sticky;
+  return {
+    ...padding,
+    height: frameLayout.contentViewport.height,
+    ...(rides ? keyboardRide(frameLayout, padding.paddingBottom) : {}),
+    "--akan-content-height": `${frameLayout.contentViewport.height}px`,
+  };
+};
 
 const prevPageContentStyle = (clientHeight: number, prevPageState: FramePageState) => ({
   ...chromePadding(
