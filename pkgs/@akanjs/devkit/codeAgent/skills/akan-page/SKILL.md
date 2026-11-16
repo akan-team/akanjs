@@ -60,6 +60,8 @@ export default page()
   holds only while the path stays the same; a server `.search()` sees the value at the next full navigation.
 
 What a route file must never do — write while rendering, hooks, a second export — is the `page` rule, loaded with
-any `page/` file. Full detail: `get_guideline` with `pageRule` (guards in depth, heads, MCP apps, CSR root layouts,
-lib pages), or `ssrRule` for what may render on the server. Every stage's signature, the router's methods, Link's
-props and every import path are in the `akanApi-*` references below.
+any `page/` file.
+
+Full detail: `get_guideline` with `pageRule` (guards in depth, heads, MCP apps, CSR root layouts, lib pages), or
+`ssrRule` for what may render on the server. Every stage's signature, the router's methods, Link's props and every
+import path are in the `akanApi-*` references below.
