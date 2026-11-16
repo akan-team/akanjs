@@ -18,8 +18,10 @@ or {
   JsStringLiteralExpression() as $s,
   JsTemplateChunkElement() as $s
 } where {
+  // GritQL compiles a regex anew for every node it tries, so a substring every match must contain gates each one.
   any {
     and {
+      $s <: or { includes "-base-", includes "-content", includes "-error" },
       $s <: r"[\s\S]*(?:^|[\s\"'`{(\[:!])(?:bg|text|border(?:-[tblrxy])?(?:-[se])?|ring(?:-offset)?|fill|stroke|shadow|from|to|via|divide|outline|decoration|placeholder|caret|accent)-(?:base-(?:100|200|300|content)|(?:primary|secondary|accent|neutral|info|success|warning|error)-content|error)(?:[\s\"'`})\]:/!,]|$)[\s\S]*",
       register_diagnostic(
         span = $s,
@@ -28,6 +30,12 @@ or {
       )
     },
     and {
+      $s <: or {
+        includes "btn-", includes "badge-", includes "alert-", includes "input-", includes "select-",
+        includes "textarea-", includes "checkbox-", includes "toggle-", includes "loading-", includes "card-",
+        includes "modal-", includes "collapse-", includes "dropdown-", includes "stat-", includes "tab",
+        includes "menu-", includes "steps-", includes "join-item", includes "mockup-", includes "drawer-"
+      },
       $s <: r"[\s\S]*(?:^|[\s\"'`{(\[:!])(?:btn-(?:primary|secondary|accent|neutral|info|success|warning|error|ghost|link|outline|square|circle|wide|block|xs|sm|md|lg)|badge-(?:primary|secondary|accent|neutral|info|success|warning|error|ghost|outline)|alert-(?:info|success|warning|error)|input-(?:bordered|primary|secondary|accent|ghost|error)|select-(?:bordered|primary|ghost)|textarea-(?:bordered|primary|ghost)|checkbox-(?:primary|secondary|accent)|toggle-(?:primary|secondary|accent)|loading-(?:spinner|dots|ring|ball|bars|infinity)|card-(?:body|title|actions)|modal-(?:box|action|backdrop)|collapse-(?:title|content|arrow|plus)|dropdown-(?:content|end|start|hover)|stat-(?:title|value|desc)|tabs-(?:boxed|lifted|bordered)|tab-active|menu-(?:title|dropdown)|steps-(?:horizontal|vertical)|join-item|mockup-(?:code|phone|browser|window)|drawer-(?:side|content|toggle))(?:[\s\"'`})\]:/!,]|$)[\s\S]*",
       register_diagnostic(
         span = $s,

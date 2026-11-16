@@ -10,6 +10,11 @@ or {
   JsStringLiteralExpression() as $s,
   JsTemplateChunkElement() as $s
 } where {
+  // GritQL compiles a regex anew for every node it tries, so a substring every match must contain gates it.
+  $s <: or {
+    includes "[#", includes "[rgb", includes "[hsl", includes "[ok", includes "[lab(", includes "[lch(",
+    includes "[hwb(", includes "[color("
+  },
   $s <: r"[\s\S]*\[(?:#[0-9a-fA-F]{3,8}|(?:rgb|rgba|hsl|hsla|oklch|oklab|lab|lch|hwb|color)\([^\]]*\))\][\s\S]*",
   register_diagnostic(
     span = $s,

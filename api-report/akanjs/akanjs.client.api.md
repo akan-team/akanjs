@@ -302,6 +302,8 @@ export declare class Href {
     static toExternalUrl(href: string, base: string): string;
 }
 
+export declare const IOS_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.38, 0.7, 0.125, 1)";
+
 export type InsetBreakpoint = "base" | TailwindBreakpoint;
 
 export declare const Inter: (_data: unknown) => null;
@@ -1246,6 +1248,8 @@ export declare const isNativeApp: () => boolean;
 export declare const isNativeShell: () => boolean;
 
 export declare const isNativeTarget: () => boolean;
+
+export declare const isPageKeyboardAvoidance: () => boolean;
 
 export declare const isRouteControl: (error: unknown) => boolean;
 

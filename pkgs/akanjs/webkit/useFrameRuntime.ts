@@ -7,6 +7,8 @@ import {
   type FramePlatformProfile,
   type FrameSlotRegistration,
   type FrameSnapshot,
+  IOS_KEYBOARD_ANIMATION_EASING,
+  isPageKeyboardAvoidance,
   type KeyboardAccessoryFrameState,
   type KeyboardFrameState,
   type Location,
@@ -20,8 +22,6 @@ import {
 import { st } from "akanjs/store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { isPageKeyboardAvoidance } from "./useVisualViewportFrame";
-
 export type FrameSlotMap = Record<string, Record<string, FrameSlotRegistration>>;
 export type FrameSlotBucket = "active" | "pending";
 export type FrameSlotMapByBucket = Record<FrameSlotBucket, FrameSlotMap>;
@@ -31,8 +31,7 @@ export const KEYBOARD_SHOW_ANIMATION_DURATION_MS = 420;
 export const KEYBOARD_HIDE_ANIMATION_DURATION_MS = 90;
 export const KEYBOARD_SHOW_ANIMATION_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
 export const KEYBOARD_HIDE_ANIMATION_EASING = "cubic-bezier(0.7, 0, 0.84, 0)";
-//? UIKit moves the keyboard on its private curve 7; this is the cubic-bezier it is usually fitted with.
-export const IOS_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.38, 0.7, 0.125, 1)";
+export { IOS_KEYBOARD_ANIMATION_EASING };
 
 export const FRAME_Z_INDEX = {
   page: 10,

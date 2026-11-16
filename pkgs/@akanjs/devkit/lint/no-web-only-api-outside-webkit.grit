@@ -10,6 +10,8 @@ language js(typescript, jsx)
 // points, because the name is also the libs/shared model (`Notification.View`, `cnst.Notification`).
 or {
   JsStaticMemberExpression() as $access where {
+    // GritQL copies its match state for every snippet it tries, so a substring every match must contain goes first.
+    $access <: includes "navigator",
     $access <: or { `navigator.share`, `navigator.canShare` },
     register_diagnostic(
       span = $access,
@@ -18,6 +20,7 @@ or {
     )
   },
   JsStaticMemberExpression() as $access where {
+    $access <: or { includes "navigator", includes "Notification" },
     $access <: or { `navigator.serviceWorker`, `Notification.requestPermission`, `Notification.permission` },
     register_diagnostic(
       span = $access,
@@ -26,6 +29,7 @@ or {
     )
   },
   JsStaticMemberExpression() as $access where {
+    $access <: includes "navigator",
     $access <: `navigator.geolocation`,
     register_diagnostic(
       span = $access,
@@ -34,6 +38,7 @@ or {
     )
   },
   JsStaticMemberExpression() as $access where {
+    $access <: includes "navigator",
     $access <: `navigator.vibrate`,
     register_diagnostic(
       span = $access,
