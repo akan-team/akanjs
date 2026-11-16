@@ -12,12 +12,18 @@ type DebugPayload = Record<string, unknown>;
 
 const globalWithProcess = globalThis as typeof globalThis & { process?: ProcessEnvLike };
 
-/** Whether the iOS shell left the keyboard to the page; an older shell still pans to the field, so the page must not. */
+/** Whether the shell left the keyboard to the page; an older shell still pans to the field, so the page must not. */
 export const isPageKeyboardAvoidance = () =>
   (globalThis as { __AKAN_NATIVE__?: { keyboardAvoidance?: string } }).__AKAN_NATIVE__?.keyboardAvoidance === "page";
 
 //? UIKit moves the keyboard on its private curve 7; this is the cubic-bezier it is usually fitted with.
 export const IOS_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.38, 0.7, 0.125, 1)";
+//? Android's InsetsController moves the IME on PathInterpolator(0.2, 0, 0, 1) once the app watches the animation.
+export const ANDROID_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+export const nativeKeyboardEasing = () =>
+  (globalThis as { __AKAN_NATIVE__?: { platform?: string } }).__AKAN_NATIVE__?.platform === "android"
+    ? ANDROID_KEYBOARD_ANIMATION_EASING
+    : IOS_KEYBOARD_ANIMATION_EASING;
 
 const debugSessionId = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
 let debugSeq = 0;

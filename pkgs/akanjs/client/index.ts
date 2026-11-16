@@ -119,6 +119,7 @@ export {
 } from "./csrTypes";
 export { Toast } from "./decorators";
 export {
+  ANDROID_KEYBOARD_ANIMATION_EASING,
   Device,
   debugFrame,
   IOS_KEYBOARD_ANIMATION_EASING,

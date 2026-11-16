@@ -12,8 +12,9 @@ export interface KeyboardState {
  * What the keyboard does to the page (akanjs readiness O6-1):
  * - "resize" (default, or the app config's keyboard.resize): the page's viewport shrinks by the keyboard, so bottom-fixed UI stays above it
  *   (Android pads the WebView's container, iOS shortens the web view with the keyboard's animation).
- * - "none": the page keeps its full size and the keyboard covers its bottom; the app moves its UI
- *   itself with the heights of the events. iOS still scrolls a focused field into view.
+ * - "none": the page keeps its full size and the keyboard covers its bottom (the whole overlap, Android's navigation
+ *   bar included); the app moves its UI itself with the heights of the events, and neither WebView pans to a focused
+ *   field (`__AKAN_NATIVE__.keyboardAvoidance` is "page").
  */
 export type KeyboardResizeMode = "resize" | "none";
 

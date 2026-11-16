@@ -51,8 +51,8 @@ export interface AkanNativeBoot {
   engine?: string;
   engineVersion?: string;
   /**
-   * iOS: "page" when the shell took the WebView's own keyboard avoidance away (keyboard mode "none"), so nothing
-   * pans the page to a focused field and the page lays itself out from the keyboard plugin's events.
+   * "page" when the shell took the WebView's own keyboard avoidance away (keyboard mode "none", iOS and Android), so
+   * nothing pans the page to a focused field and the page lays itself out from the keyboard plugin's events.
    */
   keyboardAvoidance?: "page";
 }
