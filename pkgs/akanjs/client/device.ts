@@ -2,6 +2,7 @@
 import type { RefObject } from "react";
 import { csrLocation } from "./csrLocation";
 import { readCssSafeAreaInsets } from "./frameConfig";
+import { KeyboardRide } from "./keyboardRide";
 import type { DeviceInfo } from "./native";
 
 type NativeModule = typeof import("./native");
@@ -14,9 +15,6 @@ const globalWithProcess = globalThis as typeof globalThis & { process?: ProcessE
 /** Whether the iOS shell left the keyboard to the page; an older shell still pans to the field, so the page must not. */
 export const isPageKeyboardAvoidance = () =>
   (globalThis as { __AKAN_NATIVE__?: { keyboardAvoidance?: string } }).__AKAN_NATIVE__?.keyboardAvoidance === "page";
-
-//? UIKit moves the keyboard on its private curve 7; this is the cubic-bezier it is usually fitted with.
-export const IOS_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.38, 0.7, 0.125, 1)";
 
 const debugSessionId = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
 let debugSeq = 0;
@@ -198,22 +196,11 @@ export class Device {
       ...(["willShow", "didShow", "willHide", "didHide"] as const).map((event) =>
         keyboard.listen(event, ({ height, duration }) => {
           if (duration > 0) this.keyboardAnimationMs = duration;
-          if (isPageKeyboardAvoidance()) this.#moveRootWithKeyboard(height);
+          if (isPageKeyboardAvoidance()) KeyboardRide.move(height, this.keyboardAnimationMs);
           emitKeyboardHeight(event, height);
         }),
       ),
     );
-  }
-  //? Set in the shell's event itself, before any render: the page box and whatever follows these move with the keys
-  //? from their first frame, where a store update would start them a few frames late.
-  #moveRootWithKeyboard(height: number) {
-    const root = document.documentElement;
-    if (this.keyboardAnimationMs > 0) {
-      root.style.setProperty("--akan-keyboard-duration", `${this.keyboardAnimationMs}ms`);
-      root.style.setProperty("--akan-keyboard-easing", IOS_KEYBOARD_ANIMATION_EASING);
-    }
-    root.style.setProperty("--akan-keyboard-cover", `${height}px`);
-    root.toggleAttribute("data-akan-keyboard", height > 0);
   }
   subscribeKeyboard(onKeyboardChanged: (height: number) => void) {
     this.#keyboardSubscribers.add(onKeyboardChanged);
