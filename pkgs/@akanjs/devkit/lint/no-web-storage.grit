@@ -11,6 +11,8 @@ language js(typescript, jsx)
 // bare snippet matches the name in any position, a field, an object key or JSX text included.
 or {
   JsIdentifierExpression() as $access where {
+    // GritQL copies its match state for every snippet it tries, so a substring every match must contain goes first.
+    $access <: includes "Storage",
     $access <: or { `localStorage`, `sessionStorage` },
     register_diagnostic(
       span = $access,
@@ -19,6 +21,7 @@ or {
     )
   },
   JsStaticMemberExpression(object = $root, member = $name) as $access where {
+    $name <: includes "Storage",
     $root <: or { `window`, `globalThis`, `self` },
     $name <: or { `localStorage`, `sessionStorage` },
     register_diagnostic(

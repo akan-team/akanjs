@@ -32,6 +32,8 @@ pattern st_hook_call() {
     `$chain.value($args)` where { $chain <: r"st\s*\.\s*expose\s*\([\s\S]*" },
     // Computed access (`st["use"].x()`, `st.use[key]()`) at any step, which would take a snippet per combination.
     JsCallExpression(callee = $callee) where {
+      // GritQL compiles a regex anew for every node it tries, so a substring every match must contain gates it.
+      $callee <: or { includes "use", includes "sel", includes "ref" },
       $callee <: or {
         r"st\s*(?:\.\s*use|\[\s*[\x27\x22`]use[\x27\x22`]\s*\])\s*(?:\.\s*[\w$]+|\[[^\]]*\])",
         r"st\s*(?:\.\s*slice|\[\s*[\x27\x22`]slice[\x27\x22`]\s*\])\s*(?:\.\s*[\w$]+|\[[^\]]*\])\s*(?:\.\s*use|\[\s*[\x27\x22`]use[\x27\x22`]\s*\])\s*(?:\.\s*[\w$]+|\[[^\]]*\])",
@@ -78,7 +80,9 @@ pattern passed_by_name($name) {
   }
 }
 
-JsCallExpression() as $call where {
+// GritQL copies its match state for every snippet it tries, so a substring every hook's callee contains goes first.
+JsCallExpression(callee = $hookCallee) as $call where {
+  $hookCallee <: includes "st",
   $call <: st_hook_call(),
   or {
     $call <: within JsLogicalExpression(right = $right) where { $right <: contains $call } until function_boundary(),

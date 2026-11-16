@@ -34,6 +34,8 @@ pattern page_sort() {
 }
 
 JsCallExpression(callee = $callee, arguments = JsCallArguments(args = $args)) where {
+  // GritQL copies its match state for every snippet it tries, so a substring every match must contain goes first.
+  $callee <: or { includes "fetch", includes "do" },
   or {
     and {
       $callee <: `fetch.$endpoint`,
