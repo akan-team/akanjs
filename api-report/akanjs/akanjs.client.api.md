@@ -174,10 +174,13 @@ export declare class Device {
     topSafeArea: number;
     bottomSafeArea: number;
     isMobile: boolean;
+    keyboardAnimationMs: number;
+    keyboardHeight: number;
     constructor({ lang, info, topSafeArea, bottomSafeArea, native }: DeviceInitOption);
     setPageContentRef(pageContentRef: RefObject<HTMLDivElement | null>): void;
     hideKeyboard(): Promise<void>;
     listenKeyboardChanged(onKeyboardChanged: (height: number) => void): void;
+    subscribeKeyboard(onKeyboardChanged: (height: number) => void): () => void;
     unlistenKeyboardChanged(): void;
     vibrate(type?: "heavy" | "light" | "medium" | number): Promise<void>;
     getScrollTop(): number;
@@ -316,6 +319,7 @@ export interface KeyboardFrameState {
     source?: "fallback" | "native" | "visualViewport";
     animationDuration?: number;
     animationEasing?: string;
+    avoidsContent?: boolean;
 }
 
 export declare class LayoutDefinition<Args extends RouteArgsShape = Record<never, never>> extends RouteDefinition<Args, LayoutExtra> {

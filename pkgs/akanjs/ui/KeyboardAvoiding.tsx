@@ -2,6 +2,7 @@
 import { useSpring } from "@react-spring/web";
 import { useCsr } from "akanjs/client";
 import { st } from "akanjs/store";
+import { isPageKeyboardAvoidance } from "akanjs/webkit";
 import { type ReactNode, useEffect, useRef } from "react";
 import { animated } from "./animated";
 
@@ -28,7 +29,8 @@ export const KeyboardAvoiding = ({ children, className }: KeyboardAvoidingProps)
     const test = async () => {
       if (!pageContentRef.current) return;
 
-      const newHeight = keyboardHeight ? keyboardHeight - pageState.bottomSafeArea : 0;
+      //? The frame already ends the page at the keys where the iOS shell left them to the page.
+      const newHeight = keyboardHeight && !isPageKeyboardAvoidance() ? keyboardHeight - pageState.bottomSafeArea : 0;
 
       await onChange(newHeight);
 
