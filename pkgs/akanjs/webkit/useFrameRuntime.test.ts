@@ -108,6 +108,35 @@ describe("useFrameRuntime", () => {
     ).toMatchObject({ height: 844 });
   });
 
+  test("ends the content at the keyboard on android's curve where the android shell left the keyboard to the page", async () => {
+    const { ANDROID_KEYBOARD_ANIMATION_EASING, resolveKeyboardFrame, resolveKeyboardLayout } = await import(
+      "./useFrameRuntime"
+    );
+
+    const viewport = { width: 360, height: 780, visualWidth: 360, visualHeight: 780, visualOffsetTop: 0 };
+    const keyboard = resolveKeyboardFrame({
+      keyboardHeight: 342,
+      bottomSafeArea: 48,
+      visualViewportKeyboardHeight: 294,
+      platformProfile: "android",
+      sticky: false,
+      pageAvoidsKeyboard: true,
+      nativeAnimationDuration: 285,
+    });
+
+    expect(keyboard).toMatchObject({
+      height: 342,
+      source: "native",
+      visible: true,
+      avoidsContent: true,
+      animationDuration: 285,
+      animationEasing: ANDROID_KEYBOARD_ANIMATION_EASING,
+    });
+    expect(
+      resolveKeyboardLayout({ viewport, keyboard, accessoryHeight: 0, bottomSafeArea: 48 }).contentViewport,
+    ).toMatchObject({ bottom: 438, height: 438 });
+  });
+
   test("leaves the content whole under a shell that still pans to the field", async () => {
     const { resolveKeyboardFrame, resolveKeyboardLayout } = await import("./useFrameRuntime");
 
