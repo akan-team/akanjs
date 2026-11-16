@@ -8,6 +8,8 @@ export type RuntimeImportKind =
   | "st"
   | "sig"
   | "piece"
+  | "_st"
+  | "_useClient"
   | "framework-store"
   | "framework-client"
   | "framework-fetch"
@@ -66,6 +68,7 @@ const simpleEscapes: Record<string, string> = {
   " ": "",
 };
 const quietNames = new Set(["usePage", "msg", "Err"]);
+const wholePieces = new Set(["_st", "_useClient"]);
 //? Each of these hands out the tab's one root store or fetch client, so a name read through it is not visible here.
 const frameworkWholeNames = new Set([
   "RootStore",
@@ -110,7 +113,8 @@ export class RuntimeImports {
     const match =
       joined === null ? null : RuntimeImports.#stripped(path.posix.normalize(joined)).match(runtimePathPattern);
     if (!match?.[1] || !match[2]) return null;
-    const kind = match[2].startsWith("lib/__client/") ? "piece" : match[2].replace(/^lib\//, "");
+    const piece = match[2].match(/^lib\/__client\/(.+)$/)?.[1];
+    const kind = piece === undefined ? match[2].replace(/^lib\//, "") : wholePieces.has(piece) ? piece : "piece";
     return { scope: match[1], kind: kind as RuntimeImportKind };
   }
 
@@ -118,12 +122,14 @@ export class RuntimeImports {
     const { kind } = target;
     if (kind.startsWith("framework-")) return typeOnly ? null : RuntimeImports.#frameworkUse(kind, imported);
     const whole = (why: string): RuntimeImportUse => ({ reason: "whole-runtime-import", why });
-    if (imported === "RootStore" && (kind === "client" || kind === "st"))
+    if (imported === "RootStore" && (kind === "client" || kind === "st" || kind === "_st"))
       return typeOnly
         ? { binding: { type: "rootStore" } }
         : whole("a value import of RootStore loads the store runtime whole");
     if (typeOnly) return null;
-    if (kind === "sig" || kind === "piece") return whole(`the ${kind} file holds the runtime of every module`);
+    if (kind === "sig" || kind === "_st" || kind === "_useClient")
+      return whole(`the ${kind} file holds the runtime of every module`);
+    if (kind === "piece") return whole("a runtime piece imported by hand is not read name by name");
     const handle = (handleKind: RuntimeHandleKind): RuntimeImportUse => ({
       binding: { type: "handle", handle: { kind: handleKind } },
     });

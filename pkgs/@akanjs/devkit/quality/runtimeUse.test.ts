@@ -609,6 +609,39 @@ export const n = () => [framework.fetch.memoNote(), framework.cn, sig.note.fetch
     ).toEqual(["apps/demo/memo store"]);
   });
 
+  test("reads the generated runtime pieces as the whole runtime and `st` from the page runtime as the scope's `st`", () => {
+    const file = "apps/demo/lib/memo/memoDraft.ts";
+    expect(
+      [
+        'import { st } from "../__client/_st";\nexport const n = () => st.do.clearDraft();\n',
+        'import { fetch } from "../__client/_useClient";\nexport const n = () => fetch.memoNote();\n',
+        'import { memo } from "../__client/memo.st";\nexport const n = () => memo;\n',
+        'import "../__client/memo.fetch";\nexport const n = () => 1;\n',
+        'import "../__client/_base.fetch";\nexport const n = () => 1;\n',
+      ].map((text) => analyze(text, file)),
+    ).toEqual([
+      "whole-runtime-import: st",
+      "whole-runtime-import: fetch",
+      "whole-runtime-import: memo",
+      'whole-runtime-import: import "../__client/memo.fetch";',
+      'whole-runtime-import: import "../__client/_base.fetch";',
+    ]);
+    expect(
+      analyze(
+        'import type { RootStore } from "../__client/_st";\n\nexport const reset = (self: unknown) => (self as RootStore).clearDraft();\n',
+        file,
+      ),
+    ).toEqual(["apps/demo/memo store"]);
+    const read = "export const n = () => [st.do.clearDraft(), st.use.theme()];\n";
+    expect(analyze(`import { st } from "@apps/demo/lib/usePage";\n${read}`)).toEqual(
+      analyze(`import { st } from "@apps/demo/client";\n${read}`),
+    );
+    expect(analyze(`import { st } from "@apps/demo/lib/usePage";\n${read}`)).toEqual([
+      "apps/demo/memo store",
+      "base store",
+    ]);
+  });
+
   test("reads the scope and runtime kind of an import specifier", () => {
     const file = "apps/demo/lib/memo/Memo.Zone.tsx";
     expect(
