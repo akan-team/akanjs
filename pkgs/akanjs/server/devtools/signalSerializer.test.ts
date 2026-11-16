@@ -144,6 +144,9 @@ describe("SignalSerializer.httpRoutesOf", () => {
       { key: "getTitle", method: "GET", path: "/getTitle/:id" },
       { key: "updateTitle", method: "POST", path: `/api/${fixtureRefName}/updateTitle/:id` },
     ]);
+    expect(SignalSerializer.httpRoutesOf(ServerResolverTestEndpoint, " //api// ")).toEqual(
+      SignalSerializer.httpRoutesOf(ServerResolverTestEndpoint, "/api"),
+    );
   });
 
   test("names the same paths the booted route table does", () => {
