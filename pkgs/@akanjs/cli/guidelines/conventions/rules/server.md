@@ -14,10 +14,7 @@ paths:
 
 ## Calls, Queries, Agents
 
-- **Guards (`transportRule`)**: an endpoint, a named slice's `init()` or a root slice that declares no guards is
-  refused with 403 on every transport, and outside local operation the server does not boot with one. Name its
-  guards, or `[Public]` to open it on purpose; `AKAN_UNGUARDED_ENDPOINTS=open` is a deployment's stopgap, never the
-  fix.
+- **Guards**: the `auth` rule, loaded with every `*.signal.ts`.
 - **Wire (`transportRule`)**: a deadline is the endpoint's `{ timeout: <ms> }` (undeclared, the client quits at
   30 s; the handler is not cancelled); `{ cache }` only on a `query` with no internal argument, capped at one day,
   dropped early by `invalidate(endpoint, args?)` on a plugged `EndpointCacheControl`; `{ rateLimit }` per endpoint,

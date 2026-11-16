@@ -214,16 +214,7 @@ export class NativeConfig {
     const native = NativeConfig.#compact({ ios, macos, android, resources });
     const googleServices = target.android?.googleServices;
     const pushAndroid = target.android?.push;
-    const desktop = NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
-      recovery: target.desktop?.recovery,
-      screenCapture: target.desktop?.screenCapture,
-      webview2: target.desktop?.webview2,
-      publisher: target.desktop?.publisher,
-      window: NativeConfig.#compact({ ...target.desktop?.window }),
-      server: desktopServer,
-      bin: desktopBin,
-      dmg: NativeConfig.#dmg(target.desktop?.dmg, abs),
-    });
+    const desktop = NativeConfig.#desktop(target.desktop, desktopServer, desktopBin, abs);
     const background = target.backgroundColor;
     const shell = NativeConfig.#compact<NonNullable<AkanNativeConfig["shell"]>>({
       backgroundColor: typeof background === "string" ? background : background?.light,
@@ -266,6 +257,7 @@ export class NativeConfig {
           }
         : {}),
       ...(target.ios?.privacy ? { privacy: target.ios.privacy } : {}),
+      ...(target.ios?.hideFormAccessoryBar ? { ios: { hideFormAccessoryBar: true } } : {}),
       //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
       android: {
         debugAppIdSuffix: ".debug",
@@ -390,6 +382,24 @@ export class NativeConfig {
   ): NonNullable<AkanNativeConfig["splash"]> {
     if (typeof splash === "string") return { image: abs(splash) };
     return { ...splash, ...(splash.image ? { image: abs(splash.image) } : {}) };
+  }
+
+  static #desktop(
+    desktop: AkanNativeTarget["desktop"],
+    server: DesktopServerBundle | undefined,
+    bin: string | undefined,
+    abs: (relative: string) => string,
+  ) {
+    return NativeConfig.#compact<NonNullable<AkanNativeConfig["desktop"]>>({
+      recovery: desktop?.recovery,
+      screenCapture: desktop?.screenCapture,
+      webview2: desktop?.webview2,
+      publisher: desktop?.publisher,
+      window: NativeConfig.#compact({ ...desktop?.window }),
+      server,
+      bin,
+      dmg: NativeConfig.#dmg(desktop?.dmg, abs),
+    });
   }
 
   static #dmg(dmg: AkanNativeDmgConfig | undefined, abs: (relative: string) => string) {

@@ -220,6 +220,8 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - ios.files (Record<string, string>): Files copied into the app bundle, keyed by their path there; the value is app-relative.
 
+- ios.hideFormAccessoryBar (boolean): Leaves out the bar WebKit shows above the keyboard for a focused field, which a page cannot hide. Default false.
+
 - android.sha256CertFingerprints (string[]): assetlinks.json signing fingerprints: debug for a local build, release for Play Store.
 
 - android.googleServices (string): The google-services.json FCM push reads, relative to the app folder.

@@ -6,6 +6,7 @@
   "publishConfig": {
     "access": "public"
   },
+  "description": "The akan command of Akan.js: create, sync, verify, build, start and deploy an Akan.js workspace. Create one with: bunx create-akan-workspace@latest",
   "homepage": "https://akanjs.com",
   "license": "MIT",
   "repository": {

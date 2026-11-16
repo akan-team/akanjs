@@ -85,5 +85,4 @@ each plugin's header and diagnostic carry its full reasoning.
 Warts in older files — never copy them; when two shapes disagree, follow the newer neighbour: `children: any`
 (use `ReactNode`); hard-coded API keys or secrets (they belong in `option.ts` or env); large commented-out blocks;
 stale `// TODO: Implement …` above implemented methods; `{cond && <X/>}`, hard-coded Korean bypassing `l()`,
-`window.alert(...)`; bare `/* eslint-disable */` blocks; raw palette grays like `text-gray-400`. A store reaching
-another through `(this as unknown as RootStore)` is **not** a wart — it is the sanctioned way.
+`window.alert(...)`; bare `/* eslint-disable */` blocks; raw palette grays like `text-gray-400`.

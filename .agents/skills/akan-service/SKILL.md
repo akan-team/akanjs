@@ -108,8 +108,8 @@ The page calls it as `await fetch.book(id)` (`fetch` from `@apps/<app>/client`) 
 `common/`, or return a scalar (`akan create-scalar`) for a typed wire shape. A query that answers `null` without
 `nullable: true` fails the render, naming the endpoint.
 
-Full detail: `get_guideline` with `modelService`; every import path and the exact signatures of serve, adapt,
-endpoint and serviceDictionary: `akanApi`.
+Full detail: `get_guideline` with `modelService`. The exact signatures of serve, adapt, endpoint and
+serviceDictionary, and every import path, are in the `akanApi-*` references below.
 
 ## References
 
@@ -118,4 +118,7 @@ The full guidelines, split where each part fits one read; `akan guideline show <
 - `.agents/skills/akan-service/references/modelService.md` — Purpose · Ownership · Current Akan Patterns · Codegen Rules · Review Checklist
 - `.agents/skills/akan-service/references/modelSignal.md` — Purpose · Ownership · Current Akan Patterns · Codegen Rules · Review Checklist
 - `.agents/skills/akan-service/references/modelDocument.md` — Purpose · Ownership · Current Akan Patterns · Codegen Rules · Review Checklist
-- `.agents/skills/akan-service/references/akanApi.md` — Imports · Routes (`page/`) · Services and adapters (`lib/_<service>/`, `srvkit/`) · Endpoints (`*.signal.ts`) · Dictionaries (`*.dictionary.ts`) · …
+- `.agents/skills/akan-service/references/akanApi-imports.md` — Imports (`akanjs/*`, `@apps/<app>/client`, `../cnst`, `../dict`, `../srv`, layer barrels)
+- `.agents/skills/akan-service/references/akanApi-services-and-adapters.md` — Services and adapters (`lib/_<service>/`, `srvkit/`): `adapt`, `serve`, `ServiceOptions`
+- `.agents/skills/akan-service/references/akanApi-endpoints.md` — Endpoints (`*.signal.ts`): `endpoint`, `BuildEndpoint`, `EndpointInfo`, `EndpointArgProps`, `SignalOption`
+- `.agents/skills/akan-service/references/akanApi-dictionaries.md` — Dictionaries (`*.dictionary.ts`): `serviceDictionary`, `FunctionTranslation`, `FieldTranslation`

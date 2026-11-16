@@ -35,6 +35,7 @@
     "api:report": "bun infra/test/runApiReport.ts",
     "audit:deps": "bun infra/test/runDependencyAudit.ts",
     "error:codes": "bun pkgs/@akanjs/devkit/docs/errorCodeReference.ts && bun run akan agent install",
+    "agent:budget": "bun run akan agent install && bun pkgs/@akanjs/cli/agent/agentDocBudget.ts",
     "akan": "bun pkgs/@akanjs/cli/build.ts && bun dist/pkgs/@akanjs/cli/index.js",
     "testPkgs": "bun run buildAkan && for p in akanjs @akanjs/devkit @akanjs/cli @akanjs/native @akanjs/language @akanjs/vscode create-akan-workspace use-agentic; do printf '\\n== %s\\n' \"$p\" && bun run runAkan test \"$p\" || exit 1; done",
     "typecheckPkgs": "printf '== akanjs, @akanjs/devkit, @akanjs/cli\\n' && bunx tsc --noEmit -p tsconfig.pkgs.json && for p in pkgs/@akanjs/native pkgs/@akanjs/language pkgs/@akanjs/vscode pkgs/use-agentic; do printf '\\n== %s\\n' \"$p\" && bunx tsc --noEmit -p \"$p/tsconfig.json\" || exit 1; done",

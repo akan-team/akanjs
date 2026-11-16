@@ -502,8 +502,8 @@ describe("WorkspaceRunner", () => {
       "react-dom": expect.any(String),
       "react-icons": expect.any(String),
       "react-server-dom-webpack": expect.any(String),
-      tailwindcss: expect.any(String),
     });
+    expect(workspacePackageJson.dependencies).not.toHaveProperty("tailwindcss");
     for (const shippedByAkanjs of [
       "@react-spring/web",
       "@use-gesture/react",
