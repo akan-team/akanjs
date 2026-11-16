@@ -135,6 +135,11 @@ describe("a client file whose modules cannot be told", () => {
     });
   });
 
+  test("loads the whole runtime when the import also takes the barrel's default export, and leaves that import as written", () => {
+    const source = 'import Kit, { st } from "@apps/demo/client";\nexport const read = () => [st.use.draft(), Kit];\n';
+    expect(transform(source)).toEqual({ source: `${whole}${source}`, perModule: false, pieces: [] });
+  });
+
   test("loads the whole runtime when a piece it needs was not generated", () => {
     const source = 'import { st } from "@apps/demo/client";\nexport const read = () => st.use.tagFilter();\n';
     expect(transform(source)?.pieces).toEqual(["apps/demo/lib/__client/tag.fetch", "libs/kit/lib/__client/tag.st"]);
