@@ -16,6 +16,13 @@ or {
   JsStringLiteralExpression() as $s,
   JsTemplateChunkElement() as $s
 } where {
+  // GritQL compiles a regex anew for every node it tries, so a substring every match must contain gates it.
+  $s <: or {
+    includes "slate-", includes "gray-", includes "zinc-", includes "neutral-", includes "stone-", includes "red-",
+    includes "orange-", includes "amber-", includes "yellow-", includes "lime-", includes "green-", includes "emerald-",
+    includes "teal-", includes "cyan-", includes "sky-", includes "blue-", includes "indigo-", includes "violet-",
+    includes "purple-", includes "fuchsia-", includes "pink-", includes "rose-"
+  },
   $s <: r"[\s\S]*(?:^|[\s\"'`{(\[:!])(?:bg|text|border(?:-[tblrxy])?(?:-[se])?|ring(?:-offset)?|fill|stroke|shadow|from|to|via|divide|outline|decoration|placeholder|caret|accent)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3}(?:[\s\"'`})\]:/!,]|$)[\s\S]*",
   register_diagnostic(
     span = $s,

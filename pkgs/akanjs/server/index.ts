@@ -92,6 +92,7 @@ export {
   type DevtoolsRouterContext,
   type DictionaryData,
   type DictionaryModuleNode,
+  type EndpointHttpRoute,
   type EndpointNode,
   type EnumNode,
   type FieldType,

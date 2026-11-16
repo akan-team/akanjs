@@ -11,16 +11,24 @@ language js(typescript, jsx)
 // warnings, not errors, so code written before the rule reached them is not broken.
 // The hex arm skips `url(#id)`: a paint-server id such as `#fade` is spelled in hex digits.
 // Cases: lint/__fixtures__/no-inline-color/{bad,good}.tsx
+
+// GritQL compiles a regex anew for every node it tries, so a substring every match must contain gates it first.
+pattern colour_literal_text() {
+  or { includes "#", includes "rgb", includes "hsl", includes "lab(", includes "lch(", includes "hwb(" }
+}
+
 or {
   or {
-    JsStringLiteralExpression() as $s where { $s <: within `style={$obj}` },
-    JsTemplateChunkElement() as $s where { $s <: within `<style>$body</style>` }
+    JsStringLiteralExpression() as $s where { $s <: colour_literal_text(), $s <: within `style={$obj}` },
+    JsTemplateChunkElement() as $s where { $s <: colour_literal_text(), $s <: within `<style>$body</style>` }
   } where { $tier = "error" },
   or {
     or { JsxString(), JsStringLiteralExpression(), JsTemplateChunkElement() } as $s where {
+      $s <: colour_literal_text(),
       $s <: within JsxAttribute(name = r"(?:fill|stroke|stopColor|floodColor|lightingColor|color|stop-color|flood-color|lighting-color)")
     },
     or { JsStringLiteralExpression(), JsTemplateChunkElement() } as $s where {
+      $s <: colour_literal_text(),
       $s <: within or { `$el.style.$prop = $value`, `$el.style[$prop] = $value`, `$el.style.setProperty($prop, $value)` }
     }
   } where { $tier = "warn" }

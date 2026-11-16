@@ -24,6 +24,8 @@ language js(typescript, jsx)
 // bind to different text, so the metavariable cannot unify them. Under-reporting, not a false positive.
 //
 JsxAttribute() as $attr where {
+  // GritQL copies its match state for every node a pattern tries, so a substring the reported body needs goes first.
+  $attr <: includes "st.do.",
   $attr <: contains JsArrowFunctionExpression() as $arrow,
   $arrow <: `($p) => $body`,
   // One bare parameter. A metavariable matches a whole parameter list leniently, so `(a, b)` binds the

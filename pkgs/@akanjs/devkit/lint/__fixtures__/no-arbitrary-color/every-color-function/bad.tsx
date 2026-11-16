@@ -1,0 +1,11 @@
+export const Hex = () => <div className="bg-[#3b82f6]" />; // @flag
+export const Rgb = () => <div className="bg-[rgb(0,0,0)]" />; // @flag
+export const Rgba = () => <div className="bg-[rgba(0,0,0,0.5)]" />; // @flag
+export const Hsl = () => <div className="bg-[hsl(210,100%,50%)]" />; // @flag
+export const Hsla = () => <div className="bg-[hsla(210,100%,50%,0.5)]" />; // @flag
+export const Oklch = () => <div className="bg-[oklch(0.5_0.1_200)]" />; // @flag
+export const Oklab = () => <div className="bg-[oklab(0.5_0.1_0.1)]" />; // @flag
+export const Lab = () => <div className="bg-[lab(50%_40_59)]" />; // @flag
+export const Lch = () => <div className="bg-[lch(50%_60_40)]" />; // @flag
+export const Hwb = () => <div className="bg-[hwb(210_10%_10%)]" />; // @flag
+export const ColorFunction = () => <div className="bg-[color(display-p3_1_0_0)]" />; // @flag

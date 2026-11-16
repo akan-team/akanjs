@@ -22,3 +22,13 @@ import * as srv from "../srv";
 import { BookApi } from "@apps/<app>/srvkit"; // a layer barrel: common, srvkit, ui, webkit
 import { signedIn } from "@libs/shared/webkit"; // a workspace created with --libs true
 ```
+
+What these subpaths hold:
+
+- `akanjs/dictionary` — locales, translations and the dictionaries behind labels, descriptions and `Err` keys.
+- `akanjs/document` — database documents, filters, query builders, full-text search and persistence.
+- `akanjs/service` — services, adapters, dependency injection and the business-logic runtime.
+- `akanjs/store` — domain state, actions and the in-page agent's `st.tool` / `st.use` surface.
+- `akanjs/client/native` — the native bridge and the built-in plugins of iOS, Android and desktop apps.
+- `akanjs/native/desktop` — what an app's or a lib's own native plugin builds its desktop part from.
+- `akanjs/test` — signal-test setup, MCP catalogue checks and sample data (`sampleOf`).

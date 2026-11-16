@@ -28,6 +28,15 @@ describe("ApiReference", () => {
     expect(rendered).toMatch(/^\/\*\* .+ \*\/\nserverMode\?: "batch" \| "federation";$/m);
   });
 
+  test("says what each listed subpath holds, and lists only subpaths the package exports", async () => {
+    const exports = Object.keys((await Bun.file(path.join(akanjsDir, "package.json")).json()).exports);
+    const listed = [...rendered.matchAll(/^- `akanjs\/([^`]+)` — .+\.$/gm)].map(([, subpath]) => `./${subpath}`);
+    expect(listed).toEqual(
+      ["dictionary", "document", "service", "store", "client/native", "native/desktop", "test"].map((s) => `./${s}`),
+    );
+    for (const subpath of listed) expect(exports).toContain(subpath);
+  });
+
   test("says what Link takes beyond its own props, and names its static parts", () => {
     expect(rendered).toContain('Every prop of `Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href">`, and:');
     expect(rendered).toMatch(/^Link\.Back\(.+\): Element$/m);
