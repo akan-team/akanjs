@@ -215,8 +215,8 @@ export default page()
       {
         name: l.trans({ en: "build", ko: "빌드" }),
         desc: l.trans({
-          en: "Skipped while lint or typecheck reports an error.",
-          ko: "린트나 타입 검사에 오류가 있으면 건너뜁니다.",
+          en: "Skipped while lint or typecheck reports an error. It writes to `dist/verify/<app>`, so a build in `dist/apps/<app>` stays as `akan build` left it.",
+          ko: "린트나 타입 검사에 오류가 있으면 건너뜁니다. 결과는 `dist/verify/<app>`에 쓰므로 `dist/apps/<app>`의 빌드는 `akan build`가 남긴 그대로입니다.",
         }),
       },
       {
