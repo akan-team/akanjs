@@ -25,7 +25,15 @@ import type { DatabaseModule, ServiceModule } from "../akanLib";
 import type { DiLifecycle } from "../di/diLifecycle";
 import { SignalResolver } from "../resolver";
 import { ApiRouter } from "../routing/apiRouter";
-import type { EndpointNode, InternalNode, RouteRow, SignalData, SignalNode, SliceNode } from "./types";
+import type {
+  EndpointHttpRoute,
+  EndpointNode,
+  InternalNode,
+  RouteRow,
+  SignalData,
+  SignalNode,
+  SliceNode,
+} from "./types";
 
 export interface SignalSerializerContext {
   di: DiLifecycle;
@@ -211,6 +219,16 @@ export class SignalSerializer {
           ...(node.fileUpload ? { fileUpload: true } : {}),
         } satisfies RouteRow,
       ];
+    });
+  }
+
+  //? Read from the class's declarations alone, so no app boots: the paths are those the route table mounts for them.
+  static httpRoutesOf(endpointCls: EndpointCls, apiPrefix = ""): EndpointHttpRoute[] {
+    const defaultPrefix = endpointCls.srv.cnst?.refName;
+    return Object.entries(SignalSerializer.#endpointMeta(endpointCls)).flatMap(([key, info]) => {
+      if (info.type !== "query" && info.type !== "mutation") return [];
+      const method = info.type === "mutation" ? (info.signalOption.method ?? "POST") : "GET";
+      return [{ key, method, path: SignalSerializer.#httpPath(key, info, defaultPrefix, apiPrefix) }];
     });
   }
 

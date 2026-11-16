@@ -751,6 +751,12 @@ export type DocSlot = [
 ] | [
 ];
 
+export interface EndpointHttpRoute {
+    key: string;
+    method: "GET" | HttpMutationMethod;
+    path: string;
+}
+
 export interface EndpointNode {
     type: "message" | "mutation" | "prompt" | "pubsub" | "query";
     args: SerializedArg[];
@@ -1996,6 +2002,7 @@ export type SignalRoutes = {
 
 export declare class SignalSerializer {
     static serialize({ di, serverMode, prefix, websocketPrefix }: SignalSerializerContext): SignalData;
+    static httpRoutesOf(endpointCls: EndpointCls, apiPrefix?: string): EndpointHttpRoute[];
 }
 
 export interface SignalSerializerContext {

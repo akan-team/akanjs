@@ -191,6 +191,12 @@ export interface RouteRow {
   fileUpload?: boolean;
 }
 
+export interface EndpointHttpRoute {
+  key: string;
+  method: "GET" | HttpMutationMethod;
+  path: string;
+}
+
 export interface SignalData {
   prefix: string;
   websocketPrefix: string;

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { ServerResolverTestEndpoint } from "../resolver/resolver.contract.fixture";
 import { DevtoolsFixture, fixtureRefName } from "./devtools.fixture";
 import { SignalSerializer } from "./signalSerializer";
 import type { SignalData } from "./types";
@@ -130,5 +131,26 @@ describe("SignalSerializer schedule placement", () => {
     } finally {
       await batch.destroy();
     }
+  });
+});
+
+describe("SignalSerializer.httpRoutesOf", () => {
+  test("lists one endpoint class's HTTP routes from its declarations, with or without the API prefix", () => {
+    expect(SignalSerializer.httpRoutesOf(ServerResolverTestEndpoint)).toEqual([
+      { key: "getTitle", method: "GET", path: "/getTitle/:id" },
+      { key: "updateTitle", method: "POST", path: `/${fixtureRefName}/updateTitle/:id` },
+    ]);
+    expect(SignalSerializer.httpRoutesOf(ServerResolverTestEndpoint, "/api")).toEqual([
+      { key: "getTitle", method: "GET", path: "/getTitle/:id" },
+      { key: "updateTitle", method: "POST", path: `/api/${fixtureRefName}/updateTitle/:id` },
+    ]);
+  });
+
+  test("names the same paths the booted route table does", () => {
+    const declared = data.routes
+      .filter((route) => route.signal === fixtureRefName && route.source === "declared" && route.transport === "http")
+      .map(({ key, method, path }) => ({ key, method, path }));
+    const byKey = (a: { key: string }, b: { key: string }) => a.key.localeCompare(b.key);
+    expect(declared.sort(byKey)).toEqual(SignalSerializer.httpRoutesOf(ServerResolverTestEndpoint, "/api").sort(byKey));
   });
 });
