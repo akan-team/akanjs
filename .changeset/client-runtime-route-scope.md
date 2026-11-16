@@ -6,10 +6,10 @@
 
 An app can set `clientRuntime: "route"` in `akan.config.ts` to load a model's endpoint descriptors and store in the browser only on the routes that use them. With `"all"`, the default, every page loads what it loaded before.
 
-- Under `"route"`, each client entry of a server-rendered page starts from `lib/page.ts` (`usePage`, `msg`, `Err` and a fetch client with no descriptor) instead of `lib/useClient.ts` and `lib/st.ts`. A client module that imports `fetch` or `st` from an app or lib `client` barrel still brings that scope's descriptors and stores, and a lib's barrel brings that lib and the libs under it.
+- Under `"route"`, each client entry of a server-rendered page starts from `lib/usePage.ts` (`usePage`, `msg`, `Err` and a fetch client with no descriptor) instead of `lib/useClient.ts` and `lib/st.ts`. A client module that imports `fetch` or `st` from an app or lib `client` barrel still brings that scope's descriptors and stores, and a lib's barrel brings that lib and the libs under it.
 - The framework components that reach a store, an endpoint or a registered constant by a name they compute (`Load`, `Model`, `Data`, `Signal`, `Constant.Doc` and the relation fields) import an empty module, `akanjs/ui/modelRuntime`. A route build under `"route"` answers it with the app's `lib/useClient.ts` and `lib/st.ts`, so a page rendering one of them loads the app's whole runtime before the component runs. A test in `akanjs` fails when a `ui` file reaches a model that way without importing it.
-- Server rendering, CSR bundles (MCP App views included) and native apps keep loading the whole runtime. The development server's module registry boots `lib/page.ts` alone under `"route"`, so development loads what production loads.
-- An app whose generated files predate `lib/page.ts` builds as `"all"` until it is synced.
+- Server rendering, CSR bundles (MCP App views included) and native apps keep loading the whole runtime. The development server's module registry boots `lib/usePage.ts` alone under `"route"`, so development loads what production loads.
+- An app whose generated files predate `lib/usePage.ts` builds as `"all"` until it is synced.
 - `StoreBootstrap.importLines` and `StoreBootstrap.source` in `@akanjs/devkit` take an optional scope, `"whole"` (the default) or `"page"`.
 
 **Upgrading.**

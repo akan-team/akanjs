@@ -8,7 +8,7 @@ export type ClientRuntimeScope = "whole" | "page";
 
 //* Not a bare `@apps/<app>/client` import: it names nothing the barrel rewrite can narrow, so every module's UI ships.
 export class StoreBootstrap {
-  static readonly pageRuntime = "page";
+  static readonly pageRuntime = "usePage";
 
   //? `akanjs/ui/modelRuntime` is empty on disk: a framework UI file reaching a store key or a fetch handler by a
   //? computed name imports it, and a build whose entries load only the page runtime answers it with the app's.
