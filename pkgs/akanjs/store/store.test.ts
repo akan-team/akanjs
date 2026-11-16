@@ -1810,6 +1810,42 @@ describe("StoreRegistry and root assembly", () => {
   });
 });
 
+describe("StoreInstance with a root added later", () => {
+  test("keeps the earlier state, notifies once, hydrates the added persisted key and lets an earlier action reach the added one", async () => {
+    setupEnv();
+    const browser = installBrowser();
+    class EarlyStore extends store("earlyStore" as const, () => ({ earlyValue: 1 })) {
+      async askLate(value: string) {
+        await (this as unknown as { markLate: (value: string) => Promise<void> }).markLate(value);
+      }
+    }
+    class LateStore extends store("lateStore" as const, ({ persist }) => ({
+      lateValue: "initial",
+      lateCount: persist(Int, { default: 1, key: "lateCount" }),
+    })) {
+      markLate(value: string) {
+        this.set({ lateValue: value });
+      }
+    }
+    StoreRegistry.register(EarlyStore);
+    StoreRegistry.register(LateStore);
+    browser.localStorage.setItem(LateStore[STATE_DERIVED_META].persistSession.lateCount.storageKey, JSON.stringify(7));
+    const instance = new StoreInstance(makeRoot("earlyRoot", EarlyStore));
+    instance.set({ earlyValue: 2 });
+    await expect(instance.do.askLate("before")).rejects.toThrow(TypeError);
+    let notified = 0;
+    instance.subscribe(() => notified++);
+
+    instance.addStore(makeRoot("lateRoot", LateStore));
+
+    expect(notified).toBe(1);
+    expect(instance.get()).toMatchObject({ earlyValue: 2, lateValue: "initial", lateCount: 7 });
+    await instance.do.askLate("after");
+    expect(instance.get().lateValue).toBe("after");
+    uninstallBrowser();
+  });
+});
+
 describe("live sync store action", () => {
   const liveState = (instance: StoreInstance) => {
     const state = instance.get() as Record<string, any>;
