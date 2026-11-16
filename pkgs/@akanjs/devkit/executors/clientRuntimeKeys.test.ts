@@ -1,7 +1,8 @@
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { mkdir, readdir, realpath, rm, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { Logger } from "akanjs/common";
 import { type RuntimeFamily, RuntimeNameTable, runtimeFamilies } from "../quality/runtimeNameTable";
 import { RuntimeUse } from "../quality/runtimeUse";
 import { createTempApp, tempRoots, writeJson, writeText } from "../test/testHelpers";
@@ -735,6 +736,34 @@ describe("an app's client runtime pieces", () => {
       upload: "function",
       signal: ["file", "user"],
     });
+  }, 120_000);
+
+  test("say which sync to run again when a scope's modules cannot be read, since its store files then load no upload descriptors first", async () => {
+    const warnings: string[] = [];
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation((message: string) => {
+      warnings.push(message);
+    });
+    const readScopes = spyOn(RuntimeNameTable, "readScopes").mockRejectedValue(
+      new Error("user.constant.ts is unreadable"),
+    );
+    try {
+      const { root } = await writeWorkspace({
+        app: "depot",
+        lib: "hangar",
+        libFiles: uploadFilesOf(),
+        appFiles: shopFilesOf("hangar"),
+      });
+      expect(await Bun.file(path.join(root, "libs/hangar/lib/__client/user.st.ts")).text()).not.toContain("file.fetch");
+    } finally {
+      readScopes.mockRestore();
+      warn.mockRestore();
+    }
+    const said = warnings.filter((message) => message.includes("[client-runtime]"));
+    expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain(
+      "(user.constant.ts is unreadable)",
+    );
+    expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain("Run `akan sync hangar`");
+    expect(said.some((message) => message.includes("Run `akan sync depot`"))).toBe(true);
   }, 120_000);
 
   test("give a client file exactly the pieces of the modules it names, each generated and each loading only its module", async () => {
