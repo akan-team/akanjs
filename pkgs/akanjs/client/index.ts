@@ -118,7 +118,14 @@ export {
   type WebAppManifestIcon,
 } from "./csrTypes";
 export { Toast } from "./decorators";
-export { Device, debugFrame, isMobileDevice, isNativeTarget, isPageKeyboardAvoidance } from "./device";
+export {
+  Device,
+  debugFrame,
+  IOS_KEYBOARD_ANIMATION_EASING,
+  isMobileDevice,
+  isNativeTarget,
+  isPageKeyboardAvoidance,
+} from "./device";
 export {
   breakpointQuery,
   type DevicePlatform,
@@ -137,7 +144,6 @@ export {
   validatePageConfig,
 } from "./frameConfig";
 export { Href } from "./href";
-export { IOS_KEYBOARD_ANIMATION_EASING } from "./keyboardRide";
 export {
   type ErrPayload,
   makePageProto,

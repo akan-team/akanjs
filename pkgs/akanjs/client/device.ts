@@ -2,10 +2,10 @@
 import type { RefObject } from "react";
 import { csrLocation } from "./csrLocation";
 import { readCssSafeAreaInsets } from "./frameConfig";
-import { KeyboardRide } from "./keyboardRide";
 import type { DeviceInfo } from "./native";
 
 type NativeModule = typeof import("./native");
+type KeyboardRideClass = typeof import("./keyboardRide").KeyboardRide;
 type NativeControls = Pick<NativeModule, "haptics" | "keyboard">;
 type ProcessEnvLike = { env?: Record<string, string | undefined> };
 type DebugPayload = Record<string, unknown>;
@@ -15,6 +15,9 @@ const globalWithProcess = globalThis as typeof globalThis & { process?: ProcessE
 /** Whether the iOS shell left the keyboard to the page; an older shell still pans to the field, so the page must not. */
 export const isPageKeyboardAvoidance = () =>
   (globalThis as { __AKAN_NATIVE__?: { keyboardAvoidance?: string } }).__AKAN_NATIVE__?.keyboardAvoidance === "page";
+
+//? UIKit moves the keyboard on its private curve 7; this is the cubic-bezier it is usually fitted with.
+export const IOS_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.38, 0.7, 0.125, 1)";
 
 const debugSessionId = crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
 let debugSeq = 0;
@@ -180,9 +183,16 @@ export class Device {
   async hideKeyboard() {
     await this.#native?.keyboard.hide();
   }
+  //? Loaded only where the shell left the keyboard to the page, so no web bundle carries it; the keys never rise before
+  //? a page that just mounted has it.
+  static #keyboardRide: KeyboardRideClass | null = null;
   listenKeyboardChanged(onKeyboardChanged: (height: number) => void) {
     const keyboard = this.#native?.keyboard;
     if (!keyboard) return;
+    if (isPageKeyboardAvoidance())
+      void import("./keyboardRide").then(({ KeyboardRide }) => {
+        Device.#keyboardRide = KeyboardRide;
+      });
     let currentHeight = 0;
     const emitKeyboardHeight = (event: string, height: number) => {
       debugFrame("keyboard.event", { event, height, previousHeight: currentHeight });
@@ -196,7 +206,7 @@ export class Device {
       ...(["willShow", "didShow", "willHide", "didHide"] as const).map((event) =>
         keyboard.listen(event, ({ height, duration }) => {
           if (duration > 0) this.keyboardAnimationMs = duration;
-          if (isPageKeyboardAvoidance()) KeyboardRide.move(height, this.keyboardAnimationMs);
+          Device.#keyboardRide?.move(height, this.keyboardAnimationMs);
           emitKeyboardHeight(event, height);
         }),
       ),

@@ -1,5 +1,4 @@
-//? UIKit moves the keyboard on its private curve 7; this is the cubic-bezier it is usually fitted with.
-export const IOS_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.38, 0.7, 0.125, 1)";
+import { IOS_KEYBOARD_ANIMATION_EASING } from "./device";
 
 const RIDE_SELECTOR = "[data-akan-keyboard-ride]";
 const END_SLACK_PX = 2;
