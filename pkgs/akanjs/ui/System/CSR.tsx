@@ -8,6 +8,7 @@ import {
   debugFrame,
   getPathInfo,
   type PageActivity,
+  type PageState,
   type ReactFont,
   router,
   useCsr,
@@ -101,6 +102,21 @@ const CSRProvider = ({
 };
 CSR.Provider = CSRProvider;
 
+const chromeClassNamesOf = (overlay?: PageState["overlay"]) => ({
+  topSafeArea: cn(
+    "akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background",
+    overlay?.top && "pointer-events-none",
+  ),
+  topInset: cn(
+    "akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background",
+    overlay?.top && "bg-transparent",
+  ),
+  bottomSafeArea: cn(
+    "akan-frame-chrome fixed inset-x-0 max-w-screen bg-background",
+    overlay?.bottom && "pointer-events-none",
+  ),
+});
+
 interface CSRWrapperProps {
   className?: string;
   appName: string;
@@ -137,7 +153,8 @@ const CSRWrapper = ({
     stackEntries,
   } = useCsr();
   const csrLoaded = st.use.csrLoaded({ agent: false });
-  const { router: reactRouter, history } = useCsr();
+  const { router: reactRouter, history, location } = useCsr();
+  const chrome = chromeClassNamesOf(location?.pathRoute?.pageState?.overlay);
   useEffect(() => {
     debugFrame("csrWrapper.mount", { appName, layoutStyle, pathCount: pathRoutes.length });
     if (layoutStyle === "mobile") {
@@ -197,15 +214,11 @@ const CSRWrapper = ({
           : null}
         <TopChromeLayer
           id="topSafeArea"
-          className={cn("akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background")}
+          className={chrome.topSafeArea}
           layerRef={topSafeAreaRef}
           style={topSafeArea?.containerStyle}
         />
-        <TopChromeLayer
-          id="topInsetContainer"
-          className={cn("akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background")}
-          style={topInset?.containerStyle}
-        >
+        <TopChromeLayer id="topInsetContainer" className={chrome.topInset} style={topInset?.containerStyle}>
           <CSRFrameSlotTargets slot="topInset" />
         </TopChromeLayer>
         <TopChromeLayer
@@ -245,7 +258,7 @@ const CSRWrapper = ({
         </KeyboardLayer>
         <BottomChromeLayer
           id="bottomSafeArea"
-          className="akan-frame-chrome fixed inset-x-0 max-w-screen bg-background"
+          className={chrome.bottomSafeArea}
           layerRef={bottomSafeAreaRef}
           style={bottomSafeArea?.containerStyle}
         />

@@ -19,6 +19,8 @@ export type PageSafeAreaConfig =
       bottom?: boolean;
       android?: "auto" | "edge-to-edge" | "none";
     };
+/** The sides whose chrome the page runs under instead of below. */
+export type PageOverlayConfig = boolean | "top" | "bottom";
 /** `"stream"` flushes the shell (`Loading` included) then streams; a redirect in suspended content becomes a client one.
  * `"block"` buffers the whole document, so an error in slow content can still render a clean error page. */
 export type SsrRenderMode = "stream" | "block";
@@ -34,6 +36,12 @@ export interface PageConfig {
   topInset?: number | boolean | ResponsiveInset;
   /** Bottom chrome reservation in px, or px per breakpoint. Use true for the default 48px reservation. */
   bottomInset?: number | boolean | ResponsiveInset;
+  /**
+   * Lays the page under its top or bottom chrome (safe area and inset) instead of below it, so a translucent bar has
+   * content scrolling beneath it. The page pads its own scrollers by `--akan-overlay-top` / `--akan-overlay-bottom`,
+   * and an overlaid side's safe area defaults to transparent.
+   */
+  overlay?: PageOverlayConfig;
   gesture?: boolean;
   cache?: boolean;
   /** Initial full-document SSR strategy. Defaults to `"stream"`. */
@@ -68,6 +76,7 @@ export interface CsrState {
   responsiveInset?: { top: ResponsiveInset; bottom: ResponsiveInset };
   /** Web only: the sides whose safe area `env(safe-area-inset-*)` measures, since a browser tells script nothing. */
   safeAreaEnv?: { top: boolean; bottom: boolean };
+  overlay?: { top: boolean; bottom: boolean };
   gesture: boolean;
   cache: boolean;
   ssr: SsrRenderMode;
@@ -444,6 +453,8 @@ export interface KeyboardFrameState {
   source?: "native" | "visualViewport" | "fallback";
   animationDuration?: number;
   animationEasing?: string;
+  /** The page's content ends at the keyboard, as UIKit's keyboard layout guide does: an iOS shell no longer pans. */
+  avoidsContent?: boolean;
 }
 export interface FrameContentViewportState {
   top: number;

@@ -630,6 +630,15 @@ export default page()
         }),
       },
       {
+        key: "overlay",
+        type: 'boolean | "top" | "bottom"',
+        default: "false",
+        desc: l.trans({
+          en: "Runs the page under that side's safe area and inset, for a translucent bar; scrollers pad by `--akan-overlay-*`.",
+          ko: "반투명한 바를 위해 그쪽 safe area와 inset 밑으로 페이지를 깔며, 스크롤 영역은 `--akan-overlay-*`만큼 여백을 줍니다.",
+        }),
+      },
+      {
         key: "gesture",
         type: "boolean",
         default: l.trans({ en: "on for nested routes on iOS", ko: "iOS의 하위 route에서만 켜짐" }),

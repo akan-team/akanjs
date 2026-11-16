@@ -1,5 +1,5 @@
 "use client";
-import { debugFrame } from "akanjs/client";
+import { debugFrame, type KeyboardFrameState } from "akanjs/client";
 import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { CsrLocationState } from "./useCsrLocationState";
 import type { CsrRefs } from "./useCsrRefs";
@@ -148,8 +148,36 @@ export const useCsrKeyboard = ({
     keyboardFrame.sticky,
     keyboardLayout.contentViewport.height,
   ]);
+  useKeyboardRoot(keyboardFrame);
+  useRevealCoveredField(pageContentRef, keyboardFrame);
   useFrameRuntimeResync({ updateViewport });
   return { platformProfile, accessoryHeight, shouldAnchorContentBottom, keyboardFrame, keyboardLayout };
 };
 
 export type CsrKeyboard = ReturnType<typeof useCsrKeyboard>;
+
+//? On the root, so overlays portalled out of the page can move with the keys too.
+const useKeyboardRoot = (keyboardFrame: KeyboardFrameState) => {
+  useLayoutEffect(() => {
+    const root = document.documentElement;
+    root.style.setProperty("--akan-keyboard-duration", `${keyboardFrame.animationDuration ?? 0}ms`);
+    root.style.setProperty("--akan-keyboard-easing", keyboardFrame.animationEasing ?? "ease");
+    root.toggleAttribute("data-akan-keyboard", keyboardFrame.visible);
+  }, [keyboardFrame.animationDuration, keyboardFrame.animationEasing, keyboardFrame.visible]);
+};
+
+//? With the shell's pan gone nothing brings a field the keys cover back into view; the frame does, once they are up.
+const useRevealCoveredField = (pageContentRef: CsrRefs["pageContentRef"], keyboardFrame: KeyboardFrameState) => {
+  useEffect(() => {
+    const element = pageContentRef.current;
+    if (!element || !keyboardFrame.avoidsContent || !keyboardFrame.visible) return;
+    const timer = window.setTimeout(() => {
+      const field = document.activeElement;
+      if (!(field instanceof HTMLElement) || !element.contains(field)) return;
+      const rect = field.getBoundingClientRect();
+      if (rect.bottom > element.getBoundingClientRect().bottom || rect.top < 0)
+        field.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    }, keyboardFrame.animationDuration ?? 0);
+    return () => window.clearTimeout(timer);
+  }, [pageContentRef, keyboardFrame.avoidsContent, keyboardFrame.visible, keyboardFrame.animationDuration]);
+};

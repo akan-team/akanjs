@@ -43,11 +43,12 @@ const moveInto = (parent: HTMLElement, node: HTMLElement) => {
 
 interface SsrFrameSlotProps {
   slot: FrameSlotName;
+  isOverlaid: boolean;
   children: ReactNode;
 }
 //? React neither portals on the server nor hydrates a portal, so the chrome is drawn here in its slot's box, and once
 //? hydrated its own DOM moves into the slot: a remount there would drop what was typed into it and where focus was.
-const SsrFrameSlot = ({ slot, children }: SsrFrameSlotProps) => {
+const SsrFrameSlot = ({ slot, isOverlaid, children }: SsrFrameSlotProps) => {
   const boxRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -64,7 +65,7 @@ const SsrFrameSlot = ({ slot, children }: SsrFrameSlotProps) => {
       <div
         ref={boxRef}
         data-akan-frame-fallback={slot}
-        className={cn(frameSlotContainerClassNames[slot], "z-10 empty:hidden")}
+        className={cn(frameSlotContainerClassNames[slot], "z-10 empty:hidden", isOverlaid && "bg-transparent")}
         style={frameSlotStyles[slot]}
       >
         <div ref={contentRef} className={frameSlotContentClassNames[slot]}>
@@ -81,7 +82,13 @@ interface FrameSlotPortalProps {
 }
 export const FrameSlotPortal = ({ slot, children }: FrameSlotPortalProps) => {
   const pathCtx = usePathCtx();
-  if (getEnv().renderMode !== "csr") return <SsrFrameSlot slot={slot}>{children}</SsrFrameSlot>;
+  const overlay = pathCtx.location?.pathRoute?.pageState?.overlay;
+  if (getEnv().renderMode !== "csr")
+    return (
+      <SsrFrameSlot slot={slot} isOverlaid={slot === "topInset" && !!overlay?.top}>
+        {children}
+      </SsrFrameSlot>
+    );
   //? A CSR frame has no server HTML to keep, and its slots, one set per stacked page, exist before the page renders.
   const path = pathCtx.location?.pathRoute?.path;
   return <Portal id={path ? `${slot}Content-${pathCtx.pageKey ?? path}` : `${slot}Content`}>{children}</Portal>;
