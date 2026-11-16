@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 import { agentAttrs } from "../agentAttrs";
 import { type DraftProp, editDraftScope } from "./draftScope";
+import "../modelRuntime";
 
 interface EditWrapperProps {
   className?: string;

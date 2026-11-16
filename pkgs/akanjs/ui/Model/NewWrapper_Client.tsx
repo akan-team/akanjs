@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { agentAttrs } from "../agentAttrs";
 import { type DraftProp, newDraftScope } from "./draftScope";
 import { NewFormOrigin } from "./newFormOrigin";
+import "../modelRuntime";
 
 interface NewWrapperProps<Full = any> {
   className?: string;

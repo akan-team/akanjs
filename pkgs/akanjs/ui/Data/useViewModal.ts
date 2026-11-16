@@ -7,6 +7,7 @@ import { usePageLocation } from "akanjs/webkit";
 import { useEffect, useRef, useState } from "react";
 
 import { openSeqIn, seedOpen } from "../../store/openSeq";
+import "../modelRuntime";
 
 type SearchParams = Record<string, string | string[] | undefined>;
 const firstOf = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);

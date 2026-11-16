@@ -16,6 +16,7 @@ import { sliceNamesOf } from "../sliceNamesOf";
 import Stream from "./Stream";
 import type { StreamError } from "./StreamBoundary";
 import { SliceClaim } from "./sliceClaim";
+import "../modelRuntime";
 
 interface DefaultProps<L extends { id: string }> {
   containerRef?: RefObject<HTMLDivElement | null>;

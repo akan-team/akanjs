@@ -11,6 +11,7 @@ import {
 import { type ConstantCls, type ConstantField, ConstantRegistry } from "akanjs/constant";
 
 import type { SerializedArg, SerializedEndpoint, SignalType } from "akanjs/signal";
+import "../modelRuntime";
 
 // A Map field's `modelRef` is the `Map` constructor itself, which belongs to no registry — the value type lives in
 // `of`, and the wire shape is a plain string-keyed object.

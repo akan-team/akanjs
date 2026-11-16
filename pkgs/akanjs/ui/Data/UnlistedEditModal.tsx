@@ -6,6 +6,7 @@ import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 import { Model } from "../Model";
 import { sliceNamesOf } from "../sliceNamesOf";
+import "../modelRuntime";
 
 interface UnlistedEditModalProps {
   slice: SliceMeta;

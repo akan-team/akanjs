@@ -3,6 +3,7 @@ import type { PageActivity } from "akanjs/client";
 import { isQueryEqual } from "akanjs/common";
 import { st } from "akanjs/store";
 import type { sliceNamesOf } from "../sliceNamesOf";
+import "../modelRuntime";
 
 type SliceNames = ReturnType<typeof sliceNamesOf>["namesOfSlice"];
 

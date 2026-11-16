@@ -7,6 +7,7 @@ import { Fragment } from "react";
 import { AiOutlineDelete, AiOutlineEdit } from "react-icons/ai";
 import { buttonRecipe } from "../Button";
 import { Popconfirm } from "../Popconfirm";
+import "../modelRuntime";
 
 interface ViewActionsProps {
   model: { id: string };

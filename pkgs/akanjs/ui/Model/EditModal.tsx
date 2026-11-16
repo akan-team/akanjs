@@ -17,6 +17,7 @@ import DraftBar from "./DraftBar";
 import { type DraftProp, editDraftScope, newDraftScope } from "./draftScope";
 import { EditSeed } from "./editSeed";
 import { NewFormOrigin } from "./newFormOrigin";
+import "../modelRuntime";
 
 const EDIT_PAYLOAD_MAX_AGE_MS = 60_000;
 

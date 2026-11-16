@@ -14,6 +14,7 @@ import { Select } from "../Select";
 import { Tooltip } from "../Tooltip";
 import { ObjectType } from "./Object";
 import { signalUi } from "./style";
+import "../modelRuntime";
 
 interface ArgProps {
   argType: DefaultPrimitiveName;

@@ -7,6 +7,7 @@ import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 
 import { agentAttrs } from "../agentAttrs";
+import "../modelRuntime";
 
 interface ViewWrapperProps {
   className?: string;

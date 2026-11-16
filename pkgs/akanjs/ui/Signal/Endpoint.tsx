@@ -13,6 +13,7 @@ import { ObjectDetail, ObjectType } from "./Object";
 import { ResponseExample } from "./Response";
 import { signalText } from "./signalText";
 import { getGuardBadgeClassName, getWsBadgeClassName } from "./style";
+import "../modelRuntime";
 
 interface ArgSectionProps {
   label: string;

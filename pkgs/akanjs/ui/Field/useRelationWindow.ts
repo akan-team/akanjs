@@ -3,6 +3,7 @@ import { DataList } from "akanjs/base";
 import { fetch } from "akanjs/client";
 import { isQueryEqual } from "akanjs/common";
 import { useRef, useState } from "react";
+import "../modelRuntime";
 
 export interface RelationWindowQuery {
   queryArgs: unknown[];

@@ -1,6 +1,7 @@
 "use client";
 import { fetch, isClientRuntimeRegistered } from "akanjs/client";
 import { modelNames } from "akanjs/common";
+import "../modelRuntime";
 
 interface LightRow {
   id: string;

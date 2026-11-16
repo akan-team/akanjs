@@ -3,6 +3,7 @@ import { lowerlize } from "akanjs/common";
 import { FetchClient, type FetchProxy } from "akanjs/fetch";
 import type { SerializedEndpoint } from "akanjs/signal";
 import { ownerOf, ownerOrderOf } from "../Reference/origin";
+import "../modelRuntime";
 
 // A FetchProxy cannot cross the RSC boundary as a prop, so the docs default to the registered runtime's.
 export const runtimeFetch = clientFetch as unknown as FetchProxy;
