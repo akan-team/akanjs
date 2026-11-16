@@ -613,16 +613,12 @@ export class SsrFromRscRenderer {
       throw error;
     }
 
+    const headPreloads = [...new Set([...(input.bootstrapModules ?? []), ...(input.modulePreloads ?? [])])];
     const withHeadScripts = SsrFromRscRenderer.#injectHeadScriptsIntoHead(htmlStream, {
       importmap: input.importmap,
+      modulePreloads: headPreloads,
       //? The shell has rendered by now, so its client references have arrived; a later boundary's chunks load unpreloaded.
-      modulePreloads: [
-        ...new Set([
-          ...(input.bootstrapModules ?? []),
-          ...(chunkPreloads?.urls ?? []),
-          ...(input.modulePreloads ?? []),
-        ]),
-      ],
+      chunkPreloads: (chunkPreloads?.urls ?? []).filter((src) => !headPreloads.includes(src)),
       theme: input.theme,
       injectThemeInitScript: input.injectThemeInitScript,
     });
@@ -767,6 +763,7 @@ export class SsrFromRscRenderer {
     options: {
       importmap?: Record<string, string>;
       modulePreloads: string[];
+      chunkPreloads: string[];
       theme?: AkanTheme;
       injectThemeInitScript?: boolean;
     },
@@ -774,6 +771,8 @@ export class SsrFromRscRenderer {
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
     const { importmap, modulePreloads, theme, injectThemeInitScript } = options;
+    //? Written before </head>, behind the stylesheet links: ahead of them, the chunk requests held first paint back.
+    const chunkTags = SsrFromRscRenderer.#createModulePreloadTags(options.chunkPreloads);
     const htmlTheme = theme && theme !== "css" && theme !== "system" ? theme : undefined;
     const importmapTag =
       importmap && Object.keys(importmap).length > 0
@@ -783,11 +782,11 @@ export class SsrFromRscRenderer {
     const shouldInjectThemeScript = theme === "system" || (theme === undefined && injectThemeInitScript);
     const themeInitTag = shouldInjectThemeScript ? SsrFromRscRenderer.#themeInitScript : "";
     const tags = `${themeInitTag}${importmapTag}${modulePreloadTags}`;
-    if (!tags && !htmlTheme) return stream;
+    if (!tags && !chunkTags && !htmlTheme) return stream;
     const htmlOpenRe = /<html(\s[^>]*)?>/i;
     const headOpenRe = /<head(\s[^>]*)?>/i;
     let buffered = "";
-    let injected = false;
+    let awaiting: "<head>" | "</head>" | undefined = "<head>";
 
     const withHtmlTheme = (html: string): string => {
       if (!htmlTheme) return html;
@@ -800,30 +799,31 @@ export class SsrFromRscRenderer {
     return stream.pipeThrough(
       new TransformStream<Uint8Array, Uint8Array>({
         transform(chunk, controller) {
-          if (injected) {
+          if (!awaiting) {
             controller.enqueue(chunk);
             return;
           }
           buffered += decoder.decode(chunk, { stream: true });
-          const m = headOpenRe.exec(buffered);
-          if (!m) return;
-          const end = m.index + m[0].length;
-          const before = withHtmlTheme(buffered.slice(0, end));
-          const after = buffered.slice(end);
-          controller.enqueue(encoder.encode(before + tags + after));
-          buffered = "";
-          injected = true;
+          let out = "";
+          if (awaiting === "<head>") {
+            const m = headOpenRe.exec(buffered);
+            if (!m) return;
+            const end = m.index + m[0].length;
+            out = withHtmlTheme(buffered.slice(0, end)) + tags;
+            buffered = buffered.slice(end);
+            awaiting = "</head>";
+          }
+          const close = chunkTags ? buffered.indexOf(awaiting) : 0;
+          const cut = close >= 0 ? close : Math.max(0, buffered.length - awaiting.length + 1);
+          out += buffered.slice(0, cut) + (close >= 0 ? chunkTags + buffered.slice(cut) : "");
+          buffered = close >= 0 ? "" : buffered.slice(cut);
+          if (close >= 0) awaiting = undefined;
+          if (out) controller.enqueue(encoder.encode(out));
         },
         flush(controller) {
-          if (injected) {
-            const tail = decoder.decode();
-            if (tail) controller.enqueue(encoder.encode(tail));
-            return;
-          }
           // No <head> (e.g. an error shell): emit the buffer rather than swallow the document.
-          const tail = decoder.decode();
-          const rest = withHtmlTheme(buffered + tail);
-          if (rest) controller.enqueue(encoder.encode(rest));
+          const rest = buffered + decoder.decode();
+          if (rest) controller.enqueue(encoder.encode(awaiting === "<head>" ? withHtmlTheme(rest) : rest));
         },
       }),
     );
