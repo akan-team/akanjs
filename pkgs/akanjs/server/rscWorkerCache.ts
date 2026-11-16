@@ -28,6 +28,8 @@ export interface CachedRscResult {
   theme?: string;
   /** Whether the matched route opted into blocking SSR (`pageConfig.ssr: "block"`). */
   ssrBlocking?: boolean;
+  /** The hash sources the route's heads declared, which a replay's response still has to name. */
+  scriptHashes?: string[];
   cacheState: RouteCacheRenderState;
   patch?: CachedRscPatchMetadata;
   /** Key of the layouts' head the page renders in its route head, named in the router state a replay sends. */

@@ -1,4 +1,5 @@
 import type { FlightLineRowHandler } from "./flightRowReader";
+import type { PageErrorReport } from "./rscClientErrors";
 
 export interface ChunkNavigation {
   navId: number;
@@ -186,14 +187,20 @@ const reportGlobalError = (error: unknown): void => {
 };
 
 //? Passing these drops React's production defaults, so they repeat them; `akan start` keeps its development ones.
-export const reportingRootErrors = (onError: (error: unknown) => void) => ({
+export const reportingRootErrors = (onError: (error: unknown) => void, report?: PageErrorReport | null) => ({
   onCaughtError: (error: unknown) => {
     console.error(error);
+    report?.(error, "caught");
     onError(error);
   },
   onUncaughtError: (error: unknown) => {
+    report?.(error, "uncaught");
     reportGlobalError(error);
     onError(error);
+  },
+  onRecoverableError: (error: unknown) => {
+    report?.(error, "recoverable");
+    reportGlobalError(error);
   },
 });
 

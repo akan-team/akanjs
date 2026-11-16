@@ -8,12 +8,15 @@ import type { BaseDevEnv, TsConfigJson } from "../workspace/types";
 import { Executor, execEmoji } from "./executor";
 import { SysExecutor } from "./sysExecutor";
 
-//? As Bun's own .env loader reads it (1.4.4), which fills process.env too: `#` ends an unquoted value even mid-word.
+//? As Bun's .env loader reads it (1.4.4), which fills process.env too: `#` ends an unquoted value mid-word, `\$` is `$`.
 const parseEnvValue = (value: string) => {
   const [, quote, inner] = value.match(/^(["'`])((?:\\.|(?!\1)[^\\])*)\1/) ?? [];
-  if (!quote) return value.replace(/#.*/, "").trim();
-  if (quote !== '"') return inner;
-  return inner.replace(/\\(.)/g, (pair, char: string) => (char === "n" ? "\n" : char === "r" ? "\r" : pair));
+  const text = !quote
+    ? value.replace(/#.*/, "").trim()
+    : quote !== '"'
+      ? inner
+      : inner.replace(/\\(.)/g, (pair, char: string) => (char === "n" ? "\n" : char === "r" ? "\r" : pair));
+  return text.replaceAll("\\$", "$");
 };
 
 export const parseEnvFile = (envPath: string): Record<string, string> => {

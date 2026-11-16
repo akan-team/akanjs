@@ -1,5 +1,6 @@
 import { describe, expect, it, setDefaultTimeout } from "bun:test";
 import path from "node:path";
+import { sessionTokenContract } from "akanjs/common";
 import { ServerLimits } from "akanjs/server/routing/serverLimits";
 import { AppChart, type RenderOptions } from "./AppChart";
 
@@ -139,6 +140,16 @@ describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
     expect(annotations["nginx.ingress.kubernetes.io/cors-allow-headers"]).toContain("Authorization");
   });
 
+  it("lets a native shell or another origin's page ask sign-in for body tokens through the ingress CORS answer", () => {
+    const { annotations = {} } = AppChart.find(
+      chart.render({ values: { ingress: { cors: { enabled: true } } } }),
+      "Ingress",
+    ).metadata;
+    const allowed = (annotations["nginx.ingress.kubernetes.io/cors-allow-headers"] ?? "").toLowerCase().split(",");
+
+    expect(allowed).toContain(sessionTokenContract.header);
+  });
+
   it("marks the pod for scraping only with the Secret the scrape's token comes from", () => {
     const annotationsOf = (metrics?: Record<string, unknown>) =>
       AppChart.find(chart.render({ values: metrics ? { main: { metrics } } : undefined }), "Deployment").spec.template
@@ -152,5 +163,39 @@ describe.skipIf(!helm && !process.env.CI)("infra/app chart", () => {
     });
     for (const metrics of [{ scrape: true }, { scrape: true, tokenSecret: "" }, { scrape: true, tokenSecret: null }])
       expect(() => annotationsOf(metrics)).toThrow("metrics.scrape needs metrics.tokenSecret");
+  });
+
+  it("reads the server env's secrets from the Secret a branch names, ahead of the database's, and from none unnamed", () => {
+    const envFromOf = (render: RenderOptions) => AppChart.podSpec(chart.render(render)).containers[0]?.envFrom;
+    const app = { secretName: "app-env" };
+
+    expect(envFromOf({})).toBeUndefined();
+    expect(envFromOf({ values: { main: { app } } })).toEqual([{ secretRef: { name: "app-env" } }]);
+    expect(envFromOf({ values: clusterValues() })).toEqual([{ secretRef: { name: "db" } }]);
+    expect(envFromOf({ values: { main: { ...clusterValues().main, app } } })).toEqual([
+      { secretRef: { name: "app-env" } },
+      { secretRef: { name: "db" } },
+    ]);
+    expect(envFromOf({ branch: "develop", values: { main: { app } } })).toBeUndefined();
+
+    const copy = AppChart.copyWithoutDefaults();
+    try {
+      expect(envFromOf({ chartRoot: copy.root })).toBeUndefined();
+    } finally {
+      copy.remove();
+    }
+  });
+
+  it("gives every branch of this repository's app the Secret its deploy writes before the release", () => {
+    const akan = AppChart.valueFiles.filter((file) => path.basename(file) === "akan-values.yaml");
+    expect(akan).toHaveLength(1);
+    for (const branch of AppChart.branches)
+      expect({
+        branch,
+        envFrom: AppChart.podSpec(chart.render({ branch, valueFiles: akan })).containers[0]?.envFrom,
+      }).toEqual({
+        branch,
+        envFrom: [{ secretRef: { name: "app-env" } }],
+      });
   });
 });

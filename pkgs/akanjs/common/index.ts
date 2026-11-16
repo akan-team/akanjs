@@ -249,6 +249,7 @@ export {
   validateSubRoutePageKey,
 } from "./routeConvention";
 export { type SessionCookieDuplicate, SessionCookies } from "./sessionCookies";
+export { sessionTokenContract } from "./sessionTokenContract";
 export { sleep } from "./sleep";
 export { getBasePathFromPathname, parseBasePaths, parseSubRouteHosts, resolveSubRouteHosts } from "./subRoute";
 export { TrustedProxy } from "./TrustedProxy";

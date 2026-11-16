@@ -4,6 +4,7 @@ import { authTokenKey, CookieJar, retiredAuthTokenKeys, SessionCookies } from "a
 import { SessionCookie } from "akanjs/fetch";
 
 import { SignupToken } from "./signupToken";
+import { WebSession } from "./webSession";
 
 export interface SsoCookie {
   signupToken?: string;
@@ -69,6 +70,16 @@ const appendRefreshTokenCookies = (headers: Headers, kind: RefreshKind, refreshT
   for (const key of retired) headers.append("Set-Cookie", expireCookie(key, true));
 };
 
+export const renewedSessionCookies = (jwt: string, refreshTokens: { [kind in RefreshKind]?: string }) => {
+  const headers = new Headers();
+  appendSessionCookies(headers, jwt);
+  for (const kind of ["user", "admin"] as const) {
+    const refreshToken = refreshTokens[kind];
+    if (refreshToken) appendRefreshTokenCookies(headers, kind, refreshToken);
+  }
+  return headers.getSetCookie();
+};
+
 export const makeSsoRedirectResponse = (
   redirect: string,
   cookie?: Record<string, string>,
@@ -96,18 +107,26 @@ export const makeSsoRedirectResponse = (
 
 interface AccessTokenResponseOption {
   endsSignup?: boolean;
+  // The request being answered. With `session.cookieOnly` on, an answer that names none carries no token in its body.
+  req?: Request;
 }
 
+//* With `session.cookieOnly` on, a caller handed body tokens is set no session cookie: holding one would end them.
 const makeTokenResponse = (
   accessToken: AccessTokenResponse,
   kind: RefreshKind,
-  { endsSignup = false }: AccessTokenResponseOption,
+  { endsSignup = false, req }: AccessTokenResponseOption,
 ) => {
   const headers = new Headers({ "Content-Type": "application/json" });
-  if (accessToken.jwt) appendSessionCookies(headers, accessToken.jwt);
-  if (accessToken.refreshToken) appendRefreshTokenCookies(headers, kind, accessToken.refreshToken);
+  const inBody = WebSession.handsTokensTo(req);
+  if (!inBody || !WebSession.cookieOnly) {
+    if (accessToken.jwt) appendSessionCookies(headers, accessToken.jwt);
+    if (accessToken.refreshToken) appendRefreshTokenCookies(headers, kind, accessToken.refreshToken);
+  }
   if (endsSignup) headers.append("Set-Cookie", expireCookie(SignupToken.cookieKey(), true));
-  return new Response(JSON.stringify(accessToken), { headers });
+  //? The field stays, empty as in a sign-out answer: a client's return parser refuses an answer without it.
+  const { refreshToken: _refreshToken, ...rest } = accessToken;
+  return new Response(JSON.stringify(inBody ? accessToken : { ...rest, jwt: "" }), { headers });
 };
 
 const makeTokenEndResponse = (accessToken: AccessTokenResponse, kind: RefreshKind) => {
@@ -122,11 +141,33 @@ export const makeAccessTokenResponse = (accessToken: AccessTokenResponse, option
 
 export const makeSignoutResponse = (accessToken: AccessTokenResponse) => makeTokenEndResponse(accessToken, "user");
 
-export const makeAdminAccessTokenResponse = (accessToken: AccessTokenResponse) =>
-  makeTokenResponse(accessToken, "admin", {});
+export const makeAdminAccessTokenResponse = (
+  accessToken: AccessTokenResponse,
+  option: AccessTokenResponseOption = {},
+) => makeTokenResponse(accessToken, "admin", option);
+
+interface SsoSigninAnswer {
+  jwt?: string | null;
+  refreshToken?: string | null;
+}
+
+export const makeSsoSigninResponse = <Signin extends SsoSigninAnswer>(signin: Signin, req: Request) => {
+  if (!signin.jwt || WebSession.handsTokensTo(req)) return signin;
+  return makeTokenResponse({ ...signin, jwt: signin.jwt, refreshToken: signin.refreshToken ?? undefined }, "user", {
+    req,
+  });
+};
 
 export const makeAdminSignoutResponse = (accessToken: AccessTokenResponse) =>
   makeTokenEndResponse(accessToken, "admin");
+
+//* The admin session ended alone: what the caller's user session is answered with drops the admin refresh cookie too.
+export const makeAdminSessionEndResponse = (survivor: AccessTokenResponse, option: AccessTokenResponseOption = {}) => {
+  if (!survivor.jwt) return makeTokenEndResponse(survivor, "admin");
+  const response = makeTokenResponse(survivor, "user", option);
+  appendRefreshTokenCookies(response.headers, "admin");
+  return response;
+};
 
 export const makeSignupTicketResponse = (ticket: { signupToken: string }) => {
   const headers = new Headers({ "Content-Type": "application/json" });

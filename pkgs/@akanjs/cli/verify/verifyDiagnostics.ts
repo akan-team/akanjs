@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { RouteJsBudgetWarning } from "@akanjs/devkit/app/routeJsBudget";
 import type { BiomeDiagnostic, BiomeReport } from "@akanjs/devkit/lint/linter";
+import { WithheldEnvFile } from "@akanjs/devkit/lint/withheldEnvFile";
 import type { MaintainabilityReport } from "@akanjs/devkit/quality/maintainabilityReport";
 import type { QualityWarning } from "@akanjs/devkit/quality/qualityScanner";
 import type { TypecheckRecord } from "@akanjs/devkit/typecheck/typeChecker";
@@ -69,8 +70,10 @@ export class VerifyDiagnostics {
           col: diagnostic.location?.start?.column ?? 0,
           code: diagnostic.category ?? "biome",
           severity: diagnostic.severity === "error" ? "error" : "warning",
-          ...(VerifyDiagnostics.#adapterErrorOf(file, diagnostic.message) ??
-            VerifyDiagnostics.#deepImportOf(root, file, diagnostic) ?? { message: diagnostic.message }),
+          ...(WithheldEnvFile.isEnvFile(file ?? undefined)
+            ? { message: WithheldEnvFile.note }
+            : (VerifyDiagnostics.#adapterErrorOf(file, diagnostic.message) ??
+              VerifyDiagnostics.#deepImportOf(root, file, diagnostic) ?? { message: diagnostic.message })),
         };
       });
   }

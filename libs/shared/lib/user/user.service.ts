@@ -1,12 +1,17 @@
 import type { Me, Self } from "@libs/shared/common";
 import {
   type AuthTokenMeta,
+  browserRefreshGraceMs,
+  PageSession,
+  type RenewedSession,
   RevokedSessions,
   type RotateRefreshSessionOptions,
+  type SessionRefreshTokens,
   SignupToken,
+  WebSession,
 } from "@libs/shared/srvkit";
 import { type Dayjs, dayjs } from "akanjs/base";
-import { isEmail } from "akanjs/common";
+import { decodeJwtPayload, isEmail } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
 import { serve } from "akanjs/service";
 import * as cnst from "../cnst";
@@ -31,6 +36,9 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   jwtSecret: use<string>(),
   signupPolicy: use<option.SignupPolicy>(),
 })) {
+  override onInit() {
+    PageSession.use((refreshTokens) => this.renewPageSession(refreshTokens));
+  }
   override async _postRemove(user: db.User) {
     await this.userModel.signChallenge.recordLeave(await this.userModel.getLeaveKeys(user.id));
     await this.userModel.revokeRefreshSessions(user.id);
@@ -71,7 +79,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     const self = await this.makeSelf(user);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryAdminIdentity(account)), self, selfSid: session.id },
-      { sid: session.id, jti: crypto.randomUUID() },
+      { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken };
   }
@@ -91,9 +99,34 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     const self = await this.makeSelf(user);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryAdminIdentity(account)), self, selfSid: session.id },
-      { sid: session.id, jti: crypto.randomUUID() },
+      { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken: nextRefreshToken.refreshToken };
+  }
+  //? Security: each identity returns on its own refresh token; the expired access token vouches for neither.
+  async renewPageSession({ user, admin }: SessionRefreshTokens): Promise<RenewedSession | null> {
+    const options = { graceMs: browserRefreshGraceMs };
+    const renewed = async (kind: "user" | "admin", renew: () => Promise<db.util.AccessToken>) => {
+      try {
+        return await renew();
+      } catch (error) {
+        this.logger.verbose(
+          `${kind} session not renewed for a page: ${error instanceof Error ? error.message : error}`,
+        );
+        return null;
+      }
+    };
+    const adminToken = admin
+      ? await renewed("admin", () => this.adminService.refreshAdminToken(admin, undefined, undefined, options))
+      : null;
+    const account = adminToken ? decodeJwtPayload<Account>(adminToken.jwt) : undefined;
+    const userToken = user ? await renewed("user", () => this.refreshUserToken(user, account, options)) : null;
+    const jwt = userToken?.jwt ?? adminToken?.jwt;
+    if (!jwt) return null;
+    return {
+      jwt,
+      refreshTokens: { user: userToken?.refreshToken ?? undefined, admin: adminToken?.refreshToken ?? undefined },
+    };
   }
   async getPrepareUser(userId: string) {
     return await this.userModel.getPrepareUser(userId);

@@ -16,11 +16,13 @@ import { GatewayStatus } from "./gateway/gatewayStatus";
 import { GatewayWebSocketRelay, type GatewayWsData } from "./gateway/gatewayWebSocketRelay";
 import { ListeningPort } from "./gateway/listeningPort";
 import { isPortInUseError } from "./lifecycle/portInUse";
+import { SecretEnv } from "./lifecycle/secretEnv";
 import { LogStreamRoute } from "./logging/logStreamRoute";
 import { AppInfo } from "./ops/appInfo";
 import type { OpsHost } from "./ops/opsCommand";
 import type { OpsRoute } from "./ops/opsRoute";
 import { StatusAccess } from "./ops/statusAccess";
+import { OtlpExporter } from "./otlp/otlpExporter";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
 import { DevSurfaces } from "./routing/devSurfaces";
@@ -100,6 +102,7 @@ export class AkanApp {
         await OpsCommand.run(process.argv.slice(3), { importServer: async () => await this.#importServer() }),
       );
     }
+    SecretEnv.check(this.logger);
     if (this.#config.solo) return await this.#startSolo();
     if (SelfExec.carried)
       throw new AkanError(
@@ -107,6 +110,7 @@ export class AkanApp {
         "A desktop app's server runs in one process, and this one was asked for a gateway and replicas, which would start with the `bun` on the user's PATH: by `replica` or `solo: false` in main.ts, or by AKAN_SOLO=false, an AKAN_REPLICA other than one traffic replica, or AKAN_COMMAND_TYPE=start in its env. Leave them out of the app the desktop build carries.",
       );
     Logger.role = "gateway";
+    OtlpExporter.install();
     await this.#supervisor.prepareRuntimeDir();
     await this.#logging.start();
     await this.#startOps();
@@ -171,6 +175,7 @@ export class AkanApp {
     this.#server = null;
     ListeningPort.record(this, undefined);
     await this.#supervisor.stopAll(signal);
+    await OtlpExporter.shutdown();
     await this.#logging.stop();
     this.#resolveStopped?.();
     this.#resolveStopped = null;
@@ -256,6 +261,10 @@ export class AkanApp {
       [
         "/_akan/app/metrics",
         (req, client) => this.#statusAccess.metrics(req, () => this.#status.metricsStatus(), client),
+      ],
+      [
+        "/_akan/app/statements",
+        (req, client) => this.#statusAccess.statements(req, () => this.#status.statementsStatus(), client),
       ],
       [LogStreamRoute.path, (req, client) => this.#logging.stream?.handle(req, client) ?? null],
       ["/_akan/bench/ping", () => new Response("ok")],

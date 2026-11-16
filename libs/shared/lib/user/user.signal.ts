@@ -6,6 +6,7 @@ import {
   makeAccessTokenResponse,
   makeSignoutResponse,
   makeSignupTicketResponse,
+  makeSsoSigninResponse,
   OwnImages,
   Person,
   readRefreshTokenCookie,
@@ -67,8 +68,9 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.
   signinWithSignToken: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 20 } })
     .body("signToken", String)
     .with(Account)
-    .exec(async function (signToken, account) {
-      return makeAccessTokenResponse(await this.signService.signinWithSignToken(signToken, account)) as never;
+    .with(Req)
+    .exec(async function (signToken, account, req) {
+      return makeAccessTokenResponse(await this.signService.signinWithSignToken(signToken, account), { req }) as never;
     }),
   signoutUser: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("pushDeviceId", String, { nullable: true })
@@ -80,9 +82,11 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.
     .param("userId", ID)
     .body("signupToken", String)
     .with(Account)
-    .exec(async function (userId, _signupToken, account) {
+    .with(Req)
+    .exec(async function (userId, _signupToken, account, req) {
       return makeAccessTokenResponse(await this.userService.activateUser(userId, account), {
         endsSignup: true,
+        req,
       }) as never;
     }),
   activateUserWithAgreePolicies: mutation(cnst.util.AccessToken, { guards: [SignupHolder], mcp: false })
@@ -90,9 +94,11 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.
     .body("agreePolicies", [String])
     .body("signupToken", String)
     .with(Account)
-    .exec(async function (userId, agreePolicies, _signupToken, account) {
+    .with(Req)
+    .exec(async function (userId, agreePolicies, _signupToken, account, req) {
       return makeAccessTokenResponse(await this.userService.activateUser(userId, account, agreePolicies), {
         endsSignup: true,
+        req,
       }) as never;
     }),
   // An admin vouches for the account, so the signup policy does not apply and no session is handed out.
@@ -175,10 +181,11 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.
     .body("password", String)
     .with(Account)
     .with(Ip, { nullable: true })
-    .exec(async function (accountId, password, account, ip) {
-      return makeAccessTokenResponse(
-        await this.signService.signinWithPassword(accountId, password, account, ip),
-      ) as never;
+    .with(Req)
+    .exec(async function (accountId, password, account, ip, req) {
+      return makeAccessTokenResponse(await this.signService.signinWithPassword(accountId, password, account, ip), {
+        req,
+      }) as never;
     }),
   changePassword: mutation(Boolean, { guards: [Every, Person], rateLimit: { calls: 10, by: "account" } })
     .body("password", String)
@@ -559,8 +566,10 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.
     .body("code", String)
     .body("codeVerifier", String)
     .with(Account)
-    .exec(async function (code, codeVerifier, account) {
-      return await this.signService.exchangeNativeSsoCode(code, codeVerifier, account);
+    .with(Req)
+    .exec(async function (code, codeVerifier, account, req) {
+      const signin = await this.signService.exchangeNativeSsoCode(code, codeVerifier, account);
+      return makeSsoSigninResponse(signin, req) as never;
     }),
   refreshJwt: mutation(cnst.util.AccessToken, { guards: [Public], mcp: false, rateLimit: { calls: 60 } })
     .body("refreshToken", String, { nullable: true })
@@ -571,6 +580,7 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.
       if (!token) throw new Err("user.error.noRefreshToken");
       return makeAccessTokenResponse(
         await this.userService.refreshUserToken(token, account, { graceMs: browserRefreshGraceMs }),
+        { req: request },
       ) as never;
     }),
 })) {}

@@ -1,6 +1,7 @@
 import type { Logger } from "akanjs/common";
 import type { AkanMetricsReport } from "akanjs/service";
 import { RuntimeFamilies } from "../metrics/runtimeFamilies";
+import { StatementReport } from "../metrics/statementReport";
 import { ProcessMetricsCollector } from "../processMetricsCollector";
 import type { GatewayChildren } from "./gatewayChildren";
 import type { GatewayConfig } from "./gatewayConfig";
@@ -82,7 +83,7 @@ export class GatewayStatus {
       children: [...this.#children.values()].map((child) => ({
         idx: child.idx,
         role: child.role,
-        metrics: child.metrics,
+        metrics: GatewayStatus.#withoutStatements(child.metrics),
         rooms: this.#rooms.roomCountOf(child.idx),
         restartAttempts: child.restart.attempts,
         restartCount: child.restartCount,
@@ -101,6 +102,15 @@ export class GatewayStatus {
         ),
       ],
     };
+  }
+
+  static #withoutStatements({ statements: _statements, ...metrics }: AkanMetricsReport): AkanMetricsReport {
+    return metrics;
+  }
+
+  statementsStatus() {
+    const children = [...this.#children.values()];
+    return StatementReport.view(StatementReport.merge(children.map((child) => child.metrics.statements)));
   }
 
   // Upstream round trip as the gateway sees it; proxy overhead = this minus the child's traced handler time.

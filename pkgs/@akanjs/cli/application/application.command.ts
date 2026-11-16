@@ -11,6 +11,7 @@ import {
   SysOrOnlyApp,
   Workspace,
 } from "@akanjs/devkit/commandDecorators";
+import { SecretEnvFile } from "@akanjs/devkit/transforms/secretEnvFile";
 import { MigrationCommand } from "akanjs/server/migration/migrationCommand";
 import { MigrationError } from "akanjs/server/migration/migrationError";
 import { ApplicationScript } from "./application.script";
@@ -273,14 +274,51 @@ const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => (
     .option("checkBudget", Boolean, { desc: checkBudgetDesc, default: false })
     .option("updateBudget", Boolean, { desc: "write akan.budget.json, never raising an entry", default: false })
     .option("raiseBudget", Boolean, { desc: "rewrite akan.budget.json at each route's measured JS", default: false })
-    .exec(async function (app, write, fast, quiet, profile, env, checkBudget, updateBudget, raiseBudget) {
-      await this.applicationScript.build(app, {
-        write,
-        fast,
-        quiet,
-        profile: profile ?? undefined,
+    .option("inlineSecrets", Boolean, {
+      desc: "keep the server env's secret values in the build, as before 3.4.0, for a deployment that does not set them yet (3.5.0 removes this)",
+      default: false,
+    })
+    .exec(
+      async function (app, write, fast, quiet, profile, env, checkBudget, updateBudget, raiseBudget, inlineSecrets) {
+        await this.applicationScript.build(app, {
+          write,
+          fast,
+          quiet,
+          profile: profile ?? undefined,
+          env: env ?? undefined,
+          budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
+          inlineSecrets,
+        });
+      },
+    ),
+  secretEnv: target({
+    desc: "List the environment variables a build of the app reads its server env secrets from, or write them to a file for its deployment",
+    readOnly: ({ out }) => !out,
+  })
+    .with(App)
+    .option("env", String, {
+      enum: devEnvs,
+      desc: "environment whose server env is read (default: AKAN_PUBLIC_ENV of the shell, else of the workspace .env)",
+      nullable: true,
+    })
+    .option("out", String, {
+      desc: "write the values from the env file to this path, for this user alone to read; without it only names print",
+      nullable: true,
+    })
+    .option("format", String, {
+      enum: SecretEnvFile.formats,
+      desc: "--out as a Kubernetes Secret manifest (k8s) or as NAME=value lines (dotenv)",
+      default: "k8s",
+    })
+    .option("name", String, { desc: "metadata.name of the k8s Secret (default: <app>-env)", nullable: true })
+    .option("force", Boolean, { flag: "F", desc: "replace the --out file when it exists", default: false })
+    .exec(async function (app, env, out, format, name, force) {
+      await this.applicationScript.secretEnv(app, {
         env: env ?? undefined,
-        budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
+        out: out ?? undefined,
+        format: format as (typeof SecretEnvFile.formats)[number],
+        name: name ?? undefined,
+        force,
       });
     }),
   typecheck: target({

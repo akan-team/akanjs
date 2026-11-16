@@ -3,13 +3,12 @@
     "fetch/client/fetchClient.ts": 968,
     "server/di/diLifecycle.ts": 822,
     "server/resolver/signal.resolver.ts": 889,
-    "server/ssrFromRscRenderer.tsx": 803,
     "signal/signalContext.ts": 976,
     "ui/Constant/Doc.tsx": 812
   },
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,
-    "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 158,
+    "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 156,
     "ui/BottomSheet.tsx#BottomSheet": 154,
     "ui/Data/RefPicker.tsx#RefPicker": 169,
     "ui/Dialog/LegacyModal.tsx#LegacyModal": 210,

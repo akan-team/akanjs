@@ -9,6 +9,7 @@ import { runTraced, SignalTrace } from "../signal/trace";
 import type { ClientManifest } from "./artifact";
 import { LogForwarder } from "./logging/logForwarder";
 import { metricRegistry } from "./metrics/metricRegistry";
+import { OtlpExporter } from "./otlp/otlpExporter";
 import { ProcessMetricsCollector } from "./processMetricsCollector";
 import { RouteCacheTally } from "./routeCacheTally";
 import { type PagesContext, RouteTreeBuilder } from "./routeTreeBuilder";
@@ -189,11 +190,13 @@ export class RscRenderer {
     Logger.role = "rsc-worker";
     if (Logger.isNdjson) Logger.consoleOutput = false;
     this.#logForwarder = new LogForwarder((message) => this.#send(message));
+    //? The host stops a worker with SIGTERM and does not wait, so only an exporting worker stays for its last flush.
+    if (OtlpExporter.install()) process.once("SIGTERM", () => OtlpExporter.exitAfterFlush(0));
     process.on("message", (msg: InMsg) => this.#handleMessage(msg));
     // Fires when the parent replica dies, SIGKILL included; exit rather than linger as an orphaned renderer.
     process.on("disconnect", () => {
       this.#logger.warn("parent IPC channel closed; exiting rsc worker");
-      process.exit(0);
+      OtlpExporter.exitAfterFlush(0);
     });
     this.#logger.verbose(`constructed (pid=${process.pid})`);
   }
@@ -415,6 +418,7 @@ export class RscRenderer {
       rscLastRenderDurationMs: this.#stats.lastRenderDurationMs,
       rscLastRenderLoadedModuleDelta: this.#stats.lastRenderLoadedModuleDelta,
       rscLastRenderLoadedModules: this.#stats.lastRenderLoadedModules,
+      rscFirstRenderMemory: this.#stats.firstRenderMemory.report,
       rscLastFlightBytes: this.#stats.lastFlightBytes,
       rscLastFlightChunks: this.#stats.lastFlightChunks,
       rscTotalFlightBytes: this.#stats.totalFlightBytes,

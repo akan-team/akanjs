@@ -2,9 +2,10 @@ import { sessionCookieMaxAgeSec } from "@libs/shared/common";
 import { getEnv } from "akanjs/base";
 import { getAuthToken, getSessionClaims, secretStorage, setAuth } from "akanjs/client";
 import { authTokenKey, decodeJwtPayload } from "akanjs/common";
+import { SessionClock } from "./sessionClock";
 
 type RefreshScope = "user" | "admin";
-type RefreshCall = (refreshToken: string | null) => Promise<{ jwt: string; refreshToken?: string | null }>;
+type RefreshCall = (refreshToken: string | null) => Promise<{ jwt?: string | null; refreshToken?: string | null }>;
 
 export const refreshBeforeMs = 2 * 60 * 1000;
 
@@ -46,32 +47,40 @@ const isFresh = (scope: RefreshScope) => {
   const jwt = sessionTokenOf();
   if (!jwt) return false;
   try {
-    const payload = decodeJwtPayload<{ exp?: number; self?: unknown; me?: unknown }>(jwt);
+    const payload = decodeJwtPayload<{ iat?: number; exp?: number; self?: unknown; me?: unknown }>(jwt);
     const hasScope = scope === "user" ? !!payload.self : !!payload.me;
-    return hasScope && !!payload.exp && payload.exp * 1000 - Date.now() > refreshBeforeMs;
+    if (!hasScope || !payload.exp || SessionClock.isDoubted(payload.iat)) return false;
+    return SessionClock.expiresAt(payload.exp, payload.iat) - Date.now() > refreshBeforeMs;
   } catch {
     return false;
   }
 };
 
 const pending = new Map<RefreshScope, Promise<void>>();
+let lastRefresh: Promise<void> = Promise.resolve();
 
 // The server rotates a refresh token on use and reads a second use as theft, ending every session. So one refresh runs
-// at a time per scope, across tabs as well (Web Locks), and a tab that waited checks whether another already refreshed.
+// at a time, across tabs as well (Web Locks), and a tab that waited checks whether another already refreshed.
+//? Both scopes share the turn: past expiry, two refreshes sent together would each bring back its own identity alone.
 export const refreshSession = (scope: RefreshScope, refresh: RefreshCall, { force = false } = {}): Promise<void> => {
   const running = pending.get(scope);
   if (running) return running;
   const run = async () => {
     if (!force && isFresh(scope)) return;
-    const accessToken = await refresh(await loadRefreshToken(scope));
+    const held = sessionTokenOf();
+    const refreshToken = await loadRefreshToken(scope);
+    const askedAt = Date.now();
+    const accessToken = await refresh(refreshToken);
     setAuth({ jwt: accessToken.jwt });
+    const answered = sessionTokenOf();
+    if (answered && answered !== held) SessionClock.measure(answered, askedAt);
     persistAuthCookie();
     await saveRefreshToken(scope, accessToken.refreshToken);
   };
   const locks = typeof navigator === "undefined" ? undefined : navigator.locks;
-  const next = (locks ? locks.request(`akan:refresh:${getEnv().appName}:${scope}`, run) : run()).finally(() =>
-    pending.delete(scope),
-  );
+  const locked = (): Promise<void> => (locks ? locks.request(`akan:refresh:${getEnv().appName}`, run) : run());
+  const next = lastRefresh.then(locked).finally(() => pending.delete(scope));
+  lastRefresh = next.catch(() => undefined);
   pending.set(scope, next);
   return next;
 };

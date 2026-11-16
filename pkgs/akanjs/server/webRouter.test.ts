@@ -439,7 +439,7 @@ describe("WebRouter import map skew", () => {
       },
       { artifact, onRenderInput: (input) => inputs.push(input) },
     );
-    return inputs[0]?.extraBootstrapInline?.match(/self\.__AKAN_IMPORT_MAP_KEY__="([^"]+)";/)?.[1] ?? "";
+    return inputs[0]?.bootstrapData?.importMapKey ?? "";
   };
   const navigateWith = async (headers: Record<string, string>) =>
     await withFullSsrCacheHarness(
@@ -1081,7 +1081,7 @@ describe("WebRouter dictionary assets", () => {
       ["/_akan/dict/ko-def.js"],
       ["/_akan/dict/ko-def.js"],
     ]);
-    expect(inputs[0]?.extraBootstrapInline).toContain('self.__AKAN_DICT_URL__="/_akan/dict/ko-def.js";');
+    expect(inputs[0]?.bootstrapData?.dictionaryUrl).toBe("/_akan/dict/ko-def.js");
   });
 
   test("names an RSC navigation's dictionary in a header, by its target's locale", async () => {
@@ -1111,7 +1111,7 @@ describe("WebRouter dictionary assets", () => {
     );
 
     expect(inputs[0]?.modulePreloads).toBeUndefined();
-    expect(inputs[0]?.extraBootstrapInline ?? "").not.toContain("__AKAN_DICT_URL__");
+    expect(inputs[0]?.bootstrapData?.dictionaryUrl).toBeUndefined();
     expect(rscHeader).toBeNull();
   });
 
@@ -2055,7 +2055,7 @@ describe("WebRouter full SSR cache orchestration", () => {
         },
       };
     };
-    const bootstrapInlines: Array<string | undefined> = [];
+    const routeStates: Array<string | undefined> = [];
 
     await withFullSsrCacheHarness(
       async ({ fullSsr }) => {
@@ -2063,11 +2063,11 @@ describe("WebRouter full SSR cache orchestration", () => {
       },
       {
         worker,
-        onRenderInput: (input) => bootstrapInlines.push(input.extraBootstrapInline),
+        onRenderInput: (input) => routeStates.push(input.bootstrapData?.routeState),
       },
     );
 
-    expect(bootstrapInlines[0]).toContain(`self.__AKAN_RSC_INITIAL_STATE__=${JSON.stringify(encodedState)};`);
+    expect(routeStates[0]).toBe(encodedState);
   });
 
   test("renders worker not-found streams as full document 404 responses", async () => {

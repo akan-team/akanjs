@@ -66,9 +66,9 @@ const config: AppConfig = { api: { prefix: "/backend", websocketPrefix: "/socket
   inside it can reach a prebuilt bundle at all. The two jobs need two names.
 - **`new AkanApp({ prefix })` reaches the browser through the page, not through a prop.** `FetchClient` fixes its
   origin when the module graph initializes, before any component renders, so a React prop — a `System.Provider`
-  value, anything out of `implicitRootLayout` — is always too late. The value rides the SSR classic bootstrap
-  script instead, the one thing guaranteed to run ahead of every module script, and is omitted when it matches
-  what the bundle already assumes. `akan.config.ts` is what a native app bundle or a statically served CSR shell
+  value, anything out of `implicitRootLayout` — is always too late. The value rides the data block the SSR classic
+  bootstrap script reads instead, the one thing guaranteed to run ahead of every module script, and is omitted when
+  it matches what the bundle already assumes. `akan.config.ts` is what a native app bundle or a statically served CSR shell
   follows, because neither is rendered by a server that could tell it otherwise.
 - **A prefix is a path segment.** A blank value or a bare `/` is refused: `/` would be mounted ahead of the SSR
   catch-all and swallow every page route. A prefix whose first segment is a declared basePath is refused at
@@ -137,6 +137,13 @@ worker per web-serving replica.
   `infra/app` chart adds the `prometheus.io/*` scrape annotations with `<branch>.metrics.scrape: true` and reads the
   token from the Secret `<branch>.metrics.tokenSecret` names, and refuses to render `scrape` without it;
   `infra/monitoring` holds a Grafana dashboard and the alert rules.
+- **Each SQL statement is timed once, where its driver sends it**; the `db:` spans, the `akan_db_statement*` series
+  (labels `model`, `op`; the SQLite write-turn or Postgres pool wait apart) and the slow log read that
+  point. A fingerprint hashes the text with literals `?` and lists collapsed; the text sent never changes.
+  `/_akan/app/statements` (metrics token) ranks statements by total time and p95 with their senders.
+  `AKAN_LOG_SLOW_STATEMENT_MS` (200, `off`) logs one `SlowStatement` warn per fingerprint a minute; a local dev run
+  warns once (`QueryPlan`) of a full scan or temp sort, silenced per fingerprint by `AKAN_QUERY_PLAN_IGNORE`.
+  `akan_room_replay_bytes` and `akan_pubsub_buffered_messages` gauge the reconnect replay and the Redis buffer.
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once
@@ -188,13 +195,16 @@ worker per web-serving replica.
   and neither does a save in a sibling app. An import that makes a new lib a dependency needs a fresh
   `akan start`, because it needs a `sync` first anyway. Before the first `sync` the manifests do not exist yet and
   the whole `libs/` container is watched, which is the safe direction.
-- **A built artifact runs from the generated app directory, without Docker and without an env.** `akan build`
+- **A built artifact runs from the generated app directory, without Docker.** `akan build`
   writes `akan.env.json` beside `main.js` with the values the Dockerfile's `ENV` lines set, and `main.js` takes
   each one the process was not started with, so a variable you set (or the image's `ENV`) wins. Start it from that
-  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd.
+  directory: the runtime reads its artifacts and writes `runtime/` and SQLite files relative to the cwd. The secrets
+  of its server env are not in it (see "Server Env Secrets" below): give them in the env, or it warns and runs
+  without them.
 
   ```bash
   cd dist/apps/<appName> && PORT=3100 bun main.js
+  cd dist/apps/<appName> && bun --env-file=/path/outside/dist/<appName>.env main.js
   ```
 
 - **A server a test boots in-process takes `start({ listen: false, schedules: false })`** to run no internal
@@ -231,6 +241,16 @@ normalized to `info` with one warning.
   render message, a server-side `fetch` sends `traceparent` to the app's own server and to a `clone({ origin })`,
   every websocket frame is a span under its handshake's id, and a queued job is a trace of its own that links the
   enqueuing one.
+- **Errors to a tracker go through `option.setErrorReporter(fn)`**, never a `Logger` sink parsing lines. It gets each
+  server 5xx (never a 4xx), render error, uncaught exception and unhandled rejection as a real `Error`, once, after
+  the response, with `{ source, traceId, endpoint, routeId, accountId, digest }`, in the solo server or the replica
+  (a worker's render error is carried to it; the gateway reports none). Reports of one request share `traceId`. A
+  process hands it at most 600 errors a minute, 10 of them process errors, and 3 render errors a request, so `await`
+  what the reporter sends: an unawaited send that fails returns as an unhandled rejection. `option.setClientReport({
+  sampleRate })`, off unless set, adds what pages hit in the browser as a `BrowserError` through
+  `/_akan/client-report`: a report is taken only with the signed id the page's `Server-Timing` gave that page view,
+  for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. With
+  more than one gateway or pod, set `AKAN_CLIENT_REPORT_KEY` (a secret, 32+ characters, the same on each) so each takes the others' ids.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
   lines wrap the traced handler from outside; gateway lines written outside a request have none. `akan logs
@@ -268,7 +288,17 @@ normalized to `info` with one warning.
   `AKAN_LOG_FLIGHT_MS`; an `x-akan-debug` header lowers one request to `trace`, records its spans and answers with
   `Server-Timing` — under the local dev runtime, or with the `AKAN_LOG_DEBUG_HEADER` secret. A local runtime sends
   `Server-Timing` on every signal response. Spans carry ids, parents and start offsets; under `AKAN_TRACE=1` each
-  database call is a `db:<model>.<op>` span, never its statement or values.
+  SQL statement sent is a `db:<model>.<op>` span, never its text or values.
+- **`OTEL_EXPORTER_OTLP_ENDPOINT` (or `…_TRACES_ENDPOINT` / `…_LOGS_ENDPOINT`) turns on OTLP/HTTP JSON export**;
+  with none set nothing is created. Each process sends its own spans and log records with `akan.process.role`, the
+  RSC worker included, batched in a bounded queue that drops its oldest and never blocks or throws into a request.
+  `OTEL_TRACES_SAMPLER` (`always_on`, `always_off`, `traceidratio` and their `parentbased_` forms, default
+  `parentbased_always_on`; any other value exports no spans) decides at the first TCP hop, and the sampled flag of
+  `traceparent` carries it to the replica and the worker. Logs go only with `OTEL_LOGS_EXPORTER=otlp` or
+  `…_LOGS_ENDPOINT`, never from the generic endpoint alone, their message text as written; only secret-named attrs are
+  redacted. Stage spans wait for `AKAN_TRACE=1`. `OTEL_EXPORTER_OTLP_HEADERS` values are credentials, never
+  logged; `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES` and `OTEL_SDK_DISABLED` work as in the OTel spec. It is
+  separate from `AKAN_TRACE` and `x-akan-debug`: neither changes what is sampled.
 - **Every dev route is listed once, in `akanjs/server/routing/devSurfaces`** — devtools, Studio, `/_akan/hmr`,
   the ssr-dev and csr-dev module registries, `/__rsc/manifest` — and is mounted through `DevRoutes.mount`, which
   refuses a path the list lacks. Each answers only localhost, an IP address, the app's own hosts and
@@ -323,6 +353,79 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   change in dev. Keep a lib's steps to what its runtime genuinely requires.
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
+
+## Server Env Secrets — Read From The Process Env
+
+`akan build <app>` puts no secret value of the server env into the server it builds. The env file stays the one
+place a developer writes them; the build turns each into a read of an environment variable the deployment sets.
+
+- **What is a secret.** A string under a secret-named key at any depth below it, unless blank, or a URL carrying a
+  password or a secret-named query parameter. The names are the ones the logger masks: `password`, `pass`, `pwd`,
+  `token`, `jwt`, `secret`, `cookie`, `authorization`, `apiKey`, `aesKey`, `privateKey`, `accessKey`, `authKey`,
+  `hashKey`, a signing, encryption, master or session key, `webhook`, `credential`, a `dsn`, a connection string,
+  `iapVerify`, `serviceAccount`, `cred(s)`. Numbers, booleans and `null` never are. The rule over-matches
+  (`cookieDomain`, `tokenTtl` as a string), which only means the deployment sets that value too; it misses a key such
+  as `stripeKey` or `salt`, which stays in the build unless the env file reads `process.env.<NAME>` itself.
+- **Its variable** is its key path, each key in upper snake case and joined with `__`:
+  `security.sso.google.clientSecret` is `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `iapVerify.google.private_key` is
+  `IAP_VERIFY__GOOGLE__PRIVATE_KEY`. Four keep the names the framework already reads ahead of the env file:
+  `security.jwtSecret` is `JWT_SECRET`, `database.postgres.url` is `POSTGRES_URL` (`POSTGRES_URI` satisfies it),
+  `database.postgres.password` is `POSTGRES_PASSWORD`, `database.postgres.insightUrl` is `POSTGRES_INSIGHT_URL`.
+  An array holding a secret moves whole into one variable holding JSON (`discord.tokens` is `DISCORD__TOKENS`,
+  `["a","b"]`). An object is never one variable: each secret string in it is its own. A multi-line value (a PEM key)
+  is carried with its real line breaks.
+- **What the build rewrites** is source text: a string literal that is the value of a key in the object
+  `export const env` holds, in the app's `env.server.<env>.ts`, in `env.server.ts` itself where a pipeline copies an
+  env file over it, and in each lib's `env.server.<name>.ts`. In `process.env.MY_URL ?? "literal"` only the literal
+  becomes the read, so the developer's own variable comes first. Two keys that map to one name (`apiKey` and
+  `api_key`), and a name the platform or akan owns (`PATH`, `HOME`, `HOSTNAME`, `PORT`, `USER`, `PWD`, `TZ`,
+  `NODE_ENV`, `AKAN_*`, `BUN_*`), stop the build before it starts.
+- **What stops a build.** Before any phase the build loads the env file with each literal marked, to list the
+  variables and to see what it cannot move. A secret-named key whose value is computed, imported or spread from
+  another file stops it there, whatever the value's length or shape, naming the app, the env file and the keys:
+  write the string at the key, or `process.env.<NAME>`. A key the env file reads from `process.env` itself is the
+  developer's own: it is not moved, never stops the build, and the bundle holds the read and no value, set in the
+  build's shell or not. After the bundles are written the build looks in `dist/apps/<app>` for each secret string it
+  left out, eight characters or longer: a long mixed one found there stops the build, naming its key, its variable
+  and a plain key of the env that holds it too; a short or plain one (a password equal to a database's name) is a
+  warning by the same names, as is a shorter string a plain key holds as well. No message prints a value.
+- **How the env file is loaded.** In a process with `PATH`, `HOME` and `AKAN_PUBLIC_ENV` alone, so the list is the
+  same from any shell and `process.env.X ?? fallback` reads as the fallback the bundle carries. A file that cannot
+  load so (`process.env.HOSTS!.split(",")`) is loaded again with the build shell's variables, where a value a
+  variable gave counts as the developer's read. One that loads neither way stops the build with the error's class
+  and its file and line, never its message, which could quote a value; loading has a 60 second limit, and a file
+  that leaves a timer or a server open still ends when its answer is in.
+- **What the image carries** is the list: `AKAN_ENV_NAMES` in `akan.env.json` and the Dockerfile, names with
+  `:json` or `:multiline` after an array or a multi-line value, never a value. The build prints the names.
+- **At boot**, in `AkanApp.start` before the server is loaded or a replica is spawned, the list is compared with the
+  process env. A variable not set, or set empty, is one warning naming every such variable. The framework does not
+  stop for it, and what reads the value gets `undefined` and may stop (an app that requires its
+  JWT secret does); version 3.5.0 will refuse to boot. A `:json` variable that does not parse as an
+  array is refused (`secretEnvInvalid`). A `:multiline` variable holding a backslash and an n in place of its line
+  breaks is warned about by name. No message carries a value. `bun console.js` and `bun main.js ops …` do not
+  check.
+- **`akan secret-env <app> [--env <env>]`** lists each variable with its kind, whether the shell sets it, and its key
+  in the env file. `--out <file>` writes the values the env file evaluates to: `--format k8s` (the default) a
+  `kind: Secret` with base64 `data`, named by `--name` (default `<app>-env`); `--format dotenv` `NAME=value` lines
+  quoted so that Bun's loader reads each back unchanged. The file is created readable by its user alone. A path
+  under `dist/`, a path git would track and an existing file (without `--force`) are refused. The file holds the
+  secrets: apply or import it, then delete it.
+- **Giving the server its variables.** Kubernetes: apply the Secret and name it in the container's `envFrom`; a
+  Secret that is missing stops the container before boot. Docker: `-e NAME=value`; `docker run --env-file` takes
+  each line as written, so of the dotenv file it reads the unquoted values and no quoted or multi-line one.
+  A host: `bun --env-file=<file> main.js`, with the file outside `dist/apps/<app>`, which an image copies whole.
+  Every replica and the RSC worker inherit the gateway's env, so a changed Secret reaches a pod only when it
+  restarts.
+- **`akan build <app> --inline-secrets`** keeps each value in the build as what its read falls back to, for a
+  deployment that does not set the variables yet; a variable that is set still wins, the boot warning says the
+  built-in values are in use, and nothing above stops it: a computed or imported secret stays, the files written are
+  not searched, and an env file that cannot be loaded is a warning, after which the env files are bundled as
+  written and no variable is read. Version 3.5.0 removes the flag.
+- **Read as written, as before:** `akan start` and `akan test` (the env file is imported from source), a
+  `--profile` build (its profile file may hold no secret at all), and the server a desktop or mobile build carries.
+- **Not covered:** a key file an env value names by path (`security.sso.apple.keyFilePath` under `private/`) ships
+  with `private/`; mount it instead. Images built before 3.4.0 still hold the values: rotate the secrets once the
+  new images are live.
 
 ## Native Apps — The `native` Section
 

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { createPrivateKey, createPublicKey, generateKeyPairSync } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, stat, symlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { AkanAppConfig, DatabaseMode } from "@akanjs/devkit/akanConfig";
@@ -15,6 +15,7 @@ import {
 } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { NativeApp } from "@akanjs/devkit/mobile";
+import { holdsSentinel, secretEnvFixtureNames, writeSecretEnvFixture } from "@akanjs/devkit/test/secretEnvFixture";
 import {
   createCallRecorder,
   createFakeExecutor,
@@ -140,6 +141,24 @@ describe("ApplicationCommand", () => {
     ]);
   });
 
+  test("build takes --inline-secrets, off unless given", async () => {
+    const option = getArgMetas(ApplicationCommand, "build")[1].find((meta) => meta.name === "inlineSecrets");
+    expect(option?.argsOption).toMatchObject({ default: false });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.build = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "build")?.handler;
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null, false, false, false, false);
+    await handler?.call(command, { name: "demo" }, true, false, false, null, null, false, false, false, true);
+    expect(calls.map((args) => (args as [unknown, { inlineSecrets?: boolean }])[1].inlineSecrets)).toEqual([
+      false,
+      true,
+    ]);
+  });
+
   test("build takes --check-budget, --update-budget or --raise-budget, off unless given, as one budget mode", async () => {
     const options = getArgMetas(ApplicationCommand, "build")[1];
     for (const name of ["checkBudget", "updateBudget", "raiseBudget"])
@@ -163,6 +182,30 @@ describe("ApplicationCommand", () => {
       handler?.call(command, { name: "demo" }, true, false, false, null, null, true, false, true),
     ).rejects.toThrow("Pass at most one of --check-budget, --update-budget and --raise-budget.");
     expect(calls).toHaveLength(3);
+  });
+
+  test("secret-env lists unless given --out, which it writes as a Kubernetes Secret unless told dotenv", async () => {
+    const options = Object.fromEntries(
+      getArgMetas(ApplicationCommand, "secretEnv")[1].map((meta) => [meta.name, meta.argsOption]),
+    );
+    expect(options.env).toMatchObject({ enum: ["local", "debug", "develop", "main"], nullable: true });
+    expect(options.out).toMatchObject({ nullable: true });
+    expect(options.format).toMatchObject({ enum: ["k8s", "dotenv"], default: "k8s" });
+    expect(options.name).toMatchObject({ nullable: true });
+    expect(options.force).toMatchObject({ default: false });
+
+    const command = CommandContainer.get(ApplicationCommand);
+    const calls: unknown[] = [];
+    command.applicationScript.secretEnv = async (...args: unknown[]) => {
+      calls.push(args);
+    };
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "secretEnv")?.handler;
+    await handler?.call(command, { name: "demo" }, null, null, "k8s", null, false);
+    await handler?.call(command, { name: "demo" }, "main", "local/demo.env", "dotenv", "app-env", true);
+    expect(calls).toEqual([
+      [{ name: "demo" }, { format: "k8s", force: false }],
+      [{ name: "demo" }, { env: "main", out: "local/demo.env", format: "dotenv", name: "app-env", force: true }],
+    ]);
   });
 
   test("studio passes the runtime and framework views through, and opens the ERD for anything else", async () => {
@@ -360,6 +403,34 @@ describe("ApplicationScript", () => {
     }
   });
 
+  test("secret-env prints the names a build reads and never a value, and writes the values only to a file its user alone reads", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { root, app } = track(await createTempApp("demo"));
+    await writeSecretEnvFixture(root);
+    const printed = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+    const output = () => printed.mock.calls.map(([line]) => line).join("\n");
+
+    await script.secretEnv(app, { env: "main" });
+    for (const name of secretEnvFixtureNames) expect(output()).toContain(name);
+    expect(holdsSentinel(output())).toBe(false);
+
+    await expect(script.secretEnv(app, { env: "main", out: path.join(root, "dist/apps/demo/.env") })).rejects.toThrow(
+      "is under dist/, and an image copies the whole of dist/apps/<app>",
+    );
+    expect(existsSync(path.join(root, "dist/apps/demo/.env"))).toBe(false);
+
+    const out = path.join(root, "local/demo-secret.yaml");
+    await script.secretEnv(app, { env: "main", out });
+    expect((await stat(out)).mode & 0o777).toBe(0o600);
+    const manifest = Bun.YAML.parse(await readFile(out, "utf8")) as { metadata: { name: string }; data: object };
+    expect(manifest.metadata.name).toBe("demo-env");
+    expect(Object.keys(manifest.data)).toEqual(secretEnvFixtureNames);
+    expect(output()).toContain(
+      `Wrote 10 secret env values of demo (main) to ${out}, which this user alone can read. It holds the values themselves: hand it to the deployment, then delete it.`,
+    );
+    expect(holdsSentinel(output())).toBe(false);
+  });
+
   test("build hands its --env to the build runner", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));
@@ -370,6 +441,27 @@ describe("ApplicationScript", () => {
     try {
       await expect(script.build(app, { quiet: true, env: "main" })).rejects.toThrow("stopped");
       expect(build.mock.calls[0]?.[1]).toMatchObject({ environment: "main" });
+    } finally {
+      build.mockRestore();
+    }
+  });
+
+  test("build has the server read its env's secrets from the process env, and keeps them in the build only with --inline-secrets", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.scanSync = mock(async () => undefined) as never;
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => {
+      throw new Error("stopped");
+    });
+    try {
+      await expect(script.build(app, { quiet: true })).rejects.toThrow("stopped");
+      await expect(script.build(app, { quiet: true, inlineSecrets: true })).rejects.toThrow("stopped");
+      await expect(script.build(app, { quiet: true, profile: "edge" })).rejects.toThrow("stopped");
+      expect(build.mock.calls.map(([, options]) => [options?.secretEnv, options?.envProfile])).toEqual([
+        ["read", undefined],
+        ["inline", undefined],
+        ["read", "edge"],
+      ]);
     } finally {
       build.mockRestore();
     }

@@ -549,6 +549,86 @@ REDIS_URI=redis://redis.internal:6379`}
           </Docs.Description>
         </Scroll.Slide>
         <Divider />
+        <Scroll.Slide id="env-secrets" title={l.trans({ en: "Secret Variables", ko: "비밀 환경변수" })}>
+          <Docs.Title>{l.trans({ en: "Secret Variables", ko: "비밀 환경변수" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    <code>akan build</code> puts no secret value of <code>env/env.server.&lt;env&gt;.ts</code> into the
+                    server it builds. You keep writing the env file as before; a string under a secret-named key
+                    (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the
+                    server starts, from a variable named after its key path. <code>akan secret-env &lt;app&gt;</code>{" "}
+                    lists the variables of an environment and writes them as a Kubernetes Secret or a dotenv file.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <code>akan build</code>는 <code>env/env.server.&lt;env&gt;.ts</code>의 비밀 값을 빌드한 서버에 넣지
+                    않습니다. env 파일은 지금까지처럼 쓰면 되고, 비밀 이름의 키(password, secret, token, apiKey,
+                    privateKey 등) 아래의 문자열과 비밀번호가 든 URL은 서버가 시작할 때 키 경로에서 이름을 딴
+                    환경변수에서 읽습니다. <code>akan secret-env &lt;app&gt;</code>은 한 환경의 변수를 나열하고,
+                    Kubernetes Secret이나 dotenv 파일로 써 줍니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Docs.OptionTable
+              items={[
+                {
+                  key: "<KEY>__<KEY>",
+                  type: "string",
+                  desc: l.trans({
+                    en: "A secret's key path, each key in upper snake case joined with `__`: `security.sso.google.clientSecret` is `SECURITY__SSO__GOOGLE__CLIENT_SECRET`. An array holding a secret is one variable holding JSON.",
+                    ko: "비밀 값의 키 경로이며, 키마다 대문자 snake case로 바꿔 `__`로 잇습니다. `security.sso.google.clientSecret`은 `SECURITY__SSO__GOOGLE__CLIENT_SECRET`입니다. 비밀 값이 든 배열은 JSON을 담은 변수 하나가 됩니다.",
+                  }),
+                },
+                {
+                  key: "JWT_SECRET",
+                  type: "string",
+                  desc: l.trans({
+                    en: "`security.jwtSecret`. `database.postgres.url`, `.password` and `.insightUrl` likewise keep `POSTGRES_URL`, `POSTGRES_PASSWORD` and `POSTGRES_INSIGHT_URL`.",
+                    ko: "`security.jwtSecret`입니다. `database.postgres.url`, `.password`, `.insightUrl`도 마찬가지로 `POSTGRES_URL`, `POSTGRES_PASSWORD`, `POSTGRES_INSIGHT_URL`을 그대로 씁니다.",
+                  }),
+                },
+                {
+                  key: "AKAN_ENV_NAMES",
+                  type: "string",
+                  default: l.trans({ en: "written by the build", ko: "빌드가 기록" }),
+                  desc: l.trans({
+                    en: "The names the built server reads, in `akan.env.json` and the Dockerfile. At boot a name that is not set is one warning naming it. The framework does not stop for it, though whatever reads the value may; version 3.5.0 will refuse to start.",
+                    ko: "빌드된 서버가 읽는 변수 이름 목록이며 `akan.env.json`과 Dockerfile에 적힙니다. 시작할 때 설정되지 않은 이름이 있으면 그 이름을 들어 한 번 경고합니다. 프레임워크는 이 때문에 멈추지 않지만 그 값을 읽는 코드는 멈출 수 있습니다. 3.5.0부터는 시작을 거부합니다.",
+                  }),
+                },
+              ]}
+            />
+            <Docs.Alert type="warning">
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A deployment must set these before it runs an image built with 3.4.0.</strong> On
+                    Kubernetes, apply the Secret <code>akan secret-env --out</code> writes and name it in the
+                    container's <code>envFrom</code>. A deployment that cannot yet builds with{" "}
+                    <code>akan build --inline-secrets</code>, which keeps the values in the image for one more release.
+                    <code>akan start</code>, <code>akan test</code>, <code>--profile</code> builds and desktop and
+                    mobile builds read the env file as written.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>3.4.0으로 빌드한 이미지를 돌리기 전에 배포가 이 변수들을 설정해야 합니다.</strong>{" "}
+                    Kubernetes에서는 <code>akan secret-env --out</code>이 쓴 Secret을 apply하고 컨테이너의{" "}
+                    <code>envFrom</code>에 적습니다. 아직 그럴 수 없는 배포는 <code>akan build --inline-secrets</code>로
+                    빌드하면 한 릴리스 동안 값이 이미지에 남습니다. <code>akan start</code>, <code>akan test</code>,{" "}
+                    <code>--profile</code> 빌드, 데스크톱·모바일 빌드는 env 파일을 적힌 그대로 읽습니다.
+                  </span>
+                ),
+              })}
+            </Docs.Alert>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
         <Scroll.Slide id="env-search" title={l.trans({ en: "Text Search Variables", ko: "텍스트 검색 환경변수" })}>
           <Docs.Title>{l.trans({ en: "Text Search Variables", ko: "텍스트 검색 환경변수" })}</Docs.Title>
           <Docs.Description>
@@ -745,6 +825,24 @@ REDIS_URI=redis://redis.internal:6379`}
                   }),
                 },
                 {
+                  key: "AKAN_LOG_SLOW_STATEMENT_MS",
+                  type: "number | off",
+                  default: "200",
+                  desc: l.trans({
+                    en: "A SQL statement whose wait and run reach this writes one SlowStatement warning, once a minute per statement; off or 0 turns it off.",
+                    ko: "기다린 시간과 실행 시간을 더해 이 값에 닿은 SQL 문은 SlowStatement 경고 한 줄을 씁니다. 같은 문은 1분에 한 번만 쓰고, off나 0이면 끕니다.",
+                  }),
+                },
+                {
+                  key: "AKAN_QUERY_PLAN_IGNORE",
+                  type: "fingerprints | all",
+                  default: l.trans({ en: "unset — every statement checked", ko: "미설정 — 모든 문 검사" }),
+                  desc: l.trans({
+                    en: "Local dev runtime only: comma-separated statement fingerprints whose full scan or sort is deliberate; all turns the query-plan check off.",
+                    ko: "local 개발 런타임 전용입니다. 전체 스캔이나 정렬이 의도된 문의 fingerprint를 쉼표로 나열하고, all이면 쿼리 플랜 검사를 끕니다.",
+                  }),
+                },
+                {
                   key: "AKAN_LOG_BUFFER",
                   type: "number",
                   default: "2000",
@@ -769,6 +867,15 @@ REDIS_URI=redis://redis.internal:6379`}
                   desc: l.trans({
                     en: "The secret x-akan-debug must carry outside local to log that one request at trace and answer it with Server-Timing. With AKAN_DEVTOOLS=true it also opens devtools and Studio, when it has at least 32 characters.",
                     ko: "local 밖에서 x-akan-debug 헤더가 이 비밀값을 담아야 그 요청 하나를 trace로 기록하고 Server-Timing으로 답합니다. AKAN_DEVTOOLS=true이면 이 값이 32자 이상일 때 devtools와 Studio도 이 값으로 열립니다.",
+                  }),
+                },
+                {
+                  key: "AKAN_CLIENT_REPORT_KEY",
+                  type: "string",
+                  default: l.trans({ en: "unset — made at start", ko: "미설정 — 시작할 때 생성" }),
+                  desc: l.trans({
+                    en: "A secret of at least 32 characters that signs the id a page view carries for option.setClientReport. Set the same value on every gateway or pod so each takes the others' ids; a gateway passes it to its replicas unchanged. A shorter value is ignored with a warning.",
+                    ko: "option.setClientReport에서 페이지 뷰가 가지는 id를 서명하는 32자 이상의 비밀값입니다. 모든 gateway나 pod에 같은 값을 두면 서로의 id를 받고, gateway는 이 값을 replica에 그대로 넘깁니다. 더 짧은 값은 경고와 함께 무시됩니다.",
                   }),
                 },
               ]}

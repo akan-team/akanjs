@@ -31,6 +31,7 @@ import {
   noteChunkLoadFailure,
   reportingRootErrors,
 } from "./rscClientChunks";
+import { pageErrorReporter } from "./rscClientErrors";
 import { fetchRscNavigationResponse } from "./rscClientFetch";
 import { commitRscPatch, type RscPatchedResult, validateRscPatchForGuardedCommit } from "./rscClientPatch";
 import { getAkanHeadSnapshotPatchFailureReason } from "./rscHeadPatch";
@@ -55,8 +56,13 @@ import { resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
 declare global {
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
   var __AKAN_DICT_URL__: string | undefined;
+  var __AKAN_IMPORT__: ((id: string) => Promise<unknown>) | undefined;
   var __webpack_chunk_load__: ((chunkId: string) => Promise<unknown>) | undefined;
 }
+
+//? Under 'strict-dynamic' a chunk may be imported by a script another script added, as this module is, and not by
+//? the document's inline bootstrap, whose loader therefore imports through this.
+globalThis.__AKAN_IMPORT__ = (id) => import(id);
 
 type RscThenable = Promise<ReactNode> & {
   status?: "pending" | "fulfilled" | "rejected";
@@ -690,7 +696,8 @@ window.addEventListener("popstate", (event) => {
 });
 
 window.addEventListener("unhandledrejection", (event) => loadDocumentForLazyChunkFailure(event.reason));
-const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure) : undefined;
+const reportPageError = pageErrorReporter(() => currentRouterState?.routeId ?? null);
+const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure, reportPageError) : undefined;
 const hydrate = () => {
   hydrateRoot(document, createElement(Root), rootOptions);
   scrollRestoration.restoreDocumentLoad();

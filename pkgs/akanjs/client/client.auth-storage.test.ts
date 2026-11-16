@@ -24,6 +24,7 @@ const cookieWrites: string[] = [];
 const fetchJwtCalls: Array<string | null> = [];
 const duplicateReports: Array<{ names: string[]; host: string }> = [];
 const fetchState = { jwt: null as string | null };
+const socketState = { state: "closed" as "connecting" | "open" | "closed" | "gaveUp", handshakes: 0 };
 const requestState = {
   request: undefined as Request | undefined,
 };
@@ -112,6 +113,14 @@ beforeAll(async () => {
       instance: {
         get jwt() {
           return fetchState.jwt;
+        },
+      },
+      ws: {
+        get state() {
+          return socketState.state;
+        },
+        connect: (option?: { fresh?: boolean }) => {
+          if (option?.fresh) socketState.handshakes += 1;
         },
       },
     },
@@ -206,6 +215,8 @@ afterEach(() => {
   fetchJwtCalls.length = 0;
   duplicateReports.length = 0;
   fetchState.jwt = null;
+  socketState.state = "closed";
+  socketState.handshakes = 0;
   requestState.request = undefined;
   host?.uninstall();
   host = null;
@@ -506,6 +517,49 @@ describe("cookies, headers, and auth", () => {
     resetAuth();
     expect(getSessionClaims()).toBeUndefined();
     expect(getAccount<Record<string, unknown>>()).toEqual({ appName: "test-app", environment: "debug" });
+  });
+
+  test("an answer with no token beside a session the server holds leaves fetch tokenless and re-handshakes the socket", async () => {
+    envState.side = "client";
+    envState.renderMode = "ssr";
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+    const { SessionCookie } = sessionCookie;
+    installBrowserGlobals(`${SessionCookie.claimsKey()}=${SessionCookie.claimsOf(jwt)}`);
+    const { getAccount, getAuthToken, getStoredAuthToken, setAuth } = await import("./cookie");
+    fetchState.jwt = jwt;
+
+    setAuth({ jwt: "" });
+    expect(socketState.handshakes).toBe(0);
+    socketState.state = "open";
+    setAuth({ jwt: "" });
+    setAuth({ jwt: null });
+    socketState.state = "connecting";
+    setAuth();
+    expect(fetchJwtCalls).toEqual([null, null, null, null]);
+    expect(socketState.handshakes).toBe(3);
+    expect(getAuthToken()).toBeUndefined();
+    expect(getAccount<{ userId?: string }>().userId).toBe("u1");
+    expect(cookieWrites.filter((entry) => entry.startsWith(`${authTokenKey()}=`))).toEqual([]);
+    expect(await getStoredAuthToken()).toBeUndefined();
+  });
+
+  test("an answer with no token and no session the server holds signs the page out as before", async () => {
+    envState.side = "client";
+    envState.renderMode = "ssr";
+    installBrowserGlobals();
+    socketState.state = "open";
+    const cookie = await import("./cookie");
+    cookie.setAuth({ jwt: "" });
+    expect(fetchJwtCalls).toEqual([""]);
+    expect(socketState.handshakes).toBe(0);
+
+    envState.renderMode = "csr";
+    const jwt = makeJwt({ appName: "test-app", environment: "debug", userId: "u1" });
+    const { SessionCookie } = sessionCookie;
+    installBrowserGlobals(`${SessionCookie.claimsKey()}=${SessionCookie.claimsOf(jwt)}`);
+    cookie.setAuth({ jwt: "" });
+    expect(fetchJwtCalls).toEqual(["", ""]);
+    expect(socketState.handshakes).toBe(0);
   });
 
   test("a server issues the session pair HttpOnly beside its readable claims, and expires both", async () => {

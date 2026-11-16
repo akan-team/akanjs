@@ -102,6 +102,7 @@ describe("TraceContext.adopt", () => {
       expect(adopted).toMatchObject({ parentSpanId: null, link: traceId });
     }
     expect(byRequestId.traceId).not.toBe(twice.traceId);
+    expect([byTraceparent.linkSpanId, byRequestId.linkSpanId]).toEqual([traceparent.slice(36, 52), undefined]);
   });
 
   test("mints a fresh id, with no link, for an id of another shape whoever sent it", () => {

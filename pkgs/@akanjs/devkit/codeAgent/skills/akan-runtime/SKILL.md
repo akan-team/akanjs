@@ -18,6 +18,7 @@ the agent guide's Path Rules table.
 | The production image | `docker: string \| { image, preRuns, postRuns, command }` |
 | iOS, Android, desktop | the `native` section; `desktop: { server: true }` carries the server |
 | SQLite, several databases, a cluster | `database: { modes: [...] }` (`single`, `multiple`, `cluster`), picked by `AKAN_DATABASE_MODE` |
+| A secret of `env/env.server.<env>.ts` in a deployed server | nothing to declare: `akan build` leaves it out and the server reads it from a variable named after its key path; `akan secret-env <app> --env <env>` lists them |
 | URLs without `/<locale>/`: one language, or paths fixed from outside (OAuth callback, QR code, mail link) | `i18n: { localePrefix: "as-needed" }` — the default locale's pages and `<Link>` hrefs drop the prefix, other locales keep it |
 
 ## Running and logs
@@ -27,6 +28,25 @@ the agent guide's Path Rules table.
   path, not a paste of the live view. Tail with `akan logs <app>`.
 - Run a build without Docker with `cd dist/apps/<app> && bun main.js`: it boots with the env the Dockerfile sets,
   read from `akan.env.json` beside it, and a variable you set yourself (`PORT=3000`) wins.
+
+## Secrets in a deployed server
+
+- Write secrets in `env/env.server.<env>.ts` as before. `akan build` replaces each string under a secret-named key,
+  and each URL carrying a password, with a read of an environment variable: `security.sso.google.clientSecret` is
+  `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, an array holding a secret is one JSON variable, `security.jwtSecret` is
+  `JWT_SECRET`. The built files hold the names (`AKAN_ENV_NAMES` in `akan.env.json`), never the values.
+- `akan secret-env <app> --env <env>` prints the variables, never a value. `--out <file> --format k8s --name <name>`
+  writes a Kubernetes Secret for `envFrom`, `--format dotenv` a file for `bun --env-file`. Never write it
+  under `dist/` or a tracked path, and delete it once applied.
+- At boot a variable left unset is one warning naming it. The framework does not stop for it, though whatever reads the value may; 3.5.0 will refuse to boot.
+- A secret the env file computes or imports stops the build, whatever its length: write the string at the key, or
+  `process.env.<NAME>` there, which the build leaves as that read. A secret string a plain key or the app's code
+  holds as well stops it too when long and mixed, and is a warning when short. A key the name rule misses
+  (`stripeKey`) stays in the image unless read from `process.env`.
+- The build loads the env file to list the secrets, with the shell's variables only when it cannot load without
+  them; a file that throws as it loads stops the build by error class and line.
+- `akan start`, `akan test`, `akan build --profile …` and desktop and mobile builds read the env file as written.
+  `akan build --inline-secrets` keeps the values in the image for one release, for a deployment not ready yet.
 
 ## Native and desktop
 

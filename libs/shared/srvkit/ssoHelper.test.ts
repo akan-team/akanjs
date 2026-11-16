@@ -1,19 +1,22 @@
 import { afterEach, beforeEach, describe, expect, mock, spyOn, test } from "bun:test";
 import { sessionCookieMaxAgeSec } from "@libs/shared/common";
 import * as base from "akanjs/base";
-import { authTokenKey, SessionCookies } from "akanjs/common";
+import { authTokenKey, SessionCookies, sessionTokenContract } from "akanjs/common";
 import { SignupToken } from "./signupToken";
 import {
   adminRefreshTokenKey,
   makeAccessTokenResponse,
+  makeAdminAccessTokenResponse,
   makeAdminSignoutResponse,
   makeSignoutResponse,
   makeSignupTicketResponse,
   makeSsoRedirectResponse,
+  makeSsoSigninResponse,
   readRefreshTokenCookie,
   ssoSessionCookies,
   userRefreshTokenKey,
 } from "./ssoHelper";
+import { WebSession } from "./webSession";
 
 process.env.AKAN_PUBLIC_APP_NAME ??= "shared";
 process.env.AKAN_PUBLIC_REPO_NAME ??= "soft-s2";
@@ -152,5 +155,90 @@ describe("ssoHelper auth cookies", () => {
     expect(cookies).toContain(
       `__Host-signupToken=draft; Path=/; SameSite=Lax; Secure; HttpOnly; Max-Age=${sessionCookieMaxAgeSec}`,
     );
+  });
+});
+
+describe("ssoHelper cookie-only web sessions", () => {
+  const { appName } = base.getEnv();
+  const tokens = { jwt: "header.payload.signature", refreshToken: "refresh", expiresAt: "2026-11-15T01:00:00.000Z" };
+  const pageRequest = (cookie = "") =>
+    new Request("https://app.example.com/api/user/signinWithPassword", { method: "POST", headers: { cookie } });
+  const askingRequest = (cookie = "") =>
+    new Request("https://app.example.com/api/user/signinWithPassword", {
+      method: "POST",
+      headers: { ...sessionTokenContract.makeHeaders(), cookie },
+    });
+  const issued = (response: Response, name: string) =>
+    cookieValues(response).some((cookie) => cookie.startsWith(`${name}=`) && !cookie.includes("Max-Age=0"));
+
+  beforeEach(() => {
+    pinOperationMode("cloud");
+  });
+
+  afterEach(() => {
+    WebSession.configure();
+    mock.restore();
+  });
+
+  test("answers with the tokens in the body and in cookies while the option is off, whoever calls", async () => {
+    for (const req of [undefined, pageRequest(), askingRequest(), askingRequest(`${authTokenKey()}=held`)]) {
+      const response = makeAccessTokenResponse(tokens, { req });
+      expect(await response.json()).toEqual(tokens);
+      expect(issued(response, `__Host-jwt:${appName}`)).toBe(true);
+      expect(issued(response, userRefreshTokenKey())).toBe(true);
+    }
+  });
+
+  test("answers a page with the session cookies and a body that holds no token, once the option is on", async () => {
+    WebSession.configure({ cookieOnly: true });
+    for (const req of [undefined, pageRequest(), pageRequest(`${userRefreshTokenKey()}=held`)]) {
+      const response = makeAccessTokenResponse(tokens, { req });
+      expect(await response.json()).toEqual({ jwt: "", expiresAt: tokens.expiresAt });
+      expect(issued(response, `__Host-jwt:${appName}`)).toBe(true);
+      expect(issued(response, `__Host-jwt:${appName}.claims`)).toBe(true);
+      expect(issued(response, userRefreshTokenKey())).toBe(true);
+    }
+  });
+
+  test("answers an admin page the same way, with the admin refresh cookie", async () => {
+    WebSession.configure({ cookieOnly: true });
+    const response = makeAdminAccessTokenResponse(tokens, { req: pageRequest() });
+    expect(await response.json()).toEqual({ jwt: "", expiresAt: tokens.expiresAt });
+    expect(issued(response, `__Host-jwt:${appName}`)).toBe(true);
+    expect(issued(response, adminRefreshTokenKey())).toBe(true);
+    expect(await makeAdminAccessTokenResponse(tokens, { req: askingRequest() }).json()).toEqual(tokens);
+  });
+
+  test("hands a caller that asks and holds no session cookie the tokens in the body, and sets it none", async () => {
+    WebSession.configure({ cookieOnly: true });
+    const response = makeAccessTokenResponse(tokens, { req: askingRequest("theme=dark"), endsSignup: true });
+    expect(await response.json()).toEqual(tokens);
+    expect(issued(response, `__Host-jwt:${appName}`)).toBe(false);
+    expect(issued(response, `__Host-jwt:${appName}.claims`)).toBe(false);
+    expect(issued(response, userRefreshTokenKey())).toBe(false);
+    expect(expired(cookieValues(response), SignupToken.cookieKey())).toBe(true);
+  });
+
+  test("keeps the tokens out of the body for a caller that asks while it holds a session cookie", async () => {
+    WebSession.configure({ cookieOnly: true });
+    for (const held of [authTokenKey(), userRefreshTokenKey(), adminRefreshTokenKey()]) {
+      const response = makeAccessTokenResponse(tokens, { req: askingRequest(`${held}=held`) });
+      expect(await response.json()).toEqual({ jwt: "", expiresAt: tokens.expiresAt });
+      expect(issued(response, userRefreshTokenKey())).toBe(true);
+    }
+  });
+
+  test("an SSO code exchange follows the same rule, and a sign-up answer passes through untouched", async () => {
+    const signin = { jwt: tokens.jwt, refreshToken: tokens.refreshToken, redirect: "/home" };
+    const signup = { jwt: null, signupToken: "draft", redirect: "/signup" };
+    expect(makeSsoSigninResponse(signin, pageRequest())).toBe(signin);
+    WebSession.configure({ cookieOnly: true });
+    expect(makeSsoSigninResponse(signin, askingRequest())).toBe(signin);
+    expect(makeSsoSigninResponse(signup, pageRequest())).toBe(signup);
+    const response = makeSsoSigninResponse(signin, pageRequest());
+    if (!(response instanceof Response)) throw new Error("a page's code exchange was answered with the tokens");
+    expect(await response.json()).toEqual({ jwt: "", redirect: "/home" });
+    expect(issued(response, `__Host-jwt:${appName}`)).toBe(true);
+    expect(issued(response, userRefreshTokenKey())).toBe(true);
   });
 });

@@ -1,6 +1,7 @@
-import type { AkanChildRole, AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
+import type { AkanChildRole, AkanMetricFamily, AkanMetricsReport, AkanStatementStat } from "akanjs/service";
 import { SignalContext } from "akanjs/signal";
 import { RuntimeFamilies } from "../metrics/runtimeFamilies";
+import { StatementReport } from "../metrics/statementReport";
 import { AppInfo } from "../ops/appInfo";
 import type { OpsRoute } from "../ops/opsRoute";
 import { StatusAccess } from "../ops/statusAccess";
@@ -16,6 +17,7 @@ export interface SoloAppStatus {
   rscWorker: RscWorkerStatus | null;
   metrics: AkanMetricsReport;
   families?: () => AkanMetricFamily[];
+  statements?: () => AkanStatementStat[];
 }
 
 // Answers in the gateway's `/_akan/app/*` shape (one-entry `children`) so probes and tooling read one contract.
@@ -72,6 +74,10 @@ export const createSoloAppRoutes = (
           }),
           SignalContext.clientIpOf(req),
         ),
+    },
+    "/_akan/app/statements": {
+      GET: (req: Request) =>
+        access.statements(req, () => StatementReport.view(read().statements?.() ?? []), SignalContext.clientIpOf(req)),
     },
     [AppInfo.publicPath]: { GET: () => AppInfo.handlePublic() },
     "/_akan/bench/ping": { GET: () => new Response("ok") },

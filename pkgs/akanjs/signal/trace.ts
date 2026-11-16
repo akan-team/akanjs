@@ -11,8 +11,10 @@ import {
 } from "akanjs/common";
 import { markFailureLogged } from "../common/loggedFailure";
 import { TraceContext } from "../common/TraceContext";
+import { type ErrorReportContext, ErrorReporting } from "./errorReporting";
 import { RequestTrace, type TraceParentRef } from "./requestTrace";
 import { SignalFailure } from "./SignalFailure";
+import { SpanExport } from "./spanExport";
 
 let traceEnabledCache: boolean | null = null;
 let logContextEnabledCache: boolean | null = null;
@@ -118,6 +120,7 @@ export type TraceOrigin = "http" | "websocket" | "mcp" | "internal" | "page";
 export type TraceOutcome = "ok" | "error";
 
 const MAX_SPANS_PER_TRACE = 64;
+const MAX_DB_SPANS_PER_TRACE = 32;
 const SERVER_TIMING_ENTRIES = 32;
 const FLIGHT_RING_SIZE = 64;
 const CANONICAL_ERROR_CHARS = 200;
@@ -167,9 +170,10 @@ export class SignalTrace {
   #flightRing: FlightEntry[] | null = null;
   #flightEvicted = 0;
   #finalized = false;
-  readonly #aggregated: boolean;
+  readonly aggregated: boolean;
   /** An id this call was handed but did not take: an untrusted caller's, or the trace that enqueued a job. */
   link: string | null;
+  #exported = false;
   readonly #parent: TraceParentRef | null;
   #traceId: string | null = null;
   #spanId: string | null = null;
@@ -188,7 +192,7 @@ export class SignalTrace {
     this.mode = mode;
     this.origin = origin;
     this.startedAt = performance.now();
-    this.#aggregated = mode === "full";
+    this.aggregated = mode === "full";
     this.#parent = parent;
     this.link = parent?.link ?? null;
   }
@@ -207,8 +211,13 @@ export class SignalTrace {
     return this.#parent?.spanId ?? null;
   }
 
+  /** Head-sampled for the OTLP exporter: its spans are recorded and sent once it finalizes. */
+  get exported(): boolean {
+    return this.#exported;
+  }
+
   get sampled(): boolean {
-    return this.#parent?.sampled ?? false;
+    return this.#exported || (this.#parent?.sampled ?? false);
   }
 
   get traceparent(): string {
@@ -224,10 +233,15 @@ export class SignalTrace {
     parent?: TraceParentRef | null,
   ): SignalTrace | null {
     const mode = isTraceEnabled() ? "full" : isLogContextEnabled() ? "context" : null;
-    if (!mode) return null;
+    const sink = SpanExport.sink;
+    if (!mode && !sink) return null;
     const opener =
       parent !== undefined ? parent : origin === "internal" ? null : (als.getStore() ?? RequestTrace.current() ?? null);
-    const trace = new SignalTrace(endpointKey, endpointType, { mode, origin, parent: opener });
+    const trace = new SignalTrace(endpointKey, endpointType, { mode: mode ?? "context", origin, parent: opener });
+    //? Set after construction, so a sampled call records spans without joining the `AKAN_TRACE` aggregate.
+    if (sink) trace.#exported = opener ? opener.sampled === true : sink.sample(trace.traceId, null);
+    if (trace.#exported) trace.mode = "full";
+    else if (!mode) return null;
     if (isFlightRecorderEnabled()) trace.startFlightRecorder();
     return trace;
   }
@@ -334,7 +348,10 @@ export class SignalTrace {
 
   recordDbQuery(model: string, op: string, durationMs: number): void {
     this.countDbQuery(durationMs);
-    this.recordSpan(`db:${model}.${op}`, durationMs, { model, op });
+    if (this.mode !== "full" || this.spans.length >= MAX_SPANS_PER_TRACE) return;
+    let dbSpans = 0;
+    for (const span of this.spans) if (span.name.startsWith("db:")) dbSpans += 1;
+    if (dbSpans < MAX_DB_SPANS_PER_TRACE) this.recordSpan(`db:${model}.${op}`, durationMs, { model, op });
   }
 
   countCache(hit: boolean): void {
@@ -366,7 +383,8 @@ export class SignalTrace {
     this.#emitCanonicalLine(totalMs);
     if (this.mode !== "full") return;
     this.spans.push({ id: this.spanId, parentId: this.parentSpanId, name: "total", startMs: 0, durationMs: totalMs });
-    if (!this.#aggregated) return;
+    if (this.#exported) SpanExport.exportTrace(this);
+    if (!this.aggregated) return;
     traceAggregator.ingest(this);
     maybeFlushTraceFile();
   }
@@ -441,20 +459,33 @@ const spanAls = traceProcessStore.__akanSpanAls;
 
 export const getCurrentTrace = (): SignalTrace | undefined => als.getStore();
 
+export const reportedTraceOf = (
+  trace: SignalTrace | null = als.getStore() ?? null,
+): Pick<ErrorReportContext, "traceId" | "endpoint" | "accountId"> => {
+  const userId = trace?.attrs.userId;
+  return {
+    traceId: (trace ?? RequestTrace.current())?.traceId ?? null,
+    endpoint: trace?.endpoint ?? null,
+    accountId: typeof userId === "string" ? userId : null,
+  };
+};
+
 interface CrashLine {
   name: string;
-  label: string;
+  type: string;
+  key: string;
   error: unknown;
   status: number;
 }
 //? A failed call always writes its canonical line when the mode is on, so a 5xx is told there and only there.
-export const logCrash = (trace: SignalTrace | null, { name, label, error, status }: CrashLine): void => {
+export const logCrash = (trace: SignalTrace | null, { name, type, key, error, status }: CrashLine): void => {
+  ErrorReporting.report(error, { source: "server", ...reportedTraceOf(trace), endpoint: `${type}:${key}` });
   if (trace && getCanonicalLineMode() !== "off") return;
   const message = (error instanceof Error ? error.message : String(error)).split("\n")[0] ?? "";
   Logger.emit({
     level: "error",
     name,
-    message: `Error ${label}: ${message}`,
+    message: `Error ${type}-${key}: ${message}`,
     attrs: { status, ...SignalFailure.logAttrs(error) },
   });
 };

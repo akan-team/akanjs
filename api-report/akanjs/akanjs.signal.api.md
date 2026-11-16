@@ -194,6 +194,24 @@ export declare class BaseEndpoint extends BaseEndpoint_base {
 export declare class BaseInternal extends BaseInternal_base {
 }
 
+export declare class BrowserError extends AkanError<"browserError", BrowserErrorData> {
+    readonly data: BrowserErrorData;
+    constructor(data: BrowserErrorData);
+}
+
+export interface BrowserErrorData {
+    kind: BrowserErrorKind;
+    name: string;
+    message: string;
+    stack: null | string;
+    routeId: null | string;
+    digest: null | string;
+    buildId: null | string;
+    userAgent: null | string;
+}
+
+export type BrowserErrorKind = "caught" | "error" | "recoverable" | "rejection" | "uncaught";
+
 export type BuildEndpoint<SrvModule extends ServiceModel = ServiceModel> = {
     query: <Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullable extends boolean = false>(returnRef: Returns, signalOption?: SignalOption<Returns, Nullable>) => EndpointInfo<"query", SrvMap<SrvModule>, [
     ], [
@@ -293,6 +311,7 @@ export declare class CrossSiteGuard {
     static reset(): void;
     static assertJsonBody(contentType: null | string): void;
     static assertOrigin(req: Request, url: URL, key: string): void;
+    static isFromOwnHost(req: Request, url: URL): boolean;
     static corsOrigin(req: Request): null | string;
     static preflight(req: Request, methods: string[]): Response;
     static withCors(req: Request, res: Response): Response;
@@ -506,6 +525,19 @@ export declare class EndpointRateLimit {
 }
 
 export type EndpointType = "message" | "mutation" | "pubsub" | "query";
+
+export interface ErrorReportContext {
+    source: ErrorReportSource;
+    traceId: null | string;
+    endpoint: null | string;
+    routeId: null | string;
+    accountId: null | string;
+    digest: null | string;
+}
+
+export type ErrorReportSource = "client" | "process" | "render" | "server";
+
+export type ErrorReporter = (error: Error, context: ErrorReportContext) => Promise<void> | void;
 
 export declare class Exception extends AkanError {
     readonly details?: undefined | unknown;
@@ -1588,6 +1620,7 @@ export declare class SignalTrace {
     error: unknown;
     debugSev: null | number;
     flight: LogFlightRecorder | null;
+    readonly aggregated: boolean;
     link: null | string;
     constructor(endpointKey: string, endpointType: string, { mode, origin, parent, }?: {
         mode?: TraceMode;
@@ -1597,6 +1630,7 @@ export declare class SignalTrace {
     get traceId(): string;
     get spanId(): string;
     get parentSpanId(): null | string;
+    get exported(): boolean;
     get sampled(): boolean;
     get traceparent(): string;
     static create(endpointKey: string, endpointType: string, origin: TraceOrigin, parent?: TraceParentRef | null): SignalTrace | null;

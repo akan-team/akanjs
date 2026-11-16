@@ -336,9 +336,8 @@ export class SignalContext<
     if (!this.trace || getCurrentTrace() === this.trace) return await this.#exec();
     return await runTraced(this.trace, async () => await this.#exec());
   }
-  // Spans are recorded only in full mode; a context-mode trace carries attrs and the log context, not timings.
   get #spanned() {
-    return this.trace?.mode === "full";
+    return this.trace?.mode === "full" && (this.trace.aggregated || this.trace.debugSev !== null);
   }
   async #exec() {
     if (!this.endpointInfo.execFn) throw new Exception.Error("Exec function is not set");
@@ -373,7 +372,8 @@ export class SignalContext<
       if (!EndpointIdempotency.applies(this)) return await run();
       return await EndpointIdempotency.through(this, run, async (result) => {
         const resolved = await this.#resolve(result);
-        return await traceSpan("serialize", async () => HttpExecutionContext.wireOf(resolved, this.endpointInfo));
+        const wire = async () => HttpExecutionContext.wireOf(resolved, this.endpointInfo);
+        return this.#spanned ? await traceSpan("serialize", wire) : await wire();
       });
     };
     const next = this.#withMiddleware(coreExec);
@@ -444,7 +444,7 @@ export class SignalContext<
           EndpointErrorContract.checkThrown(endpoint, endpointInfo, key, EndpointErrorContract.wireKey(error));
         const status = SignalFailure.statusOf(error);
         if (status >= 500) {
-          logCrash(trace, { name: endpoint.logger.name ?? "App", label: `${endpointInfo.type}-${key}`, error, status });
+          logCrash(trace, { name: endpoint.logger.name ?? "App", type: endpointInfo.type, key, error, status });
           if (typeof error === "object" && error !== null) SignalContext.#reported.add(error);
         }
         throw error;

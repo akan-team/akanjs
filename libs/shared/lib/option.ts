@@ -5,11 +5,14 @@ import {
   AccountMiddleware,
   type CallerAccount,
   type OAuthOptions,
+  PageSession,
   type RemoteOptions,
   resolveOAuthOptions,
   resolveRemoteOptions,
+  type SessionOptions,
   SsoProvider,
   verifyAkanAccessToken,
+  WebSession,
 } from "../srvkit";
 import type * as cnst from "./cnst";
 import type { LibOptions } from "./srv";
@@ -55,11 +58,13 @@ export type ModulesOptions = LibOptions & {
   offShelfEndpoints?: string[];
   signup?: SignupOptions;
   nativeSso?: NativeSsoOptions;
+  session?: SessionOptions;
 };
 
 export const option = new AkanOption<ModulesOptions>()
   .use((options) => {
     SsoProvider.configure(options.security?.sso ?? {});
+    WebSession.configure(options.session);
     return {
       rootAdminInfo: options.rootAdminInfo,
       resetRootAdmin: options.resetRootAdmin ?? false,
@@ -95,4 +100,5 @@ export const option = new AkanOption<ModulesOptions>()
     if (!oauth.enabled) return { auth: { verify } };
     return { auth: { authorizationServers: [oauth.issuer], resource: oauth.resource, verify } };
   })
+  .setSessionRefresh((request) => PageSession.renewedCookies(request))
   .applyMiddleware(AccountMiddleware);

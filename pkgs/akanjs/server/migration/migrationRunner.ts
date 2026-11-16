@@ -5,6 +5,7 @@ import {
   descriptorHash,
   type PrunedIndex,
   type SqlDocumentStore,
+  StatementProbe,
   stableJson,
   type UndeclaredIndex,
 } from "akanjs/service";
@@ -462,18 +463,21 @@ export class MigrationRunner {
     this.#logger.warn(`${id} committed, but what ran after the commit failed: ${MigrationError.messageOf(error)}`);
   }
 
+  //? A migration reads every row on purpose, so the dev query-plan check leaves what it sends alone.
   async #locked<T>(fn: (lock: MigrationLock) => Promise<T>) {
-    const lock = new MigrationLock(() => this.#database.getConnection(), {
-      inBand: this.#database.dialect?.name === "sqlite",
+    return await StatementProbe.unplanned(async () => {
+      const lock = new MigrationLock(() => this.#database.getConnection(), {
+        inBand: this.#database.dialect?.name === "sqlite",
+      });
+      if (!(await lock.acquire()))
+        throw new MigrationError("locked", "Another migration run holds the lock; try again once it finishes");
+      try {
+        await this.#ledger.interruptRunning();
+        return await fn(lock);
+      } finally {
+        await lock.release();
+      }
     });
-    if (!(await lock.acquire()))
-      throw new MigrationError("locked", "Another migration run holds the lock; try again once it finishes");
-    try {
-      await this.#ledger.interruptRunning();
-      return await fn(lock);
-    } finally {
-      await lock.release();
-    }
   }
 
   async #begin(

@@ -16,11 +16,12 @@ import {
   renderScopeAgentBlock,
 } from "@akanjs/devkit/guideline/agentsIndex";
 import { biomeVersion } from "@akanjs/devkit/lint/biomeBase";
-import { Linter } from "@akanjs/devkit/lint/linter";
+import { BiomeCheck } from "@akanjs/devkit/lint/biomeCheck";
 import { MaintainabilityContract } from "@akanjs/devkit/quality/maintainabilityContract";
 import { MaintainabilityReport } from "@akanjs/devkit/quality/maintainabilityReport";
 import { FileSys } from "@akanjs/devkit/util/fileSys";
 import type { PackageJson } from "@akanjs/devkit/workspace/types";
+import { Logger } from "akanjs/common";
 import { Ed25519Key } from "akanjs/server/ed25519Key";
 import { getLatestPackageVersion, getNpmRegistryUrl } from "../npmRegistry";
 import { MaintainabilityPaths } from "../workflows/maintainabilityPaths";
@@ -298,18 +299,14 @@ export class WorkspaceRunner extends runner("workspace") {
     { fix = true, maxDiagnostics = defaultMaxDiagnostics }: { fix?: boolean; maxDiagnostics?: number } = {},
   ) {
     const configPath = await WorkspaceRunner.resolveBiomeConfigPath(workspace);
-    const [biome, ...biomeArgs] = Linter.biomeCommand(workspace.workspaceRoot);
-    await workspace.spawn(biome, [
-      ...biomeArgs,
-      "check",
-      ...(fix ? ["--write"] : []),
-      "--no-errors-on-unmatched",
-      //? Biome caps output at 20 by default, so a list whose mix merely changed reads as progress.
-      `--max-diagnostics=${maxDiagnostics > 0 ? maxDiagnostics : "none"}`,
-      //? Pinned: without it a malformed biome.json makes Biome fall back to discovery and name the wrong file.
-      ...(configPath ? ["--config-path", configPath] : []),
-      exec.cwdPath,
-    ]);
+    await BiomeCheck.run({
+      root: workspace.workspaceRoot,
+      target: exec.cwdPath,
+      configPath,
+      write: fix,
+      maxDiagnostics,
+      print: (text) => Logger.rawLog(text),
+    });
     await this.#enforceStyleContract(exec);
     await this.#enforceRecipeGate(exec);
     await this.#enforceAgentsIndex(exec);

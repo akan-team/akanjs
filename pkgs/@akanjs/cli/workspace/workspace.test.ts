@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { CommandContainer, getArgMetas, getTargetMetas } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor, WorkspaceExecutor } from "@akanjs/devkit/executors";
+import { BiomeCheck } from "@akanjs/devkit/lint/biomeCheck";
 import {
   createCallRecorder,
   createFakeExecutor,
@@ -455,6 +456,8 @@ describe("WorkspaceScript", () => {
 });
 
 describe("WorkspaceRunner", () => {
+  afterEach(() => mock.restore());
+
   test("machine-keygen writes a private key only the owner reads, refuses to overwrite it, and returns the public key", async () => {
     const { mkdtemp, rm, stat } = await import("node:fs/promises");
     const { tmpdir } = await import("node:os");
@@ -828,60 +831,54 @@ describe("WorkspaceRunner", () => {
     await expect(Bun.file(`${root}/generated/repo/.npmrc`).text()).resolves.toBe("registry=http://127.0.0.1:4873/\n");
   });
 
-  test("invokes biome check with optional write flag", async () => {
-    const runner = new WorkspaceRunner();
-    const workspace = createFakeExecutor("workspace");
-    const exec = { cwdPath: "/workspace/apps/demo" };
-    const spawn = mock(async () => "");
-    workspace.spawn = spawn;
+  test("hands the target, the write flag and the cap to the Biome check", async () => {
+    const run = spyOn(BiomeCheck, "run").mockResolvedValue(undefined);
+    try {
+      const runner = new WorkspaceRunner();
+      const workspace = createFakeExecutor("workspace");
+      const exec = { cwdPath: "/workspace/apps/demo" };
 
-    await runner.lint(exec as never, workspace as never, { fix: true });
-    expect(spawn).toHaveBeenCalledWith("biome", [
-      "check",
-      "--write",
-      "--no-errors-on-unmatched",
-      `--max-diagnostics=${defaultMaxDiagnostics}`,
-      "/workspace/apps/demo",
-    ]);
+      await runner.lint(exec as never, workspace as never, { fix: true });
+      expect(run).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          target: "/workspace/apps/demo",
+          write: true,
+          maxDiagnostics: defaultMaxDiagnostics,
+          configPath: null,
+        }),
+      );
 
-    await runner.lint(exec as never, workspace as never, { fix: false, maxDiagnostics: 0 });
-    expect(spawn).toHaveBeenLastCalledWith("biome", [
-      "check",
-      "--no-errors-on-unmatched",
-      "--max-diagnostics=none",
-      "/workspace/apps/demo",
-    ]);
+      await runner.lint(exec as never, workspace as never, { fix: false, maxDiagnostics: 0 });
+      expect(run).toHaveBeenLastCalledWith(expect.objectContaining({ write: false, maxDiagnostics: 0 }));
+    } finally {
+      run.mockRestore();
+    }
   });
 
   test("pins the biome config so a malformed one is reported at its own line", async () => {
-    const runner = new WorkspaceRunner();
-    const { root } = track(await createTempApp("demo"));
-    const workspace = createFakeExecutor("workspace");
-    workspace.workspaceRoot = root;
-    const spawn = mock(async () => "");
-    workspace.spawn = spawn;
-    await Bun.write(`${root}/biome.jsonc`, "{}\n");
-    const biomeWrapper = path.join(root, "node_modules/@biomejs/biome/bin/biome");
-    await Bun.write(biomeWrapper, "#!/usr/bin/env node\n");
+    const run = spyOn(BiomeCheck, "run").mockResolvedValue(undefined);
+    try {
+      const runner = new WorkspaceRunner();
+      const { root } = track(await createTempApp("demo"));
+      const workspace = createFakeExecutor("workspace");
+      workspace.workspaceRoot = root;
+      await Bun.write(`${root}/biome.jsonc`, "{}\n");
 
-    await runner.lint({ cwdPath: `${root}/apps/demo` } as never, workspace as never, { fix: false });
+      await runner.lint({ cwdPath: `${root}/apps/demo` } as never, workspace as never, { fix: false });
 
-    expect(spawn).toHaveBeenCalledWith(process.execPath, [
-      biomeWrapper,
-      "check",
-      "--no-errors-on-unmatched",
-      `--max-diagnostics=${defaultMaxDiagnostics}`,
-      "--config-path",
-      path.join(root, "biome.jsonc"),
-      `${root}/apps/demo`,
-    ]);
+      expect(run).toHaveBeenCalledWith(
+        expect.objectContaining({ root, target: `${root}/apps/demo`, configPath: path.join(root, "biome.jsonc") }),
+      );
+    } finally {
+      run.mockRestore();
+    }
   });
 
   test("refuses a recipe with nothing to pick, and says what to make of it instead", async () => {
     const runner = new WorkspaceRunner();
     const { root } = track(await createTempApp("demo"));
     const workspace = createFakeExecutor("workspace");
-    workspace.spawn = mock(async () => "");
+    spyOn(BiomeCheck, "run").mockResolvedValue(undefined);
     await writeText(
       `${root}/apps/demo/ui/Recipe/flatPanel.ts`,
       'import { recipe, tv } from "akanjs/ui";\n\nexport const flatPanel = recipe(tv({ base: "rounded-box border" }));\n',
@@ -898,7 +895,7 @@ describe("WorkspaceRunner", () => {
     const runner = new WorkspaceRunner();
     const { app } = track(await createTempApp("stale"));
     const workspace = createFakeExecutor("workspace");
-    workspace.spawn = mock(async () => "");
+    spyOn(BiomeCheck, "run").mockResolvedValue(undefined);
 
     await expect(runner.lint(app, workspace as never, { fix: false })).rejects.toThrow(
       "[agentsIndex] The recipe index in apps/stale/AGENTS.md is stale: it differs from the recipe sources. Run `akan sync stale` to regenerate it.",
@@ -909,7 +906,7 @@ describe("WorkspaceRunner", () => {
     const runner = new WorkspaceRunner();
     const { root, pkg } = track(await createTempPackage());
     const workspace = createFakeExecutor("workspace");
-    workspace.spawn = mock(async () => "");
+    spyOn(BiomeCheck, "run").mockResolvedValue(undefined);
     const body = Array.from({ length: 160 }, (_, idx) => `  // line ${idx}`).join("\n");
     await writeText(`${root}/pkgs/@sample/tool/boot.ts`, `export function boot() {\n${body}\n}\n`);
 

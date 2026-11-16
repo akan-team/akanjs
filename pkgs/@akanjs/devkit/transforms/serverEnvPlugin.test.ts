@@ -250,7 +250,8 @@ describe("createServerEnvPlugin", () => {
     });
     expect(result.success).toBe(false);
     const printed = result.logs.map((log) => `${log.message}\n${log.position?.lineText ?? ""}`).join("\n");
-    expect(printed).toContain("ReferenceError: undefinedVar is not defined");
+    expect(printed).toMatch(/: ReferenceError at .*libs\/util\/env\/env\.server\.testing\.ts:3\n/);
+    expect(printed).not.toContain("undefinedVar");
     expect(printed).not.toContain("lib-jwt-dummy-0123");
   });
 

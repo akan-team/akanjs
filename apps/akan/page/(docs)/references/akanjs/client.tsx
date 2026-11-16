@@ -1139,8 +1139,8 @@ export default page()
       {
         name: "setAuth({ jwt })",
         desc: l.trans({
-          en: "Gives `fetch` the token and saves it to the cookie and client storage.",
-          ko: "`fetch`에 token을 주고 cookie와 클라이언트 storage에 저장합니다.",
+          en: "Gives `fetch` the token and saves it to the cookie and client storage. With no token beside a session the server holds in HttpOnly cookies, `fetch` sends none and the socket reconnects on the cookie.",
+          ko: "`fetch`에 token을 주고 cookie와 클라이언트 storage에 저장합니다. 서버가 HttpOnly cookie로 세션을 쥐고 있는데 token이 없으면 `fetch`는 token을 보내지 않고 socket은 cookie로 다시 연결합니다.",
         }),
       },
       {

@@ -1347,13 +1347,17 @@ export declare const routeDefinitionMarker: unique symbol;
 
 export declare const router: Router;
 
+export declare const scriptHashes: (...hashes: string[]) => void;
+
+export declare const scriptNonce: () => string | undefined;
+
 export declare const secretStorage: {
     getItem: (key: string) => Promise<null | string | undefined>;
     setItem: (key: string, value: string) => Promise<undefined | void>;
     removeItem: (key: string) => Promise<undefined | void>;
 };
 
-export declare const setAuth: ({ jwt }: SetAuthOption) => void;
+export declare const setAuth: ({ jwt }?: SetAuthOption) => void;
 
 export declare const setCookie: (key: string, value: string, { path, sameSite, secure }?: CookieOptions) => void;
 
@@ -1518,12 +1522,16 @@ type RuntimeTranslate = ((key: string, param?: Record<string, number | string>) 
 
 type RuntimeWs = {
     connected: boolean;
+    state?: "closed" | "connecting" | "gaveUp" | "open";
+    connect?: (option?: {
+        fresh?: boolean;
+    }) => void;
     on: (event: string, handler: (...args: unknown[]) => void) => void;
     off: (event: string, handler: (...args: unknown[]) => void) => void;
 };
 
 interface SetAuthOption {
-    jwt: string;
+    jwt?: null | string;
 }
 
 interface SsrClientRouterOption extends RouterOptions {

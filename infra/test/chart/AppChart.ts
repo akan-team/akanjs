@@ -7,6 +7,7 @@ export interface Container {
   image: string;
   command?: string[];
   securityContext?: Record<string, unknown>;
+  envFrom?: { secretRef: { name: string } }[];
   volumeMounts?: { name: string; mountPath: string; subPath?: string }[];
 }
 

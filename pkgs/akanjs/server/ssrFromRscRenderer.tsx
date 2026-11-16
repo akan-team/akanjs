@@ -1,9 +1,11 @@
 //? The package ships no types; an app or lib program reaches this file without the ambient declarations otherwise.
 /// <reference path="./types/react-server-dom-webpack.d.ts" />
+
+import { randomBytes } from "node:crypto";
 import { Readable } from "node:stream";
 import { AkanError, getApiPrefix, getWsPrefix } from "akanjs/base";
 import { Logger } from "akanjs/common";
-import { type AkanRequestStore, type AkanTheme, createRequestStore, RenderScope, requestStorage } from "akanjs/fetch";
+import { type AkanRequestStore, createRequestStore, RenderScope, requestStorage } from "akanjs/fetch";
 import type { ReactNode } from "react";
 //? Not server.browser: it resumes a boundary from a MessageChannel task, which runs with an empty AsyncLocalStorage.
 import { renderToReadableStream } from "react-dom/server.edge";
@@ -11,14 +13,9 @@ import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { parsePositiveInt } from "./cachePolicy";
 import { FlightModulePreloads } from "./flightModulePreloads";
 import { mapFlightLineRows } from "./flightRowReader";
-import { HeadSplice } from "./headSplice";
-import type {
-  SsrChunkRegistryStats,
-  SsrDocumentOptions,
-  SsrFromRscInput,
-  SsrLateControl,
-  SsrLateRedirect,
-} from "./ssrTypes";
+import { PageFailure } from "./pageFailure";
+import { createInlineRscScript, createSoftRedirectScript, SsrInlineScripts } from "./ssrInlineScripts";
+import type { SsrChunkRegistryStats, SsrDocumentOptions, SsrFromRscInput, SsrLateControl } from "./ssrTypes";
 
 const DEFAULT_SSR_CHUNK_REGISTRY_MAX_ENTRIES = 1024;
 const DEFAULT_MAX_PENDING_INLINE_RSC_BYTES = 16 * 1024;
@@ -96,40 +93,6 @@ export class SsrChunkRegistry<T> {
       this.#evictionCount += 1;
     }
   }
-}
-
-export type InlineRscChunk = readonly [1, string] | readonly [3, string];
-
-export function encodeInlineRscChunk(chunk: Uint8Array): InlineRscChunk {
-  try {
-    return [1, new TextDecoder("utf-8", { fatal: true }).decode(chunk)];
-  } catch {
-    return [3, Buffer.from(chunk).toString("base64")];
-  }
-}
-
-function htmlEscapeJsonString(value: string): string {
-  return JSON.stringify(value)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
-
-export function createInlineRscScript(chunk: Uint8Array): string {
-  const [type, data] = encodeInlineRscChunk(chunk);
-  return `<script>self.__RSC_PUSH__(${type},${htmlEscapeJsonString(data)})</script>`;
-}
-
-function escapeHtmlAttr(value: string): string {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
-
-export function createSoftRedirectScript(redirect: SsrLateRedirect): string {
-  const method = redirect.method === "push" ? "assign" : "replace";
-  const fallback = `<noscript><meta http-equiv="refresh" content="0;url=${escapeHtmlAttr(redirect.location)}"></noscript>`;
-  return `${fallback}<script>window.location.${method}(${htmlEscapeJsonString(redirect.location)})</script>`;
 }
 
 function sanitizeFlightRows(
@@ -331,7 +294,7 @@ export function interleaveRscScriptsWithHtml(
   htmlStream: ReadableStream<Uint8Array>,
   rscClientStream: ReadableStream<Uint8Array>,
   options: {
-    bootstrapModuleScripts?: string;
+    token?: string;
     lateControl?: Promise<SsrLateControl | null>;
     maxPendingRscBytes?: number;
     onPendingRscBytes?: (bytes: number) => void;
@@ -342,7 +305,7 @@ export function interleaveRscScriptsWithHtml(
   } = {},
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
-  const bootstrapDetector = new InlineBootstrapDetector();
+  const token = options.token ?? "";
   const pendingRscChunks: Uint8Array[] = [];
   const pendingControlScripts: Uint8Array[] = [];
   const explicitMax = options.maxPendingRscBytes;
@@ -380,15 +343,16 @@ export function interleaveRscScriptsWithHtml(
       };
 
       const flushPendingRscScripts = () => {
-        if (!bootstrapDetector.canFlushInlineScripts) return;
+        const flushes = pendingControlScripts.length > 0 || pendingRscChunks.length > 0;
         while (!errored && pendingControlScripts.length > 0) {
           const script = pendingControlScripts.shift();
           if (script) controller.enqueue(script);
         }
         while (!errored && pendingRscChunks.length > 0) {
           const chunk = pendingRscChunks.shift();
-          if (chunk) controller.enqueue(encoder.encode(createInlineRscScript(chunk)));
+          if (chunk) controller.enqueue(encoder.encode(createInlineRscScript(chunk, token)));
         }
+        if (flushes && !errored) controller.enqueue(encoder.encode(SsrInlineScripts.flushTag));
         while (queueDrainResolvers.length > 0) queueDrainResolvers.shift()?.();
       };
 
@@ -429,7 +393,7 @@ export function interleaveRscScriptsWithHtml(
         const lateControlPump = options.lateControl?.then((control) => {
           try {
             if (control?.type !== "redirect" || errored) return;
-            pendingControlScripts.push(encoder.encode(createSoftRedirectScript(control)));
+            pendingControlScripts.push(encoder.encode(createSoftRedirectScript(control, token)));
             notifyScriptAvailable();
           } finally {
             lateControlDone = true;
@@ -446,7 +410,6 @@ export function interleaveRscScriptsWithHtml(
             const { value, done } = await htmlReader.read();
             if (done || errored) break;
             controller.enqueue(value);
-            bootstrapDetector.observe(value);
           }
         } finally {
           htmlReader.releaseLock();
@@ -454,8 +417,6 @@ export function interleaveRscScriptsWithHtml(
         }
 
         if (errored) return;
-        if (options.bootstrapModuleScripts) controller.enqueue(encoder.encode(options.bootstrapModuleScripts));
-        bootstrapDetector.forceAllow();
         while (
           !errored &&
           (!rscDone || !lateControlDone || pendingControlScripts.length > 0 || pendingRscChunks.length > 0)
@@ -466,7 +427,7 @@ export function interleaveRscScriptsWithHtml(
         await Promise.all([rscPump, lateControlPump]);
         if (errored) return;
         flushPendingRscScripts();
-        controller.enqueue(encoder.encode(`<script>self.__RSC_CLOSE__()</script>`));
+        controller.enqueue(encoder.encode(SsrInlineScripts.endTags(token)));
         controller.close();
       };
 
@@ -486,33 +447,6 @@ export function interleaveRscScriptsWithHtml(
   });
 }
 
-class InlineBootstrapDetector {
-  readonly #decoder = new TextDecoder();
-  #buffer = "";
-  #bootstrapSeen = false;
-  #canFlushInlineScripts = false;
-
-  get canFlushInlineScripts(): boolean {
-    return this.#canFlushInlineScripts;
-  }
-
-  observe(chunk: Uint8Array): void {
-    if (this.#canFlushInlineScripts) return;
-    this.#buffer = `${this.#buffer}${this.#decoder.decode(chunk, { stream: true })}`.slice(-8192);
-    if (!this.#bootstrapSeen) {
-      const bootstrapIndex = this.#buffer.indexOf("__RSC_PUSH__");
-      if (bootstrapIndex === -1) return;
-      this.#bootstrapSeen = true;
-      this.#buffer = this.#buffer.slice(bootstrapIndex);
-    }
-    if (this.#buffer.toLowerCase().includes("</script>")) this.#canFlushInlineScripts = true;
-  }
-
-  forceAllow(): void {
-    this.#canFlushInlineScripts = true;
-  }
-}
-
 export class SsrFromRscRenderer {
   static readonly #chunkRegistryStats: SsrChunkRegistryStats = {
     ssrChunkRegistrySize: 0,
@@ -521,47 +455,13 @@ export class SsrFromRscRenderer {
     ssrChunkEvictionCount: 0,
   };
 
-  // A classic script, so it runs before every module script: RSDW client.browser needs these shims at module init.
-  static readonly #clientBootstrap = `(function(){
-  var registry = new Map();
-  function load(id) {
-    var cached = registry.get(id);
-    if (cached) return cached;
-    var p = import(id);
-    registry.set(id, p);
-    return p;
-  }
-  self.__webpack_chunk_load__ = load;
-  self.__webpack_require__ = function(id) {
-    var p = registry.get(id);
-    if (!p) throw new Error("[rscClient] module not loaded: " + id);
-    return p;
-  };
-  self.__webpack_require__.u = function(chunkId) { return chunkId; };
-  self.__webpack_get_script_filename__ = function(chunkId) { return chunkId; };
-  self.__RSC_CHUNKS__ = [];
-  self.__RSC_CLOSED__ = false;
-  self.__RSC_PUSH__ = function(type,data){ self.__RSC_CHUNKS__.push([type,data]); };
-  self.__RSC_CLOSE__ = function(){ self.__RSC_CLOSED__ = true; };
-})();`;
-
   // Not a bundle constant (only AKAN_PUBLIC_* is inlined, at build time) nor a React prop (FetchClient fixes its
-  // origin at module init): the classic bootstrap is the one thing that runs ahead of every module script.
-  static #prefixBootstrap() {
+  // origin at module init): the bootstrap script is the one thing that runs ahead of every module script.
+  static #prefix() {
     const api = getApiPrefix();
     const ws = getWsPrefix();
-    if (api === "/api" && ws === "/ws") return "";
-    return `\nself.__AKAN_PREFIX__ = ${JSON.stringify({ api, ws })};`;
+    return api === "/api" && ws === "/ws" ? undefined : { api, ws };
   }
-
-  static readonly #themeInitScript = `<script>(function(){
-  try {
-    var m = document.cookie.match(/(?:^|;\\s*)theme=([^;]+)/);
-    if (m) return;
-    var dark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-  } catch (e) {}
-})();</script>`;
 
   static {
     SsrFromRscRenderer.#installWebpackShims();
@@ -595,12 +495,9 @@ export class SsrFromRscRenderer {
       input.lateControl,
     );
 
-    const base = `${SsrFromRscRenderer.#clientBootstrap}${SsrFromRscRenderer.#prefixBootstrap()}`;
-    const bootstrap = input.extraBootstrapInline ? `${base}\n${input.extraBootstrapInline}` : base;
-
     const renderHtml = async () =>
       await SsrFromRscRenderer.renderDocument(await thenable, {
-        bootstrap,
+        nonce: input.nonce,
         waitForAllReady: input.waitForAllReady || process.env.AKAN_SSR_WAIT_FOR_ALL_READY === "1",
         inlineBoundaries: input.inlineBoundaries,
         onError: (error, phase) => SsrFromRscRenderer.#reportRenderError(error, input, phase),
@@ -614,8 +511,18 @@ export class SsrFromRscRenderer {
       throw error;
     }
 
+    //? 64 bits no page content can guess while it renders; a cached page replays its own.
+    const token = randomBytes(8).toString("base64url");
     const headPreloads = [...new Set([...(input.bootstrapModules ?? []), ...(input.modulePreloads ?? [])])];
-    const withHeadScripts = SsrFromRscRenderer.#injectHeadScriptsIntoHead(htmlStream, {
+    const withHeadScripts = SsrInlineScripts.injectIntoHead(htmlStream, {
+      bootstrap: {
+        token,
+        modules: input.bootstrapModules ?? [],
+        ...input.bootstrapData,
+        prefix: SsrFromRscRenderer.#prefix(),
+      },
+      devInline: input.devBootstrapInline,
+      nonce: input.nonce,
       importmap: input.importmap,
       modulePreloads: headPreloads,
       //? The shell has rendered by now, so its client references have arrived; a later boundary's chunks load unpreloaded.
@@ -624,10 +531,10 @@ export class SsrFromRscRenderer {
       injectThemeInitScript: input.injectThemeInitScript,
     });
 
-    // Splice only at chunk boundaries (Fizz may split inside SVG paths or attributes), and append the bootstrap module
-    // scripts here: one React emitted mid-stream could run cached before $RC() restores Suspense segments.
+    // Splice only at chunk boundaries (Fizz may split inside SVG paths or attributes). The bootstrap modules start at
+    // the end block: one React emitted mid-stream could run cached before $RC() restores Suspense segments.
     return interleaveRscScriptsWithHtml(withHeadScripts, sanitizeFlightForClientStream(rscForClient), {
-      bootstrapModuleScripts: SsrFromRscRenderer.#createBootstrapModuleScriptTags(input.bootstrapModules),
+      token,
       lateControl: input.lateControl,
       onComplete: () => stderrSuppressor?.stop(),
       onCancel: input.onCancel,
@@ -683,7 +590,9 @@ export class SsrFromRscRenderer {
   // and so does a crawler, which runs no script to swap a streamed segment in.
   static async renderDocument(root: ReactNode, options: SsrDocumentOptions): Promise<ReadableStream<Uint8Array>> {
     const stream = await renderToReadableStream(root, {
-      bootstrapScriptContent: options.bootstrap,
+      //? React puts it on the scripts it writes itself: the ones that reveal a streamed boundary name ids, so no
+      //? hash known ahead of the render covers them.
+      nonce: options.nonce,
       //? Past this size React outlines a finished boundary into a hidden segment `$RC` reveals, throttled to 300ms.
       progressiveChunkSize: Number.POSITIVE_INFINITY,
       onError: (error) => options.onError(error),
@@ -725,8 +634,7 @@ export class SsrFromRscRenderer {
       SsrFromRscRenderer.#logger.debug(`[SSR] ${phase} aborted: ${description}`);
       return;
     }
-    const path = input.request ? new URL(input.request.url).pathname : "unknown";
-    SsrFromRscRenderer.#logger.error(`[SSR] ${phase} failed path=${path}: ${description}`);
+    PageFailure.htmlRender(error, { logger: SsrFromRscRenderer.#logger, request: input.request, phase, description });
   }
 
   static #isExpectedRequestAbort(error: unknown): boolean {
@@ -755,49 +663,5 @@ export class SsrFromRscRenderer {
   static #isExpectedLateRedirectError(error: unknown): boolean {
     if (!(error instanceof Error)) return false;
     return error.message === "Connection closed." || error.name === "AkanRedirectError";
-  }
-
-  // A stream splice, not a React <head> child: once any module fetch starts, the spec flips the document's
-  // "allow-import-maps" bit and no later importmap is acquired.
-  static #injectHeadScriptsIntoHead(
-    stream: ReadableStream<Uint8Array>,
-    options: {
-      importmap?: Record<string, string>;
-      modulePreloads: string[];
-      chunkPreloads: string[];
-      theme?: AkanTheme;
-      injectThemeInitScript?: boolean;
-    },
-  ): ReadableStream<Uint8Array> {
-    const { importmap, modulePreloads, theme, injectThemeInitScript } = options;
-    //? Written before </head>, behind the stylesheet links: ahead of them, the chunk requests held first paint back.
-    const chunkTags = SsrFromRscRenderer.#createModulePreloadTags(options.chunkPreloads);
-    const htmlTheme = theme && theme !== "css" && theme !== "system" ? theme : undefined;
-    const importmapTag =
-      importmap && Object.keys(importmap).length > 0
-        ? `<script type="importmap">${JSON.stringify({ imports: importmap })}</script>`
-        : "";
-    const modulePreloadTags = SsrFromRscRenderer.#createModulePreloadTags(modulePreloads);
-    const shouldInjectThemeScript = theme === "system" || (theme === undefined && injectThemeInitScript);
-    const themeInitTag = shouldInjectThemeScript ? SsrFromRscRenderer.#themeInitScript : "";
-    const tags = `${themeInitTag}${importmapTag}${modulePreloadTags}`;
-    if (!tags && !chunkTags && !htmlTheme) return stream;
-    const htmlOpenRe = /<html(\s[^>]*)?>/i;
-    const withHtmlTheme = (html: string): string => {
-      if (!htmlTheme) return html;
-      return html.replace(htmlOpenRe, (tag) => {
-        if (/\sdata-theme\s*=/.test(tag)) return tag;
-        return tag.replace(/>$/, ` data-theme="${escapeHtmlAttr(htmlTheme)}">`);
-      });
-    };
-    return HeadSplice.into(stream, { afterOpen: tags, beforeClose: chunkTags, rewriteOpening: withHtmlTheme });
-  }
-
-  static #createModulePreloadTags(modules: string[]): string {
-    return modules.map((src) => `<link rel="modulepreload" href="${escapeHtmlAttr(src)}">`).join("");
-  }
-
-  static #createBootstrapModuleScriptTags(bootstrapModules: string[] = []): string {
-    return bootstrapModules.map((src) => `<script type="module" src="${escapeHtmlAttr(src)}"></script>`).join("");
   }
 }

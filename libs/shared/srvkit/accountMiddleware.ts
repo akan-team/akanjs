@@ -11,6 +11,7 @@ import { isAgentToken } from "./agentCall";
 import { isOauthServerClientId } from "./oauthClientRecord";
 import type { OAuthStaticClient } from "./oauthServer";
 import { RevokedSessions } from "./revokedSessions";
+import { WebSession } from "./webSession";
 
 type ScopedAccount = AccessAccount & AuthTokenMeta & { self?: unknown; me?: unknown; exp?: number };
 
@@ -74,9 +75,17 @@ export class AccountMiddleware implements Middleware {
         context.transport === "http" ? context.getHttpContext().req : context.getWebSocketContext().ws.data
       ) as Partial<ReqType>;
       const cookieJwt = readSessionToken(CookieJar.parse(req.headers?.get("cookie"))).token;
-      const authorization = req.headers?.get("authorization") ?? (cookieJwt ? `Bearer ${cookieJwt}` : undefined);
+      const cookie = cookieJwt ? `Bearer ${cookieJwt}` : undefined;
+      const header = req.headers?.get("authorization") ?? undefined;
+      const authorization = header ?? cookie;
+      //* A tab keeps the token it loaded with after a page load or another tab renewed the session cookie.
       const resolve = () =>
-        resolveJwt<ScopedAccount>(jwtSecret, authorization, { appName, environment } as unknown as ScopedAccount);
+        resolveJwt<ScopedAccount>(
+          jwtSecret,
+          authorization,
+          { appName, environment } as unknown as ScopedAccount,
+          header ? cookie : undefined,
+        );
       const account =
         context.transport === "websocket"
           ? await AccountMiddleware.#verifiedOnSocket(req, authorization, resolve)
@@ -87,7 +96,7 @@ export class AccountMiddleware implements Middleware {
         account: live ?? ({ appName, environment } as Account),
         userAgent: req.headers?.get("user-agent") ?? undefined,
       });
-      return await next();
+      return await WebSession.answering(context.transport === "http" ? (req as Request) : undefined, next);
     };
   }
 

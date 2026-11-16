@@ -9,8 +9,8 @@ export default page()
     const title = lang === "ko" ? "Observability: 로깅 | Akan.js" : "Observability: Logging | Akan.js";
     const description =
       lang === "ko"
-        ? "Logger 레벨과 파일 로테이션, 라이브 tail, 요청 라인, NDJSON stdout."
-        : "Logger levels, file rotation, live tail, the request line and NDJSON stdout.";
+        ? "Logger 레벨과 파일 로테이션, 라이브 tail, 요청 라인, NDJSON stdout, OTLP 내보내기."
+        : "Logger levels, file rotation, live tail, the request line, NDJSON stdout and OTLP export.";
     return (
       <>
         <title>{title}</title>
@@ -410,8 +410,8 @@ export default page()
       {
         name: ["db", "dbMs", "cacheHit"],
         desc: l.trans({
-          en: "Query count, query time and cache hit ratio, only under `AKAN_TRACE=1`.",
-          ko: "쿼리 수, 쿼리 시간, 캐시 적중률입니다. `AKAN_TRACE=1`일 때만 붙습니다.",
+          en: "SQL statements sent, their time with any wait, and the cache hit ratio, only under `AKAN_TRACE=1`. A statement slower than `AKAN_LOG_SLOW_STATEMENT_MS` writes its own `SlowStatement` line with this call's `traceId` (see Metrics, Find Slow Statements).",
+          ko: "보낸 SQL 문 수, 기다린 시간을 포함한 그 시간, 캐시 적중률입니다. `AKAN_TRACE=1`일 때만 붙습니다. `AKAN_LOG_SLOW_STATEMENT_MS`보다 느린 문은 이 호출의 `traceId`를 단 `SlowStatement` 줄을 따로 씁니다(메트릭 문서의 느린 SQL 문 찾기 참고).",
         }),
       },
       {
@@ -627,6 +627,196 @@ export default page()
               <code>json-file</code>은 설정하지 않으면 회전하지 않습니다.
             </strong>{" "}
             <code>max-size</code>와 <code>max-file</code>을 주거나, 드라이버를 수집기로 바꾸세요.
+          </>
+        ),
+      }),
+    ];
+
+    const otlpProcessRows = [
+      {
+        name: "gateway",
+        desc: l.trans({
+          en: "One server span per proxied request, named by its method (`GET`) because the gateway does not match routes, and its own log lines.",
+          ko: "프록시한 요청마다 server span 하나를 보냅니다. gateway는 라우트를 매칭하지 않으므로 이름은 메서드(`GET`)뿐입니다. 자기 로그 줄도 보냅니다.",
+        }),
+      },
+      {
+        name: ["all", "federation", "batch"],
+        desc: l.trans({
+          en: "A server span named after the route pattern it matched, a span per endpoint call such as `query:getUser`, a client span per database call, and its log lines. Each stage of a call (guards, handler, serialize) is a span of its own only under `AKAN_TRACE=1` or a passed `x-akan-debug`. A job is a trace of its own, linked to the one that enqueued it.",
+          ko: "매칭한 라우트 패턴으로 이름 붙인 server span, `query:getUser` 같은 endpoint 호출마다 span, 데이터베이스 호출마다 client span, 그리고 자기 로그 줄을 보냅니다. 호출의 단계(guards, handler, serialize)별 span은 `AKAN_TRACE=1`이거나 `x-akan-debug`가 통과했을 때만 남깁니다. 큐 작업은 자기 trace를 가지며, 작업을 넣은 trace를 link로 가리킵니다.",
+        }),
+      },
+      {
+        name: "rsc-worker",
+        desc: l.trans({
+          en: "The page render span, a child of its replica's server span, and its own log lines. It flushes on SIGTERM and when its replica goes away.",
+          ko: "페이지 렌더 span(replica server span의 자식)과 자기 로그 줄을 보냅니다. SIGTERM을 받거나 replica가 사라질 때 남은 것을 보냅니다.",
+        }),
+      },
+    ];
+
+    const otlpNotes = [
+      l.trans({
+        en: (
+          <>
+            <strong>Sampling is decided once, at the first hop.</strong> The process a request reaches first over TCP —
+            the gateway, or a replica running without one — decides, and the sampled flag of <code>traceparent</code>{" "}
+            carries the decision to the replica and on to the RSC worker. A caller&apos;s <code>traceparent</code>{" "}
+            counts only when <code>AKAN_TRACE_ADOPT</code> trusts the sender; a <code>parentbased_</code> sampler then
+            follows its flag. An untrusted caller&apos;s trace is linked from the first span, with its span id when a{" "}
+            <code>traceparent</code> named one; an <code>x-request-id</code> names none, so it goes as the{" "}
+            <code>akan.trace.link</code> attribute.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>샘플링은 첫 홉에서 한 번 정합니다.</strong> 요청이 TCP로 처음 닿는 프로세스(gateway, gateway가
+            없으면 replica)가 정하고, 그 결정은 <code>traceparent</code>의 sampled 플래그에 실려 replica와 RSC worker로
+            이어집니다. 호출자가 보낸 <code>traceparent</code>는 <code>AKAN_TRACE_ADOPT</code>가 그 송신자를 믿을 때만
+            쓰이고, 그때 <code>parentbased_</code> 샘플러는 그 플래그를 따릅니다. 믿지 않는 호출자의 trace는 첫 span에서
+            link로 가리키고, <code>traceparent</code>가 span id를 알려 줬으면 그것도 함께 담습니다.{" "}
+            <code>x-request-id</code>에는 span id가 없으므로 <code>akan.trace.link</code> 속성으로 보냅니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>
+              <code>AKAN_TRACE</code> and <code>x-akan-debug</code> are separate switches.
+            </strong>{" "}
+            <code>AKAN_TRACE=1</code> records spans for every call into this app&apos;s own metrics and request line.
+            The exporter records a sampled call&apos;s own span and its database spans and sends them out, without
+            joining that aggregate; the per-stage spans come only with <code>AKAN_TRACE=1</code>.{" "}
+            <code>x-akan-debug</code> lowers one request to trace and answers with <code>Server-Timing</code>; it does
+            not change the sampling decision. Any of the three works without the others.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>
+              <code>AKAN_TRACE</code>와 <code>x-akan-debug</code>는 별개의 스위치입니다.
+            </strong>{" "}
+            <code>AKAN_TRACE=1</code>은 모든 호출의 span을 이 앱의 메트릭과 요약 줄에 기록합니다. exporter는 샘플된 호출
+            자신의 span과 데이터베이스 span을 기록해 밖으로 보내고, 그 집계에는 섞지 않습니다. 단계별 span은{" "}
+            <code>AKAN_TRACE=1</code>일 때만 붙습니다. <code>x-akan-debug</code>는 요청 하나를 trace로 낮추고{" "}
+            <code>Server-Timing</code>으로 답할 뿐, 샘플링 결정은 바꾸지 않습니다. 셋은 서로 없이도 동작합니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>What stays out.</strong> Span attributes carry the method, the route pattern, the status and the
+            error type: never a URL with its query, a header value, SQL text or the caller&apos;s user id. A
+            failure&apos;s exception event carries its error code, not its message, which may quote user input.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>보내지 않는 것.</strong> span 속성은 메서드, 라우트 패턴, 상태 코드, 에러 종류만 담습니다. 쿼리가
+            붙은 URL, 헤더 값, SQL 문, 호출자의 user id는 담지 않습니다. 실패의 exception 이벤트도 사용자 입력이 섞일 수
+            있는 메시지 대신 에러 코드를 담습니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>Log records are opt-in.</strong> A record carries the line&apos;s message as its body, its severity,
+            its attrs, the logger&apos;s name and context, the endpoint and origin, a link it was handed, and its trace
+            and span id when written inside a request. Attrs naming a secret are <code>[redacted]</code> when the record
+            is made, before any sink sees them; nothing else is. The message text, and an error&apos;s message and stack
+            where the line carries them, go as written, on this sink as on every other. The floor is the console level
+            the process booted with.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>로그 레코드는 요청할 때만 보냅니다.</strong> 레코드는 로그 줄의 메시지를 본문으로, 그리고 severity,
+            attrs, logger 이름과 context, endpoint와 origin, 넘겨받은 link, 요청 안에서 쓴 줄이면 trace id와 span id를
+            담습니다. 비밀값을 뜻하는 attrs 키는 레코드가 만들어질 때, 어느 sink보다 먼저 <code>[redacted]</code>로
+            바뀌고, 그 밖에는 가리지 않습니다. 메시지 문자열과, 줄에 담긴 에러의 메시지와 stack은 다른 sink와 마찬가지로
+            쓴 그대로 나갑니다. floor는 프로세스가 부팅할 때의 콘솔 레벨입니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>Never in a request&apos;s way.</strong> Spans and records go into a bounded queue that sends a batch
+            when it holds 512, once the call that filled it has returned, or on a timer, with at most two requests in
+            flight. A full queue drops its oldest item and counts it. 429, 502, 503, 504 and an unreachable collector
+            are retried with backoff until the timeout; any other status drops the batch. A failing collector is
+            reported at most once a minute, by host only. The exporter&apos;s own requests are not traced, and its own
+            warnings are not exported.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>요청을 막지 않습니다.</strong> span과 레코드는 크기가 정해진 큐에 들어가고, 512개가 차면 그 큐를
+            채운 호출이 끝난 뒤에, 또는 타이머가 돌 때 배치로 나가며, 동시에 나가는 요청은 둘까지입니다. 큐가 차면 가장
+            오래된 것을 버리고 그 수를 셉니다. 429, 502, 503, 504와 수집기에 닿지 못한 경우만 timeout까지 backoff로
+            재시도하고, 다른 상태는 그 배치를 버립니다. 실패 중인 수집기는 1분에 한 번까지, host만 밝혀 알립니다.
+            exporter 자신의 요청은 trace하지 않고, 자기 경고도 내보내지 않습니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>On the way out,</strong> each process sends what is queued once, without retries, for at most 1.5 s,
+            and a replica under the gateway takes less once its shutdown has used up the gateway&apos;s wait. Whatever
+            is unsent by then is dropped and counted in a last warning. An RSC worker still running 3 s after it was
+            stopped, as one stuck in a render, is killed.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>종료할 때</strong> 프로세스마다 큐에 남은 것을 재시도 없이 한 번, 최대 1.5초 동안 보냅니다. gateway
+            아래의 replica는 종료가 gateway의 대기 시간을 써 버렸으면 그보다 짧게 씁니다. 그때까지 못 보낸 것은 버리고
+            마지막 경고에 그 수를 남깁니다. 멈추라고 한 지 3초가 지나도 살아 있는 RSC worker(렌더에 묶인 경우 등)는
+            강제로 끝냅니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>What it costs</strong> is the sampled share. On <code>apps/minimal</code> behind a gateway with one
+            replica, at 16 concurrent clients on a laptop, three 8 s runs each, an endpoint that only returns a constant
+            served a median 38.3k requests a second with export off (36.6k to 38.5k over six runs), 38.1k at a ratio of
+            0.01 (37.8k to 38.4k) and 28.9k at 1.0 (28.7k to 29.4k), with p50 going from 0.40 to 0.40 to 0.47 ms. A page
+            replayed from the render cache went from 14.4k a second (14.2k to 14.6k) to 14.6k at 0.01 and 13.1k at 1.0
+            (13.0k to 13.3k), p50 1.02 to 1.01 to 1.12 ms. A ratio of 0.01 is therefore within noise, and 1.0 costs
+            about a quarter of this endpoint&apos;s throughput and under a tenth of a cached page&apos;s; a page that
+            renders spends far more per request than the export does.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>비용은 샘플되는 비율만큼 듭니다.</strong> replica 하나인 gateway 뒤의 <code>apps/minimal</code>에
+            노트북에서 동시 클라이언트 16개로 8초씩 세 번 재면, 상수만 돌려주는 엔드포인트가 내보내기를 끄면 초당 중앙값
+            3.83만 요청(여섯 번 3.66만~3.85만), 비율 0.01에서 3.81만(3.78만~3.84만), 1.0에서 2.89만(2.87만~2.94만)이었고
+            p50은 0.40ms, 0.40ms, 0.47ms였습니다. 렌더 캐시에서 다시 내보낸 페이지는 초당 1.44만(1.42만~1.46만)에서
+            0.01에서 1.46만, 1.0에서 1.31만(1.30만~1.33만)이 되었고 p50은 1.02, 1.01, 1.12ms였습니다. 따라서 0.01은 오차
+            안이고, 1.0은 이 엔드포인트의 처리량을 4분의 1쯤, 캐시된 페이지는 10분의 1 아래로 줄입니다. 실제로 렌더하는
+            페이지는 요청마다 내보내기보다 훨씬 많은 시간을 씁니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
+            <strong>JSON bodies only.</strong> A collector that accepts only protobuf will not work; the OpenTelemetry
+            Collector&apos;s <code>otlp</code> receiver accepts both. Bodies are not compressed.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>본문은 JSON뿐입니다.</strong> protobuf만 받는 수집기와는 동작하지 않습니다. OpenTelemetry
+            Collector의 <code>otlp</code> receiver는 둘 다 받습니다. 본문은 압축하지 않습니다.
           </>
         ),
       }),
@@ -1710,8 +1900,8 @@ akan:myapp> .tail off`}
                   type: "1",
                   default: off,
                   desc: l.trans({
-                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per database call among them.",
-                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다. 데이터베이스 호출마다 `db:<model>.<op>` span이 하나씩 들어갑니다.",
+                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per SQL statement sent among them (the first 32 of a request; `db` and `dbMs` count them all, `BEGIN` and `COMMIT` included, without a span), or per model call for a store that sends none through the SQLite or Postgres driver.",
+                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다. 보낸 SQL 문마다 `db:<model>.<op>` span이 하나씩(요청당 처음 32개까지, `db`와 `dbMs`는 `BEGIN`·`COMMIT`을 포함해 전부 세고 둘에는 span이 없습니다) 들어가고, SQLite나 Postgres 드라이버로 문을 보내지 않는 store는 model 호출마다 하나씩 들어갑니다.",
                   }),
                 },
               ]}
@@ -1893,6 +2083,162 @@ akan:myapp> .tail off`}
                   ),
                 })}
               </li>
+            </ul>
+          </Docs.Description>
+        </Scroll.Slide>
+        <Divider />
+
+        <Scroll.Slide id="otlp-export" title={l.trans({ en: "Export: OpenTelemetry", ko: "내보내기: OpenTelemetry" })}>
+          <Docs.Title>{l.trans({ en: "Export: OpenTelemetry", ko: "내보내기: OpenTelemetry" })}</Docs.Title>
+          <Docs.Description>
+            <div>
+              {l.trans({
+                en: "Set an OTLP endpoint and every process sends its spans, and its log lines once you ask for them, to an OpenTelemetry collector over OTLP/HTTP with JSON bodies. It needs no package. With no endpoint set, nothing is created, and a request pays one branch.",
+                ko: "OTLP endpoint를 정하면 프로세스마다 자기 span을, 그리고 따로 요청하면 로그 줄도 OTLP/HTTP(JSON 본문)로 OpenTelemetry 수집기에 보냅니다. 따로 설치할 패키지는 없습니다. endpoint가 없으면 아무것도 만들지 않고, 요청은 분기 하나만 거칩니다.",
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="docker-compose.yml"
+              language="yaml"
+              code={`services:
+  app:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_HEADERS: authorization=Bearer%20<token>
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.05"`}
+            />
+            <Docs.OptionTable
+              items={[
+                {
+                  key: "OTEL_EXPORTER_OTLP_ENDPOINT",
+                  type: "URL",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "The collector's OTLP/HTTP base, such as `http://otel-collector:4318`; `/v1/traces` is appended, and `/v1/logs` once `OTEL_LOGS_EXPORTER=otlp` asks for logs. Unset, along with the two below, means no export.",
+                    ko: "`http://otel-collector:4318` 같은 수집기의 OTLP/HTTP 기본 주소입니다. 뒤에 `/v1/traces`를 붙이고, `OTEL_LOGS_EXPORTER=otlp`로 로그를 요청하면 `/v1/logs`도 붙입니다. 이것과 아래 두 값이 모두 없으면 내보내지 않습니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT",
+                  type: "URL",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "The full URL for spans, used as given. Set alone, only spans are exported.",
+                    ko: "span을 보낼 전체 URL로, 그대로 씁니다. 이것만 정하면 span만 내보냅니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT",
+                  type: "URL",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "The full URL for log records. Set alone, only logs are exported.",
+                    ko: "로그 레코드를 보낼 전체 URL입니다. 이것만 정하면 로그만 내보냅니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_EXPORTER_OTLP_HEADERS",
+                  type: "name=value,…",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "Headers on every export request, percent-encoded; `_TRACES_` and `_LOGS_` forms add to it. The values are credentials and are never logged; a malformed list is ignored with a warning that names only the variable.",
+                    ko: "모든 전송 요청에 붙는 헤더로, 값은 퍼센트 인코딩합니다. `_TRACES_`, `_LOGS_` 형태가 여기에 더해집니다. 값은 자격 증명이라 로그에 남기지 않고, 형식이 틀리면 변수 이름만 밝힌 경고와 함께 무시합니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_SERVICE_NAME",
+                  type: "string",
+                  default: "AKAN_PUBLIC_APP_NAME",
+                  desc: l.trans({
+                    en: "`service.name`. Else `service.name` in `OTEL_RESOURCE_ATTRIBUTES`, else the app name.",
+                    ko: "`service.name`입니다. 없으면 `OTEL_RESOURCE_ATTRIBUTES`의 `service.name`, 그것도 없으면 앱 이름입니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_RESOURCE_ATTRIBUTES",
+                  type: "key=value,…",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "Extra resource attributes. Akan adds `akan.process.role`, `akan.replica.index`, `service.version` from `AKAN_BUILD_ID`, `deployment.environment.name`, `host.name` and `process.pid`.",
+                    ko: "추가 resource 속성입니다. Akan은 `akan.process.role`, `akan.replica.index`, `AKAN_BUILD_ID`에서 온 `service.version`, `deployment.environment.name`, `host.name`, `process.pid`를 더합니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_TRACES_SAMPLER",
+                  type: "always_on | always_off | traceidratio | parentbased_…",
+                  default: "parentbased_always_on",
+                  desc: l.trans({
+                    en: "The head sampler. Any other value is logged once and exports no spans.",
+                    ko: "head 샘플러입니다. 다른 값은 한 번 경고를 남기고 span을 내보내지 않습니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_TRACES_SAMPLER_ARG",
+                  type: "0 – 1",
+                  default: "1.0",
+                  desc: l.trans({
+                    en: "The ratio for `traceidratio`, read from the trace id, so every process agrees on it.",
+                    ko: "`traceidratio`의 비율입니다. trace id로 판단하므로 모든 프로세스가 같은 결정을 내립니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_LOGS_EXPORTER",
+                  type: "otlp | none",
+                  default: l.trans({ en: "unset", ko: "없음" }),
+                  desc: l.trans({
+                    en: "Logs go only with `otlp` here or `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` set; unlike the OpenTelemetry default, the generic endpoint alone sends spans only, since a line's text is sent as written. `none` keeps them home. `OTEL_TRACES_EXPORTER=none` turns spans off.",
+                    ko: "여기에 `otlp`를 주거나 `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT`를 정해야만 로그가 나갑니다. 로그 줄의 문구는 쓴 그대로 나가므로, OpenTelemetry 기본값과 달리 일반 endpoint만으로는 span만 보냅니다. `none`이면 보내지 않습니다. `OTEL_TRACES_EXPORTER=none`은 span을 끕니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_EXPORTER_OTLP_PROTOCOL",
+                  type: "http/json",
+                  default: "http/json",
+                  desc: l.trans({
+                    en: "`http/protobuf` still sends JSON, with a warning; `grpc` exports nothing.",
+                    ko: "`http/protobuf`이어도 경고와 함께 JSON을 보내고, `grpc`이면 내보내지 않습니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_EXPORTER_OTLP_TIMEOUT",
+                  type: "ms",
+                  default: "10000",
+                  desc: l.trans({
+                    en: "One export request, retries included; `_TRACES_` and `_LOGS_` forms override it.",
+                    ko: "재시도를 포함한 전송 요청 하나의 제한 시간입니다. `_TRACES_`, `_LOGS_` 형태가 우선합니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_BSP_* / OTEL_BLRP_*",
+                  type: "number",
+                  default: "2048 · 512 · 5000 / 1000",
+                  desc: l.trans({
+                    en: "`MAX_QUEUE_SIZE`, `MAX_EXPORT_BATCH_SIZE` and `SCHEDULE_DELAY` (ms) for spans and for logs.",
+                    ko: "span과 로그 각각의 `MAX_QUEUE_SIZE`, `MAX_EXPORT_BATCH_SIZE`, `SCHEDULE_DELAY`(ms)입니다.",
+                  }),
+                },
+                {
+                  key: "OTEL_SDK_DISABLED",
+                  type: "true",
+                  default: off,
+                  desc: l.trans({
+                    en: "Turns all of it off, whatever else is set.",
+                    ko: "다른 값과 상관없이 전부 끕니다.",
+                  }),
+                },
+              ]}
+            />
+            <Docs.SubSubTitle>
+              {l.trans({ en: "What each process sends", ko: "프로세스마다 보내는 것" })}
+            </Docs.SubSubTitle>
+            <Docs.IntroTable type={l.trans({ en: "Role", ko: "role" })} items={otlpProcessRows} />
+            <ul className={bulletList}>
+              {otlpNotes.map((note, idx) => (
+                <li key={idx}>{note}</li>
+              ))}
             </ul>
           </Docs.Description>
         </Scroll.Slide>

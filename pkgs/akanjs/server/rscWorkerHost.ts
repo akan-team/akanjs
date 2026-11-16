@@ -2,6 +2,7 @@ import { AkanError } from "akanjs/base";
 import { Logger, type LogRecord } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { AkanMetricFamily, AkanMetricsReport } from "akanjs/service";
+import { ErrorReporting } from "../signal/errorReporting";
 import type {
   PagePromptEntry,
   PagePromptRun,
@@ -10,6 +11,7 @@ import type {
 } from "../signal/mcp/pagePrompt";
 import type { ClientManifest } from "./artifact";
 import type { RouteCacheInvalidation, RouteCacheRenderState } from "./cachePolicy";
+import { ForwardedError, type SerializedError } from "./forwardedError";
 import { MetricAggregate } from "./metrics/metricAggregate";
 import { type RscAdoptedBundle, RscHostReloads, type RscWorkerReloadInput } from "./rscHostReloads";
 import type { RscRedirectMethod, RscRedirectStatus, RscRenderResult } from "./rscHostRenderStream";
@@ -128,6 +130,13 @@ type RscInMsg =
   | { type: "not-found"; requestId: string }
   | { type: "metrics"; metrics: AkanMetricsReport }
   | { type: "log.records"; records: LogRecord[]; dropped?: number }
+  | {
+      type: "render-error";
+      error: SerializedError;
+      digest: string;
+      routeId: string | null;
+      traceId: string | null;
+    }
   | { type: "page-prompts.result"; requestId: string; result: PagePromptEntry[] }
   | { type: "page-prompt.result"; requestId: string; result: PagePromptRun }
   | { type: "page-prompt.draw.result"; requestId: string; result: RscPagePromptDrawn }
@@ -249,7 +258,7 @@ export class RscWorker {
     this.#worker.status = "stopped";
     this.#worker.restart.cancel();
     this.#recycler.stop();
-    this.#worker.proc.kill();
+    RscWorkerProcess.terminate(this.#worker.proc);
   }
 
   setLogLevel(minSev: number | null) {
@@ -377,6 +386,14 @@ export class RscWorker {
       case "log.records":
         this.onLogRecords?.(message.records, message.dropped ?? 0);
         return;
+      case "render-error":
+        ErrorReporting.report(new ForwardedError(message.error), {
+          source: "render",
+          digest: message.digest,
+          routeId: message.routeId,
+          traceId: message.traceId,
+        });
+        return;
       case "page-prompts.result":
       case "page-prompt.result":
       case "page-prompt.draw.result":
@@ -391,7 +408,7 @@ export class RscWorker {
             this.#worker.rejectReady(new AkanError("rscWorkerFailed", String(message.message)));
           } else {
             this.#bootFailed(proc, String(message.message));
-            proc.kill();
+            RscWorkerProcess.terminate(proc);
           }
           return;
         }

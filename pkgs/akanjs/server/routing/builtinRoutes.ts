@@ -4,6 +4,7 @@ import { DictionaryLookup, DictionaryRegistry } from "akanjs/dictionary";
 import { createOpenApiDocument } from "../../signal/openapi";
 import { FetchSerializer } from "../../signal/serializer";
 import type { AkanServer } from "../akanServer";
+import { ClientErrorReport } from "../clientErrorReport";
 import { DevtoolsRouter } from "../devtools";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { ServerLogging } from "../logging/serverLogging";
@@ -111,6 +112,7 @@ export class BuiltinRoutes {
             rscWorker: webRouter?.rscWorkerStatus ?? null,
             metrics: this.#metrics.last,
             families: () => this.#metrics.families(),
+            statements: () => this.#metrics.statements(),
           }),
           this.#logging.stream,
           this.#opsRoute(),
@@ -131,7 +133,7 @@ export class BuiltinRoutes {
       getStatus: () => this.#owner.status,
       ...DevtoolsRouter.buildsFrom(webRouter),
     }).createRoutes();
-    return { ...openapiRoutes, ...mcpRoutes, ...devtoolsRoutes, ...soloRoutes };
+    return { ...openapiRoutes, ...mcpRoutes, ...devtoolsRoutes, ...soloRoutes, ...ClientErrorReport.routes() };
   }
 
   // A lib's dictionaries fix their own locales, so an app's extra locale silently falls back to the default one.

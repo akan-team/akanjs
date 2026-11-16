@@ -424,7 +424,8 @@ describe("A route level that fails after the first byte", () => {
 });
 
 describe("The root layout's own level", () => {
-  const markupBeforeScripts = (html: string) => html.slice(html.indexOf("<body>"), html.indexOf("<script"));
+  const markupBeforeScripts = (html: string) =>
+    html.slice(html.indexOf("<body>"), html.indexOf("<script", html.indexOf("<body>")));
 
   test("renders the same markup and useId values inside its boundary as without it, and hydrates them in place", async () => {
     await withRouteContentWorker(async (render) => {
@@ -487,7 +488,9 @@ describe("The root layout's own level", () => {
         const early = await render("rootearly").catch((error: unknown) => error);
         expect(early).toMatchObject({ message: expect.stringContaining("got redirect") });
         const moved = await render("rootmoved");
-        expect(moved.html).toContain('<script>window.location.replace("/en/elsewhere")</script>');
+        expect(moved.html).toMatch(
+          /<script type="application\/json" data-akan="[\w-]+">\["redirect","replace","\/en\/elsewhere"\]<\/script>/,
+        );
         const gone = await render("rootgone");
         expect(gone.status).toBe(200);
 

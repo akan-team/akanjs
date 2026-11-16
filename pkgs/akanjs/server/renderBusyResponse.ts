@@ -1,6 +1,8 @@
 import type { Logger } from "akanjs/common";
+import { applySecurityHeaders } from "./assetHeaders";
 import { GatewayStatusPage } from "./gateway/gatewayStatusPage";
 import type { RscRenderRefusal } from "./rscRenderRefusal";
+import { ScriptPolicy } from "./scriptPolicy";
 
 export class RenderBusyResponse {
   static readonly #retryAfterSeconds = 1;
@@ -50,11 +52,14 @@ export class RenderBusyResponse {
   document(req: Request, refusal: RscRenderRefusal): Response {
     this.#note(refusal);
     const accept = req.headers.get("accept") ?? "";
-    if (accept.includes("text/html"))
+    if (accept.includes("text/html")) {
+      const headers = new Headers({ "content-type": "text/html; charset=utf-8", "cache-control": "no-store" });
+      const scripts = { hashes: [ScriptPolicy.hashOf(RenderBusyResponse.script)] };
       return RenderBusyResponse.#answer(
         RenderBusyResponse.#html,
-        GatewayStatusPage.headers("text/html; charset=utf-8"),
+        applySecurityHeaders(headers, { html: true, scripts }),
       );
+    }
     if (!accept.includes("application/json"))
       return RenderBusyResponse.#answer(
         RenderBusyResponse.#detail,

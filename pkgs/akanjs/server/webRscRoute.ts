@@ -1,4 +1,5 @@
 import { type AkanI18nConfig, LocalePath } from "akanjs/common";
+import { SCRIPT_NONCE_HEADER } from "akanjs/fetch";
 import { SignalContext } from "../signal/signalContext";
 import { type RouteSeedIndex, RouteSeedIndexStore } from "./artifact";
 import { applySecurityHeaders } from "./assetHeaders";
@@ -78,7 +79,7 @@ export class WebRscRoute {
         try {
           return page.finish(await this.#navigate(req, prefetch, page));
         } catch (err) {
-          return page.finish(context.rscErrorResponse("__rsc", err));
+          return page.finish(context.rscErrorResponse("__rsc", err, page.route));
         }
       }),
       ...DevRoutes.mount({
@@ -123,6 +124,8 @@ export class WebRscRoute {
     await SessionRefresh.apply(req);
     const manifest = await context.ensureRoute(targetUrl, page);
     const rscHeaders = new Headers(req.headers);
+    //? Security: only a document's render carries a nonce, the one its response sends; a caller's header is not one.
+    rscHeaders.delete(SCRIPT_NONCE_HEADER);
     if (normalizedTarget.basePath) rscHeaders.set("x-base-path", normalizedTarget.basePath);
     // No WebProxy runs on /__rsc: these are the headers LocaleWebProxy gives a page load of this URL.
     if (targetLocale) {

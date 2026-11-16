@@ -25,6 +25,9 @@ apps, heads, CSR root layouts, lib pages, `devOnly`: `pageRule`.
   receives it.
 - `.head()` takes JSX or a function returning it — never a metadata object; deeper heads replace by tag identity,
   and a canonical link / `og:url` comes only from the page's own `.head()`.
+- An inline `<script>` in a `.head()` is named in the page's script policy, reported now and refused from 3.5.0:
+  `scriptHashes("sha256-…")` for a constant snippet (the page stays cacheable), `nonce={scriptNonce()}` for anything
+  else (the page turns dynamic); both from `akanjs/client`, called in the `.head()`.
 - In a CSR bundle a root layout's own markup is hidden: what a person must see from it renders through
   `createPortal(…, document.body)`.
 - `libs/<lib>/page` reaches an app through `syncPageLibs`, linked into the generated `page/(libs)/(<lib>)`; edit the

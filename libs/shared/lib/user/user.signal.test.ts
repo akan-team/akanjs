@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it, setSystemTime } from "bun:test";
 import * as adminSpec from "@libs/shared/lib/admin/admin.signal.spec";
 import * as userSpec from "@libs/shared/lib/user/user.signal.spec";
 import { dayjs, getApiPrefix } from "akanjs/base";
+import { sessionTokenContract } from "akanjs/common";
 import type { Account } from "akanjs/fetch";
 import { OAuthPkce } from "akanjs/server";
 import { getOrSetupSignalTestFetch, sample } from "akanjs/test";
@@ -970,5 +971,398 @@ describe("SSO Sign-up", () => {
     if (!first.prepareUserId) throw new Error("the sign-in opened no draft");
     await userService.userModel.setSsoInPrepareUser(first.prepareUserId, userSpec.testEmail(), "google");
     expect(await verifiesOf(first.prepareUserId)).toEqual(["google"]);
+  });
+});
+
+describe("Cookie-only Web Sessions", () => {
+  interface TokenBody {
+    jwt?: string;
+    refreshToken?: string;
+  }
+  let fetch: typeof sharedFetch;
+  const asking = sessionTokenContract.makeHeaders();
+  const url = (path: string) => `http://localhost:${process.env.PORT}${getApiPrefix()}/user/${path}`;
+  const post = (path: string, body: object, headers: Record<string, string> = {}) =>
+    globalThis.fetch(url(path), {
+      method: "POST",
+      headers: { "content-type": "application/json", ...headers },
+      body: JSON.stringify(body),
+    });
+  const selfIdOf = async (cookie: string) => {
+    const self = (await (await globalThis.fetch(url("getSelf"), { headers: { cookie } })).json()) as {
+      id?: string;
+    } | null;
+    return self?.id ?? null;
+  };
+  const setCookiesOf = (response: Response) =>
+    response.headers.getSetCookie().filter((entry) => !entry.includes("Max-Age=0"));
+  const cookieOf = (response: Response) =>
+    setCookiesOf(response)
+      .map((entry) => entry.split(";")[0])
+      .join("; ");
+  const sessionCookieOf = (response: Response) =>
+    setCookiesOf(response).find((entry) => /^(__Host-)?jwt:[^=.]+=/.test(entry) && entry.includes("HttpOnly"));
+  const refreshCookieOf = (response: Response) =>
+    setCookiesOf(response).find((entry) => /^(__Host-)?userRefreshToken:/.test(entry) && entry.includes("HttpOnly"));
+  const claimsOf = (response: Response) => {
+    const claims = setCookiesOf(response).find((entry) => /^(__Host-)?jwt:[^=]+\.claims=/.test(entry)) ?? "";
+    const [pair = ""] = claims.split(";");
+    return decodeJwtPayload<{ exp: number; iat: number }>(decodeURIComponent(pair.slice(pair.indexOf("=") + 1)));
+  };
+  const withCookieOnly = async (run: () => Promise<void>) => {
+    const { WebSession } = await import("@libs/shared/srvkit");
+    WebSession.configure({ cookieOnly: true });
+    try {
+      await run();
+    } finally {
+      WebSession.configure();
+    }
+  };
+  const signup = async () => {
+    const credentials = { accountId: userSpec.testEmail(), password: sample.string({ length: 12 }) };
+    const { userId, signupToken } = await fetch.generatePrepareUser(null);
+    await fetch.setAccountIdInPrepareUser(userId, credentials.accountId, signupToken);
+    await fetch.requestEmailCodeInPrepareUser(userId, signupToken);
+    await fetch.verifyEmailInPrepareUser(userId, userSpec.testEmailCode, signupToken);
+    await fetch.setPasswordInPrepareUser(userId, credentials.accountId, credentials.password, signupToken);
+    await fetch.activateUser(userId, signupToken);
+    return { userId, credentials };
+  };
+
+  beforeAll(async () => {
+    fetch = await getOrSetupSignalTestFetch<typeof sharedFetch>();
+  });
+
+  it("answers sign-in and refresh with the tokens in the body and in cookies while the option is off", async () => {
+    const { credentials } = await signup();
+    const signedIn = await post("signinWithPassword", credentials);
+    const body = (await signedIn.json()) as TokenBody;
+    expect(body.jwt).toBeTruthy();
+    expect(body.refreshToken).toBeTruthy();
+    expect(sessionCookieOf(signedIn)).toBeTruthy();
+    expect(refreshCookieOf(signedIn)).toBeTruthy();
+    const refreshed = await post("refreshJwt", { refreshToken: null }, { cookie: cookieOf(signedIn) });
+    const rotated = (await refreshed.json()) as TokenBody;
+    expect(rotated.jwt).toBeTruthy();
+    expect(rotated.refreshToken).toBeTruthy();
+    expect(sessionCookieOf(refreshed)).toBeTruthy();
+  });
+
+  it("answers a page's sign-in and refresh with the session cookies alone once the option is on", async () => {
+    const { userId, credentials } = await signup();
+    await withCookieOnly(async () => {
+      const signedIn = await post("signinWithPassword", credentials);
+      expect(signedIn.ok).toBe(true);
+      const body = (await signedIn.json()) as TokenBody;
+      expect(body.jwt).toBe("");
+      expect(body).not.toHaveProperty("refreshToken");
+      expect(sessionCookieOf(signedIn)).toBeTruthy();
+      expect(refreshCookieOf(signedIn)).toBeTruthy();
+      expect(await selfIdOf(cookieOf(signedIn))).toBe(userId);
+
+      const refreshed = await post("refreshJwt", { refreshToken: null }, { cookie: cookieOf(signedIn) });
+      expect(refreshed.ok).toBe(true);
+      const rotated = (await refreshed.json()) as TokenBody;
+      expect(rotated.jwt).toBe("");
+      expect(rotated).not.toHaveProperty("refreshToken");
+      expect(refreshCookieOf(refreshed)).toBeTruthy();
+      expect(refreshCookieOf(refreshed)).not.toBe(refreshCookieOf(signedIn));
+      expect(await selfIdOf(cookieOf(refreshed))).toBe(userId);
+    });
+  });
+
+  it("keeps the tokens out of the body for a caller that holds the session cookie, whatever it asks for", async () => {
+    const { credentials } = await signup();
+    await withCookieOnly(async () => {
+      const cookie = cookieOf(await post("signinWithPassword", credentials));
+      for (const claim of [asking, { origin: "app://localhost" }, { ...asking, origin: "app://localhost" }]) {
+        const refreshed = await post("refreshJwt", { refreshToken: null }, { ...claim, cookie });
+        expect(refreshed.ok).toBe(true);
+        const body = (await refreshed.json()) as TokenBody;
+        expect(body.jwt).toBe("");
+        expect(body).not.toHaveProperty("refreshToken");
+        const signedIn = await post("signinWithPassword", credentials, { ...claim, cookie });
+        expect(await signedIn.json()).toEqual({ jwt: "", expiresAt: expect.any(String) });
+      }
+    });
+  });
+
+  it("hands a caller with no cookie session the tokens in the body, and sets it no session cookie", async () => {
+    const { userId, credentials } = await signup();
+    await withCookieOnly(async () => {
+      for (const claim of [asking, { origin: "app://localhost" }]) {
+        const signedIn = await post("signinWithPassword", credentials, claim);
+        const body = (await signedIn.json()) as TokenBody;
+        expect(body.jwt).toBeTruthy();
+        expect(body.refreshToken).toBeTruthy();
+        expect(sessionCookieOf(signedIn)).toBeUndefined();
+        expect(refreshCookieOf(signedIn)).toBeUndefined();
+        const refreshed = await post("refreshJwt", { refreshToken: body.refreshToken }, claim);
+        const rotated = (await refreshed.json()) as TokenBody;
+        expect(rotated.jwt).toBeTruthy();
+        expect(rotated.refreshToken).not.toBe(body.refreshToken);
+        expect(sessionCookieOf(refreshed)).toBeUndefined();
+      }
+      const accessToken = await fetch.signinWithPassword(credentials.accountId, credentials.password);
+      const signedIn = fetch.clone({ jwt: accessToken.jwt }) as typeof sharedFetch;
+      expect((await signedIn.getSelf())?.id).toBe(userId);
+      expect((await signedIn.refreshJwt(accessToken.refreshToken ?? null)).jwt).toBeTruthy();
+    });
+  });
+
+  it("signs an access token for one hour, and renews an expired one from the refresh cookie alone", async () => {
+    const { userId, credentials } = await signup();
+    await withCookieOnly(async () => {
+      setSystemTime(dayjs().subtract(2, "hour").toDate());
+      let signedIn: Response;
+      try {
+        signedIn = await post("signinWithPassword", credentials);
+      } finally {
+        setSystemTime();
+      }
+      const { exp, iat } = claimsOf(signedIn);
+      expect(exp - iat).toBe(60 * 60);
+      expect(exp * 1000).toBeLessThan(Date.now());
+      expect(await selfIdOf(cookieOf(signedIn))).toBeNull();
+
+      const refreshed = await post("refreshJwt", { refreshToken: null }, { cookie: cookieOf(signedIn) });
+      expect(refreshed.ok).toBe(true);
+      expect(claimsOf(refreshed).exp * 1000).toBeGreaterThan(Date.now() + 55 * 60 * 1000);
+      expect(await selfIdOf(cookieOf(refreshed))).toBe(userId);
+    });
+  });
+
+  it("keeps seven days for a caller that holds its tokens itself and gives a browser one hour, at sign-in and refresh, with the option on or off", async () => {
+    const { credentials } = await signup();
+    const hour = 60 * 60;
+    const secondsOf = ({ exp, iat }: { exp: number; iat: number }) => exp - iat;
+    const bodySecondsOf = async (response: Response) =>
+      secondsOf(decodeJwtPayload<{ exp: number; iat: number }>(((await response.json()) as TokenBody).jwt ?? ""));
+    const ownHost = { ...asking, origin: `http://localhost:${process.env.PORT}` };
+    const bothKinds = async () => {
+      for (const claim of [asking, { origin: "app://localhost" }]) {
+        const signedIn = await post("signinWithPassword", credentials, claim);
+        const body = (await signedIn.clone().json()) as TokenBody;
+        expect(await bodySecondsOf(signedIn)).toBe(7 * 24 * hour);
+        const refreshed = await post("refreshJwt", { refreshToken: body.refreshToken }, claim);
+        expect(await bodySecondsOf(refreshed)).toBe(7 * 24 * hour);
+      }
+
+      const signedIn = await post("signinWithPassword", credentials);
+      expect(secondsOf(claimsOf(signedIn))).toBe(hour);
+      let cookie = cookieOf(signedIn);
+      for (const claim of [{}, asking, { origin: "app://localhost" }]) {
+        const refreshed = await post("refreshJwt", { refreshToken: null }, { ...claim, cookie });
+        expect(secondsOf(claimsOf(refreshed))).toBe(hour);
+        cookie = cookieOf(refreshed);
+      }
+      expect(await bodySecondsOf(await post("signinWithPassword", credentials, ownHost))).toBe(hour);
+    };
+
+    await bothKinds();
+    await withCookieOnly(bothKinds);
+  });
+
+  describe("a browser signed in as user and admin, one of whose sessions ended", () => {
+    interface Claims {
+      exp: number;
+      self?: { id: string };
+      me?: { id: string };
+    }
+    const adminUrl = (path: string) => `http://localhost:${process.env.PORT}${getApiPrefix()}/admin/${path}`;
+    const postAdmin = (path: string, body: object, cookie: string) =>
+      globalThis.fetch(adminUrl(path), {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify(body),
+      });
+    const jarAfter = (cookie: string, response: Response) => {
+      const jar = new Map(cookie.split("; ").map((pair) => [pair.slice(0, pair.indexOf("=")), pair] as const));
+      for (const entry of response.headers.getSetCookie()) {
+        const [pair = ""] = entry.split(";");
+        const name = pair.slice(0, pair.indexOf("="));
+        if (entry.includes("Max-Age=0")) jar.delete(name);
+        else jar.set(name, pair);
+      }
+      return [...jar.values()].join("; ");
+    };
+    const claimsIn = (cookie: string) => {
+      const pair = cookie.split("; ").find((entry) => /^(__Host-)?jwt:[^=]+\.claims=/.test(entry));
+      return pair ? decodeJwtPayload<Claims>(decodeURIComponent(pair.slice(pair.indexOf("=") + 1))) : null;
+    };
+    const without = (cookie: string, name: RegExp) =>
+      cookie
+        .split("; ")
+        .map((pair) => (name.test(pair) ? `${pair.slice(0, pair.indexOf("="))}=${crypto.randomUUID()}` : pair))
+        .join("; ");
+    const adminIdOf = async (cookie: string) => {
+      const me = (await (await globalThis.fetch(adminUrl("me"), { headers: { cookie } })).json()) as {
+        id?: string;
+      } | null;
+      return me?.id ?? null;
+    };
+    const refreshUser = (cookie: string) => post("refreshJwt", { refreshToken: null }, { cookie });
+    const refreshAdmin = (cookie: string) => postAdmin("refreshAdminJwt", { refreshToken: null }, cookie);
+    const signinBoth = async ({ hoursAgo = 0 } = {}) => {
+      const { userId, credentials } = await signup();
+      const userService = await liveUserService(await userSpec.getUserAgentWithPassword());
+      const { adminService } = userService as unknown as { adminService: srv.AdminService };
+      const adminLogin = { accountId: userSpec.testEmail(), password: sample.string({ length: 12 }) };
+      const admin = await adminService.createAdmin({ accountId: adminLogin.accountId } as never);
+      await adminService.setPassword(admin.id, adminLogin.password);
+      if (hoursAgo) setSystemTime(dayjs().subtract(hoursAgo, "hour").toDate());
+      try {
+        const asAdmin = await postAdmin("signinAdmin", adminLogin, "");
+        const asBoth = await post("signinWithPassword", credentials, { cookie: cookieOf(asAdmin) });
+        const cookie = jarAfter(cookieOf(asAdmin), asBoth);
+        expect(claimsIn(cookie)).toMatchObject({ self: { id: userId }, me: { id: admin.id } });
+        return { userId, adminId: admin.id, cookie };
+      } finally {
+        if (hoursAgo) setSystemTime();
+      }
+    };
+    const adminEnded = (cookie: string) => without(cookie, /^(__Host-)?adminRefreshToken:/);
+    const userEnded = (cookie: string) => without(cookie, /^(__Host-)?userRefreshToken:/);
+    const eachOption = async (run: (cookieOnly: boolean) => Promise<void>) => {
+      await run(false);
+      await withCookieOnly(() => run(true));
+    };
+
+    it("keeps the user signed in when the admin refresh comes after the user's, past the token's expiry", async () => {
+      await eachOption(async (cookieOnly) => {
+        const { userId, cookie } = await signinBoth({ hoursAgo: 2 });
+        const afterUser = jarAfter(adminEnded(cookie), await refreshUser(adminEnded(cookie)));
+        expect(claimsIn(afterUser)?.me).toBeUndefined();
+
+        const ended = await refreshAdmin(afterUser);
+        expect(ended.ok).toBe(true);
+        const body = (await ended.json()) as TokenBody;
+        const survivor = jarAfter(afterUser, ended);
+        expect(claimsIn(survivor)).toMatchObject({ self: { id: userId }, exp: claimsIn(afterUser)?.exp });
+        expect(claimsIn(survivor)?.me).toBeUndefined();
+        expect(survivor).not.toMatch(/adminRefreshToken:/);
+        expect(survivor).toMatch(/userRefreshToken:/);
+        expect(await selfIdOf(survivor)).toBe(userId);
+        expect(await adminIdOf(survivor)).toBeNull();
+        if (cookieOnly) expect(body.jwt).toBe("");
+        else expect(decodeJwtPayload<Claims>(body.jwt ?? "")).toMatchObject({ self: { id: userId } });
+        expect(body).not.toHaveProperty("refreshToken");
+      });
+    });
+
+    it("signs the browser out of the admin session alone when the admin refresh comes first, past the token's expiry", async () => {
+      await eachOption(async () => {
+        const { userId, cookie } = await signinBoth({ hoursAgo: 2 });
+        const ended = await refreshAdmin(adminEnded(cookie));
+        expect(ended.ok).toBe(true);
+        expect(((await ended.json()) as TokenBody).jwt).toBe("");
+        const afterAdmin = jarAfter(adminEnded(cookie), ended);
+        expect(claimsIn(afterAdmin)).toBeNull();
+        expect(afterAdmin).not.toMatch(/adminRefreshToken:/);
+
+        const survivor = jarAfter(afterAdmin, await refreshUser(afterAdmin));
+        expect(claimsIn(survivor)?.me).toBeUndefined();
+        expect(await selfIdOf(survivor)).toBe(userId);
+        expect(await adminIdOf(survivor)).toBeNull();
+      });
+    });
+
+    it("drops an ended admin identity from a token that has not expired, in either order, and extends nothing", async () => {
+      await eachOption(async () => {
+        for (const userFirst of [true, false]) {
+          const { userId, adminId, cookie } = await signinBoth();
+          const start = adminEnded(cookie);
+          const before = userFirst ? jarAfter(start, await refreshUser(start)) : start;
+          expect(claimsIn(before)).toMatchObject({ self: { id: userId }, me: { id: adminId } });
+
+          const ended = await refreshAdmin(before);
+          expect(ended.ok).toBe(true);
+          const afterAdmin = jarAfter(before, ended);
+          expect(claimsIn(afterAdmin)).toMatchObject({ self: { id: userId }, exp: claimsIn(before)?.exp });
+          expect(claimsIn(afterAdmin)?.me).toBeUndefined();
+          expect(afterAdmin).not.toMatch(/adminRefreshToken:/);
+
+          const survivor = userFirst ? afterAdmin : jarAfter(afterAdmin, await refreshUser(afterAdmin));
+          expect(claimsIn(survivor)?.me).toBeUndefined();
+          expect(await selfIdOf(survivor)).toBe(userId);
+          expect(await adminIdOf(survivor)).toBeNull();
+        }
+      });
+    });
+
+    it("ends the whole session when the admin session ended and the user in the token can no longer sign in", async () => {
+      const { userId, cookie } = await signinBoth();
+      const userService = await liveUserService(await userSpec.getUserAgentWithPassword());
+      await userService.restrictUser(userId, "test", dayjs().add(1, "day"));
+      const ended = await refreshAdmin(adminEnded(cookie));
+      expect(ended.ok).toBe(true);
+      expect(((await ended.json()) as TokenBody).jwt).toBe("");
+      expect(claimsIn(jarAfter(adminEnded(cookie), ended))).toBeNull();
+    });
+
+    it("leaves the admin signed in when the user's refresh is refused, in either order, past the token's expiry", async () => {
+      await eachOption(async () => {
+        for (const userFirst of [true, false]) {
+          const { adminId, cookie } = await signinBoth({ hoursAgo: 2 });
+          const start = userEnded(cookie);
+          const afterAdmin = userFirst ? start : jarAfter(start, await refreshAdmin(start));
+
+          const refused = await refreshUser(afterAdmin);
+          expect(refused.ok).toBe(false);
+          expect(refused.headers.getSetCookie()).toEqual([]);
+
+          const survivor = userFirst ? jarAfter(afterAdmin, await refreshAdmin(afterAdmin)) : afterAdmin;
+          expect(claimsIn(survivor)).toMatchObject({ me: { id: adminId } });
+          expect(claimsIn(survivor)?.self).toBeUndefined();
+          expect(await adminIdOf(survivor)).toBe(adminId);
+          expect(await selfIdOf(survivor)).toBeNull();
+        }
+      });
+    });
+  });
+
+  it("renews an expired session for a page load from its refresh cookie, and leaves a live one alone", async () => {
+    const { PageSession } = await import("@libs/shared/srvkit");
+    const pageLoad = (cookie: string, headers: Record<string, string> = {}) =>
+      new Request(`http://localhost:${process.env.PORT}/`, { headers: { ...headers, cookie } });
+    const pairsOf = (setCookies: string[]) =>
+      setCookies
+        .filter((entry) => !entry.includes("Max-Age=0"))
+        .map((entry) => entry.split(";")[0])
+        .join("; ");
+    const { userId, credentials } = await signup();
+    expect(
+      await PageSession.renewedCookies(pageLoad(cookieOf(await post("signinWithPassword", credentials)))),
+    ).toBeNull();
+
+    setSystemTime(dayjs().subtract(2, "hour").toDate());
+    let signedIn: Response;
+    try {
+      signedIn = await post("signinWithPassword", credentials);
+    } finally {
+      setSystemTime();
+    }
+    expect(await selfIdOf(cookieOf(signedIn))).toBeNull();
+    const renewed = (await PageSession.renewedCookies(pageLoad(cookieOf(signedIn)))) ?? [];
+    expect(renewed.some((entry) => /^(__Host-)?jwt:[^=.]+=/.test(entry) && entry.includes("HttpOnly"))).toBe(true);
+    expect(renewed.some((entry) => /^(__Host-)?userRefreshToken:/.test(entry) && entry.includes("HttpOnly"))).toBe(
+      true,
+    );
+    expect(pairsOf(renewed)).not.toBe(cookieOf(signedIn));
+    expect(await selfIdOf(pairsOf(renewed))).toBe(userId);
+
+    const again = await PageSession.renewedCookies(
+      pageLoad(cookieOf(signedIn), { ...asking, origin: "app://localhost" }),
+    );
+    expect(await selfIdOf(pairsOf(again ?? []))).toBe(userId);
+    expect(await selfIdOf(pairsOf(renewed))).toBe(userId);
+    for (const setCookies of [renewed, again ?? []]) {
+      const claims = setCookies.find((entry) => /^(__Host-)?jwt:[^=]+\.claims=/.test(entry)) ?? "";
+      const [pair = ""] = claims.split(";");
+      const { exp, iat } = decodeJwtPayload<{ exp: number; iat: number }>(
+        decodeURIComponent(pair.slice(pair.indexOf("=") + 1)),
+      );
+      expect(exp - iat).toBe(60 * 60);
+    }
   });
 });

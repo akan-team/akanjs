@@ -635,17 +635,55 @@ export default page()
               })}
             </div>
 
+            <Docs.SubSubTitle>{l.trans({ en: "Server env secrets", ko: "서버 env의 비밀 값" })}</Docs.SubSubTitle>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    The image holds the names of the server env's secrets, not their values. Before each release the
+                    Jenkins deploy stage writes them from the branch's env file as a Secret, applies it, and deletes the
+                    file; the chart reads the Secret a branch names in <code>app.secretName</code> through{" "}
+                    <code>envFrom</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    이미지에는 서버 env의 비밀 값이 아니라 그 이름만 들어 있습니다. Jenkins 배포 단계는 릴리스마다
+                    branch의 env 파일에서 그 값을 Secret으로 써서 apply한 뒤 파일을 지우고, 차트는 branch의{" "}
+                    <code>app.secretName</code>에 적힌 Secret을 <code>envFrom</code>으로 읽습니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="infra/app/values/myapp-values.yaml"
+              language="yaml"
+              code={`main:
+  app:
+    secretName: app-env`}
+            />
+            <Code.Snippet
+              className="w-full"
+              title="Terminal"
+              language="bash"
+              showLineNumbers={false}
+              code={`akan secret-env myapp --env main --format k8s --name app-env --out local/myapp-secret-env.yaml
+kubectl apply -f local/myapp-secret-env.yaml -n myapp-main
+rm local/myapp-secret-env.yaml`}
+            />
+
             <Docs.SubSubTitle>{l.trans({ en: "Deploy command", ko: "배포 명령" })}</Docs.SubSubTitle>
             <div>
               {l.trans({
                 en: (
                   <span>
-                    The Jenkins deploy stage runs these two commands from <code>infra/</code> for each app:
+                    The Jenkins deploy stage then runs these two commands from <code>infra/</code> for each app:
                   </span>
                 ),
                 ko: (
                   <span>
-                    Jenkins 배포 단계는 앱마다 <code>infra/</code>에서 아래 두 명령을 실행합니다.
+                    이어서 Jenkins 배포 단계는 앱마다 <code>infra/</code>에서 아래 두 명령을 실행합니다.
                   </span>
                 ),
               })}

@@ -218,6 +218,7 @@ export {
   prefetchRsc,
   refreshRsc,
 } from "./rscNavigation";
+export { scriptHashes, scriptNonce } from "./scriptPolicy";
 export { sharedContext } from "./sharedContext";
 export { secretStorage, storage } from "./storage";
 export { type TransitionType, transitionTypes } from "./transitionTypes";

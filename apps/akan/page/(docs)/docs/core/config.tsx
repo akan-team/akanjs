@@ -1104,8 +1104,8 @@ export const env: ModulesOptions = {
               {
                 name: "env.server.*",
                 desc: l.trans({
-                  en: "Server-only values: server options, connection settings, private service configuration.",
-                  ko: "서버 모듈에서만 쓰는 값입니다. 서버 옵션, 연결 설정, 비공개 서비스 설정을 둡니다.",
+                  en: "Server-only values: server options, connection settings, private service configuration. `akan build` leaves the secret ones out of the image; the deployed server reads each from an environment variable (`akan secret-env <app>` lists them).",
+                  ko: "서버 모듈에서만 쓰는 값입니다. 서버 옵션, 연결 설정, 비공개 서비스 설정을 둡니다. `akan build`는 이 가운데 비밀 값을 이미지에 넣지 않으며, 배포된 서버는 각 값을 환경변수에서 읽습니다(`akan secret-env <app>`이 그 목록을 보여 줍니다).",
                 }),
               },
               {

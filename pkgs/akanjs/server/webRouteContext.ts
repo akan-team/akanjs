@@ -9,13 +9,16 @@ import {
   strictTransportSecurity,
 } from "./assetHeaders";
 import { getClientFacingOrigin, resolveHtmlCacheControl } from "./cachePolicy";
+import { ClientErrorReport } from "./clientErrorReport";
 import { encodedFileResponse, isCompressibleContentType, matchesIfNoneMatch, varyOnEncoding } from "./contentEncoding";
 import { HMR_CLIENT_SCRIPT } from "./hmr/clientScript";
 import type { HmrWsHub } from "./hmr/wsHub";
 import type { PageCall } from "./metrics/requestMetrics";
+import { PageFailure } from "./pageFailure";
 import { normalizeHost } from "./proxy/hostBasePathWebProxy";
 import { RenderBusyResponse } from "./renderBusyResponse";
 import { RscRenderRefusal } from "./rscRenderRefusal";
+import type { ScriptPolicySources } from "./scriptPolicy";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
 import type { BaseBuildArtifact, RenderState } from "./types";
@@ -126,16 +129,18 @@ export class WebRouteContext {
 
   //? Dev: a back/forward navigation replays a document from the HTTP cache without asking, which would boot a tab onto
   //? the RSC payload and registry config of a build the server no longer runs.
-  htmlResponseHeaders(status: number, req: Request): Headers {
+  htmlResponseHeaders(status: number, req: Request, scripts?: ScriptPolicySources): Headers {
     const headers = new Headers({ "Content-Type": "text/html; charset=utf-8" });
     if (status >= 400 || !this.prodMode) headers.set("Cache-Control", "no-store");
     else {
       const cacheControl = resolveHtmlCacheControl(req);
       if (cacheControl) headers.set("Cache-Control", cacheControl);
     }
+    const reportTiming = ClientErrorReport.timingEntry(headers.get("Cache-Control"));
+    if (reportTiming) headers.append("Server-Timing", reportTiming);
     const hsts = this.prodMode ? strictTransportSecurity() : null;
     if (hsts && getClientFacingOrigin(req).startsWith("https:")) headers.set("Strict-Transport-Security", hsts);
-    return applySecurityHeaders(headers, { html: true });
+    return applySecurityHeaders(headers, { html: true, scripts });
   }
 
   stylesheetHref(req: Request, pathname: string): string | null {
@@ -167,11 +172,12 @@ export class WebRouteContext {
     });
   }
 
-  errorPageResponse(req: Request, scope: string, err: unknown): Promise<Response> {
+  errorPageResponse(req: Request, scope: string, err: unknown, route: string): Promise<Response> {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return Promise.resolve(WebRouteContext.#clientClosedResponse());
     if (RscRenderRefusal.is(err)) return Promise.resolve(this.#busy.document(req, err));
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
+    PageFailure.answered(err, route);
     this.#hub()?.broadcast({ type: "error", message });
     return createSystemPageResponse({
       kind: "error",
@@ -186,11 +192,13 @@ export class WebRouteContext {
     });
   }
 
-  rscErrorResponse(scope: string, err: unknown): Response {
+  //? Without a `route` nothing was thrown here: the worker's render answered 5xx and sent the reporter its error.
+  rscErrorResponse(scope: string, err: unknown, route?: string): Response {
     if (WebRouteContext.#isExpectedRequestAbort(err)) return WebRouteContext.#clientClosedResponse();
     if (RscRenderRefusal.is(err)) return this.#busy.rsc(err);
     const message = err instanceof Error ? err.message : String(err);
     this.logger.error(`[SSR] render failed scope=${scope}: ${message}`);
+    if (route !== undefined) PageFailure.answered(err, route);
     this.#hub()?.broadcast({ type: "error", message });
     return new Response("Internal Server Error", {
       status: 500,

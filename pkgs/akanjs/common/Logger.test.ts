@@ -240,9 +240,18 @@ describe("Logger attrs", () => {
     }));
 
   test("masks every key a server env profile may not carry, not only the obvious ones", () => {
-    const attrs = { discordWebhook: "w", sentryDsn: "d", awsAccessKey: "a", regcred: "r", enrollKey: "e", ms: 1 };
+    const attrs = {
+      discordWebhook: "w",
+      sentryDsn: "d",
+      awsAccessKey: "a",
+      AKAN_CLIENT_REPORT_KEY: "k",
+      regcred: "r",
+      enrollKey: "e",
+      ms: 1,
+    };
     expect(Logger.redactAttrs(attrs)).toEqual({
       discordWebhook: "[redacted]",
+      AKAN_CLIENT_REPORT_KEY: "[redacted]",
       sentryDsn: "[redacted]",
       awsAccessKey: "[redacted]",
       regcred: "[redacted]",
@@ -250,6 +259,7 @@ describe("Logger attrs", () => {
       ms: 1,
     });
     expect(Logger.inlineData({ mailer: { pass: "p", host: "h" } })).toBe('{"mailer":{"pass":"[redacted]","host":"h"}}');
+    for (const name of ["aeskey", "aesKey", "AES_KEY"]) expect(Logger.isSecretKey(name)).toBe(true);
   });
 
   test("masks a cred only as a word of its own, so a credit count stays readable", () => {

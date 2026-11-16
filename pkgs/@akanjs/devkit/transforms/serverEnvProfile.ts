@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { Logger, toError } from "akanjs/common";
+import { ServerEnvEvaluationError } from "./serverEnvEvaluationError";
 
 export interface ServerEnvProfileProps {
   envDir: string;
@@ -20,6 +21,21 @@ export interface LibEnvSource extends ServerEnvSource {
 
 type EnvLoad = (envFile: string) => Promise<ServerEnvSource>;
 
+export interface EnvEvaluation {
+  environment?: string;
+  loads?: RegExp;
+  timeoutMs?: number;
+  //* What the child's process env holds beside PATH, HOME and the environment's selector.
+  variables?: { readonly [name: string]: string };
+}
+
+export interface EnvEvaluated {
+  value: unknown;
+  lossy: string[];
+  //* The names the env file and its imports asked the process env for, set or not.
+  reads: string[];
+}
+
 interface Stripped {
   value: unknown;
   stripped: string[];
@@ -31,13 +47,15 @@ interface EnvFold<T> {
   node(value: object, children: (readonly [string, T])[]): T;
 }
 
-type EvaluatedMessage = { load: string } | { env: string; lossy: string[] } | { failure: string };
+type EvaluatedMessage = { load: string } | { env: string; lossy: string[]; reads: string[] } | { failure: string };
 
 //* A server env profile is bundled in place of the environment's own file, for a server that runs where its bundle
 //* can be read: the computers a desktop app is installed on. So it may hold no secret.
 export class ServerEnvProfile {
   static readonly namePattern = /^[a-z][a-zA-Z0-9-]*$/;
   static readonly envFilePattern = /[\\/]env[\\/]env\.server\.[A-Za-z0-9-]+\.ts$/;
+  static readonly envModulePattern = /[\\/]env[\\/]env\.server(?:\.[A-Za-z0-9-]+)?\.ts$/;
+  static readonly evaluationTimeoutMs = 60_000;
 
   static fileName(environment: string, profile: string) {
     return `env.server.${environment}.${profile}.ts`;
@@ -65,7 +83,7 @@ export class ServerEnvProfile {
     return !!url && ServerEnvProfile.#carriesCredential(url);
   }
 
-  static #isSecret(value: string, underSecret: boolean) {
+  static isSecret(value: string, underSecret: boolean) {
     return (underSecret && !!value.trim()) || ServerEnvProfile.#isCredentialUrl(value);
   }
 
@@ -92,7 +110,7 @@ export class ServerEnvProfile {
   static strip(value: unknown): Stripped {
     return ServerEnvProfile.#fold<Stripped>(value, {
       text: (text, at, underSecret) =>
-        ServerEnvProfile.#isSecret(text, underSecret)
+        ServerEnvProfile.isSecret(text, underSecret)
           ? { value: undefined, stripped: [at] }
           : { value: text, stripped: [] },
       other: (other) => ({ value: other, stripped: [] }),
@@ -152,26 +170,60 @@ export class ServerEnvProfile {
     return value.length >= 16 && !/^https?:\/\//.test(value) && !/^[a-z]+(?:[._-][a-z]+)*$/.test(value);
   }
 
-  static secretPaths(value: unknown): string[] {
+  static secretPaths(value: unknown, underSecret = false): string[] {
     return ServerEnvProfile.#fold(
       value,
-      ServerEnvProfile.#collect((text, at, underSecret) => (ServerEnvProfile.#isSecret(text, underSecret) ? [at] : [])),
+      ServerEnvProfile.#collect((text, at, held) => (ServerEnvProfile.isSecret(text, held) ? [at] : [])),
+      "",
+      underSecret,
     );
+  }
+
+  //? A URL's password is looked for on its own too: code that holds it holds it without the URL around it.
+  static movedTexts(value: unknown, underSecret: boolean): string[] {
+    const texts = ServerEnvProfile.#fold(
+      value,
+      ServerEnvProfile.#collect((text, _at, held) =>
+        ServerEnvProfile.isSecret(text, held) ? [text, ServerEnvProfile.#url(text)?.password ?? ""] : [],
+      ),
+      "",
+      underSecret,
+    );
+    return [...new Set(texts)].filter((text) => text !== "");
   }
 
   //* Evaluated in a child with no app env, so `process.env.X ?? "fallback"` reads as the fallback the bundle carries.
   //* The result comes back over IPC, as an import may write to stdout; `load` answers for each env file it reaches.
-  static async evaluate(file: string, cwd: string, load?: EnvLoad): Promise<unknown> {
-    return (await ServerEnvProfile.#evaluated(file, cwd, load)).value;
+  static async evaluate(file: string, cwd: string, load?: EnvLoad, evaluation?: EnvEvaluation): Promise<unknown> {
+    return (await ServerEnvProfile.#evaluated(file, cwd, load, evaluation)).value;
   }
 
-  //? Bun prints a failing module's source line with its error, so stderr is never read: the child sends the error's
-  //? name and place, and its message without JSC's `(evaluating '…')` or any string literal of the files at fault.
-  static async #evaluated(file: string, cwd: string, load?: EnvLoad): Promise<{ value: unknown; lossy: string[] }> {
-    const pattern = (regex: RegExp, flags = "") => `new RegExp(${JSON.stringify(regex.source)}, "${flags}")`;
-    const literal = /(["'`])((?:\\[\s\S]|(?!\1)[^\\])*)\1/;
+  static async evaluateReads(file: string, cwd: string, load: EnvLoad, evaluation: EnvEvaluation) {
+    return await ServerEnvProfile.#evaluated(file, cwd, load, evaluation, true);
+  }
+
+  //? Bun prints a failing module's source line with its error, so stderr is never read. The child sends the error's
+  //? class and place and never its message, which can quote a value of any file the env file imports.
+  static async #evaluated(
+    file: string,
+    cwd: string,
+    load?: EnvLoad,
+    {
+      environment,
+      loads = ServerEnvProfile.envFilePattern,
+      timeoutMs = ServerEnvProfile.evaluationTimeoutMs,
+      variables,
+    }: EnvEvaluation = {},
+    notesReads = false,
+  ): Promise<EnvEvaluated> {
     const frame = /^\s*at (?:[^(]*\()?(.+):(\d+):(\d+)\)?\s*$/;
     const script = [
+      //? An import may leave a timer, a server or a socket open, which would keep this process alive past its answer
+      //? and past a parent that died: it exits when its answer is sent, when the parent's channel closes, and at a
+      //? deadline of its own.
+      'process.on("disconnect", () => process.exit(1));',
+      "setTimeout(() => process.exit(1), Number(process.env.AKAN_PROFILE_ENV_DEADLINE)).unref();",
+      "const finish = (message, code) => process.send(message, undefined, undefined, () => process.exit(code));",
       "const waiting = new Map();",
       'process.on("message", ({ load, error, loader, contents }) => {',
       "  const reply = waiting.get(load);",
@@ -190,23 +242,30 @@ export class ServerEnvProfile {
       "        }));",
       "    },",
       "  });",
-      `const literal = ${pattern(literal, "g")};`,
-      `const interpolation = ${pattern(/\$\{[^}]*\}/)};`,
-      `const frameOf = ${pattern(frame)};`,
-      `const evaluating = ${pattern(/\s*\(evaluating '[\s\S]*'\)\s*$/)};`,
-      "const literalsOf = async (file) =>",
-      '  [...(await Bun.file(file).text().catch(() => "")).matchAll(literal)].flatMap((match) => match[2].split(interpolation));',
-      "const describe = async (error) => {",
+      "const reads = new Set();",
+      'const note = (key) => typeof key === "string" && reads.add(key);',
+      "const noting = { get: (target, key, receiver) => (note(key), Reflect.get(target, key, receiver)), has: (target, key) => (note(key), Reflect.has(target, key)) };",
+      //? `Bun.env` and `import.meta.env` stay the object `process.env` was, which a proxy put in its place does not
+      //? see: a name that object lacks is noted through its prototype, and a name it holds through the proxy alone.
+      "if (process.env.AKAN_PROFILE_ENV_READS) {",
+      "  Object.setPrototypeOf(process.env, new Proxy(Object.prototype, noting));",
+      "  process.env = new Proxy(process.env, noting);",
+      "}",
+      `const frameOf = new RegExp(${JSON.stringify(frame.source)});`,
+      'const { existsSync } = require("node:fs");',
+      //? The stack opens with the message, whose own lines could read as a frame: only lines after it are looked at,
+      //? and only one that names a file on disk.
+      "const describe = (error) => {",
       "  const first = Array.isArray(error?.errors) && error.errors.length ? error.errors[0] : error;",
-      '  const frame = String(first?.stack ?? "").split("\\n").map((line) => frameOf.exec(line)).find(Boolean);',
-      "  const at = first?.position?.file ? [first.position.file, first.position.line, first.position.column] : frame ? frame.slice(1, 4) : [];",
-      "  const files = [process.env.AKAN_PROFILE_ENV_FILE, at[0]].filter(Boolean);",
-      "  const literals = (await Promise.all(files.map(literalsOf))).flat().filter((part) => part.length >= 4);",
-      '  let message = String(first?.message ?? first).replace(evaluating, "");',
-      "  for (const part of literals.sort((a, b) => b.length - a.length))",
-      '    message = message.split(part).join("[redacted]");',
-      '  const name = typeof first?.name === "string" && /^[A-Za-z]+$/.test(first.name) ? first.name : "Error";',
-      '  return name + ": " + message.slice(0, 200) + (at.length ? " (at " + at.join(":") + ")" : "");',
+      '  const stack = String(first?.stack ?? "");',
+      '  const message = String(first?.message ?? "");',
+      "  const frames = message && stack.includes(message) ? stack.slice(stack.indexOf(message) + message.length) : stack;",
+      '  const frame = frames.split("\\n").map((line) => frameOf.exec(line)).find((found) => found && existsSync(found[1]));',
+      "  const at = first?.position?.file ? [first.position.file, first.position.line] : frame ? frame.slice(1, 3) : [];",
+      //? `error.name` is a property any code can set to a value, so the class is read from the constructor.
+      '  const named = first === null || first === undefined ? "" : String(Object.getPrototypeOf(first)?.constructor?.name ?? "");',
+      '  const name = first instanceof Error && /^[A-Za-z_$][A-Za-z0-9_$]*$/.test(named) ? named : "Error";',
+      '  return name + (at.length ? " at " + at.join(":") : ", which gave no location");',
       "};",
       "try {",
       "  const { env } = await import(process.env.AKAN_PROFILE_ENV_FILE);",
@@ -220,13 +279,12 @@ export class ServerEnvProfile {
       "  };",
       '  walk(env, "");',
       '  const plain = (_, value) => (typeof value === "function" || typeof value === "symbol" ? undefined : typeof value === "bigint" ? String(value) : value);',
-      '  process.send({ env: JSON.stringify(env ?? null, plain) ?? "null", lossy }, undefined, undefined, () => process.disconnect());',
+      '  finish({ env: JSON.stringify(env ?? null, plain) ?? "null", lossy, reads: [...reads] }, 0);',
       "} catch (error) {",
-      "  process.exitCode = 1;",
-      "  process.send({ failure: await describe(error) }, undefined, undefined, () => process.disconnect());",
+      "  finish({ failure: describe(error) }, 1);",
       "}",
     ].join("\n");
-    let sent: { env: string; lossy: string[] } | undefined;
+    let sent: { env: string; lossy: string[]; reads: string[] } | undefined;
     let failure: string | undefined;
     let loadError: unknown;
     const child = Bun.spawn([process.execPath, "--eval", script], {
@@ -234,8 +292,12 @@ export class ServerEnvProfile {
       env: {
         PATH: process.env.PATH ?? "",
         HOME: process.env.HOME ?? "",
+        ...variables,
         AKAN_PROFILE_ENV_FILE: file,
-        ...(load ? { AKAN_PROFILE_ENV_LOAD: ServerEnvProfile.envFilePattern.source } : {}),
+        AKAN_PROFILE_ENV_DEADLINE: String(timeoutMs + 5_000),
+        ...(load ? { AKAN_PROFILE_ENV_LOAD: loads.source } : {}),
+        ...(notesReads ? { AKAN_PROFILE_ENV_READS: "1" } : {}),
+        ...(environment ? { AKAN_PUBLIC_ENV: environment } : {}),
       },
       stdout: "ignore",
       stderr: "ignore",
@@ -264,14 +326,29 @@ export class ServerEnvProfile {
           .catch(() => undefined);
       },
     });
-    const exitCode = await child.exited;
-    if (exitCode !== 0 || !sent) {
-      if (loadError) throw loadError;
-      throw new Error(
-        `${path.basename(file)} could not be evaluated to check it for secrets: ${failure ?? `its process exited with code ${exitCode} and sent nothing`}`,
+    let timedOut = false;
+    const kill = () => child.kill("SIGKILL");
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
+    }, timeoutMs);
+    process.on("exit", kill);
+    const exitCode = await child.exited.finally(() => {
+      clearTimeout(timer);
+      process.off("exit", kill);
+    });
+    if (sent && !timedOut && exitCode === 0)
+      return { value: JSON.parse(sent.env) as unknown, lossy: sent.lossy, reads: sent.reads };
+    if (loadError) throw loadError;
+    if (timedOut)
+      throw new ServerEnvEvaluationError(
+        "timedOut",
+        `${file} was not evaluated within ${timeoutMs / 1000}s, so its process was stopped: the file, or one it imports, waits on something as it loads that does not end (a server it starts, a connection it opens, a loop).`,
       );
-    }
-    return { value: JSON.parse(sent.env) as unknown, lossy: sent.lossy };
+    throw new ServerEnvEvaluationError(
+      failure ? "threw" : "exited",
+      `${path.basename(file)} could not be evaluated to check it for secrets: ${failure ?? `its process exited with code ${exitCode} and sent nothing`}`,
+    );
   }
 
   //? A profile is served under the path of the file it replaces, so its import of that file would import itself.

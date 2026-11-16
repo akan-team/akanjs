@@ -9,6 +9,7 @@ export interface AdoptedTrace {
   parentSpanId: string | null;
   sampled: boolean;
   link: string | null;
+  linkSpanId?: string | null;
 }
 
 type OutboundReader = () => string | undefined;
@@ -76,7 +77,7 @@ export class TraceContext {
     const parent = TraceContext.parseTraceparent(traceparent);
     const inbound = parent?.traceId ?? TraceContext.parseId(requestId);
     if (!inbound) return TraceContext.#minted(null);
-    if (!isTrustedPeer()) return TraceContext.#minted(inbound);
+    if (!isTrustedPeer()) return TraceContext.#minted(inbound, parent?.spanId ?? null);
     return {
       traceId: inbound,
       parentSpanId: parent?.spanId ?? null,
@@ -85,8 +86,9 @@ export class TraceContext {
     };
   }
 
-  static #minted(link: string | null): AdoptedTrace {
-    return { traceId: TraceContext.mintTraceId(), parentSpanId: null, sampled: false, link };
+  static #minted(link: string | null, linkSpanId: string | null = null): AdoptedTrace {
+    const minted = { traceId: TraceContext.mintTraceId(), parentSpanId: null, sampled: false, link };
+    return linkSpanId ? { ...minted, linkSpanId } : minted;
   }
 
   static registerOutboundReader(reader: OutboundReader | null) {

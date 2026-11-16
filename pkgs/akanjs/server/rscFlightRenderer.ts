@@ -1,13 +1,17 @@
 import type { Logger } from "akanjs/common";
 import type { ReactNode } from "react";
+import { reportedTraceOf } from "../signal/trace";
 import type { ClientManifest } from "./artifact";
+import { ForwardedError } from "./forwardedError";
 import { type FlightRenderOptions, type FlightRenderResult, RscFlightStream } from "./rscFlightStream";
+import type { RscTraceMetadata } from "./ssrTypes";
 
 export class RscFlightRenderer {
   readonly #logger: Logger;
   readonly #send: (message: unknown) => void;
   readonly #activeRenderReaders = new Map<string, ReadableStreamDefaultReader<Uint8Array>>();
   readonly #inFlightRenders = new Map<string, { cancelled: boolean }>();
+  readonly #forwarded = new WeakSet<object>();
 
   constructor(logger: Logger, send: (message: unknown) => void) {
     this.#logger = logger;
@@ -26,7 +30,7 @@ export class RscFlightRenderer {
         isCancelled: (requestId) => this.isCancelled(requestId),
         track: (requestId, reader) => this.#activeRenderReaders.set(requestId, reader),
         untrack: (requestId) => this.#activeRenderReaders.delete(requestId),
-        reportRenderError: (error, pathname) => this.#reportRenderError(error, pathname),
+        reportRenderError: (error, trace) => this.#reportRenderError(error, trace),
       },
       options,
     );
@@ -63,16 +67,30 @@ export class RscFlightRenderer {
 
   // Past the first Flight chunk only a late redirect reaches the host, so this log is the only record of the failure.
   //? Security: React sends the returned digest to the browser, and a thrown message can quote a statement's row data.
-  #reportRenderError(error: unknown, pathname?: string): string {
+  #reportRenderError(error: unknown, trace?: RscTraceMetadata): string {
+    const pathname = trace?.pathname;
     const message = error instanceof Error ? error.message : String(error);
     const description = error instanceof Error ? (error.stack ?? message) : message;
     const opaque = process.env.NODE_ENV === "production";
     const digest = opaque ? crypto.randomUUID().slice(0, 8) : message || "AKAN_RENDER_ERROR";
     const scope = `${pathname ? ` path=${pathname}` : ""}${opaque ? ` digest=${digest}` : ""}`;
-    if (RscFlightRenderer.#isExpectedRequestAbort(error))
+    if (RscFlightRenderer.#isExpectedRequestAbort(error)) {
       this.#logger.debug(`[rsc] render aborted${scope}: ${description}`);
-    else this.#logger.error(`[rsc] render failed${scope}: ${description}`);
+      return digest;
+    }
+    this.#logger.error(`[rsc] render failed${scope}: ${description}`);
+    this.#forward(error, digest, trace?.routeId ?? null);
     return digest;
+  }
+
+  //? The worker loads no `option.ts`, so the app's reporter runs in the host, which rebuilds the error from this.
+  #forward(error: unknown, digest: string, routeId: string | null) {
+    if (typeof error === "object" && error !== null) {
+      if (this.#forwarded.has(error)) return;
+      this.#forwarded.add(error);
+    }
+    const { traceId } = reportedTraceOf();
+    this.#send({ type: "render-error", error: ForwardedError.serialize(error), digest, routeId, traceId });
   }
 
   static #isExpectedRequestAbort(error: unknown): boolean {

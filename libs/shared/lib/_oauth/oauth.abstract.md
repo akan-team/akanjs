@@ -27,7 +27,7 @@ metadata, authorization with PKCE and a consent page, client registration, token
   read as a Client ID Metadata Document — resolved first and refused when it points into a private range, never fetched
   from the server's own network — unless configuration turns the feature off.
 - A grant is revoked as a whole (RFC 7009 `/oauth/revoke` by the client, or the account's owner disconnecting it): its
-  refresh lineage is closed and the lineage id is denylisted for `RevokedSessions.accessTokenDays`, which is how a
+  refresh lineage is closed and the lineage id is denylisted for `RevokedSessions.deniedSeconds`, which is how a
   stateless token dies early. A denylist entry's expiry only grows: a later, shorter mark never ends a longer one.
   When the denylist cannot answer, a user's token lives and an admin's (`me`) is refused, with a warning each time. Revocation answers 200 whether or not the token was live, so it cannot be used to probe tokens.
 - A token this server minted names its client and the MCP resource; a browser session names neither. That difference is

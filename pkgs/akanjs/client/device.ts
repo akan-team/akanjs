@@ -5,6 +5,7 @@ import { readCssSafeAreaInsets } from "./frameConfig";
 import type { DeviceInfo } from "./native";
 
 type NativeModule = typeof import("./native");
+type KeyboardRideClass = typeof import("./keyboardRide").KeyboardRide;
 type NativeControls = Pick<NativeModule, "haptics" | "keyboard">;
 type ProcessEnvLike = { env?: Record<string, string | undefined> };
 type DebugPayload = Record<string, unknown>;
@@ -182,9 +183,16 @@ export class Device {
   async hideKeyboard() {
     await this.#native?.keyboard.hide();
   }
+  //? Loaded only where the shell left the keyboard to the page, so no web bundle carries it; the keys never rise before
+  //? a page that just mounted has it.
+  static #keyboardRide: KeyboardRideClass | null = null;
   listenKeyboardChanged(onKeyboardChanged: (height: number) => void) {
     const keyboard = this.#native?.keyboard;
     if (!keyboard) return;
+    if (isPageKeyboardAvoidance())
+      void import("./keyboardRide").then(({ KeyboardRide }) => {
+        Device.#keyboardRide = KeyboardRide;
+      });
     let currentHeight = 0;
     const emitKeyboardHeight = (event: string, height: number) => {
       debugFrame("keyboard.event", { event, height, previousHeight: currentHeight });
@@ -198,22 +206,11 @@ export class Device {
       ...(["willShow", "didShow", "willHide", "didHide"] as const).map((event) =>
         keyboard.listen(event, ({ height, duration }) => {
           if (duration > 0) this.keyboardAnimationMs = duration;
-          if (isPageKeyboardAvoidance()) this.#moveRootWithKeyboard(height);
+          Device.#keyboardRide?.move(height, this.keyboardAnimationMs);
           emitKeyboardHeight(event, height);
         }),
       ),
     );
-  }
-  //? Set in the shell's event itself, before any render: the page box and whatever follows these move with the keys
-  //? from their first frame, where a store update would start them a few frames late.
-  #moveRootWithKeyboard(height: number) {
-    const root = document.documentElement;
-    if (this.keyboardAnimationMs > 0) {
-      root.style.setProperty("--akan-keyboard-duration", `${this.keyboardAnimationMs}ms`);
-      root.style.setProperty("--akan-keyboard-easing", IOS_KEYBOARD_ANIMATION_EASING);
-    }
-    root.style.setProperty("--akan-keyboard-cover", `${height}px`);
-    root.toggleAttribute("data-akan-keyboard", height > 0);
   }
   subscribeKeyboard(onKeyboardChanged: (height: number) => void) {
     this.#keyboardSubscribers.add(onKeyboardChanged);

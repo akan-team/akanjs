@@ -99,10 +99,19 @@ spec:
             limits:
               memory: {{ $config.app.resources.limits.memory }}
               cpu: {{ $config.app.resources.limits.cpu }}
-          {{- with $database.secretName }}
+          {{- if or $config.app.secretName $database.secretName }}
+          # The server env's secrets, which the image holds only the names of (`akan secret-env <app> --format k8s`),
+          # then the database's: when both name a variable, the later Secret wins, and where the data lives is the
+          # deployment's to say.
           envFrom:
+            {{- with $config.app.secretName }}
             - secretRef:
                 name: {{ . }}
+            {{- end }}
+            {{- with $database.secretName }}
+            - secretRef:
+                name: {{ . }}
+            {{- end }}
           {{- end }}
           env:
             - name: AKAN_PUBLIC_ENV
@@ -220,7 +229,7 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-prod
     {{- if dig "cors" "enabled" false $ingress }}
     nginx.ingress.kubernetes.io/enable-cors: "true"
-    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,apollo-require-preflight"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,Keep-Alive,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization,apollo-require-preflight,x-akan-session-tokens"
     {{- end }}
     nginx.ingress.kubernetes.io/proxy-body-size: {{ dig "proxyBodySize" "128m" $ingress | quote }}
     nginx.ingress.kubernetes.io/affinity: "cookie"

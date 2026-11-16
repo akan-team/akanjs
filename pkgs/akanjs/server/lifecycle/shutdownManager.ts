@@ -1,4 +1,6 @@
 import type { Logger } from "akanjs/common";
+import { ErrorReporting } from "../../signal/errorReporting";
+import { reportedTraceOf } from "../../signal/trace";
 import { StartGuard } from "./startGuard";
 
 export class ShutdownManager {
@@ -22,14 +24,18 @@ export class ShutdownManager {
 
     process.on("uncaughtException", async (error) => {
       logger.error(`Uncaught exception: ${ShutdownManager.#formatError(error)}`);
+      ErrorReporting.report(error, { source: "process", ...reportedTraceOf() });
       await shutdown().catch(() => undefined);
+      await ErrorReporting.flush();
       process.exit(1);
     });
 
     process.on("unhandledRejection", async (reason) => {
       logger.error(`Unhandled rejection: ${ShutdownManager.#formatError(reason)}`);
+      ErrorReporting.report(reason, { source: "process", ...reportedTraceOf() });
       if (!ShutdownManager.#isFatalUnhandledRejection()) return;
       await shutdown().catch(() => undefined);
+      await ErrorReporting.flush();
       process.exit(1);
     });
   }

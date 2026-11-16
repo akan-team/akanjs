@@ -13,8 +13,10 @@ import {
 import type { ServerSignal, ServerSignalCls } from "akanjs/signal";
 import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { EndpointRateLimit } from "../signal/endpointRateLimit";
+import { ErrorReporting } from "../signal/errorReporting";
 import { AgentHooks } from "./agentHooks";
 import type { AkanLib, AkanLibProps } from "./akanLib";
+import { ClientErrorReport } from "./clientErrorReport";
 import { DiLifecycle } from "./di/diLifecycle";
 import { DevBaseArtifact } from "./hmr/devBaseArtifact";
 import { ParentChannel } from "./lifecycle/parentChannel";
@@ -22,6 +24,7 @@ import { ShutdownManager } from "./lifecycle/shutdownManager";
 import { StartGuard } from "./lifecycle/startGuard";
 import { ServerLogging } from "./logging/serverLogging";
 import { AgentTools, type McpAuthOption, type McpRateLimitOption, type McpRouter } from "./mcp";
+import { OtlpExporter } from "./otlp/otlpExporter";
 import { WebProxyRunner } from "./proxy";
 import { SignalResolver } from "./resolver";
 import { BuiltinRoutes } from "./routing/builtinRoutes";
@@ -178,6 +181,8 @@ export class AkanServer {
     EndpointRateLimit.reset();
     LiveRoomLimit.reset();
     SessionRefresh.use(null);
+    ErrorReporting.use(null);
+    ClientErrorReport.configure(false);
     libs.forEach((lib) => {
       const mcp = lib.option.getMcp(this.env);
       if (mcp !== undefined) this.setMcp(mcp);
@@ -190,6 +195,10 @@ export class AkanServer {
       if (liveRoomLimit) LiveRoomLimit.configure(liveRoomLimit);
       const sessionRefresh = lib.option.getSessionRefresh();
       if (sessionRefresh !== undefined) SessionRefresh.use(sessionRefresh);
+      const errorReporter = lib.option.getErrorReporter();
+      if (errorReporter !== undefined) ErrorReporting.use(errorReporter);
+      const clientReport = lib.option.getClientReport();
+      if (clientReport !== undefined) ClientErrorReport.configure(clientReport);
     });
     EndpointRateLimit.applyEnv(process.env.AKAN_RATE_LIMIT, getEnv().environment);
     LiveRoomLimit.applyEnv();
@@ -416,6 +425,7 @@ export class AkanServer {
       throw new AkanError("notInitialized", "AkanServer is not able to listen. Call `init` first.");
     this.status = "starting";
     Logger.role = this.serverMode;
+    OtlpExporter.install();
     return await this.#start.unwound(() => this.#listen(prepared));
   }
 
@@ -468,6 +478,7 @@ export class AkanServer {
       this.status = "running";
       if (isNoListenCommand) return this;
       Logger.role = this.serverMode;
+      OtlpExporter.install();
       this.#metrics.start();
       if (this.#schedules) this.#di.registerSchedule(this.serverMode);
       if (await this.#start.stoppedDuring(() => this.#logging.startTransport())) return this;
@@ -488,8 +499,8 @@ export class AkanServer {
 
   async #teardown() {
     if (this.status === "stopped") return;
+    const now = Date.now();
     try {
-      const now = Date.now();
       this.logger.info("Shutting down gracefully...");
       this.status = "stopping";
       this.#metrics.stop();
@@ -508,6 +519,7 @@ export class AkanServer {
       this.status = "stopped";
       throw error;
     } finally {
+      await OtlpExporter.shutdown(ServerConfig.exportFlushBudgetMs(now, OtlpExporter.shutdownBudgetMs));
       // Last, so the lines above still have a hub — and in ndjson mode a stdout — to reach.
       await this.#logging.stop();
     }

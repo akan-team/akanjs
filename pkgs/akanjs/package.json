@@ -412,6 +412,11 @@
       "types": "./server/lifecycle/buildEnv.ts",
       "default": "./server/lifecycle/buildEnv.ts"
     },
+    "./server/lifecycle/secretEnv": {
+      "import": "./server/lifecycle/secretEnv.ts",
+      "types": "./server/lifecycle/secretEnv.ts",
+      "default": "./server/lifecycle/secretEnv.ts"
+    },
     "./server/artifact/modulePreloadPlan": {
       "import": "./server/artifact/modulePreloadPlan.ts",
       "types": "./server/artifact/modulePreloadPlan.ts",

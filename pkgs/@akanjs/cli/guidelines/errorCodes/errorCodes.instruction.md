@@ -23,6 +23,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `badRequest` | 400 | `Exception.BadRequest` | yes | no | `signal/exception.ts` |
 | `badRequest` | 400 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
 | `baseMismatch` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
+| `browserError` | 500 | `BrowserError` | no | yes | `signal/browserError.ts` |
 | `buildFailed` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `builderUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `bytesThroughAny` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
@@ -84,6 +85,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `missingModel` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `missingSlice` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `noHandler` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
+| `nonErrorThrown` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `notApplied` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `notFound` | 404 | `Exception.NotFound` | yes | no | `signal/exception.ts` |
 | `notFound` | 404 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
@@ -119,6 +121,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `rscWorkerStopped` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `searchMisconfigured` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `searchUnavailable` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
+| `secretEnvInvalid` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `secretRefused` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `secretStoreUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `serviceUnavailable` | 503 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |
@@ -145,6 +148,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | set when thrown | set when thrown | `Err.Forbidden` | yes | yes | `common/err.ts` |
 | set when thrown | set when thrown | `Err.NotFound` | yes | yes | `common/err.ts` |
 | set when thrown | set when thrown | `Err.Unauthorized` | yes | yes | `common/err.ts` |
+| set when thrown | 500 | `ForwardedError` | no | yes | `server/forwardedError.ts` |
 
 ## Codes by status
 

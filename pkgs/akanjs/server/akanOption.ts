@@ -5,11 +5,13 @@ import type {
   AgentRequestPolicy,
   AgentUsageHook,
   CrossSiteOption,
+  ErrorReporter,
   GuardCls,
   MiddlewareCls,
   RateLimitSetting,
 } from "akanjs/signal";
 import type { McpServerOption } from "./akanServer";
+import type { ClientReportSetting } from "./clientErrorReport";
 import type { WebProxyRegistration } from "./proxy";
 import { HostBasePathWebProxy, LocaleWebProxy } from "./proxy";
 import type { SessionRefreshHook } from "./sessionRefresh";
@@ -36,6 +38,8 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   #getRateLimit: ((env: Env) => RateLimitSetting | false) | undefined;
   #liveRoomLimit: LiveRoomLimitSetting | undefined;
   #sessionRefresh: SessionRefreshHook | null | undefined;
+  #errorReporter: ErrorReporter | null | undefined;
+  #clientReport: ClientReportSetting | boolean | undefined;
   use(fnOrObject: ((env: Env) => Record<string, PromiseOrObject<unknown>>) | Record<string, PromiseOrObject<unknown>>) {
     if (typeof fnOrObject === "function")
       this.#getUses.push(fnOrObject as (env: Env) => Record<string, PromiseOrObject<unknown>>);
@@ -123,6 +127,24 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
     this.#sessionRefresh = hook;
     return this;
   }
+  /**
+   * Gets each server 5xx, render error, uncaught exception and unhandled rejection of a server process, and each browser
+   * report `setClientReport` lets in, once, after the response. A failing reporter is logged once and changes nothing
+   * else. The app's wins over its libs'; `null` clears a lib's.
+   */
+  setErrorReporter(reporter: ErrorReporter | null) {
+    this.#errorReporter = reporter;
+    return this;
+  }
+  /**
+   * Opens `/_akan/client-report`, where a page's script sends the errors its browser hit, and makes the page send them:
+   * `sampleRate` of page views (1), requests per address (10) and reports per server (120) a minute. Off unless set;
+   * `false` turns a lib's off, and the app's wins.
+   */
+  setClientReport(setting: ClientReportSetting | boolean = true) {
+    this.#clientReport = setting;
+    return this;
+  }
   /** Injected into the `LlmAdaptorRole` adaptor as the `llmOption` use; merged in mount order, the app's last. */
   setLlm<Option extends LlmOption>(llmOrFn: Option | ((env: Env) => Option)) {
     if (typeof llmOrFn === "function") this.#getLlms.push(llmOrFn);
@@ -191,6 +213,12 @@ export class AkanOption<Env extends BackendEnv = BackendEnv> {
   }
   getSessionRefresh(): SessionRefreshHook | null | undefined {
     return this.#sessionRefresh;
+  }
+  getErrorReporter(): ErrorReporter | null | undefined {
+    return this.#errorReporter;
+  }
+  getClientReport(): ClientReportSetting | boolean | undefined {
+    return this.#clientReport;
   }
   getLlm(env: Env): LlmOption {
     return Object.assign({}, ...this.#getLlms.map((fn) => fn(env)));

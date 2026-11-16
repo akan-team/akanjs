@@ -87,6 +87,25 @@ typed params and search, loading, 404 and error views, Link and the router. Befo
   `<meta name="theme-color">` a `.head()` writes replaces the root `.viewport({ themeColor })`'s. Only `.head()`
   merges: a `<title>` or `<meta>` written inside a component renders beside the merged head, so a second `<title>`
   can reach the document.
+- **An inline `<script>` a `.head()` writes has to be named in the page's script policy.** Every HTML response sends
+  `Content-Security-Policy-Report-Only: script-src … 'strict-dynamic'`, which 3.5.0 enforces: an inline script runs by
+  its hash or by the response's nonce, and a `<script src>` in JSX by the nonce (its host in a policy does nothing
+  under `'strict-dynamic'`). For a constant snippet call `scriptHashes("sha256-…")` in the `.head()` — the page stays
+  cacheable, and the hash is the one the browser prints in its console report. For text that differs per request, or
+  a script loaded by URL, pass `nonce={scriptNonce()}`; reading it makes the page dynamic, so no result cache keeps
+  it. Both come from `akanjs/client`, do nothing in the browser, and are too late outside a `.head()`: the header
+  leaves with the first byte. An `onclick="…"` attribute and a `javascript:` URL have no such form.
+  `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header, `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names
+  where the browser posts reports, and `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response
+  (`'wasm-unsafe-eval'` for a page that compiles WebAssembly).
+  A response names at most 32 hashes (its header stays under 2 KB, inside the 4 KB a proxy reads headers into):
+  `scriptHashes()` past that are left out with one warning per route, and a page whose cached replay would need more
+  (one per streamed boundary) is rendered each time, answering `X-Akan-Cache-Reason: script-hashes`.
+- **`load` and `DOMContentLoaded` can fire before client code runs.** The client entry is a module the document's
+  bootstrap script adds, not a tag in the markup, so neither event waits for it. A listener for either is added only
+  after checking `document.readyState` (`"complete"` for `load`, not `"loading"` for `DOMContentLoaded`) and calling
+  the handler directly when it already holds. A browser test waits for what the hydrated page does (the result of
+  its action, or a marker a client component sets in an effect), never for navigation's `load`.
 
 ## A Root Layout Inside A CSR Bundle
 

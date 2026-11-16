@@ -1,3 +1,5 @@
+import { isOff, ScriptPolicy, type ScriptPolicySources } from "./scriptPolicy";
+
 export interface AssetHeaderOptions {
   contentType: string;
   cacheControl?: string;
@@ -6,19 +8,22 @@ export interface AssetHeaderOptions {
 
 // nosniff: Bun.file().type falls back to octet-stream, and a sniffing browser may run a public/ file as script.
 // Referrer-Policy: paths carry ids. X-Frame-Options (HTML only): stops clickjacking of cookie-authenticated pages.
-export const applySecurityHeaders = (headers: Headers, { html = false } = {}): Headers => {
+export const applySecurityHeaders = (
+  headers: Headers,
+  { html = false, scripts }: { html?: boolean; scripts?: ScriptPolicySources } = {},
+): Headers => {
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   if (!html) return headers;
   headers.set("X-Frame-Options", "SAMEORIGIN");
   const policy = htmlContentSecurityPolicy();
   if (policy) headers.set("Content-Security-Policy", policy);
-  return headers;
+  return ScriptPolicy.apply(headers, scripts);
 };
 
-export const isOff = (value: string) => ["off", "false", "0", "none"].includes(value.toLowerCase());
+export { isOff };
 
-//? No script-src by default: SSR inlines bootstrap scripts without a nonce, and a cached HTML body would replay one.
+//? No script-src in the enforced policy yet: the report-only header beside it carries one (`ScriptPolicy`).
 //? base-uri: an injected <base> would re-point the root-relative module scripts and import map at another origin.
 export const DEFAULT_HTML_CONTENT_SECURITY_POLICY = "frame-ancestors 'self'; base-uri 'self'";
 

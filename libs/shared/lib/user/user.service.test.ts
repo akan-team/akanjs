@@ -45,7 +45,7 @@ const serviceOn = (cache: CacheDatabase) => {
         };
       },
       hashRefreshToken: (refreshToken: string) => `hash:${refreshToken}`,
-      signAccessToken: async () => ({ jwt: "jwt", expiresAt: dayjs().add(7, "day") }),
+      signAccessToken: async () => ({ jwt: "jwt", expiresAt: dayjs().add(1, "hour") }),
     },
   });
   return service;
@@ -295,5 +295,68 @@ describe("UserService admin identity carried on a user sign-in", () => {
     expect(looked).toBe(false);
     RevokedSessions.use(async () => false);
     expect((await service._carryAdminIdentity(account)).meSid).toBe("s1");
+  });
+});
+
+describe("UserService.renewPageSession", () => {
+  const jwtOf = (claims: object) => `header.${Buffer.from(JSON.stringify(claims)).toString("base64url")}.signature`;
+  const adminToken = { jwt: jwtOf({ me: { id: "a1" }, meSid: "s-admin" }), refreshToken: "next-admin" };
+  const userToken = { jwt: jwtOf({ self: { id: "u1" } }), refreshToken: "next-user" };
+  const serviceWith = (answers: { admin?: object | Error; user?: object | Error }) => {
+    const service = new UserService();
+    const calls: unknown[][] = [];
+    const answer = (kind: "admin" | "user", args: unknown[]) => {
+      calls.push([kind, ...args]);
+      const answered = answers[kind];
+      if (answered instanceof Error) throw answered;
+      return answered;
+    };
+    Object.defineProperty(service, "logger", { value: { verbose: () => undefined } });
+    Object.defineProperty(service, "adminService", {
+      value: { refreshAdminToken: async (...args: unknown[]) => answer("admin", args) },
+    });
+    Object.defineProperty(service, "refreshUserToken", { value: async (...args: unknown[]) => answer("user", args) });
+    return { service, calls };
+  };
+
+  test("renews the admin identity first and hands it to the user renewal, each on its own refresh token", async () => {
+    const { service, calls } = serviceWith({ admin: adminToken, user: userToken });
+    const renewed = await service.renewPageSession({ user: "held-user", admin: "held-admin" });
+    expect(renewed).toEqual({ jwt: userToken.jwt, refreshTokens: { user: "next-user", admin: "next-admin" } });
+    expect(calls).toEqual([
+      ["admin", "held-admin", undefined, undefined, { graceMs: expect.any(Number) }],
+      ["user", "held-user", { me: { id: "a1" }, meSid: "s-admin" }, { graceMs: expect.any(Number) }],
+    ]);
+  });
+
+  test("renews the one identity whose refresh token the page load carries", async () => {
+    const onlyUser = serviceWith({ admin: adminToken, user: userToken });
+    expect(await onlyUser.service.renewPageSession({ user: "held-user" })).toEqual({
+      jwt: userToken.jwt,
+      refreshTokens: { user: "next-user" },
+    });
+    expect(onlyUser.calls).toEqual([["user", "held-user", undefined, { graceMs: expect.any(Number) }]]);
+    const onlyAdmin = serviceWith({ admin: adminToken, user: userToken });
+    expect(await onlyAdmin.service.renewPageSession({ admin: "held-admin" })).toEqual({
+      jwt: adminToken.jwt,
+      refreshTokens: { admin: "next-admin" },
+    });
+  });
+
+  test("keeps the identity that renewed when the other's refresh token is refused, and answers none when both are", async () => {
+    const refused = new Error("shared.error.expiredRefreshToken");
+    const adminOnly = serviceWith({ admin: adminToken, user: refused });
+    expect(await adminOnly.service.renewPageSession({ user: "held-user", admin: "held-admin" })).toEqual({
+      jwt: adminToken.jwt,
+      refreshTokens: { admin: "next-admin" },
+    });
+    const userOnly = serviceWith({ admin: refused, user: userToken });
+    expect(await userOnly.service.renewPageSession({ user: "held-user", admin: "held-admin" })).toEqual({
+      jwt: userToken.jwt,
+      refreshTokens: { user: "next-user" },
+    });
+    expect(userOnly.calls[1]).toEqual(["user", "held-user", undefined, { graceMs: expect.any(Number) }]);
+    const neither = serviceWith({ admin: refused, user: refused });
+    expect(await neither.service.renewPageSession({ user: "held-user", admin: "held-admin" })).toBeNull();
   });
 });

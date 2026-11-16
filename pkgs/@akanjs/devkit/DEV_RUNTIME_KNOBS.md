@@ -83,7 +83,7 @@ reporting ready until the file it names exists.
 
 | variable | default | what it does |
 |---|---|---|
-| `AKAN_MEMORY_LOG` | off | `=1` logs a periodic memory report from each server role. |
+| `AKAN_MEMORY_LOG` | off | `=1` logs a periodic memory report from each server role, and adds `rscFirstRenderMemory` (each route's first-render growth and loaded modules) to the RSC worker's metrics. |
 | `AKAN_MEMORY_LOG_INTERVAL_MS` | `60000` | How often that report is written. |
 | `AKAN_MEMORY_GC_ON_REPORT` | off | `=1` forces a GC before each report, so the number is retained memory rather than garbage. Costs a full GC per report. |
 

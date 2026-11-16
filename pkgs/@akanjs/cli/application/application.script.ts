@@ -20,6 +20,8 @@ import {
 import { AppExecutor, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
 import type { DevStdioMode } from "@akanjs/devkit/incrementalBuilder";
 import { DesktopServerStage } from "@akanjs/devkit/mobile";
+import { SecretEnvDeclaration } from "@akanjs/devkit/transforms/secretEnvDeclaration";
+import { SecretEnvFile, type SecretEnvFormat } from "@akanjs/devkit/transforms/secretEnvFile";
 import { assertPlainName } from "@akanjs/devkit/workflow/plainName";
 import { formatSlicePlan } from "@akanjs/devkit/workspace/slicePlanner";
 import { confirm } from "@inquirer/prompts";
@@ -208,6 +210,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       profile,
       env,
       budget = "report",
+      inlineSecrets = false,
     }: {
       write?: boolean;
       fast?: boolean;
@@ -215,6 +218,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
       profile?: string;
       env?: string;
       budget?: Exclude<RouteJsBudgetMode, "off">;
+      inlineSecrets?: boolean;
     } = {},
   ) {
     await app.scanSync({ write });
@@ -226,6 +230,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
         envProfile: profile,
         environment: env,
         budget,
+        secretEnv: inlineSecrets ? "inline" : "read",
       });
       Logger.rawLog(`${app.name} built in dist/apps/${app.name}`);
       if (quiet) ApplicationBuildReporter.printRouteJsWarnings(result);
@@ -238,6 +243,30 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     }
   }
 
+  async secretEnv(
+    app: App,
+    {
+      env,
+      out,
+      format = "k8s",
+      name = `${app.name}-env`,
+      force = false,
+    }: { env?: string; out?: string; format?: SecretEnvFormat; name?: string; force?: boolean } = {},
+  ) {
+    const environment = env ?? (await app.getConfig()).baseDevEnv.env;
+    const declared = await SecretEnvDeclaration.of(path.join(app.cwdPath, "env"), environment);
+    if (!out) return Logger.rawLog(SecretEnvFile.listing(declared));
+    const { variables } = declared;
+    await SecretEnvFile.write(out, SecretEnvFile.render(format, variables, name), {
+      workspaceRoot: app.workspace.workspaceRoot,
+      force,
+    });
+    Logger.rawLog(
+      `Wrote ${variables.length} secret env value${variables.length === 1 ? "" : "s"} of ${app.name} (${environment}) to ${out}, which this user alone can read. It holds the values themselves: hand it to the deployment, then delete it.`,
+    );
+    const unmoved = SecretEnvFile.unmovedNote(declared.unmoved);
+    if (unmoved) Logger.rawLog(unmoved);
+  }
   async typecheck(
     exec: App | Exec,
     { write = true, clean = false, incremental = true, tests = false }: TypecheckOptions & { write?: boolean } = {},

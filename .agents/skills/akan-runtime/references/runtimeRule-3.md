@@ -1,5 +1,143 @@
 <!-- akan:generated -->
 
+## Native Apps — The `native` Section
+
+An app's iOS, Android and desktop (macOS, Windows, Linux) apps are the `native` section of its `akan.config.ts`.
+Each ships the CSR bundle on the native runtime, so one set of pages serves the web and every app.
+
+```ts
+const config: AppConfig = {
+  native: {
+    appName: "Board",
+    appId: "com.example.board", // or one per platform: { default, ios, android, macos, windows, linux }
+    version: "1.2.0",
+    buildNum: 12,
+    indexPath: "/explore", // the first page, and where a deep link's stack and a back with no history land
+    permissions: ["camera", "push"],
+    plugins: ["file-picker", "keep-awake"],
+    deepLinks: { schemes: ["board"], domains: ["board.example.com"] },
+    ios: { teamId: "ABCDE12345" }, // universal links for deepLinks.domains
+    android: { googleServices: "secrets/google-services.json", sha256CertFingerprints: ["…"] }, // FCM, app links
+    desktop: { server: true },
+  },
+};
+```
+
+- **Without `targets` the app has one target, `default`** — the usual case, with every setting in the section
+  itself; `native: { desktop: { server: true } }` alone is a whole desktop app that carries its server. Defaults:
+  the app's folder name for `appName` and `fileName`, an id made from the repository's and the app's names for
+  `appId`, `0.0.1` and `1`.
+- **A target is another app made from the section.** It has the section's shape minus `targets` and overrides it
+  field by field: plain objects merge key by key — `ios`, `android`, `desktop`, `deepLinks`, `updates` and the
+  objects inside them — and every other value replaces the section's, a list included, so a target's `plugins` or
+  `permissions` is its whole list. An `icon` or `splash` object is one value. Once `targets` is declared, only the
+  targets it names are built:
+
+  ```ts
+  native: {
+    appId: "com.example.board",
+    plugins: ["file-picker"],
+    targets: {
+      board: {},
+      lobby: { appId: "com.example.lobby", plugins: ["file-picker", "keep-awake"], desktop: { recovery: "reload" } },
+    },
+  },
+  ```
+
+- **A platform section may name its own `indexPath`**, which wins on that platform: `indexPath: "/mobile"` with
+  `desktop: { indexPath: "/" }` opens the phones on `/mobile` and the desktop app on `/`, from one target, so no
+  command needs `--target`. It moves the dev build's first page and the `indexPath` its bundle carries alike.
+- **`basePath` is the client a target opens.** An app with no basePaths leaves it out. Without `targets`, the one
+  target opens the basePath named like the app when there is one; in an app with basePaths, a target that names
+  none is a template, and `--target <basePath>` builds that client from it.
+- Every native command takes `--target <name>`. `build-*`, `release-*`, `update-keygen` and `publish-update` also
+  take `all`; `start-*` and `pack-update` handle one target at a time.
+- **Everything a build makes is under `dist/native/<app>/<target>/`**: `build/<platform>` (`build-ios`,
+  `build-android`, `build-desktop`), `dev/<platform>` (the dev builds `start-*` run), `updates` (what
+  `publish-update` signs and `pack-update` packs), `web` (the bundle the app loads) and `bin`. It sits outside
+  `dist/apps/<app>`, which every `akan build` empties, so a signed release waiting for upload survives the next
+  build; `akan start` leaves it alone too.
+- **`start-ios` / `start-android` / `start-desktop` run a dev build that loads its pages from `akan start`.** It has
+  to be running — except for a desktop app that carries its server, which starts it when none of this checkout
+  answers. `--release true` runs a release build of the app's own bundle instead.
+- **A desktop app builds only for the computer that builds it** — a `.app` on macOS, and an unsigned folder on
+  Windows and Linux. `build-desktop --installer true` adds what a person downloads: a per-user NSIS setup on Windows
+  (`/S` installs silently), a dmg on macOS, an AppImage on Linux (it needs `mksquashfs`; an AppImage cannot update
+  itself, so a release with `updates` ships a new one). The dmg opens on a drag-to-Applications window with the app's
+  icon on the mounted disk, laid out without Finder so CI builds it too; `native.desktop.dmg` (per target as well)
+  replaces the background (`background`, `background2x` for Retina) and moves the window and the icons (`window`,
+  `iconSize`, `textSize`, `app`, `applications`, in points) — the default background lines up with the default icon
+  positions only. `--arch arm64|x64` builds a Windows or Linux app for the
+  other CPU of that OS: the Rust library, Bun's executable, the server's `bun install --cpu` and each `bin` file
+  follow it, and a server addon with no binary for that CPU stops the build. A macOS app is Apple silicon only —
+  Intel Macs are not a target, so `--arch x64` on macOS is refused.
+- **A release is signed only with `--sign` and notarized only with `--notarize`** (`build-desktop`,
+  `publish-update`); the environment names the identity and never decides to use it, so a shell exporting a Developer
+  ID signs and uploads nothing unasked. Every release build and every `publish-update` of a target that carries a
+  server, signed or not, first searches that server for every secret value of the workspace's server env files and
+  refuses with the paths; an env file it cannot evaluate stops the release too, and a debug build is not searched.
+  One line then names the identity and the service the app goes to.
+- **A macOS release for download is signed with a Developer ID and notarized.**
+  `AKAN_NATIVE_MACOS_IDENTITY` names a keychain identity, or `AKAN_NATIVE_MACOS_CERTIFICATE` +
+  `_CERTIFICATE_PASSWORD` a `.p12` the build imports into a keychain of its own (a CI runner);
+  `AKAN_NATIVE_MACOS_NOTARY_KEY` + `_KEY_ID` + `_ISSUER` (an App Store Connect API key) or `_NOTARY_PROFILE` are the
+  credentials `--notarize` staples the app and the dmg with. Every Mach-O file — the server's addons and `bin` included — is
+  signed inside out with the hardened runtime and a timestamp; the executable gets Bun's JIT entitlements and the
+  camera's or microphone's when a usage text asks for them, and `desktop.entitlements` adds the app's own.
+  `publish-update --sign` signs with the same identity, since the updater checks the installed app's signature. Without a
+  Developer ID the build warns, because Gatekeeper blocks a downloaded copy.
+- **A Windows release is signed with Authenticode.** `AKAN_NATIVE_WINDOWS_CERTIFICATE` +
+  `_CERTIFICATE_PASSWORD` (a `.pfx`), `AKAN_NATIVE_WINDOWS_THUMBPRINT` (a certificate in the store, a token's or an
+  HSM's), or `AKAN_NATIVE_WINDOWS_SIGN_COMMAND` (a JSON array run per file with `{file}`, e.g. signtool with Azure
+  Trusted Signing's dlib) signs every PE file of the app — the server's `.node` and `bin` included — the setup program
+  and the uninstaller it writes, SHA-256 with a timestamp (`AKAN_NATIVE_WINDOWS_TIMESTAMP_URL`).
+- **`updates: { url, publicKeys }` lets an installed app update itself** — the whole app on a desktop, the web
+  bundle on a phone. `akan update-keygen <app>` makes the signing key once
+  (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints its public
+  key. List the online signing key first and offline spares after it (up to three): a phone binary trusts all of
+  them, and a key may revoke only the keys listed before it, so a leaked key cannot lock out its spares. A desktop
+  app trusts the first; `publicKey` is the one-key form. `akan publish-update <app>` builds and signs a release
+  into `updates/`: upload that release's files to `url` and its manifest last, or let
+  `--upload s3://<bucket>/<prefix>` do it (credentials and endpoint from `S3_*` or `AWS_*`; a release file the bucket
+  holds is skipped), which sends that release alone, and nothing when it is missing or fails a check. Never upload the
+  folder whole: a phone's is also where `pack-update` writes by default.
+  A phone reads only `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its
+  own fixes.
+  `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in
+  `<out>/pack.json`, exiting 2 when `--against` says it needs a new store build; `akan push-update` packs and uploads to
+  the Akan Cloud project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
+  release that hangs is rolled back while the app runs, and `report: { url }` has a phone post what became of each
+  release (applied, confirmed, rolled back and why) at its next launch, so rollback rates are visible. `devtools: true`
+  opens the web inspector of a release build for an internal test target. The channel is the backend env the binary was built for unless `channel` names one;
+  on a desktop, `updates.setChannel({ channel })` moves the installed app to another manifest until set back with
+  `null` — a server putting a device on a pilot channel — and never to a release older than the one running. A
+  release that does not come up is rolled back to the one before.
+- **An unattended screen** — signage, a kiosk — takes `desktop.recovery: "reload"` (a crashed page loads again,
+  and the app relaunches when the webview ends), `desktop.window: { fullscreen, skipTaskbar, frameless }`,
+  `desktop.screenCapture: "auto"` (Windows answers `getDisplayMedia()` with the first screen, no picker) and
+  `android.autoplay` (media plays with sound without a tap). Its carried server takes `desktop.server: { restart:
+  "forever", watchdog: true }` — restarted after every crash, never given up on, and killed and restarted when its
+  health route stops answering (every 10 s, 3 misses; `{ intervalMs, failures }` to tune) — and
+  `desktop.webview2: "standalone"` puts the whole WebView2 Runtime (~200 MB) in the Windows setup for a PC offline at
+  install. `desktop.server.env` adds variables to the server's start; the build refuses a secret-named one and those
+  the stage owns. The `window` plugin places it: `placeOnDisplay({ index, bounds, unit: "physical" })` puts a window
+  on one display in that display's device pixels — a 640×128 LED panel — lowering the minimum size to fit, beside
+  `setAlwaysOnTop`, `setCursorVisible` (which hides the pointer over its external views too, on Windows) and
+  `setDecorations`. `native.backgroundColor` (or `{ light, dark }`) is what a window and an external view show before
+  their page paints, so a dark board never flashes white, and `desktop.publisher` names who publishes a Windows app in
+  Apps & features and its executable's company (the app name when unset, never Bun's own).
+- **A third-party page shown first-party** — a scoreboard, a menu board — is the `external-view` plugin, listed in
+  `native.plugins`: a webview over the window with a browser profile of its own, its top level held to the origins it
+  was opened for while its frames load web content from anywhere, with an init script that runs in the top document
+  only, `evaluate`, a trusted `sendKey`, `capture`, and `loadFailed` / `gone` (it reloads, or is rebuilt, by itself;
+  the reason is `terminated` on macOS, and `rebuildFailed` when a rebuild failed and the view is closed, to be opened
+  again) / `consoleMessage` events. Every method on Windows and Linux, where a visible view also holds the keyboard
+  focus and no `consoleMessage` is sent; macOS 14+ lacks `sendKey`, `setMuted` and `capture`. A view opens only the
+  exact origins `native.desktop.externalView.allowOrigins` lists (none without it), over the calling page's own window:
+  its own `allowOrigins` narrow within them, and opening it again while it is open never adds one. Closed, its id opens
+  again for any listed origins with the same profile, which belongs to the id. `evaluate` and `initScript` need
+  `desktop.externalView.evaluate: true`, `sendKey` needs `desktop.externalView.sendKey: true`.
+
 ## A Desktop App's Server — `bin` And `trustedDependencies`
 
 A desktop app whose `native` section, or target, declares `desktop: { server: true }` carries the app's server:
@@ -172,126 +310,3 @@ too (`no-web-only-api-outside-webkit`, a warning): `navigator.share` / `canShare
 `navigator.geolocation` (use `useGeoLocation` from `akanjs/webkit`) and `navigator.vibrate` (iOS has none; use
 `haptics`). They are legal on the web, so the rule does not ban them; a root `native/` folder is out of its scope,
 since a plugin's web part is where those APIs belong.
-
-## Database Modes — `database` In `akan.config.ts`
-
-| mode | database | cache · queue · pubsub | runs as |
-|---|---|---|---|
-| `single` | SQLite file | SQLite files (Solid) | one container |
-| `multiple` | one SQLite file (WAL) on a host volume every container on that host opens | Redis | containers on one host |
-| `cluster` | Postgres | Redis | pods on several servers |
-
-- **`database: { modes: ["single", "cluster"] }` is what the build can run in**; the first is what `akan start`
-  runs. `akan build` carries the drivers of every declared mode (`multiple` → `bullmq`, `ioredis`; `cluster` adds
-  `postgres`).
-- **A deployment names its mode with `AKAN_DATABASE_MODE`**, and only a declared one. With one declared mode it may
-  leave it out; with several it must name one — the fallback would be a SQLite file inside each pod. `akan start`,
-  `build`, `script` and `console` resolve it the same way from the shell. One image can serve an edge site in
-  `single` and a cloud cluster in `cluster`: declare both.
-- **Where the data lives is the deployment's env, ahead of `env.server.ts`**: `SQLITE_DATABASE_PATH`,
-  `AKAN_SOLID_DB_PATH`, `POSTGRES_URL` (or `POSTGRES_HOST`/`PORT`/`DATABASE`/`USER`/`PASSWORD`),
-  `POSTGRES_INSIGHT_URL`. `REDIS_URI` is required outside local development. Pool size, SSL and
-  prepared statements ride the Postgres URL (`?max=20&ssl=require`, `prepare=false` behind PgBouncer).
-- **Uploads**: a deployed `multiple`/`cluster` app uses object storage, or a volume every instance mounts with
-  `AKAN_STORAGE_SHARED=true`.
-- **`runAdminSql` on Postgres reads as its own login role** holding base-column `SELECT` and nothing else:
-  `CREATE ROLE <name> LOGIN PASSWORD '…'` with no other role granted, `POSTGRES_INSIGHT_URL` logging in as it, and
-  `GRANT USAGE ON SCHEMA` from the DBA when the app does not own its schema. Every model table grants the role its
-  base columns at boot. Without it the console refuses on Postgres; `_doc` is never readable either way.
-- **`akan dbup`** starts what the workspace's apps declare (`--mode multiple` is Redis, `cluster` adds Postgres).
-  **`akan db-export <app>` / `akan db-import <app>`** move every model table as stored rows through NDJSON files
-  (`--dir`, default `local/transfer`) between whatever the shell's `AKAN_DATABASE_MODE` points at; a rerun
-  replaces rows, search is rebuilt after, and sessions, queued jobs and uploaded files do not move.
-- **`q.raw(sql)` is the dialect's own SQL** — `json_extract("_doc", '$.f')` on SQLite, `("_doc" #>> '{f}')` on
-  Postgres. An app that runs in both modes avoids it.
-
-## Operations — Snapshots, Restore And The `/_akan/ops` Channel
-
-`GET /_akan/app/info` answers `{ appName, repoName, environment, operationMode }` on every deployment — the same
-`AKAN_PUBLIC_*` values the client bundle already carries — so a control plane can check which app a host is
-serving without a key. Everything else is behind the ops channel.
-
-| surface | what it does |
-|---|---|
-| `bun main.js ops snapshot [--id] [--out] [--include-solid] [--allow-plaintext] [--json]` | `VACUUM INTO` a consistent copy, `integrity_check`, sha256, gzip, age encryption, `manifest.json` |
-| `bun main.js ops restore <manifest.json> [--identity <file>] [--allow-plaintext]` | offline only: verify, stage, keep the old file as `<db>.pre-restore-<ts>` (its `-wal`/`-shm` beside it), swap |
-| `GET /_akan/ops/info` | the public info plus `akanVersion`, `buildId`, `serverMode`, `databaseMode`, `solo`, `startedAt`, `replicaIdx` |
-| `POST /_akan/ops/snapshot` `{ id, includeSolid?, uploadUrls: { main, solid?, manifest } }` | 202; a child process snapshots, then PUTs each file and the manifest **last** |
-| `GET /_akan/ops/snapshot/:id` | `running` → `uploading` → `done` \| `failed`; kept in memory, so a restart answers 404 |
-| `POST /_akan/ops/migrate` `{ id, action, target?, params?, expect?, items? }` | 202; a child runs `ops migrate <action> … --json` for the token's `sub` |
-| `GET /_akan/ops/migrate/:id` | `running` → `done` (`exitCode`, and `result`: the line `--json` printed last) \| `failed` (it printed none) |
-
-- **The entry is the image's own `main.js`** — a production image carries no `akan` CLI. `AkanApp.start()` hands
-  `argv[2] === "ops"` to the command before it boots anything. It reads the container's env — the `AKAN_PUBLIC_*`
-  identity and the database paths — so run it with that env (`docker compose exec`), never a bare shell's.
-- **Restore refuses while an app answers `/_akan/app/health` on `PORT`** and names it by its `/_akan/app/info`;
-  `--force` is for a port some other app holds.
-- **The channel exists only when `AKAN_OPS_PUBLIC_KEY` is set** (Ed25519: PEM, JWK, base64 SPKI or raw 32 bytes).
-  The control plane signs a short EdDSA JWS — `typ` `akan-ops+jwt` (`JWT` or none from an older control plane; any
-  other `typ` is refused), `aud`, `iat`, `exp` at most 300s after `iat`, a `jti` the process refuses twice, and
-  optionally `sub`, whom it acts for — and the host holds only the public half, so a machine someone carries off
-  mints nothing.
-  `aud` is `<appName>/<environment>`, or `<appName>/<environment>/<AKAN_OPS_INSTANCE>` when that is set, and then
-  only that: a token minted for the app as a whole would replay across every host sharing the name. Verified calls
-  get 30 a minute per process; every refusal is the same 401 and spends none of them, and an address refused 10
-  times in a minute gets 429 until it passes. A malformed key, or the machine token's own key
-  (`AKAN_MACHINE_PUBLIC_KEY`), logs an error and leaves the app serving with the channel off.
-- **A migrate job runs for the token's `sub`**, which the run records as its actor: apply, rollback and prune-indexes
-  refuse a token without one, and a body naming `actor` is refused. Each option reaches the command as
-  `--name=value`. One job runs at a time per process (409 meanwhile); the run's own lease keeps two hosts on one
-  database apart. Jobs live in memory, so after a restart read the outcome from `list`. Polls count toward the 30 a
-  minute.
-- **The app holds no storage credential.** It PUTs to the presigned URLs it was handed (`application/octet-stream`,
-  the manifest `application/json`), plain http only to loopback. The manifest landing is the commit marker.
-- **Snapshots cover the SQLite modes only.** `single` copies the main file and, with `includeSolid`, the Solid file;
-  `multiple` copies the main file; `cluster` is refused. Paths follow the adaptors' env precedence
-  (`SQLITE_DATABASE_PATH`, `AKAN_SOLID_DB_PATH`, `AKAN_SQLITE_DIR`); a solo process uses the path its adaptor
-  actually opened, so a gateway deployment that moved the file in `env.server.ts` names it in the env too.
-- **`AKAN_BACKUP_RECIPIENT=age1…[,age1…]` encrypts before upload** — age v1 X25519, so `age -d -i key.txt` opens
-  it. Outside local operation a snapshot refuses to run without it, the ops channel's job included, unless
-  `--allow-plaintext` or `AKAN_BACKUP_PLAINTEXT=1` allows an unencrypted one. Restore takes `--identity` /
-  `AKAN_BACKUP_IDENTITY_FILE`, or a file an operator already decrypted with `age -d -o <name without .age>`; given
-  an identity, it refuses a manifest recording no encryption without `--allow-plaintext`.
-- **The host keeps the newest `AKAN_OPS_SNAPSHOT_KEEP` (default 2) snapshots** under `AKAN_OPS_SNAPSHOT_DIR`
-  (default `<db dir>/snapshots/<id>/`) — the copy an edge still has while its uplink or the bucket is down. Files are
-  0600 and each `<id>/` 0700; `AKAN_OPS_SNAPSHOT_FILE_MODE` (octal, e.g. `640`) sets another mode.
-- **`buildId` is `AKAN_BUILD_ID` when the deployment sets it**, else the git sha `akan build` wrote into
-  `akan.build.json` beside `main.js` (`-dirty` when the tree was).
-- **`operationMode` does not gate any of this** — the key does. `edge` means a production host outside the
-  cluster: the console refuses it like `cloud`, `/mcp` starts off unless `AKAN_MCP=true` or `setMcp(true)`, and
-  `operationMode: ["edge"]` on a `serve()` (the whole module, endpoints included) or an `init` / `interval` / `cron`
-  runs it only there; `local` is a developer machine.
-
-## Shipped Assets — `assets` In `akan.config.ts`
-
-`akan build` copies the whole `public/` tree into `dist`, lib assets dereferenced, and that copy is the image.
-**`assets: { pruneFonts, keepFonts }`** trims the fonts out of it that nothing reads. **Source trees are never
-touched** — an app's and a lib's own `public/` keep every file, because one shared font folder is picked over
-differently by every app that mounts it and by other repos.
-
-```ts
-const config: LibConfig = { assets: { keepFonts: ["fonts/Assistant-*.woff2"] } }; // libs/<lib>/akan.config.ts
-const config: AppConfig = { assets: { pruneFonts: false } }; // emergency valve, not the normal escape hatch
-```
-
-- **A font with `optimize` on is a build input, not a runtime asset.** `FontOptimizer` subsets it into
-  `.akan/artifact/fonts` and the emitted CSS points at `/_akan/fonts/*`, which `WebRouter` serves from the
-  artifact — so the source in `public/` is never opened again. That is the bulk of what this drops, and it
-  applies to the fonts the app *does* use, not only the ones it does not.
-- **The keep-set is derived per app, per build; there is no list of fonts to drop.** An exclude list would rot
-  the moment another app or repo started using one of them, and nobody would know to update it. A font survives
-  because ① its font declares `optimize: false`, so `FontCss.getRuntimeCss` emits the raw src; ② something
-  references its filename — anything under `public/`, the compiled stylesheet, a client/server bundle, the CSR
-  shell; or ③ a `keepFonts` glob names it.
-- **`keepFonts` belongs to the `akan.config.ts` that owns the font**, written against that lib's or app's own
-  `public/` (`"fonts/X.woff2"`, resolved to `libs/<lib>/fonts/X.woff2`). A lib shared across repos carries the
-  reason its own CSS needs a font, instead of every mounting app rediscovering it in production.
-- **A reference from a build bundle is ignored for an already-subset font.** Every route file's `fonts`
-  declaration is inlined into the pages bundle, the client chunks and the CSR shell, so a declared source is in
-  all three whether or not anything loads it. `public/` and the compiled CSS are read as authoritative.
-- **A generated manifest that lists every public asset keeps every font it names** — a service-worker precache
-  file is the usual one. That is a real reference, not a false positive, so the build reports it at `info`:
-  read the `[font-prune] kept …` line before concluding the prune does nothing.
-- Matching is by filename, including the percent-encoded spelling, so a `url()` survives however it is written.
-- The phase is `assets`, between `csr` and `compress`. An api-only build (`web: false`) copies no `public/` and
-  the phase finds nothing to do.

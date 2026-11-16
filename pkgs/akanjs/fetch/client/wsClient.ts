@@ -171,8 +171,17 @@ export class WsClient {
     if (this.#outbox.length > 0 || this.#roomSubscribeMap.size > 0) this.connect();
   }
 
-  connect() {
+  connect({ fresh = false }: { fresh?: boolean } = {}) {
     this.#connectRequested = true;
+    if (fresh && this.#ws) {
+      const stale = this.#ws;
+      this.#ws = null;
+      this.connected = false;
+      this.#stopHeartbeat();
+      stale.onopen = null;
+      stale.onmessage = null;
+      stale.close();
+    }
     if (this.#ws && this.#ws.readyState !== WebSocket.CLOSED) return;
     this.logger.debug(`Connecting to ${this.url}`);
     this.#destroyed = false;
