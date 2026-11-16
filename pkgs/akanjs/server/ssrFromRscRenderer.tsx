@@ -11,6 +11,7 @@ import { createFromNodeStream } from "react-server-dom-webpack/client.node";
 import { parsePositiveInt } from "./cachePolicy";
 import { FlightModulePreloads } from "./flightModulePreloads";
 import { mapFlightLineRows } from "./flightRowReader";
+import { HeadSplice } from "./headSplice";
 import type {
   SsrChunkRegistryStats,
   SsrDocumentOptions,
@@ -768,8 +769,6 @@ export class SsrFromRscRenderer {
       injectThemeInitScript?: boolean;
     },
   ): ReadableStream<Uint8Array> {
-    const encoder = new TextEncoder();
-    const decoder = new TextDecoder();
     const { importmap, modulePreloads, theme, injectThemeInitScript } = options;
     //? Written before </head>, behind the stylesheet links: ahead of them, the chunk requests held first paint back.
     const chunkTags = SsrFromRscRenderer.#createModulePreloadTags(options.chunkPreloads);
@@ -784,10 +783,6 @@ export class SsrFromRscRenderer {
     const tags = `${themeInitTag}${importmapTag}${modulePreloadTags}`;
     if (!tags && !chunkTags && !htmlTheme) return stream;
     const htmlOpenRe = /<html(\s[^>]*)?>/i;
-    const headOpenRe = /<head(\s[^>]*)?>/i;
-    let buffered = "";
-    let awaiting: "<head>" | "</head>" | undefined = "<head>";
-
     const withHtmlTheme = (html: string): string => {
       if (!htmlTheme) return html;
       return html.replace(htmlOpenRe, (tag) => {
@@ -795,38 +790,7 @@ export class SsrFromRscRenderer {
         return tag.replace(/>$/, ` data-theme="${escapeHtmlAttr(htmlTheme)}">`);
       });
     };
-
-    return stream.pipeThrough(
-      new TransformStream<Uint8Array, Uint8Array>({
-        transform(chunk, controller) {
-          if (!awaiting) {
-            controller.enqueue(chunk);
-            return;
-          }
-          buffered += decoder.decode(chunk, { stream: true });
-          let out = "";
-          if (awaiting === "<head>") {
-            const m = headOpenRe.exec(buffered);
-            if (!m) return;
-            const end = m.index + m[0].length;
-            out = withHtmlTheme(buffered.slice(0, end)) + tags;
-            buffered = buffered.slice(end);
-            awaiting = "</head>";
-          }
-          const close = chunkTags ? buffered.indexOf(awaiting) : 0;
-          const cut = close >= 0 ? close : Math.max(0, buffered.length - awaiting.length + 1);
-          out += buffered.slice(0, cut) + (close >= 0 ? chunkTags + buffered.slice(cut) : "");
-          buffered = close >= 0 ? "" : buffered.slice(cut);
-          if (close >= 0) awaiting = undefined;
-          if (out) controller.enqueue(encoder.encode(out));
-        },
-        flush(controller) {
-          // No <head> (e.g. an error shell): emit the buffer rather than swallow the document.
-          const rest = buffered + decoder.decode();
-          if (rest) controller.enqueue(encoder.encode(awaiting === "<head>" ? withHtmlTheme(rest) : rest));
-        },
-      }),
-    );
+    return HeadSplice.into(stream, { afterOpen: tags, beforeClose: chunkTags, rewriteOpening: withHtmlTheme });
   }
 
   static #createModulePreloadTags(modules: string[]): string {
