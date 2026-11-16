@@ -17,6 +17,9 @@ on the client side**.
 - In domain UI the file role fixes the directive: `Template`, `Zone`, and `Util` are client; `Unit` and `View` are
   server. That decides *where* the boundary sits, not how much markup sits behind it — a `Zone` that hoards markup
   is still an SSR regression.
+- Keep page props serializable unless the route pattern clearly allows otherwise, and be careful importing
+  client-only code into pages and layouts. Preserve file roles (`.document.ts`, `.service.ts`, `.store.ts`,
+  `.constant.ts`, `.client.ts`) and inspect nearby files before introducing a new boundary pattern.
 - Measure with `akan quality ssr` (`--format json` for tooling). It reports the server render share per app and
   lib as server-rendered JSX elements over total. Treat **50% server share as the floor** and a falling share as a
   regression to justify or revert.
