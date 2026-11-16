@@ -791,6 +791,53 @@ describe("an app's client runtime pieces", () => {
     });
   }, 120_000);
 
+  test("bundle for a browser with each named module's descriptors once, no other module's and nothing its signal runs on the server", async () => {
+    const files = shopFilesOf("depotkit");
+    const pingSignal = "lib/_ping/ping.signal.ts";
+    const { root } = await writeWorkspace({
+      app: "kiosk",
+      lib: "depotkit",
+      libFiles: stockFiles,
+      appFiles: {
+        ...files,
+        [pingSignal]: files[pingSignal].replace('.exec(() => "")', '.exec(() => "ran-on-the-server")'),
+        "ui/Card.tsx":
+          'import { fetch, st } from "@apps/kiosk/client";\nexport const Card = () => [st.use.label(), fetch.pingAt()];\n',
+        "ui/Tile.tsx": 'import { fetch } from "@apps/kiosk/client";\nexport const Tile = () => fetch.pingAt();\n',
+      },
+    });
+    const runtime = await RouteRuntime.read(root, "apps/kiosk");
+    if (!runtime) throw new Error("the fixture app has no assembled runtime pieces");
+    const built = await Bun.build({
+      entrypoints: ["Card", "Tile"].map((name) => path.join(root, `apps/kiosk/ui/${name}.tsx`)),
+      target: "browser",
+      splitting: true,
+      define: { "process.env.AKAN_PUBLIC_APP_NAME": '"kiosk"' },
+      plugins: [
+        {
+          name: "route-runtime",
+          setup(build) {
+            build.onLoad({ filter: /^(?!.*[\\/]node_modules[\\/]).*\.tsx?$/ }, async ({ path: file }) => {
+              const loader = file.endsWith("x") ? "tsx" : "ts";
+              const redirected = runtime.redirectOf(file);
+              if (redirected) return { contents: redirected, loader };
+              const source = await Bun.file(file).text();
+              return { contents: runtime.transform(source, file)?.source ?? source, loader };
+            });
+          },
+        },
+      ],
+    });
+    const bundled = (await Promise.all(built.outputs.map((output) => output.text()))).join("\n");
+    const descriptorsOf = (endpoint: string) =>
+      bundled.match(new RegExp(`\\b${endpoint}: \\{\\s+type: "`, "g"))?.length ?? 0;
+
+    expect(built.outputs.length).toBeGreaterThan(2);
+    expect(descriptorsOf("pingAt")).toBe(1);
+    expect(["auditTrail", "itemCount"].map(descriptorsOf)).toEqual([0, 0]);
+    expect(bundled).not.toContain("ran-on-the-server");
+  }, 120_000);
+
   test("assemble the same store, fetch and signal keys as the whole client runtime, in a browser and outside one", async () => {
     const { root } = await writeShopWorkspace("arcade", "vault");
     const evaluateBoth = async () => ({
