@@ -1,6 +1,7 @@
 import type { AppConfig } from "akanjs";
 
 const config: AppConfig = {
+  clientRuntime: "route",
   secrets: ["secrets/**"],
   bin: {
     "probe-tool": {
