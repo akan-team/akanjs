@@ -474,9 +474,9 @@ export interface AppConfigResult {
   barrelImports: string[];
   optimizeImports: string[];
   /**
-   * What a page's browser chunks load of the client runtime. `"all"` (the default) loads every model's descriptors
-   * and stores with each client module; `"route"` loads the page runtime there, and a model's runtime only where a
-   * client module imports it. Server rendering, CSR bundles and native apps always load the whole runtime.
+   * `"route"` loads a model's descriptors and store in the browser only on a route whose client code imports `fetch`
+   * or `st`, or renders an `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on
+   * every page. Server rendering, CSR bundles and native apps always load the whole runtime.
    */
   clientRuntime: "all" | "route";
   images: AkanImageConfig;

@@ -306,6 +306,7 @@ export interface AppConfigResult {
     bin: AkanBinConfig;
     barrelImports: string[];
     optimizeImports: string[];
+    clientRuntime: "all" | "route";
     images: AkanImageConfig;
     i18n: AkanI18nConfig;
     publicEnv: string[];
