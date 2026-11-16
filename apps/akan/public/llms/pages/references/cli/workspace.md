@@ -125,7 +125,7 @@ Check a change in one run: sync, lint with fixes, typecheck, a build of each cha
 
 - akan.comment.added: A warning per code comment added since the last commit, so each one gets a second look. `--lint-only` skips it.
 
-- build: Skipped while lint or typecheck reports an error.
+- build: Skipped while lint or typecheck reports an error. It writes to `dist/verify/<app>`, so a build in `dist/apps/<app>` stays as `akan build` left it.
 
 - exit code: `0` passes, `1` fails, and `2` means a target is not in the workspace.
 
