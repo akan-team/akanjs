@@ -1890,6 +1890,27 @@ describe("StoreInstance with a root added later", () => {
     expect(instance.do.failThing).toBe(failThing);
   });
 
+  test("keeps a declared set<Key> action when a later root that does not declare it is added", async () => {
+    setupEnv();
+    class DeclaringStore extends store("declaringStore" as const, () => ({ declaredValue: 1 })) {
+      setDeclaredValue(value: number) {
+        this.set({ declaredValue: value * 10 });
+      }
+    }
+    class UnrelatedStore extends store("unrelatedStore" as const, () => ({ unrelatedValue: 1 })) {}
+    StoreRegistry.register(DeclaringStore);
+    StoreRegistry.register(UnrelatedStore);
+    const instance = new StoreInstance(makeRoot("declaringRoot", DeclaringStore));
+    const { setDeclaredValue } = instance.do;
+
+    instance.addStore(makeRoot("unrelatedRoot", UnrelatedStore));
+    await instance.do.setDeclaredValue(2);
+
+    expect(instance.do.setDeclaredValue).toBe(setDeclaredValue);
+    expect(instance.get().declaredValue).toBe(20);
+    expect(instance.generatedSetters.has("setDeclaredValue")).toBe(false);
+  });
+
   test("replaces st.do.<action> when a later root brings a different method under its name", async () => {
     setupEnv();
     class ReplacedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {

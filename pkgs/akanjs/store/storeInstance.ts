@@ -380,8 +380,8 @@ export class StoreInstance {
             };
         if (this.#derivedMeta.derivedKeys.has(k)) continue;
         const setKey = stateSetterName(k);
-        // A declared action of the same name (`setPageOfX` is a slice action) wins the key; no convenience setter.
-        if (setKey in actions) continue;
+        // A declared action of the same name (`setPageOfX` is a slice action), from any root added so far, wins the key.
+        if (setKey in this.#ctx) continue;
         if (!StoreFacade.isBuiltFrom(this.do, setKey, k))
           this.do[setKey] = StoreFacade.builtFrom(
             tagAction((value: unknown) => this.set({ [k]: value }), { action: setKey, state: k }),
