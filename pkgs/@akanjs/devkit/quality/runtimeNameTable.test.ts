@@ -97,6 +97,52 @@ describe("RuntimeNameTable", () => {
     expect(demo.dependenciesOf("apps/demo", "memo")).toEqual([]);
   });
 
+  test("names the file-upload module as a dependency of an app store that extends a lib store and has no signal of its own", async () => {
+    const taleLib = runtimeFixtureLayer("libs/pk", {
+      "libs/pk/lib/tale/tale.constant.ts": `import { via } from "akanjs/constant";
+
+export class TaleInput extends via((field) => ({ title: field(String) })) {}
+export class TaleObject extends via(TaleInput, (field) => ({})) {}
+export class LightTale extends via(TaleObject, ["title"] as const, (resolve) => ({})) {}
+export class Tale extends via(TaleObject, LightTale, (resolve) => ({})) {}
+`,
+      "libs/pk/lib/tale/tale.signal.ts": `import { Public, slice } from "akanjs/signal";
+
+import * as srv from "../srv";
+
+export class TaleSlice extends slice(srv.tale, { guards: { get: Public, cru: Public } }, () => ({})) {}
+`,
+      "libs/pk/lib/tale/tale.store.ts": `import { store } from "akanjs/store";
+
+import { sig } from "../useClient";
+
+export class TaleStore extends store(sig.tale, () => ({})) {}
+`,
+    });
+    const desk = runtimeFixtureLayer("apps/desk", {
+      "apps/desk/lib/tale/tale.constant.ts": `import { via } from "akanjs/constant";
+
+import { tale } from "../__lib/lib.constant";
+import { File } from "../cnst";
+
+export class TaleInput extends via((field) => ({ cover: field(File) }), ...tale.inputs) {}
+export class TaleObject extends via(TaleInput, (field) => ({}), ...tale.objects) {}
+export class LightTale extends via(TaleObject, ["cover"] as const, (resolve) => ({}), ...tale.lights) {}
+export class Tale extends via(TaleObject, LightTale, (resolve) => ({}), ...tale.models) {}
+`,
+      "apps/desk/lib/tale/tale.store.ts": `import { store } from "akanjs/store";
+
+import { tale } from "../__lib/lib.store";
+import { sig } from "../useClient";
+
+export class TaleStore extends store(sig.tale, () => ({ shelf: "" }), ...tale.stores) {}
+`,
+    });
+    const table = await runtimeUploadTable([taleLib, desk]);
+    expect(table.dependenciesOf("apps/desk", "tale")).toEqual([{ scope: "libs/fk", module: "file" }]);
+    expect((await runtimeUploadTable([taleLib])).dependenciesOf("libs/pk", "tale")).toEqual([]);
+  });
+
   test("names its scope and layers, innermost first, and reads no table for a scope with no generated runtime", async () => {
     expect([demo.scope, ...demo.layers.map(({ scope }) => scope)]).toEqual(["apps/demo", "libs/kit", "apps/demo"]);
     expect(demo.approximations).toEqual([]);

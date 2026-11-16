@@ -1911,6 +1911,36 @@ describe("StoreInstance with a root added later", () => {
     expect(instance.generatedSetters.has("setDeclaredValue")).toBe(false);
   });
 
+  test("keeps a lib store's persisted value when the app store extending it redeclares the key as plain state, whichever root comes first", () => {
+    setupEnv();
+    const browser = installBrowser();
+    class PaletteLibStore extends store("paletteStore" as const, ({ persist }) => ({
+      paletteMode: persist(String, { default: "system", key: "paletteMode" }),
+    })) {}
+    StoreRegistry.register(PaletteLibStore);
+    class PaletteAppStore extends store("paletteStore" as const, () => ({ paletteMode: "dark" }), PaletteLibStore) {}
+    StoreRegistry.register(PaletteAppStore);
+    browser.localStorage.setItem(
+      PaletteLibStore[STATE_DERIVED_META].persistSession.paletteMode.storageKey,
+      JSON.stringify("light"),
+    );
+    const [libRoot, appRoot] = [
+      makeRoot("paletteLibRoot", PaletteLibStore),
+      makeRoot("paletteAppRoot", PaletteAppStore),
+    ];
+
+    const answers = [[libRoot, appRoot], [appRoot, libRoot], [appRoot], [libRoot, appRoot, libRoot, appRoot]].map(
+      ([first, ...rest]) => {
+        const instance = new StoreInstance(first ?? libRoot);
+        for (const root of rest) instance.addStore(root);
+        return instance.get().paletteMode;
+      },
+    );
+
+    expect(answers).toEqual(["light", "light", "light", "light"]);
+    uninstallBrowser();
+  });
+
   test("replaces st.do.<action> when a later root brings a different method under its name", async () => {
     setupEnv();
     class ReplacedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {
@@ -2061,6 +2091,19 @@ describe("StoreInstance facades on an unknown key", () => {
       expect(instance.use.missingValue).toBeUndefined();
       expect(instance.slice.missingSlice).toBeUndefined();
     }
+  });
+
+  test("calling a key of a store the page did not load throws in production, naming the key", () => {
+    setupEnv();
+    class LoadedStore extends store("loadedStore" as const, () => ({ loadedValue: 1 })) {}
+    StoreRegistry.register(LoadedStore);
+    const instance = withNodeEnv("production", () => new StoreInstance(makeRoot("loadedRoot", LoadedStore)));
+
+    expect(() => instance.use.absentValue()).toThrow(TypeError);
+    expect(() => instance.use.absentValue()).toThrow("use.absentValue is not a function");
+    expect(() => instance.do.setAbsentValue(2)).toThrow("do.setAbsentValue is not a function");
+    expect(() => (instance.slice.absentSlice as { use: unknown }).use).toThrow("slice.absentSlice");
+    expect(instance.do.setLoadedValue).toBeInstanceOf(Function);
   });
 });
 

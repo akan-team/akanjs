@@ -51,7 +51,7 @@ export const Card = () => {
     ]);
     expect(result?.source.split("\n").slice(0, 2)).toEqual([
       '"use client";',
-      'import "@apps/demo/lib/__client/memo.fetch"; import "@apps/demo/lib/__client/memo.st"; import "@libs/kit/lib/__client/util.st"; import { fetch, st } from "@apps/demo/lib/usePage"; import { Memo } from "@apps/demo/client";',
+      'import "@apps/demo/lib/__client/memo.fetch"; import "@apps/demo/lib/__client/memo.st"; import "@libs/kit/lib/__client/util.st"; import { fetch } from "@apps/demo/lib/usePage"; import { st } from "akanjs/store"; import { Memo } from "@apps/demo/client";',
     ]);
     expect(result?.source.split("\n").length).toBe(source.split("\n").length);
   });
@@ -85,14 +85,16 @@ export const count = (value: cnst.Memo) => [fetch.memoNote(), value];
       "libs/kit/lib/__client/tag.st",
     ]);
     expect(result?.source.startsWith('import "@apps/demo/lib/__client/note.fetch";')).toBe(true);
-    expect(result?.source).toContain('import { fetch, st } from "@libs/kit/lib/usePage";');
+    expect(result?.source).toContain(
+      'import { fetch } from "@libs/kit/lib/usePage"; import { st } from "akanjs/store";',
+    );
   });
 
-  test("points a whole-runtime file import at the page runtime", () => {
+  test("points a whole-runtime file import at the page runtime and the tab's store", () => {
     const result = transform(
       'import { st } from "../lib/st";\nimport { fetch } from "@apps/demo/lib/useClient";\nexport const read = () => [st.use.draft(), fetch.memoNote()];\n',
     );
-    expect(result?.source).toContain('import { st } from "@apps/demo/lib/usePage";');
+    expect(result?.source).toContain('import { st } from "akanjs/store";');
     expect(result?.source).toContain('import { fetch } from "@apps/demo/lib/usePage";');
     expect(result?.pieces).toEqual(["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/memo.st"]);
   });
@@ -131,6 +133,11 @@ describe("a client file whose modules cannot be told", () => {
       perModule: false,
       pieces: [],
     });
+  });
+
+  test("loads the whole runtime when the import also takes the barrel's default export, and leaves that import as written", () => {
+    const source = 'import Kit, { st } from "@apps/demo/client";\nexport const read = () => [st.use.draft(), Kit];\n';
+    expect(transform(source)).toEqual({ source: `${whole}${source}`, perModule: false, pieces: [] });
   });
 
   test("loads the whole runtime when a piece it needs was not generated", () => {
@@ -174,7 +181,14 @@ describe("a file the per-route runtime does not touch", () => {
 describe("a scope's whole runtime file", () => {
   test("is answered from the scope's assembled pieces", () => {
     expect(runtime.redirectOf("/ws/apps/demo/lib/useClient.ts")).toBe('export * from "./__client/_useClient";\n');
-    expect(runtime.redirectOf("/ws/libs/kit/lib/st.ts")).toBe('export * from "./__client/_st";\n');
+    expect(runtime.redirectOf("/ws/apps/demo/lib/st.ts")).toBe('export * from "./__client/_st";\n');
+    expect(runtime.redirectOf("/ws/libs/kit/lib/useClient.ts")).toBe('export * from "./__client/_useClient";\n');
+  });
+
+  test("is followed by the app's store root when it is a lib's, so an app store keeps its actions over the lib's", () => {
+    expect(runtime.redirectOf("/ws/libs/kit/lib/st.ts")).toBe(
+      'export * from "./__client/_st";\nimport "/ws/apps/demo/lib/__client/_st.ts";\n',
+    );
   });
 
   test("stays as written where the scope has no assembled piece, and for every other file", () => {

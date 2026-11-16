@@ -24,7 +24,6 @@ import {
   type StateDerivedMeta,
 } from "./stateBuilder";
 import { StoreFacade } from "./storeFacade";
-import { StoreLineage } from "./storeLineage";
 import type { StoreUseOptions } from "./types";
 
 enableMapSet();
@@ -328,15 +327,13 @@ export class StoreInstance {
     if (store) this.addStore(store);
   }
 
-  //? `outgrown` holds the stores already here that `store` extends: a key still at their default takes `store`'s.
-  addStore(store: RootStoreCls, outgrown?: RootStoreCls) {
+  addStore(store: RootStoreCls) {
     const meta = store[STATE_DERIVED_META];
     this.#mergeDerivedMeta(meta);
     const rootState = evaluateInitializers(store[STATE_INIT_META] ?? {});
     const searchKeys = Object.keys(meta?.search ?? {});
     const computedKeys = Object.keys(meta?.computed ?? {});
-    const outgrownState = outgrown ? evaluateInitializers(outgrown[STATE_INIT_META] ?? {}) : {};
-    const rootKeys = { state: rootState, search: searchKeys, computed: computedKeys, outgrown: outgrownState };
+    const rootKeys = { state: rootState, search: searchKeys, computed: computedKeys };
     this.#serverState = this.#withRootKeys(this.#serverState, rootKeys, { server: true, hydrate: false });
     const nextState = this.#withRootKeys(this.#state, rootKeys, {
       server: typeof window === "undefined",
@@ -354,24 +351,17 @@ export class StoreInstance {
 
   #withRootKeys(
     state: StoreStateRecord,
-    root: { state: StoreStateRecord; search: string[]; computed: string[]; outgrown: StoreStateRecord },
+    root: { state: StoreStateRecord; search: string[]; computed: string[] },
     { server, hydrate }: { server: boolean; hydrate: boolean },
   ) {
     const addedKeys = Object.keys(root.state).filter((key) => !(key in state));
-    const retakenKeys = Object.keys(root.outgrown).filter(
-      (key) =>
-        key in state &&
-        key in root.state &&
-        StoreLineage.sameValue(state[key], root.outgrown[key]) &&
-        !StoreLineage.sameValue(state[key], root.state[key]),
-    );
     const searchKeys = root.search.filter((key) => !(key in state));
     const computedKeys = root.computed.filter((key) => !(key in state));
-    if (!addedKeys.length && !retakenKeys.length && !searchKeys.length && !computedKeys.length) return state;
+    if (!addedKeys.length && !searchKeys.length && !computedKeys.length) return state;
     const next = { ...state };
-    for (const key of [...addedKeys, ...retakenKeys]) next[key] = root.state[key];
+    for (const key of addedKeys) next[key] = root.state[key];
     if (hydrate) this.#hydratePersistSession(next, addedKeys);
-    const changedKeys = new Set([...addedKeys, ...retakenKeys]);
+    const changedKeys = new Set(addedKeys);
     for (const key of searchKeys) this.#writeSearch(next, key, changedKeys, server);
     for (const key of computedKeys) this.#writeComputed(next, key, changedKeys);
     return next;
@@ -423,7 +413,6 @@ export class StoreInstance {
     }
     for (const k of Object.keys(actions)) {
       if (StoreFacade.isBuiltFrom(this.do, k, actions[k])) continue;
-      this.#generatedSetters.delete(k);
       const dispatch = async (...args: unknown[]) => {
         Logger.verbose(`${k} action loading...`);
         const start = Date.now();

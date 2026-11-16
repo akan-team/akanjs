@@ -475,11 +475,11 @@ export interface AppConfigResult {
   optimizeImports: string[];
   /**
    * `"route"` loads a model's descriptors and store in the browser only on a route whose client code names that
-   * model (`st.use.memoList()`, `fetch.memo(id)`), and every model's where it picks a name at run time or renders an
-   * `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on every page. Server
-   * rendering, CSR bundles and native apps always load the whole runtime. The development server loads what a
-   * production page loads, so a name a route misses shows there too, and reading a store key the page has not loaded
-   * names the module whose store declares it.
+   * model, or renders an `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on
+   * every page. Naming is `st.use.memoList()` or `fetch.memo(id)`; a file that picks the name at run time, or renders
+   * such a component, loads every model's. Server rendering, CSR bundles and native apps always load the whole
+   * runtime. The development server loads what a production page loads, so a name a route misses shows there too,
+   * and reading a store key the page has not loaded names the module whose store declares it.
    */
   clientRuntime: "all" | "route";
   images: AkanImageConfig;

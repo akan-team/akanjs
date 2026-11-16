@@ -105,7 +105,12 @@ export class SysExecutor extends Executor {
     const { RuntimeNameTable } = await import("../quality/runtimeNameTable");
     const table = await RuntimeNameTable.readScopes(this.workspace.workspaceRoot, [
       ...new Set(scopesOf(scanInfo, scope)),
-    ]).catch(() => null);
+    ]).catch((error: unknown) => {
+      this.logger.warn(
+        `[client-runtime] The modules of ${scope} could not be read (${error instanceof Error ? error.message : String(error)}), so no store file under ${scope}/${pieceDir} loads the upload module's descriptors first, and under clientRuntime: "route" a page naming only that store has no upload action. Run \`akan sync ${this.name}\` again once that is fixed.`,
+      );
+      return null;
+    });
     const written = (
       await Promise.all([
         this._applyTemplate({ basePath: pieceDir, template: "clientPiece/scope", scanInfo }),
