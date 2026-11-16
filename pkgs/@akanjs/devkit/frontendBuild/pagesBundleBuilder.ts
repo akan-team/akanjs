@@ -171,11 +171,15 @@ export class PagesBundleBuilder {
     return {
       name: "akan-server-use-client-fetch",
       setup(build) {
-        build.onLoad({ filter: /[/\\]lib[/\\](?:useClient|usePage)\.(ts|tsx|js|jsx)$/ }, async (args) => {
+        const filter = /[/\\]lib[/\\](?:useClient|usePage|__client[/\\][^/\\]+\.fetch)\.(ts|tsx|js|jsx)$/;
+        build.onLoad({ filter }, async (args) => {
           const source = await Bun.file(args.path).text();
-          const transformed = path.basename(args.path).startsWith("usePage.")
-            ? PagesBundleBuilder.transformServerPageFetchSource(source)
-            : PagesBundleBuilder.transformServerUseClientFetchSource(source);
+          const transformed =
+            path.basename(path.dirname(args.path)) === "__client"
+              ? PagesBundleBuilder.transformServerClientPieceSource(source)
+              : path.basename(args.path).startsWith("usePage.")
+                ? PagesBundleBuilder.transformServerPageFetchSource(source)
+                : PagesBundleBuilder.transformServerUseClientFetchSource(source);
           if (transformed === source) return undefined;
           return { contents: transformed, loader: loaderFor(args.path) };
         });
@@ -218,6 +222,31 @@ export class PagesBundleBuilder {
     return transformed;
   }
 
+  //? A piece reads its descriptors from the live server signal at render time instead of inlining them at build time.
+  static transformServerClientPieceSource(source: string): string {
+    if (!source.includes(`with { type: "macro" }`)) return source;
+    const tokens = PagesBundleBuilder.#tokenize(source);
+    const at = PagesBundleBuilder.#indexOfTokens(tokens, PagesBundleBuilder.#pieceMacroImportTokens);
+    if (at === -1) return source;
+    const end = tokens[at + PagesBundleBuilder.#pieceMacroImportTokens.length - 1].end;
+    return `${source.slice(0, tokens[at].start)}import { getSerializedSignalOf } from "../sig";${source.slice(end)}`;
+  }
+
+  static readonly #pieceMacroImportTokens = [
+    "import",
+    "{",
+    "getSerializedSignalOf",
+    "}",
+    "from",
+    '"../sig"',
+    "with",
+    "{",
+    "type",
+    ":",
+    '"macro"',
+    "}",
+    ";",
+  ] as const;
   static readonly #macroImportTokens = [
     "import",
     "{",

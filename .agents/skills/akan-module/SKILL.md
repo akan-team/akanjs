@@ -38,8 +38,8 @@ module. Collection-level helpers go `static` on the full model.
 - Keep business decisions in constant, document and service; API exposure in signal; client coordination in
   store; rendering in UI.
 - Never hand-edit a generated registry file — `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`,
-  `st.ts`, `useClient.ts`, `usePage.ts`, `useServer.ts`, and every `index.ts` barrel. They are scanner output; run
-  `akan sync <app>` or `repair_generated`.
+  `st.ts`, `useClient.ts`, `usePage.ts`, `useServer.ts`, the files under `lib/__lib/` and `lib/__client/`, and every
+  `index.ts` barrel. They are scanner output; run `akan sync <app>` or `repair_generated`.
 - Read the module's `<module>.abstract.md` before changing it, and update it when an invariant or workflow
   changes — not for formatting.
 

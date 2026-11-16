@@ -92,6 +92,8 @@ apps/*/ios/**/GoogleService-Info.plist
 **/akan.pkg.json
 apps/**/lib/__lib
 libs/**/lib/__lib
+apps/**/lib/__client
+libs/**/lib/__client
 apps/*/lib/cnst.ts
 apps/*/lib/dict.ts
 apps/*/lib/db.ts

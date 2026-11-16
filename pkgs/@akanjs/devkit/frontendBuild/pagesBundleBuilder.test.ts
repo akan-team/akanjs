@@ -151,3 +151,31 @@ describe("PagesBundleBuilder on the generated layout with lib/usePage.ts", () =>
     expect(transform(withoutMacroImport)).toBe(withoutMacroImport);
   });
 });
+
+describe("PagesBundleBuilder on a generated lib/__client fetch piece", () => {
+  const pieceMacroImport = `import { getSerializedSignalOf } from "../sig" with { type: "macro" };`;
+  const generatedPiece = (importLine = pieceMacroImport) =>
+    [
+      'import { FetchClient } from "akanjs/fetch";',
+      'import * as cnst from "../cnst";',
+      'import { fetch, sig } from "../usePage";',
+      importLine,
+      'import type * as signal from "../sig";',
+      "",
+      'Object.assign(sig, FetchClient.build<typeof signal>(cnst, getSerializedSignalOf("memo"), { base: fetch }).sig);',
+      "",
+    ].join("\n");
+
+  test("reads the module's descriptors from the live server signal instead of the build-time macro", () => {
+    expect(PagesBundleBuilder.transformServerClientPieceSource(generatedPiece())).toBe(
+      generatedPiece('import { getSerializedSignalOf } from "../sig";'),
+    );
+  });
+
+  test("leaves a piece it does not recognise unchanged", () => {
+    const commented = generatedPiece(`// ${pieceMacroImport}`);
+    expect(PagesBundleBuilder.transformServerClientPieceSource(commented)).toBe(commented);
+    const otherMacro = generatedPiece(`import { getSerializedSignal } from "../sig" with { type: "macro" };`);
+    expect(PagesBundleBuilder.transformServerClientPieceSource(otherMacro)).toBe(otherMacro);
+  });
+});

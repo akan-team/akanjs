@@ -35,6 +35,7 @@ export class AgentHook {
     "apps/*/client.ts",
     "apps/*/server.ts",
     "{apps,libs}/*/lib/{cnst,db,dict,sig,srv,st,useClient,usePage,useServer}.ts",
+    "{apps,libs}/*/lib/__client/*.ts",
     "{apps,libs}/*/lib/**/index.ts",
     "{apps,libs}/*/{ui,webkit,srvkit,common,plugin}/index.ts",
   ] as const;

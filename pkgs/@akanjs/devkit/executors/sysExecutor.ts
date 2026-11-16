@@ -90,11 +90,37 @@ export class SysExecutor extends Executor {
     );
     return written;
   }
+  async #syncClientPieces(scanInfo: AppInfo | LibInfo): Promise<FileContent[]> {
+    const pieceDir = "lib/__client";
+    const modulesOf = (info: AppInfo | LibInfo): string[] => [
+      ...[...info.getLibInfos().values()].flatMap(modulesOf),
+      ...info.getDatabaseModules(),
+      ...info.getServiceModules(),
+    ];
+    const written = (
+      await Promise.all([
+        this._applyTemplate({ basePath: pieceDir, template: "clientPiece/scope", scanInfo }),
+        ...[...new Set(modulesOf(scanInfo))].map((model) =>
+          this._applyTemplate({
+            basePath: pieceDir,
+            template: "clientPiece/module",
+            scanInfo,
+            dict: { model, Model: capitalize(model) },
+          }),
+        ),
+      ])
+    ).flat();
+    const kept = new Set(written.map(({ filePath }) => path.basename(filePath)));
+    const stale = (await this.readdir(pieceDir)).filter((file) => !kept.has(file));
+    await Promise.all(stale.map((file) => this.remove(`${pieceDir}/${file}`)));
+    return written;
+  }
   #getScanTemplateTasks(scanInfo: AppInfo | LibInfo): (Promise<FileContent[]> | null)[] {
     return [
       this.#seedEnvFiles(),
       this._applyTemplate({ basePath: "env", template: "env", scanInfo }),
       this._applyTemplate({ basePath: "lib", template: "lib", scanInfo }),
+      this.#syncClientPieces(scanInfo),
       this._applyTemplate({ basePath: ".", template: "server.ts", scanInfo }),
       this._applyTemplate({ basePath: ".", template: "client.ts", scanInfo }),
       this.type === "lib" ? this._applyTemplate({ basePath: ".", template: "index.ts", scanInfo }) : null,
