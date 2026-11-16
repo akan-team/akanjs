@@ -438,6 +438,8 @@ export interface KeyboardFrameState {
   source?: "native" | "visualViewport" | "fallback";
   animationDuration?: number;
   animationEasing?: string;
+  /** The page's content ends at the keyboard, as UIKit's keyboard layout guide does: an iOS shell no longer pans. */
+  avoidsContent?: boolean;
 }
 export interface FrameContentViewportState {
   top: number;

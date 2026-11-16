@@ -1,4 +1,5 @@
 "use client";
+import { Device } from "akanjs/client";
 import { useEffect, useState } from "react";
 
 export interface VisualViewportFrame {
@@ -8,6 +9,18 @@ export interface VisualViewportFrame {
   height: number;
   offsetTop: number;
 }
+
+/** Whether the iOS shell left the keyboard to the page; an older shell still pans to the field, so the page must not. */
+export const isPageKeyboardAvoidance = () =>
+  (globalThis as { __AKAN_NATIVE__?: { keyboardAvoidance?: string } }).__AKAN_NATIVE__?.keyboardAvoidance === "page";
+
+const currentDevice = () => {
+  try {
+    return Device.getDevice();
+  } catch {
+    return null;
+  }
+};
 
 const closedFrame = (): VisualViewportFrame => ({
   keyboardHeight: 0,
@@ -23,6 +36,20 @@ const closedFrame = (): VisualViewportFrame => ({
 export const useVisualViewportFrame = (): VisualViewportFrame => {
   const [frame, setFrame] = useState<VisualViewportFrame>(closedFrame);
   useEffect(() => {
+    //? An iOS shell that left the keyboard to the page keeps the visual viewport whole; its keyboard plugin says what
+    //? the keys cover, so the visible part is the window above them.
+    if (isPageKeyboardAvoidance()) {
+      const device = currentDevice();
+      if (!device) return;
+      const apply = (keyboardHeight: number) =>
+        setFrame(
+          keyboardHeight > 0
+            ? { keyboardHeight, height: window.innerHeight - keyboardHeight, offsetTop: 0 }
+            : closedFrame(),
+        );
+      apply(device.keyboardHeight);
+      return device.subscribeKeyboard(apply);
+    }
     const viewport = window.visualViewport;
     if (!viewport) return;
     const measure = () => {

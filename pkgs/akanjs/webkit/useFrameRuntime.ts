@@ -20,6 +20,8 @@ import {
 import { st } from "akanjs/store";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { isPageKeyboardAvoidance } from "./useVisualViewportFrame";
+
 export type FrameSlotMap = Record<string, Record<string, FrameSlotRegistration>>;
 export type FrameSlotBucket = "active" | "pending";
 export type FrameSlotMapByBucket = Record<FrameSlotBucket, FrameSlotMap>;
@@ -29,6 +31,8 @@ export const KEYBOARD_SHOW_ANIMATION_DURATION_MS = 420;
 export const KEYBOARD_HIDE_ANIMATION_DURATION_MS = 90;
 export const KEYBOARD_SHOW_ANIMATION_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
 export const KEYBOARD_HIDE_ANIMATION_EASING = "cubic-bezier(0.7, 0, 0.84, 0)";
+//? UIKit moves the keyboard on its private curve 7; this is the cubic-bezier it is usually fitted with.
+export const IOS_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.38, 0.7, 0.125, 1)";
 
 export const FRAME_Z_INDEX = {
   page: 10,
@@ -158,6 +162,14 @@ const getCurrentPlatform = () => {
   }
 };
 
+const keyboardAnimationMs = () => {
+  try {
+    return Device.getDevice().keyboardAnimationMs;
+  } catch {
+    return 0;
+  }
+};
+
 export function getFramePlatformProfile(): FramePlatformProfile {
   const platform = getCurrentPlatform();
   if (platform === "ios") return "ios";
@@ -260,6 +272,8 @@ export function resolveKeyboardFrame({
   platformProfile,
   sticky,
   freeze,
+  pageAvoidsKeyboard = false,
+  nativeAnimationDuration = 0,
 }: {
   keyboardHeight: number;
   bottomSafeArea: number;
@@ -267,6 +281,8 @@ export function resolveKeyboardFrame({
   platformProfile: FramePlatformProfile;
   sticky: boolean;
   freeze?: boolean;
+  pageAvoidsKeyboard?: boolean;
+  nativeAnimationDuration?: number;
 }): KeyboardFrameState {
   const useVisualViewportHeight = platformProfile === "android" && visualViewportKeyboardHeight > 0;
   const visualFallbackHeight =
@@ -289,6 +305,8 @@ export function resolveKeyboardFrame({
       : 0;
   const offset = sticky && !freeze ? Math.max(0, effectiveKeyboardHeight - visualCompensation) : 0;
   const isShowing = effectiveKeyboardHeight > 0 && !freeze;
+  const avoidsContent = platformProfile === "ios" && pageAvoidsKeyboard;
+  const followsKeyboard = avoidsContent && nativeAnimationDuration > 0;
   return {
     height: effectiveKeyboardHeight,
     offset,
@@ -296,8 +314,17 @@ export function resolveKeyboardFrame({
     sticky,
     frozen: freeze,
     source,
-    animationDuration: isShowing ? KEYBOARD_SHOW_ANIMATION_DURATION_MS : KEYBOARD_HIDE_ANIMATION_DURATION_MS,
-    animationEasing: isShowing ? KEYBOARD_SHOW_ANIMATION_EASING : KEYBOARD_HIDE_ANIMATION_EASING,
+    animationDuration: followsKeyboard
+      ? nativeAnimationDuration
+      : isShowing
+        ? KEYBOARD_SHOW_ANIMATION_DURATION_MS
+        : KEYBOARD_HIDE_ANIMATION_DURATION_MS,
+    animationEasing: followsKeyboard
+      ? IOS_KEYBOARD_ANIMATION_EASING
+      : isShowing
+        ? KEYBOARD_SHOW_ANIMATION_EASING
+        : KEYBOARD_HIDE_ANIMATION_EASING,
+    avoidsContent,
   };
 }
 
@@ -324,7 +351,11 @@ export function resolveKeyboardLayout({
     visible: keyboard.sticky && resolvedAccessoryHeight > 0,
     slotHeight: accessoryHeight,
   };
-  const contentBottom = keyboard.sticky ? keyboardAccessory.top : viewport.height;
+  const contentBottom = keyboard.sticky
+    ? keyboardAccessory.top
+    : keyboard.avoidsContent && keyboard.visible
+      ? Math.max(0, viewport.height - keyboard.height)
+      : viewport.height;
   if (keyboard.sticky && accessoryHeight <= 0) {
     debugFrame("keyboard.accessoryLayout", {
       reason: "missing-accessory-height",
@@ -357,6 +388,8 @@ export function useKeyboardFrame({
   freeze?: boolean;
 }) {
   const keyboardHeight = st.use.keyboardHeight({ agent: false });
+  const pageAvoidsKeyboard = isPageKeyboardAvoidance();
+  const nativeAnimationDuration = keyboardAnimationMs();
   const androidViewportKeyboardHeight =
     platformProfile === "android" ? Math.max(0, Math.round(viewport.height - window.innerHeight)) : 0;
   const visualViewportKeyboardHeight = Math.max(
@@ -374,8 +407,19 @@ export function useKeyboardFrame({
         platformProfile,
         sticky,
         freeze,
+        pageAvoidsKeyboard,
+        nativeAnimationDuration,
       }),
-    [keyboardHeight, bottomSafeArea, visualViewportKeyboardHeight, platformProfile, sticky, freeze],
+    [
+      keyboardHeight,
+      bottomSafeArea,
+      visualViewportKeyboardHeight,
+      platformProfile,
+      sticky,
+      freeze,
+      pageAvoidsKeyboard,
+      nativeAnimationDuration,
+    ],
   );
 }
 

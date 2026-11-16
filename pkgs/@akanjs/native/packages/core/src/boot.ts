@@ -50,6 +50,11 @@ export interface AkanNativeBoot {
   /** Native hosts: the page's engine (wkwebview, webview2, webkitgtk, android-webview) and its version. */
   engine?: string;
   engineVersion?: string;
+  /**
+   * iOS: "page" when the shell took the WebView's own keyboard avoidance away (keyboard mode "none"), so nothing
+   * pans the page to a focused field and the page lays itself out from the keyboard plugin's events.
+   */
+  keyboardAvoidance?: "page";
 }
 
 /** The global object. init.js fills the boot fields, @akanjs/native/core adds `receive`. */
@@ -94,5 +99,6 @@ export function readBoot(): AkanNativeBoot {
         : {}),
     ...(typeof g.engine === "string" ? { engine: g.engine } : {}),
     ...(typeof g.engineVersion === "string" ? { engineVersion: g.engineVersion } : {}),
+    ...(g.keyboardAvoidance === "page" ? { keyboardAvoidance: "page" as const } : {}),
   };
 }
