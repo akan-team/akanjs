@@ -156,6 +156,7 @@ export interface AkanNativeIosConfig {
     entitlements?: Record<string, AkanNativeValue>;
     privacy?: AkanNativeConfig["privacy"];
     files?: Record<string, string>;
+    hideFormAccessoryBar?: boolean;
 }
 
 export interface AkanNativeSettings {

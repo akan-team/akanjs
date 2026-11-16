@@ -4,8 +4,7 @@
     "quality/qualityScanner.ts": 917
   },
   "akan.size.function": {
-    "frontendBuild/csrDevPatcher.ts#CsrDevPatcher.#patch": 165,
-    "mobile/nativeConfig.ts#NativeConfig.build": 156
+    "frontendBuild/csrDevPatcher.ts#CsrDevPatcher.#patch": 165
   },
   "akan.size.class": {
     "akanConfig/akanConfig.ts#AkanAppConfig": 66,

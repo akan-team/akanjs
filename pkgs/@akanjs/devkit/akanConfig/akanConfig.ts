@@ -475,7 +475,7 @@ export class AkanAppConfig implements AppConfigResult {
       "android",
       "desktop",
     ],
-    ios: ["indexPath", "teamId", "infoPlist", "entitlements", "privacy", "files"],
+    ios: ["indexPath", "teamId", "infoPlist", "entitlements", "privacy", "files", "hideFormAccessoryBar"],
     android: [
       "indexPath",
       "sha256CertFingerprints",

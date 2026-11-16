@@ -484,6 +484,27 @@ describe("NativeConfig.build", () => {
     expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
   });
 
+  test("ios.hideFormAccessoryBar reaches the iOS shell, and the runtime accepts it; left out, the bar stays", async () => {
+    const root = await makeTempRoot();
+    const build = (ios?: { hideFormAccessoryBar?: boolean }) =>
+      NativeConfig.build({
+        appPath: root,
+        target: { ...minimalTarget, permissions: [], deepLinks: undefined, android: undefined, ios },
+        webDir: path.join(root, "web"),
+        contributions: [],
+        locales: ["en"],
+        platform: "ios",
+      }).config;
+    const config = build({ hideFormAccessoryBar: true });
+
+    expect(config.ios).toEqual({ hideFormAccessoryBar: true });
+    expect(build().ios).toBeUndefined();
+    expect(build({ hideFormAccessoryBar: false }).ios).toBeUndefined();
+    await mkdir(path.join(root, "web"), { recursive: true });
+    await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
+    expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
+  });
+
   test("an app with updates ships the updates plugin and its settings", () => {
     const updates = { url: "https://releases.example.com/board", publicKey: `${"a".repeat(43)}=`, channel: "pilot" };
     const { config } = NativeConfig.build({

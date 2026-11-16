@@ -662,7 +662,7 @@ describe("AkanAppConfig", () => {
           targets: {
             default: {
               plugins: ["share"],
-              ios: { files: { "extra.caf": "assets/extra.caf" } },
+              ios: { files: { "extra.caf": "assets/extra.caf" }, hideFormAccessoryBar: true },
               android: { manifest: ["<uses-feature/>"] },
             },
           },
@@ -677,6 +677,7 @@ describe("AkanAppConfig", () => {
       ios: {
         infoPlist: { ITSAppUsesNonExemptEncryption: false },
         files: { "sound.caf": "assets/sound.caf", "extra.caf": "assets/extra.caf" },
+        hideFormAccessoryBar: true,
       },
       android: {
         manifest: ["<uses-feature/>"],
