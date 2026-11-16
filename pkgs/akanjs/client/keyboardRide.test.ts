@@ -16,6 +16,16 @@ const riderOf = (kind = "") => {
   return rider;
 };
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+//? happy-dom's style is a Proxy that refuses a property spy, so the inline style's history comes from the mutations.
+const styleHistoryOf = (element: HTMLElement) => {
+  const observer = new MutationObserver(() => undefined);
+  observer.observe(element, { attributes: true, attributeFilter: ["style"], attributeOldValue: true });
+  return () => {
+    const history = observer.takeRecords().map((record) => record.oldValue ?? "");
+    observer.disconnect();
+    return [...history, element.getAttribute("style") ?? ""].join(" | ");
+  };
+};
 
 describe("KeyboardRide", () => {
   test("keys coming up hold the box until they are up, while the rider travels as a transform", async () => {
@@ -81,9 +91,12 @@ describe("KeyboardRide", () => {
     expect(list.style.transform).toBe("");
     expect(list.style.paddingBottom).toContain("300px");
 
+    const listHistory = styleHistoryOf(list);
     KeyboardRide.move(0, 20);
     expect(root.hasAttribute("data-akan-keyboard-overlay")).toBe(false);
     expect(list.style.paddingBottom).toBe("12px");
+    expect(listHistory()).toContain("translateY(-300px)");
+    expect(list.style.transform).toBe("translateY(0px)");
     expect(composer.style.transform).toBe("translateY(0px)");
     await wait(40);
     expect(composer.style.transform).toBe("");
