@@ -1911,6 +1911,36 @@ describe("StoreInstance with a root added later", () => {
     expect(instance.generatedSetters.has("setDeclaredValue")).toBe(false);
   });
 
+  test("keeps a lib store's persisted value when the app store extending it redeclares the key as plain state, whichever root comes first", () => {
+    setupEnv();
+    const browser = installBrowser();
+    class PaletteLibStore extends store("paletteStore" as const, ({ persist }) => ({
+      paletteMode: persist(String, { default: "system", key: "paletteMode" }),
+    })) {}
+    StoreRegistry.register(PaletteLibStore);
+    class PaletteAppStore extends store("paletteStore" as const, () => ({ paletteMode: "dark" }), PaletteLibStore) {}
+    StoreRegistry.register(PaletteAppStore);
+    browser.localStorage.setItem(
+      PaletteLibStore[STATE_DERIVED_META].persistSession.paletteMode.storageKey,
+      JSON.stringify("light"),
+    );
+    const [libRoot, appRoot] = [
+      makeRoot("paletteLibRoot", PaletteLibStore),
+      makeRoot("paletteAppRoot", PaletteAppStore),
+    ];
+
+    const answers = [[libRoot, appRoot], [appRoot, libRoot], [appRoot], [libRoot, appRoot, libRoot, appRoot]].map(
+      ([first, ...rest]) => {
+        const instance = new StoreInstance(first ?? libRoot);
+        for (const root of rest) instance.addStore(root);
+        return instance.get().paletteMode;
+      },
+    );
+
+    expect(answers).toEqual(["light", "light", "light", "light"]);
+    uninstallBrowser();
+  });
+
   test("replaces st.do.<action> when a later root brings a different method under its name", async () => {
     setupEnv();
     class ReplacedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {

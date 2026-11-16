@@ -825,6 +825,16 @@ console.log(JSON.stringify({
   registered: store.get("item").side,
 }));
 `;
+const keptValueScript = (pieces: string[], wholes: string[], itemCount: number) => `
+const { st } = await import("akanjs/store");
+${pieces.map((file) => `await import("./${file}.ts");`).join("\n")}
+await st.do.setItemCount(${itemCount});
+await st.do.setNoteDraft("typed");
+await st.do.setTally(4);
+${wholes.map((file) => `await import("./${file}.ts");`).join("\n")}
+const { itemCount, noteDraft, tally } = st.get();
+console.log(JSON.stringify({ itemCount, noteDraft, tally }));
+`;
 
 describe("an app store that redeclares what the lib store it extends declares", () => {
   test("answers under every load order of its pieces what the whole runtime answers: the lib's default, its own action and its own declared setter", async () => {
@@ -844,5 +854,24 @@ describe("an app store that redeclares what the lib store it extends declares", 
     await pointScopes(root, [`apps/${app}`, `libs/${lib}`], { "useClient.ts": "./usePage" });
     for (const order of [[libPiece, appPiece], [appPiece, libPiece], [appPiece, libWhole, appWhole], [appWhole]])
       expect({ order, answer: await answer(order) }).toEqual({ order, answer: whole });
+  }, 120_000);
+
+  test("keeps a value set by hand when the whole runtime loads after its pieces, whichever declared default the value equals", async () => {
+    const [app, lib] = ["baker", "larder"];
+    const { root } = await writeWorkspace({
+      app,
+      lib,
+      libFiles: { ...stockFiles, "lib/item/item.store.ts": redeclaringLibStore },
+      appFiles: { ...shopFilesOf(lib), "lib/item/item.store.ts": redeclaringAppStore },
+    });
+    await pointScopes(root, [`apps/${app}`, `libs/${lib}`], { "useClient.ts": "./usePage" });
+    const pieces = [`libs/${lib}/lib/__client/item.st`, `apps/${app}/lib/__client/item.st`];
+    const wholes = [`libs/${lib}/lib/__client/_st`, `apps/${app}/lib/__client/_st`];
+    for (const itemCount of [1, 10, 5])
+      expect(await evaluate(root, keptValueScript(pieces, wholes, itemCount), app)).toEqual({
+        itemCount,
+        noteDraft: "typed",
+        tally: 8,
+      });
   }, 120_000);
 });
