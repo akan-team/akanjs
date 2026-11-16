@@ -252,6 +252,19 @@ console.log(JSON.stringify({
 }));
 `;
 
+const browserScript = `
+Object.assign(globalThis, { window: globalThis, location: new URL("http://localhost:4200/") });
+const { FetchClient } = await import("akanjs/fetch");
+const app = await import("./apps/demo/lib/useClient.ts");
+const lib = await import("./libs/kit/lib/useClient.ts");
+const tab = FetchClient.build({}, {}).fetch;
+console.log(JSON.stringify({
+  appIsTab: app.fetch === tab,
+  libIsTab: lib.fetch === tab,
+  "fetch.slice": Object.keys(tab.slice).sort(),
+}));
+`;
+
 const pageModuleFiles: Record<string, string> = {
   ...Object.fromEntries(
     Object.entries(kitFiles)
@@ -330,11 +343,17 @@ const evaluate = async (root: string, script: string, appName = "demo") => {
 };
 
 describe("an app's whole client runtime", () => {
-  test("answers the same store, fetch and signal keys as recorded, lib model and service store included", async () => {
-    const keys = await evaluate(await writeWorkspace(), keysScript);
+  test("answers the same store, fetch and signal keys as recorded, and in a browser shares the tab's one fetch client with its lib", async () => {
+    const root = await writeWorkspace();
+    const keys = await evaluate(root, keysScript);
     if (process.env.AKAN_RECORD_CLIENT_RUNTIME_KEYS === "1")
       await Bun.write(recordedPath, `${JSON.stringify(keys, null, 2)}\n`);
     expect(keys, howToRecord).toEqual(await Bun.file(recordedPath).json());
+    expect(await evaluate(root, browserScript)).toEqual({
+      appIsTab: true,
+      libIsTab: true,
+      "fetch.slice": ["item", "itemInPublic", "itemWithNote"],
+    });
   }, 120_000);
 
   test("loads from the client barrel when a database module is named page, its UI and store included", async () => {
