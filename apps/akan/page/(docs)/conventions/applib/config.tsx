@@ -2168,6 +2168,24 @@ export default config;`}
                   ),
                 })}
               </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Reach an extended lib store through the app.</strong> An app store that extends a lib's
+                      store adds its actions, state and slices only on a route that loads the app's runtime, so code
+                      using them imports <code>st</code> from the app's <code>client</code> barrel, not the lib's.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>확장한 라이브러리 스토어는 앱을 거쳐 씁니다.</strong> 라이브러리 스토어를 확장한 앱
+                      스토어의 액션·상태·슬라이스는 앱 런타임을 불러오는 라우트에만 생기므로, 그것을 쓰는 코드는{" "}
+                      <code>st</code>를 라이브러리가 아닌 앱의 <code>client</code> barrel에서 import합니다.
+                    </span>
+                  ),
+                })}
+              </li>
             </ul>
           </Docs.Description>
         </Scroll.Slide>
