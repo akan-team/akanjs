@@ -142,6 +142,7 @@ describe("NativeConfig.build", () => {
         googleServices: path.resolve("/repo/apps/minimal", "secrets/google-services.json"),
       },
       keyboard: { resize: "none" },
+      splash: { autoHide: false },
     });
   });
 
@@ -187,7 +188,7 @@ describe("NativeConfig.build", () => {
       android: { debugAppIdSuffix: ".debug" },
       keyboard: { resize: "none" },
       icon: path.resolve("/repo/apps/portal", "assets/icon.png"),
-      splash: { image: path.resolve("/repo/apps/portal", "assets/splash.png") },
+      splash: { image: path.resolve("/repo/apps/portal", "assets/splash.png"), autoHide: false },
     });
   });
 
@@ -304,6 +305,21 @@ describe("NativeConfig.build", () => {
     expect(build(true)).toEqual({ devtools: true });
     expect(build(false)).toBeUndefined();
     expect(build()).toBeUndefined();
+  });
+
+  test("the runtime hides the splash once the first page is drawn, unless the app hands that back to the shell", () => {
+    const splashOf = (splash: Parameters<typeof NativeConfig.build>[0]["target"]["splash"]) =>
+      NativeConfig.build({
+        appPath: "/repo/apps/portal",
+        target: { ...adminTarget, splash },
+        webDir: "/web",
+        contributions: [],
+        locales: ["en"],
+        platform: "ios",
+      }).config.splash;
+    expect(splashOf(undefined)).toEqual({ autoHide: false });
+    expect(splashOf({ autoHide: true, timeout: 3000 })).toEqual({ autoHide: true, timeout: 3000 });
+    expect(NativeConfig.basePlugins).toContain("splash-screen");
   });
 
   test("push, privacy and the icon and splash objects reach the runtime, paths from the app folder", () => {
