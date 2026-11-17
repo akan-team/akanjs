@@ -41,6 +41,30 @@ const writeScope = async (sig = sigSource) => {
   };
 };
 
+const writeHangingScope = async () => {
+  const scope = await writeScope();
+  const pidFile = path.join(scope.root, "reader.pid");
+  await writeText(
+    path.join(scope.root, "apps/shop/lib/sig.ts"),
+    `await Bun.write(${JSON.stringify(pidFile)}, String(process.pid));\nsetInterval(() => undefined, 1_000);\nawait new Promise(() => undefined);\n${sigSource}`,
+  );
+  return { ...scope, pidFile };
+};
+
+const alive = (pid: number) => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const goneWithin = async (pid: number, ms: number) => {
+  for (const started = Date.now(); Date.now() - started < ms; await Bun.sleep(50)) if (!alive(pid)) return true;
+  return !alive(pid);
+};
+
 describe("SignalDescriptors", () => {
   test("answers each piece with its own descriptors as a literal in place of the macro, reading the signal once", async () => {
     const { root, pieceDir, readsOf } = await writeScope();
@@ -77,14 +101,93 @@ describe("SignalDescriptors", () => {
     expect(await descriptors.inline(twoCalls, path.join(pieceDir, "trolley.fetch.ts"))).toBeNull();
     expect(await descriptors.inline(pieceOf("absent"), path.join(pieceDir, "absent.fetch.ts"))).toBeNull();
     expect(await descriptors.inline(pieceOf("odd"), path.join(pieceDir, "odd.fetch.ts"))).toBeNull();
+    for (const name of ["valueOf", "__proto__", "constructor"])
+      expect(await descriptors.inline(pieceOf(name), path.join(pieceDir, `${name}.fetch.ts`))).toBeNull();
   });
 
-  test("says which scope's signals it could not read, and leaves their pieces to the macro", async () => {
-    const { root, pieceDir } = await writeScope('throw new Error("the signal broke");\n');
+  test("says which scope's signals it could not read, leaves only their pieces to the macro and answers the rest", async () => {
+    const { root, pieceDir } = await writeScope();
+    await writeText(path.join(root, "libs/kit/lib/sig.ts"), 'throw new Error("the signal broke");\n');
     const said: string[] = [];
-    const descriptors = new SignalDescriptors(root, ["apps/shop"], { onUnread: (reason) => said.push(reason) });
+    const descriptors = new SignalDescriptors(root, ["libs/kit", "apps/shop"], {
+      onUnread: (reason) => said.push(reason),
+    });
 
-    expect(await descriptors.inline(pieceOf("trolley"), path.join(pieceDir, "trolley.fetch.ts"))).toBeNull();
-    expect(said).toEqual(["the signals of apps/shop could not be read (the signal broke)"]);
+    expect(
+      await descriptors.inline(pieceOf("crate"), path.join(root, "libs/kit/lib/__client/crate.fetch.ts")),
+    ).toBeNull();
+    expect(await descriptors.inline(pieceOf("trolley"), path.join(pieceDir, "trolley.fetch.ts"))).toContain(
+      '{"trolley":{"endpoint":',
+    );
+    expect(said).toEqual(["the signals of libs/kit could not be read (the signal broke)"]);
+  });
+
+  test("stops a signal that does not finish loading within its time, names its scope once and leaves no process behind", async () => {
+    const { root, pieceDir, pidFile } = await writeHangingScope();
+    const said: string[] = [];
+    const descriptors = new SignalDescriptors(root, ["apps/shop"], {
+      onUnread: (reason) => said.push(reason),
+      timeoutMs: 500,
+    });
+
+    const inlined = await Promise.all(
+      ["trolley", "crate"].map((name) => descriptors.inline(pieceOf(name), path.join(pieceDir, `${name}.fetch.ts`))),
+    );
+
+    expect(inlined).toEqual([null, null]);
+    expect(said).toEqual([
+      "the signals of apps/shop could not be read (they did not load within 0.5s, so the process reading them was stopped)",
+    ]);
+    expect(await goneWithin(Number(await Bun.file(pidFile).text()), 3_000)).toBe(true);
+  });
+
+  for (const ending of ["exits", "is killed"] as const)
+    test(`the process reading the signals ends when the build that started it ${ending}`, async () => {
+      const { root, pieceDir, pidFile } = await writeHangingScope();
+      const build = path.join(root, "build.ts");
+      await writeText(
+        build,
+        [
+          `import { SignalDescriptors } from ${JSON.stringify(path.join(import.meta.dir, "signalDescriptors.ts"))};`,
+          `void new SignalDescriptors(${JSON.stringify(root)}, ["apps/shop"]).inline(${JSON.stringify(pieceOf("trolley"))}, ${JSON.stringify(path.join(pieceDir, "trolley.fetch.ts"))});`,
+          `while (!(await Bun.file(${JSON.stringify(pidFile)}).exists())) await Bun.sleep(50);`,
+          ending === "exits" ? "process.exit(0);" : "",
+          "",
+        ].join("\n"),
+      );
+      const parent = Bun.spawn([process.execPath, build], { cwd: root, stdout: "ignore", stderr: "ignore" });
+      try {
+        for (let tries = 0; tries < 200 && !(await Bun.file(pidFile).exists()); tries++) await Bun.sleep(50);
+        const reader = Number(await Bun.file(pidFile).text());
+        if (ending === "is killed") {
+          expect(alive(reader)).toBe(true);
+          parent.kill("SIGKILL");
+        }
+        await parent.exited;
+        expect(await goneWithin(reader, 5_000)).toBe(true);
+      } finally {
+        parent.kill("SIGKILL");
+      }
+    }, 30_000);
+
+  test("reads the signals in the build's own environment and its define, never a .env file the build did not load", async () => {
+    const { root, pieceDir } = await writeScope(
+      sigSource.replace(
+        'refName: "String" }',
+        'refName: "String", mode: process.env.NODE_ENV, sentinel: process.env.AKAN_SIGNAL_SENTINEL ?? "none" }',
+      ),
+    );
+    for (const file of [".env.production", ".env.production.local"])
+      await writeText(path.join(root, file), "AKAN_SIGNAL_SENTINEL=from-an-env-file\n");
+    const descriptors = new SignalDescriptors(root, ["apps/shop"]);
+    descriptors.plugin.setup({
+      config: { define: { "process.env.NODE_ENV": '"production"' } },
+      onLoad: () => undefined,
+    } as never);
+
+    const trolley = await descriptors.inline(pieceOf("trolley"), path.join(pieceDir, "trolley.fetch.ts"));
+
+    expect(trolley).toContain('"mode":"production","sentinel":"none"');
+    expect(trolley).not.toContain("from-an-env-file");
   });
 });

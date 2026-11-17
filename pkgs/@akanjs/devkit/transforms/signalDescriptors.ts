@@ -3,18 +3,27 @@ import type { BunPlugin } from "bun";
 
 type ScopeDescriptors = Record<string, string>;
 
+interface ScopeRead {
+  file: string;
+  read?: ScopeDescriptors;
+  failure?: string;
+}
+
 export interface SignalDescriptorsOptions {
   onUnread?: (reason: string) => void;
+  timeoutMs?: number;
 }
 
 //* Bun runs a macro module again on each bundler thread, so a build of many pieces reads each scope's signal once here.
 export class SignalDescriptors {
+  static readonly readTimeoutMs = 60_000;
   static readonly #pieceFile = /[\\/]lib[\\/]__client[\\/][^\\/]+\.fetch\.ts$/;
   static readonly #macroImport = 'import { getSerializedSignalOf } from "../sig" with { type: "macro" };';
   static readonly #macroCall = /\bgetSerializedSignalOf\("([^"\\]+)"\)/g;
   readonly #workspaceRoot: string;
   readonly #sigFiles: string[];
   readonly #onUnread: (reason: string) => void;
+  readonly #timeoutMs: number;
   readonly #reads = new Map<string, Promise<ScopeDescriptors | null>>();
   #env: Record<string, string> = {};
 
@@ -22,7 +31,8 @@ export class SignalDescriptors {
   //? JSON drops undefined, -0, NaN and holes, and a `"__proto__"` key sets a prototype: such a name keeps its macro.
   static #readScript(sigFiles: string[]) {
     return `
-const finish = (message, code) => process.send(message, undefined, undefined, () => process.exit(code));
+process.on("disconnect", () => process.exit(1));
+const send = (message) => new Promise((resolve) => process.send(message, undefined, undefined, resolve));
 const literalOf = (value) => {
   try {
     const text = JSON.stringify(value);
@@ -31,18 +41,17 @@ const literalOf = (value) => {
     return undefined;
   }
 };
-try {
-  const read = {};
-  for (const file of ${JSON.stringify(sigFiles)}) {
+for (const file of ${JSON.stringify(sigFiles)}) {
+  try {
     const { fetch, getSerializedSignalOf } = await import(file);
     const names = ["base", ...Object.keys(fetch.ownSerializedSignal)];
     const literals = names.map((name) => [name, literalOf(getSerializedSignalOf(name))]);
-    read[file] = Object.fromEntries(literals.filter(([, literal]) => literal !== undefined));
+    await send({ file, read: Object.fromEntries(literals.filter(([, literal]) => literal !== undefined)) });
+  } catch (error) {
+    await send({ file, failure: String(error?.message ?? error) });
   }
-  finish({ read }, 0);
-} catch (error) {
-  finish({ failure: String(error?.message ?? error) }, 1);
 }
+process.exit(0);
 `;
   }
 
@@ -64,11 +73,12 @@ try {
   constructor(
     workspaceRoot: string,
     scopes: readonly string[],
-    { onUnread = () => undefined }: SignalDescriptorsOptions = {},
+    { onUnread = () => undefined, timeoutMs = SignalDescriptors.readTimeoutMs }: SignalDescriptorsOptions = {},
   ) {
     this.#workspaceRoot = workspaceRoot;
     this.#sigFiles = scopes.map((scope) => path.join(workspaceRoot, scope, "lib/sig.ts"));
     this.#onUnread = onUnread;
+    this.#timeoutMs = timeoutMs;
   }
 
   get plugin(): BunPlugin {
@@ -91,7 +101,8 @@ try {
     const name = call?.[1];
     if (!SignalDescriptors.#pieceFile.test(absPath) || !call || !name || calls.length !== 1) return null;
     if (source.split(macroImport).length !== 2) return null;
-    const literal = (await this.#descriptorsOf(path.resolve(path.dirname(absPath), "../sig.ts")))?.[name];
+    const descriptors = await this.#descriptorsOf(path.resolve(path.dirname(absPath), "../sig.ts"));
+    const literal = descriptors && Object.hasOwn(descriptors, name) ? descriptors[name] : undefined;
     if (literal === undefined) return null;
     const end = call.index + call[0].length;
     return `${source.slice(0, call.index)}${literal}${source.slice(end)}`.replace(macroImport, "");
@@ -105,27 +116,52 @@ try {
     for (const file of batch)
       this.#reads.set(
         file,
-        read.then((byFile) => byFile?.[file] ?? null),
+        read.then((byFile) => byFile.get(file) ?? null),
       );
     return this.#reads.get(sigFile) ?? Promise.resolve(null);
   }
 
-  async #read(sigFiles: string[]): Promise<Record<string, ScopeDescriptors> | null> {
-    let sent: { read?: Record<string, ScopeDescriptors>; failure?: string } = {};
-    const child = Bun.spawn([process.execPath, "--eval", SignalDescriptors.#readScript(sigFiles)], {
+  //? `--no-env-file`: the build's `NODE_ENV` define would make Bun load `.env.production` files the build never loaded.
+  async #read(sigFiles: string[]): Promise<Map<string, ScopeDescriptors>> {
+    const read = new Map<string, ScopeDescriptors>();
+    const failures = new Map<string, string>();
+    const child = Bun.spawn([process.execPath, "--no-env-file", "--eval", SignalDescriptors.#readScript(sigFiles)], {
       cwd: this.#workspaceRoot,
       env: { ...process.env, ...this.#env },
       stdout: "ignore",
       stderr: "ignore",
       serialization: "json",
-      ipc: (message: typeof sent) => {
-        sent = message;
+      ipc: (message: ScopeRead) => {
+        if (message.read) read.set(message.file, message.read);
+        else failures.set(message.file, message.failure ?? "");
       },
     });
-    const code = await child.exited;
-    if (code === 0 && sent.read) return sent.read;
-    const scopes = sigFiles.map((file) => path.relative(this.#workspaceRoot, path.dirname(path.dirname(file))));
-    this.#onUnread(`the signals of ${scopes.join(", ")} could not be read (${sent.failure ?? `exit code ${code}`})`);
-    return null;
+    let timedOut = false;
+    const kill = () => child.kill("SIGKILL");
+    const timer = setTimeout(() => {
+      timedOut = true;
+      kill();
+    }, this.#timeoutMs);
+    process.on("exit", kill);
+    const code = await child.exited.finally(() => {
+      clearTimeout(timer);
+      process.off("exit", kill);
+    });
+    for (const [file, failure] of failures)
+      this.#onUnread(`the signals of ${this.#scopeOf(file)} could not be read (${failure})`);
+    const unsent = sigFiles.filter((file) => !read.has(file) && !failures.has(file));
+    if (unsent.length > 0) {
+      const why = timedOut
+        ? `they did not load within ${this.#timeoutMs / 1000}s, so the process reading them was stopped`
+        : `its process exited with code ${code}`;
+      this.#onUnread(
+        `the signals of ${unsent.map((file) => this.#scopeOf(file)).join(", ")} could not be read (${why})`,
+      );
+    }
+    return read;
+  }
+
+  #scopeOf(sigFile: string) {
+    return path.relative(this.#workspaceRoot, path.dirname(path.dirname(sigFile)));
   }
 }
