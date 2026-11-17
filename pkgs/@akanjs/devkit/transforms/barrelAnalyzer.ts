@@ -26,6 +26,8 @@ export interface BarrelAnalyzerOptions {
   resolvePackage: (pkgName: string) => Promise<PackageEntry | null>;
   /** Resolves to an absolute file path on disk. */
   resolveRelative?: (fromFile: string, relSpec: string) => Promise<string | null>;
+  /** Maps a name the barrel entry re-exports from a package to that package, when it resolves the same from here. */
+  packageRoot?: string;
 }
 
 // `Transpiler.scan` gives the export names but not their sources; this regex supplies the name↔source mapping.
@@ -145,7 +147,11 @@ export class BarrelAnalyzer {
       const nsAs = m[2];
       const namedList = m[3];
       const spec = m[5] ?? "";
-      if (!isRelative(spec)) continue;
+      if (!isRelative(spec)) {
+        if (namedList !== undefined && absFile === pkg.entryFile && this.#isSamePackage(spec, absFile))
+          attribute(namedList, spec);
+        continue;
+      }
 
       if (star) {
         if (!nsAs) starSpecs.push(spec);
@@ -218,6 +224,16 @@ export class BarrelAnalyzer {
     if (parts[parts.length - 1] === "index") parts.pop();
     const tail = parts.join("/");
     return tail === "" ? pkg.pkgName : `${pkg.pkgName}/${tail}`;
+  }
+
+  #isSamePackage(spec: string, absFile: string): boolean {
+    const root = this.#opts.packageRoot;
+    if (!root) return false;
+    try {
+      return Bun.resolveSync(spec, path.dirname(absFile)) === Bun.resolveSync(spec, root);
+    } catch {
+      return false;
+    }
   }
 
   async #resolveRel(fromFile: string, relSpec: string): Promise<string | null> {

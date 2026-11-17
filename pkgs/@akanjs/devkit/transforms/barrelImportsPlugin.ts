@@ -5,6 +5,7 @@ import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap, type PackageEntry } from "./barrelAnalyzer";
 import { loaderFor, type NamedItem } from "./moduleSyntax";
+import { ObjectMemberImports } from "./objectMemberImports";
 import type { RouteRuntime } from "./routeRuntime";
 
 export interface BarrelImportsPluginOptions {
@@ -33,12 +34,15 @@ export const createBarrelImportsPlugin = async (
     routeRuntime,
   }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
-  const barrels = [...new Set(only ?? (await app.getConfig()).barrelImports)].filter(
-    (barrel) => barrel && !external.includes(barrel),
-  );
+  const config = await app.getConfig();
+  const barrels = [...new Set(only ?? config.barrelImports)].filter((barrel) => barrel && !external.includes(barrel));
+  const route = config.clientRuntime === "route";
+  const resolvePackage = await createTsconfigPackageResolver(app);
   const analyzer = new BarrelAnalyzer({
-    resolvePackage: await createTsconfigPackageResolver(app),
+    resolvePackage,
+    ...(route ? { packageRoot: app.workspace.workspaceRoot } : {}),
   });
+  const objects = route ? new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(resolvePackage) }) : null;
 
   return {
     name: "barrel-imports",
@@ -70,9 +74,14 @@ export const createBarrelImportsPlugin = async (
             if (routed) source = routed.source;
             const rewritten =
               barrels.length > 0
-                ? await rewriteBarrelImports(source, barrels, analyzer, { perModule: routed?.perModule })
+                ? await rewriteBarrelImports(source, barrels, analyzer, {
+                    perModule: routed?.perModule,
+                    reexports: route,
+                  })
                 : null;
             if (rewritten !== null) source = rewritten;
+            const narrowed = await objects?.rewrite(source, realPath);
+            if (narrowed?.contents) source = narrowed.contents;
           }
 
           if (pipeAfter) {
@@ -263,6 +272,8 @@ export interface RewriteBarrelImportsOptions {
   onImport?: (barrel: string, names: string[]) => void;
   /** The file names its runtime per module, so a client barrel stands for the page runtime alone. */
   perModule?: boolean;
+  /** Rewrites `export { a, b as c } from "<barrel>"` as it rewrites an import of the same names. */
+  reexports?: boolean;
 }
 
 export const workspaceBarrels = (barrels: readonly string[]): string[] =>
@@ -277,11 +288,12 @@ export const rewriteBarrelImports = async (
     specifierOf = (subpath: string) => subpath,
     onImport,
     perModule = false,
+    reexports = false,
   }: RewriteBarrelImportsOptions = {},
 ): Promise<string | null> => {
   // Sound pre-filter before the costly parse: a static import cannot name a specifier absent from the text.
   if (!barrels.some((barrel) => source.includes(barrel))) return null;
-  const statements = findImportStatements(source);
+  const statements = findImportStatements(source, reexports);
   if (statements.length === 0) return null;
 
   // Walk import statements in reverse so replacements don't shift earlier ranges.
@@ -314,13 +326,14 @@ interface ParsedClause {
 }
 
 interface ImportStatement {
+  kind: "import" | "export";
   start: number;
   end: number;
   clause: ParsedClause | null;
   specifier: string;
 }
 
-const findImportStatements = (source: string): ImportStatement[] => {
+const findImportStatements = (source: string, reexports: boolean): ImportStatement[] => {
   const statements: ImportStatement[] = [];
   // `setParentNodes: false` holds only while nothing reads `node.parent` and positions use `getStart(sourceFile)`.
   const sourceFile = ts.createSourceFile(
@@ -331,11 +344,25 @@ const findImportStatements = (source: string): ImportStatement[] => {
     ts.ScriptKind.TSX,
   );
   for (const statement of sourceFile.statements) {
+    if (reexports && ts.isExportDeclaration(statement)) {
+      const exportClause = statement.exportClause;
+      if (!statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      if (!exportClause || !ts.isNamedExports(exportClause)) continue;
+      statements.push({
+        kind: "export",
+        start: statement.getStart(sourceFile),
+        end: statement.end,
+        clause: exportClauseOf(statement.isTypeOnly, exportClause),
+        specifier: statement.moduleSpecifier.text,
+      });
+      continue;
+    }
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const importClause = statement.importClause;
     if (!importClause) continue;
     statements.push({
+      kind: "import",
       start: statement.getStart(sourceFile),
       end: statement.end,
       clause: clauseOf(importClause),
@@ -343,6 +370,16 @@ const findImportStatements = (source: string): ImportStatement[] => {
     });
   }
   return statements;
+};
+
+const exportClauseOf = (typeOnly: boolean, exportClause: ts.NamedExports): ParsedClause | null => {
+  const named: NamedItem[] = [];
+  for (const element of exportClause.elements) {
+    const imported = element.propertyName ?? element.name;
+    if (!ts.isIdentifier(imported) || !ts.isIdentifier(element.name)) return null;
+    named.push({ imported: imported.text, local: element.name.text, isType: element.isTypeOnly });
+  }
+  return { named, typeOnly };
 };
 
 const clauseOf = (importClause: ts.ImportClause): ParsedClause | null => {
@@ -382,6 +419,7 @@ const rewriteSingleStatement = (
   if (clause.typeOnly && !clause.defaultImport) return null;
   if (!clause.named?.length) return null;
 
+  const { kind } = stmt;
   const remaining: NamedItem[] = [];
   const rewrites = new Map<string, NamedItem[]>();
   const namespaceLines: string[] = [];
@@ -396,7 +434,7 @@ const rewriteSingleStatement = (
       continue;
     }
     if (target.namespace) {
-      namespaceLines.push(`import * as ${item.local} from ${JSON.stringify(specifierOf(target.subpath))};`);
+      namespaceLines.push(`${kind} * as ${item.local} from ${JSON.stringify(specifierOf(target.subpath))};`);
       continue;
     }
     const list = rewrites.get(target.subpath) ?? [];
@@ -415,11 +453,11 @@ const rewriteSingleStatement = (
     const parts: string[] = [];
     if (clause.defaultImport) parts.push(clause.defaultImport);
     if (remaining.length > 0) parts.push(`{ ${remaining.map(serializeNamedItem).join(", ")} }`);
-    lines.push(`import ${parts.join(", ")} from "${stmt.specifier}";`);
+    lines.push(`${kind} ${parts.join(", ")} from "${stmt.specifier}";`);
   }
 
   for (const [subpath, items] of rewrites) {
-    lines.push(`import { ${items.map(serializeNamedItem).join(", ")} } from ${JSON.stringify(specifierOf(subpath))};`);
+    lines.push(`${kind} { ${items.map(serializeNamedItem).join(", ")} } from ${JSON.stringify(specifierOf(subpath))};`);
   }
   lines.push(...namespaceLines);
 
