@@ -129,12 +129,17 @@ export class RouteRuntimeCheck {
     const failures: string[] = [];
     const { entries, wholeReaders, wholeConstantReaders = new Set<string>() } = this.#narrowed;
     for (const [buildEntry, entry] of entries) {
-      const importerOf = this.#importersFrom(buildEntry);
+      const importerOf = this.#importersFrom([buildEntry]);
       const narrowed = `${this.#nameOf(entry)} was built to load only the modules its code names`;
       const reader = [...importerOf.keys()].find((module) => wholeReaders.has(module));
       const whole = [...importerOf.keys()].find((module) => wholeFile.test(this.#nameOf(module)));
-      const constantsOf = this.#importersFrom(buildEntry, wholeConstantReaders);
-      const constants = [...constantsOf.keys()].find((module) => constantsFile.test(this.#nameOf(module)));
+      const constantsOf = this.#importersFrom([buildEntry], wholeConstantReaders);
+      //? An entry no route holds takes its models from pieces answering from `lib/cnst.ts`, and their constant files
+      //? stay as written: what a named file already loads costs the page nothing by another path.
+      const named = this.#importersFrom([...constantsOf.keys()].filter((module) => wholeConstantReaders.has(module)));
+      const constants = [...constantsOf.keys()].find(
+        (module) => constantsFile.test(this.#nameOf(module)) && !named.has(module),
+      );
       if (reader) failures.push(`${narrowed}, but it reaches ${this.#nameOf(reader)}, which needs every module`);
       else if (whole)
         failures.push(
@@ -148,8 +153,8 @@ export class RouteRuntimeCheck {
     return failures;
   }
 
-  #importersFrom(buildEntry: string, stops: ReadonlySet<string> = new Set()): Map<string, string> {
-    const importerOf = new Map([[buildEntry, buildEntry]]);
+  #importersFrom(roots: string[], stops: ReadonlySet<string> = new Set()): Map<string, string> {
+    const importerOf = new Map(roots.map((root) => [root, root]));
     for (const module of importerOf.keys()) {
       if (stops.has(module)) continue;
       for (const imported of this.#staticImportsOf(module))

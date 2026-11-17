@@ -168,6 +168,38 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
     expect(failuresOf({ imports: { [entry]: [card], [card]: [{ lazy: own }], [own]: [] } }, { entries })).toEqual([]);
   });
 
+  test("a page a registration piece answering from `lib/cnst.ts` already makes load every constant may reach them through a constant file left as written, and no further than that piece loads", () => {
+    const entry = "apps/demo/.akan/generated/client-entry-bootstrap-route/board.ref.tsx";
+    const reference = "apps/demo/lib/__client/board.ref.ts";
+    const entries = { [entry]: reference };
+    const boardStorePiece = "apps/demo/lib/__client/board.st.ts";
+    const boardStore = "libs/kit/lib/board/board.store.ts";
+    const answering = "libs/kit/lib/__client/board.cnst.ts";
+    const constant = "libs/kit/lib/board/board.constant.ts";
+    const [kitConstants, appConstants] = ["libs/kit/lib/cnst.ts", "apps/demo/lib/cnst.ts"];
+    const [baseBarrel, baseConstants] = ["libs/base/index.ts", "libs/base/lib/cnst.ts"];
+    const handedOverByNoRoute = {
+      [entry]: [reference],
+      [reference]: [boardStorePiece],
+      [boardStorePiece]: [boardStore],
+      [boardStore]: [answering, constant],
+      [answering]: [kitConstants, appConstants],
+      [kitConstants]: [constant],
+      [constant]: [baseBarrel],
+      [baseBarrel]: [baseConstants],
+      [appConstants]: [kitConstants, baseBarrel],
+      [baseConstants]: [],
+    };
+    expect(failuresOf({ imports: handedOverByNoRoute }, { entries, wholeConstantReaders: [answering] })).toEqual([]);
+    expect(failuresOf({ imports: handedOverByNoRoute }, { entries })).toEqual([
+      "apps/demo/lib/__client/board.ref.ts was built to load only the modules its code names, but libs/kit/lib/__client/board.cnst.ts imports libs/kit/lib/cnst.ts, the constants of every model, for no reason `akan quality runtime` names",
+    ]);
+    const ownScopeOnly = { ...handedOverByNoRoute, [answering]: [kitConstants], [kitConstants]: [] };
+    expect(failuresOf({ imports: ownScopeOnly }, { entries, wholeConstantReaders: [answering] })).toEqual([
+      "apps/demo/lib/__client/board.ref.ts was built to load only the modules its code names, but libs/base/index.ts imports libs/base/lib/cnst.ts, the constants of every model, for no reason `akan quality runtime` names",
+    ]);
+  });
+
   test("a failing build stops with the first failures, how many more there are, and the setting that builds meanwhile", () => {
     const stores = Array.from(
       { length: RouteRuntimeCheck.shown + 2 },
