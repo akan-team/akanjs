@@ -332,8 +332,40 @@ describe("DictionaryAssetBuilder", () => {
 
       expect(routed).toEqual(plain);
       expect(plain.routes).toBeUndefined();
-      expect(plain.assets.en?.routeParts).toBeUndefined();
+      expect(plain.assets.en.routeParts).toBeUndefined();
       expect((await readdir(path.join(artifactDir, "plain/dict"))).length).toBe(4);
+      const api = await importOf<{ part?: string }>(
+        path.join(artifactDir, "plain"),
+        plain.assets.ko.parts?.api?.url ?? "",
+      );
+      expect(api.part).toBeUndefined();
+    });
+
+    test("adds the API description file to a route whose components show those texts, in a build and in development", async () => {
+      const { app, artifactDir } = await makeApp(dictSourceOf(routedDictionary));
+      const { apiGroup } = DictionaryAssetBuilder;
+      const withApi = new Map([...routes, ["/:lang/memo/api", ["base", "memo", apiGroup]]]);
+      const built = await new DictionaryAssetBuilder(app, path.join(artifactDir, "build")).buildAll(i18n, {
+        splitApi: true,
+        routes: withApi,
+      });
+      const dev = await new DictionaryAssetBuilder(app, path.join(artifactDir, "dev")).buildAll(i18n, {
+        splitApi: true,
+        everyGroupAlone: true,
+      });
+
+      for (const { assets } of [built, dev])
+        for (const lang of i18n.locales) expect(assets[lang].routeParts?.files.at(-1)).toEqual(assets[lang].parts?.api);
+      const apiIdx = (built.assets.en.routeParts?.files.length ?? 0) - 1;
+      expect(built.routes?.["/:lang/memo/api"]).toEqual([...(built.routes?.["/:lang/memo"] ?? []), apiIdx]);
+      expect(built.routes?.["/:lang/memo"]).not.toContain(apiIdx);
+      expect(dev.groups?.[apiGroup]).toBe((dev.assets.en.routeParts?.files.length ?? 0) - 1);
+      const api = await importOf<{ part: string; default: object }>(
+        path.join(artifactDir, "build"),
+        built.assets.ko.parts?.api?.url ?? "",
+      );
+      expect(api.part).toBe(DictionaryAssetBuilder.apiPart);
+      expect(api.default).toEqual({ memo: { signal: { getMemo: { desc: { t: "Reads a memo" } } } } });
     });
 
     test("development writes one file per group and the index of each, as each route's groups are read when it builds", async () => {

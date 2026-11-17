@@ -3,6 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { DictionaryAsset } from "./dictionaryAsset";
+import { DictionaryPart } from "./dictionaryPart";
 import { Translator } from "./translator";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-dictionary-asset-"));
@@ -172,6 +173,31 @@ export default { base: { t: "Base" }, memo: { t: "Memo" } };`,
       expect(DictionaryAsset.holdsEveryGroup("xg")).toBe(true);
       expect(await DictionaryAsset.add(writePart("xg", table, { memo: "Memo from a part" }))).toBe(true);
       expect(Translator.translateByLocale("xg", "memo")).toBe("Memo");
+    });
+
+    test("merges the API description file a route lists after its files onto their build, and drops another build's", async () => {
+      const api = path.join(root, `xi-api-${++moduleSeq}.js`);
+      const stale = path.join(root, `xi-api-${++moduleSeq}.js`);
+      const apiSource = (title: string) =>
+        `export const lang = "xi"; export const part = "api";
+export default { memo: { signal: { getMemo: { desc: { t: ${JSON.stringify(title)} } } } } };`;
+      fs.writeFileSync(api, apiSource("Reads a memo"));
+      fs.writeFileSync(stale, apiSource("Reads an old memo"));
+      const memo = path.join(root, `xi-part-${++moduleSeq}.js`);
+      fs.writeFileSync(
+        memo,
+        `export const lang = "xi"; export const parts = { api: ${JSON.stringify(api)} };
+export const table = ${JSON.stringify(path.join(root, "xi-table.js"))}; export const groups = ["memo"];
+export default { memo: { t: "Memo", signal: { getMemo: { t: "Get memo" } } } };`,
+      );
+
+      await DictionaryAsset.load([memo, api]);
+      await DictionaryAsset.load([memo, stale]);
+
+      expect(Translator.translateByLocale("xi", "memo")).toBe("Memo");
+      expect(Translator.translateByLocale("xi", "memo.signal.getMemo")).toBe("Get memo");
+      expect(Translator.translateByLocale("xi", "memo.signal.getMemo.desc")).toBe("Reads a memo");
+      expect(DictionaryPart.has("xi", api)).toBe(true);
     });
 
     test("applies the files that loaded when one fails, and the failed one loads on the next try", async () => {

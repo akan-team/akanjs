@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { tempDirs, writeText } from "../test/testHelpers";
 import type { ClientModuleImport } from "./clientBuildTypes";
+import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 import { DictionaryConstants } from "./dictionaryConstants";
 import { type DictionaryPiecesOf, DictionaryRoutes } from "./dictionaryRoutes";
 
@@ -156,6 +157,6 @@ describe("DictionaryRoutes", () => {
     const read = reader(root, {}).read({ entries: [abs("apps/demo/page/Api.tsx")] });
 
     expect(read.api).toBe(true);
-    expect(read.groups).toEqual(["base", "memo"]);
+    expect(read.groups).toEqual([DictionaryAssetBuilder.apiGroup, "base", "memo"]);
   });
 });

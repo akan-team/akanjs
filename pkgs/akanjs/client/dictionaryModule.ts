@@ -8,6 +8,8 @@ export interface DictionaryModule {
   table?: string;
   //? Set on a route's file, which holds these groups only; a page file, holding every group, has none.
   groups?: string[];
+  //? Set on a part file (the API descriptions): it merges onto the build whose files name it in `parts`.
+  part?: string;
 }
 
 let retrySeq = 0;

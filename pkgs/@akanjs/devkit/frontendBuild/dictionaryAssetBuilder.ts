@@ -31,6 +31,8 @@ interface LocalePages {
 export class DictionaryAssetBuilder {
   static readonly urlPrefix = "/_akan/dict";
   static readonly apiPart = "api";
+  //? How a route's groups name the API description file: no module's group is spelled so.
+  static readonly apiGroup = "@api";
   readonly #app: App;
   readonly #absArtifactDir: string;
 
@@ -67,8 +69,19 @@ export class DictionaryAssetBuilder {
     ]);
     this.#app.verbose(`[base-artifact] dictionaries -> ${files.map((asset) => asset.relPath).join(", ")}`);
     if (!pack?.parts.length) return { assets: Object.fromEntries(assets) };
-    if (!everyGroupAlone || routes?.size) return { assets: Object.fromEntries(assets), routes: pack.partsByRoute };
-    return { assets: Object.fromEntries(assets), groups: Object.fromEntries(groups.map((group, idx) => [group, idx])) };
+    const { apiPart, apiGroup } = DictionaryAssetBuilder;
+    const apiFile = assets.every(([, asset]) => asset.parts?.[apiPart]) ? pack.parts.length : null;
+    if (!everyGroupAlone || routes?.size) {
+      const withApi = (routeId: string, files: number[]) =>
+        apiFile !== null && routes?.get(routeId)?.includes(apiGroup) ? [...files, apiFile] : files;
+      const routed = Object.entries(pack.partsByRoute).map(([routeId, files]) => [routeId, withApi(routeId, files)]);
+      return { assets: Object.fromEntries(assets), routes: Object.fromEntries(routed) };
+    }
+    const groupFiles = Object.fromEntries(groups.map((group, idx) => [group, idx]));
+    return {
+      assets: Object.fromEntries(assets),
+      groups: apiFile === null ? groupFiles : { ...groupFiles, [apiGroup]: apiFile },
+    };
   }
 
   //? Sized on the default locale, whose texts every other locale's fill from: the same files hold the same groups.
@@ -91,20 +104,22 @@ export class DictionaryAssetBuilder {
   }
 
   async #writeLocale({ lang, page, api }: LocalePages, packed?: string[][]): Promise<readonly [string, DictAsset]> {
-    const { source } = DictionaryAssetBuilder;
-    const apiAsset = Object.keys(api).length ? await this.#write(`${lang}-api`, source(lang, api)) : null;
-    const parts = apiAsset ? { [DictionaryAssetBuilder.apiPart]: apiAsset.url } : undefined;
-    const withParts = apiAsset ? { parts: { [DictionaryAssetBuilder.apiPart]: apiAsset } } : {};
+    const { source, apiPart } = DictionaryAssetBuilder;
+    const apiSource = source(lang, api, undefined, packed?.length ? { part: apiPart } : {});
+    const apiAsset = Object.keys(api).length ? await this.#write(`${lang}-api`, apiSource) : null;
+    const parts = apiAsset ? { [apiPart]: apiAsset.url } : undefined;
+    const withParts = apiAsset ? { parts: { [apiPart]: apiAsset } } : {};
     if (!packed?.length) return [lang, { ...(await this.#write(lang, source(lang, page, parts))), ...withParts }];
     //? Named for what decides every file it lists, not for their names: each part names the table it belongs to.
     const tableName = `${lang}-groups-${Bun.hash(JSON.stringify([page, packed, parts ?? null])).toString(36)}.js`;
     const table = `${DictionaryAssetBuilder.urlPrefix}/${tableName}`;
-    const files = await Promise.all(
+    const groupFiles = await Promise.all(
       packed.map((groups, idx) => {
         const held = Object.fromEntries(groups.flatMap((group) => (page[group] ? [[group, page[group]]] : [])));
         return this.#write(`${lang}-${idx}`, source(lang, held, parts, { table, groups }));
       }),
     );
+    const files = apiAsset ? [...groupFiles, apiAsset] : groupFiles;
     const groupIndex = Object.fromEntries(packed.flatMap((groups, idx) => groups.map((group) => [group, idx])));
     const tableSource = `export const lang = ${JSON.stringify(lang)};\nexport const files = ${JSON.stringify(files.map(({ url }) => url))};\nexport default ${JSON.stringify(groupIndex)};\n`;
     const tableAsset = await this.#write(lang, tableSource, tableName);
@@ -156,13 +171,14 @@ export class DictionaryAssetBuilder {
     lang: string,
     dictionary: object,
     parts?: Record<string, string>,
-    { table, groups }: { table?: string; groups?: string[] } = {},
+    { table, groups, part }: { table?: string; groups?: string[]; part?: string } = {},
   ): string {
     const lines = [
       `export const lang = ${JSON.stringify(lang)};\n`,
       parts ? `export const parts = ${JSON.stringify(parts)};\n` : "",
       table ? `export const table = ${JSON.stringify(table)};\n` : "",
       groups ? `export const groups = ${JSON.stringify(groups)};\n` : "",
+      part ? `export const part = ${JSON.stringify(part)};\n` : "",
     ];
     return `${lines.join("")}export default JSON.parse(${JSON.stringify(JSON.stringify(dictionary))});\n`;
   }

@@ -56,12 +56,16 @@ export class DictionaryAsset {
   //? file, or another build's, replaces the locale, unless it was asked for before the one already applied.
   static #apply(
     url: string,
-    { lang, default: dictionary, parts, table, groups }: DictionaryModule,
+    { lang, default: dictionary, parts, table, groups, part }: DictionaryModule,
     seq: number | null,
   ) {
     const state = DictionaryAsset.#state();
     const translator = TranslatorState.get();
     const replaced = translator.replacedByLang.get(lang);
+    if (part)
+      return (
+        !!replaced && DictionaryPart.urlOf(lang, part) === url && DictionaryPart.merge(lang, url, dictionary, replaced)
+      );
     const sameBuild = !!table && !!replaced && translator.tableByLang.get(lang) === table;
     if (groups && sameBuild) {
       if (!state.wholes.has(replaced)) DictionaryPart.merge(lang, url, dictionary, replaced);

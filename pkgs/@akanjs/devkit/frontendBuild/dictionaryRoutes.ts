@@ -4,6 +4,7 @@ import type { App } from "../commandDecorators";
 import { type DictionaryKeyRead, DictionaryKeys } from "../quality/dictionaryKeys";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import type { ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
+import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 import { DictionaryConstants } from "./dictionaryConstants";
 
 export interface DictionaryRouteUnread {
@@ -110,7 +111,7 @@ export class DictionaryRoutes {
   read({ entries, serverModules = [], references = [] }: DictionaryRouteInput): DictionaryRouteRead {
     const names = new Set<string>(frameworkGroups);
     const modules = new Set<string>(references);
-    const route = { names, modules, api: false, whole: null as DictionaryRouteUnread | null };
+    const route = { names, modules, api: false as boolean, whole: null as DictionaryRouteUnread | null };
     const queue = entries.map((entry) => path.resolve(entry));
     const visited = new Set<string>();
     for (let file = queue.pop(); file !== undefined && !route.whole; file = queue.pop()) {
@@ -139,6 +140,7 @@ export class DictionaryRoutes {
     if (route.whole) return { groups: [], api: route.api, whole: route.whole };
     const { constants } = this.#options;
     for (const module of modules) for (const group of constants.reachOf(module)) names.add(group);
+    if (route.api) names.add(DictionaryAssetBuilder.apiGroup);
     return { groups: [...names].sort(), api: route.api, whole: null };
   }
 
