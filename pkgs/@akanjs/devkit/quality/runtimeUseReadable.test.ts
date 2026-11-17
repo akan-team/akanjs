@@ -243,6 +243,30 @@ describe("RuntimeUse.analyze, a name built from a slice the function is handed",
     ).toEqual(["apps/blog/post store"]);
   });
 
+  test("loads nothing for a copy of a handed slice's names, and keeps the whole runtime for any other copy", () => {
+    const type = 'import type { SliceMeta } from "akanjs/fetch";\n';
+    const copy = "{ refName: slice.refName, sliceName: slice.sliceName, argLength: 0 }";
+    expect([
+      analyze(`${type}export const copy = (slice: SliceMeta) => (${copy});\n`),
+      analyze(
+        `${type}export const copy = (slice: SliceMeta) => {\n  const { refName, sliceName } = slice;\n  return { refName, sliceName, argLength: 0 };\n};\n`,
+      ),
+      analyze(
+        `${type}export const copy = (slice: SliceMeta, other: SliceMeta) => {\n  slice = other;\n  return ${copy};\n};\n`,
+      ),
+      analyze(
+        `${type}export const copy = (slice: SliceMeta) => ({ refName: slice.refName, sliceName: slice.refName, argLength: 0 });\n`,
+      ),
+      analyze(`${type}export const copy = (slice: { refName: string; sliceName: string }) => (${copy});\n`),
+    ]).toEqual([
+      [],
+      [],
+      "computed-access: sliceName: slice.sliceName",
+      "computed-access: sliceName: slice.refName",
+      "computed-access: sliceName: slice.sliceName",
+    ]);
+  });
+
   test("reads a slice written out by hand as naming its model, and keeps the whole runtime where its name is not written", () => {
     expect([
       analyze('export const slice = { refName: "memo", sliceName: "memoInBoard", argLength: 0 };\n'),

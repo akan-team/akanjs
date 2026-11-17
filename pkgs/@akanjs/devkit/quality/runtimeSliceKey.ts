@@ -38,6 +38,11 @@ export class RuntimeSliceKey {
     return pieces?.some((piece) => typeof piece !== "string") ? pieces : null;
   }
 
+  copiesSliceName(expression: ts.Expression): boolean {
+    const [only, ...rest] = this.#piecesOf(expression, { object: null }, 0) ?? [];
+    return !rest.length && !!only && typeof only !== "string" && !only.capitalized && only.part === "sliceName";
+  }
+
   static nameOf(pieces: RuntimeSliceKeyPiece[], slice: RuntimeSlice): string | null {
     let name = "";
     for (const piece of pieces) {

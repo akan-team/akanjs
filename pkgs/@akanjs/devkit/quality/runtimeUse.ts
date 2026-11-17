@@ -460,6 +460,12 @@ export class RuntimeUse {
     const sliceName = named("sliceName");
     if (!sliceName || !named("refName")) return;
     if (this.#recording) this.#reads = true;
+    const value = ts.isPropertyAssignment(sliceName)
+      ? sliceName.initializer
+      : ts.isShorthandPropertyAssignment(sliceName)
+        ? sliceName.name
+        : null;
+    if (value && this.#slices.copiesSliceName(value)) return;
     const names = ts.isPropertyAssignment(sliceName) ? this.#keys.namesOf(sliceName.initializer) : null;
     if (names) for (const name of names) this.#record("fetch.slice", name, sliceName);
     else this.#problem("computed-access", sliceName, "a slice written by hand names its model at run time");
