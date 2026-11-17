@@ -37,9 +37,11 @@ export class KeyboardRide {
   static #timer: ReturnType<typeof setTimeout> | null = null;
   static #insets = new Map<HTMLElement, { paddingBottom: string; base: string; rise: number }>();
   static #glides = new Map<HTMLElement, number>();
+  static #movedAt = 0;
 
   static move(height: number, durationMs: number) {
     if (height === KeyboardRide.#target) return;
+    KeyboardRide.#movedAt = performance.now();
     KeyboardRide.#target = height;
     const root = document.documentElement;
     if (durationMs > 0) {
@@ -88,7 +90,10 @@ export class KeyboardRide {
       rider.style.transform = `translateY(${drawn[idx] - laid[idx]}px)`;
     });
     void root.offsetHeight;
-    const transition = `transform ${durationMs}ms ${nativeKeyboardEasing()}`;
+    //? The keys set off when the report arrived; the measuring above took a whole layout of the page per commit, so the
+    //? riders start that far along rather than trailing the keys by it.
+    const late = Math.round(performance.now() - KeyboardRide.#movedAt);
+    const transition = `transform ${durationMs}ms ${nativeKeyboardEasing()} ${late > 0 ? -late : 0}ms`;
     riders.forEach((rider, idx) => {
       rider.style.transition = transition;
       rider.style.transform = `translateY(${settled[idx] - laid[idx]}px)`;
@@ -153,7 +158,7 @@ export class KeyboardRide {
     const from = scroller.scrollTop;
     scroller.setAttribute(GLIDE_ATTRIBUTE, "");
     const ease = KeyboardRide.#easeOf(nativeKeyboardEasing());
-    const startedAt = performance.now();
+    const startedAt = KeyboardRide.#movedAt;
     const step = (now: number) => {
       const progress = durationMs > 0 ? Math.min(1, (now - startedAt) / durationMs) : 1;
       scroller.scrollTop = from + (to - from) * ease(progress);

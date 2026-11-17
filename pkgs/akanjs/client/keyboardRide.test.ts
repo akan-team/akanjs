@@ -185,4 +185,22 @@ describe("KeyboardRide", () => {
     expect(list.style.paddingBottom).toBe("");
     for (const element of [overlay, scroller]) element.remove();
   });
+
+  test("riders start as far along as the measuring took, so they keep pace with keys that set off before it", async () => {
+    const rider = riderOf();
+    const measure = rider.getBoundingClientRect;
+    rider.getBoundingClientRect = () => {
+      const until = performance.now() + 15;
+      while (performance.now() < until);
+      return measure();
+    };
+    KeyboardRide.move(300, 200);
+    const delay = Number.parseFloat(rider.style.transition.split(" ").at(-1) ?? "");
+    expect(delay).toBeLessThanOrEqual(-30);
+    rider.getBoundingClientRect = measure;
+    await wait(220);
+    KeyboardRide.move(0, 20);
+    await wait(40);
+    rider.remove();
+  });
 });
