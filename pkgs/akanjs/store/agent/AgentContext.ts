@@ -12,6 +12,8 @@ export class AgentContext {
   static readonly withheldNote = "Free text is left out. Call readState(key) with a key of `withheld` to read it.";
   static readonly screenNote =
     "Labels left out are text on the page. Call readScreen with `section` set to a scope's path to read them.";
+  static readonly resourceNote =
+    "A resource marked `withheld` holds free text. Call readState with the resource's name to read all of it.";
 
   static of(): AgentContext {
     return new AgentContext(StoreRegistry.instance, ensureStoreSurface().bridge);
@@ -66,24 +68,37 @@ export class AgentContext {
   }
 
   //? A `Load` scope's label is its record's title and its `items` are its rows' titles, both drawn inside the scope,
-  //? so `readScreen` returns what is left out here. A zone's label is a prop the app wrote and no read returns it,
-  //? and neither does one return a value published with `st.expose` or `st.useState`: those ride as they are.
+  //? so `readScreen` returns what is left out here. No element draws a zone's label, so `readScreen` of the zone
+  //? leads with it, and `readState` answers a value published with `st.expose` or `st.useState` by its name.
   static #screenBlock(scopes: PublishedScope[], resources: PublishedResource[]): ContextBlock[] {
     if (!scopes.length && !resources.length) return [];
     const lists = new Set(scopes.map((scope) => `${scope.path}.items`));
-    let whole = true;
+    let labelled = true;
+    let valued = true;
     const shown = scopes.map(({ path, label, kind }) => {
-      const kept = label !== undefined && (kind === "zone" || InlineToken.is(label));
-      if (label !== undefined && !kept) whole = false;
+      const kept = InlineToken.is(label);
+      if (label !== undefined && !kept) labelled = false;
       return { path, ...(kept ? { label } : {}), ...(kind ? { kind } : {}) };
     });
     const listed = resources.map((resource) => {
       const rows = lists.has(resource.name) ? AgentContext.#rowsOf(resource.value) : null;
-      if (!rows) return resource;
-      if (!rows.whole) whole = false;
-      return { ...resource, value: rows.value };
+      if (rows) {
+        if (!rows.whole) labelled = false;
+        return { ...resource, value: rows.value };
+      }
+      const { value, error, ...named } = resource;
+      const inline = AgentInline.value(value);
+      const failed = error !== undefined && !InlineToken.is(error);
+      if (!inline.whole || failed) valued = false;
+      return {
+        ...named,
+        ...(inline.value !== undefined ? { value: inline.value } : {}),
+        ...(error !== undefined && !failed ? { error } : {}),
+        ...(inline.whole && !failed ? {} : { withheld: true }),
+      };
     });
-    return [{ kind: "screen", scopes: shown, resources: listed, ...(whole ? {} : { note: AgentContext.screenNote }) }];
+    const notes = [...(labelled ? [] : [AgentContext.screenNote]), ...(valued ? [] : [AgentContext.resourceNote])];
+    return [{ kind: "screen", scopes: shown, resources: listed, ...(notes.length ? { note: notes.join(" ") } : {}) }];
   }
 
   static #rowsOf(value: unknown): { value: unknown; whole: boolean } | null {

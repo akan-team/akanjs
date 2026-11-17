@@ -1,5 +1,6 @@
 import { csrLocation, router } from "akanjs/client";
 import { AgenticSurface, type SurfaceSource, type ToolEntry, ToolReturn } from "use-agentic";
+import { InlineToken } from "../../common/inlineToken";
 import { AgentBridge } from "./AgentBridge";
 import { ScreenFlash } from "./ScreenFlash";
 import { ScreenImage } from "./ScreenImage";
@@ -13,11 +14,13 @@ export class StoreSurfaceSource implements SurfaceSource {
   static readonly builtins = ["navigate", "goBack", "readScreen", "readState", "highlight", "viewImage"] as const;
 
   #bridge: AgentBridge | null;
+  readonly #surface: AgenticSurface;
   readonly #builtins = new Map<string, ToolEntry[]>();
 
   /** Without a bridge, `AgentBridge.of()` runs at the first `readState` call. */
-  constructor(bridge?: AgentBridge) {
+  constructor(bridge?: AgentBridge, surface: AgenticSurface = AgenticSurface.shared) {
     this.#bridge = bridge ?? null;
+    this.#surface = surface;
   }
 
   tools = (view: string[] = []): ToolEntry[] => {
@@ -27,8 +30,8 @@ export class StoreSurfaceSource implements SurfaceSource {
       builtins = [
         StoreSurfaceSource.#navigate(),
         StoreSurfaceSource.#goBack(),
-        StoreSurfaceSource.#readScreen(viewKey),
-        this.#readState(viewKey),
+        this.#readScreen(viewKey),
+        this.#readState(view),
         StoreSurfaceSource.#highlight(viewKey),
         StoreSurfaceSource.#viewImage(viewKey),
       ];
@@ -119,7 +122,7 @@ export class StoreSurfaceSource implements SurfaceSource {
     };
   }
 
-  static #readScreen(viewKey: string): ToolEntry {
+  #readScreen(viewKey: string): ToolEntry {
     const where = viewKey ? "in this zone" : "on this page";
     const subject = viewKey ? "this zone" : "the current page";
     return {
@@ -147,9 +150,9 @@ export class StoreSurfaceSource implements SurfaceSource {
         const root = StoreSurfaceSource.#zoneRoot(viewKey);
         const section = typeof args.section === "string" ? args.section.trim() : "";
         const options = { images: args.images === true };
-        if (!section) return ScreenReader.read(root, options);
+        if (!section) return this.#underZoneLabel(viewKey, ScreenReader.read(root, options));
         const container = ScreenTarget.container(section, root);
-        if (container) return ScreenReader.read(container, options);
+        if (container) return this.#underZoneLabel(section, ScreenReader.read(container, options));
         const heading = ScreenTarget.heading(section, root);
         if (heading) return ScreenReader.readFrom(heading, root, options);
         const named = ScreenTarget.containerNames(root);
@@ -234,11 +237,18 @@ export class StoreSurfaceSource implements SurfaceSource {
     };
   }
 
-  #readState(viewKey: string): ToolEntry {
+  #underZoneLabel(path: string, text: string): string {
+    if (!path) return text;
+    const zone = this.#surface.snapshot().scopes.find((scope) => scope.path === path && scope.kind === "zone");
+    return zone?.label && !InlineToken.is(zone.label) ? `Zone label: ${zone.label}\n${text}` : text;
+  }
+
+  #readState(view: string[]): ToolEntry {
+    const viewKey = view.join(".");
     return {
       name: "readState",
       description:
-        "Read one store state key of this page. Keys are listed in the state context block, and in `withheld` of the route block.",
+        "Read one store state key of this page, or one resource by its name. Keys are listed in the state context block and in `withheld` of the route block; a resource the screen block marks `withheld` is read by its name.",
       parameters: {
         type: "object",
         properties: { key: { type: "string" } },
@@ -249,7 +259,14 @@ export class StoreSurfaceSource implements SurfaceSource {
       taint: "source",
       run: (args: Record<string, unknown>) => {
         this.#bridge ??= AgentBridge.of();
-        return this.#bridge.read(String(args.key), viewKey);
+        const key = String(args.key);
+        const stateKey =
+          this.#bridge.readableKeys(viewKey).includes(key) ||
+          (AgentBridge.routeKeys as readonly string[]).includes(key);
+        const resource = stateKey ? undefined : this.#surface.snapshot(view).resources.find(({ name }) => name === key);
+        if (!resource) return this.#bridge.read(key, viewKey);
+        if (resource.error !== undefined) throw new Error(resource.error);
+        return resource.value;
       },
     };
   }

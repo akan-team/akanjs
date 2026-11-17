@@ -7,6 +7,7 @@ import { createTempApp, createTempPackage, writeJson, writeText } from "@akanjs/
 import { TypecheckFailure } from "@akanjs/devkit/typecheck/typecheckFailure";
 import { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
+import { VerifyComments } from "./verifyComments";
 import { VerifyPipeline } from "./verifyPipeline";
 import { VerifyReport } from "./verifyReport";
 import { VerifyScope } from "./verifyScope";
@@ -68,6 +69,40 @@ describe("VerifyPipeline", () => {
     await writeText(path.join(root, "pkgs/@sample/tool/index.ts"), "export const port: number = 8282;\n");
     const fixed = await new VerifyPipeline(workspace, new WorkspaceRunner(), new ApplicationRunner()).run(scope);
     expect(fixed.steps.find((step) => step.name === "typecheck")?.status).toBe("pass");
+  }, 60_000);
+
+  test("lists an added comment on the first run and counts it on one line on the next, unless asked to repeat", async () => {
+    const { root, workspace } = await brokenPackage();
+    const file = path.join(root, "pkgs/@sample/tool/index.ts");
+    await writeText(file, "export const port: number = 8282;\n");
+    const git = (...args: string[]) =>
+      Bun.spawn(
+        ["git", "-c", "user.email=dev@example.com", "-c", "user.name=dev", "-c", "commit.gpgsign=false", ...args],
+        { cwd: root, stdout: "ignore", stderr: "ignore" },
+      ).exited;
+    await git("init", "-q");
+    await git("add", "-A");
+    await git("commit", "-q", "-m", "init");
+    await writeText(file, "// the port\nexport const port: number = 8282;\n");
+    const scope = VerifyScope.resolve([{ code: " M", file: "pkgs/@sample/tool/index.ts" }], {
+      apps: [],
+      libs: [],
+      pkgs: ["@sample/tool"],
+    });
+    const linesOf = async (repeatComments?: boolean) => {
+      const result = await new VerifyPipeline(workspace, new WorkspaceRunner(), new ApplicationRunner()).run(scope, {
+        repeatComments,
+      });
+      expect(result.ok).toBe(true);
+      return VerifyReport.text(result).split("\n").slice(1);
+    };
+    const listed = `pkgs/@sample/tool/index.ts:1:1 warning akan.comment.added // the port fix: ${VerifyComments.fix}`;
+
+    expect(await linesOf(false)).toEqual([listed]);
+    expect(await linesOf(false)).toEqual([
+      "- warning akan.comment.kept 1 comment added since the last commit, reported by an earlier run, is still in 1 file; akan verify --comments lists them",
+    ]);
+    expect(await linesOf()).toEqual([listed]);
   }, 60_000);
 
   test("renames a module file's #private methods and drops a legacy-class warning the app's CSS defines", async () => {

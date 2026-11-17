@@ -208,9 +208,12 @@ export interface BrowserErrorData {
     digest: null | string;
     buildId: null | string;
     userAgent: null | string;
+    shell: BrowserErrorShell | null;
 }
 
 export type BrowserErrorKind = "caught" | "error" | "recoverable" | "rejection" | "uncaught";
+
+export type BrowserErrorShell = "android" | "ios" | "linux" | "macos" | "windows";
 
 export type BuildEndpoint<SrvModule extends ServiceModel = ServiceModel> = {
     query: <Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullable extends boolean = false>(returnRef: Returns, signalOption?: SignalOption<Returns, Nullable>) => EndpointInfo<"query", SrvMap<SrvModule>, [

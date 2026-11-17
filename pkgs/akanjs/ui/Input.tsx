@@ -94,7 +94,7 @@ const DefaultInput = ({
   const [firstFocus, setFirstFocus] = useState(true);
   const validateResult = validate ? validate(value) : undefined;
   const inputBase = (useUiRecipe("input") ?? inputRecipe)();
-  const invalidMessage = invalidMessageOf((value && !value.length) || firstFocus, validateResult, l);
+  const invalidMessage = invalidMessageOf(!value.length || firstFocus, validateResult, l);
   const inputType = cn(
     inputBase,
     inputStyleType === "borderless"

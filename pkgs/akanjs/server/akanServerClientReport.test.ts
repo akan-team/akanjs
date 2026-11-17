@@ -102,3 +102,29 @@ test("a server takes a browser report at /_akan/client-report once its option tu
   expect(reported[0]?.[0]).toBeInstanceOf(BrowserError);
   expect(reported[0]?.[1]).toMatchObject({ source: "client", traceId: pageId, routeId: "/:lang/orders/:orderId" });
 }, 30_000);
+
+test("a server gives a native shell's page an id over the network and takes that page's report with its shell", async () => {
+  const reported: [Error, ErrorReportContext][] = [];
+  const send = await serve(
+    new AkanOption().setErrorReporter((error, context) => void reported.push([error, context])).setClientReport(),
+  );
+  const url = new URL((await send()).url);
+  const shellOrigin = "app://localhost";
+  const asked = await fetch(url, { headers: { origin: shellOrigin, "sec-fetch-site": "cross-site" } });
+  const requestId = await asked.text();
+  const traceId = ClientReportId.verify(requestId);
+  const posted = await fetch(url, {
+    method: "POST",
+    headers: { "content-type": "text/plain;charset=UTF-8", origin: shellOrigin, "sec-fetch-site": "cross-site" },
+    body: JSON.stringify({ requestId, kind: "rejection", name: "Error", message: "save failed", shell: "ios" }),
+  });
+  await ErrorReporting.flush();
+
+  expect([asked.status, asked.headers.get("access-control-allow-origin")]).toEqual([200, shellOrigin]);
+  expect(traceId).toMatch(/^[0-9a-f]{32}$/);
+  expect([posted.status, posted.headers.get("access-control-allow-origin")]).toEqual([204, shellOrigin]);
+  expect(reported.map(([error, context]) => [(error as BrowserError).data.shell, context.traceId])).toEqual([
+    [null, pageId],
+    ["ios", traceId],
+  ]);
+}, 30_000);

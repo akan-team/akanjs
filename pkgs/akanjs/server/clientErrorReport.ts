@@ -1,6 +1,13 @@
 import { AkanError } from "akanjs/base";
 import { addressBlockOf, hostFromRequest, Logger } from "akanjs/common";
-import { BrowserError, type BrowserErrorData, type BrowserErrorKind } from "../signal/browserError";
+import { ReportText } from "../client/reportText";
+import {
+  BrowserError,
+  type BrowserErrorData,
+  type BrowserErrorKind,
+  type BrowserErrorShell,
+} from "../signal/browserError";
+import { CrossSiteGuard } from "../signal/CrossSiteGuard";
 import { ErrorReporting } from "../signal/errorReporting";
 import { RequestTrace } from "../signal/requestTrace";
 import { SignalContext } from "../signal/signalContext";
@@ -8,7 +15,6 @@ import { ClientReportId } from "./clientReportId";
 import { ClientReport } from "./hmr/clientReport";
 import { AppInfo } from "./ops/appInfo";
 import { FailureLimiter } from "./ops/failureLimiter";
-import { ReportText } from "./reportText";
 import type { HttpRoutes } from "./types";
 
 export interface ClientReportSetting {
@@ -28,6 +34,7 @@ interface ClientReportBody {
   message?: unknown;
   stack?: unknown;
   digest?: unknown;
+  shell?: unknown;
 }
 
 export class ClientErrorReport {
@@ -42,6 +49,13 @@ export class ClientErrorReport {
     "recoverable",
     "error",
     "rejection",
+  ]);
+  static readonly #shells: ReadonlySet<string> = new Set<BrowserErrorShell>([
+    "ios",
+    "android",
+    "macos",
+    "windows",
+    "linux",
   ]);
   static readonly #routeIdShape = /^\/[\p{L}\p{N}_\-.:*~@+()[\]/]{0,255}$/u;
   static readonly #digestShape = /^[\w-]{1,64}$/;
@@ -85,19 +99,37 @@ export class ClientErrorReport {
   }
 
   static async handle(req: Request): Promise<Response> {
+    const origin = ClientErrorReport.#shellOrigin(req);
+    //? Security: allowed by the `Origin` alone, so the header tells nobody whether reports are on or a body was taken.
+    const headers = {
+      "cache-control": "no-store",
+      ...(origin ? { "access-control-allow-origin": origin, vary: "origin" } : {}),
+    };
+    const requestId = req.method === "GET" ? ClientErrorReport.#issue(req) : null;
+    if (requestId)
+      return new Response(requestId, {
+        status: 200,
+        headers: { ...headers, "content-type": "text/plain; charset=utf-8" },
+      });
     await ClientErrorReport.#take(req).catch(() => undefined);
-    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+    return new Response(null, { status: 204, headers });
+  }
+
+  //? Security: a shell's bundled page had no page view to carry an id: it asks, counted per address, and only it reads.
+  static #issue(req: Request): string | null {
+    if (!ClientErrorReport.#setting || !ClientErrorReport.#shellOrigin(req)) return null;
+    const traceId = RequestTrace.current()?.traceId;
+    if (!ClientErrorReport.#admitAddress(req) || !traceId || !ClientErrorReport.#sampled(traceId)) return null;
+    return ClientReportId.sign(traceId);
   }
 
   //? Security: cheapest check first, and nothing is counted against the server, cleaned or handed on for a body
   //? whose id this deployment did not sign; the per-address count is the only cost an unsigned body has.
   static async #take(req: Request) {
-    if (!ClientErrorReport.#setting || req.method !== "POST" || !ClientErrorReport.#sameOrigin(req)) return;
+    if (!ClientErrorReport.#setting || req.method !== "POST") return;
+    if (!ClientErrorReport.#sameOrigin(req) && !ClientErrorReport.#shellOrigin(req)) return;
     if (req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "text/plain") return;
-    const address = SignalContext.clientIpOf(req);
-    const block = address ? addressBlockOf(address) : null;
-    if (ClientErrorReport.#perAddress.blocked(block)) return;
-    ClientErrorReport.#perAddress.fail(block);
+    if (!ClientErrorReport.#admitAddress(req)) return;
     const text = await ClientErrorReport.#read(req);
     const body = text === null ? null : ClientErrorReport.#parse(text);
     const traceId = ClientReportId.verify(body?.requestId);
@@ -106,11 +138,18 @@ export class ClientErrorReport {
     ClientErrorReport.#perPageView.fail(traceId);
     ClientErrorReport.#perServer.fail("server");
     const data = ClientErrorReport.#dataOf(body, body.kind as BrowserErrorKind, req);
+    const from = data.shell ? `Native ${data.shell} page error` : "Browser error";
     Logger.emit({
       level: "error",
       name: "ClientErrorReport",
-      message: `Browser error (${data.kind}) on ${data.routeId ?? "an unknown route"}: ${data.name}: ${data.message}`,
-      attrs: { kind: data.kind, routeId: data.routeId, pageRequestId: traceId, buildId: data.buildId },
+      message: `${from} (${data.kind}) on ${data.routeId ?? "an unknown route"}: ${data.name}: ${data.message}`,
+      attrs: {
+        kind: data.kind,
+        ...(data.shell ? { shell: data.shell } : {}),
+        routeId: data.routeId,
+        pageRequestId: traceId,
+        buildId: data.buildId,
+      },
     });
     ErrorReporting.report(new BrowserError(data), {
       source: "client",
@@ -118,6 +157,14 @@ export class ClientErrorReport {
       routeId: data.routeId,
       digest: data.digest,
     });
+  }
+
+  static #admitAddress(req: Request): boolean {
+    const address = SignalContext.clientIpOf(req);
+    const block = address ? addressBlockOf(address) : null;
+    if (ClientErrorReport.#perAddress.blocked(block)) return false;
+    ClientErrorReport.#perAddress.fail(block);
+    return true;
   }
 
   //? Counted for as long as an id is taken, so one page view's id is good for as many reports as its page sends.
@@ -142,6 +189,12 @@ export class ClientErrorReport {
     } catch {
       return false;
     }
+  }
+
+  //? Security: no web page can claim a shell's `Origin`, but any non-browser caller can, so a body still needs its id.
+  static #shellOrigin(req: Request): string | null {
+    const origin = req.headers.get("origin");
+    return CrossSiteGuard.nativeOrigins.find((shell) => shell === origin) ?? null;
   }
 
   static async #read(req: Request): Promise<string | null> {
@@ -183,6 +236,12 @@ export class ClientErrorReport {
       digest: typeof body.digest === "string" && ClientErrorReport.#digestShape.test(body.digest) ? body.digest : null,
       buildId: AppInfo.build().buildId,
       userAgent: agent ? ClientReport.line(agent, userAgent) : null,
+      shell:
+        ClientErrorReport.#shellOrigin(req) &&
+        typeof body.shell === "string" &&
+        ClientErrorReport.#shells.has(body.shell)
+          ? (body.shell as BrowserErrorShell)
+          : null,
     };
   }
 

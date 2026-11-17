@@ -208,8 +208,8 @@ export default page()
       {
         name: "akan.comment.added",
         desc: l.trans({
-          en: "A warning per code comment added since the last commit, so each one gets a second look. `--lint-only` skips it.",
-          ko: "마지막 커밋 뒤 추가된 코드 주석마다 경고를 하나씩 내, 한 번 더 살펴보게 합니다. `--lint-only`는 건너뜁니다.",
+          en: "A warning per code comment added since the last commit, so each one gets a second look. A later run counts the ones already reported on one `akan.comment.kept` line, and `--comments` lists them again. `--lint-only` skips it.",
+          ko: "마지막 커밋 뒤 추가된 코드 주석마다 경고를 하나씩 내, 한 번 더 살펴보게 합니다. 이미 보고한 주석은 다음 실행부터 `akan.comment.kept` 한 줄로 세고, `--comments`로 다시 나열합니다. `--lint-only`는 건너뜁니다.",
         }),
       },
       {
@@ -443,7 +443,8 @@ akan create-workspace acme --app shop --libs true`,
       },
       {
         name: "verify",
-        signature: "akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>]",
+        signature:
+          "akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>] [--comments]",
         desc: l.trans({
           en: "Check a change in one run: sync, lint with fixes, typecheck, a build of each changed app's server and SSR routes, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.",
           ko: "변경을 한 번에 검사합니다. sync, 고치기까지 하는 린트, 타입 검사, 바뀐 앱의 서버와 SSR 라우트 빌드, `.tsx`를 바꿨다면 SSR 검사까지 합니다. 모두 통과하면 한 줄, 아니면 문제마다 한 줄만 출력하므로 편집 뒤에는 이 명령 하나만 실행하면 됩니다.",
@@ -503,6 +504,15 @@ akan create-workspace acme --app shop --libs true`,
             desc: l.trans({
               en: "`json` prints the whole result as one JSON line.",
               ko: "`json`이면 전체 결과를 JSON 한 줄로 출력합니다.",
+            }),
+          },
+          {
+            name: "--comments",
+            type: "Boolean",
+            defaultValue: "false",
+            desc: l.trans({
+              en: "List every comment added since the last commit, the ones an earlier run reported included.",
+              ko: "마지막 커밋 뒤 추가된 주석을, 앞선 실행이 이미 보고한 것까지 모두 나열합니다.",
             }),
           },
         ],

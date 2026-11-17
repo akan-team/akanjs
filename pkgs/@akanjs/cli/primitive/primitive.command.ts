@@ -10,9 +10,9 @@ export class PrimitiveCommand extends command("primitive", [PrimitiveScript], ({
     .option("module", String, { desc: "target module name", nullable: true })
     .option("surface", String, {
       flag: "u",
-      desc: "view, unit, or template",
+      desc: "view, unit, template, zone, or util",
       default: "template",
-      enum: ["view", "unit", "template"],
+      enum: ["view", "unit", "template", "zone", "util"],
     })
     .option("format", String, { flag: "o", desc: "output format", default: "markdown", enum: ["markdown", "json"] })
     .exec(async function (workspace, app, module, surface, format) {

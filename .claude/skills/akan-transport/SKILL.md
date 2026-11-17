@@ -9,21 +9,14 @@ description: "Guard and tune endpoints on the wire: writing a Can<Verb><Model> g
 
 ## Guards
 
-- Every custom `query` / `mutation` / `pubsub` / `message` names its own `guards: [...]`; every `slice()` takes an
-  explicit guard map with `root: Admin`. `Public` belongs on a slice `get:`, and on a mutation only for an act that
-  must work signed out (sign-up, sign-in, token refresh, an OAuth route), which also declares a `rateLimit`.
+- Which guards each endpoint and slice names, `Public`, `static scope`, `static name`, the acting user and the
+  service's second check are the `auth` rule, loaded with every `signal.ts` and `srvkit/` file.
 - A resource guard is a `Can<Verb><Model>` class in the model library's `srvkit/guards.ts` that fails closed:
   no resource named, or a load that throws, is `false` (after a `logger.warn`). Admin bypass goes first.
-- Every guard declares `static scope`: `"account"` reads only the caller (`SignedIn`, `Admin`, roles), and
-  `"resource"` needs the call's arguments (every `Can<Verb><Model>`). Keep `static name = "User";` with a comment.
-- Guards read `context.get<T>("account")`, serve HTTP and websocket alike, and stay side-effect free. The acting
-  user comes from `.with(Self)` / `.with(CurrentUserId)` / `.with(Me)`, the address from `.with(Ip)` — never a
-  client-supplied id. The service re-checks ownership: two independent gates.
 
 ## Endpoint options
 
-- `{ timeout: <ms> }` is the deadline on both ends; undeclared, the client quits at 30 s and the handler is not
-  cancelled.
+- `{ timeout: <ms> }` is the deadline on both ends.
 - `{ cache }` only on a `query` with no internal argument, capped at one day; `invalidate(endpoint, args?)` drops
   it early through a plugged `EndpointCacheControl`.
 - `{ rateLimit: { calls, windowMs?, by? } }` per endpoint, `option.setRateLimit` per app, `plug(RateLimit)` for a
@@ -36,10 +29,8 @@ description: "Guard and tune endpoints on the wire: writing a Can<Verb><Model> g
 
 ## Bodies and other servers
 
-- `.body()` / `.param()` take scalars, model refs or `enumOf(...)`; `Int` / `Float`, never `Number`; bytes are
-  `Binary`, never `Any`; `Upload` only in a `fileUpload: true` mutation.
-- Server to server, `fetch.clone({ origin })` opens no socket without `connect: true`, retries through `retry`,
-  and rethrows a remote `Err` as it is — never wrap or re-key it.
+- `.body()` / `.param()` take scalars, model refs or `enumOf(...)`; the types they refuse are the `server` rule.
+- Server to server, `fetch.clone({ origin })` opens no socket without `connect: true` and retries through `retry`.
 
 Full detail: `get_guideline` with `transportRule`, or `mcpRule` for what a guard's scope does to an MCP listing.
 

@@ -119,8 +119,8 @@ const configKeys = [
     key: "bin",
     type: "Record<string, { [platform]: AkanBinSource }>",
     default: "{}",
-    en: "Executables every desktop build carries, per platform, first on its PATH; the image ignores it.",
-    ko: "모든 데스크톱 빌드가 싣고 가는 실행 파일이며 플랫폼마다 적고, PATH 맨 앞에 놓입니다. 이미지는 읽지 않습니다.",
+    en: "Executables every desktop build and the image carry, per platform, first on PATH.",
+    ko: "모든 데스크톱 빌드와 이미지가 싣고 가는 실행 파일이며 플랫폼마다 적고, PATH 맨 앞에 놓입니다.",
   },
   {
     key: "barrelImports",
@@ -503,8 +503,8 @@ const buildFields = [
     key: "bin",
     type: "Record<string, { [platform]: AkanBinSource }>",
     default: "{}",
-    en: "{ url, sha256, file? } or { path, file? } per platform, carried in a desktop app and put first on its PATH.",
-    ko: "플랫폼마다 { url, sha256, file? } 또는 { path, file? }이며, 데스크톱 앱에 실려 그 PATH 맨 앞에 놓입니다.",
+    en: "{ url, sha256, file? } or { path, file? } per platform, carried in a desktop app and, for Linux, the image, first on PATH.",
+    ko: "플랫폼마다 { url, sha256, file? } 또는 { path, file? }이며, 데스크톱 앱과 (Linux 항목은) 이미지에 실려 PATH 맨 앞에 놓입니다.",
   },
   {
     key: "optimizeImports",
@@ -1648,8 +1648,9 @@ const config: AppConfig = {
                     <strong>A desktop app carries its own executables.</strong> It gets none of the image's{" "}
                     <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else its server or a native
                     plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and
-                    in a plugin's <code>ctx.binDir</code>. Carry a static LGPL build: a <code>--enable-nonfree</code>{" "}
-                    build may not be redistributed.
+                    in a plugin's <code>ctx.binDir</code>. The image carries the <code>linux-x64</code> and{" "}
+                    <code>linux-arm64</code> entries the same way, first on its PATH. Carry a static LGPL build: a{" "}
+                    <code>--enable-nonfree</code> build may not be redistributed.
                   </span>
                 ),
                 ko: (
@@ -1657,7 +1658,8 @@ const config: AppConfig = {
                     <strong>데스크톱 앱은 실행 파일을 직접 싣고 갑니다.</strong> 데스크톱 앱에는 이미지의{" "}
                     <code>docker</code> 단계가 하나도 들어가지 않습니다. 그래서 <code>bin</code>이 ffmpeg처럼 서버나
                     네이티브 플러그인이 실행하는 파일을 빌드하는 컴퓨터용으로 모든 데스크톱 빌드에 넣고, 앱의 PATH 맨
-                    앞과 플러그인의 <code>ctx.binDir</code>에 둡니다. 정적 LGPL 빌드를 넣으세요.{" "}
+                    앞과 플러그인의 <code>ctx.binDir</code>에 둡니다. 이미지도 <code>linux-x64</code>와{" "}
+                    <code>linux-arm64</code> 항목을 같은 방식으로 싣고 PATH 맨 앞에 둡니다. 정적 LGPL 빌드를 넣으세요.{" "}
                     <code>--enable-nonfree</code>로 빌드한 것은 재배포할 수 없습니다.
                   </span>
                 ),

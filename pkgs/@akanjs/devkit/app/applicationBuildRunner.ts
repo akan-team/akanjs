@@ -3,6 +3,7 @@ import { toError } from "akanjs/common";
 import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
+import { AkanBin } from "../akanConfig/akanBin";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
 import type { App } from "../commandDecorators";
 import { parseEnvFile, WorkspaceExecutor } from "../executors";
@@ -24,6 +25,7 @@ import { ServerEnvProfile } from "../transforms/serverEnvProfile";
 import { ProjectTypecheck } from "../typecheck/projectTypecheck";
 import { Spinner } from "../util/spinner";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
+import { AppBin } from "./appBin";
 import type {
   ApplicationBuildPhaseResult,
   ApplicationBuildProgressReporter,
@@ -380,7 +382,17 @@ export class ApplicationBuildRunner {
     const packageJson = akanConfig.getProductionPackageJson();
     const lockfile = await this.#pruneLockfile(packageJson);
     const env = { ...akanConfig.getProductionEnv(environment), ...this.#secretEnvList() };
-    const dockerfile = akanConfig.dockerfileFor(environment, { lockfile: lockfile !== null, env });
+    const carried = await new AppBin(this.#app, akanConfig).stageImage(this.#app.dist.cwdPath);
+    if (carried.length)
+      this.#app.logger.info(
+        typeof akanConfig.docker === "string"
+          ? `The build carries ${carried.join(", ")} in ${AppBin.dir}/<TARGETARCH>/; apps/${this.#app.name}/akan.config.ts writes its own Dockerfile, which puts that folder on PATH itself (ENV PATH=${AkanBin.imagePath(AppBin.dir)}).`
+          : `The image carries ${carried.join(", ")} from bin, first on its PATH.`,
+      );
+    const dockerfile = akanConfig.dockerfileFor(environment, {
+      lockfile: lockfile !== null,
+      env: { ...(carried.length ? { PATH: AkanBin.imagePath(AppBin.dir) } : {}), ...env },
+    });
     await Promise.all([
       this.#app.dist.writeJson("package.json", packageJson),
       this.#app.dist.writeJson(BUILD_ENV_FILE, env),

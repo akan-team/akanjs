@@ -143,7 +143,8 @@ worker per web-serving replica.
   `/_akan/app/statements` (metrics token) ranks statements by total time and p95 with their senders.
   `AKAN_LOG_SLOW_STATEMENT_MS` (200, `off`) logs one `SlowStatement` warn per fingerprint a minute; a local dev run
   warns once (`QueryPlan`) of a full scan or temp sort, silenced per fingerprint by `AKAN_QUERY_PLAN_IGNORE`.
-  `akan_room_replay_bytes` and `akan_pubsub_buffered_messages` gauge the reconnect replay and the Redis buffer.
+  `akan_room_replay_bytes` and `akan_pubsub_buffered_messages` gauge the reconnect replay and the Redis buffer;
+  `akan_live_rooms` gauges the live-query rooms a process holds (summed per process behind a gateway, not distinct).
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once
@@ -249,7 +250,9 @@ normalized to `info` with one warning.
   what the reporter sends: an unawaited send that fails returns as an unhandled rejection. `option.setClientReport({
   sampleRate })`, off unless set, adds what pages hit in the browser as a `BrowserError` through
   `/_akan/client-report`: a report is taken only with the signed id the page's `Server-Timing` gave that page view,
-  for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. With
+  for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. A
+  native app's bundled page, from another origin, gets its id by a `GET` from a shell origin (`app://localhost`,
+  `https://app.localhost`), counted per address and sampled like a page view, and its reports carry `shell`. With
   more than one gateway or pod, set `AKAN_CLIENT_REPORT_KEY` (a secret, 32+ characters, the same on each) so each takes the others' ids.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`
@@ -643,7 +646,12 @@ const config: AppConfig = {
   archive, or Homebrew's ffmpeg with its 55 dylibs — runs on the computer that built it and nowhere else.
 - **A lib's `bin` reaches only the apps that depend on it**, unlike its `docker` steps; the app's own entry of the
   same name wins, and two libs that declare one name differently fail the build.
-- **The image does not read `bin`.** Keep installing through `docker.preRuns` there.
+- **The image carries the Linux entries.** `akan build` fetches each entry's `linux-x64` and `linux-arm64` file into
+  the build's `bin/amd64/` and `bin/arm64/`, and the Dockerfile puts the one its `TARGETARCH` names first on PATH
+  (`ENV PATH=/workspace/bin/$TARGETARCH:$PATH`), ahead of a copy a `docker.preRuns` step installed. An entry with no
+  Linux file is left to `docker.preRuns`, and an app that writes its own Dockerfile adds that `ENV` line itself.
+- **`akan start` carries nothing**: it warns when a declared name is not on this computer's PATH, where a dev
+  server that spawns it by name fails. Install it there yourself.
 - **A package that builds itself at install goes in `trustedDependencies`.** `bun install --production` runs no
   dependency's install or postinstall script unless the package is trusted, so an addon with no prebuild arrives
   unbuilt and fails at its first call. The list lands in the built `package.json`, so it applies to the image and to

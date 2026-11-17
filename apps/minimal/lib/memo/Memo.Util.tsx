@@ -9,7 +9,7 @@ interface RemoveProps {
 export const Remove = ({ memoId }: RemoveProps) => {
   const { l } = usePage();
   return (
-    <Model.Remove modelId={memoId} slice={fetch.slice.memo}>
+    <Model.Remove className="flex items-center gap-1" modelId={memoId} slice={fetch.slice.memo}>
       <BiTrash /> {l("base.remove")}
     </Model.Remove>
   );

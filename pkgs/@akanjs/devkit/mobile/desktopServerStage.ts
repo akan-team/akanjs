@@ -39,6 +39,7 @@ export class DesktopServerStage {
     "csr",
     "mcp-apps",
     "public",
+    "bin",
     ".akan",
   ]);
   //? Only the RSC worker loads it, and its peer webpack makes 35 of the 43 MB an install would add.
