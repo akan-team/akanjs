@@ -99,24 +99,28 @@ export class ClientErrorReport {
   }
 
   static async handle(req: Request): Promise<Response> {
-    if (req.method === "GET") return ClientErrorReport.#issue(req);
+    const origin = ClientErrorReport.#shellOrigin(req);
+    //? Security: allowed by the `Origin` alone, so the header tells nobody whether reports are on or a body was taken.
+    const headers = {
+      "cache-control": "no-store",
+      ...(origin ? { "access-control-allow-origin": origin, vary: "origin" } : {}),
+    };
+    const requestId = req.method === "GET" ? ClientErrorReport.#issue(req) : null;
+    if (requestId)
+      return new Response(requestId, {
+        status: 200,
+        headers: { ...headers, "content-type": "text/plain; charset=utf-8" },
+      });
     await ClientErrorReport.#take(req).catch(() => undefined);
-    return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
+    return new Response(null, { status: 204, headers });
   }
 
   //? Security: a shell's bundled page had no page view to carry an id: it asks, counted per address, and only it reads.
-  static #issue(req: Request): Response {
-    const origin = ClientErrorReport.#shellOrigin(req);
-    if (!ClientErrorReport.#setting || !origin)
-      return new Response(null, { status: 204, headers: { "cache-control": "no-store" } });
-    const headers = { "cache-control": "no-store", "access-control-allow-origin": origin, vary: "origin" };
+  static #issue(req: Request): string | null {
+    if (!ClientErrorReport.#setting || !ClientErrorReport.#shellOrigin(req)) return null;
     const traceId = RequestTrace.current()?.traceId;
-    if (!ClientErrorReport.#admitAddress(req) || !traceId || !ClientErrorReport.#sampled(traceId))
-      return new Response(null, { status: 204, headers });
-    return new Response(ClientReportId.sign(traceId), {
-      status: 200,
-      headers: { ...headers, "content-type": "text/plain; charset=utf-8" },
-    });
+    if (!ClientErrorReport.#admitAddress(req) || !traceId || !ClientErrorReport.#sampled(traceId)) return null;
+    return ClientReportId.sign(traceId);
   }
 
   //? Security: cheapest check first, and nothing is counted against the server, cleaned or handed on for a body

@@ -1236,7 +1236,8 @@ export const option = new AkanOption<ModulesOptions>()
                     <code>GET /_akan/client-report</code> on the app's server. The server answers only a shell origin,
                     counts the ask against <code>perAddress</code>, draws it against <code>sampleRate</code> by the
                     ask's own request id, and returns a signed id that the page uses as a page view's, asking again
-                    after 30 minutes. A page with no id sends nothing.
+                    after 30 minutes, or after a minute when the ask did not reach the server. A page with no id sends
+                    nothing.
                   </span>
                 ),
                 ko: (
@@ -1247,8 +1248,8 @@ export const option = new AkanOption<ModulesOptions>()
                     <code>window.onerror</code>나 처리되지 않은 rejection이 나면, 앱 서버의{" "}
                     <code>GET /_akan/client-report</code>에 id를 요청합니다. 서버는 shell origin에만 답하고, 이 요청을{" "}
                     <code>perAddress</code>에 세며, 요청 자신의 요청 id로 <code>sampleRate</code> 표본을 뽑아 서명된
-                    id를 돌려줍니다. 페이지는 이를 페이지 뷰의 id처럼 쓰고 30분이 지나면 다시 요청합니다. id가 없는
-                    페이지는 아무것도 보내지 않습니다.
+                    id를 돌려줍니다. 페이지는 이를 페이지 뷰의 id처럼 쓰고 30분이 지나면, 요청이 서버에 닿지 못했다면
+                    1분이 지나면 다시 요청합니다. id가 없는 페이지는 아무것도 보내지 않습니다.
                   </span>
                 ),
               })}

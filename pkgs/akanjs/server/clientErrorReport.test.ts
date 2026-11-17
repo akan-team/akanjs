@@ -266,9 +266,13 @@ describe("ClientErrorReport from a native shell's page", () => {
   };
   const fromShell = (body: unknown, address?: string) =>
     post(body, { address, headers: { origin: shellOrigin, "sec-fetch-site": "cross-site" } });
+  const emptyShellAnswer = {
+    ...constantAnswer,
+    headers: { ...constantAnswer.headers, "access-control-allow-origin": shellOrigin, vary: "origin" },
+  };
 
   test("gives a shell's page an id it alone may read, and a browser page or a closed route none", async () => {
-    expect(await ask()).toEqual(constantAnswer);
+    expect(await ask()).toEqual(emptyShellAnswer);
     ClientErrorReport.configure(true);
     const trace = RequestTrace.fresh();
     const answer = await ask(shellOrigin, "198.51.100.7", trace);
@@ -307,6 +311,9 @@ describe("ClientErrorReport from a native shell's page", () => {
       [200, inSample.traceId],
       [204, ""],
     ]);
+    expect(answers.map(({ headers }) => headers["access-control-allow-origin"])).toEqual(
+      answers.map(() => shellOrigin),
+    );
     expect(reported).toEqual([]);
   });
 
@@ -324,7 +331,7 @@ describe("ClientErrorReport from a native shell's page", () => {
         name: "AkanNativeError",
         shell: "android",
       };
-      expect(await answerOf(fromShell(sent))).toEqual(constantAnswer);
+      expect(await answerOf(fromShell(sent))).toEqual(emptyShellAnswer);
       await answerOf(fromShell({ ...sent, message: "a shell it cannot be", shell: "playstation" }));
       await answerOf(post({ ...sent, message: "a browser page that claims a shell" }));
       await ErrorReporting.flush();

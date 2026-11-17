@@ -74,8 +74,8 @@ describe("NativeErrorReport", () => {
       },
     ]);
     expect(posts().map(({ url, init }) => [url, init.mode, init.credentials])).toEqual([
-      [`${server}/_akan/client-report`, "no-cors", "omit"],
-      [`${server}/_akan/client-report`, "no-cors", "omit"],
+      [`${server}/_akan/client-report`, undefined, "omit"],
+      [`${server}/_akan/client-report`, undefined, "omit"],
     ]);
     expect(bodies()).toEqual([
       {
@@ -107,6 +107,29 @@ describe("NativeErrorReport", () => {
     window.dispatchEvent(new ErrorEvent("error", { error: new Error("later") }));
     await sleep(30);
     expect([asks().length, bodies().map(({ message, shell }) => [message, shell])]).toEqual([2, [["later", "macos"]]]);
+  });
+
+  test("asks again a minute after an ask that never reached the server", async () => {
+    answer = () => {
+      throw new TypeError("Load failed");
+    };
+    openShell("ios");
+    const now = Date.now();
+    const clock = spyOn(Date, "now").mockReturnValue(now);
+    spies.push(clock);
+    reject(new TypeError("Load failed"));
+    reject(new Error("still offline"));
+    await sleep(30);
+    expect([asks().length, posts().length]).toEqual([1, 0]);
+
+    answer = () => new Response(requestId, { status: 200 });
+    clock.mockReturnValue(now + NativeErrorReport.retryMs);
+    reject(new Error("back online"));
+    await sleep(30);
+    expect([asks().length, bodies().map(({ message, shell }) => [message, shell])]).toEqual([
+      2,
+      [["back online", "ios"]],
+    ]);
   });
 
   test("listens on no page outside a shell", async () => {

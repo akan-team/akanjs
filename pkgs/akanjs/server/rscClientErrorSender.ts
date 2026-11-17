@@ -38,9 +38,8 @@ export class RscClientErrorSender {
       .find((text) => new TextEncoder().encode(text).byteLength <= RscClientErrorSender.maxBytes);
     if (!body) return;
     //? A string body goes as `text/plain`, which a page sends with no preflight and the server takes alone.
-    //? `no-cors` from a shell's page: its server is another origin, and the empty answer is never read.
+    //? Never `no-cors` to a shell's server: under `no-referrer` WebKit then sends `Origin: null`, which the route refuses.
     fetch(this.#target?.url ?? RscClientErrorSender.path, {
-      ...(this.#target ? { mode: "no-cors" as const } : {}),
       method: "POST",
       body,
       keepalive: true,

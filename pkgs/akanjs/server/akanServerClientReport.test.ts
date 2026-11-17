@@ -122,7 +122,7 @@ test("a server gives a native shell's page an id over the network and takes that
 
   expect([asked.status, asked.headers.get("access-control-allow-origin")]).toEqual([200, shellOrigin]);
   expect(traceId).toMatch(/^[0-9a-f]{32}$/);
-  expect(posted.status).toBe(204);
+  expect([posted.status, posted.headers.get("access-control-allow-origin")]).toEqual([204, shellOrigin]);
   expect(reported.map(([error, context]) => [(error as BrowserError).data.shell, context.traceId])).toEqual([
     [null, pageId],
     ["ios", traceId],
