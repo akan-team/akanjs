@@ -138,4 +138,51 @@ describe("KeyboardRide", () => {
     expect(list.style.paddingBottom).toBe("");
     for (const element of [overlay, scroller]) element.remove();
   });
+  test("a list laid out from its bottom keeps its lines where they were drawn and scrolls them up only from its end", async () => {
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-akan-keyboard-overlay", "");
+    const field = document.createElement("textarea");
+    overlay.append(field);
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    scroller.style.display = "flex";
+    scroller.style.flexDirection = "column-reverse";
+    const list = riderOf("inset");
+    scroller.append(list);
+    document.body.append(scroller, overlay);
+    field.focus();
+    const riseOf = () => Number.parseFloat(list.style.paddingBottom.split("+ ").at(1) ?? "") || 0;
+    let scrollTop = 0;
+    Object.defineProperty(scroller, "scrollHeight", { get: () => 1000 + riseOf(), configurable: true });
+    Object.defineProperty(scroller, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(scroller, "scrollTop", {
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = Math.min(0, Math.max(value, -(600 + riseOf())));
+      },
+      configurable: true,
+    });
+
+    KeyboardRide.move(300, 20);
+    expect(scrollTop).toBe(-300);
+    expect(scroller.hasAttribute("data-akan-keyboard-glide")).toBe(true);
+    await wait(80);
+    expect(scrollTop).toBe(0);
+    expect(scroller.hasAttribute("data-akan-keyboard-glide")).toBe(false);
+
+    KeyboardRide.move(0, 20);
+    await wait(80);
+    expect(scrollTop).toBe(0);
+    expect(list.style.paddingBottom).toBe("");
+
+    scrollTop = -100;
+    KeyboardRide.move(300, 20);
+    expect(scrollTop).toBe(-400);
+    await wait(80);
+    expect(scrollTop).toBe(-400);
+    KeyboardRide.move(0, 20);
+    expect(scrollTop).toBe(-100);
+    expect(list.style.paddingBottom).toBe("");
+    for (const element of [overlay, scroller]) element.remove();
+  });
 });

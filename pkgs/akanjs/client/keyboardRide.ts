@@ -4,7 +4,16 @@ const RIDE_SELECTOR = "[data-akan-keyboard-ride]";
 const OVERLAY_SELECTOR = "[data-akan-keyboard-overlay]";
 const END_SLACK_PX = 2;
 
+const GLIDE_ATTRIBUTE = "data-akan-keyboard-glide";
+
 const bottomOf = (element: HTMLElement) => element.getBoundingClientRect().bottom;
+//? A chat list laid out from its bottom (`flex-direction: column-reverse`) scrolls from 0 at its end to negative values.
+const isReversed = (scroller: HTMLElement) => getComputedStyle(scroller).flexDirection === "column-reverse";
+const isAtEnd = (scroller: HTMLElement) =>
+  isReversed(scroller)
+    ? Math.abs(scroller.scrollTop) <= END_SLACK_PX
+    : scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight <= END_SLACK_PX;
+const endOf = (scroller: HTMLElement) => (isReversed(scroller) ? 0 : scroller.scrollHeight - scroller.clientHeight);
 const isInset = (rider: HTMLElement) => rider.dataset.akanKeyboardRide === "inset";
 
 /**
@@ -18,7 +27,8 @@ const isInset = (rider: HTMLElement) => rider.dataset.akanKeyboardRide === "inse
  * keeps the whole screen, as a native chat screen does, so what lies under the glass keys stays drawn: the riders go
  * where the shorter box would put them and stay there. An `inset` rider (a list's content) is not carried: it takes the
  * rise as bottom padding at once, so the list still scrolls to its top, and a list resting at its end scrolls the rise
- * with the keys, and back down with them.
+ * with the keys, and back down with them. While it does, its scroller carries `data-akan-keyboard-glide`: a list's own
+ * keep-at-end logic yields to it.
  */
 export class KeyboardRide {
   static #committed = 0;
@@ -101,7 +111,7 @@ export class KeyboardRide {
     root.style.setProperty("--akan-keyboard-cover", `${height}px`);
     root.toggleAttribute("data-akan-keyboard-layout", height > 0);
     KeyboardRide.#committed = height;
-    for (const scroller of scrollers) scroller.scrollTop = scroller.scrollHeight;
+    for (const scroller of scrollers) scroller.scrollTop = endOf(scroller);
   }
 
   //? The list grows by the rise at its end at once, so it still scrolls to its top, and one resting there follows it.
@@ -111,18 +121,24 @@ export class KeyboardRide {
     if (rise <= 0) return;
     KeyboardRide.#insets.set(list, { paddingBottom: held?.paddingBottom ?? list.style.paddingBottom, base, rise });
     list.style.paddingBottom = `calc(${base} + ${rise}px)`;
-    if (scroller) KeyboardRide.#glide(scroller, scroller.scrollHeight - scroller.clientHeight, durationMs);
+    const outer = KeyboardRide.#scrollerOf(list);
+    //? A reversed list rests on its bottom edge, so the padding lifted it at once; it goes back to where it was drawn.
+    if (outer && isReversed(outer)) outer.scrollTop -= rise - (held?.rise ?? 0);
+    if (scroller) KeyboardRide.#glide(scroller, endOf(scroller), durationMs);
   }
 
   static #lowerList(list: HTMLElement, scroller: HTMLElement | null, durationMs: number) {
     const held = KeyboardRide.#insets.get(list);
     if (!held) return;
+    const outer = KeyboardRide.#scrollerOf(list);
     const release = () => {
       list.style.paddingBottom = held.paddingBottom;
       KeyboardRide.#insets.delete(list);
+      if (outer && isReversed(outer)) outer.scrollTop += held.rise;
     };
-    if (scroller) KeyboardRide.#glide(scroller, Math.max(0, scroller.scrollTop - held.rise), durationMs, release);
-    else release();
+    if (!scroller) return release();
+    const to = isReversed(scroller) ? -held.rise : Math.max(0, scroller.scrollTop - held.rise);
+    KeyboardRide.#glide(scroller, to, durationMs, release);
   }
 
   static #releaseInsets(kept: HTMLElement[]) {
@@ -135,6 +151,7 @@ export class KeyboardRide {
 
   static #glide(scroller: HTMLElement, to: number, durationMs: number, done?: () => void) {
     const from = scroller.scrollTop;
+    scroller.setAttribute(GLIDE_ATTRIBUTE, "");
     const ease = KeyboardRide.#easeOf(nativeKeyboardEasing());
     const startedAt = performance.now();
     const step = (now: number) => {
@@ -146,12 +163,16 @@ export class KeyboardRide {
       }
       KeyboardRide.#glides.delete(scroller);
       done?.();
+      scroller.removeAttribute(GLIDE_ATTRIBUTE);
     };
     KeyboardRide.#glides.set(scroller, requestAnimationFrame(step));
   }
 
   static #stopGlides() {
-    for (const frame of KeyboardRide.#glides.values()) cancelAnimationFrame(frame);
+    for (const [scroller, frame] of KeyboardRide.#glides) {
+      cancelAnimationFrame(frame);
+      scroller.removeAttribute(GLIDE_ATTRIBUTE);
+    }
     KeyboardRide.#glides.clear();
   }
 
@@ -178,15 +199,19 @@ export class KeyboardRide {
     };
   }
 
+  static #scrollerOf(rider: HTMLElement) {
+    for (let element = rider.parentElement; element; element = element.parentElement) {
+      const { overflowY } = getComputedStyle(element);
+      if (overflowY === "auto" || overflowY === "scroll") return element;
+    }
+    return null;
+  }
+
   static #scrollersAtEnd(riders: HTMLElement[]) {
     const scrollers = new Set<HTMLElement>();
     for (const rider of riders) {
-      for (let element = rider.parentElement; element; element = element.parentElement) {
-        const { overflowY } = getComputedStyle(element);
-        if (overflowY !== "auto" && overflowY !== "scroll") continue;
-        if (element.scrollHeight - element.scrollTop - element.clientHeight <= END_SLACK_PX) scrollers.add(element);
-        break;
-      }
+      const scroller = KeyboardRide.#scrollerOf(rider);
+      if (scroller && isAtEnd(scroller)) scrollers.add(scroller);
     }
     return [...scrollers];
   }
