@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import type { BunPlugin } from "bun";
 import ts from "typescript";
@@ -6,8 +7,10 @@ import type { App } from "../commandDecorators";
 import type { NamedItem } from "./moduleSyntax";
 
 type Pipe = (source: string, args: { path: string }) => string | Promise<string | null> | null;
+type Census = Map<string, Map<string, Set<string>>>;
 
 interface IconSet {
+  file: string;
   text: string;
   spans: Map<string, [number, number]>;
   outDir: string;
@@ -21,28 +24,46 @@ interface SetImport {
   named: NamedItem[];
 }
 
-//* A set module's one shared chunk carries every icon that any route sharing the chunk names; a module per importer
-//* carries only the icons its file names, and lands in that file's chunk.
-//? Not a module per icon: Bun gives each distinct set of routes reaching an icon a chunk of its own, tens of
-//? sub-kilobyte chunks served unbrotlied and named in every entry, measured heavier than the copies this repeats.
+//* An icon lives in one module only, so a route downloads it once and never more of a set than the set's own module.
+//? Not one module per importer: an icon n files name was downloaded n times. Not one per set of naming files, nor
+//? per icon: the sub-kilobyte chunks that made were served unbrotlied and outweighed the bytes saved.
 export class ReactIconImports {
   static readonly #specifier = /^react-icons\/[\w-]+$/;
   //? The package generates every set as this one import followed by one `export function` per icon.
   static readonly #header = "import { GenIcon } from '../lib/index.mjs';";
   static readonly #iconStart = /^export function ([A-Za-z_$][\w$]*) \(props\) \{$/gm;
   static readonly #iconBody = /^export function [\w$]+ \(props\) \{\n {2}return GenIcon\(\{.*\}\)\(props\);\n\};\n*$/;
+  static readonly #source = /\.(?:tsx?|jsx?|mjs)$/;
   readonly #outRoot: string;
+  readonly #appDir: string | null;
+  readonly #roots: string[];
+  #census: Promise<Census> | null = null;
   readonly #setFiles = new Map<string, string | null>();
   readonly #sets = new Map<string, Promise<IconSet | null>>();
+  readonly #groups = new Map<string, Map<string, string[]>>();
   readonly #files = new Map<string, Promise<string | null>>();
   readonly #contents = new Map<string, string>();
 
-  constructor(outRoot: string) {
+  constructor(outRoot: string, appDir: string | null = null, sharedDirs: string[] = []) {
     this.#outRoot = outRoot;
+    this.#appDir = appDir === null ? null : ReactIconImports.#realPathOf(appDir);
+    this.#roots = [...(appDir === null ? [] : [appDir]), ...sharedDirs];
   }
 
   static forApp(app: App): ReactIconImports {
-    return new ReactIconImports(path.join(app.cwdPath, ".akan", "generated", "react-icons"));
+    const { workspaceRoot } = app.workspace;
+    return new ReactIconImports(path.join(app.cwdPath, ".akan", "generated", "react-icons"), app.cwdPath, [
+      path.join(workspaceRoot, "libs"),
+      ReactIconImports.#packageDirOf("akanjs", workspaceRoot),
+    ]);
+  }
+
+  static #packageDirOf(name: string, from: string): string {
+    try {
+      return path.dirname(Bun.resolveSync(`${name}/package.json`, from));
+    } catch {
+      return path.join(from, "node_modules", name);
+    }
   }
 
   //? Bun's resolver caches a folder's listing, so an icon file written later in the same build cannot be resolved.
@@ -75,18 +96,17 @@ export class ReactIconImports {
     for (const statement of ReactIconImports.#importsOf(source, importer).reverse()) {
       const set = await this.#setOf(statement.specifier, importer);
       if (!set) continue;
-      const cut = statement.named.filter((item) => !item.isType && ReactIconImports.#bodyOf(set, item.imported));
-      const file =
-        cut.length > 0
-          ? await this.#fileOf(
-              set,
-              importer,
-              cut.map((item) => item.imported),
-            )
-          : null;
-      if (!file) continue;
-      const kept = statement.named.filter((item) => !cut.includes(item));
-      const lines = [`import { ${cut.map(ReactIconImports.#named).join(", ")} } from ${JSON.stringify(file)};`];
+      const kept: NamedItem[] = [];
+      const moved = new Map<string, NamedItem[]>();
+      for (const item of statement.named) {
+        const file = item.isType ? null : await this.#moduleOf(set, item.imported);
+        if (file) moved.set(file, [...(moved.get(file) ?? []), item]);
+        else kept.push(item);
+      }
+      if (moved.size === 0) continue;
+      const lines = [...moved].map(
+        ([file, items]) => `import { ${items.map(ReactIconImports.#named).join(", ")} } from ${JSON.stringify(file)};`,
+      );
       if (kept.length > 0) lines.unshift(ReactIconImports.#keptImport(kept, statement.specifier));
       const newlines = source.slice(statement.start, statement.end).split("\n").length - 1;
       out = `${out.slice(0, statement.start)}${lines.join(" ")}${"\n".repeat(newlines)}${out.slice(statement.end)}`;
@@ -94,10 +114,95 @@ export class ReactIconImports {
     return out === source ? null : out;
   }
 
-  async fileOf(specifier: string, names: string[], importer: string): Promise<string | null> {
+  async moduleOf(specifier: string, name: string, importer: string): Promise<string | null> {
     const set = await this.#setOf(specifier, importer);
-    if (!set || !names.every((name) => ReactIconImports.#bodyOf(set, name))) return null;
-    return await this.#fileOf(set, importer, names);
+    return set ? await this.#moduleOf(set, name) : null;
+  }
+
+  async #moduleOf(set: IconSet, name: string): Promise<string | null> {
+    if (!ReactIconImports.#bodyOf(set, name)) return null;
+    const census = await this.#censusOf();
+    const namers = census.get(set.file)?.get(name);
+    if (!namers) return await this.#fileOf(set, `\0${name}`, [name]);
+    const key = this.#keyOf(namers);
+    return await this.#fileOf(set, key, this.#groupsOf(set, census).get(key) ?? [name]);
+  }
+
+  #groupsOf(set: IconSet, census: Census): Map<string, string[]> {
+    let groups = this.#groups.get(set.file);
+    if (!groups) {
+      groups = new Map();
+      for (const [name, namers] of census.get(set.file) ?? []) {
+        if (!ReactIconImports.#bodyOf(set, name)) continue;
+        const key = this.#keyOf(namers);
+        groups.set(key, [...(groups.get(key) ?? []), name]);
+      }
+      this.#groups.set(set.file, groups);
+    }
+    return groups;
+  }
+
+  #keyOf(namers: Set<string>): string {
+    if (namers.size === 1) return [...namers].join("");
+    const own = this.#appDir === null ? null : `${this.#appDir}${path.sep}`;
+    return own !== null && [...namers].every((file) => file.startsWith(own)) ? "\0app" : "\0shared";
+  }
+
+  #censusOf(): Promise<Census> {
+    this.#census ??= this.#readCensus();
+    return this.#census;
+  }
+
+  async #readCensus(): Promise<Census> {
+    const census: Census = new Map();
+    const roots = [...new Set(this.#roots.flatMap((root) => ReactIconImports.#realPathOrNot(root) ?? []))];
+    const files = (await Promise.all(roots.map((root) => ReactIconImports.#sourcesUnder(root)))).flat();
+    await Promise.all(
+      [...new Set(files)].map(async (file) => {
+        const source = await Bun.file(file)
+          .text()
+          .catch(() => "");
+        if (!source.includes("react-icons/")) return;
+        for (const statement of ReactIconImports.#importsOf(source, file)) {
+          const setFile = this.#setFileOf(statement.specifier, file);
+          if (!setFile) continue;
+          const names = census.get(setFile) ?? new Map<string, Set<string>>();
+          census.set(setFile, names);
+          for (const item of statement.named)
+            if (!item.isType) names.set(item.imported, (names.get(item.imported) ?? new Set()).add(file));
+        }
+      }),
+    );
+    return census;
+  }
+
+  static async #sourcesUnder(dir: string): Promise<string[]> {
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    const nested = await Promise.all(
+      entries.map((entry) => {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory())
+          return entry.name === "node_modules" || entry.name.startsWith(".")
+            ? []
+            : ReactIconImports.#sourcesUnder(full);
+        return entry.isFile() && ReactIconImports.#source.test(entry.name) && !entry.name.endsWith(".d.ts")
+          ? [full]
+          : [];
+      }),
+    );
+    return nested.flat();
+  }
+
+  static #realPathOrNot(file: string): string | null {
+    try {
+      return fs.realpathSync(file);
+    } catch {
+      return null;
+    }
+  }
+
+  static #realPathOf(file: string): string {
+    return ReactIconImports.#realPathOrNot(file) ?? file;
   }
 
   static #importsOf(source: string, importer: string): SetImport[] {
@@ -185,7 +290,7 @@ export class ReactIconImports {
     const lib = path.join(path.dirname(setDir), "lib", "index.mjs");
     if (!fs.existsSync(lib)) return null;
     const outDir = path.join(this.#outRoot, Bun.hash(path.dirname(setDir)).toString(36), path.basename(setDir));
-    return { text, spans, outDir, lib: fs.realpathSync(lib) };
+    return { file: setFile, text, spans, outDir, lib: fs.realpathSync(lib) };
   }
 
   static #bodyOf(set: IconSet, name: string): string | null {
@@ -194,9 +299,9 @@ export class ReactIconImports {
     return body && ReactIconImports.#iconBody.test(body) ? body.trimEnd() : null;
   }
 
-  async #fileOf(set: IconSet, importer: string, names: string[]): Promise<string | null> {
-    const unique = [...new Set(names)];
-    const file = path.join(set.outDir, `${Bun.hash(`${importer}\0${unique.join(",")}`).toString(36)}.mjs`);
+  async #fileOf(set: IconSet, key: string, names: string[]): Promise<string | null> {
+    const unique = [...new Set(names)].sort();
+    const file = path.join(set.outDir, `${Bun.hash(`${key}\0\0${unique.join(",")}`).toString(36)}.mjs`);
     let written = this.#files.get(file);
     if (!written) {
       const bodies = unique.map((name) => ReactIconImports.#bodyOf(set, name) ?? "");
