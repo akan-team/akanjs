@@ -4,6 +4,7 @@ import { createFromReadableStream } from "react-server-dom-webpack/client.browse
 import { AkanError } from "../base/akanError";
 import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
+import { DictionaryGroups } from "../client/dictionaryGroups";
 import type {} from "../client/rscNavigation";
 import {
   type FlightLineRowHandler,
@@ -707,4 +708,18 @@ const hydrate = () => {
 const initialDictionary = DictionaryAsset.load(globalThis.__AKAN_DICT_URL__).catch((error: unknown) =>
   console.error(`[rscClient] the page's dictionary failed to load: ${String(error)}`),
 );
+//? A component showed a key of a group its route's files left out: once that file merges, the page renders again.
+//? A navigation still loading renders the next page with it, so the refresh waits for it to settle.
+let lateRefreshQueued = false;
+const refreshForLateDictionary = () => {
+  if (lateRefreshQueued) return;
+  lateRefreshQueued = true;
+  window.setTimeout(() => {
+    lateRefreshQueued = false;
+    if (pendingRequest) refreshForLateDictionary();
+    else void globalThis.__AKAN_RSC_REFRESH__?.();
+  }, 50);
+};
+DictionaryGroups.install();
+DictionaryGroups.onMerged(refreshForLateDictionary);
 void Promise.allSettled([initialThenable, initialDictionary]).then(hydrate);

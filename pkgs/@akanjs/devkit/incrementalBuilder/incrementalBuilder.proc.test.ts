@@ -645,6 +645,85 @@ else {
     }
   }, 60_000);
 
+  test("a route whose client entries an earlier route built still reads their dictionary groups, and one this builder never built loads the whole file", async () => {
+    const { root } = track(await createTempApp("demo", path.join(import.meta.dir, "..", "local")));
+    const appDir = path.join(root, "apps/demo");
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `const { generation, needs } = JSON.parse(process.argv[2]);
+if (needs.includes("ssr")) await import(${JSON.stringify(path.join(import.meta.dir, "buildBatch.proc.ts"))});
+else {
+  process.once("disconnect", () => {});
+  process.send({ type: "build-batch-result", data: { generation, errors: {}, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+}
+`,
+    );
+    await writeText(path.join(appDir, "akan.config.ts"), 'export default { clientRuntime: "route" };\n');
+    await writeText(path.join(appDir, "env/env.client.ts"), "export const env = {} as const;\n");
+    const pages = {
+      first: path.join(appDir, "page/_index.tsx"),
+      same: path.join(appDir, "page/same.tsx"),
+      more: path.join(appDir, "page/more.tsx"),
+      lone: path.join(appDir, "page/lone.tsx"),
+    };
+    await writeText(pages.lone, 'import { Lone } from "../ui/Lone";\nexport default Lone;\n');
+    await writeText(pages.first, 'import { Card } from "../ui/Card";\nexport default Card;\n');
+    await writeText(pages.same, 'import { Card } from "../ui/Card";\nexport default Card;\n');
+    await writeText(
+      pages.more,
+      'import { Card } from "../ui/Card";\nimport { Note } from "../ui/Note";\nexport default () => [Card, Note];\n',
+    );
+    const card = path.join(appDir, "ui/Card.tsx");
+    await writeText(card, '"use client";\nimport { Label } from "./Label";\nexport const Card = () => Label();\n');
+    await writeText(
+      path.join(appDir, "ui/Label.tsx"),
+      'declare const l: (key: string) => string;\nexport const Label = () => l("memo.title");\n',
+    );
+    await writeText(path.join(appDir, "ui/Note.tsx"), '"use client";\nexport const Note = () => null;\n');
+    const lone = path.join(appDir, "ui/Lone.tsx");
+    await writeText(lone, '"use client";\nexport const Lone = () => null;\n');
+
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_WATCH: "0",
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    const buildRoute = async (id: number, routeId: string, seed: string, knownEntries: string[]) => {
+      proc.send({ type: "build-route", id, routeId, seeds: [seed], knownEntries, generation: 3 } satisfies BuilderReq);
+      await until(proc, `build-route-res ${id}`, () =>
+        messages.some((message) => message.type === "build-route-res" && message.id === id),
+      );
+      const res = messages.find((message) => message.type === "build-route-res" && message.id === id);
+      if (res?.type !== "build-route-res" || !res.ok) throw new Error(`route ${routeId} did not build`);
+      return res.data;
+    };
+    try {
+      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
+      const first = await buildRoute(1, "page:/", pages.first, []);
+      expect(first.newEntries).toEqual([card]);
+      expect(first.dictionaryGroups).toEqual(["base", "memo"]);
+      expect((await buildRoute(2, "page:/more", pages.more, [card])).dictionaryGroups).toEqual(["base", "memo"]);
+      expect((await buildRoute(3, "page:/same", pages.same, [card])).dictionaryGroups).toEqual(["base", "memo"]);
+      expect((await buildRoute(4, "page:/lone", pages.lone, [lone])).dictionaryGroups).toBeNull();
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+  }, 60_000);
+
   test("a failed boot build waits for the save that fixes it, and the builder it recovers continues the generation and watches", async () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");

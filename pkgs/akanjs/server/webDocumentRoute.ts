@@ -178,7 +178,7 @@ export class WebDocumentRoute {
     const { artifact, prodMode } = this.#context;
     // First-paint data-theme: cookie is no longer a React <html> prop (RSC cache would replay it).
     const cookieTheme = WebRouteContext.cookieValue(req, "theme");
-    const dictionaryUrl = this.#context.dictionaryUrlOf(req.headers, url.pathname);
+    const dictionaryUrls = this.#context.dictionaryUrlsOf(req.headers, url.pathname, rscResult.trace?.routeId);
     const devBootstrapInline = [
       this.#ssrDevShell
         ? SsrDevShim.script(await this.#ssrDevShell.readManifest(), Object.keys(artifact.vendorMap))
@@ -194,9 +194,13 @@ export class WebDocumentRoute {
       rscStream: rscResult.stream,
       ssrManifest: manifest.ssrManifest,
       bootstrapModules: [artifact.rscClientUrl],
-      modulePreloads: dictionaryUrl ? [dictionaryUrl] : undefined,
+      modulePreloads: dictionaryUrls.length ? dictionaryUrls : undefined,
       modulePreloadPlan: this.#modulePreloadPlan,
-      bootstrapData: { routeState: rscResult.trace?.routeState, dictionaryUrl, importMapKey: this.#importMapKey },
+      bootstrapData: {
+        routeState: rscResult.trace?.routeState,
+        dictionaryUrl: dictionaryUrls.join(",") || undefined,
+        importMapKey: this.#importMapKey,
+      },
       devBootstrapInline: devBootstrapInline || undefined,
       nonce,
       importmap: artifact.vendorMap,

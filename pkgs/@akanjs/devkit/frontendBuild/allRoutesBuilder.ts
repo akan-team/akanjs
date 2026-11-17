@@ -13,6 +13,7 @@ import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
+import { DictionaryRoutes } from "./dictionaryRoutes";
 import { type BuildRouteClientResult, RouteClientBuilder } from "./routeClientBuilder";
 import { RouteHandoffs } from "./routeHandoffs";
 import { RouteModulePreloads, type RuntimeChunks } from "./routeModulePreloads";
@@ -22,6 +23,8 @@ export interface BuildAllRoutesResult {
   manifest: RoutesManifest;
   manifestPath: string;
   seedIndex: RouteSeedIndex;
+  /** Under `clientRuntime: "route"`: the dictionary groups each route can show; a route left out loads every group. */
+  dictionaryRoutes?: Map<string, string[]>;
 }
 
 export class AllRoutesBuilder {
@@ -37,6 +40,7 @@ export class AllRoutesBuilder {
   #routeIds: string[] = [];
   #ssrEntriesByRoute = new Map<string, string[]>();
   #entriesByRoute = new Map<string, string[]>();
+  #serverModulesByRoute = new Map<string, string[]>();
   #externalsByChunkUrl: Record<string, string[]> = {};
   #discovery: ClientEntryDiscovery | null = null;
 
@@ -55,6 +59,7 @@ export class AllRoutesBuilder {
     this.#discovery = discovery;
     const importsAs = await this.#ssrImportsAs(discovery, pageEntries);
     const handoffs = await this.#readHandoffs();
+    const dictionary = this.#command === "build" && (await this.#app.getConfig()).clientRuntime === "route";
     const unread = new Map<string, string[]>();
 
     // Every route's entries go into one Bun.build: chunk splitting only dedupes within a single build.
@@ -64,7 +69,9 @@ export class AllRoutesBuilder {
       const routeEntries = await discovery.discover(seeds);
       for (const discovered of routeEntries) allEntries.add(discovered);
       const ssrEntries = await discovery.discover(seeds, { importsAs });
-      const handed = await handoffs?.read(await discovery.serverModules(seeds, { importsAs }));
+      const serverModules = handoffs || dictionary ? await discovery.serverModules(seeds, { importsAs }) : [];
+      if (dictionary) this.#serverModulesByRoute.set(entry.routeId, serverModules);
+      const handed = await handoffs?.read(serverModules);
       const loaded = [...new Set([...ssrEntries, ...(handed?.referenceFiles ?? [])])].sort();
       this.#ssrEntriesByRoute.set(entry.routeId, loaded);
       const besidesReferences = handed ? routeEntries.filter((file) => !ModelReference.isFile(file)) : routeEntries;
@@ -83,6 +90,8 @@ export class AllRoutesBuilder {
 
     const delta = await this.#buildEntries([...allEntries]);
     this.#mergeDelta(delta);
+    const dictionaryRoutes =
+      dictionary && delta.clientGraph ? await this.#readDictionaryRoutes(delta.clientGraph) : null;
     this.#merged.knownEntries = Array.from(this.#knownSet);
     this.#externalsByChunkUrl = delta.externalsByChunkUrl ?? {};
 
@@ -95,7 +104,30 @@ export class AllRoutesBuilder {
       `[build-all] wrote ${manifestPath} routes=${this.#routeIds.length} entries=${this.#merged.knownEntries.length}`,
     );
 
-    return { manifest, manifestPath, seedIndex };
+    return { manifest, manifestPath, seedIndex, ...(dictionaryRoutes ? { dictionaryRoutes } : {}) };
+  }
+
+  async #readDictionaryRoutes(importsByModule: NonNullable<BuildRouteClientResult["clientGraph"]>) {
+    const { workspaceRoot } = this.#app.workspace;
+    const reader = await DictionaryRoutes.forApp(workspaceRoot, `apps/${this.#app.name}`, { importsByModule });
+    const groupsByRoute = new Map<string, string[]>();
+    const whole = new Map<string, { routeIds: string[]; key: boolean }>();
+    for (const routeId of this.#routeIds) {
+      const entries = this.#entriesByRoute.get(routeId) ?? [];
+      const read = reader.read({ entries, serverModules: this.#serverModulesByRoute.get(routeId) });
+      if (!read.whole) groupsByRoute.set(routeId, read.groups);
+      else {
+        const pinned = DictionaryRoutes.pinned(read.whole);
+        const known = whole.get(pinned) ?? { routeIds: [], key: read.whole.line !== undefined };
+        whole.set(pinned, { ...known, routeIds: [...known.routeIds, routeId] });
+      }
+    }
+    for (const [pinned, { routeIds, key }] of whole) {
+      const line = `[dictionary] ${routeIds.length} route(s) load the whole page dictionary: ${pinned}. Routes: ${routeIds.join(", ")}`;
+      if (key) this.#app.logger.warn(line);
+      else this.#app.verbose(line);
+    }
+    return groupsByRoute;
   }
 
   async #ssrImportsAs(discovery: GraphClientEntryDiscovery, pageEntries: PageEntry[]) {

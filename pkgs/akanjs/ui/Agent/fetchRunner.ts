@@ -36,6 +36,10 @@ export const fetchRunner = (options: { fetcher?: typeof globalThis.fetch } = {})
       },
       ...(options.fetcher ? { fetcher: options.fetcher } : {}),
     });
-    for await (const event of runner.run(request)) yield readable(event);
+    for await (const event of runner.run(request)) {
+      if (event.type === "error" && errorKey.test(event.message))
+        await Translator.ready(Translator.getActiveLocale() ?? "en", event.message);
+      yield readable(event);
+    }
   },
 });

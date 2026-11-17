@@ -48,8 +48,14 @@ export class Translator {
     delete TranslatorState.get().activePath;
   }
   static translateByLocale(lang: string, key: string, param?: Record<string, string | number>): string {
-    const msg = Translator.#lookup(lang, key) ?? Translator.#lookupDefault(lang, key) ?? key;
+    const own = Translator.#lookup(lang, key);
+    if (own === undefined) TranslatorState.get().groups?.missed(lang, key);
+    const msg = own ?? Translator.#lookupDefault(lang, key) ?? key;
     return interpolateTranslation(msg, param);
+  }
+  //? For text shown once, such as a toast: `null` when the key's group is in, else a promise settling once it is.
+  static ready(lang: string, key: string): Promise<boolean> | null {
+    return TranslatorState.get().groups?.pending(lang, key) ?? null;
   }
   static #lookup(lang: string, key: string) {
     const dictionary = TranslatorState.get().langDictionaryMap.get(lang);

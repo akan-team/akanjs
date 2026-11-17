@@ -6,7 +6,7 @@ import type { SerializedArg } from "akanjs/signal";
 import { enableMapSet, produce } from "immer";
 import type { EffectCallback, RefObject } from "react";
 import { type AgentGate, useAgentGate, useScopePath } from "use-agentic";
-import { actionErrorMessageOf } from "./actionErrorMessage";
+import { showActionErrorMessage } from "./actionErrorMessage";
 import { type ActionOwner, actionTagOf, tagAction } from "./actionTag";
 import { useFormTools } from "./agentic/useFormTools";
 import { type DraftFlushing, flushDraftsKey } from "./draftFlush";
@@ -438,15 +438,17 @@ export class StoreInstance {
   #showActionErrorMessage(actionKey: string, error: unknown) {
     const showMessage = this.#ctx.showMessage;
     if (typeof showMessage !== "function") return;
-    try {
-      showMessage({ type: "error", key: actionKey, duration: 3, content: actionErrorMessageOf(error) });
-    } catch (messageError) {
-      Logger.warn(
-        `Failed to show ${actionKey} action error message: ${
-          messageError instanceof Error ? messageError.message : String(messageError)
-        }`,
-      );
-    }
+    showActionErrorMessage(error, (content) => {
+      try {
+        showMessage({ type: "error", key: actionKey, duration: 3, content });
+      } catch (messageError) {
+        Logger.warn(
+          `Failed to show ${actionKey} action error message: ${
+            messageError instanceof Error ? messageError.message : String(messageError)
+          }`,
+        );
+      }
+    });
   }
 
   #buildSlices(store: RootStoreCls) {

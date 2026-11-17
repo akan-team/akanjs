@@ -747,8 +747,9 @@ describe("an app's client runtime pieces", () => {
       'import { loaded as lib0 } from "@libs/stock/lib/__client/item.fetch";\nimport { loaded as cnst0 } from "./item.cnst";',
     );
     expect(await read("item.fetch.ts")).toContain(
-      "\nloadedAfter(lib0, cnst0);\nexport const loaded = FetchClient.build<typeof signal>({}, ",
+      "\nexport const loaded = FetchClient.build<typeof signal>([lib0, cnst0], ",
     );
+    expect(await read("item.fetch.ts")).not.toContain("loadedAfter");
     expect(await read("ping.fetch.ts")).not.toContain("@libs/");
     expect(await read("ping.fetch.ts")).toContain('getSerializedSignalOf("ping")');
     expect(await read("demo.st.ts")).toContain('import { loaded as fetch0 } from "./demo.fetch";');
@@ -1321,7 +1322,13 @@ export const dictionary = serviceDictionary(["en", "ko"]).translate({});
 
 //? Three scopes shaped like a workspace that failed: a lib store spreading into \`this.set\` that another lib's store
 //? uses, two stores naming each other, and a store reached by fewer entries than its model's fetch piece.
-const writeHarborWorkspace = (app: string, base: string, upper: string, moreAppFiles: Record<string, string> = {}) =>
+const writeHarborWorkspace = (
+  app: string,
+  base: string,
+  upper: string,
+  moreAppFiles: Record<string, string> = {},
+  moreUpperFiles: Record<string, string> = {},
+) =>
   writeWorkspace({
     app,
     lib: base,
@@ -1337,6 +1344,7 @@ const writeHarborWorkspace = (app: string, base: string, upper: string, moreAppF
         "lib/org/org.store.ts": orgStoreOf(base),
         "lib/_crew/crew.dictionary.ts": emptyServiceDictionary,
         "lib/_crew/crew.store.ts": crewStore,
+        ...moreUpperFiles,
       },
     },
     appFiles: {
@@ -1357,15 +1365,23 @@ interface RouteBuilt {
   storePiecesStoresImport: string[];
   storesBesideOrg: string[];
   storeFilesByEntry: Record<string, string[]>;
+  constantsByEntry: Record<string, string[]>;
 }
 
-const routeBuildScript = (root: string, appName: string, entries: string[], store: string, fetchPiece: string) => `
+const routeBuildScript = (
+  root: string,
+  appName: string,
+  entries: string[],
+  store: string,
+  fetchPiece: string,
+  routes?: Record<string, string[]>,
+) => `
 const path = await import("node:path");
 const { AppExecutor } = await import(${devkitFile("executors/appExecutor.ts")});
 const { WorkspaceExecutor } = await import(${devkitFile("executors/workspaceExecutor.ts")});
 const { ClientEntriesBundler } = await import(${devkitFile("frontendBuild/clientEntriesBundler.ts")});
 const { RouteClientBuilder } = await import(${devkitFile("frontendBuild/routeClientBuilder.ts")});
-const [root, appName, entries, store, fetchPiece] = ${JSON.stringify([root, appName, entries, store, fetchPiece])};
+const [root, appName, entries, store, fetchPiece, routes] = ${JSON.stringify([root, appName, entries, store, fetchPiece, routes ?? null])};
 const app = AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), appName);
 const graphs = [];
 const bundle = ClientEntriesBundler.prototype.bundle;
@@ -1381,6 +1397,9 @@ await new RouteClientBuilder({
   entries: entries.map((entry) => path.join(root, entry)),
   artifact: {},
   browser: "chunks",
+  ...(routes
+    ? { entriesByRoute: new Map(Object.entries(routes).map(([route, held]) => [route, held.map((entry) => path.join(root, entry))])) }
+    : {}),
 })
   .build()
   .catch((error) => {
@@ -1391,12 +1410,14 @@ const nameOf = (file) => path.relative(root, file);
 const chunksOf = (file) => (browser.chunksByModule.get(path.join(root, file)) ?? []).map((chunk) => path.basename(chunk));
 const importsOf = (file) => (browser.importsByModule.get(file) ?? []).map((imported) => nameOf(imported.path));
 const storeFiles = [...browser.importsByModule.keys()].filter((file) => file.endsWith(".store.ts"));
-const storeFilesOf = (entry) => {
+const reachedBy = (entry) => {
   const reached = new Set([...browser.importsByModule.keys()].filter((file) => importsOf(file).includes(entry)));
   for (const file of reached)
     for (const imported of browser.importsByModule.get(file) ?? []) if (!imported.lazy) reached.add(imported.path);
-  return [...reached].map(nameOf).filter((file) => file.endsWith(".store.ts")).sort();
+  return [...reached].map(nameOf);
 };
+const storeFilesOf = (entry) => reachedBy(entry).filter((file) => file.endsWith(".store.ts")).sort();
+const constantsOf = (entry) => reachedBy(entry).filter((file) => file.endsWith("/lib/cnst.ts")).sort();
 console.log(JSON.stringify({
   failure,
   storeChunks: chunksOf(store),
@@ -1404,6 +1425,7 @@ console.log(JSON.stringify({
   storePiecesStoresImport: storeFiles.flatMap(importsOf).filter((file) => /__client\\/[^_/][^/]*\\.st\\.ts$/.test(file)),
   storesBesideOrg: [...browser.importsByModule.keys()].map(nameOf).filter((file) => /__client\\/[^_/][^/]*\\.st\\.ts$/.test(file)).sort(),
   storeFilesByEntry: Object.fromEntries(entries.map((entry) => [entry, storeFilesOf(entry)])),
+  constantsByEntry: Object.fromEntries(entries.map((entry) => [entry, constantsOf(entry)])),
 }));
 `;
 
@@ -1462,6 +1484,42 @@ describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
       `  - shared/hand.ts needs apps/${app}/lib/__client/item.fetch.ts loaded first, but its chunk ${built.storeChunks[0]} does not import the chunk holding that piece`,
       'Set `clientRuntime: "all"` in akan.config.ts to build until it is fixed.',
     ]);
+  }, 240_000);
+
+  test("passes its own check where an entry no route holds names a model whose constant file reads another lib's constants from that lib's barrel, and loads every constant there and none of that lib's in a route's page", async () => {
+    const [app, base, upper] = ["ferry", "winch", "barge"];
+    const orgConstant = kitModuleNamed("org", "Org")["lib/org/org.constant.ts"] ?? "";
+    const temp = await writeHarborWorkspace(
+      app,
+      base,
+      upper,
+      {},
+      {
+        "lib/org/org.constant.ts": `import { cnst as ${base} } from "@libs/${base}";\n${orgConstant}\nexport const orgKinds = [${base}.Item.name];\n`,
+        "lib/org/org.store.ts": orgStoreOf(base)
+          .replace('import { st } from "../st";', 'import * as cnst from "../cnst";\nimport { st } from "../st";')
+          .replace("orgLabel: kitLabel", "orgLabel: kitLabel + cnst.Org.name"),
+      },
+    );
+    const [count, note, org] = ["Count", "Note", "Org"].map((name) => `apps/${app}/ui/${name}.tsx`);
+    const built = (await evaluate(
+      temp.root,
+      routeBuildScript(
+        temp.root,
+        app,
+        [count, note, org],
+        `libs/${upper}/lib/org/org.store.ts`,
+        `apps/${app}/lib/__client/item.fetch.ts`,
+        { "/count": [count], "/note": [note] },
+      ),
+      app,
+    )) as unknown as RouteBuilt;
+    expect(built.failure).toBeNull();
+    expect(built.constantsByEntry).toEqual({
+      [count]: [],
+      [note]: [],
+      [org]: [`apps/${app}/lib/cnst.ts`, `libs/${upper}/lib/cnst.ts`, `libs/${base}/lib/cnst.ts`],
+    });
   }, 240_000);
 
   test("loads every store in a page reaching, through a file outside `apps/` and `libs/` or one holding a macro import, a file a store imports whose code names another model's store, and only that store where a store imports the outside file too", async () => {

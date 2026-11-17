@@ -51,7 +51,12 @@ export class DevRouteRuntime {
         dir,
         ...roles.map((role) => mtimeOf(path.join(lib, dir, `${dir.replace(/^_/, "")}.${role}.ts`))),
       ]);
-      return [scope, mtimeOf(path.join(lib, "st.ts")), DevRouteRuntime.#namesIn(path.join(lib, "__client")), dirs];
+      const scalars = DevRouteRuntime.#dirsIn(path.join(lib, "__scalar")).map((dir) => [
+        dir,
+        mtimeOf(path.join(lib, "__scalar", dir, `${dir}.constant.ts`)),
+      ]);
+      const pieces = DevRouteRuntime.#namesIn(path.join(lib, "__client"));
+      return [scope, mtimeOf(path.join(lib, "st.ts")), pieces, dirs, scalars];
     });
     return Bun.hash(JSON.stringify(stamped)).toString(36);
   }

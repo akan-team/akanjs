@@ -2243,16 +2243,46 @@ export default config;`}
                     <span>
                       <strong>Endpoint descriptions load where a page shows them.</strong> Each language's dictionary
                       file, which every page loads, leaves out the <code>.desc</code> and <code>.arg</code> texts of
-                      signals; a second file brings them to a page that shows the API explorer. The server, MCP and a
-                      CSR build keep the whole dictionary, and the build prints both sizes per language.
+                      signals; a second file brings them to a page that shows the API explorer or whose client
+                      components name such a key. The server, MCP and a CSR build keep the whole dictionary, and the
+                      build prints both sizes per language.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>엔드포인트 설명은 그것을 보여 주는 페이지에서만 불러옵니다.</strong> 모든 페이지가
                       불러오는 언어별 사전 파일에서 signal의 <code>.desc</code>와 <code>.arg</code> 문구가 빠지고, API
-                      탐색기를 보여 주는 페이지에만 두 번째 파일로 옵니다. 서버, MCP, CSR 빌드는 사전 전체를 그대로
-                      쓰며, 빌드는 언어마다 두 크기를 출력합니다.
+                      탐색기를 보여 주거나 클라이언트 컴포넌트가 그런 key를 적은 페이지에만 두 번째 파일로 옵니다. 서버,
+                      MCP, CSR 빌드는 사전 전체를 그대로 쓰며, 빌드는 언어마다 두 크기를 출력합니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A page loads the dictionary texts it can show.</strong> The build reads the keys each
+                      route's client modules name (a written key, a template with a written module name, a key picked
+                      from a table or a typed union the file holds) and the models, enums and scalars their lists, views
+                      and forms label, then packs each language's dictionary into files so that a route loads at most
+                      four of them, besides the API description file. A route holding a key the build cannot follow,
+                      such as one read from data, or showing a <code>Signal</code> or <code>Constant</code> component,
+                      loads the whole dictionary; for a key, <code>akan build</code> warns with its file, line and
+                      reason. A key of a module the route left out still shows: its file loads and the page renders
+                      again, and development reports it once per module. A CSR build keeps the whole dictionary inline.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>페이지는 보여 줄 수 있는 사전 문구만 불러옵니다.</strong> 빌드는 라우트의 클라이언트
+                      모듈이 적은 key(직접 쓴 key, 모듈 이름을 직접 쓴 템플릿, 파일이 가진 표나 타입 union에서 고른
+                      key)와 그 목록·뷰·폼이 라벨을 붙이는 모델·enum·scalar를 읽고, 언어별 사전을 라우트마다 API 설명
+                      파일 말고는 파일을 많아야 네 개 불러오도록 나눕니다. 데이터에서 읽은 key처럼 빌드가 따라갈 수 없는
+                      key를 가지거나 <code>Signal</code>·<code>Constant</code> 컴포넌트를 보여 주는 라우트는 사전 전체를
+                      불러오며, key의 경우 <code>akan build</code>가 파일, 줄 번호, 이유를 경고로 알려 줍니다. 라우트가
+                      빠뜨린 모듈의 key도 보입니다. 그 파일을 불러온 뒤 페이지를 다시 그리고, 개발 중에는 모듈마다 한 번
+                      알립니다. CSR 빌드는 사전 전체를 번들에 그대로 담습니다.
                     </span>
                   ),
                 })}
