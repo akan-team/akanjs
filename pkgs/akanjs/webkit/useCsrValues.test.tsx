@@ -6,6 +6,7 @@ import { createRoot } from "react-dom/client";
 import { setTestEnv } from "../ui/testHelpers.fixture";
 
 let useCsrValues: typeof import("./useCsrValues").useCsrValues;
+let CsrSlide: typeof import("./csrSlide").CsrSlide;
 let RenderLayer: typeof import("./RenderLayer").RenderLayer;
 let client: typeof import("akanjs/client");
 let defaultPageState: typeof import("akanjs/client").defaultPageState;
@@ -13,6 +14,7 @@ let defaultPageState: typeof import("akanjs/client").defaultPageState;
 beforeAll(async () => {
   setTestEnv("csrvaluestest");
   ({ useCsrValues } = await import("./useCsrValues"));
+  ({ CsrSlide } = await import("./csrSlide"));
   ({ RenderLayer } = await import("./RenderLayer"));
   client = await import("akanjs/client");
   ({ defaultPageState } = client);
@@ -550,6 +552,35 @@ describe("useCsrValues when a page is switched in place", () => {
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/home");
     expect(frame.seen.latest?.pendingLocation).toBeNull();
+  });
+
+  test("switching tabs between pages that do not slide starts no slide, there or back", async () => {
+    const play = spyOn(CsrSlide, "play");
+    mountFrame(
+      "/en/home",
+      [
+        { segment: "home", cache: true },
+        { segment: "news", cache: true },
+      ],
+      { tabBarOn: "home" },
+    );
+    await act(async () => void client.router.replace("/news"));
+    await drawnWithin(150);
+    await act(async () => void client.router.replace("/home"));
+    await drawnWithin(150);
+
+    expect(play).not.toHaveBeenCalled();
+    play.mockRestore();
+  });
+
+  test("a stack page pushed on still slides in", async () => {
+    const play = spyOn(CsrSlide, "play");
+    mountFrame("/en/home", [{ segment: "home" }, { segment: "detail", transition: "stack" }]);
+    await act(async () => void client.router.push("/detail"));
+    await drawnWithin(150);
+
+    expect(play).toHaveBeenCalledTimes(1);
+    play.mockRestore();
   });
 
   test("a move made while another page slides in is not drawn ahead: the slide's end would drop its page", async () => {
