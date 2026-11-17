@@ -79,6 +79,8 @@ interface NarrowedBuild {
 type BundleOf = (runtime: RouteRuntime, kept: ReadonlySet<string>, outputSubdir?: string) => Promise<NarrowedBuild>;
 
 const referenceSubdir = "client-whole";
+//? Each trial bundles the whole app again, and the entries left to try shrink slowly where pages share most of them.
+const measuredTrials = 6;
 
 export class RouteClientBuilder {
   #app: App;
@@ -300,7 +302,7 @@ export class RouteClientBuilder {
     let onDisk = first;
     const refused = new Set<string>();
     const refusedRoutes = new Set<string>();
-    for (;;) {
+    for (let trial = 0; trial < measuredTrials; trial++) {
       const verdicts = RouteRuntimePays.decide({
         entriesByRoute: routes,
         isKept: (entry) => current.build.kept.has(entry),

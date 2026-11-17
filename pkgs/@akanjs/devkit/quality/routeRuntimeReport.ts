@@ -35,11 +35,19 @@ export class RouteRuntimeReport {
       .map((report) =>
         [
           `Last build of apps/${report.app} under clientRuntime: "route": ${RouteRuntimeReport.summary(report)}.`,
+          ...RouteRuntimeReport.#perModuleLines(report.perModule),
           ...report.causes.flatMap((cause) => RouteRuntimeReport.#causeLines(cause)),
           ...RouteRuntimeReport.#refusedLines(report.refused ?? []),
         ].join("\n"),
       )
       .join("\n\n");
+  }
+
+  static #perModuleLines(routes: readonly string[]): string[] {
+    if (routes.length === 0) return [];
+    const more =
+      routes.length > RouteRuntimeReport.shown ? `, and ${routes.length - RouteRuntimeReport.shown} more` : "";
+    return [`  per module: ${routes.slice(0, RouteRuntimeReport.shown).join(", ")}${more}`];
   }
 
   static #causeLines({ rule, file, line, message, entries, routes, chains }: RouteRuntimeCause): string[] {
