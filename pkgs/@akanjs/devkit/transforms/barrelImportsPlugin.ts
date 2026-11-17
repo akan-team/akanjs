@@ -200,7 +200,7 @@ const resolveNodePackageExport = async (workspaceRoot: string, specifier: string
     if (!rel?.startsWith(".")) return null;
     const entryFile = await resolveFileCandidate(path.resolve(pkgDir, rel));
     if (!entryFile) return null;
-    return { pkgName: specifier, entryFile, pkgDir: path.dirname(entryFile), preserveFilePath: true };
+    return { pkgName: specifier, entryFile, pkgDir: path.dirname(entryFile), preserveFilePath: true, rootDir: pkgDir };
   } catch {
     return null;
   }

@@ -19,6 +19,7 @@ const serverFetchSource =
   /^(?:@(?:apps|libs)\/[^/]+\/(?:server|lib\/(?:sig|useServer))|\.{1,2}\/(?:.+\/)?(?:server|sig|useServer))$/;
 const generatedFile = /^(?:apps|libs)\/[^/]+\/(?:(?:server|client)\.ts$|lib\/[^/]+\.ts$|lib\/__client\/)/;
 const handoffName = /\b(?:init|view|edit)[A-Z]|\bget[A-Z]\w*(?:Init|View|Edit)\b|\bslice\b/;
+const handoffMember = /^(?:(?:init|view|edit)[A-Z]|get[A-Z]\w*(?:Init|View|Edit)$|slice$)/;
 
 //? Only `fetch.init<Model>`, `view<Model>`, `edit<Model>`, their `get` forms and `fetch.slice` build a handoff object.
 export class RouteHandoffs {
@@ -77,18 +78,38 @@ export class RouteHandoffs {
   static #serverFetchLineOf(fileName: string, text: string): number | null {
     if (!text.includes("fetch") || !handoffName.test(text)) return null;
     const kind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, false, kind);
+    const source = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, kind);
     for (const statement of source.statements) {
       if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
       const clause = statement.importClause;
       if (!clause || clause.isTypeOnly || !serverFetchSource.test(statement.moduleSpecifier.text)) continue;
       const bindings = clause.namedBindings;
-      const takesFetch =
-        !!bindings &&
-        (ts.isNamespaceImport(bindings) ||
-          bindings.elements.some((el) => !el.isTypeOnly && (el.propertyName ?? el.name).text === "fetch"));
-      if (takesFetch) return source.getLineAndCharacterOfPosition(statement.getStart(source)).line + 1;
+      if (!bindings) continue;
+      const line = source.getLineAndCharacterOfPosition(statement.getStart(source)).line + 1;
+      if (ts.isNamespaceImport(bindings)) return line;
+      const taken = bindings.elements.find((el) => !el.isTypeOnly && (el.propertyName ?? el.name).text === "fetch");
+      if (taken && RouteHandoffs.#handsOver(source, taken.name.text)) return line;
     }
     return null;
+  }
+
+  //? Text alone took `ips.slice(0, 1)` in a service that calls an endpoint for a slice handed over, on every route.
+  static #handsOver(source: ts.SourceFile, local: string): boolean {
+    const visit = (node: ts.Node): boolean => {
+      if (ts.isImportDeclaration(node)) return false;
+      if (ts.isIdentifier(node) && node.text === local) {
+        const { parent } = node;
+        const named =
+          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          ((ts.isPropertyAssignment(parent) || ts.isMethodDeclaration(parent) || ts.isPropertyDeclaration(parent)) &&
+            parent.name === node);
+        if (named) return false;
+        if (ts.isPropertyAccessExpression(parent) && parent.expression === node)
+          return handoffMember.test(parent.name.text);
+        return true;
+      }
+      return ts.forEachChild(node, visit) ?? false;
+    };
+    return visit(source);
   }
 }
