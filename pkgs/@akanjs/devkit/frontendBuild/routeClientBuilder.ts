@@ -6,6 +6,7 @@ import { type ClientRuntimeScope, StoreBootstrap } from "../artifact/storeBootst
 import type { App } from "../commandDecorators";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
+import { ReactIconImports } from "../transforms/reactIconImports";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
 import { SignalDescriptors } from "../transforms/signalDescriptors";
@@ -216,13 +217,17 @@ export class RouteClientBuilder {
 
   async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, routeRuntime: RouteRuntime | null) {
     const reactFastRefresh = process.env.AKAN_REACT_FAST_REFRESH !== "0";
+    const icons = ReactIconImports.forApp(this.#app);
     return new ClientEntriesBundler({
       app: this.#app,
       entries: bootstrapEntries.buildEntries,
       plugins: [
+        icons.plugin,
         ...(routeRuntime ? [this.#signalDescriptors(routeRuntime)] : []),
         await createBarrelImportsPlugin(this.#app, {
-          pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
+          pipeAfter: icons.pipe(
+            reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
+          ),
           external: VENDOR_SPECIFIERS,
           routeRuntime,
         }),

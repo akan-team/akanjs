@@ -49,7 +49,6 @@ import {
   useRef,
   useState,
 } from "react";
-import { AgentActivity } from "use-agentic";
 import { NativeThemeColor } from "../../client/nativeThemeColor";
 import { readRscRoutePatch, subscribeRscRoutePatch } from "../../client/rscRoutePatch";
 import { FrameRootVars } from "../../webkit/FrameRootVars";
@@ -246,7 +245,7 @@ export const ClientPathWrapper = ({
           data-firstpath={firstPath}
           data-akan-frame-responsive={responsiveFrame ? "" : undefined}
         >
-          <AgentActivity active={activity === "current"}>{children}</AgentActivity>
+          {children}
         </Frame>
       </pageActivityContext.Provider>
     </pathContext.Provider>
