@@ -183,4 +183,6 @@ export interface RenderState {
   ssrGeneration?: number;
   /** When the SSR dev registry was last built whole; a tab booted from an earlier one reloads. */
   ssrEpoch?: number;
+  /** The dictionary files served; a save replaces them through a backend restart, and a tab holding others refetches. */
+  dictionaryStamp?: string;
 }
