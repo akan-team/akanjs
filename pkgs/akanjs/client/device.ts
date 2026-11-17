@@ -121,13 +121,11 @@ const supportedLang = (code: string, supportLanguages: string[] | readonly strin
 const createWebDevice = ({
   lang,
   supportLanguages,
-  isPathLangPlaceholder,
 }: {
   lang?: string;
   supportLanguages: string[] | readonly string[];
-  isPathLangPlaceholder?: boolean;
 }) => {
-  const pathname = typeof window === "undefined" || isPathLangPlaceholder ? "" : csrLocation.pathname;
+  const pathname = typeof window === "undefined" ? "" : csrLocation.pathname;
   return new Device({
     lang: lang ?? langInPath(pathname, supportLanguages) ?? supportedLang(getBrowserLanguage(), supportLanguages),
     info: webDeviceInfo,
@@ -139,25 +137,22 @@ const createWebDevice = ({
 
 export class Device {
   static instance: Device | null = null;
-  /** `isPathLangPlaceholder`: the path's language segment only reached the page, and the device's language decides. */
   static async load({
     lang,
     supportLanguages = [],
-    isPathLangPlaceholder = false,
   }: {
     lang?: string;
     supportLanguages?: string[] | readonly string[];
-    isPathLangPlaceholder?: boolean;
   }) {
     if (Device.instance) return Device.instance;
     if (getRenderMode() !== "csr" || !isNativeTarget()) {
-      Device.instance = createWebDevice({ lang, supportLanguages, isPathLangPlaceholder });
+      Device.instance = createWebDevice({ lang, supportLanguages });
       return Device.instance;
     }
     const native = await import("./native");
     //? a mobile target opened in a browser has no shell to ask
     if (!native.isNativeApp()) {
-      Device.instance = createWebDevice({ lang, supportLanguages, isPathLangPlaceholder });
+      Device.instance = createWebDevice({ lang, supportLanguages });
       return Device.instance;
     }
     const [info, { code: languageCode }] = await Promise.all([native.device.getInfo(), native.device.getLanguage()]);
@@ -165,9 +160,7 @@ export class Device {
     const { top: topSafeArea, bottom: bottomSafeArea } = readCssSafeAreaInsets();
     Device.instance = new Device({
       lang:
-        lang ??
-        (isPathLangPlaceholder ? undefined : langInPath(window.location.pathname, supportLanguages)) ??
-        supportedLang(languageCode, supportLanguages),
+        lang ?? langInPath(window.location.pathname, supportLanguages) ?? supportedLang(languageCode, supportLanguages),
       info,
       topSafeArea,
       bottomSafeArea,

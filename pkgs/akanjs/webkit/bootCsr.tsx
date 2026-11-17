@@ -24,14 +24,14 @@ export const bootCsr = async (context: CsrRouteContext) => {
   if (window.location.pathname === "/404") return;
 
   const mobileTarget = window.__AKAN_MOBILE_TARGET__;
-  //? A dev build opens on the default locale only because the dev server answers its CSR shell under one; the device's
-  //? language then picks the page, as a release bundle's does, and the marker leaves so a reload keeps the one chosen.
+  //? A dev build opens on the default locale only because the dev server answers its CSR shell under one. Taking that
+  //? segment and the marker off first lets Device pick the device's language, as for a release bundle, and a reload
+  //? then keeps the language the page is on.
   const isPathLangPlaceholder =
     !!mobileTarget && new URLSearchParams(window.location.search).get(deviceLangParam) === "device";
-  const [device, jwt] = await Promise.all([
-    Device.load({ supportLanguages: i18n.locales, isPathLangPlaceholder }),
-    getStoredAuthToken(),
-  ]);
+  if (isPathLangPlaceholder)
+    window.history.replaceState(window.history.state, "", onLang(window.location, null, i18n.locales));
+  const [device, jwt] = await Promise.all([Device.load({ supportLanguages: i18n.locales }), getStoredAuthToken()]);
   // A native shell opens its bundle at `/`, but every route sits under `/:lang`; a reload would parse the bundle twice.
   if (mobileTarget && window.location.pathname === "/")
     window.history.replaceState(
@@ -102,9 +102,9 @@ function initializeMobileTargetFromSearch() {
   window.__AKAN_MOBILE_TARGET__ = { name, basePath, ...(indexPath ? { indexPath } : {}) };
 }
 
-function onLang(location: Location, lang: string, locales: string[]) {
+function onLang(location: Location, lang: string | null, locales: string[]) {
   const [, first = "", ...rest] = location.pathname.split("/");
-  const segments = [lang, ...(locales.includes(first) ? rest : [first, ...rest])].filter((segment) => segment.length);
+  const segments = [lang ?? "", ...(locales.includes(first) ? rest : [first, ...rest])].filter((segment) => segment);
   const search = new URLSearchParams(location.search);
   search.delete(deviceLangParam);
   const query = search.toString();

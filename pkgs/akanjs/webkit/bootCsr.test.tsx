@@ -9,7 +9,7 @@ const originalEnv = { ...process.env };
 const deviceState = {
   lang: "en",
   platform: "web",
-  loads: [] as unknown[],
+  loadPaths: [] as string[],
 };
 const storageState = {
   jwt: null as string | null,
@@ -35,8 +35,8 @@ beforeAll(() => {
       off: () => undefined,
     },
     Device: {
-      load: async (options: unknown) => {
-        deviceState.loads.push(options);
+      load: async () => {
+        deviceState.loadPaths.push(window.location.pathname);
         return {
           lang: deviceState.lang,
           info: { platform: deviceState.platform },
@@ -183,7 +183,7 @@ afterEach(() => {
   setRequiredEnv();
   deviceState.lang = "en";
   deviceState.platform = "web";
-  deviceState.loads.length = 0;
+  deviceState.loadPaths.length = 0;
   storageState.jwt = null;
   initAuthCalls.length = 0;
 });
@@ -256,11 +256,22 @@ describe("bootCsr", () => {
 
     await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
 
-    expect(deviceState.loads).toEqual([{ supportLanguages: ["en", "ko"], isPathLangPlaceholder: true }]);
+    expect(deviceState.loadPaths).toEqual(["/office"]);
     expect(window.location.pathname).toBe("/ko/office");
     expect(window.location.search).toBe("?csr=true&akanMobileTarget=office&akanMobileBasePath=office");
     expect(window.location.hash).toBe("#top");
     expect(replacements).toEqual([]);
+  });
+
+  test("a dev build opened on its bare home lands on the target's home in the device's language", async () => {
+    deviceState.lang = "ko";
+    installWindow({ href: "https://example.test/en?csr=true&akanMobileTarget=default&akanMobileLang=device" });
+    const { bootCsr } = await import("./bootCsr");
+
+    await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+
+    expect(window.location.pathname).toBe("/ko");
+    expect(window.location.search).toBe("?csr=true&akanMobileTarget=default");
   });
 
   test("keeps the language a dev page reloads on once the marker is gone", async () => {
@@ -272,7 +283,7 @@ describe("bootCsr", () => {
 
     await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
 
-    expect(deviceState.loads).toEqual([{ supportLanguages: ["en", "ko"], isPathLangPlaceholder: false }]);
+    expect(deviceState.loadPaths).toEqual(["/ko/office"]);
     expect(window.location.pathname).toBe("/ko/office");
   });
 
