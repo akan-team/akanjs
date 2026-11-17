@@ -14,6 +14,7 @@ export type RuntimeImportKind =
   | "framework-store"
   | "framework-client"
   | "framework-fetch"
+  | "framework-agent"
   | "framework-deep";
 
 export interface RuntimeImportTarget {
@@ -26,6 +27,7 @@ export type RuntimeHandleKind =
   | "root"
   | "self"
   | "state"
+  | "getter"
   | "fetch"
   | "signal"
   | "akanjs/store"
@@ -91,13 +93,30 @@ const frameworkWholeNames = new Set([
   "AgentContext",
   "FetchClient",
 ]);
+//? What `akanjs/store/agent` exports that reads the screen or the router and never the root store or the fetch client.
+const agentScreenNames = new Set([
+  "AgentCursor",
+  "AgentPrompts",
+  "AgentVisual",
+  "AgentVisualOption",
+  "ScreenFlash",
+  "ScreenImage",
+  "ScreenImageView",
+  "ScreenReadOptions",
+  "ScreenReader",
+  "ScreenSettle",
+  "ScreenSettleOptions",
+  "ScreenTarget",
+]);
 
 export class RuntimeImports {
   static readonly frameworkWholeNames: ReadonlySet<string> = frameworkWholeNames;
+  static readonly agentScreenNames: ReadonlySet<string> = agentScreenNames;
 
   static mayUseRuntime(text: string, fileName: string) {
     return (
       loaderPattern.test(text) ||
+      (text.includes("sliceName") && text.includes("refName")) ||
       RuntimeImports.#quotes(text, (specifier) => !!RuntimeImports.targetOf(specifier, fileName))
     );
   }
@@ -124,7 +143,8 @@ export class RuntimeImports {
       const framework = RuntimeImports.#stripped(path.posix.normalize(specifier)).match(frameworkPathPattern);
       const [, facet, deep] = framework ?? [];
       if (!facet || (facet === "client" && deep && /^\/native(?:\/|$)/.test(deep))) return null;
-      return { scope: fileScope, kind: deep ? "framework-deep" : (`framework-${facet}` as RuntimeImportKind) };
+      const kind = !deep ? `framework-${facet}` : facet === "store" && deep === "/agent" ? "framework-agent" : null;
+      return { scope: fileScope, kind: (kind ?? "framework-deep") as RuntimeImportKind };
     }
     const aliased = specifier.match(/^@(apps|libs)\/([\s\S]+)$/);
     const joined = aliased
@@ -175,7 +195,8 @@ export class RuntimeImports {
   }
 
   static #frameworkUse(kind: RuntimeImportKind, imported: string): RuntimeImportUse {
-    if (kind === "framework-deep")
+    if (kind === "framework-agent" && agentScreenNames.has(imported)) return null;
+    if (kind === "framework-deep" || kind === "framework-agent")
       return { reason: "whole-runtime-import", why: "a framework internal may hand out the whole runtime" };
     if (frameworkWholeNames.has(imported)) return { binding: { type: "whole", name: imported } };
     if (kind === "framework-store" && imported === "st") return { binding: { type: "handle", handle: { kind: "st" } } };

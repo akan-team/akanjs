@@ -129,4 +129,64 @@ describe("RuntimeImports", () => {
       null,
     ]);
   });
+
+  test("names the agent entry apart, and lists as its screen exports the files that import no store or fetch", async () => {
+    const kindOf = (specifier: string) => RuntimeImports.targetOf(specifier, "apps/demo/ui/Card.tsx")?.kind ?? null;
+    expect(
+      [
+        "akanjs/store/agent",
+        "akanjs/store/agent/index.ts",
+        "akanjs/store/agent/ScreenSettle",
+        "akanjs/client/agent",
+      ].map(kindOf),
+    ).toEqual(["framework-agent", "framework-agent", "framework-deep", "framework-deep"]);
+    const use = (name: string) => RuntimeImports.useOf({ scope: "apps/demo", kind: "framework-agent" }, name, false);
+    expect([use("ScreenSettle"), use("AgentBridge"), use("somethingNew")]).toEqual([
+      null,
+      { reason: "whole-runtime-import", why: "a framework internal may hand out the whole runtime" },
+      { reason: "whole-runtime-import", why: "a framework internal may hand out the whole runtime" },
+    ]);
+
+    const dir = path.join(import.meta.dir, "../../../akanjs/store/agent");
+    const index = await Bun.file(path.join(dir, "index.ts")).text();
+    const files = new Map<string, { imports: string[]; exports: string[] }>();
+    for (const [, name = ""] of index.matchAll(/export \* from "\.\/(\w+)";/g)) {
+      const source = ts.createSourceFile(
+        name,
+        await Bun.file(path.join(dir, `${name}.ts`)).text(),
+        ts.ScriptTarget.Latest,
+      );
+      const imports = source.statements.flatMap((statement) => {
+        if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) return [];
+        const clause = statement.importClause;
+        const named =
+          clause?.namedBindings && ts.isNamedImports(clause.namedBindings) ? clause.namedBindings.elements : [];
+        const values = named.filter((element) => !element.isTypeOnly).map((element) => element.name.text);
+        if (clause?.isTypeOnly || (clause && !clause.name && named.length && !values.length)) return [];
+        const specifier = statement.moduleSpecifier.text;
+        return specifier === "akanjs/client" && values.join() === "router" ? [] : [specifier];
+      });
+      const exports = source.statements.flatMap((statement) => {
+        const exported =
+          ts.canHaveModifiers(statement) &&
+          ts.getModifiers(statement)?.some((modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword);
+        if (!exported) return [];
+        if (ts.isVariableStatement(statement))
+          return statement.declarationList.declarations.map((declaration) => declaration.name.getText(source));
+        return [(statement as ts.DeclarationStatement).name?.text ?? "default"];
+      });
+      files.set(name, { imports, exports });
+    }
+    expect(files.size).toBe(12);
+    const outside = new Set(["akanjs/base", "use-agentic"]);
+    for (let size = -1; size !== files.size; ) {
+      size = files.size;
+      for (const [name, { imports }] of files)
+        if (!imports.every((specifier) => outside.has(specifier) || files.has(specifier.replace(/^\.\//, ""))))
+          files.delete(name);
+    }
+    expect([...files.values()].flatMap(({ exports }) => exports).sort()).toEqual(
+      [...RuntimeImports.agentScreenNames].sort(),
+    );
+  });
 });

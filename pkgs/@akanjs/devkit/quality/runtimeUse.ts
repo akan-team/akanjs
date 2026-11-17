@@ -9,16 +9,31 @@ import {
   type RuntimeImportTarget,
   type RuntimeImportUse,
 } from "./runtimeImports";
+import { RuntimeKeyNames } from "./runtimeKeyNames";
 import { RuntimeLexicalScope } from "./runtimeLexicalScope";
 import type { RuntimeFamily, RuntimeNameTable, RuntimeNeed, RuntimeOwner } from "./runtimeNameTable";
-import { climb, memberName, type PositionedProblem, problemAt, sortedProblems, staticName } from "./runtimeSyntax";
+import { type RuntimeSlice, RuntimeSliceKey } from "./runtimeSliceKey";
+import {
+  climb,
+  climbCasts,
+  declaredFunction,
+  inlineFunction,
+  memberName,
+  ownArguments,
+  type PositionedProblem,
+  problemAt,
+  returnsOf,
+  sortedProblems,
+  staticName,
+  uncast,
+  unwrap,
+} from "./runtimeSyntax";
 
 export type { RuntimeConstantName, RuntimeConstantRead, RuntimeConstantUse } from "./runtimeConstantReads";
 export type { RuntimeImportKind, RuntimeImportTarget } from "./runtimeImports";
 
 export const runtimeUseReasons = [
   "computed-access",
-  "cast",
   "passed-on",
   "re-exported",
   "hidden-by-destructuring",
@@ -77,6 +92,9 @@ const fetchClientMembers = new Set([
   "disconnect",
   "configureWs",
 ]);
+const isPlain = (step: Step) => "none" in step || ("leaf" in step && !step.next);
+const isThisParameter = ({ name }: ts.ParameterDeclaration) => ts.isIdentifier(name) && name.text === "this";
+const assertKey = 'assert the key as the name it stands for (`key as "name"`)';
 const nothingRead: RuntimeUseVerdict = {
   resolvable: true,
   owners: [],
@@ -93,6 +111,8 @@ export class RuntimeUse {
   readonly #options: RuntimeUseOptions;
   readonly #storeFile: boolean;
   readonly #lexical = new RuntimeLexicalScope();
+  readonly #keys = new RuntimeKeyNames(this.#lexical);
+  readonly #slices: RuntimeSliceKey;
   readonly #bindings = new Map<ts.Identifier, RuntimeBinding>();
   readonly #owners = new Map<string, RuntimeUseOwner>();
   readonly #problems: PositionedProblem[] = [];
@@ -133,6 +153,7 @@ export class RuntimeUse {
     this.#consumer = consumer;
     this.#options = options;
     this.#storeFile = storeFile;
+    this.#slices = new RuntimeSliceKey(this.#lexical, source);
     this.#constants = new RuntimeConstantReads(source, fileName, consumer, () => this.#recording);
   }
 
@@ -291,6 +312,7 @@ export class RuntimeUse {
     else if (this.#isLoader(node)) this.#loader(node as ts.Expression);
     else if (ts.isIdentifier(node) && RuntimeLexicalScope.isReference(node)) this.#reference(node);
     else if (ts.isStringLiteralLike(node)) this.#literalArgument(node);
+    else if (ts.isObjectLiteralExpression(node)) this.#writtenSlice(node);
     ts.forEachChild(node, (child) => this.#visit(child));
   }
 
@@ -333,12 +355,12 @@ export class RuntimeUse {
   #isStoreClass(node: ts.ClassLikeDeclaration) {
     if (this.#storeFile) return true;
     const heritage = node.heritageClauses?.find((clause) => clause.token === ts.SyntaxKind.ExtendsKeyword)?.types[0];
-    const base = heritage && RuntimeUse.#unwrap(heritage.expression);
+    const base = heritage && unwrap(heritage.expression);
     return !!base && ts.isCallExpression(base) && this.#isStoreFactory(base.expression);
   }
 
   #isStoreFactory(expression: ts.Expression) {
-    const callee = RuntimeUse.#unwrap(expression);
+    const callee = unwrap(expression);
     const declaration = ts.isIdentifier(callee) ? this.#lexical.resolve(callee) : null;
     return !!declaration && this.#bindings.get(declaration)?.type === "storeFactory";
   }
@@ -374,35 +396,85 @@ export class RuntimeUse {
   #literalArgument(literal: ts.StringLiteralLike) {
     const parent = literal.parent;
     if (!(ts.isCallExpression(parent) || ts.isNewExpression(parent)) || !parent.arguments?.includes(literal)) return;
-    if (!this.#isLoader(RuntimeUse.#unwrap(parent.expression)) && this.#targetOf(literal.text))
+    if (!this.#isLoader(unwrap(parent.expression)) && this.#targetOf(literal.text))
       this.#problem("whole-runtime-import", literal, "the runtime module is handed to code that may load it whole");
   }
 
   #follow(node: ts.Expression, handle: RuntimeHandle) {
-    const { current, parent } = climb(node);
+    const { current, parent } = climbCasts(node);
     if (ts.isPropertyAccessExpression(parent) && parent.expression === current)
       return this.#apply(parent, this.#step(handle, parent.name.text));
-    if (ts.isElementAccessExpression(parent) && parent.expression === current) {
-      const key = parent.argumentExpression;
-      if (ts.isStringLiteralLike(key) || ts.isNumericLiteral(key))
-        return this.#apply(parent, this.#step(handle, key.text));
-      return this.#problem("computed-access", parent, "the name is picked at run time");
-    }
+    if (ts.isElementAccessExpression(parent) && parent.expression === current) return this.#keyed(parent, handle);
     if (ts.isCallExpression(parent) && parent.expression === current) {
-      if (handle.kind !== "fetch") this.#problem("unknown-name", parent, "the runtime object itself is called");
+      if (handle.kind === "getter") this.#follow(parent, { kind: "state" });
+      else if (handle.kind !== "fetch") this.#problem("unknown-name", parent, "the runtime object itself is called");
       return;
     }
     const storeOfSignal = handle.kind === "signal" && ts.isCallExpression(parent) && parent.arguments[0] === current;
     if (storeOfSignal && this.#isStoreFactory(parent.expression)) return;
-    if (
-      (ts.isAsExpression(parent) || ts.isTypeAssertionExpression(parent) || ts.isSatisfiesExpression(parent)) &&
-      parent.expression === current
-    )
-      return this.#problem("cast", parent, "the names read through the cast are not checked against the runtime");
     if (ts.isVariableDeclaration(parent) && parent.initializer === current) return this.#declare(parent, handle);
     if (ts.isExportAssignment(parent))
       return this.#problem("re-exported", parent, "other files read the runtime through this one");
-    this.#problem("passed-on", current, "the names read from it where it goes are not visible here");
+    if (handle.kind === "state" && this.#handed(current, parent)) return;
+    const answer = handle.kind === "fetch" ? "name the endpoint here and pass that" : "read the names here";
+    this.#problem("passed-on", current, `the names read from it where it goes are not visible here; ${answer}`);
+  }
+
+  #keyed(node: ts.ElementAccessExpression, handle: RuntimeHandle) {
+    const names = this.#keys.namesOf(node.argumentExpression);
+    const steps = names && this.#stepsOf(handle, names);
+    if (steps) for (const step of steps) this.#apply(node, step);
+    else if (names) this.#problem("computed-access", node, "the names asserted for the key are read in different ways");
+    else if (!this.#sliceBuilt(node, handle)) {
+      const fromSlice = /sliceName|refName/.test(node.argumentExpression.getText(this.#source));
+      const other = fromSlice ? "take the slice as a `SliceMeta` parameter" : "name the endpoint";
+      const answer = fromSlice || handle.kind === "fetch" ? `${other}, or ${assertKey}` : assertKey;
+      this.#problem("computed-access", node, `the name is picked at run time; ${answer}`);
+    }
+  }
+
+  #stepsOf(handle: RuntimeHandle, names: string[]) {
+    const steps = names.map((name) => this.#step(handle, name));
+    return steps.length === 1 || steps.every(isPlain) ? steps : null;
+  }
+
+  #sliceBuilt(node: ts.ElementAccessExpression, handle: RuntimeHandle) {
+    const pieces = this.#slices.piecesOf(node.argumentExpression);
+    const table = this.#consumer;
+    if (!pieces || !table) return false;
+    if (!this.#recording) return true;
+    const reads: { leaf: RuntimeFamily; key: string; loads: RuntimeSlice["loads"] }[] = [];
+    for (const slice of RuntimeSliceKey.slicesOf(table)) {
+      const name = RuntimeSliceKey.nameOf(pieces, slice);
+      const step = name === null ? null : this.#step(handle, name);
+      if (!step || !isPlain(step)) return false;
+      if ("leaf" in step && table.lookup(step.leaf, step.key)) reads.push({ ...step, loads: slice.loads });
+    }
+    for (const { leaf, key, loads } of reads) this.#record(leaf, key, node, loads);
+    return reads.length > 0;
+  }
+
+  //? A slice written out carries no reference to its model, so the file writing it loads the model as if it named it.
+  #writtenSlice(literal: ts.ObjectLiteralExpression) {
+    const named = (key: string) => literal.properties.find(({ name }) => !!name && staticName(name) === key);
+    const sliceName = named("sliceName");
+    if (!sliceName || !named("refName")) return;
+    if (this.#recording) this.#reads = true;
+    const names = ts.isPropertyAssignment(sliceName) ? this.#keys.namesOf(sliceName.initializer) : null;
+    if (names) for (const name of names) this.#record("fetch.slice", name, sliceName);
+    else this.#problem("computed-access", sliceName, "a slice written by hand names its model at run time");
+  }
+
+  #handed(argument: ts.Expression, call: ts.Node) {
+    if (!ts.isCallExpression(call)) return false;
+    const index = call.arguments.indexOf(argument);
+    const callee = index < 0 ? null : declaredFunction(call.expression, this.#lexical);
+    const parameter = callee?.parameters.filter((parameter) => !isThisParameter(parameter))[index];
+    if (!callee?.body || !parameter || parameter.dotDotDotToken) return false;
+    if (call.arguments.slice(0, index).some(ts.isSpreadElement)) return false;
+    if (!ts.isArrowFunction(callee) && ownArguments(callee.body)) return false;
+    this.#bindName(parameter.name, { kind: "state" });
+    return true;
   }
 
   #apply(node: ts.Expression, step: Step) {
@@ -430,6 +502,8 @@ export class RuntimeUse {
         return { leaf: "st.do", key: name };
       case "state":
         return { leaf: "st.use", key: name };
+      case "getter":
+        return { unknown: true };
       case "fetch":
         if (name === "slice" || name === "serializedSignal") return to(`fetch.${name}`);
         if (fetchClientMembers.has(name) && !this.#consumer?.lookup("fetch", name)) return { none: true };
@@ -450,7 +524,9 @@ export class RuntimeUse {
   }
 
   #callMethod(node: ts.Expression, method: StoreMethod, own = false) {
-    const { current, parent } = climb(node);
+    const { current, parent } = climbCasts(node);
+    if (method === "get" && ts.isVariableDeclaration(parent) && parent.initializer === current)
+      return this.#declare(parent, { kind: "getter" });
     if (!ts.isCallExpression(parent) || parent.expression !== current)
       return this.#problem("passed-on", node, "the store method is taken off the store");
     const spread = parent.arguments.find(ts.isSpreadElement);
@@ -459,13 +535,14 @@ export class RuntimeUse {
     if (method === "get") return this.#follow(parent, { kind: "state" });
     if (method === "pick")
       for (const key of parent.arguments) {
-        if (ts.isStringLiteralLike(key)) this.#record("st.use", key.text, key);
-        else this.#problem("computed-access", key, "the state key is picked at run time");
+        const names = this.#keys.namesOf(key);
+        if (names) for (const name of names) this.#record("st.use", name, key);
+        else this.#problem("computed-access", key, `the state key is picked at run time; ${assertKey}`);
       }
     else if (method === "set") {
       if (first) this.#written(first, own);
     } else {
-      const selector = first && RuntimeUse.#inlineFunction(first);
+      const selector = first && inlineFunction(first);
       if (first && !selector) this.#problem("passed-on", first, "the selector is not written inline");
       if (selector) this.#bindCallback(selector, method === "sub" && !second ? 2 : 1);
     }
@@ -473,22 +550,20 @@ export class RuntimeUse {
 
   #bindCallback(callback: ts.ArrowFunction | ts.FunctionExpression, count: number) {
     if (ts.isFunctionExpression(callback)) {
-      const own = RuntimeUse.#ownArguments(callback);
+      const own = ownArguments(callback.body);
       if (own) this.#problem("hidden-by-destructuring", own, "`arguments` hides which names it reads");
     }
-    const parameters = callback.parameters.filter(
-      (parameter) => !(ts.isIdentifier(parameter.name) && parameter.name.text === "this"),
-    );
+    const parameters = callback.parameters.filter((parameter) => !isThisParameter(parameter));
     for (const parameter of parameters.slice(0, count)) this.#bindParameter(parameter, { kind: "state" });
   }
 
   //? `own`: a store's uncast `this.set` looks up no module for keys a spread copies; a bare value may be an updater.
   #written(argument: ts.Expression, own = false, spread = false) {
-    const value = RuntimeUse.#unwrap(argument);
-    const updater = RuntimeUse.#inlineFunction(value);
+    const value = uncast(argument);
+    const updater = inlineFunction(value);
     if (updater) {
       this.#bindCallback(updater, 1);
-      const returned = ts.isBlock(updater.body) ? RuntimeUse.#returnsOf(updater.body) : [updater.body as ts.Expression];
+      const returned = ts.isBlock(updater.body) ? returnsOf(updater.body) : [updater.body as ts.Expression];
       for (const expression of returned) this.#written(expression, own);
     } else if (ts.isConditionalExpression(value)) {
       this.#written(value.whenTrue, own, spread);
@@ -503,9 +578,9 @@ export class RuntimeUse {
           this.#written(property.expression, own, true);
           continue;
         }
-        const name = property.name && staticName(property.name);
-        if (name === null) this.#problem("computed-access", property, "the state key is computed");
-        else this.#record("st.use", name, property);
+        const names = property.name && this.#keys.ofProperty(property.name);
+        if (names) for (const name of names) this.#record("st.use", name, property);
+        else this.#problem("computed-access", property, `the state key is computed; ${assertKey}`);
       }
   }
 
@@ -536,24 +611,27 @@ export class RuntimeUse {
     if (ts.isArrayBindingPattern(name))
       return this.#problem("hidden-by-destructuring", name, "array destructuring hides which names it reads");
     for (const element of name.elements) {
-      const key = element.propertyName ?? element.name;
-      const keyName = ts.isIdentifier(key) ? key.text : staticName(key);
-      if (element.dotDotDotToken || keyName === null) {
-        this.#problem("hidden-by-destructuring", element, "a rest or computed key hides which names it reads");
-        continue;
-      }
-      const step = this.#step(handle, keyName);
-      if ("leaf" in step) {
-        this.#record(step.leaf, step.key, element);
-        if (step.next) this.#bindName(element.name, step.next);
-      } else if ("handle" in step) this.#bindName(element.name, step.handle);
-      else if ("method" in step) this.#problem("passed-on", element, "the store method is taken off the store");
-      else if ("unknown" in step) this.#problem("unknown-name", element, "the runtime has no such member");
-      else if ("whole" in step) this.#problem("whole-runtime-import", element, "it hands out the whole client runtime");
+      const names = element.dotDotDotToken ? null : this.#keys.ofProperty(element.propertyName ?? element.name);
+      const steps = names && this.#stepsOf(handle, names);
+      const why = names
+        ? "the names asserted for the key are read in different ways"
+        : `a rest or computed key hides which names it reads; ${assertKey}`;
+      if (!steps) this.#problem("hidden-by-destructuring", element, why);
+      for (const step of steps ?? []) this.#bindStep(element, step);
     }
   }
 
-  #record(family: RuntimeFamily, key: string, node: ts.Node) {
+  #bindStep(element: ts.BindingElement, step: Step) {
+    if ("leaf" in step) {
+      this.#record(step.leaf, step.key, element);
+      if (step.next) this.#bindName(element.name, step.next);
+    } else if ("handle" in step) this.#bindName(element.name, step.handle);
+    else if ("method" in step) this.#problem("passed-on", element, "the store method is taken off the store");
+    else if ("unknown" in step) this.#problem("unknown-name", element, "the runtime has no such member");
+    else if ("whole" in step) this.#problem("whole-runtime-import", element, "it hands out the whole client runtime");
+  }
+
+  #record(family: RuntimeFamily, key: string, node: ts.Node, loaded?: RuntimeSlice["loads"]) {
     if (!this.#recording) return;
     const table = this.#consumer;
     if (!table)
@@ -567,7 +645,7 @@ export class RuntimeUse {
       );
     if (entry.base === "store") this.#baseStore = true;
     if (entry.base === "descriptor") this.#baseDescriptor = true;
-    for (const owner of entry.owners) this.#need(owner, entry.needs);
+    for (const owner of entry.owners) if (!loaded?.(owner, entry.needs)) this.#need(owner, entry.needs);
     for (const owner of entry.uses) this.#need(owner, "descriptor");
   }
 
@@ -594,47 +672,14 @@ export class RuntimeUse {
     return members;
   }
 
-  static #ownArguments(callback: ts.FunctionExpression) {
-    let found: ts.Identifier | null = null;
-    const visit = (node: ts.Node) => {
-      if (found || (ts.isFunctionLike(node) && !ts.isArrowFunction(node))) return;
-      if (ts.isIdentifier(node) && node.text === "arguments" && RuntimeLexicalScope.isReference(node)) found = node;
-      ts.forEachChild(node, visit);
-    };
-    ts.forEachChild(callback.body, visit);
-    return found as ts.Identifier | null;
-  }
-
   static #castInner(expression: ts.Expression): ts.Expression {
-    const value = RuntimeUse.#unwrap(expression);
+    const value = unwrap(expression);
     if (
       (ts.isAsExpression(value) || ts.isTypeAssertionExpression(value)) &&
       value.type.kind === ts.SyntaxKind.UnknownKeyword
     )
-      return RuntimeUse.#unwrap(value.expression);
+      return unwrap(value.expression);
     return value;
-  }
-
-  static #unwrap(expression: ts.Expression): ts.Expression {
-    let current = expression;
-    while (ts.isParenthesizedExpression(current)) current = current.expression;
-    return current;
-  }
-
-  static #inlineFunction(expression: ts.Expression) {
-    const value = RuntimeUse.#unwrap(expression);
-    return ts.isArrowFunction(value) || ts.isFunctionExpression(value) ? value : null;
-  }
-
-  static #returnsOf(body: ts.Block) {
-    const returned: ts.Expression[] = [];
-    const visit = (node: ts.Node) => {
-      if (ts.isFunctionLike(node)) return;
-      if (ts.isReturnStatement(node) && node.expression) returned.push(node.expression);
-      ts.forEachChild(node, visit);
-    };
-    ts.forEachChild(body, visit);
-    return returned;
   }
 
   static #kindOf(fileName: string) {

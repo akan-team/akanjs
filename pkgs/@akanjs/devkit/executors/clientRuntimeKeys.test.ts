@@ -1154,6 +1154,134 @@ describe("an app store that redeclares what the lib store it extends declares", 
   }, 120_000);
 });
 
+const indirectFilesOf = (app: string): Record<string, string> => ({
+  "lib/_note/note.store.ts": `import { store } from "akanjs/store";
+
+export class NoteStore extends store("note" as const, () => ({ noteText: "memo" })) {
+  static both({ noteText, label }: { noteText: string; label: string }) {
+    return [noteText, label].join("|");
+  }
+  showBoth() {
+    this.set({ noteText: NoteStore.both(this.get() as never) });
+  }
+}
+`,
+  "ui/Cast.tsx": `import { st } from "@apps/${app}/client";
+const get = st.get as unknown as <T>() => { [key: string]: T };
+export const read = () => [(st.get() as unknown as { label: string }).label, get<string>().label];
+`,
+  "ui/Asserted.tsx": `import { st } from "@apps/${app}/client";
+export const read = (key: string) => st.get()[key as "itemCount"];
+`,
+  "ui/Built.tsx": `import { capitalize } from "akanjs/common";
+import type { SliceMeta } from "akanjs/fetch";
+import { st } from "@apps/${app}/client";
+export const read = (slice: SliceMeta) =>
+  (st.get() as unknown as { [key: string]: unknown })[\`limitOf\${capitalize(slice.sliceName)}\`];
+`,
+  "ui/Named.tsx": `import { fetch } from "@apps/${app}/client";\nexport const slice = fetch.slice.itemInPublic;\n`,
+  "ui/Written.tsx": 'export const slice = { refName: "item", sliceName: "itemInPublic", argLength: 0 };\n',
+  "ui/Handed.tsx": `import { st } from "@apps/${app}/client";
+export const read = async () => {
+  await st.do.showBoth();
+  return (st.get() as unknown as { noteText: string }).noteText;
+};
+`,
+  "ui/Screen.tsx": `import { ScreenSettle } from "akanjs/store/agent";
+import { st } from "@apps/${app}/client";
+export const read = () => [typeof ScreenSettle, (st.get() as unknown as { label: string }).label];
+`,
+});
+const indirectScript = (pages: string[], body: string) => `
+${browserGlobals}
+const fileOf = (name) => "./" + ${JSON.stringify(pages)}.find((page) => page.endsWith(name + ".js"));
+const stores = () => {
+  const st = globalThis[Symbol.for("akanjs.store.registry")]?.instance;
+  return ["setLabel", "setNoteText", "setItemCount"].map((name) => typeof st?.do?.[name] === "function");
+};
+${body}
+`;
+const wholeIndirectScript = (app: string) => `
+await import("./apps/${app}/lib/st.ts");
+const st = globalThis[Symbol.for("akanjs.store.registry")].instance;
+const { label, itemCount, limitOfItemInPublic } = st.get();
+await st.do.showBoth();
+console.log(JSON.stringify({ label, itemCount, limitOfItemInPublic, noteText: st.get().noteText }));
+`;
+
+describe('a `clientRuntime: "route"` page reaching a store only by an indirect read', () => {
+  const [app, lib] = ["atelier", "trunk"];
+  let workspace: ReturnType<typeof writeWorkspace> | null = null;
+  const built = async (entries: string[]) => {
+    workspace ??= writeWorkspace({
+      app,
+      lib,
+      libFiles: stockFiles,
+      appFiles: { ...shopFilesOf(lib), ...indirectFilesOf(app) },
+      kept: true,
+    });
+    const { root } = await workspace;
+    const whole = await evaluate(root, wholeIndirectScript(app), app);
+    const { pages } = await bundleForBrowser(root, app, entries);
+    return { whole, run: (body: string) => evaluate(root, indirectScript(pages, body), app) };
+  };
+  const onlyStore = (index: number) => [0, 1, 2].map((at) => at === index);
+  afterAll(async () => {
+    if (workspace) await rm((await workspace).root, { recursive: true, force: true });
+  });
+
+  test("answers a name read through a cast, through a store read taken off the store, and by a key asserted as a name, with that name's store alone", async () => {
+    const { whole, run } = await built([`apps/${app}/ui/Cast.tsx`]);
+    expect(whole).toEqual({ label: expect.any(String), itemCount: 0, limitOfItemInPublic: 20, noteText: "memo|kit" });
+    expect(
+      await run('console.log(JSON.stringify({ read: (await import(fileOf("Cast"))).read(), stores: stores() }));'),
+    ).toEqual({ read: [whole.label, whole.label], stores: onlyStore(0) });
+    const asserted = await built([`apps/${app}/ui/Asserted.tsx`]);
+    expect(
+      await asserted.run(
+        'console.log(JSON.stringify({ read: (await import(fileOf("Asserted"))).read("itemCount"), stores: stores() }));',
+      ),
+    ).toEqual({ read: whole.itemCount, stores: onlyStore(2) });
+  }, 240_000);
+
+  test("answers a name built from a handed slice once the slice's model arrived, by its reference, by the file naming it or by the file writing it out, and loads no model itself", async () => {
+    const read = (slice: string) => `
+const page = await import(fileOf("Built"));
+const before = stores();
+const slice = ${slice};
+console.log(JSON.stringify({ before, read: page.read(slice), after: stores() }));
+`;
+    const handed = '{ refName: "item", sliceName: "itemInPublic", argLength: 0 }';
+    const arrivals = [
+      { entry: `apps/${app}/lib/__client/item.ref.ts`, slice: `(await import(fileOf("item.ref")), ${handed})` },
+      { entry: `apps/${app}/ui/Named.tsx`, slice: '(await import(fileOf("Named"))).slice' },
+      { entry: `apps/${app}/ui/Written.tsx`, slice: '(await import(fileOf("Written"))).slice' },
+    ];
+    for (const { entry, slice } of arrivals) {
+      const { whole, run } = await built([`apps/${app}/ui/Built.tsx`, entry]);
+      expect({ entry, answer: await run(read(slice)) }).toEqual({
+        entry,
+        answer: { before: onlyStore(-1), read: whole.limitOfItemInPublic, after: onlyStore(2) },
+      });
+    }
+  }, 360_000);
+
+  test("answers the names a function of the store's file reads from the state it is handed, and a page importing the agent's screen classes, with the stores they name alone", async () => {
+    const { whole, run } = await built([`apps/${app}/ui/Handed.tsx`]);
+    expect(
+      await run(
+        'console.log(JSON.stringify({ read: await (await import(fileOf("Handed"))).read(), stores: stores() }));',
+      ),
+    ).toEqual({ read: whole.noteText, stores: [true, true, false] });
+    const screen = await built([`apps/${app}/ui/Screen.tsx`]);
+    expect(
+      await screen.run(
+        'console.log(JSON.stringify({ read: (await import(fileOf("Screen"))).read(), stores: stores() }));',
+      ),
+    ).toEqual({ read: ["function", whole.label], stores: onlyStore(0) });
+  }, 240_000);
+});
+
 const noticeStore = `import { store } from "akanjs/store";
 
 export class NoticeStore extends store("notice" as const, () => ({ noticeCount: 0, noticeText: "" })) {

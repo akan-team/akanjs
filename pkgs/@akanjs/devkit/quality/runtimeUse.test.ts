@@ -80,9 +80,9 @@ export const reset = () => [clearDraft(), pin(false), label()];
       expected: ["apps/demo/memo store"],
     },
     {
-      shape: "a cast of the runtime object",
+      shape: "a cast of the runtime object handed on",
       text: `${appImport}export const actions = () => st.do as unknown as Record<string, () => void>;\n`,
-      expected: "cast: st.do as unknown",
+      expected: "passed-on: st.do as unknown as Record<string, () => void>",
     },
   ],
   [
@@ -451,7 +451,7 @@ describe("RuntimeUse.analyze", () => {
     ]);
   });
 
-  test("follows a store's `this` only as itself or through the sanctioned cast to its RootStore", () => {
+  test("follows a store's `this` as itself through any cast, and as every store through the cast to its RootStore", () => {
     const file = "apps/demo/lib/memo/memo.store.ts";
     const storeOf = (body: string, head = 'import type { RootStore } from "../st";\n') =>
       analyze(
@@ -533,13 +533,9 @@ describe("RuntimeUse.analyze", () => {
       storeOf("  static pin() {\n    return this.name;\n  }"),
       storeOf("  pin() {\n    return this.pinEverything();\n  }"),
     ]).toEqual([
-      "cast: this as any",
-      "cast: this as unknown",
-      "cast: this as unknown",
-      "cast: this as unknown",
-      "cast: this as unknown",
+      ...Array.from({ length: 5 }, () => ["apps/demo/memo store", "apps/demo/note store"]),
       "passed-on: this",
-      "cast: this.get() as any",
+      ["apps/demo/memo store", "apps/demo/note store"],
       "unknown-name: this",
       "unknown-name: this.pinEverything",
     ]);
