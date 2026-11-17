@@ -1,3 +1,4 @@
+"use client";
 import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
 import { MultiToggleSelect, Switch, ToggleSelect } from "./Choice";

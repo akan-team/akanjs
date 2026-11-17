@@ -44,9 +44,7 @@ const clientManifest = new Proxy(
 const errors: string[] = [];
 const stream = await renderToReadableStream(
   <main>
-    <Field label="Name">
-      <Field.Text value="Ada" />
-    </Field>
+    <Field label="Name" />
     <Layout.Header>Head</Layout.Header>
     <Model.View>Body</Model.View>
     <Dialog open>
@@ -56,11 +54,5 @@ const stream = await renderToReadableStream(
   clientManifest,
   { onError: (error: unknown) => void errors.push(String(error)) },
 );
-const flight = await new Response(stream).text();
-process.stdout.write(
-  JSON.stringify({
-    references: [...references].sort(),
-    serverMarkup: flight.includes("mt-2 flex w-full flex-col gap-4 px-4"),
-    errors,
-  }),
-);
+await new Response(stream).text();
+process.stdout.write(JSON.stringify({ references: [...references].sort(), errors }));
