@@ -163,6 +163,8 @@ export interface CssAsset {
 export interface DictAsset {
   url: string;
   relPath: string;
+  /** Under `clientRuntime: "route"`: the files this locale's dictionary left out, by name, loaded where a page shows them. */
+  parts?: Record<string, { url: string; relPath: string }>;
 }
 
 export interface RenderState {
