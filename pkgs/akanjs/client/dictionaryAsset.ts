@@ -8,6 +8,8 @@ interface DictionaryAssetState {
   seq: number;
   //? The snapshots a page file replaced its locale with, which hold every group: a route's file adds nothing to one.
   wholes: WeakSet<object>;
+  //? Keyed by the locale's snapshot, as `wholes` is: read from the files merged, since a part file (the API descriptions) puts `signal` under modules whose texts it does not hold.
+  groupsBySnapshot: WeakMap<object, Set<string>>;
 }
 
 const dictionaryAssetStateKey = "__AKAN_DICTIONARY_ASSET__";
@@ -21,6 +23,7 @@ export class DictionaryAsset {
       appliedSeqByLang: new Map(),
       seq: 0,
       wholes: new WeakSet(),
+      groupsBySnapshot: new WeakMap(),
     };
     return globalScope[dictionaryAssetStateKey];
   }
@@ -52,6 +55,18 @@ export class DictionaryAsset {
     return !!replaced && DictionaryAsset.#state().wholes.has(replaced);
   }
 
+  static holdsGroup(lang: string, group: string): boolean {
+    const replaced = TranslatorState.get().replacedByLang.get(lang);
+    return !!replaced && !!DictionaryAsset.#state().groupsBySnapshot.get(replaced)?.has(group);
+  }
+
+  static #markGroups(snapshot: object, groups: readonly string[]) {
+    const { groupsBySnapshot } = DictionaryAsset.#state();
+    const marked = groupsBySnapshot.get(snapshot) ?? new Set<string>();
+    for (const group of groups) marked.add(group);
+    groupsBySnapshot.set(snapshot, marked);
+  }
+
   //? A route's files only ever add groups to their locale, so a file of the page that was left still merges; a page
   //? file, or another build's, replaces the locale, unless it was asked for before the one already applied.
   static #apply(
@@ -68,7 +83,8 @@ export class DictionaryAsset {
       );
     const sameBuild = !!table && !!replaced && translator.tableByLang.get(lang) === table;
     if (groups && sameBuild) {
-      if (!state.wholes.has(replaced)) DictionaryPart.merge(lang, url, dictionary, replaced);
+      if (!state.wholes.has(replaced) && DictionaryPart.merge(lang, url, dictionary, replaced))
+        DictionaryAsset.#markGroups(replaced, groups);
       return true;
     }
     if (seq === null || (state.appliedSeqByLang.get(lang) ?? 0) > seq) return false;
@@ -80,7 +96,9 @@ export class DictionaryAsset {
     }
     const base = {};
     TranslatorState.replace(lang, base, parts, table);
-    return DictionaryPart.merge(lang, url, dictionary, base);
+    const merged = DictionaryPart.merge(lang, url, dictionary, base);
+    if (merged) DictionaryAsset.#markGroups(base, groups);
+    return merged;
   }
 
   static #loading(url: string): Promise<DictionaryModule> {

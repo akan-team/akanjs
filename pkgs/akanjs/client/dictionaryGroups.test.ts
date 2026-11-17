@@ -53,6 +53,29 @@ describe("DictionaryGroups", () => {
     expect(fetches().filter((name) => name.startsWith("ya-"))).toEqual(["ya-base", "ya-memo"]);
   });
 
+  test("an API description file does not mark the module's group as loaded", async () => {
+    const [base] = writeBuild("yh", { base: "Base", memo: "Memo" });
+    const api = path.join(root, "yh-api.js");
+    fs.writeFileSync(
+      api,
+      `export const lang = "yh"; export const part = "api";
+export default { memo: { signal: { createMemo: { desc: { t: "Creates a memo" } } } } };`,
+    );
+    fs.writeFileSync(
+      base,
+      fs
+        .readFileSync(base, "utf8")
+        .replace("export const groups", `export const parts = ${JSON.stringify({ api })};\nexport const groups`),
+    );
+    await DictionaryAsset.load([base, api]);
+
+    expect(Translator.translateByLocale("yh", "memo.signal.createMemo.desc")).toBe("Creates a memo");
+    const ready = Translator.ready("yh", "memo.modelName");
+    expect(ready).toBeInstanceOf(Promise);
+    expect(await ready).toBe(true);
+    expect(Translator.translateByLocale("yh", "memo.modelName")).toBe("Memo name");
+  });
+
   test("waits on nothing for a merged group, a text with no group, a locale holding a page file or a build with no table", async () => {
     const [base] = writeBuild("yb", { base: "Base", memo: "Memo" });
     await DictionaryAsset.load(base);

@@ -72,7 +72,7 @@ export class DictionaryGroups {
     const group = dot > 0 ? key.slice(0, dot) : "";
     const translator = TranslatorState.get();
     const table = translator.tableByLang.get(lang);
-    if (!group || !table || translator.langDictionaryMap.get(lang)?.[group] || DictionaryAsset.holdsEveryGroup(lang))
+    if (!group || !table || DictionaryAsset.holdsGroup(lang, group) || DictionaryAsset.holdsEveryGroup(lang))
       return null;
     const { waits } = DictionaryGroups.#state();
     const id = `${table} ${group}`;
