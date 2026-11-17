@@ -36,6 +36,7 @@ export class AllRoutesBuilder {
   #knownSet = new Set<string>();
   #routeIds: string[] = [];
   #ssrEntriesByRoute = new Map<string, string[]>();
+  #entriesByRoute = new Map<string, string[]>();
   #externalsByChunkUrl: Record<string, string[]> = {};
   #discovery: ClientEntryDiscovery | null = null;
 
@@ -64,10 +65,9 @@ export class AllRoutesBuilder {
       for (const discovered of routeEntries) allEntries.add(discovered);
       const ssrEntries = await discovery.discover(seeds, { importsAs });
       const handed = await handoffs?.read(await discovery.serverModules(seeds, { importsAs }));
-      this.#ssrEntriesByRoute.set(
-        entry.routeId,
-        [...new Set([...ssrEntries, ...(handed?.referenceFiles ?? [])])].sort(),
-      );
+      const loaded = [...new Set([...ssrEntries, ...(handed?.referenceFiles ?? [])])].sort();
+      this.#ssrEntriesByRoute.set(entry.routeId, loaded);
+      this.#entriesByRoute.set(entry.routeId, [...new Set([...routeEntries, ...loaded])]);
       if (handed?.unread) {
         const pinned = `${handed.unread.file} (${handed.unread.why})`;
         unread.set(pinned, [...(unread.get(pinned) ?? []), entry.routeId]);
@@ -165,6 +165,7 @@ export class AllRoutesBuilder {
       knownEntries: this.#knownSet,
       discovery: this.#discovery,
       command: this.#command,
+      entriesByRoute: this.#entriesByRoute,
     }).build();
     this.#app.verbose(`[build-all] bundled ${delta.newEntries.length} entries (${Date.now() - started}ms)`);
     return delta;

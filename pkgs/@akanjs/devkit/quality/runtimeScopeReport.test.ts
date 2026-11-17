@@ -50,6 +50,7 @@ describe("RuntimeScopeReport", () => {
       RuntimeScopeReport.format({
         scopes: [summary, { ...summary, scope: "apps/bare", table: false }],
         notes: [note],
+        markerPins: [],
       }).split("\n"),
     ).toEqual([
       "apps/demo/ui/Card.tsx:4:30 - note akan.runtime.whole-scope: `fetch`: the names read from it where it goes are not visible here. The file works; a page that loads it loads apps/demo's whole client runtime.",

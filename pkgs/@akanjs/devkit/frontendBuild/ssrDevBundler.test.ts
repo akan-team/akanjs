@@ -77,13 +77,17 @@ describe("SsrDevBundler under clientRuntime route", () => {
     const owners = path.join(path.dirname(files[SsrDevBundler.bootstrapKey] ?? ""), "storeOwners.ts");
     expect(await Bun.file(owners).text()).toContain('[Symbol.for("akanjs.store.owners")] = {"use":');
     expect(context.routeRuntime).toBeDefined();
+    const [useClient, st] = StoreBootstrap.assembled.map((piece) =>
+      JSON.stringify(path.join(root, "apps/demo/lib", `${piece}.ts`).split(path.sep).join("/")),
+    );
     expect(context.modelRuntime).toBe(
-      StoreBootstrap.assembled
-        .map(
-          (piece) =>
-            `import ${JSON.stringify(path.join(root, "apps/demo/lib", `${piece}.ts`).split(path.sep).join("/"))};\n`,
-        )
-        .join(""),
+      [
+        'import { loadedAfter as __akanLoadedAfter } from "akanjs/base";',
+        `import { sig as __akanLoaded0 } from ${useClient};`,
+        `import { st as __akanLoaded1 } from ${st};`,
+        "__akanLoadedAfter(__akanLoaded0, __akanLoaded1);",
+        "",
+      ].join("\n"),
     );
     const whole = await new SsrDevBundler(appOf(root, "all")).context();
     expect(context.configKey).not.toBe(whole.configKey);
