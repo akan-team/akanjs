@@ -419,8 +419,8 @@ export default page()
       {
         name: "readState(key)",
         desc: l.trans({
-          en: "Reads one store key, masked by its model. Free text, search params included, is read here, not carried in the turn's context.",
-          ko: "스토어 키 하나를 모델로 마스킹해 읽습니다. 검색 파라미터를 포함한 자유 텍스트는 턴의 컨텍스트에 싣지 않고 여기서 읽습니다.",
+          en: "Reads one store key, masked by its model, or one published value by its name. Free text, search params included, is read here, not carried in the turn's context.",
+          ko: "스토어 키 하나를 모델로 마스킹해 읽거나, 공개한 값 하나를 이름으로 읽습니다. 검색 파라미터를 포함한 자유 텍스트는 턴의 컨텍스트에 싣지 않고 여기서 읽습니다.",
         }),
       },
       {
