@@ -77,6 +77,21 @@ export interface BundleClientEntriesResult {
   externalsByChunkUrl: Map<string, string[]>;
   /** Workspace-relative client reference id per absolute source entry. */
   clientReferenceIdByAbsPath: Map<string, string>;
+  graph: ClientBundleGraph;
+}
+
+/** What one bundle linked, by absolute path: no import the bundle left external. */
+export interface ClientBundleGraph {
+  importsByModule: Map<string, ClientModuleImport[]>;
+  chunksByModule: Map<string, string[]>;
+  /** Static imports only: a chunk loaded by `import()` runs after the chunk asking for it. */
+  importsByChunk: Map<string, string[]>;
+}
+
+export interface ClientModuleImport {
+  path: string;
+  /** Asked for by `import()`, so it loads when that call runs. */
+  lazy: boolean;
 }
 
 export type AkanConfig = Awaited<ReturnType<App["getConfig"]>>;

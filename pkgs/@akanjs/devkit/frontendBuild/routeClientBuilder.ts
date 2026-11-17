@@ -13,6 +13,7 @@ import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildType
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
+import { RouteRuntimeCheck } from "./routeRuntimeCheck";
 import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
 
 const SSR_CLIENT_ALIAS_EXTERNALS = [
@@ -38,6 +39,8 @@ export interface BuildRouteClientOptions {
   entries?: string[];
   /** Defaults to `registry` under `start`: the browser loads each entry from the SSR dev registry, so only `client-ssr` builds. */
   browser?: "chunks" | "registry";
+  /** The entries each route loads: under `clientRuntime: "route"` an entry only whole-runtime routes hold keeps it too. */
+  entriesByRoute?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface BuildRouteClientResult {
@@ -67,6 +70,7 @@ export class RouteClientBuilder {
   #discovery?: ClientEntryDiscovery;
   #entries?: string[];
   #browser: "chunks" | "registry";
+  #entriesByRoute?: ReadonlyMap<string, readonly string[]>;
 
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
@@ -77,6 +81,7 @@ export class RouteClientBuilder {
     this.#discovery = options.discovery;
     this.#entries = options.entries;
     this.#browser = options.browser ?? (this.#command === "start" ? "registry" : "chunks");
+    this.#entriesByRoute = options.entriesByRoute;
   }
 
   async build(): Promise<BuildRouteClientResult> {
@@ -89,15 +94,25 @@ export class RouteClientBuilder {
     //? Registry mode builds no browser bundle: the SSR bundle has the same entries, exports and imports to read.
     const registry = this.#browser === "registry" ? new CsrDevPaths(this.#app.workspace.workspaceRoot) : null;
     const routeRuntime = registry ? null : await this.#readRouteRuntime();
-    const scope: ClientRuntimeScope = routeRuntime ? "page" : "whole";
     const ssrEntries = await this.#createBootstrapEntries(entries, "whole");
+    //? First: its entries all load the whole runtime, so its graph says which of them a per-route build may narrow.
+    const ssrBundle = await this.#buildSsrBundle(ssrEntries);
+    const kept = routeRuntime?.plan({
+      importsByModule: ssrBundle.graph.importsByModule,
+      entries: entries.map((entry) => path.resolve(entry)),
+      entriesByRoute: this.#entriesByRoute,
+    });
     const browserEntries = registry
       ? null
-      : scope === "page"
-        ? await this.#createBootstrapEntries(entries, "page")
+      : kept
+        ? await this.#createBootstrapEntries(entries, "page", { kept, whole: ssrEntries })
         : ssrEntries;
     const browserBundle = browserEntries ? await this.#buildBrowserBundle(browserEntries, routeRuntime) : null;
-    const ssrBundle = await this.#buildSsrBundle(ssrEntries);
+    if (browserBundle && browserEntries && routeRuntime && kept)
+      new RouteRuntimeCheck(this.#app.workspace.workspaceRoot, browserBundle.graph, {
+        entries: new Map([...browserEntries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry))),
+        wholeReaders: routeRuntime.wholeReaders,
+      }).assert();
     const referenceBundle = browserBundle ?? ssrBundle;
     const bootstrapEntries = browserEntries ?? ssrEntries;
     const ssrEntryByOriginal = new Map(
@@ -209,7 +224,6 @@ export class RouteClientBuilder {
         await createBarrelImportsPlugin(this.#app, {
           pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
           external: VENDOR_SPECIFIERS,
-          modelRuntime: routeRuntime?.wholeSource,
           routeRuntime,
         }),
       ],
@@ -237,10 +251,18 @@ export class RouteClientBuilder {
     }).bundle();
   }
 
-  async #createBootstrapEntries(entries: string[], scope: ClientRuntimeScope): Promise<BootstrapEntries> {
+  //? `narrowed.kept`: an entry keeping the whole runtime is the same file a build of `clientRuntime: "all"` bundles.
+  async #createBootstrapEntries(
+    entries: string[],
+    scope: ClientRuntimeScope,
+    narrowed?: { kept: ReadonlySet<string>; whole: BootstrapEntries },
+  ): Promise<BootstrapEntries> {
     if (!(await Bun.file(path.join(this.#app.cwdPath, "lib", "st.ts")).exists())) {
       return { buildEntries: entries, originalByBuildEntry: new Map() };
     }
+    const wholeByOriginal = new Map(
+      [...(narrowed?.whole.originalByBuildEntry ?? [])].map(([buildEntry, original]) => [original, buildEntry]),
+    );
 
     const dirName = scope === "page" ? "client-entry-bootstrap-route" : "client-entry-bootstrap";
     const outdir = path.join(this.#app.cwdPath, ".akan", "generated", dirName);
@@ -250,6 +272,11 @@ export class RouteClientBuilder {
     const buildEntries = await Promise.all(
       entries.map(async (entry) => {
         const absEntry = path.resolve(entry);
+        const whole = narrowed?.kept.has(absEntry) ? wholeByOriginal.get(absEntry) : undefined;
+        if (whole) {
+          originalByBuildEntry.set(whole, absEntry);
+          return whole;
+        }
         const hash = Bun.hash(`${this.#app.name}\n${absEntry}`).toString(36);
         const base = path.basename(absEntry).replace(/[^A-Za-z0-9._-]/g, "_");
         const wrapperEntry = path.join(outdir, `${base}-${hash}.tsx`);

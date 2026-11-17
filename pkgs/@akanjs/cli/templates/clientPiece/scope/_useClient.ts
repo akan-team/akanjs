@@ -12,10 +12,12 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   if (!scanInfo) return null;
   const modules = [...new Set(signalModulesOf(scanInfo))];
   return `
-import "./_base.fetch";
-${modules.map((module) => `import "./${module}.fetch";`).join("\n")}
+import { loadedAfter } from "akanjs/base";
+import { loaded as base } from "./_base.fetch";
+${modules.map((module, index) => `import { loaded as module${index} } from "./${module}.fetch";`).join("\n")}
 import { fetch as pageFetch, sig as pageSig } from "../usePage";
 
+loadedAfter(${["base", ...modules.map((_, index) => `module${index}`)].join(", ")});
 export const fetch = pageFetch;
 export const sig = pageSig;
 export { Err, msg, runtime, usePage } from "../usePage";
