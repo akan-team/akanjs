@@ -101,6 +101,26 @@ describe("DevArtifactPruner", () => {
     expect(await list("dict")).toEqual(["en-api-current.js", "en-current.js"]);
   });
 
+  test("keeps the group table and the route files each of the base artifact's dictionaries names", async () => {
+    await mkdir(path.join(artifactDir, "dict"), { recursive: true });
+    for (const name of ["en-current", "en-groups-current", "en-0-current", "en-1-current", "en-1-old"])
+      await writeAged(`dict/${name}.js`, 300_000);
+    const fileOf = (name: string) => ({ url: `/_akan/dict/${name}.js`, relPath: `dict/${name}.js` });
+    await writeFile(
+      path.join(artifactDir, "base-artifact.json"),
+      JSON.stringify({
+        dictAssets: {
+          en: {
+            ...fileOf("en-current"),
+            routeParts: { table: fileOf("en-groups-current"), files: [fileOf("en-0-current"), fileOf("en-1-current")] },
+          },
+        },
+      }),
+    );
+    await new DevArtifactPruner(artifactDir, { graceMs: 60_000 }).pruneDictionaries();
+    expect(await list("dict")).toEqual(["en-0-current.js", "en-1-current.js", "en-current.js", "en-groups-current.js"]);
+  });
+
   test("prunes nothing when the running bundle is not on disk", async () => {
     await writeAged("server/pages-old.js", 600_000);
     await new DevArtifactPruner(artifactDir, { graceMs: 0 }).prunePages(path.join(artifactDir, "server/pages-gone.js"));
