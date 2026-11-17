@@ -600,7 +600,9 @@ export const read = () => [__akanCnst0, __akanCnst1, __akanCnst2, fetch.memoNote
       pieces: [],
       wholeConstants: true,
     });
-    expect(lone("libs/kit/lib/__client/note.cnst.ts")?.source).toBe('export { note } from "../cnst";\n');
+    expect(lone("libs/kit/lib/__client/note.cnst.ts")?.source).toBe(
+      `import "${root}/apps/demo/lib/cnst.ts";\nexport { note } from "../cnst";\n`,
+    );
     expect(lone("apps/demo/lib/board/board.constant.ts")).toBeNull();
     const both = planned({ "/card": [uiFile("Card")], "/lone": [uiFile("Lone")] });
     expect(both("apps/demo/lib/__client/board.cnst.ts")).toBeNull();

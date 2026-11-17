@@ -334,8 +334,12 @@ export class RouteRuntime {
     const [, model] = fileName.match(constantPieceFile) ?? [];
     if (narrow && model) {
       if (narrow.pieces.has(fileName.slice(0, -".ts".length))) return null;
+      //? A lib's `lib/cnst.ts` alone would split the app's: the bundler groups modules by the entries reaching them.
+      const appConstants = fileName.startsWith(`${this.#table.scope}/`)
+        ? ""
+        : `import ${JSON.stringify(this.#absoluteOf(`${this.#table.scope}/lib/cnst`))};\n`;
       const result = {
-        source: `export { ${model} } from "../cnst";\n`,
+        source: `${appConstants}export { ${model} } from "../cnst";\n`,
         perModule: true,
         pieces: [],
         wholeConstants: true,
