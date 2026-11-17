@@ -1,7 +1,7 @@
 import "../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { Location } from "akanjs/client";
-import { act } from "react";
+import { act, memo, useState } from "react";
 import { writeRscRoutePatch } from "../client/rscRoutePatch";
 import { mountAsync, setTestEnv } from "../ui/testHelpers.fixture";
 
@@ -107,6 +107,47 @@ describe("usePageLocation", () => {
       writeRscRoutePatch(null);
     });
     expect(shown(container).path).toBe("/docs/intro");
+    unmount();
+  });
+
+  test("a frame that redraws around the same page, as it does while the keys move, leaves the page's readers alone", async () => {
+    const location = {
+      href: "http://localhost/en/chat",
+      pathname: "/en/chat",
+      search: "",
+      params: { lang: "en" },
+      searchParams: {},
+      hash: "",
+      pathRoute: {
+        path: "/chat",
+        pathSegments: ["chat"],
+        renderPage: { render: () => null },
+        pageState: {},
+        renderRootLayouts: [],
+        renderLayouts: [],
+      },
+    } as unknown as Location;
+    let readerRenders = 0;
+    const Reader = memo(() => {
+      readerRenders += 1;
+      usePathCtx();
+      return null;
+    });
+    let redraw: () => void = () => undefined;
+    const Frame = () => {
+      const [count, setCount] = useState(0);
+      redraw = () => setCount((value) => value + 1);
+      return (
+        <ClientPathWrapper location={location} pageType="current" style={{ paddingBottom: count }}>
+          <Reader />
+        </ClientPathWrapper>
+      );
+    };
+    const { unmount } = await mountAsync(<Frame />);
+    const before = readerRenders;
+    await act(async () => redraw());
+    await act(async () => redraw());
+    expect(readerRenders).toBe(before);
     unmount();
   });
 });
