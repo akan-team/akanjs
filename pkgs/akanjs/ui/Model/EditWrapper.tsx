@@ -8,7 +8,7 @@ import type { ReactNode } from "react";
 
 import { agentAttrs } from "../agentAttrs";
 import { type DraftProp, editDraftScope } from "./draftScope";
-import "../modelRuntime";
+import { resetModels } from "./resetModels";
 
 interface EditWrapperProps {
   className?: string;
@@ -42,9 +42,7 @@ export default function EditWrapper({
     .arg("modelId", ID)
     .exec((id) => {
       void storeDo[names.editModel](id, { modal, draftScope: editDraftScope(draft, id) });
-      resets?.forEach((reset) => {
-        void storeDo[modelNames(reset).resetModel]();
-      });
+      resetModels(resets);
     });
   return (
     <div

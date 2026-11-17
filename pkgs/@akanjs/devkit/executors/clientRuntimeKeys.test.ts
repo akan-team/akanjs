@@ -681,7 +681,10 @@ describe("an app's client runtime pieces", () => {
     const read = (file: string) => Bun.file(path.join(appPieces, file)).text();
     const scopePieces = ["_base.fetch.ts", "_st.ts", "_useClient.ts", "audit.fetch.ts"];
     const modulePieces = ["demo.fetch.ts", "demo.st.ts", "item.fetch.ts", "item.st.ts", "note.st.ts"];
-    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces, "ping.fetch.ts"]);
+    const references = ["item.ref.ts", "refs.ts"];
+    expect((await readdir(appPieces)).sort()).toEqual(
+      [...scopePieces, ...modulePieces, "ping.fetch.ts", ...references].sort(),
+    );
     expect((await readdir(path.join(root, "libs/stock/lib/__client"))).sort()).toEqual([
       ...scopePieces,
       "item.fetch.ts",
@@ -699,6 +702,10 @@ describe("an app's client runtime pieces", () => {
       'import "@libs/stock/lib/__client/item.st";\nimport { StoreRegistry } from "akanjs/store";\nimport { ItemStore } from "../item/item.store";',
     );
     expect(await read("note.st.ts")).not.toContain(".fetch");
+    expect(await read("item.ref.ts")).toBe('\n"use client";\n\nexport const reference = "item";\n');
+    expect(await read("refs.ts")).toBe(
+      '\nimport { FetchClient } from "akanjs/fetch";\nimport { reference as ref0 } from "./item.ref";\n\nif (process.env.AKAN_PUBLIC_RENDER_ENV !== "csr") FetchClient.setModelRuntimes({ "item": ref0 });\n',
+    );
     expect((await read("_useClient.ts")).match(/(?<=import "\.\/)[^"]+(?=";)/g)).toEqual([
       "_base.fetch",
       "item.fetch",
@@ -713,7 +720,7 @@ describe("an app's client runtime pieces", () => {
     await rm(path.join(root, "apps/shop/lib/_ping"), { recursive: true });
     await writeText(path.join(appPieces, "stale.st.ts"), "export {};\n");
     await app.scan({ refresh: true });
-    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces]);
+    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces, ...references].sort());
     expect(await read("_useClient.ts")).not.toContain("ping");
   }, 120_000);
 

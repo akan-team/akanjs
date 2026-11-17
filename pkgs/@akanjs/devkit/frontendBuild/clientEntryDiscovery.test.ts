@@ -190,6 +190,33 @@ describe("GraphClientEntryDiscovery", () => {
     expect(await fresh.discover([file("Page.tsx")], { importsAs })).toEqual([]);
   });
 
+  test("the server modules of a walk are every file it reads before a client entry, with the same imports swapped or dropped", async () => {
+    const file = await tempDir();
+    await Bun.write(file("Page.tsx"), 'import "./Layout";\nimport "./Card";\n');
+    await Bun.write(file("Layout.tsx"), 'import "./Registry";\nimport "./Helper";\n');
+    await Bun.write(file("Helper.ts"), 'import "./Page";\nexport const helper = 1;\n');
+    await Bun.write(file("Registry.ts"), 'import "./Reference";\n');
+    await Bun.write(file("Reference.ts"), '"use client";\nexport const reference = "memo";\n');
+    await Bun.write(file("Card.tsx"), '"use client";\nimport "./Inner";\nexport const Card = () => null;\n');
+    await Bun.write(file("Inner.ts"), "export const inner = 1;\n");
+    const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+    const names = (files: string[]) => files.map((each) => path.basename(each));
+
+    expect(names(await discovery.serverModules([file("Page.tsx")]))).toEqual([
+      "Helper.ts",
+      "Layout.tsx",
+      "Page.tsx",
+      "Registry.ts",
+    ]);
+    const dropped = new Map([[file("Layout.tsx"), new Map([["./Registry", null]])]]);
+    expect(names(await discovery.serverModules([file("Page.tsx")], { importsAs: dropped }))).toEqual([
+      "Helper.ts",
+      "Layout.tsx",
+      "Page.tsx",
+    ]);
+    expect(names(await discovery.serverModules([file("Card.tsx")]))).toEqual([]);
+  });
+
   test("a client file exporting only hooks is no entry of a server graph that imports it, one with a component still is", async () => {
     const file = await tempDir();
     await Bun.write(file("Layout.tsx"), 'import "./store";\nimport "./Panel";\n');

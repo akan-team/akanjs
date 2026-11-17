@@ -31,6 +31,7 @@ const routeWorkspace = async () => {
     "lib/__client/_useClient.ts": 'export const usePage = () => "assembled-client";\n',
     "lib/__client/_st.ts": 'export const st = { mark: "assembled-store" };\n',
     "lib/__client/_base.fetch.ts": 'export const base = "base-descriptors";\n',
+    "lib/__client/refs.ts": "export {};\n",
     "lib/_draft/draft.store.ts": storeSource("draft", ["draftText"]),
     "lib/__client/draft.st.ts": piece("draft.st"),
     "lib/_tally/tally.store.ts": storeSource("tally", ["tallyCount"]),
@@ -82,6 +83,20 @@ describe("DevRouteRuntime", () => {
     expect(routed?.contents).toContain('"../lib/__client/draft.st.ts"');
     expect(routed?.contents).not.toContain('"@apps/');
     expect(routed?.contents).not.toContain("tally.st");
+  });
+
+  test("a model's reference file takes that model's store piece by a relative path, as a binding its value uses", async () => {
+    const { root, file } = await routeWorkspace();
+    const source = '"use client";\n\nexport const reference = "draft";\n';
+    await write(file("lib/__client/draft.ref.ts"), source);
+    const runtime = await DevRouteRuntime.read(root, "apps/demo");
+
+    const routed = runtime?.transform(source, file("lib/__client/draft.ref.ts"));
+
+    expect(routed?.perModule).toBe(true);
+    expect(routed?.contents).toBe(
+      '"use client";\n\nimport { draft as store } from "./draft.st.ts";\n\nexport const reference = store.refName;\n',
+    );
   });
 
   test("lists each store key under the module whose store declares it", async () => {

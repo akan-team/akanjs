@@ -5,6 +5,7 @@ import { RuntimeImports } from "../quality/runtimeImports";
 import { RuntimeNameTable } from "../quality/runtimeNameTable";
 import { RuntimeScopeReport } from "../quality/runtimeScopeReport";
 import { RuntimeUse, type RuntimeUseVerdict } from "../quality/runtimeUse";
+import { ModelReference } from "./modelReference";
 
 export interface RouteRuntimeResult {
   source: string;
@@ -94,6 +95,9 @@ export class RouteRuntime {
 
   transform(source: string, absPath: string): RouteRuntimeResult | null {
     const fileName = this.fileNameOf(absPath);
+    const scopes = this.#table.layers.map(({ scope }) => scope);
+    const reference = fileName ? ModelReference.sourceOf(source, fileName, scopes, this.#pieces) : null;
+    if (reference) return { ...reference, perModule: true };
     if (!fileName || !RuntimeScopeReport.isRuntimeSource(fileName) || macroAttribute.test(source)) return null;
     const isStore = storeFile.test(fileName);
     if (!isStore && !RuntimeImports.mayUseRuntime(source, fileName)) return { source, perModule: true, pieces: [] };

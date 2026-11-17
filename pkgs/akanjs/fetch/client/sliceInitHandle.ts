@@ -3,6 +3,7 @@ import { modelNames, sliceNames } from "akanjs/common";
 import { type BaseInsight, type BaseObject, withSharedInstances } from "akanjs/constant";
 
 import { FetchHandle } from "./fetchHandle";
+import { ModelRuntimes } from "./modelRuntimes";
 
 export interface SliceInitInput {
   refName: string;
@@ -65,7 +66,7 @@ export class SliceInitHandle {
       sliceNames(refName).state;
     const lastPage =
       modelObjInsight?.count && limit > 0 ? Math.max(Math.floor((modelObjInsight.count - 1) / limit) + 1, 1) : 1;
-    this.#serverInit ??= {
+    this.#serverInit ??= ModelRuntimes.of({
       refName,
       sliceName,
       argLength,
@@ -79,7 +80,7 @@ export class SliceInitHandle {
       [queryArgsOfModel]: queryArgs,
       [sortOfModel]: sort,
       [modelInitAt]: new Date(),
-    };
+    });
     return this.#serverInit;
   }
 

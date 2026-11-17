@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import { tempDirs, writeText as write } from "../test/testHelpers";
+import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import { SsrDevBundler } from "./ssrDevBundler";
 
@@ -48,6 +49,7 @@ describe("SsrDevBundler under clientRuntime route", () => {
     `${StoreBootstrap.pageRuntime}.ts`,
     `${StoreBootstrap.baseDescriptors}.ts`,
     ...StoreBootstrap.assembled.map((file) => `${file}.ts`),
+    `${ModelReference.registry}.ts`,
   ];
 
   const writeFrameworkBase = async (root: string) => {

@@ -4,6 +4,7 @@ import path from "node:path";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import { tempDirs, writeText as write } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
+import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import { CLIENT_BUNDLE_NAMING } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
@@ -400,6 +401,7 @@ describe("route client store bootstrap", () => {
         path.join(fixture.appDir, `lib/${StoreBootstrap.baseDescriptors}.ts`),
         'export const base = Object.freeze({ mark: "base-descriptors" });\n',
       );
+      await write(path.join(fixture.appDir, `lib/${ModelReference.registry}.ts`), "export {};\n");
       for (const file of StoreBootstrap.assembled)
         await write(
           path.join(fixture.appDir, `lib/${file}.ts`),
