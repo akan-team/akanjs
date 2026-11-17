@@ -68,6 +68,29 @@ const routeWorkspace = async () => {
   return { root, file, app };
 };
 
+const writeMemoModel = async (file: (relative: string) => string) => {
+  const files: Record<string, string> = {
+    "client.ts": [
+      'export * as cnst from "./lib/cnst";',
+      'export { usePage } from "./lib/usePage";',
+      'export { fetch } from "./lib/useClient";',
+      'export { st } from "./lib/st";',
+      'export { Memo } from "./lib/memo";',
+      "",
+    ].join("\n"),
+    "lib/useClient.ts": 'export const usePage = () => "whole-client";\nexport const fetch = {};\n',
+    "lib/memo/index.ts": 'import * as Zone from "./Memo.Zone";\nexport const Memo = { Zone };\n',
+    "lib/memo/Memo.Zone.tsx": '"use client";\nexport const View = () => "memo-view";\n',
+    "lib/memo/memo.constant.ts": 'export const MemoStatus = ["active"] as const;\n',
+    "lib/memo/memo.store.ts": storeSource("memo", ["memoText"]),
+    "lib/__client/memo.cnst.ts": 'import * as cnst from "../memo/memo.constant";\nexport const memo = { cnst };\n',
+    "lib/__client/memo.fetch.ts": 'import { memo as cnst0 } from "./memo.cnst";\nexport const loaded = [cnst0];\n',
+    "lib/__client/memo.st.ts":
+      'import { memo as cnst0 } from "./memo.cnst";\nimport { loaded as fetch0 } from "./memo.fetch";\nexport const memo = [cnst0, fetch0];\n',
+  };
+  for (const [relative, text] of Object.entries(files)) await write(file(relative), text);
+};
+
 const sortedIds = (modules: { id: string }[]) =>
   modules.map((module) => module.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 
@@ -281,6 +304,31 @@ describe("the dev registry under clientRuntime route", () => {
     expect(modules.map((module) => module.factory).join("\n")).not.toContain("whole-lib-store");
   });
 
+  test.each([
+    ["the object first", "Memo, cnst"],
+    ["the constants first", "cnst, Memo"],
+  ])(
+    "a file naming one component of an object and one constant, %s, compiles that component's file and that model's registration, never every constant",
+    async (_, names) => {
+      const { root, file, app } = await routeWorkspace();
+      await writeMemoModel(file);
+      await write(
+        file("ui/Status.tsx"),
+        `"use client";\nimport { ${names} } from "@apps/demo/client";\nexport const Status = () => [Memo.Zone.View, cnst.MemoStatus];\n`,
+      );
+
+      const modules = await compile(app, root, [file("ui/Status.tsx")]);
+
+      expect(sortedIds(modules)).toEqual([
+        "apps/demo/lib/__client/memo.cnst.ts",
+        "apps/demo/lib/memo/Memo.Zone.tsx",
+        "apps/demo/lib/memo/memo.constant.ts",
+        "apps/demo/lib/usePage.ts",
+        "apps/demo/ui/Status.tsx",
+      ]);
+    },
+  );
+
   class RouteRegistry extends SsrDevBundler {
     roots: string[] = [];
     protected override async rootFiles(entryFiles: string[]) {
@@ -308,6 +356,39 @@ describe("the dev registry under clientRuntime route", () => {
     expect(saved.kind === "update" ? saved.update.changedIds : []).toContain("apps/demo/ui/Note.tsx");
     expect(await appJs()).toContain('__akan.define("apps/demo/lib/__client/draft.st.ts"');
     expect(await patcher.update([])).toEqual({ kind: "unchanged" });
+  });
+
+  test("a constant file's save reloads the tab, whose boot runs that model's registration before its fetch piece and both before its store piece", async () => {
+    const { file, app } = await routeWorkspace();
+    await writeMemoModel(file);
+    await write(
+      file("ui/MemoText.tsx"),
+      '"use client";\nimport { st, cnst } from "@apps/demo/client";\nexport const MemoText = () => [st.use.memoText(), cnst.MemoStatus];\n',
+    );
+    const bundler = new RouteRegistry(app);
+    bundler.roots = [file("ui/MemoText.tsx")];
+    await bundler.update([]);
+    const patcher = new CsrDevPatcher(bundler, { resident: true });
+    expect(await patcher.update([])).toEqual({ kind: "unchanged" });
+
+    await write(file("lib/memo/memo.constant.ts"), 'export const MemoStatus = ["active", "done"] as const;\n');
+    const saved = await patcher.update([file("lib/memo/memo.constant.ts")]);
+
+    const update = saved.kind === "update" ? saved.update : null;
+    expect(update).toMatchObject({ reload: true, reason: "memo.constant.ts changed" });
+    const appJs = await Bun.file(path.join(bundler.outDir, "app.js")).text();
+    const factoryOf = (id: string) =>
+      appJs.slice(appJs.indexOf(`__akan.define("${id}"`)).split("\n__akan.define(")[0] ?? "";
+    const required = (id: string) =>
+      [...factoryOf(id).matchAll(/require\("([^"]+)"\)/g)].map(([, dep]) => dep?.replace(/^.*\/lib\//, "lib/"));
+    expect(factoryOf("apps/demo/lib/__client/memo.cnst.ts")).toContain("lib/memo/memo.constant.ts");
+    expect(required("apps/demo/lib/__client/memo.fetch.ts")).toEqual(["lib/__client/memo.cnst.ts"]);
+    expect(required("apps/demo/lib/__client/memo.st.ts")).toEqual([
+      "lib/__client/memo.cnst.ts",
+      "lib/__client/memo.fetch.ts",
+    ]);
+    expect(appJs).toContain('"done"');
+    expect(appJs).not.toContain('__akan.define("apps/demo/lib/cnst.ts"');
   });
 
   test("a store save that adds a key patches the owners table, which takes its own update, and leaves the bootstrap as it was", async () => {

@@ -564,6 +564,51 @@ describe("route client store bootstrap", () => {
       for (const marker of wholeOrOtherPieces) expect(sized).not.toContain(marker);
     });
 
+    test.each([
+      ["the object first", "Memo, cnst"],
+      ["the constants first", "cnst, Memo"],
+    ])(
+      "a file naming one component of an object and one constant, %s, brings that component's file and that model's registration, never every constant",
+      async (_, names) => {
+        const { appDir, app } = await routeFixture();
+        await write(
+          path.join(appDir, "client.ts"),
+          [
+            'export * as cnst from "./lib/cnst";',
+            'export { msg, Err, usePage } from "./lib/usePage";',
+            'export { fetch, sig } from "./lib/useClient";',
+            'export { st, RootStore } from "./lib/st";',
+            'export { Memo } from "./lib/memo";',
+            "",
+          ].join("\n"),
+        );
+        await write(
+          path.join(appDir, "lib/memo/Memo.Zone.tsx"),
+          '"use client";\nexport const View = Object.freeze({ mark: "memo-view-marker" });\n',
+        );
+        await write(
+          path.join(appDir, "lib/memo/memo.constant.ts"),
+          'export const MemoStatus = Object.freeze({ mark: "memo-status-marker" });\n',
+        );
+        await write(
+          path.join(appDir, "lib/__client/memo.cnst.ts"),
+          'import * as cnst from "../memo/memo.constant";\nexport const memo = Object.freeze({ mark: "piece:memo.cnst", cnst });\n',
+        );
+        const entry = path.join(appDir, "ui/Status.tsx");
+        await write(
+          entry,
+          `"use client";\nimport { ${names} } from "@apps/demo/client";\nexport const Status = () => [Memo.Zone.View, cnst.MemoStatus, "status-ui-marker"];\n`,
+        );
+        await build(app, entry);
+
+        const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+        for (const marker of ["status-ui-marker", "memo-view-marker", "memo-status-marker", "piece:memo.cnst"])
+          expect(browser).toContain(marker);
+        for (const marker of ["cnst-marker", "other-ui-marker", ...assembledMarkers, '"runtime-marker"'])
+          expect(browser).not.toContain(marker);
+      },
+    );
+
     for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors, ...StoreBootstrap.assembled])
       test(`an app not synced to lib/${file}.ts keeps the whole runtime in its browser chunks and is told to sync`, async () => {
         const { appDir, app, warnings } = await routeFixture();
