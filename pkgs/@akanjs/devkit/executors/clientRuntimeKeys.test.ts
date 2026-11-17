@@ -6,7 +6,6 @@ import { Logger } from "akanjs/common";
 import { type RuntimeFamily, RuntimeNameTable, runtimeFamilies } from "../quality/runtimeNameTable";
 import { RuntimeUse } from "../quality/runtimeUse";
 import { createTempApp, tempRoots, writeJson, writeText } from "../test/testHelpers";
-import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { RouteRuntime } from "../transforms/routeRuntime";
 
 const trackRoot = tempRoots();
@@ -632,26 +631,37 @@ console.log(JSON.stringify({
 }));
 `;
 
+const devkitFile = (file: string) => JSON.stringify(path.resolve(import.meta.dir, "..", file));
+
+const bundleScript = (root: string, appName: string, entries: string[]) => `
+const path = await import("node:path");
+const { AppExecutor } = await import(${devkitFile("executors/appExecutor.ts")});
+const { WorkspaceExecutor } = await import(${devkitFile("executors/workspaceExecutor.ts")});
+const { createBarrelImportsPlugin } = await import(${devkitFile("transforms/barrelImportsPlugin.ts")});
+const { RouteRuntime } = await import(${devkitFile("transforms/routeRuntime.ts")});
+const [root, appName, entries] = ${JSON.stringify([root, appName, entries])};
+const app = AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), appName);
+const routeRuntime = await RouteRuntime.read(root, "apps/" + appName);
+if (!routeRuntime) throw new Error("the fixture app has no assembled runtime pieces");
+const built = await Bun.build({
+  entrypoints: entries.map((entry) => path.join(root, entry)),
+  target: "browser",
+  splitting: true,
+  root,
+  outdir: path.join(root, "bundled", entries.join("+").replaceAll(/[^\\w+]/g, "-")),
+  define: { "process.env.AKAN_PUBLIC_APP_NAME": JSON.stringify(appName) },
+  plugins: [await createBarrelImportsPlugin(app, { routeRuntime, modelRuntime: routeRuntime.wholeSource })],
+});
+console.log(JSON.stringify({
+  outputs: built.outputs.map((output) => output.path),
+  pages: built.outputs.filter(({ kind }) => kind === "entry-point").map((output) => path.relative(root, output.path)),
+}));
+`;
+
 //? One entry is one page's bundle: with several, a shared chunk can run a store before the file a page reaches first.
-const bundleForBrowser = async (
-  { root, app }: Awaited<ReturnType<typeof writeWorkspace>>,
-  appName: string,
-  entries: string[],
-) => {
-  const routeRuntime = await RouteRuntime.read(root, `apps/${appName}`);
-  if (!routeRuntime) throw new Error("the fixture app has no assembled runtime pieces");
-  const built = await Bun.build({
-    entrypoints: entries.map((entry) => path.join(root, entry)),
-    target: "browser",
-    splitting: true,
-    root,
-    outdir: path.join(root, "bundled", entries.join("+").replaceAll(/[^\w+]/g, "-")),
-    define: { "process.env.AKAN_PUBLIC_APP_NAME": JSON.stringify(appName) },
-    plugins: [await createBarrelImportsPlugin(app, { routeRuntime, modelRuntime: routeRuntime.wholeSource })],
-  });
-  const pages = built.outputs.filter(({ kind }) => kind === "entry-point").map((output) => output.path);
-  return { built, pages: pages.map((page) => path.relative(root, page)) };
-};
+//? Built in its own process: in this one a macro can resolve `@libs/*` by a tsconfig cached before the fixture wrote its paths.
+const bundleForBrowser = async (root: string, appName: string, entries: string[]) =>
+  (await evaluate(root, bundleScript(root, appName, entries), appName)) as { outputs: string[]; pages: string[] };
 
 describe("an app's client runtime pieces", () => {
   test("leave the whole client runtime answering its keys in the order it did before the pieces, in a browser and outside one", async () => {
@@ -835,16 +845,16 @@ describe("an app's client runtime pieces", () => {
         "ui/Count.tsx": 'import { st } from "@apps/stall/client";\nexport const Count = () => st.use.itemCount();\n',
       },
     });
-    const { built } = await bundleForBrowser(
-      temp,
+    const { outputs } = await bundleForBrowser(
+      temp.root,
       "stall",
       ["Card", "Tile", "Count"].map((name) => `apps/stall/ui/${name}.tsx`),
     );
-    const bundled = (await Promise.all(built.outputs.map((output) => output.text()))).join("\n");
+    const bundled = (await Promise.all(outputs.map((output) => Bun.file(output).text()))).join("\n");
     const descriptorsOf = (endpoint: string) =>
       bundled.match(new RegExp(`\\b${endpoint}: \\{\\s+type: "`, "g"))?.length ?? 0;
 
-    expect(built.outputs.length).toBeGreaterThan(3);
+    expect(outputs.length).toBeGreaterThan(3);
     expect(["pingAt", "itemCount", "auditTrail"].map(descriptorsOf)).toEqual([1, 2, 0]);
     expect(bundled).not.toContain("ran-on-the-server");
   }, 120_000);
@@ -980,7 +990,7 @@ describe("an app store that redeclares what the lib store it extends declares", 
 
     expect(await evaluate(root, redeclaredScript([`apps/${app}/lib/st.ts`]), app)).toEqual(wholeAnswer);
     for (const [index, order] of orders.entries()) {
-      const { pages } = await bundleForBrowser(temp, app, [await writeLoadOrder(root, `order${index}`, order)]);
+      const { pages } = await bundleForBrowser(temp.root, app, [await writeLoadOrder(root, `order${index}`, order)]);
       const answer = await evaluate(root, redeclaredScript(pages, { browser: true }), app);
       expect({ order, answer }).toEqual({ order, answer: wholeAnswer });
     }
@@ -990,7 +1000,7 @@ describe("an app store that redeclares what the lib store it extends declares", 
     const [app, lib] = ["florist", "cellar"];
     const temp = await writeRedeclaringWorkspace(app, lib);
     for (const page of [`libs/${lib}/ui/Picker.tsx`, `apps/${app}/ui/Field.tsx`, `apps/${app}/ui/Count.tsx`]) {
-      const { pages } = await bundleForBrowser(temp, app, [page]);
+      const { pages } = await bundleForBrowser(temp.root, app, [page]);
       const answer = await evaluate(temp.root, redeclaredScript(pages, { browser: true }), app);
       expect({ page, answer }).toEqual({ page, answer: wholeAnswer });
     }
@@ -1012,7 +1022,7 @@ describe("an app store that redeclares what the lib store it extends declares", 
       `apps/${app}/ui/Field.tsx`,
       libPiece,
     ]) {
-      const { pages } = await bundleForBrowser(temp, app, [page]);
+      const { pages } = await bundleForBrowser(temp.root, app, [page]);
       const answer = await evaluate(root, pickedScript(pages, { browser: true }), app);
       expect({ page, answer }).toEqual({ page, answer: whole });
     }
@@ -1022,7 +1032,7 @@ describe("an app store that redeclares what the lib store it extends declares", 
     const [app, lib] = ["baker", "larder"];
     const temp = await writeRedeclaringWorkspace(app, lib);
     const { root } = temp;
-    const { pages } = await bundleForBrowser(temp, app, [
+    const { pages } = await bundleForBrowser(temp.root, app, [
       await writeLoadOrder(root, "pieces", [`libs/${lib}/lib/__client/item.st`, `apps/${app}/lib/__client/item.st`]),
       await writeLoadOrder(root, "wholes", [`libs/${lib}/lib/__client/_st`, `apps/${app}/lib/__client/_st`]),
     ]);
