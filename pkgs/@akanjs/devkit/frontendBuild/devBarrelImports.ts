@@ -2,13 +2,31 @@ import path from "node:path";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type PackageEntry } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
+import { ObjectMemberImports, type ObjectMemberRewrite } from "../transforms/objectMemberImports";
 import { CsrDevPaths } from "./csrDevPaths";
-import type { CsrDevBarrelStamp, CsrDevNarrowedImport } from "./csrDevTypes";
+import type { CsrDevBarrelStamp, CsrDevContext, CsrDevNarrowedImport } from "./csrDevTypes";
 
 export interface DevBarrelRewrite {
   contents: string | null;
   narrowed: Record<string, CsrDevNarrowedImport>;
 }
+
+const CLIENT_SIDE = "@client";
+
+//? An object import is keyed by the module that declares it; its names lead with the importer's side, which decides
+//? whether a member past a `"use client"` boundary narrows.
+const objectUsesOf = (objects: ObjectMemberRewrite | null): (readonly [string, string[]])[] => {
+  if (!objects) return [];
+  const members = new Map<string, Set<string>>();
+  for (const entry of [...objects.narrowed, ...objects.kept]) {
+    const key = ObjectMemberImports.keyOf(entry.file, entry.object);
+    const set = members.get(key) ?? new Set<string>();
+    if ("members" in entry) for (const member of entry.members) set.add(member);
+    members.set(key, set);
+  }
+  const side = objects.clientImporter ? CLIENT_SIDE : "@server";
+  return [...members].map(([key, set]) => [key, [side, ...[...set].sort()]] as const);
+};
 
 //* Targets are written as relative paths, which resolve against the disk with no resolution build: a save that adds a
 //* barrel import stays a patch.
@@ -17,16 +35,36 @@ export class DevBarrelImports {
   readonly #resolvePackage: (pkgName: string) => Promise<PackageEntry | null>;
   readonly #analyzer: BarrelAnalyzer;
   readonly #packages = new Map<string, Promise<PackageEntry | null>>();
+  readonly #objects: ObjectMemberImports | null;
 
-  constructor(barrels: readonly string[], resolvePackage: (pkgName: string) => Promise<PackageEntry | null>) {
+  constructor(
+    barrels: readonly string[],
+    resolvePackage: (pkgName: string) => Promise<PackageEntry | null>,
+    { packageRoot }: { packageRoot?: string } = {},
+  ) {
     this.#barrels = [...barrels];
     this.#resolvePackage = resolvePackage;
-    this.#analyzer = new BarrelAnalyzer({ resolvePackage });
+    this.#analyzer = new BarrelAnalyzer({ resolvePackage, ...(packageRoot ? { packageRoot } : {}) });
+    this.#objects = packageRoot
+      ? new ObjectMemberImports({
+          resolve: ObjectMemberImports.resolverOf(resolvePackage),
+          specifierOf: (file, importer) =>
+            DevBarrelImports.#relativeFile(CsrDevPaths.realpath(file), path.dirname(CsrDevPaths.realpath(importer))),
+          keepLines: true,
+        })
+      : null;
   }
 
-  static async create(app: App, barrels: readonly string[]): Promise<DevBarrelImports | null> {
-    if (barrels.length === 0) return null;
-    return new DevBarrelImports(barrels, await createTsconfigPackageResolver(app));
+  static async create(
+    app: App,
+    { barrelImports = [], routeRuntime }: Pick<CsrDevContext, "barrelImports" | "routeRuntime">,
+  ): Promise<DevBarrelImports | null> {
+    if (barrelImports.length === 0) return null;
+    return new DevBarrelImports(
+      barrelImports,
+      await createTsconfigPackageResolver(app),
+      routeRuntime ? { packageRoot: app.workspace.workspaceRoot } : {},
+    );
   }
 
   async rewrite(
@@ -35,28 +73,38 @@ export class DevBarrelImports {
     { perModule = false }: { perModule?: boolean } = {},
   ): Promise<DevBarrelRewrite | null> {
     const named = this.#barrels.filter((barrel) => source.includes(barrel));
-    if (named.length === 0) return null;
+    if (named.length === 0 && !this.#objects) return null;
     const packages = await this.#packagesOf(named);
     const from = path.dirname(CsrDevPaths.realpath(importer));
     const names = new Map<string, Set<string>>();
-    const contents = await rewriteBarrelImports(source, named, this.#analyzer, {
-      keepLines: true,
-      specifierOf: (subpath) => DevBarrelImports.#relative(subpath, from, packages),
-      onImport: (barrel, imported) => names.set(barrel, new Set([...(names.get(barrel) ?? []), ...imported])),
-      perModule,
-    });
+    const rewritten =
+      named.length === 0
+        ? null
+        : await rewriteBarrelImports(source, named, this.#analyzer, {
+            keepLines: true,
+            specifierOf: (subpath) => DevBarrelImports.#relative(subpath, from, packages),
+            onImport: (barrel, imported) => names.set(barrel, new Set([...(names.get(barrel) ?? []), ...imported])),
+            perModule,
+            reexports: this.#objects !== null,
+          });
+    const objects = (await this.#objects?.rewrite(rewritten ?? source, importer)) ?? null;
+    const uses = [...[...names].map(([barrel, set]) => [barrel, [...set].sort()] as const), ...objectUsesOf(objects)];
+    if (named.length === 0 && uses.length === 0) return null;
     const narrowed = await Promise.all(
-      [...names].map(async ([barrel, set]) => {
-        const sorted = [...set].sort();
-        return [barrel, { names: sorted, hash: await this.fingerprint(barrel, sorted) }] as const;
-      }),
+      uses.map(async ([key, sorted]) => [key, { names: sorted, hash: await this.fingerprint(key, sorted) }] as const),
     );
-    return { contents, narrowed: Object.fromEntries(narrowed) };
+    return { contents: objects?.contents ?? rewritten, narrowed: Object.fromEntries(narrowed) };
   }
 
   //? Hashes what an import of these names alone narrows to, with each target as the file it resolves to: the same
   //? names in another importer narrow to the same files, and only a moved export or a moved file changes it.
   async fingerprint(barrel: string, names: string[]): Promise<string> {
+    const object = ObjectMemberImports.parseKey(barrel);
+    if (object) {
+      const [side, ...members] = names;
+      const hash = await this.#objects?.fingerprint(object.file, object.object, members, side === CLIENT_SIDE);
+      return hash ?? "";
+    }
     const packages = await this.#packagesOf([barrel]);
     const aliased = names.map((name, index) => `${name} as _${index}`).join(", ");
     const narrowed = await rewriteBarrelImports(
@@ -71,11 +119,14 @@ export class DevBarrelImports {
   async stamps(barrels: Iterable<string>, idOf: (file: string) => string): Promise<Record<string, CsrDevBarrelStamp>> {
     const stamped = await Promise.all(
       [...barrels].map(async (barrel) => {
-        const files = await this.#analyzer.filesOf(barrel);
+        const object = ObjectMemberImports.parseKey(barrel);
+        const files = object
+          ? ((await this.#objects?.filesOf(object.file)) ?? [object.file])
+          : await this.#analyzer.filesOf(barrel);
         const read = [...new Set([...files, ...files.map((file) => path.dirname(file))])];
         const stamp: CsrDevBarrelStamp = {
           read: Object.fromEntries(read.map((file) => [idOf(file), CsrDevPaths.mtimeOf(file)])),
-          digest: await this.#digest(barrel),
+          digest: object ? ((await this.#objects?.digest(object.file)) ?? "") : await this.#digest(barrel),
         };
         return [barrel, stamp] as const;
       }),
@@ -127,7 +178,10 @@ export class DevBarrelImports {
 
   static #relative(subpath: string, from: string, packages: PackageEntry[]): string {
     const file = DevBarrelImports.#fileOf(subpath, packages);
-    if (!file) return subpath;
+    return file ? DevBarrelImports.#relativeFile(file, from) : subpath;
+  }
+
+  static #relativeFile(file: string, from: string): string {
     const relative = path.relative(from, file);
     //? A target on another Windows drive has no relative path: `path.relative` returns it absolute.
     if (path.isAbsolute(relative)) return file.split(path.sep).join("/");
