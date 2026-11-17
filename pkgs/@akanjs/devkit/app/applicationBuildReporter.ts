@@ -1,5 +1,6 @@
 import { Logger } from "akanjs/common";
 import { ErrorReport } from "../util/errorReport";
+import { DictionarySizes } from "./dictionarySizes";
 import { RouteJsBudget, type RouteJsBudgetWarning, type RouteJsSize } from "./routeJsBudget";
 
 export interface ApplicationBuildPhaseResult {
@@ -43,6 +44,9 @@ export class ApplicationBuildReporter {
       ApplicationBuildReporter.printRouteJsWarnings(result);
       Logger.rawLog("");
     }
+    const dictionaries = DictionarySizes.of(result.artifactDir);
+    for (const size of dictionaries) Logger.rawLog(DictionarySizes.format(size));
+    if (dictionaries.length) Logger.rawLog("");
     Logger.rawLog(`Route artifacts: ${result.artifactDir}`);
     Logger.rawLog(`Server output: ${result.outputDir}`);
     Logger.rawLog(`Done in ${ApplicationBuildReporter.formatDuration(result.durationMs)}`);

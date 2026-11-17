@@ -89,7 +89,9 @@ export class SsrBaseArtifactBuilder {
     });
     const { cssCompiler, optimizedFonts, cssAssets } = await timed("styles", () => this.#buildStyleAssets());
     const dictAssets = await timed("dictionary", () =>
-      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).build(akanConfig.i18n),
+      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).build(akanConfig.i18n, {
+        splitApi: akanConfig.clientRuntime === "route",
+      }),
     );
     const pagesBundle = await timed("pages", () =>
       new PagesBundleBuilder(this.#app, this.#command, pageEntries, this.#serverEnv).build(),

@@ -436,6 +436,25 @@ export default page()
       l.trans({
         en: (
           <>
+            <strong>Read an endpoint's description on the server.</strong> Under <code>clientRuntime: "route"</code>,
+            the <code>.desc</code> and <code>.arg</code> texts of a signal stay out of the dictionary file every page
+            loads and come only to a page that shows the API explorer, so a client component reading one elsewhere gets
+            the text on the server and the key in the browser, which React reports as a hydration mismatch. Read them in
+            a server component and pass the text down.
+          </>
+        ),
+        ko: (
+          <>
+            <strong>endpoint 설명은 서버에서 읽습니다.</strong> <code>clientRuntime: "route"</code>에서는 signal의{" "}
+            <code>.desc</code>와 <code>.arg</code> 문구가 모든 페이지가 불러오는 사전 파일에서 빠지고, API 탐색기를 보여
+            주는 페이지에만 따로 옵니다. 그래서 다른 곳의 client component가 읽으면 서버에서는 문구가, 브라우저에서는
+            key가 나와 React가 hydration 불일치를 알립니다. server component에서 읽어 문구를 넘깁니다.
+          </>
+        ),
+      }),
+      l.trans({
+        en: (
+          <>
             <strong>One-off text belongs to the screen.</strong> A phrase used once, on one screen, is{" "}
             <code>{"l.trans({ en, ko })"}</code> in that component. A key only one component reads is a key somebody
             keeps in sync for nothing.
