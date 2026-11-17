@@ -205,7 +205,10 @@ export class AkanAppHost {
   }
   //? A bin two libs declare differently fails the build that carries it; a dev start has nothing to carry.
   async #warnMissingBin() {
-    const names = await new AppBin(this.app, await this.app.getConfig()).names().catch(() => []);
+    const names = await this.app
+      .getConfig()
+      .then((config) => new AppBin(this.app, config).names())
+      .catch(() => []);
     const missing = AppBin.missing(names);
     if (missing) this.logger.warn(missing);
   }
