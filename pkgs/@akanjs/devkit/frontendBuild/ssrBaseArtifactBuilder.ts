@@ -40,10 +40,12 @@ export class SsrBaseArtifactBuilder {
   #started = Date.now();
   #serverEnv: BunPlugin | undefined;
   #vendorExports: Partial<Record<VendorSpecifier, readonly string[]>>;
+  #dictionaryRoutes?: ReadonlyMap<string, readonly string[]>;
 
   /**
    * `serverEnv`: the build's server env plugin, so the route bundle carries the env files the backend does and no more.
    * `vendorExports`: the only names a vendor entry exports, for a build whose every client module is already bundled.
+   * `dictionaryRoutes`: the dictionary groups each route can show, for a build that cuts the page dictionary by route.
    */
   constructor(
     app: App,
@@ -51,12 +53,18 @@ export class SsrBaseArtifactBuilder {
     {
       serverEnv,
       vendorExports = {},
-    }: { serverEnv?: BunPlugin; vendorExports?: Partial<Record<VendorSpecifier, readonly string[]>> } = {},
+      dictionaryRoutes,
+    }: {
+      serverEnv?: BunPlugin;
+      vendorExports?: Partial<Record<VendorSpecifier, readonly string[]>>;
+      dictionaryRoutes?: ReadonlyMap<string, readonly string[]>;
+    } = {},
   ) {
     this.#app = app;
     this.#command = command;
     this.#serverEnv = serverEnv;
     this.#vendorExports = vendorExports;
+    this.#dictionaryRoutes = dictionaryRoutes;
     this.#artifactDir = `${command === "build" ? app.dist.cwdPath : app.cwdPath}/.akan/artifact`;
     this.#absArtifactDir = path.resolve(this.#artifactDir);
   }
@@ -88,9 +96,16 @@ export class SsrBaseArtifactBuilder {
       return await resolveSsrPageEntriesForApp(this.#app, pageKeys);
     });
     const { cssCompiler, optimizedFonts, cssAssets } = await timed("styles", () => this.#buildStyleAssets());
-    const dictAssets = await timed("dictionary", () =>
-      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).build(akanConfig.i18n, {
-        splitApi: akanConfig.clientRuntime === "route",
+    const byRoute = akanConfig.clientRuntime === "route";
+    const {
+      assets: dictAssets,
+      routes: dictRoutes,
+      groups: dictGroups,
+    } = await timed("dictionary", () =>
+      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).buildAll(akanConfig.i18n, {
+        splitApi: byRoute,
+        routes: byRoute ? this.#dictionaryRoutes : undefined,
+        everyGroupAlone: byRoute && this.#command === "start",
       }),
     );
     const pagesBundle = await timed("pages", () =>
@@ -115,6 +130,8 @@ export class SsrBaseArtifactBuilder {
       vendorMap,
       cssAssets,
       dictAssets,
+      ...(dictRoutes ? { dictRoutes } : {}),
+      ...(dictGroups ? { dictGroups } : {}),
       pagesBundlePath:
         this.#command === "build"
           ? path.relative(this.#absArtifactDir, pagesBundle.bundlePath)

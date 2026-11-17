@@ -18,3 +18,11 @@ export const actionErrorMessageOf = (error: unknown) => {
   const lang = Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale;
   return Translator.translateByLocale(lang, actionErrorKey(error), actionErrorDataOf(error));
 };
+
+//? A toast is shown once, so an error of a module whose texts the route did not load waits for them.
+export const showActionErrorMessage = (error: unknown, show: (content: string) => void) => {
+  const lang = Translator.getActiveLocale() ?? parseAkanI18nEnv().defaultLocale;
+  const ready = Translator.ready(lang, actionErrorKey(error));
+  if (!ready) return show(actionErrorMessageOf(error));
+  void ready.then(() => show(actionErrorMessageOf(error)));
+};

@@ -17,6 +17,7 @@ import type { App } from "../commandDecorators";
 import { AppExecutor, type PageRoot, WorkspaceExecutor } from "../executors";
 import type { ClientEntryDiscovery } from "../frontendBuild/clientBuildTypes";
 import { GraphClientEntryDiscovery } from "../frontendBuild/clientEntryDiscovery";
+import { DictionaryRoutes } from "../frontendBuild/dictionaryRoutes";
 import { RouteClientBuilder } from "../frontendBuild/routeClientBuilder";
 import type { BatchWork, BuildBatchRequest, BuildBatchResult, OptimizedFonts } from "./buildBatchProtocol";
 import { BuildBatchRunner } from "./buildBatchRunner";
@@ -113,6 +114,7 @@ class IncrementalBuilder {
         browser: "registry",
       }).build();
       await this.#ssr.ensureSsrEntries(delta.registryEntries ?? []);
+      const dictionaryGroups = await this.#dictionaryGroupsOf(msg.seeds, delta);
       this.#logger.verbose(`build-route ok routeId=${msg.routeId} newEntries=${delta.newEntries.length}`);
       //? The builder's generation, not the route cache's: the cache's does not move when a fixed file maps to no entry,
       //? so the rebuild's ok would carry the failure's own number.
@@ -131,6 +133,7 @@ class IncrementalBuilder {
           routeId: msg.routeId,
           generation: msg.generation,
           seenGeneration,
+          ...(dictionaryGroups !== undefined ? { dictionaryGroups } : {}),
         } as BuildRouteResultPayload,
       };
     } catch (err) {
@@ -145,6 +148,20 @@ class IncrementalBuilder {
       });
       return { type: "build-route-res", id: msg.id, ok: false, error: errMsg };
     }
+  }
+
+  //? A route whose groups could not be read loads the whole page file, as one with a key no build can follow does.
+  async #dictionaryGroupsOf(
+    seeds: string[],
+    { clientGraph, discoveredEntries, newEntries }: Awaited<ReturnType<RouteClientBuilder["build"]>>,
+  ): Promise<string[] | null | undefined> {
+    if ((await this.#app.getConfig()).clientRuntime !== "route" || !clientGraph) return undefined;
+    const entries = discoveredEntries ?? newEntries;
+    const route = { seeds, entries, importsByModule: clientGraph, discovery: this.#discovery };
+    return DictionaryRoutes.ofBuiltRoute(this.#app, route).catch((error: unknown) => {
+      this.#logger.warn(`dictionary groups of the route could not be read: ${String(error)}`);
+      return null;
+    });
   }
 
   // Exits so the OS reclaims the bundler arenas; the host spawns the replacement.

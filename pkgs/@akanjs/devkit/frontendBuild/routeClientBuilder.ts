@@ -10,7 +10,7 @@ import { ReactIconImports } from "../transforms/reactIconImports";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
 import { SignalDescriptors } from "../transforms/signalDescriptors";
-import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildTypes";
+import type { ClientBundleTarget, ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
@@ -55,6 +55,8 @@ export interface BuildRouteClientResult {
   registryEntries?: string[];
   /** Chunks mode: the importmap specifiers each browser chunk imports statically. */
   externalsByChunkUrl?: Record<string, string[]>;
+  /** The imports of every module the browser loads, or in registry mode of the SSR bundle standing in for it. */
+  clientGraph?: ReadonlyMap<string, readonly ClientModuleImport[]>;
 }
 
 interface BootstrapEntries {
@@ -168,6 +170,7 @@ export class RouteClientBuilder {
       clientDepsByEntry,
       ...(registry ? { registryEntries: [...acceptedEntries].sort() } : {}),
       ...(browserBundle ? { externalsByChunkUrl: Object.fromEntries(browserBundle.externalsByChunkUrl) } : {}),
+      clientGraph: referenceBundle.graph.importsByModule,
     };
   }
 

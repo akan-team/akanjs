@@ -15,6 +15,8 @@ interface TranslatorStateValue {
   replacedByLang: Map<string, object>;
   // The files each locale's snapshot left out, by name, merged where a page shows them (`DictionaryPart`).
   partsByLang: Map<string, Record<string, string> | undefined>;
+  // The table naming the route file of each of the locale's groups, for a key whose group no loaded file holds.
+  tableByLang: Map<string, string | undefined>;
   // Counts page dictionary loads, one per navigation: a part that failed to load is tried again at the next one.
   loadSeq?: number;
   // Browser-only: never written on the server, where concurrent requests share this state.
@@ -37,10 +39,11 @@ export class TranslatorState {
       seededDicts: new WeakSet<object>(),
       replacedByLang: new Map<string, object>(),
       partsByLang: new Map<string, Record<string, string> | undefined>(),
+      tableByLang: new Map<string, string | undefined>(),
     };
     return globalScope[translatorStateKey];
   }
-  static replace(lang: string, dict: Dictionary | undefined, parts?: Record<string, string>) {
+  static replace(lang: string, dict: Dictionary | undefined, parts?: Record<string, string>, table?: string) {
     if (!dict) return;
     const state = TranslatorState.get();
     if (state.replacedByLang.get(lang) === dict) return;
@@ -48,5 +51,6 @@ export class TranslatorState {
     state.replacedByLang.set(lang, dict);
     state.langDictionaryMap.set(lang, { ...dict });
     state.partsByLang.set(lang, parts);
+    state.tableByLang.set(lang, table);
   }
 }

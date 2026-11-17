@@ -1,5 +1,6 @@
 import { interpolateTranslation, parseAkanI18nEnv, pathGetLoose } from "akanjs/common";
 
+import { DictionaryGroups } from "./dictionaryGroups";
 import { type AllDictionary, type Dictionary, TranslatorState } from "./translatorState";
 
 export type { AllDictionary, Dictionary } from "./translatorState";
@@ -48,8 +49,14 @@ export class Translator {
     delete TranslatorState.get().activePath;
   }
   static translateByLocale(lang: string, key: string, param?: Record<string, string | number>): string {
-    const msg = Translator.#lookup(lang, key) ?? Translator.#lookupDefault(lang, key) ?? key;
+    const own = Translator.#lookup(lang, key);
+    if (own === undefined) DictionaryGroups.missed(lang, key);
+    const msg = own ?? Translator.#lookupDefault(lang, key) ?? key;
     return interpolateTranslation(msg, param);
+  }
+  //? For text shown once, such as a toast: `null` when the key's group is in, else a promise settling once it is.
+  static ready(lang: string, key: string): Promise<boolean> | null {
+    return DictionaryGroups.pending(lang, key);
   }
   static #lookup(lang: string, key: string) {
     const dictionary = TranslatorState.get().langDictionaryMap.get(lang);
