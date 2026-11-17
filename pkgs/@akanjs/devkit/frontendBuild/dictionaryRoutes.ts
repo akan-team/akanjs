@@ -1,11 +1,14 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { type DictionaryKeyRead, DictionaryKeys } from "../quality/dictionaryKeys";
+import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import type { ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
 import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 import { DictionaryConstants } from "./dictionaryConstants";
+import { RouteHandoffs } from "./routeHandoffs";
 
 export interface DictionaryRouteUnread {
   file: string;
@@ -104,10 +107,29 @@ export class DictionaryRoutes {
       "serverModules" in discovery && typeof discovery.serverModules === "function"
         ? await (discovery.serverModules as (seeds: string[]) => Promise<string[]>)(route.seeds)
         : [];
-    const read = reader.read({ entries: route.entries, serverModules });
+    const handoffs = await DictionaryRoutes.#handoffsOf(app, runtime);
+    const entries = await DictionaryRoutes.handedEntries(route.entries, serverModules, handoffs);
+    const read = reader.read({ entries, serverModules });
     if (read.whole)
       app.verbose(`[dictionary] the route loads the whole page dictionary: ${DictionaryRoutes.pinned(read.whole)}`);
     return read.whole ? null : read.groups;
+  }
+
+  //? Development's root layout imports every model's reference; production keeps those a server module hands over.
+  static async handedEntries(
+    entries: readonly string[],
+    serverModules: string[],
+    handoffs: RouteHandoffs | null,
+  ): Promise<readonly string[]> {
+    if (!handoffs) return entries;
+    const { referenceFiles } = await handoffs.read(serverModules);
+    return [...new Set([...entries.filter((entry) => !ModelReference.isFile(entry)), ...referenceFiles])];
+  }
+
+  static async #handoffsOf(app: App, runtime: RouteRuntime | null): Promise<RouteHandoffs | null> {
+    if (!runtime || (await StoreBootstrap.scopeOf(app)) !== "page") return null;
+    const { workspaceRoot } = app.workspace;
+    return new RouteHandoffs(workspaceRoot, runtime, await ModelReference.filesOf(workspaceRoot, `apps/${app.name}`));
   }
 
   static pinned({ file, line, why }: DictionaryRouteUnread): string {

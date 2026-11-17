@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
+import { runtimeFixtureTables } from "../quality/runtimeTable.fixture";
 import { tempDirs, writeText } from "../test/testHelpers";
+import { RouteRuntime } from "../transforms/routeRuntime";
 import type { ClientModuleImport } from "./clientBuildTypes";
 import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
 import { DictionaryConstants } from "./dictionaryConstants";
 import { type DictionaryPiecesOf, DictionaryRoutes } from "./dictionaryRoutes";
+import { RouteHandoffs } from "./routeHandoffs";
 
 const makeRoot = tempDirs("akan-devkit-dict-routes-");
 
@@ -158,5 +161,26 @@ describe("DictionaryRoutes", () => {
 
     expect(read.api).toBe(true);
     expect(read.groups).toEqual([DictionaryAssetBuilder.apiGroup, "base", "memo"]);
+  });
+
+  test("a development route counts the model references its server modules hand over, not every one the root layout imports", async () => {
+    const { root, abs } = await workspace({
+      "apps/demo/page/Notes.tsx": `import { fetch } from "@apps/demo/client";\nexport const Page = (id: string) => fetch.viewNote(id);\n`,
+      "apps/demo/ui/Plain.tsx": `"use client";\nexport const Plain = () => null;\n`,
+    });
+    const { demo } = await runtimeFixtureTables();
+    const referenceOf = (model: string) => abs(`apps/demo/lib/__client/${model}.ref.ts`);
+    const handoffs = new RouteHandoffs(
+      root,
+      new RouteRuntime(root, demo, new Set()),
+      new Map(["memo", "note"].map((model) => [model, referenceOf(model)])),
+    );
+    const discovered = [abs("apps/demo/ui/Plain.tsx"), referenceOf("memo"), referenceOf("note")];
+    const serverModules = [abs("apps/demo/page/Notes.tsx")];
+
+    const entries = await DictionaryRoutes.handedEntries(discovered, serverModules, handoffs);
+    expect(entries).toEqual([abs("apps/demo/ui/Plain.tsx"), referenceOf("note")]);
+    expect(reader(root, {}).read({ entries }).groups).toEqual(["base", "note"]);
+    expect(await DictionaryRoutes.handedEntries(discovered, serverModules, null)).toEqual(discovered);
   });
 });
