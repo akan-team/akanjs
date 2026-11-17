@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { App } from "../commandDecorators";
+import { printedInOwnProcess, tempDirs } from "../test/testHelpers";
 import { CsrDevModuleCompiler } from "./csrDevModuleCompiler";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
@@ -409,4 +410,67 @@ describe("CsrDevModuleCompiler barrel narrowing", () => {
       "apps/demo/page/added.tsx",
     ]);
   });
+});
+
+describe("CsrDevModuleCompiler under clientRuntime route", () => {
+  const makeTempRoot = tempDirs("akan-csr-dev-descriptors-");
+
+  test("answers a module piece's macro with descriptors read from the signal, in a process of its own", async () => {
+    const root = CsrDevPaths.realpath(await makeTempRoot());
+    await Bun.write(
+      path.join(root, "apps/demo/lib/sig.ts"),
+      `const serialized = { draft: { endpoint: { draftOf: { type: "query", args: [], returns: { refName: "draft-descriptor-ref" } } } } };
+export const fetch = { ownSerializedSignal: serialized };
+export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : { [name]: serialized[name as "draft"] });
+`,
+    );
+    const piece = path.join(root, "apps/demo/lib/__client/draft.fetch.ts");
+    await Bun.write(
+      piece,
+      'import { getSerializedSignalOf } from "../sig" with { type: "macro" };\nexport const descriptors = getSerializedSignalOf("draft");\n',
+    );
+    const dir = JSON.stringify(import.meta.dir);
+
+    const compiled = (await printedInOwnProcess(
+      `
+const path = await import("node:path");
+const { CsrDevModuleCompiler } = await import(path.join(${dir}, "csrDevModuleCompiler.ts"));
+const { CsrDevPaths } = await import(path.join(${dir}, "csrDevPaths.ts"));
+const { CsrDevResolver } = await import(path.join(${dir}, "csrDevResolver.ts"));
+const { SignalDescriptors } = await import(path.join(${dir}, "../transforms/signalDescriptors.ts"));
+const [root, piece] = ${JSON.stringify([root, piece])};
+let answered = 0;
+const inline = SignalDescriptors.prototype.inline;
+SignalDescriptors.prototype.inline = async function (...args) {
+  const contents = await inline.apply(this, args);
+  if (contents !== null) answered += 1;
+  return contents;
+};
+const logged = [];
+const context = {
+  ...${JSON.stringify(context)},
+  routeRuntime: { scopes: ["apps/demo"], redirectOf: () => null, transform: () => null },
+};
+const paths = new CsrDevPaths(root);
+const compiler = new CsrDevModuleCompiler({
+  app: {
+    verbose: () => undefined,
+    logger: { error: (message) => logged.push(message), warn: (message) => logged.push(message) },
+    workspace: { workspaceRoot: root },
+  },
+  paths,
+  resolver: new CsrDevResolver({ paths, context, entryFiles: [] }),
+  context,
+  outDir: path.join(root, "out"),
+  routePrefix: "/_akan/registry/",
+});
+const { modules } = await compiler.compile([piece], new Set());
+console.log(JSON.stringify({ answered, logged, factories: modules.map(({ factory }) => factory) }));
+`,
+      root,
+    )) as { answered: number; logged: string[]; factories: string[] };
+
+    expect({ answered: compiled.answered, logged: compiled.logged }).toEqual({ answered: 1, logged: [] });
+    expect(compiled.factories.join("\n")).toContain("draft-descriptor-ref");
+  }, 30_000);
 });
