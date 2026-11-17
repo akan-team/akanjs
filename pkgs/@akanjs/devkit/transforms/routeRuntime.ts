@@ -276,9 +276,11 @@ export class RouteRuntime {
     return source === null ? null : this.#route(source, absPath);
   }
 
+  //? A constant file is reached through a registration piece the planning bundle never holds, so it is routed wherever it is.
   transform(source: string, absPath: string): RouteRuntimeResult | null {
     const key = path.resolve(absPath);
-    if (this.#planned?.graph.has(key) && !this.#planned.routed.has(key)) return null;
+    const constantFile = RuntimeScopeReport.isConstantFile(this.fileNameOf(key) ?? "");
+    if (this.#planned?.graph.has(key) && !this.#planned.routed.has(key) && !constantFile) return null;
     return this.#route(source, key);
   }
 
