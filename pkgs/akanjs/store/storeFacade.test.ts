@@ -38,6 +38,7 @@ describe("StoreFacade on a key no loaded store declares", () => {
     expect(message).toContain("memo (apps/minimal)");
     expect(message).toContain("name st.use.memoList statically in the file that reads it");
     expect(message).toContain("import st from the app's client barrel");
+    expect(message).toContain("a JSON, structuredClone or cache copy and an object written by hand carry none");
     expect(facade.known).toBe(1);
   });
 

@@ -723,31 +723,44 @@ describe("an app's client runtime pieces", () => {
     const appPieces = path.join(root, "apps/shop/lib/__client");
     const read = (file: string) => Bun.file(path.join(appPieces, file)).text();
     const scopePieces = ["_base.fetch.ts", "_st.ts", "_useClient.ts", "audit.fetch.ts"];
-    const modulePieces = ["demo.fetch.ts", "demo.st.ts", "item.fetch.ts", "item.st.ts", "note.st.ts"];
-    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces, "ping.fetch.ts"]);
+    const modulePieces = ["demo.fetch.ts", "demo.st.ts", "item.cnst.ts", "item.fetch.ts", "item.st.ts", "note.st.ts"];
+    const references = ["item.ref.ts", "refs.ts"];
+    expect((await readdir(appPieces)).sort()).toEqual(
+      [...scopePieces, ...modulePieces, "ping.fetch.ts", ...references].sort(),
+    );
     expect((await readdir(path.join(root, "libs/stock/lib/__client"))).sort()).toEqual([
       ...scopePieces,
+      "item.cnst.ts",
       "item.fetch.ts",
       "item.st.ts",
     ]);
+    expect(await read("item.cnst.ts")).toContain(
+      'import { item as lib0 } from "@libs/stock/lib/__client/item.cnst";\nimport * as cnst from "../item/item.constant";\n\nloadedAfter(lib0);\nexport const item = ConstantRegistry.buildModel("item" as const, cnst.ItemInput,',
+    );
     expect(await read("_base.fetch.ts")).not.toContain("@libs/");
     expect(await read("_base.fetch.ts")).toContain('getSerializedSignalOf("base")');
     expect(await read("audit.fetch.ts")).toContain(
       'import { loaded as lib0 } from "@libs/stock/lib/__client/audit.fetch";',
     );
     expect(await read("item.fetch.ts")).toContain(
-      'import { loaded as lib0 } from "@libs/stock/lib/__client/item.fetch";\nimport * as cnst from "../cnst";',
+      'import { loaded as lib0 } from "@libs/stock/lib/__client/item.fetch";\nimport { item as cnst0 } from "./item.cnst";',
     );
-    expect(await read("item.fetch.ts")).toContain("\nloadedAfter(lib0);\nexport const loaded = FetchClient.build<");
+    expect(await read("item.fetch.ts")).toContain(
+      "\nloadedAfter(lib0, cnst0);\nexport const loaded = FetchClient.build<typeof signal>({}, ",
+    );
     expect(await read("ping.fetch.ts")).not.toContain("@libs/");
     expect(await read("ping.fetch.ts")).toContain('getSerializedSignalOf("ping")');
     expect(await read("demo.st.ts")).toContain('import { loaded as fetch0 } from "./demo.fetch";');
     expect(await read("demo.st.ts")).toContain('import { DemoStore } from "../_demo/demo.store";');
     expect(await read("item.st.ts")).toContain(
-      'import { loaded as fetch0 } from "./item.fetch";\nimport { item as lib0 } from "@libs/stock/lib/__client/item.st";\nimport { ItemStore } from "../item/item.store";\n\nloadedAfter(fetch0, lib0);\nexport const item = StoreRegistry.register(ItemStore);',
+      'import { item as cnst0 } from "./item.cnst";\nimport { loaded as fetch0 } from "./item.fetch";\nimport { item as lib0 } from "@libs/stock/lib/__client/item.st";\nimport { ItemStore } from "../item/item.store";\n\nloadedAfter(cnst0, fetch0, lib0);\nexport const item = StoreRegistry.register(ItemStore);',
     );
     expect(await read("note.st.ts")).not.toContain(".fetch");
     expect(await read("note.st.ts")).not.toContain("loadedAfter");
+    expect(await read("item.ref.ts")).toBe('\n"use client";\n\nexport const reference = "item";\n');
+    expect(await read("refs.ts")).toBe(
+      '\nimport { FetchClient } from "akanjs/fetch";\nimport { reference as ref0 } from "./item.ref";\n\nif (process.env.AKAN_PUBLIC_RENDER_ENV !== "csr") FetchClient.setModelRuntimes({ "item": ref0 });\n',
+    );
     expect((await read("_useClient.ts")).match(/(?<=from "\.\/)[^"]+(?=";)/g)).toEqual([
       "_base.fetch",
       "item.fetch",
@@ -765,7 +778,7 @@ describe("an app's client runtime pieces", () => {
     await rm(path.join(root, "apps/shop/lib/_ping"), { recursive: true });
     await writeText(path.join(appPieces, "stale.st.ts"), "export {};\n");
     await app.scan({ refresh: true });
-    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces]);
+    expect((await readdir(appPieces)).sort()).toEqual([...scopePieces, ...modulePieces, ...references].sort());
     expect(await read("_useClient.ts")).not.toContain("ping");
   }, 120_000);
 
@@ -816,7 +829,12 @@ describe("an app's client runtime pieces", () => {
     expect(piece).toContain(
       'import { loaded as fetch0 } from "./file.fetch";\nimport { loaded as fetch1 } from "./user.fetch";\n',
     );
-    expect(piece).toContain("\nloadedAfter(fetch0, fetch1);\nexport const user = StoreRegistry.register(UserStore);");
+    expect(piece).toContain(
+      'import { user as cnst0 } from "./user.cnst";\nimport { loaded as fetch0 } from "./file.fetch";\n',
+    );
+    expect(piece).toContain(
+      "\nloadedAfter(cnst0, fetch0, fetch1);\nexport const user = StoreRegistry.register(UserStore);",
+    );
     expect(await Bun.file(path.join(root, "libs/locker/lib/__client/item.st.ts")).text()).not.toContain("file.fetch");
     await pointScopes(root, ["apps/studio", "libs/locker"], { "useClient.ts": "./usePage" });
     expect(await evaluate(root, uploadSetterScript("locker"), "studio")).toEqual({

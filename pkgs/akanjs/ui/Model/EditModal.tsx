@@ -17,15 +17,13 @@ import DraftBar from "./DraftBar";
 import { type DraftProp, editDraftScope, newDraftScope } from "./draftScope";
 import { EditSeed } from "./editSeed";
 import { NewFormOrigin } from "./newFormOrigin";
-import "../modelRuntime";
 
 const EDIT_PAYLOAD_MAX_AGE_MS = 60_000;
 
 // Editors that unmounted while open, waiting one microtask for a remount of the same editor to claim
 // the modal back before the store gets reset. Keyed so a re-keyed list row cancels its own predecessor.
 const pendingModalResets = new Map<string, { cancel: () => void }>();
-const modalResetKey = (modelName: string, modalName: string, modalId?: string) =>
-  `${modelName}|${modalName}|${modalId ?? ""}`;
+const modalResetKey = (model: string, modalName: string, modalId?: string) => `${model}|${modalName}|${modalId ?? ""}`;
 
 interface EditModelProps<Full> {
   type?: "modal" | "form" | "empty";
@@ -186,8 +184,8 @@ export default function EditModal<Full extends { id: string }>({
   const filledSeedRef = useRef<string | null>(null);
   useEffect(() => {
     if (!modelEdit) return;
-    const refName = (modelEdit as ServerEdit<string, Full>).refName;
-    const editType: "edit" | "new" = refName && (modelEdit as DynamicRecord)[names.modelObj] ? "edit" : "new";
+    const served = (modelEdit as ServerEdit<string, Full>).refName;
+    const editType: "edit" | "new" = served && (modelEdit as DynamicRecord)[names.modelObj] ? "edit" : "new";
     const seedKey = EditSeed.keyOf(modelEdit as DynamicRecord, names.modelObj, names.modelViewAt);
     // While any form of the model is open it may hold typing, this editor's or another's; a closed one reopens as before.
     if (seedKey === filledSeedRef.current && (st.get() as unknown as DynamicRecord)[names.modelModal]) return;

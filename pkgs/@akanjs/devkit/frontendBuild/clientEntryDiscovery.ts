@@ -104,6 +104,26 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     return Array.from(entries).sort();
   }
 
+  async serverModules(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
+    const seen = new Set<string>();
+    const queue = seeds.map((seed) => path.resolve(seed));
+    for (const absPath of queue) {
+      if (seen.has(absPath) || shouldSkipNodeModule(absPath)) continue;
+      const facts = await this.#facts(absPath);
+      if (!facts || facts.isClientEntry) continue;
+      seen.add(absPath);
+      const swaps = importsAs?.get(absPath);
+      for (const imp of facts.imports) {
+        const swapped = swaps?.get(imp.path);
+        const spec = swapped === undefined ? imp.path : swapped;
+        if (!spec || NON_SOURCE_EXT_RE.test(spec)) continue;
+        const resolved = await this.#resolveSpecifier(spec, path.dirname(absPath));
+        if (resolved) queue.push(path.resolve(resolved));
+      }
+    }
+    return [...seen].sort();
+  }
+
   async resolveImport(spec: string, importerDir: string): Promise<string | null> {
     const resolved = await this.#resolveSpecifier(spec, importerDir);
     return resolved ? path.resolve(resolved) : null;

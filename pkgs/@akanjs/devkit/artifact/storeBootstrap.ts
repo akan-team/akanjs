@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { App } from "../commandDecorators";
 import type { BarrelExportMap } from "../transforms/barrelAnalyzer";
+import { ModelReference } from "../transforms/modelReference";
 
 const PAGE_ONLY_NAMES = new Set(["usePage", "msg", "Err"]);
 
@@ -23,9 +24,13 @@ export class StoreBootstrap {
     if ((await app.getConfig()).clientRuntime !== "route") return "whole";
     const lib = path.join(app.cwdPath, "lib");
     const found = await Promise.all(
-      ["st", StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors, ...StoreBootstrap.assembled].map((file) =>
-        Bun.file(path.join(lib, `${file}.ts`)).exists(),
-      ),
+      [
+        "st",
+        StoreBootstrap.pageRuntime,
+        StoreBootstrap.baseDescriptors,
+        ...StoreBootstrap.assembled,
+        ModelReference.registry,
+      ].map((file) => Bun.file(path.join(lib, `${file}.ts`)).exists()),
     );
     return found.every(Boolean) ? "page" : "whole";
   }

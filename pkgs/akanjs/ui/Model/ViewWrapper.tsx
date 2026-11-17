@@ -7,7 +7,7 @@ import { st } from "akanjs/store";
 import type { ReactNode } from "react";
 
 import { agentAttrs } from "../agentAttrs";
-import "../modelRuntime";
+import { resetModels } from "./resetModels";
 
 interface ViewWrapperProps {
   className?: string;
@@ -28,9 +28,7 @@ export default function ViewWrapper({ children, slice, modelId, className, modal
     .arg("modelId", ID)
     .exec((id) => {
       void storeDo[names.viewModel](id, { modal });
-      resets?.forEach((reset) => {
-        void storeDo[modelNames(reset).resetModel]();
-      });
+      resetModels(resets);
     });
   return (
     <div

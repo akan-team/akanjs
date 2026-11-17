@@ -11,7 +11,6 @@ import { Model } from "../Model";
 import { sliceNamesOf } from "../sliceNamesOf";
 import DataItem from "./Item";
 import DataPagination from "./Pagination";
-import "../modelRuntime";
 
 const gridClassName = "grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4";
 
