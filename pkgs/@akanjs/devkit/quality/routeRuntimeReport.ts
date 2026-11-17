@@ -25,7 +25,8 @@ const count = (items: readonly unknown[], one: string, many = `${one}s`) =>
   `${items.length} ${items.length === 1 ? one : many}`;
 
 export class RouteRuntimeReport {
-  static readonly file = ".akan/generated/route-runtime.json";
+  //? Under `.akan/cache`: the development server clears the rest of `.akan` when it starts.
+  static readonly file = ".akan/cache/route-runtime.json";
   static readonly shown = 6;
 
   static summary({ perModule, notSmaller, routes }: RouteRuntimeBuildReport): string {
