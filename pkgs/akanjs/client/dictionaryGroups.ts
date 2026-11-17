@@ -56,7 +56,7 @@ export class DictionaryGroups {
     if (reported.has(group)) return;
     reported.add(group);
     const fault = new Error(
-      `[dictionary] "${key}" was shown on a route whose dictionary files leave out "${group}": its file loads late. A key the build can read names the group, so the route loads it with the page.`,
+      `[dictionary] "${key}" was shown on a route whose dictionary files leave out "${group}": its file loads late. The group was not counted for this route in its last build: a key of it added to a client file since is counted when the route builds again, and a key the build can read names the group.`,
     );
     void wait.load.then((merged) => merged && console.error(fault));
   }

@@ -122,6 +122,7 @@ export default { base: { t: "Base" } };`,
       const messages = reports.mock.calls.map(([fault]) => String(fault));
       expect(messages).toHaveLength(1);
       expect(messages[0]).toContain(`"memo.modelName" was shown on a route whose dictionary files leave out "memo"`);
+      expect(messages[0]).toContain("was not counted for this route in its last build");
     } finally {
       stop();
       reports.mockRestore();
