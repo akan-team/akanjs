@@ -7,6 +7,7 @@ import { setTestEnv } from "../ui/testHelpers.fixture";
 
 let useCsrValues: typeof import("./useCsrValues").useCsrValues;
 let CsrSlide: typeof import("./csrSlide").CsrSlide;
+let NativeNavigation: typeof import("./nativeNavigation").NativeNavigation;
 let RenderLayer: typeof import("./RenderLayer").RenderLayer;
 let client: typeof import("akanjs/client");
 let defaultPageState: typeof import("akanjs/client").defaultPageState;
@@ -15,6 +16,7 @@ beforeAll(async () => {
   setTestEnv("csrvaluestest");
   ({ useCsrValues } = await import("./useCsrValues"));
   ({ CsrSlide } = await import("./csrSlide"));
+  ({ NativeNavigation } = await import("./nativeNavigation"));
   ({ RenderLayer } = await import("./RenderLayer"));
   client = await import("akanjs/client");
   ({ defaultPageState } = client);
@@ -368,6 +370,27 @@ describe("useCsrValues when a page is refused as it slides in", () => {
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/signin");
     expect(frame.stack()).toEqual(["/en/home", "/en/signin"]);
+  });
+
+  test("a move a guard sends back to the page on screen before it shows is reported as turned back, a plain one is not", async () => {
+    const turnedBack = spyOn(NativeNavigation, "turnedBack");
+    const frame = mountFrame("/en/signin", [
+      { segment: "signin" },
+      { segment: "home", transition: "stack", guard: () => client.router.redirect("/signin") },
+      { segment: "news" },
+    ]);
+
+    await act(async () => void client.router.push("/home"));
+    await elapse(900);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/signin");
+    expect(frame.seen.shown).not.toContain("/en/home");
+    expect(turnedBack).toHaveBeenCalledTimes(1);
+
+    await act(async () => void client.router.push("/news"));
+    await elapse(900);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/news");
+    expect(turnedBack).toHaveBeenCalledTimes(1);
+    turnedBack.mockRestore();
   });
 
   test("a redirect back to the page the visitor is on leaves the stack as it was", async () => {

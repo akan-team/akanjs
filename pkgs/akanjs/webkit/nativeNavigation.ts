@@ -27,6 +27,10 @@ interface NativeNavigationOptions {
 
 /** A native shell's deep links, push taps and Android back button, for the CSR frame that owns the history. */
 export class NativeNavigation {
+  //? An index that sends a page straight back (a signed-out visitor's home redirecting to the sign-in) would keep every
+  //? back on that page: a fallback that only redirects until it is on the page it left leaves the app instead.
+  static #fallingBack: { navigation: NativeNavigation; path: string; navigations: number; redirects: number } | null =
+    null;
   #mountedAt = Date.now();
   #handled: { href: string; handledAt: number } | null = null;
   #didResetStack = false;
@@ -97,6 +101,7 @@ export class NativeNavigation {
    * is history, or the index is still to come. Otherwise the system takes it and shows its own back-to-home animation.
    */
   syncBack(force = false) {
+    this.#leaveIfSentBack();
     if (!isNativeApp() || !app.isSupported("setBackEnabled")) return;
     const backState = this.options.backState();
     const enabled =
@@ -160,6 +165,32 @@ export class NativeNavigation {
       return;
     }
     clientRouter.backOrFallback(window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/", { scrollToTop: false });
+    NativeNavigation.#fallingBack = {
+      navigation: this,
+      path: backState.path,
+      navigations: clientRouter.navigationCount(),
+      redirects: clientRouter.redirectCount(),
+    };
+  }
+
+  /** The frame's word that a move was sent back to the page on screen before it showed, as a refusing guard does. */
+  static turnedBack() {
+    const fallingBack = NativeNavigation.#fallingBack;
+    if (fallingBack) fallingBack.navigation.#leaveIfSentBack();
+  }
+
+  //? A move of the visitor's own since the fallback ends it; a redirect is the index (or a guard on the way) answering.
+  #leaveIfSentBack() {
+    const fallingBack = NativeNavigation.#fallingBack;
+    if (fallingBack?.navigation !== this) return;
+    const redirects = clientRouter.redirectCount() - fallingBack.redirects;
+    if (clientRouter.navigationCount() - fallingBack.navigations !== redirects) {
+      NativeNavigation.#fallingBack = null;
+      return;
+    }
+    if (!redirects || this.options.historyIdx() > 0 || this.options.backState().path !== fallingBack.path) return;
+    NativeNavigation.#fallingBack = null;
+    void app.exit().catch(() => undefined);
   }
 
   //? a stack a deep link started has nothing under it, so back leaves the app rather than inventing a history

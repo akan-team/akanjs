@@ -18,6 +18,7 @@ import {
 import { isNativeApp, openExternalUrl } from "akanjs/client/native";
 import { useCallback, useMemo, useState } from "react";
 import { CsrRefresh } from "./csrRefresh";
+import { NativeNavigation } from "./nativeNavigation";
 import { useCsrKeyboard } from "./useCsrKeyboard";
 import { type CsrLocationState, useCsrLocationState } from "./useCsrLocationState";
 import { type CsrNavigation, useCsrNavigation } from "./useCsrNavigation";
@@ -68,6 +69,7 @@ const useCsrRouter = ({
         //? Typed so the API report prints `NavigationIntent` bare; it spells out any type this file does not import.
         const cancelled: NavigationIntent | null = cancelPendingNavigation();
         if (location.href === href) {
+          if (cancelled) NativeNavigation.turnedBack();
           if (!pageContentRef.current) return;
           pageContentRef.current.scrollTop = getScrollTop(location);
           return;
