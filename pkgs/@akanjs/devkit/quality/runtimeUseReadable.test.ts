@@ -190,6 +190,26 @@ describe("RuntimeUse.analyze, a name built from a slice the function is handed",
     ]);
   });
 
+  test("keeps the whole runtime where the slice parameter is reassigned or defaulted", () => {
+    const built = `st.use[\`queryArgsOf\${capitalize(slice.sliceName)}\`]`;
+    const read = `${built}()`;
+    const inFunction = (parameters: string, before: string) =>
+      analyze(`${sliceHead}export const a = (${parameters}) => {\n${before}  return ${read};\n};\n`);
+    expect([
+      inFunction("slice: SliceMeta, other: any", "  slice = other;\n"),
+      inFunction("slice: SliceMeta, other: any", "  ({ slice } = other);\n"),
+      inFunction("slice: SliceMeta, other: any", "  [slice] = other;\n"),
+      inFunction("slice: SliceMeta, other: any", "  (slice as any) = other;\n"),
+      inFunction("slice: SliceMeta", "  for (slice of []) break;\n"),
+      inFunction("slice: SliceMeta", "  slice ||= slice;\n"),
+      inFunction("slice = (undefined as unknown) as SliceMeta", ""),
+      inFunction("{ slice }: { slice: SliceMeta }, other: any", "  slice = other;\n"),
+      inFunction("{ slice = other as SliceMeta }: { slice?: SliceMeta }, other: any", ""),
+      inFunction("{ slice }: { slice: SliceMeta } = { slice: {} as SliceMeta }", ""),
+      inFunction("slice: SliceMeta", "  const other = { slice };\n"),
+    ]).toEqual([...Array.from({ length: 10 }, () => `computed-access: ${built}`), []]);
+  });
+
   test("loads a module the slice's own arrival does not, for every slice the name may stand for", () => {
     const entry = (scope: string, module: string): RuntimeNameEntry => ({
       owners: [{ scope, module }],

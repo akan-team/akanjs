@@ -1,5 +1,5 @@
 import ts from "typescript";
-import type { RuntimeLexicalScope } from "./runtimeLexicalScope";
+import { RuntimeLexicalScope } from "./runtimeLexicalScope";
 import type { RuntimeNameTable, RuntimeNeed, RuntimeOwner } from "./runtimeNameTable";
 import { uncast } from "./runtimeSyntax";
 
@@ -138,11 +138,60 @@ export class RuntimeSliceKey {
     if (!name || !declared || !("name" in declared) || declared.name !== name) return false;
     search.object ??= name;
     if (search.object !== name) return false;
-    if (ts.isParameter(declared)) return !declared.dotDotDotToken && this.#isSliceType(declared.type, 0);
+    if (ts.isParameter(declared))
+      return (
+        !declared.dotDotDotToken &&
+        !declared.initializer &&
+        !this.#isReassigned(name, declared.parent) &&
+        this.#isSliceType(declared.type, 0)
+      );
     const taken = ts.isBindingElement(declared) ? RuntimeSliceKey.#takenFrom(declared) : null;
     const holder = taken?.holder;
     if (!taken || !holder || taken.key === null || !ts.isParameter(holder) || holder.dotDotDotToken) return false;
+    if (holder.initializer || this.#isReassigned(name, holder.parent)) return false;
     return this.#isSliceType(this.#memberType(holder.type, taken.key, 0), 0);
+  }
+
+  #isReassigned(name: ts.Identifier, scope: ts.Node) {
+    let found = false;
+    const visit = (node: ts.Node) => {
+      if (found) return;
+      if (ts.isIdentifier(node) && node.text === name.text && RuntimeSliceKey.#isTarget(node)) {
+        found = RuntimeLexicalScope.isReference(node) && this.#lexical.resolve(node) === name;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(scope);
+    return found;
+  }
+
+  static #isTarget(node: ts.Node) {
+    let current = node;
+    while (
+      ts.isParenthesizedExpression(current.parent) ||
+      ts.isNonNullExpression(current.parent) ||
+      ts.isAsExpression(current.parent) ||
+      ts.isTypeAssertionExpression(current.parent) ||
+      ts.isSatisfiesExpression(current.parent) ||
+      ts.isSpreadElement(current.parent) ||
+      ts.isSpreadAssignment(current.parent) ||
+      ts.isArrayLiteralExpression(current.parent) ||
+      ts.isObjectLiteralExpression(current.parent) ||
+      ts.isShorthandPropertyAssignment(current.parent) ||
+      (ts.isPropertyAssignment(current.parent) && current.parent.initializer === current)
+    )
+      current = current.parent;
+    const parent = current.parent;
+    if (ts.isBinaryExpression(parent))
+      return (
+        parent.left === current &&
+        parent.operatorToken.kind >= ts.SyntaxKind.FirstAssignment &&
+        parent.operatorToken.kind <= ts.SyntaxKind.LastAssignment
+      );
+    if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent))
+      return parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken;
+    return (ts.isForInStatement(parent) || ts.isForOfStatement(parent)) && parent.initializer === current;
   }
 
   #isSliceType(type: ts.TypeNode | undefined, depth: number): boolean {
