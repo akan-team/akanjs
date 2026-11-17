@@ -211,28 +211,47 @@ export const ClientPathWrapper = ({
     debugFrame("pathWrapper.mount", { path: pathRoute.path, pageType, href });
     return () => debugFrame("pathWrapper.unmount", { path: pathRoute.path, pageType, href });
   }, []);
+  //? Every `usePage()` reads this, so a value made anew on each frame render (the keys moving, a slide) redrew every
+  //? component of the page, and an async section restarted its load; it changes only with what it holds.
+  const pathValue = useMemo(
+    () => ({
+      pageType,
+      pageKey,
+      location: {
+        href,
+        hash,
+        pathname,
+        params,
+        searchParams,
+        search,
+        pathRoute,
+        ...(location?.entryId ? { entryId: location.entryId } : {}),
+      },
+      followsRouter: !location,
+      prefix,
+      gestureEnabled,
+      setGestureEnabled,
+      registerFrameSlot,
+    }),
+    [
+      pageType,
+      pageKey,
+      href,
+      hash,
+      pathname,
+      params,
+      searchParams,
+      search,
+      pathRoute,
+      location?.entryId,
+      !location,
+      prefix,
+      gestureEnabled,
+      registerFrameSlot,
+    ],
+  );
   return (
-    <pathContext.Provider
-      value={{
-        pageType,
-        pageKey,
-        location: {
-          href,
-          hash,
-          pathname,
-          params,
-          searchParams,
-          search,
-          pathRoute,
-          ...(location?.entryId ? { entryId: location.entryId } : {}),
-        },
-        followsRouter: !location,
-        prefix,
-        gestureEnabled,
-        setGestureEnabled,
-        registerFrameSlot,
-      }}
-    >
+    <pathContext.Provider value={pathValue}>
       <pageActivityContext.Provider value={pageActivity}>
         <Frame
           {...bindProps}
