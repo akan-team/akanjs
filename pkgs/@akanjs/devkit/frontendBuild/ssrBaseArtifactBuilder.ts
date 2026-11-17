@@ -80,7 +80,7 @@ export class SsrBaseArtifactBuilder {
     };
     const { rscClientUrl, rscRuntimeClientManifest, rscRuntimeSsrManifest, vendorMap, runtimeChunks } = await timed(
       "runtime",
-      () => this.#buildRuntimeClientEntries(),
+      () => this.buildRuntimeClientEntries(),
     );
     const pageEntries = await timed("routes", async () => {
       const pageKeys = await this.#app.getPageKeys();
@@ -154,7 +154,7 @@ export class SsrBaseArtifactBuilder {
     await rename(`${artifactPath}.tmp`, artifactPath);
   }
 
-  async #buildRuntimeClientEntries(): Promise<
+  async buildRuntimeClientEntries(): Promise<
     Pick<BaseBuildArtifact, "rscClientUrl" | "rscRuntimeClientManifest" | "rscRuntimeSsrManifest"> & {
       vendorMap: Record<VendorSpecifier, string>;
       runtimeChunks: RuntimeChunks;

@@ -13,6 +13,7 @@ export class VendorFileImports {
   readonly specifiers: readonly VendorSpecifier[];
   readonly #akanjsRoots: readonly string[];
   readonly #specifierByModule: ReadonlyMap<string, VendorSpecifier>;
+  readonly #realDirs = new Map<string, string>();
 
   static async of(workspaceRoot: string): Promise<VendorFileImports> {
     const akanServerPath = await VendorFileImports.#akanServerPath(workspaceRoot);
@@ -71,10 +72,19 @@ export class VendorFileImports {
         : null;
     if (!target) return null;
     const extension = path.extname(target);
-    return (
-      this.#specifierByModule.get(scriptExtensions.includes(extension) ? target.slice(0, -extension.length) : target) ??
-      null
-    );
+    const module = scriptExtensions.includes(extension) ? target.slice(0, -extension.length) : target;
+    return this.#specifierByModule.get(module) ?? this.#specifierByModule.get(this.#realModule(module)) ?? null;
+  }
+
+  //? A linked install reaches akanjs through a symlink, so an entry's path need not be the one Bun resolved.
+  #realModule(module: string): string {
+    const dir = path.dirname(module);
+    let realDir = this.#realDirs.get(dir);
+    if (realDir === undefined) {
+      realDir = fs.existsSync(dir) ? fs.realpathSync(dir) : dir;
+      this.#realDirs.set(dir, realDir);
+    }
+    return path.join(realDir, path.basename(module));
   }
 
   //? A dynamic import stays a lazy chunk of the route build: `import("akanjs/client")` would load the whole vendor.
