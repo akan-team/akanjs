@@ -113,6 +113,7 @@ export class RouteClientBuilder {
       new RouteRuntimeCheck(this.#app.workspace.workspaceRoot, browserBundle.graph, {
         entries: new Map([...browserEntries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry))),
         wholeReaders: routeRuntime.wholeReaders,
+        wholeConstantReaders: routeRuntime.wholeConstantReaders,
       }).assert();
     const referenceBundle = browserBundle ?? ssrBundle;
     const bootstrapEntries = browserEntries ?? ssrEntries;

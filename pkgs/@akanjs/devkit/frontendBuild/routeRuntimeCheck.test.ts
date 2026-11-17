@@ -28,7 +28,13 @@ const graphOf = ({ imports, chunks = {}, chunkImports = {} }: GraphShape): Clien
   importsByChunk: new Map(Object.entries(chunkImports)),
 });
 
-const failuresOf = (shape: GraphShape, narrowed?: { entries: Record<string, string>; wholeReaders?: string[] }) =>
+interface NarrowedShape {
+  entries: Record<string, string>;
+  wholeReaders?: string[];
+  wholeConstantReaders?: string[];
+}
+
+const failuresOf = (shape: GraphShape, narrowed?: NarrowedShape) =>
   new RouteRuntimeCheck(
     root,
     graphOf(shape),
@@ -36,6 +42,7 @@ const failuresOf = (shape: GraphShape, narrowed?: { entries: Record<string, stri
       ? {
           entries: new Map(Object.entries(narrowed.entries).map(([build, entry]) => [abs(build), abs(entry)])),
           wholeReaders: new Set((narrowed.wholeReaders ?? []).map(abs)),
+          wholeConstantReaders: new Set((narrowed.wholeConstantReaders ?? []).map(abs)),
         }
       : null,
   ).failures;
@@ -96,6 +103,51 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
       ),
     ).toEqual([]);
     expect(failuresOf({ imports: { [entry]: [card], [card]: [] } }, { entries, wholeReaders: [run] })).toEqual([]);
+  });
+
+  test("a registration piece loads before the file reading its model, and no file it loads imports it back", () => {
+    const registration = "apps/demo/lib/__client/memo.cnst.ts";
+    const constant = "apps/demo/lib/memo/memo.constant.ts";
+    const reads = { [card]: [registration], [registration]: [constant], [constant]: [] };
+    const apart = { [card]: ["/out/card.js"], [registration]: ["/out/cnst.js"] };
+    expect(failuresOf({ imports: reads, chunks: apart })).toEqual([
+      "apps/demo/ui/Card.tsx needs apps/demo/lib/__client/memo.cnst.ts loaded first, but its chunk card.js does not import the chunk holding that piece",
+    ]);
+    expect(failuresOf({ imports: reads, chunks: apart, chunkImports: { "/out/card.js": ["/out/cnst.js"] } })).toEqual(
+      [],
+    );
+    const helper = "apps/demo/common/label.ts";
+    const back = { [registration]: [constant], [constant]: [helper], [helper]: [registration] };
+    expect(failuresOf({ imports: back })).toEqual([
+      "apps/demo/lib/__client/memo.cnst.ts loads files that import it back through apps/demo/common/label.ts, which reads the model before it is registered",
+    ]);
+    expect(failuresOf({ imports: { ...back, [helper]: [] } })).toEqual([]);
+  });
+
+  test("a page built to load only the modules its code names reaches every constant only through a file `akan quality runtime` names", () => {
+    const entry = "apps/demo/.akan/generated/client-entry-bootstrap-route/Card.tsx";
+    const entries = { [entry]: card };
+    const registration = "apps/demo/lib/__client/board.cnst.ts";
+    const constant = "apps/demo/lib/board/board.constant.ts";
+    const barrel = "libs/kit/index.ts";
+    const libConstants = "libs/kit/lib/cnst.ts";
+    const throughBarrel = {
+      [entry]: [card],
+      [card]: [registration],
+      [registration]: [constant],
+      [constant]: [barrel],
+      [barrel]: [libConstants],
+      [libConstants]: [],
+    };
+    expect(failuresOf({ imports: throughBarrel }, { entries })).toEqual([
+      "apps/demo/ui/Card.tsx was built to load only the modules its code names, but libs/kit/index.ts imports libs/kit/lib/cnst.ts, the constants of every model, for no reason `akan quality runtime` names",
+    ]);
+    expect(failuresOf({ imports: throughBarrel }, { entries, wholeConstantReaders: [constant] })).toEqual([]);
+    const own = "apps/demo/lib/cnst.ts";
+    const computed = { [entry]: [card], [card]: [own], [own]: [] };
+    expect(failuresOf({ imports: computed }, { entries })).toHaveLength(1);
+    expect(failuresOf({ imports: computed }, { entries, wholeConstantReaders: [card] })).toEqual([]);
+    expect(failuresOf({ imports: { [entry]: [card], [card]: [{ lazy: own }], [own]: [] } }, { entries })).toEqual([]);
   });
 
   test("a failing build stops with the first failures, how many more there are, and the setting that builds meanwhile", () => {
