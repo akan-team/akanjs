@@ -73,17 +73,21 @@ export class KeyboardRide {
       rider.style.transform = "";
     }
     KeyboardRide.#releaseInsets(lists);
-    const scrollers = KeyboardRide.#scrollersAtEnd(shown);
+    //? A list rises by what its scroller loses at the bottom, read without scrolling it: two programmatic scrolls in a
+    //? layout pass left WebKit on iOS restoring a stale offset on the next frame, a jump of the whole list.
+    const scrollers = KeyboardRide.#scrollersAtEnd(riders);
+    const listBoxes = lists.map((list) => KeyboardRide.#scrollerOf(list) ?? list);
     const previous = KeyboardRide.#committed;
     const isHeld = !isOverlay && height > previous;
     KeyboardRide.#commit(height, scrollers);
     const settled = riders.map(bottomOf);
-    const listsSettled = lists.map(bottomOf);
+    const listsSettled = listBoxes.map(bottomOf);
     if (isHeld || isOverlay) KeyboardRide.#commit(isOverlay ? 0 : previous, scrollers);
     const laid = isHeld || isOverlay ? riders.map(bottomOf) : settled;
     lists.forEach((list, idx) => {
       const scroller = listEnds[idx] ?? null;
-      if (height > 0) KeyboardRide.#raiseList(list, bottomOf(list) - (listsSettled[idx] ?? 0), scroller, durationMs);
+      const rise = bottomOf(listBoxes[idx] ?? list) - (listsSettled[idx] ?? 0);
+      if (height > 0) KeyboardRide.#raiseList(list, rise, scroller, durationMs);
       else KeyboardRide.#lowerList(list, scroller, durationMs);
     });
     riders.forEach((rider, idx) => {
