@@ -126,11 +126,15 @@ export const setupSignalTestTarget = async <Fetch = FetchProxy>(
     });
     FetchClient.useTestClientIps();
     await testServer.init();
+    target.fetch.instance.connectOnUse();
     currentContext = {
       fetch: target.fetch,
       target,
       server: testServer,
-      terminate: () => testServer.terminate(),
+      terminate: async () => {
+        target.fetch.instance.disconnect();
+        await testServer.terminate();
+      },
     };
     return currentContext;
   })();
