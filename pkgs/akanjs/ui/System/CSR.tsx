@@ -349,6 +349,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
           <animated.div
             key={id}
             id={id}
+            data-page-type={pageType}
             inert={hidden}
             aria-hidden={hidden ? true : undefined}
             className={cn(
@@ -473,6 +474,7 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
         <animated.div
           id={`pageContainer-${key}`}
           data-path={pathRoute.path}
+          data-page-type={pageType}
           inert={pageType !== "current"}
           aria-hidden={pageType === "current" ? undefined : true}
           style={{
