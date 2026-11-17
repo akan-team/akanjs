@@ -272,6 +272,8 @@ export class PackageRunner extends runner("package") {
     );
     if (baselines.length > 0)
       throw new Error(`[package] ${pkg.name} would publish its workspace's lint baseline: ${baselines.join(", ")}`);
+    if (pkg.name === "akanjs" && packedPaths.includes("ARCHITECTURE.md"))
+      throw new Error("[package] akanjs would publish ARCHITECTURE.md, a contributor document kept in the repository");
     return {
       name: pkg.name,
       version: pkgJson.version,
