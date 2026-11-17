@@ -14,4 +14,4 @@ Under `clientRuntime: "route"`, a client file that names a store, a slice or an 
 
 **Upgrading.**
 
-A client component that builds a store or endpoint name from a slice it was handed now relies on that slice arriving with its model, and a slice parameter that is reassigned or has a default value is not read as handed. A slice a server component writes by hand, or a copy of one (`JSON.parse(JSON.stringify(slice))`), that no client file of the route names brings no model, and the read then finds nothing; before, the reading file kept the whole runtime, so it worked. `akan quality runtime` does not report this; a page that shows nothing where such a slice is read is the sign. Take the slice from `fetch`, or name the model in a client file of the route. With `"all"`, nothing to do.
+A client component that builds a store or endpoint name from a slice it was handed now relies on that slice arriving with its model; before, the reading file kept the whole runtime. What that means for a slice written or copied by hand is in the upgrade note of the entry that makes `"route"` the default.

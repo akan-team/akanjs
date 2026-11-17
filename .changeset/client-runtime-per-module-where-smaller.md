@@ -3,7 +3,7 @@
 "@akanjs/cli": patch
 ---
 
-Under `clientRuntime: "route"`, a page loads per module only where that makes it smaller, and a page that keeps the whole runtime no longer carries a module's API descriptions twice. With `"all"`, the default, nothing changes.
+Under `clientRuntime: "route"`, a page loads per module only where that makes it smaller, and a page that keeps the whole runtime no longer carries a module's API descriptions twice. With `"all"`, nothing changes.
 
 - `akan build` sizes every route twice: as the analysis planned it, and with every client entry keeping the whole runtime. A route no smaller per module is built again keeping the whole runtime, and stays that way only if it then came out smaller than it was; otherwise it loads per module as planned. The build says what it did in one line: `N routes load per module, M keep the whole runtime because per module would not be smaller`. `akan quality runtime` names the first routes of each kind (`--format json` names all), and the build lists them at the `verbose` log level.
 - A page keeping the whole runtime beside pages that load per module took a module's API descriptions from `lib/useClient.ts` and again from that module's `lib/__client/*.fetch.ts` piece. Now `lib/useClient.ts` leaves out what those pieces hold and loads the pieces first, so each description ships once.

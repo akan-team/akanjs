@@ -13,4 +13,4 @@
 
 **Upgrading.**
 
-Nothing to change in app code. Run `akan sync` once after upgrading, and add `apps/*/lib/usePage.ts` and `libs/*/lib/usePage.ts` to your `.gitignore` beside `lib/useClient.ts` so the new file is not committed.
+Nothing to change in app code. The `.gitignore` lines for the new file are in the upgrade note of the entry that makes `"route"` the default.
