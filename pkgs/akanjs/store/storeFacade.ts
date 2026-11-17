@@ -25,9 +25,11 @@ export class StoreFacade {
           .filter(([, keys]) => keys.includes(key))
           .map(([module]) => module);
         const fix = `name st.${name}.${key} statically in the file that reads it, or import st from the app's client barrel there.`;
+        const handoff =
+          "If a framework component (Load.Units, Model.View, ...) read it for an object a server component handed over, that object carried no reference to load the store: hand over what fetch returned, itself or spread, since a JSON, structuredClone or cache copy and an object written by hand carry none, or name the model in a client file of this route.";
         throw new Error(
           modules.length > 0
-            ? `st.${name}.${key} is not registered: it belongs to the store of ${modules.join(" or ")}, which this page has not loaded. To load it, ${fix}`
+            ? `st.${name}.${key} is not registered: it belongs to the store of ${modules.join(" or ")}, which this page has not loaded. To load it, ${fix} ${handoff}`
             : `st.${name}.${key} is not registered: no store loaded on this page declares it. Check the name; if a store declares it, ${fix}`,
         );
       },

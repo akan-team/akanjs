@@ -43,9 +43,9 @@ import type {
   SharedClientState,
   UnknownRecord,
 } from "./fetchClientTypes";
-import { FetchHandle } from "./fetchHandle";
 import { HttpClient } from "./httpClient";
 import { InflightQueries } from "./inflightQueries";
+import { ModelRuntimes } from "./modelRuntimes";
 import { type ErrorConstructor, type RestoredError, restoreRemoteError } from "./remoteError";
 import {
   deepCopy,
@@ -143,6 +143,10 @@ export class FetchClient {
   }
   static get bridged() {
     return !!FetchClient.bridge;
+  }
+  //? Called on the server by an app's generated `lib/__client/refs.ts`, with one client reference per model.
+  static setModelRuntimes(references: { [refName: string]: unknown } | null) {
+    ModelRuntimes.set(references);
   }
   static resetSharedClient() {
     sharedClientState.proxy = null;
@@ -684,21 +688,30 @@ export class FetchClient {
     });
 
     const helpers = helpersOf(signal);
+    const handlerFor = (key: string, owner: string) => this.#requireHandler(key, owner);
     if (helpers.view) {
       this.#setHandlerFactory(
         names.viewModel,
-        () => this.#makeModelHandleFn(refName, names.model, names.viewModel, names.modelView),
+        () => ModelRuntimes.modelHandleFn(refName, names.modelView, () => handlerFor(names.model, names.viewModel)),
         refName,
       );
-      this.#setHandlerFactory(names.getModelView, () => this.#makeModelObjFn(refName, names.getModelView), refName);
+      this.#setHandlerFactory(
+        names.getModelView,
+        () => ModelRuntimes.modelObjFn(refName, () => handlerFor(refName, names.getModelView)),
+        refName,
+      );
     }
     if (helpers.edit) {
       this.#setHandlerFactory(
         names.editModel,
-        () => this.#makeModelHandleFn(refName, names.model, names.editModel, names.modelEdit),
+        () => ModelRuntimes.modelHandleFn(refName, names.modelEdit, () => handlerFor(names.model, names.editModel)),
         refName,
       );
-      this.#setHandlerFactory(names.getModelEdit, () => this.#makeModelObjFn(refName, names.getModelEdit), refName);
+      this.#setHandlerFactory(
+        names.getModelEdit,
+        () => ModelRuntimes.modelObjFn(refName, () => handlerFor(refName, names.getModelEdit)),
+        refName,
+      );
     }
     if (helpers.merge) {
       this.#setHandlerFactory(
@@ -741,40 +754,6 @@ export class FetchClient {
         return this.#inflight.writing(() => upload(fileList, parentId, option), option?.keepsReads);
       }) as FetchHandler;
     });
-  }
-
-  #makeModelObjFn(refName: string, callerKey: string) {
-    const names = modelNames(refName);
-    return (async (id: string, option?: FetchPolicy) => {
-      const modelObj = await this.#requireHandler(refName, callerKey)(id, { ...option, crystalize: false });
-      return { refName, [names.modelObj]: modelObj, [names.modelViewAt]: new Date() };
-    }) as FetchHandler;
-  }
-
-  //* The full model is built lazily — a route handing the payload to `Load.View` never reads it; `ViewAt` stamps once.
-  #makeModelHandleFn(refName: string, modelKey: string, callerKey: string, payloadKey: string) {
-    const names = modelNames(refName);
-    return ((id: string, option?: FetchPolicy) => {
-      const cnst = ConstantRegistry.getDatabase(refName);
-      const modelFn = this.#requireHandler(modelKey, callerKey);
-      const modelRequest = modelFn(id, { ...option, crystalize: false }) as Promise<object>;
-      let model: object | undefined;
-      let payload: object | undefined;
-      const modelOf = (modelObj: object) => (model ??= new cnst.full(modelObj));
-      const payloadOf = (modelObj: object) =>
-        (payload ??= { refName, [names.modelObj]: modelObj, [names.modelViewAt]: new Date() });
-      return FetchHandle.of<Record<string, unknown>, Record<string, Promise<unknown>>>(
-        [modelRequest],
-        async () => {
-          const modelObj = await modelRequest;
-          return FetchHandle.lazy({}, { [refName]: () => modelOf(modelObj), [payloadKey]: () => payloadOf(modelObj) });
-        },
-        {
-          [refName]: () => modelRequest.then(modelOf),
-          [payloadKey]: () => modelRequest.then(payloadOf),
-        },
-      );
-    }) as FetchHandler;
   }
 
   static getEndpointFromSlice(
@@ -826,7 +805,7 @@ export class FetchClient {
     });
 
     const argLength = slice.args.length;
-    this.slice[sliceName] = { refName, sliceName, argLength };
+    this.slice[sliceName] = ModelRuntimes.sliceOf(refName, sliceName, argLength);
     this.#setHandlerFactory(names.init, () => (...argData: unknown[]) => {
       const cnst = ConstantRegistry.getDatabase(refName);
       const queryArgs = normalizeQueryArgs(
@@ -939,7 +918,7 @@ export class FetchClient {
       if (!cnst) return;
       const slices = Object.entries(serializedSignal.slice).map(([suffix, serializedSlice]) => {
         const { slice: sliceName } = sliceNames(refName, suffix);
-        proxy.slice[sliceName] = { refName, sliceName, argLength: serializedSlice.args.length };
+        proxy.slice[sliceName] = ModelRuntimes.sliceOf(refName, sliceName, serializedSlice.args.length);
         return { refName, sliceName, serializedSlice };
       });
       sig[refName] = { refName, _slice: null, cnst, fetch: proxy, slices, serializedSignal };

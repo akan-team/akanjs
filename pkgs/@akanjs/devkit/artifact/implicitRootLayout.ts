@@ -2,6 +2,7 @@ import { readdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
 import { AsyncDefaultExportDetector } from "../transforms/asyncDefaultExportDetector";
+import { ModelReference } from "../transforms/modelReference";
 import { StoreBootstrap } from "./storeBootstrap";
 
 export interface PageEntry {
@@ -161,6 +162,7 @@ async function writeGeneratedRootLayoutFile(opts: {
   boundary: RootBoundary;
   rootSourceAbsPath: string | null;
   includeStoreBootstrap: boolean;
+  includeModelReferences: boolean;
   includeSystemProvider: boolean;
 }): Promise<string> {
   await assertEnvClientConvention(opts.appCwdPath, opts.appName);
@@ -173,7 +175,11 @@ async function writeGeneratedRootLayoutFile(opts: {
   const inheritedSourceAbsPath =
     opts.rootSourceAbsPath && opts.rootSourceAbsPath !== opts.boundary.sourceAbsPath ? opts.rootSourceAbsPath : null;
   const inheritedSourceSpecifier = inheritedSourceAbsPath ? importSpecifier(absPath, inheritedSourceAbsPath) : null;
-  const storeImport = opts.includeStoreBootstrap ? StoreBootstrap.source(opts.appName) : "";
+  const referencesImport =
+    opts.includeStoreBootstrap && opts.includeModelReferences
+      ? `import ${JSON.stringify(ModelReference.registrySpecifier(opts.appName))};\n`
+      : "";
+  const storeImport = opts.includeStoreBootstrap ? `${StoreBootstrap.source(opts.appName)}${referencesImport}` : "";
   //? resolveRouteModule reads a rootLayout() chain and the legacy named exports alike.
   const inheritedLabel = inheritedSourceAbsPath ? posixRelative(opts.appCwdPath, inheritedSourceAbsPath) : "";
   const inheritedImport = inheritedSourceSpecifier
@@ -302,6 +308,7 @@ export async function resolveSsrPageEntries(opts: {
   appName: string;
   pageKeys: string[];
   basePaths?: Iterable<string>;
+  modelReferences?: boolean;
 }): Promise<PageEntry[]> {
   const absPageDir = path.resolve(opts.appCwdPath, "page");
   const hasSt = await Bun.file(path.join(opts.appCwdPath, "lib", "st.ts")).exists();
@@ -340,6 +347,7 @@ export async function resolveSsrPageEntries(opts: {
         boundary,
         rootSourceAbsPath,
         includeStoreBootstrap: hasSt,
+        includeModelReferences: !!opts.modelReferences,
         includeSystemProvider: !hasAncestorRootBoundary(boundary, rootBoundaries),
       }),
       seedAbsPaths: [...new Set([boundary.sourceAbsPath, rootSourceAbsPath].filter((absPath) => absPath !== null))],
@@ -362,5 +370,11 @@ export async function resolveSsrPageEntries(opts: {
 
 export async function resolveSsrPageEntriesForApp(app: App, pageKeys: string[]): Promise<PageEntry[]> {
   const config = await app.getConfig();
-  return resolveSsrPageEntries({ appCwdPath: app.cwdPath, appName: app.name, pageKeys, basePaths: config.basePaths });
+  return resolveSsrPageEntries({
+    appCwdPath: app.cwdPath,
+    appName: app.name,
+    pageKeys,
+    basePaths: config.basePaths,
+    modelReferences: (await StoreBootstrap.scopeOf(app)) === "page",
+  });
 }

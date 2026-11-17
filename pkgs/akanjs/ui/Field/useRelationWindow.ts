@@ -1,9 +1,10 @@
 "use client";
 import { DataList } from "akanjs/base";
 import { fetch } from "akanjs/client";
-import { isQueryEqual } from "akanjs/common";
+import { isQueryEqual, lowerlize } from "akanjs/common";
+import type { SliceMeta } from "akanjs/fetch";
 import { useRef, useState } from "react";
-import "../modelRuntime";
+import { sliceNamesOf } from "../sliceNamesOf";
 
 export interface RelationWindowQuery {
   queryArgs: unknown[];
@@ -19,7 +20,8 @@ interface WindowHold<Light extends { id: string }> {
 
 // A field's own page of options, kept off the slice's store keys: the page's listing reads `<model>List`,
 // `limitOf<Model>` and `sortOf<Model>`, so a field writing its window there would re-window that listing too.
-export const useRelationWindow = <Light extends { id: string }>(listName: string, argLength: number) => {
+export const useRelationWindow = <Light extends { id: string }>(slice: SliceMeta) => {
+  const { namesOfSlice } = sliceNamesOf(lowerlize(slice.refName), slice.sliceName);
   const [list, setList] = useState(() => new DataList<Light>());
   const [loading, setLoading] = useState(false);
   const hold = useRef<WindowHold<Light>>({ list, query: null, request: null });
@@ -27,8 +29,10 @@ export const useRelationWindow = <Light extends { id: string }>(listName: string
   const load = (query: RelationWindowQuery) => {
     const current = hold.current;
     if (current.query && current.request && isQueryEqual(current.query, query)) return current.request;
-    const listFn = (fetch as unknown as { [key: string]: (...args: unknown[]) => Promise<Light[]> })[listName];
-    const args = Array.from({ length: argLength }, (_, idx) => query.queryArgs[idx]);
+    const listFn = (fetch as unknown as { [key: string]: (...args: unknown[]) => Promise<Light[]> })[
+      namesOfSlice.modelList
+    ];
+    const args = Array.from({ length: slice.argLength }, (_, idx) => query.queryArgs[idx]);
     setLoading(true);
     const request: Promise<void> = listFn(...args, 0, query.limit, query.sort)
       .then((rows) => {
