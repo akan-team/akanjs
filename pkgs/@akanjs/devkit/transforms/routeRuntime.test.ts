@@ -388,6 +388,76 @@ describe("a build planned over the bundle that loads the whole runtime everywher
     expect(plainOnly.kept).toEqual([uiFile("Run")]);
   });
 
+  test("keeps the whole runtime in an entry no route holds once a route keeps it, so the file it shares with that route loads no piece", () => {
+    const loose = 'import { side } from "./Side";\nexport const Loose = side;\n';
+    const files = {
+      [uiFile("Run")]: `import { side } from "./Side";\n${pickingRun}export const Run = side;\n`,
+      [uiFile("Card")]: namingRead,
+      [uiFile("Loose")]: loose,
+      [uiFile("Side")]: namingSide,
+    };
+    const imports = { [uiFile("Run")]: [uiFile("Side")], [uiFile("Loose")]: [uiFile("Side")] };
+    const entries = [uiFile("Run"), uiFile("Card"), uiFile("Loose")];
+    const beside = plan({ files, imports, entries, routes: { "/run": [uiFile("Run")], "/read": [uiFile("Card")] } });
+    expect(beside.kept).toEqual([uiFile("Loose"), uiFile("Run")]);
+    expect(beside.piecesOf(uiFile("Side"))).toBe("as written");
+    expect(beside.target.decided?.causes().map(({ rule, entries: held }) => [rule, held])).toEqual([
+      ["reader", ["apps/demo/ui/Run.tsx"]],
+      ["unheld", ["apps/demo/ui/Loose.tsx"]],
+    ]);
+    const alone = plan({
+      files,
+      imports,
+      entries: [uiFile("Card"), uiFile("Loose")],
+      routes: { "/read": [uiFile("Card")] },
+    });
+    expect(alone.kept).toEqual([]);
+    expect(alone.piecesOf(uiFile("Side"))).toEqual(tagPieces);
+  });
+
+  test("an entry kept after its page was measured takes with it the entries only whole pages hold, never one a page loading per module holds", () => {
+    const files = {
+      [uiFile("Card")]: namingRead,
+      [uiFile("Side")]: namingSide,
+      [uiFile("Plain")]: "export const Plain = 1;\n",
+    };
+    const routes = { "/read": [uiFile("Card"), uiFile("Plain")], "/side": [uiFile("Side"), uiFile("Plain")] };
+    const { target, kept, piecesOf } = plan({ files, entries: Object.keys(files), routes });
+    expect(kept).toEqual([]);
+    const measured = { rule: "not-smaller", route: "/read", whole: 900, perModule: 950 } as const;
+    expect([...target.keep([uiFile("Card")], measured)]).toEqual([uiFile("Card")]);
+    expect(piecesOf(uiFile("Card"))).toBe("as written");
+    expect(piecesOf(uiFile("Side"))).toEqual(tagPieces);
+    expect(target.decided?.causes()[0]).toMatchObject({
+      rule: "not-smaller",
+      message: "/read is 950 B loading per module and 900 B with the whole runtime",
+      routes: ["/read"],
+    });
+    expect([...target.keep([uiFile("Side")], { ...measured, route: "/side" })].sort()).toEqual(
+      Object.keys(files).sort(),
+    );
+  });
+
+  test("a scope's whole runtime file takes from their pieces the descriptors a page loading per module reaches, and keeps its own where every page is whole", () => {
+    const files = { [uiFile("Run")]: pickingRun, [uiFile("Card")]: namingRead };
+    const entries = Object.keys(files);
+    const whole = `${root}/apps/demo/lib/useClient.ts`;
+    const mixed = plan({
+      files,
+      entries,
+      routes: { "/run": [uiFile("Run"), uiFile("Card")], "/read": [uiFile("Card")] },
+    });
+    expect(mixed.kept).toEqual([uiFile("Run")]);
+    expect(mixed.target.takenFromPieces(whole)).toEqual([
+      `${root}/apps/demo/lib/__client/_base.fetch.ts`,
+      `${root}/apps/demo/lib/__client/memo.fetch.ts`,
+    ]);
+    expect(mixed.target.takenFromPieces(`${root}/apps/demo/lib/st.ts`)).toBeNull();
+    const everyWhole = plan({ files, entries, routes: { "/run": [uiFile("Run"), uiFile("Card")] } });
+    expect(everyWhole.kept).toEqual(entries.sort());
+    expect(everyWhole.target.takenFromPieces(whole)).toBeNull();
+  });
+
   test("keeps the whole runtime in an entry asking with `import()` for a file that needs every module, and in a file only such entries ask for", () => {
     const files = {
       [uiFile("Card")]: namingRead,

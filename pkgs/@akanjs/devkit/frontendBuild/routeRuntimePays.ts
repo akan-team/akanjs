@@ -5,6 +5,8 @@ export interface RoutePaysInput {
   //? Every entry a route may load: one of them kept makes the route load the whole runtime.
   entriesByRoute: ReadonlyMap<string, readonly string[]>;
   isKept: (entry: string) => boolean;
+  //? An entry a build already tried keeping whole, where a page it holds came out larger: it is never tried again.
+  isRefused?: (entry: string) => boolean;
   //? Brotli bytes of the chunks a route loads first, in a build where every entry keeps the whole runtime.
   whole: ReadonlyMap<string, number>;
   //? The same in the build being judged.
@@ -18,20 +20,28 @@ export interface RoutePaysVerdict {
   perModule: number;
 }
 
+export interface RoutePaidInput {
+  entriesByRoute: ReadonlyMap<string, readonly string[]>;
+  wasKept: (entry: string) => boolean;
+  isKept: (entry: string) => boolean;
+  before: ReadonlyMap<string, number>;
+  after: ReadonlyMap<string, number>;
+}
+
 //* Which entries a `clientRuntime: "route"` build keeps whole because loading per module made a page no smaller.
 export class RouteRuntimePays {
   readonly #sizes = new Map<string, number>();
 
   //* An entry only pages that got no smaller hold is kept. One shared with a page that did get smaller is kept only
   //* where the pages it would spare lose more bytes than the pages it takes the whole runtime to had gained.
-  static decide({ entriesByRoute, isKept, whole, measured }: RoutePaysInput): RoutePaysVerdict[] {
+  static decide({ entriesByRoute, isKept, isRefused, whole, measured }: RoutePaysInput): RoutePaysVerdict[] {
     const lossOf = (route: string) => (measured.get(route) ?? 0) - (whole.get(route) ?? 0);
     const perModule = [...entriesByRoute].filter(([, entries]) => entries.length > 0 && !entries.some(isKept));
     const gaining = new Map(perModule.filter(([route]) => lossOf(route) < 0));
     const losing = new Map(perModule.filter(([route]) => lossOf(route) >= 0));
     const verdicts = new Map<string, RoutePaysVerdict>();
     const keep = (entry: string, route: string) => {
-      if (verdicts.has(entry)) return;
+      if (verdicts.has(entry) || isRefused?.(entry)) return;
       verdicts.set(entry, { entry, route, whole: whole.get(route) ?? 0, perModule: measured.get(route) ?? 0 });
       for (const [other, entries] of gaining) if (entries.includes(entry)) gaining.delete(other);
       for (const [other, entries] of losing) if (entries.includes(entry)) losing.delete(other);
@@ -52,12 +62,27 @@ export class RouteRuntimePays {
           if (known) known.score += lossOf(route);
         }
       const [best] = [...scores]
-        .filter(([, { score }]) => score > 0)
+        .filter(([entry, { score }]) => score > 0 && !isRefused?.(entry))
         .sort(([a, x], [b, y]) => y.score - x.score || a.localeCompare(b));
       if (!best) break;
       keep(best[0], best[1].route);
     }
     return [...verdicts.values()];
+  }
+
+  //* The all-whole build only nominates: among pages that share chunks, a page kept whole is not the size it has
+  //* where every page is. So the build keeping the nominated entries is measured too, and this names the routes it
+  //* moved to the whole runtime that came out no smaller than they were, all of them where the routes together did.
+  static larger({ entriesByRoute, wasKept, isKept, before, after }: RoutePaidInput): string[] {
+    const sizeIn = (sizes: ReadonlyMap<string, number>, route: string) => sizes.get(route) ?? 0;
+    const moved = [...entriesByRoute]
+      .filter(([, entries]) => !entries.some(wasKept) && entries.some(isKept))
+      .map(([route]) => route);
+    const larger = moved.filter((route) => sizeIn(after, route) >= sizeIn(before, route));
+    if (larger.length > 0) return larger;
+    const total = (sizes: ReadonlyMap<string, number>) =>
+      [...entriesByRoute.keys()].reduce((sum, route) => sum + sizeIn(sizes, route), 0);
+    return total(after) >= total(before) ? moved : [];
   }
 
   //* Each route's chunks are the ones its entries import statically, a chunk shared by two entries counted once.

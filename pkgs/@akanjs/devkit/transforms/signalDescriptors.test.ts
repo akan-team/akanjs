@@ -190,4 +190,56 @@ describe("SignalDescriptors", () => {
     expect(trolley).toContain('"mode":"production","sentinel":"none"');
     expect(trolley).not.toContain("from-an-env-file");
   });
+
+  describe("a scope's whole runtime file on a page that also loads pieces", () => {
+    const wholeSource = `import { FetchClient } from "akanjs/fetch";
+import * as cnst from "./cnst";
+import { fetch as pageFetch, sig as pageSig } from "./usePage";
+import { getSerializedSignal } from "./sig" with { type: "macro" };
+Object.assign(pageSig, FetchClient.build(cnst, getSerializedSignal(), { base: pageFetch }).sig);
+`;
+    const plainSig = sigSource.replace("\n  odd: {", "\n  spare: {").replace(", nullable: undefined }", " }");
+    const writePieces = async (pieceDir: string, names: string[]) =>
+      Promise.all(
+        names.map(async (name) => {
+          const file = path.join(pieceDir, `${name}.fetch.ts`);
+          await writeText(file, pieceOf(name));
+          return file;
+        }),
+      );
+
+    test("leaves out the descriptors of the pieces it is told, imports each piece by a name it uses, and keeps the rest", async () => {
+      const { root, pieceDir } = await writeScope(plainSig);
+      const [trolley] = await writePieces(pieceDir, ["trolley"]);
+      const descriptors = new SignalDescriptors(root, ["apps/shop"]);
+
+      const whole = await descriptors.withoutPieces(wholeSource, path.join(root, "apps/shop/lib/useClient.ts"), [
+        trolley ?? "",
+      ]);
+
+      expect(whole).toContain(`import { loaded as __akanPiece0 } from ${JSON.stringify(trolley)};`);
+      expect(whole).toContain("__akanPiecesFirst(__akanPiece0);");
+      expect(whole).toContain('FetchClient.build(cnst, {"crate":');
+      expect(whole).toContain('"spare":');
+      expect(whole).not.toContain("pingAt");
+      expect(whole).not.toContain('type: "macro"');
+    });
+
+    test("keeps its macro and every descriptor where a name has no literal, or a piece names none", async () => {
+      const { root, pieceDir } = await writeScope();
+      const [trolley] = await writePieces(pieceDir, ["trolley"]);
+      const file = path.join(root, "apps/shop/lib/useClient.ts");
+      expect(
+        await new SignalDescriptors(root, ["apps/shop"]).withoutPieces(wholeSource, file, [trolley ?? ""]),
+      ).toBeNull();
+
+      const plain = await writeScope(plainSig);
+      const unnamed = path.join(plain.pieceDir, "_base.fetch.ts");
+      await writeText(unnamed, "export const loaded = {};\n");
+      const plainFile = path.join(plain.root, "apps/shop/lib/useClient.ts");
+      expect(
+        await new SignalDescriptors(plain.root, ["apps/shop"]).withoutPieces(wholeSource, plainFile, [unnamed]),
+      ).toBeNull();
+    });
+  });
 });

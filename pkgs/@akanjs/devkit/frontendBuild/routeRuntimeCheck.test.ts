@@ -226,4 +226,32 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
     );
     expect(() => new RouteRuntimeCheck(root, graphOf({ imports: storeAndPiece })).assert()).not.toThrow();
   });
+
+  test("a route loading a scope's whole file and a piece of that scope is named, unless one of the two takes its part from the other", () => {
+    const whole = "apps/demo/lib/useClient.ts";
+    const constants = "apps/demo/lib/cnst.ts";
+    const constantPiece = "apps/demo/lib/__client/memo.cnst.ts";
+    const kitPiece = "libs/kit/lib/__client/memo.fetch.ts";
+    const frame = "apps/demo/ui/Frame.tsx";
+    const later = "apps/demo/ui/Later.tsx";
+    const repeatedOf = (imports: GraphShape["imports"], routes: Record<string, string[]>) =>
+      new RouteRuntimeCheck(root, graphOf({ imports }), {
+        entries: new Map(),
+        wholeReaders: new Set(),
+        routes: new Map(Object.entries(routes).map(([route, entries]) => [route, entries.map(abs)])),
+      }).repeated;
+    const both = { [frame]: [whole], [card]: [fetchPiece], [whole]: [], [fetchPiece]: [] };
+    expect(repeatedOf(both, { "/frame": [frame, card], "/plain": [frame], "/card": [card] })).toEqual([
+      `${whole} and ${fetchPiece} both load on 1 route(s), the first /frame: the piece holds again what the file holds`,
+    ]);
+    expect(repeatedOf({ ...both, [whole]: [fetchPiece] }, { "/frame": [frame, card] })).toEqual([]);
+    expect(repeatedOf({ ...both, [fetchPiece]: [whole] }, { "/frame": [frame, card] })).toEqual([]);
+    expect(repeatedOf({ ...both, [card]: [kitPiece], [kitPiece]: [] }, { "/frame": [frame, card] })).toEqual([]);
+    const asked = { [frame]: [whole, { lazy: later }], [later]: [fetchPiece], [whole]: [], [fetchPiece]: [] };
+    expect(repeatedOf(asked, { "/frame": [frame] })).toHaveLength(1);
+    const registered = { [frame]: [constants], [card]: [constantPiece], [constants]: [], [constantPiece]: [] };
+    expect(repeatedOf(registered, { "/frame": [frame, card] })).toEqual([
+      `${constants} and ${constantPiece} both load on 1 route(s), the first /frame: the piece holds again what the file holds`,
+    ]);
+  });
 });

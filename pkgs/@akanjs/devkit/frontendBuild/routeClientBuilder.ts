@@ -17,7 +17,7 @@ import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
 import { RouteRuntimeCheck } from "./routeRuntimeCheck";
-import { RouteRuntimePays } from "./routeRuntimePays";
+import { type RoutePaysVerdict, RouteRuntimePays } from "./routeRuntimePays";
 import { VendorFileImports } from "./vendorFileImports";
 
 const SSR_CLIENT_ALIAS_EXTERNALS = [
@@ -73,7 +73,10 @@ interface NarrowedBuild {
   entries: BootstrapEntries;
   kept: ReadonlySet<string>;
   bundle: Awaited<ReturnType<ClientEntriesBundler["bundle"]>>;
+  runtime: RouteRuntime;
 }
+
+type BundleOf = (runtime: RouteRuntime, kept: ReadonlySet<string>, outputSubdir?: string) => Promise<NarrowedBuild>;
 
 const referenceSubdir = "client-whole";
 
@@ -112,6 +115,7 @@ export class RouteClientBuilder {
     //? Registry mode builds no browser bundle: the SSR bundle has the same entries, exports and imports to read.
     const registry = this.#browser === "registry" ? new CsrDevPaths(this.#app.workspace.workspaceRoot) : null;
     const routeRuntime = registry ? null : await this.#readRouteRuntime();
+    if (!registry && !routeRuntime) await rm(path.join(this.#app.cwdPath, RouteRuntimeReport.file), { force: true });
     const ssrEntries = await this.#createBootstrapEntries(entries, "whole");
     //? First: its entries all load the whole runtime, so its graph says which of them a per-route build may narrow.
     const ssrBundle = await this.#buildSsrBundle(ssrEntries);
@@ -125,7 +129,7 @@ export class RouteClientBuilder {
     const browserEntries = registry ? null : (narrowed?.entries ?? ssrEntries);
     const browserBundle =
       narrowed?.bundle ?? (browserEntries ? await this.#buildBrowserBundle(browserEntries, routeRuntime) : null);
-    if (narrowed && routeRuntime) this.#check(narrowed, routeRuntime);
+    if (narrowed) this.#check(narrowed);
     const referenceBundle = browserBundle ?? ssrBundle;
     const bootstrapEntries = browserEntries ?? ssrEntries;
     const ssrEntryByOriginal = new Map(
@@ -228,65 +232,111 @@ export class RouteClientBuilder {
     }
   }
 
-  //* The browser bundle of a `clientRuntime: "route"` build. Where the analysis lets a route load per module, the
-  //* build measures it: the same entries are bundled once with every one keeping the whole runtime, and a route no
-  //* smaller per module than there keeps the whole runtime. Each pass only adds kept entries, so the passes end.
+  //* The browser bundle of a `clientRuntime: "route"` build, and what it decided, written where `akan quality runtime`
+  //* reads it.
   async #buildNarrowed(
     entries: string[],
     whole: BootstrapEntries,
     runtime: RouteRuntime,
     planned: RouteRuntimeBundle,
   ): Promise<NarrowedBuild> {
-    const bundleOf = async (routeRuntime: RouteRuntime, kept: ReadonlySet<string>, outputSubdir?: string) => {
+    const bundleOf: BundleOf = async (routeRuntime, kept, outputSubdir) => {
       const started = Date.now();
       const browserEntries = await this.#createBootstrapEntries(entries, "page", { kept, whole });
       const bundle = await this.#buildBrowserBundle(browserEntries, routeRuntime, outputSubdir);
       this.#app.verbose(`[client-runtime] bundled ${outputSubdir ?? "client"} (${Date.now() - started}ms)`);
-      return { entries: browserEntries, kept, bundle };
+      return { entries: browserEntries, kept, bundle, runtime: routeRuntime };
     };
-    let built: NarrowedBuild = await bundleOf(runtime, runtime.plan(planned));
+    const first = await bundleOf(runtime, runtime.plan(planned));
     const routes = this.#entriesByRoute;
-    const decided = runtime.decided;
-    if (!routes || !decided) return built;
-    const perModuleOf = () => [...routes].filter(([, held]) => !decided.isWhole(held)).map(([route]) => route);
-    const analysed = perModuleOf();
-    const reference = analysed.length > 0 ? await this.#readRouteRuntime() : null;
-    if (reference) {
-      const pays = new RouteRuntimePays();
-      const sizesOf = (build: NarrowedBuild) => pays.sizesOf(build.bundle, this.#sizedBuildEntries(build.entries));
-      reference.plan(planned);
-      const wholeSizes = await sizesOf(await bundleOf(reference, reference.keepAll(), referenceSubdir));
-      await rm(path.join(this.#artifactDir, referenceSubdir), { recursive: true, force: true });
-      for (;;) {
-        const verdicts = RouteRuntimePays.decide({
-          entriesByRoute: routes,
-          isKept: (entry) => built.kept.has(entry),
-          whole: wholeSizes,
-          measured: await sizesOf(built),
-        });
-        if (verdicts.length === 0) break;
-        let kept = built.kept;
-        for (const { entry, ...measured } of verdicts)
-          kept = runtime.keep([entry], { rule: "not-smaller", ...measured });
-        const next = await bundleOf(runtime, kept);
-        for (const chunk of built.bundle.graph.importsByChunk.keys())
-          if (!next.bundle.graph.importsByChunk.has(chunk)) await rm(chunk, { force: true });
-        built = next;
-      }
-    }
-    const perModule = perModuleOf();
+    if (!routes || !runtime.decided) return first;
+    const perModuleIn = ({ kept }: NarrowedBuild) =>
+      [...routes].filter(([, held]) => !held.some((entry) => kept.has(entry))).map(([route]) => route);
+    const analysed = perModuleIn(first);
+    const { built, refused } =
+      analysed.length > 0
+        ? await this.#keptWhereNotSmaller(first, routes, planned, bundleOf)
+        : { built: first, refused: [] };
+    const perModule = perModuleIn(built);
     const report = {
       app: this.#app.name,
       routes: routes.size,
       perModule,
       notSmaller: analysed.filter((route) => !perModule.includes(route)),
-      causes: decided.causes(),
+      refused,
+      causes: built.runtime.decided?.causes() ?? [],
     };
     await RouteRuntimeReport.write(this.#app.cwdPath, report);
     this.#app.log(`[client-runtime] ${RouteRuntimeReport.summary(report)}`);
     for (const route of report.notSmaller) this.#app.verbose(`[client-runtime] not smaller per module: ${route}`);
+    for (const route of refused) this.#app.verbose(`[client-runtime] larger with the whole runtime here: ${route}`);
     for (const route of perModule) this.#app.verbose(`[client-runtime] per module: ${route}`);
     return built;
+  }
+
+  //* Where the analysis lets a route load per module, the build measures it. The same entries are bundled once with
+  //* every one keeping the whole runtime; the entries of a route no smaller per module than there are kept and the app
+  //* is bundled again; and that build stands only where the routes it moved came out smaller than they were. Kept and
+  //* refused entries are both only ever added, so the passes end.
+  async #keptWhereNotSmaller(
+    first: NarrowedBuild,
+    routes: ReadonlyMap<string, readonly string[]>,
+    planned: RouteRuntimeBundle,
+    bundleOf: BundleOf,
+  ): Promise<{ built: NarrowedBuild; refused: string[] }> {
+    const pays = new RouteRuntimePays();
+    const sizesOf = (build: NarrowedBuild) => pays.sizesOf(build.bundle, this.#sizedBuildEntries(build.entries));
+    //? A keep is never taken back, so a build that did not pay is replaced from a runtime read again.
+    const bundleWith = async (verdicts: readonly RoutePaysVerdict[], last: NarrowedBuild | null, subdir?: string) => {
+      const runtime = await this.#readRouteRuntime();
+      if (!runtime) return null;
+      let kept = runtime.plan(planned);
+      for (const { entry, ...measured } of verdicts) kept = runtime.keep([entry], { rule: "not-smaller", ...measured });
+      const build = await bundleOf(runtime, subdir ? runtime.keepAll() : kept, subdir);
+      for (const chunk of last?.bundle.graph.importsByChunk.keys() ?? [])
+        if (!build.bundle.graph.importsByChunk.has(chunk)) await rm(chunk, { force: true });
+      return build;
+    };
+    const reference = await bundleWith([], null, referenceSubdir);
+    if (!reference) return { built: first, refused: [] };
+    const wholeSizes = await sizesOf(reference);
+    await rm(path.join(this.#artifactDir, referenceSubdir), { recursive: true, force: true });
+    let current = { build: first, sizes: await sizesOf(first), verdicts: [] as RoutePaysVerdict[] };
+    let onDisk = first;
+    const refused = new Set<string>();
+    const refusedRoutes = new Set<string>();
+    for (;;) {
+      const verdicts = RouteRuntimePays.decide({
+        entriesByRoute: routes,
+        isKept: (entry) => current.build.kept.has(entry),
+        isRefused: (entry) => refused.has(entry),
+        whole: wholeSizes,
+        measured: current.sizes,
+      });
+      if (verdicts.length === 0) break;
+      const tried = await bundleWith([...current.verdicts, ...verdicts], onDisk);
+      if (!tried) break;
+      onDisk = tried;
+      const sizes = await sizesOf(tried);
+      const larger = RouteRuntimePays.larger({
+        entriesByRoute: routes,
+        wasKept: (entry) => current.build.kept.has(entry),
+        isKept: (entry) => tried.kept.has(entry),
+        before: current.sizes,
+        after: sizes,
+      });
+      if (larger.length === 0) {
+        current = { build: tried, sizes, verdicts: [...current.verdicts, ...verdicts] };
+        continue;
+      }
+      for (const route of larger) {
+        refusedRoutes.add(route);
+        for (const entry of routes.get(route) ?? []) refused.add(entry);
+      }
+      if (!verdicts.some(({ entry }) => refused.has(entry))) for (const { entry } of verdicts) refused.add(entry);
+    }
+    const built = onDisk === current.build ? onDisk : ((await bundleWith(current.verdicts, onDisk)) ?? onDisk);
+    return { built, refused: [...refusedRoutes] };
   }
 
   get #artifactDir() {
@@ -303,7 +353,7 @@ export class RouteClientBuilder {
     );
   }
 
-  #check({ entries, kept, bundle }: NarrowedBuild, routeRuntime: RouteRuntime) {
+  #check({ entries, kept, bundle, runtime: routeRuntime }: NarrowedBuild) {
     const { workspaceRoot } = this.#app.workspace;
     const buildEntryOf = new Map(
       [...entries.originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]),

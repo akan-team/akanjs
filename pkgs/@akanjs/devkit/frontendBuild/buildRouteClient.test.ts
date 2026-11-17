@@ -1,7 +1,8 @@
 import { describe, expect, spyOn, test } from "bun:test";
-import { realpath } from "node:fs/promises";
+import { readdir, realpath } from "node:fs/promises";
 import path from "node:path";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
+import { RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { printedInOwnProcess, tempDirs, writeText as write } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
 import { ModelReference } from "../transforms/modelReference";
@@ -540,6 +541,194 @@ describe("route client store bootstrap", () => {
       for (const marker of ["hand-ui-marker", "piece:draft.st", '"runtime-marker"', '"store-marker"'])
         expect(browser).toContain(marker);
       for (const marker of ["piece:tally.st", ...assembledMarkers]) expect(browser).not.toContain(marker);
+    });
+
+    describe("a build told which entries each route loads", () => {
+      const seen = "((globalThis as { __akanSeen?: string[] }).__akanSeen ??= [])";
+      const weightOf = (hashes: number, salt: string) =>
+        hashes > 0
+          ? `(globalThis as { __akanWeight?: string[] }).__akanWeight = ["${Array.from({ length: hashes }, (_, index) => Bun.hash(`${salt}-${index}`).toString(36)).join("")}"];\n`
+          : "";
+      const describedSignal = `const serialized = {
+  draft: { endpoint: { draftOf: { type: "query", args: [], returns: { refName: "draft-descriptor-ref" } } } },
+  tally: { endpoint: { tallyOf: { type: "query", args: [], returns: { refName: "tally-descriptor-ref" } } } },
+};
+export const fetch = { ownSerializedSignal: serialized };
+export const getSerializedSignal = () => serialized;
+export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : { [name]: serialized[name as "draft"] });
+`;
+      const picking =
+        '"use client";\nimport { st } from "@apps/demo/client";\nexport const Pick = (name: string) => [st.use[name], "pick-marker"];\n';
+      const namingDraft =
+        'import { st } from "@apps/demo/client";\nexport const shared = () => [st.use.draftText(), "shared-marker"];\n';
+      const describedFixture = async ({ whole = 600, draft = 0, tally = 0 } = {}) => {
+        const fixture = await routeFixture();
+        const { appDir } = fixture;
+        await writeStorePieces(appDir);
+        await write(path.join(appDir, "lib/sig.ts"), describedSignal);
+        await write(path.join(fixture.root, "libs/kit/lib/sig.ts"), signalFixture);
+        for (const [facet, source] of [
+          ["base", "export const loadedAfter = (..._modules: unknown[]): void => {};\n"],
+          ["store", "export const st = { use: {} };\nexport const store = (..._args: unknown[]) => class {};\n"],
+        ])
+          await write(path.join(fixture.root, `node_modules/akanjs/${facet}/index.ts`), source);
+        for (const [file, name] of [
+          ["_base", "base"],
+          ["draft", "draft"],
+          ["tally", "tally"],
+        ])
+          await write(
+            path.join(appDir, `lib/__client/${file}.fetch.ts`),
+            `import { getSerializedSignalOf } from "../sig" with { type: "macro" };\nexport const loaded = getSerializedSignalOf("${name}");\n${seen}.push(...Object.keys(loaded).map((key) => "piece:" + key));\n`,
+          );
+        await write(
+          path.join(appDir, "lib/useClient.ts"),
+          `import { getSerializedSignal } from "./sig" with { type: "macro" };\nconst whole = getSerializedSignal();\n${seen}.push(...Object.keys(whole).map((key) => "whole:" + key));\nexport const { msg, Err, usePage, fetch, sig } = { usePage: () => "page" } as Record<string, unknown>;\n`,
+        );
+        await write(
+          path.join(appDir, "lib/st.ts"),
+          `export class RootStore {}\nexport const st = Object.freeze({ mark: "store-marker" });\n${weightOf(whole, "whole")}`,
+        );
+        for (const [name, hashes] of Object.entries({ draft, tally }))
+          await write(
+            path.join(appDir, `lib/__client/${name}.st.ts`),
+            `export const ${name} = Object.freeze({ mark: "piece:${name}.st" });\n${weightOf(hashes, name)}`,
+          );
+        const file = (name: string) => path.join(appDir, `ui/${name}.tsx`);
+        const buildRoutes = async (routes: Record<string, string[]>) => {
+          const entriesByRoute = new Map(Object.entries(routes));
+          const entries = [...new Set(Object.values(routes).flat())];
+          const result = await new RouteClientBuilder({
+            app: fixture.app,
+            seeds: [],
+            entries,
+            artifact: {} as never,
+            browser: "chunks",
+            entriesByRoute,
+          }).build();
+          const clientOut = path.join(appDir, ".akan/artifact/client");
+          const run = async (route: string) => {
+            const state = globalThis as { __akanSeen?: string[]; $RefreshReg$?: unknown; $RefreshSig$?: unknown };
+            state.__akanSeen = [];
+            state.$RefreshReg$ ??= () => undefined;
+            state.$RefreshSig$ ??= () => (type: unknown) => type;
+            const ids = new Set(
+              (routes[route] ?? []).map((entry) => `${path.relative(fixture.root, entry).split(path.sep).join("/")}#`),
+            );
+            for (const [key, row] of Object.entries(result.manifestDelta))
+              if ([...ids].some((id) => key.startsWith(id)))
+                await import(path.join(clientOut, path.basename(row.chunks[0] ?? "")));
+            return [...state.__akanSeen].sort();
+          };
+          return { browser: await bundledText(clientOut), run };
+        };
+        return { ...fixture, file, buildRoutes };
+      };
+      const timesIn = (text: string, marker: string) => text.split(marker).length - 1;
+      const mixed =
+        "[client-runtime] 1 route loads per module, 0 keep the whole runtime because per module would not be smaller, 1 keeps it for a reason `akan quality runtime` names";
+
+      test("a route with an entry keeping the whole runtime and a narrowed entry sharing a file holds each module's descriptors once, and runs them once", async () => {
+        const { file, buildRoutes, warnings, said } = await describedFixture();
+        await write(file("Shared"), namingDraft);
+        await write(file("Pick"), `${picking}export { shared } from "./Shared";\n`);
+        await write(
+          file("Draft"),
+          '"use client";\nimport { shared } from "./Shared";\nexport const Draft = () => [shared, "draft-ui-marker"];\n',
+        );
+
+        const { browser, run } = await buildRoutes({
+          "/pick": [file("Pick"), file("Draft")],
+          "/draft": [file("Draft")],
+        });
+
+        expect(said).toEqual([mixed]);
+        expect(warnings).toEqual([]);
+        for (const marker of ["draft-descriptor-ref", "tally-descriptor-ref"]) expect(timesIn(browser, marker)).toBe(1);
+        expect(await run("/pick")).toEqual(["piece:draft", "whole:tally"]);
+        expect(await run("/draft")).toEqual([]);
+      }, 30_000);
+
+      test("a file a whole page and a page loading per module both ask for with import() brings no second copy to the whole page", async () => {
+        const { file, buildRoutes, warnings, said } = await describedFixture();
+        await write(file("Later"), namingDraft);
+        await write(file("Pick"), `${picking}export const later = () => import("./Later");\n`);
+        await write(
+          file("Draft"),
+          '"use client";\nexport const Draft = () => [import("./Later"), "draft-ui-marker"];\n',
+        );
+
+        const { browser } = await buildRoutes({ "/pick": [file("Pick")], "/draft": [file("Draft")] });
+
+        expect(said).toEqual([mixed]);
+        expect(warnings).toEqual([]);
+        expect(browser).toContain("shared-marker");
+        expect(timesIn(browser, "draft-descriptor-ref")).toBe(1);
+      }, 30_000);
+
+      test("a reference handed over on a whole page and on a page loading per module brings no second copy to the whole page", async () => {
+        const { appDir, file, buildRoutes, warnings, said } = await describedFixture();
+        await write(
+          path.join(appDir, "lib/_draft/draft.store.ts"),
+          'import { store } from "akanjs/store";\nexport class draftStore extends store("draft" as const, () => ({ draftText: 0, draft: null })) {}\n',
+        );
+        const reference = path.join(appDir, "lib/__client/draft.ref.ts");
+        await write(reference, '"use client";\n\nexport const reference = "draft";\n');
+        await write(file("Pick"), picking);
+        await write(file("Plain"), '"use client";\nexport const Plain = () => "plain-ui-marker";\n');
+
+        const { browser } = await buildRoutes({
+          "/pick": [file("Pick"), reference],
+          "/plain": [file("Plain"), reference],
+        });
+
+        expect(said).toEqual([mixed]);
+        expect(warnings).toEqual([]);
+        expect(browser).toContain("piece:draft.st");
+        expect(timesIn(browser, "draft-descriptor-ref")).toBe(1);
+      }, 30_000);
+
+      test("a route that would be no smaller loading per module keeps the whole runtime, and the build it was measured against leaves nothing behind", async () => {
+        const { appDir, file, buildRoutes, warnings, said } = await describedFixture({ whole: 0, draft: 600 });
+        await write(file("Draft"), `"use client";\n${namingDraft}`);
+
+        const { browser, run } = await buildRoutes({ "/draft": [file("Draft")] });
+
+        expect(said).toEqual([
+          "[client-runtime] 0 routes load per module, 1 keeps the whole runtime because per module would not be smaller",
+        ]);
+        expect(warnings).toEqual([]);
+        expect(browser).toContain("shared-marker");
+        expect(browser).not.toContain("piece:draft.st");
+        expect(await run("/draft")).toEqual(["whole:draft", "whole:tally"]);
+        expect(await Bun.file(path.join(appDir, ".akan/artifact/client-whole")).exists()).toBe(false);
+        expect((await readdir(path.join(appDir, ".akan/artifact"))).sort()).toEqual(["client", "client-ssr"]);
+      }, 30_000);
+
+      test("a route no smaller per module than where every page is whole, yet larger still keeping the whole runtime beside a page that loads per module, loads per module", async () => {
+        const { appDir, file, buildRoutes, warnings, said } = await describedFixture({
+          whole: 500,
+          draft: 450,
+          tally: 100,
+        });
+        await write(file("Shared"), namingDraft);
+        await write(file("Draft"), '"use client";\nexport { shared } from "./Shared";\n');
+        await write(
+          file("Board"),
+          '"use client";\nimport { st } from "@apps/demo/client";\nimport { shared } from "./Shared";\nexport const Board = () => [shared, st.use.tallyCount(), "board-marker"];\n',
+        );
+
+        const { browser } = await buildRoutes({ "/draft": [file("Draft")], "/board": [file("Board")] });
+
+        expect(said).toEqual([
+          "[client-runtime] 2 routes load per module, 0 keep the whole runtime because per module would not be smaller",
+        ]);
+        expect(warnings).toEqual([]);
+        for (const marker of ["piece:draft.st", "piece:tally.st", "board-marker"]) expect(browser).toContain(marker);
+        expect(browser).not.toContain("store-marker");
+        const report = await Bun.file(path.join(appDir, RouteRuntimeReport.file)).json();
+        expect(report).toMatchObject({ perModule: ["/draft", "/board"], notSmaller: [], refused: ["/board"] });
+      }, 30_000);
     });
 
     test("the files a route is sized by hold the store piece of the module its client code names, and no assembled runtime", async () => {

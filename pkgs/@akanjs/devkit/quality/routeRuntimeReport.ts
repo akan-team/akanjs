@@ -7,6 +7,9 @@ export interface RouteRuntimeBuildReport {
   perModule: string[];
   //? Routes the analysis could load per module, kept whole because the build measured them no smaller that way.
   notSmaller: string[];
+  //? Routes no smaller per module than where every page keeps the whole runtime, which came out larger still when the
+  //? build kept it for them among this app's other pages: they load per module.
+  refused?: string[];
   causes: RouteRuntimeCause[];
 }
 
@@ -21,10 +24,11 @@ export class RouteRuntimeReport {
 
   static summary({ perModule, notSmaller, routes }: RouteRuntimeBuildReport): string {
     const named = routes - perModule.length - notSmaller.length;
+    const verb = (many: number, word: string) => (many === 1 ? `${word}s` : word);
     return [
-      `${count(perModule, "route")} load per module`,
-      `${notSmaller.length} keep the whole runtime because per module would not be smaller`,
-      ...(named > 0 ? [`${named} keep it for a reason \`akan quality runtime\` names`] : []),
+      `${count(perModule, "route")} ${verb(perModule.length, "load")} per module`,
+      `${notSmaller.length} ${verb(notSmaller.length, "keep")} the whole runtime because per module would not be smaller`,
+      ...(named > 0 ? [`${named} ${verb(named, "keep")} it for a reason \`akan quality runtime\` names`] : []),
     ].join(", ");
   }
 
@@ -34,6 +38,7 @@ export class RouteRuntimeReport {
         [
           `Last build of apps/${report.app} under clientRuntime: "route": ${RouteRuntimeReport.summary(report)}.`,
           ...report.causes.flatMap((cause) => RouteRuntimeReport.#causeLines(cause)),
+          ...RouteRuntimeReport.#refusedLines(report.refused ?? []),
         ].join("\n"),
       )
       .join("\n\n");
@@ -48,6 +53,15 @@ export class RouteRuntimeReport {
       `  [${rule}] ${where}${message}`,
       `    ${count(entries, "entry", "entries")} on ${count(routes, "route")}${routes.length ? `: ${listed}${more}` : ""}`,
       ...chains.map((chain) => `    reached as ${RouteRuntimeReport.#chain(chain)}`),
+    ];
+  }
+
+  static #refusedLines(routes: readonly string[]): string[] {
+    if (routes.length === 0) return [];
+    const more =
+      routes.length > RouteRuntimeReport.shown ? `, and ${routes.length - RouteRuntimeReport.shown} more` : "";
+    return [
+      `  ${count(routes, "route")} measured no smaller per module than where every page keeps the whole runtime, and larger still keeping it here, so ${routes.length === 1 ? "it loads" : "they load"} per module: ${routes.slice(0, RouteRuntimeReport.shown).join(", ")}${more}`,
     ];
   }
 
