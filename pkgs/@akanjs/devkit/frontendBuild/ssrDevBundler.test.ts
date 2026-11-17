@@ -80,12 +80,14 @@ describe("SsrDevBundler under clientRuntime route", () => {
     const [useClient, st] = StoreBootstrap.assembled.map((piece) =>
       JSON.stringify(path.join(root, "apps/demo/lib", `${piece}.ts`).split(path.sep).join("/")),
     );
+    const constants = JSON.stringify(path.join(root, "apps/demo/lib/cnst.ts").split(path.sep).join("/"));
     expect(context.modelRuntime).toBe(
       [
         'import { loadedAfter as __akanLoadedAfter } from "akanjs/base";',
-        `import { sig as __akanLoaded0 } from ${useClient};`,
-        `import { st as __akanLoaded1 } from ${st};`,
-        "__akanLoadedAfter(__akanLoaded0, __akanLoaded1);",
+        `import * as __akanLoaded0 from ${constants};`,
+        `import { sig as __akanLoaded1 } from ${useClient};`,
+        `import { st as __akanLoaded2 } from ${st};`,
+        "__akanLoadedAfter(__akanLoaded0, __akanLoaded1, __akanLoaded2);",
         "",
       ].join("\n"),
     );

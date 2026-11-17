@@ -25,6 +25,7 @@ const routeWorkspace = async () => {
   const files: Record<string, string> = {
     "client.ts": 'export { st } from "./lib/st";\nexport { usePage } from "./lib/useClient";\n',
     "lib/st.ts": 'export const st = { mark: "whole-store" };\n',
+    "lib/cnst.ts": 'export const constants = "every-constant";\n',
     "lib/useClient.ts": 'export const usePage = () => "whole-client";\n',
     "lib/usePage.ts":
       'export const st = { use: {} as Record<string, () => unknown> };\nexport const usePage = () => "page";\n',
@@ -227,6 +228,7 @@ describe("the dev registry under clientRuntime route", () => {
       "apps/demo/client.ts",
       "apps/demo/lib/__client/_st.ts",
       "apps/demo/lib/__client/_useClient.ts",
+      "apps/demo/lib/cnst.ts",
       "apps/demo/lib/st.ts",
       "apps/demo/lib/useClient.ts",
       "apps/demo/ui/Pick.tsx",

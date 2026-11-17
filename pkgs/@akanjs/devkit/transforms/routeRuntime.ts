@@ -17,6 +17,7 @@ export interface RouteRuntimeResult {
   perModule: boolean;
   //? Workspace paths without an extension.
   pieces: string[];
+  wholeConstants?: boolean;
 }
 
 interface TextEdit {
@@ -41,7 +42,6 @@ const wholeFile = /^((?:apps|libs)\/[^/]+)\/lib\/(useClient|st)\.ts$/;
 const runtimeFile =
   /^(?:apps|libs)\/[^/]+\/lib\/(?:(?:useClient|st|usePage)\.ts|__client\/(?![^/]+\.ref\.ts$)[^/]+\.ts)$/;
 const storePiece = /^((?:apps|libs)\/[^/]+)\/lib\/__client\/([^/_][^/]*)\.st$/;
-const constantFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:__lib\/lib|(?:__scalar\/)?([^/_][^/]*)\/\1)\.constant\.ts$/;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
 //? The tab's one store: a scope's `lib/st.ts` exports this same object, and a key answers once its module has loaded.
 const tabStore = '"akanjs/store"';
@@ -114,6 +114,7 @@ export class RouteRuntime {
     const name = piece.slice(piece.lastIndexOf("/") + 1);
     if (name === assembled.st) return "st";
     if (name === assembled.useClient) return "sig";
+    if (name === "cnst") return "*";
     if (name.endsWith(".cnst")) return name.slice(0, -".cnst".length);
     return name.endsWith(".st") ? name.slice(0, -".st".length) : "loaded";
   }
@@ -123,16 +124,18 @@ export class RouteRuntime {
     const names = pieces.map((_, index) => `__akanLoaded${index}`);
     return [
       'import { loadedAfter as __akanLoadedAfter } from "akanjs/base";',
-      ...pieces.map(
-        (piece, index) =>
-          `import { ${RouteRuntime.#exportOf(piece)} as ${names[index]} } from ${JSON.stringify(specifierOf(piece))};`,
-      ),
+      ...pieces.map((piece, index) => {
+        const name = RouteRuntime.#exportOf(piece);
+        const binding = name === "*" ? `* as ${names[index]}` : `{ ${name} as ${names[index]} }`;
+        return `import ${binding} from ${JSON.stringify(specifierOf(piece))};`;
+      }),
       `__akanLoadedAfter(${names.join(", ")});`,
     ];
   }
 
+  //? A piece registers only the models a page names; the whole runtime also registers every one a registry walker lists.
   get wholeImports(): string[] {
-    return this.#after(this.#wholePieces, (piece) => this.#absoluteOf(piece));
+    return this.#after([`${this.#table.scope}/lib/cnst`, ...this.#wholePieces], (piece) => this.#absoluteOf(piece));
   }
 
   get wholeSource() {
@@ -230,6 +233,11 @@ export class RouteRuntime {
     return new Set([...this.#wholeReaders].filter(([, reads]) => reads).map(([file]) => file));
   }
 
+  //? The files transformed since the last plan that keep every constant, each named by `akan quality runtime`.
+  get wholeConstantReaders(): Set<string> {
+    return new Set([...this.#routes].filter(([, { result }]) => result?.wholeConstants).map(([file]) => file));
+  }
+
   #storeFilesOf(module: string, graph: RouteRuntimeGraph): string[] {
     return this.#table.layers
       .flatMap(({ scope }) =>
@@ -287,7 +295,7 @@ export class RouteRuntime {
     const referenced = fileName ? ModelReference.modelOf(fileName) : null;
     if (referenced) return this.#referenceOf(source, referenced);
     if (!fileName || macroAttribute.test(source)) return null;
-    if (constantFile.test(fileName)) return this.#constantFileOf(source, fileName);
+    if (RuntimeScopeReport.isConstantFile(fileName)) return this.#constantFileOf(source, fileName);
     if (!RuntimeScopeReport.isRuntimeSource(fileName)) return null;
     const [, storeScope, storeModule] = fileName.match(storeFile) ?? [];
     const planned = this.#planned;
@@ -312,7 +320,8 @@ export class RouteRuntime {
     const edits = sourceFile.statements.flatMap((statement) =>
       this.#importEdit(statement, sourceFile, fileName, { handlesOnly: storeSide && !verdict.resolvable, constants }),
     );
-    return this.#routed(source, sourceFile, edits, pieces, constants);
+    const result = this.#routed(source, sourceFile, edits, pieces, constants);
+    return constants ? result : { ...result, wholeConstants: true };
   }
 
   #constantFileOf(source: string, fileName: string): RouteRuntimeResult | null {
@@ -321,7 +330,8 @@ export class RouteRuntime {
     if (!sourceFile) return null;
     const { constants: use } = RuntimeUse.analyze({ fileName, text: source, sourceFile }, this.#table);
     const constants = this.#constants.rewrite(sourceFile, fileName, use, { constantFile: true });
-    if (!constants?.edits.length) return null;
+    if (!constants) return { source, perModule: true, pieces: [], wholeConstants: true };
+    if (!constants.edits.length) return null;
     return this.#routed(source, sourceFile, [], [], constants);
   }
 
