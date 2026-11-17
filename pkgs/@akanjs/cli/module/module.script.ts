@@ -62,7 +62,16 @@ export class ModuleScript extends script("module", [ModuleRunner, PageScript]) {
   async createView(mod: Module): Promise<PrimitiveWriteReport> {
     return await this.#createComponent(mod, "view");
   }
-  async #createComponent(mod: Module, type: "template" | "unit" | "view"): Promise<PrimitiveWriteReport> {
+  async createZone(mod: Module): Promise<PrimitiveWriteReport> {
+    return await this.#createComponent(mod, "zone");
+  }
+  async createUtil(mod: Module): Promise<PrimitiveWriteReport> {
+    return await this.#createComponent(mod, "util");
+  }
+  async #createComponent(
+    mod: Module,
+    type: "template" | "unit" | "view" | "zone" | "util",
+  ): Promise<PrimitiveWriteReport> {
     const { component } = await this.moduleRunner.createComponentTemplate(mod, type);
     return createPassedPrimitiveReport({
       command: `create-${type}`,
