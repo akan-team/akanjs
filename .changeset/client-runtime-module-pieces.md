@@ -19,4 +19,4 @@
 
 **Upgrading.**
 
-Nothing to change in app code. Run `akan sync` once after upgrading, and add `apps/**/lib/__client` and `libs/**/lib/__client` to your `.gitignore` beside `lib/__lib` so the new pieces are not committed.
+Nothing to change in app code. The `.gitignore` lines for the new files are in the upgrade note of the entry that makes `"route"` the default.

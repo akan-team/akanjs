@@ -494,7 +494,41 @@ describe("ApplicationScript", () => {
     }
   });
 
-  test('build told to skip the sync under clientRuntime: "route" says its per-module runtime files may be stale and what to run', async () => {
+  test('build and start say once that `clientRuntime: "all"` is deprecated and which command names what holds the app back', async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app: built } = track(await createTempApp("demo"));
+    built.scanSync = mock(async () => undefined) as never;
+    let clientRuntime = "all";
+    built.getConfig = mock(async () => ({ clientRuntime })) as never;
+    const warned = spyOn(built.logger, "warn").mockImplementation(() => undefined);
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => {
+      throw new Error("stopped");
+    });
+    const notice =
+      '[client-runtime] apps/demo/akan.config.ts sets clientRuntime: "all", which is deprecated and is removed in the next minor release. Delete that line so each page loads only what it uses; `akan quality runtime` names the files that would keep a page of demo on the whole runtime.';
+    try {
+      await expect(script.build(built, { quiet: true })).rejects.toThrow("stopped");
+      expect(warned.mock.calls).toEqual([[notice]]);
+      clientRuntime = "route";
+      await expect(script.build(built, { quiet: true })).rejects.toThrow("stopped");
+      expect(warned).toHaveBeenCalledTimes(1);
+    } finally {
+      build.mockRestore();
+      warned.mockRestore();
+    }
+
+    const { app, akanConfig, recorder } = createStartApp();
+    stubStart(script, recorder);
+    const said: unknown[] = [];
+    Object.assign(app, { logger: { warn: (message: unknown) => said.push(message) } });
+    await script.startOne(app as never, { write: false });
+    expect(said).toEqual([]);
+    Object.assign(akanConfig, { clientRuntime: "all" });
+    await script.startOne(app as never, { write: false });
+    expect(said).toEqual([notice.replaceAll("demo", (app as unknown as { name: string }).name)]);
+  });
+
+  test("build told to skip the sync says its per-module runtime files may be stale and what to run", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));
     app.scanSync = mock(async () => undefined) as never;
@@ -513,7 +547,10 @@ describe("ApplicationScript", () => {
       ]);
       clientRuntime = "all";
       await expect(script.build(app, { quiet: true, write: false })).rejects.toThrow("stopped");
-      expect(warned).toHaveBeenCalledTimes(1);
+      expect(warned.mock.calls.map(([message]) => message)).toEqual([
+        expect.stringContaining("Build without `--write false`, or run `akan sync demo` first."),
+        expect.stringContaining('sets clientRuntime: "all", which is deprecated'),
+      ]);
     } finally {
       build.mockRestore();
       warned.mockRestore();

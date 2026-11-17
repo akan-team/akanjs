@@ -80,7 +80,7 @@ export class SsrDevBundler extends DevRegistryBundler {
   async #routeRuntime(): Promise<DevRouteRuntime | string> {
     const { name } = this.app;
     const whole = (why: string, first = "Run") =>
-      `[client-runtime] clientRuntime: "route" is set, but ${why}, so every page of the development server loads the whole client runtime. ${first} \`akan sync ${name}\`.`;
+      `[client-runtime] ${why}, so every page of the development server loads the whole client runtime, not only what it uses. ${first} \`akan sync ${name}\`.`;
     const missing = whole(`the per-module runtime files of ${name} or a lib it mounts are missing`);
     if ((await StoreBootstrap.scopeOf(this.app)) !== "page") return missing;
     const root = this.app.workspace.workspaceRoot;

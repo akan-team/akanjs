@@ -3,7 +3,7 @@
 "@akanjs/devkit": patch
 ---
 
-Under `clientRuntime: "route"`, the development server now loads what a production page loads, so a page that works in development works the same once built. With `"all"`, the default, development is unchanged.
+Under `clientRuntime: "route"`, the development server now loads what a production page loads, so a page that works in development works the same once built. With `"all"`, development is unchanged.
 
 - A server-rendered page in development takes the descriptors and stores of only the modules its client code names, from the same `lib/__client/` pieces a route build uses, and imports from `akanjs/ui` narrow as they do in a build. The tab keeps one store, and each piece loads once.
 - Saving a store, signal or constant file rereads which module declares each name and recompiles the files whose names moved to another module. A store save that adds an action replaces that store's actions and keeps its state, without reloading the page.

@@ -222,7 +222,7 @@ export class AkanAppConfig implements AppConfigResult {
       ...(config?.barrelImports ?? []),
     ];
     this.optimizeImports = [...new Set([...DEFAULT_OPTIMIZE_IMPORTS, ...(config?.optimizeImports ?? [])])];
-    this.clientRuntime = config?.clientRuntime ?? "all";
+    this.clientRuntime = config?.clientRuntime ?? "route";
     if (this.clientRuntime !== "all" && this.clientRuntime !== "route")
       throw new Error(
         `${owner} sets clientRuntime to ${JSON.stringify(this.clientRuntime)}; it takes "all" or "route".`,

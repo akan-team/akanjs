@@ -14,12 +14,13 @@ const piecesOf = (app = appPieces, kit = kitPieces) =>
 
 let runtime: RouteRuntime;
 let withoutTagStore: RouteRuntime;
-let withStores: (stores: Record<string, string>) => RouteRuntime;
+let withStores: (stores: Record<string, string>, kit?: string[]) => RouteRuntime;
 
 beforeAll(async () => {
   const { demo } = await runtimeFixtureTables();
   runtime = new RouteRuntime(root, demo, piecesOf());
-  withStores = (stores) => new RouteRuntime(root, demo, piecesOf(), (absPath) => stores[absPath] ?? null);
+  withStores = (stores, kit) =>
+    new RouteRuntime(root, demo, piecesOf(appPieces, kit), (absPath) => stores[absPath] ?? null);
   withoutTagStore = new RouteRuntime(
     root,
     demo,
@@ -189,6 +190,26 @@ export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
     expect(result?.source).not.toMatch(/__client\/[\w.]+\.st"/);
   });
 
+  test("a model's reference loads that model's store, not another store with a state field of the model's name", async () => {
+    const { demo } = await runtimeFixtureTables({
+      demo: {
+        "apps/demo/lib/_auth/auth.store.ts": `import { store } from "akanjs/store";
+
+export class AuthStore extends store("auth" as const, () => ({ memo: null as string | null, note: "" })) {}
+`,
+      },
+    });
+    const withAuth = new RouteRuntime(root, demo, piecesOf([...appPieces, "auth.st"]));
+    const reference = (model: string) =>
+      transform(
+        `"use client";\n\nexport const reference = "${model}";\n`,
+        `apps/demo/lib/__client/${model}.ref.ts`,
+        withAuth,
+      );
+    expect(reference("memo")?.pieces).toEqual(["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/memo.st"]);
+    expect(reference("note")?.pieces).toEqual(["apps/demo/lib/__client/note.fetch", "apps/demo/lib/__client/note.st"]);
+  });
+
   test("loads the framework's own descriptors for a call to one of them", () => {
     const result = transform('import { fetch } from "@apps/demo/client";\nexport const check = () => fetch.ping();\n');
     expect(result?.pieces).toEqual(["apps/demo/lib/__client/_base.fetch"]);
@@ -235,6 +256,28 @@ describe("a client file whose modules cannot be told", () => {
     const result = transform(source, "apps/demo/ui/Card.tsx", withoutTagStore);
     expect(result?.perModule).toBe(false);
     expect(result?.source).toBe(`${whole}${source}`);
+  });
+
+  test("names the lib to sync on the routes of an entry naming a store that lib has no piece for", () => {
+    const entry = `${root}/apps/demo/ui/Card.tsx`;
+    const source = 'import { st } from "@apps/demo/client";\nexport const read = () => st.use.tagFilter();\n';
+    const unsynced = withStores(
+      { [entry]: source },
+      kitPieces.filter((piece) => piece !== "tag.st"),
+    );
+    unsynced.plan({
+      importsByModule: new Map([[entry, []]]),
+      entries: [entry],
+      entriesByRoute: new Map([["/card", [entry]]]),
+    });
+    expect(unsynced.decided?.causes()).toEqual([
+      expect.objectContaining({
+        rule: "reader",
+        file: "apps/demo/ui/Card.tsx",
+        message: "names tag, which has no generated piece: run `akan sync kit`",
+        routes: ["/card"],
+      }),
+    ]);
   });
 
   test("gives a store file that picks a name at run time its own descriptors and the page runtime's handles, and no store piece", () => {

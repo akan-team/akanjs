@@ -63,6 +63,11 @@ export class RuntimeMarkerReach {
     return pins;
   }
 
+  //? This read counts every page importing such a component; a build's report names the routes that really hold it.
+  static unbuilt(pins: RuntimeMarkerPin[], builtApps: readonly string[]): RuntimeMarkerPin[] {
+    return pins.filter(({ page }) => !builtApps.some((app) => page.startsWith(`apps/${app}/`)));
+  }
+
   static format(pins: RuntimeMarkerPin[]): string[] {
     const groups = new Map<string, { chain: string[]; pages: string[] }>();
     for (const { page, chain } of pins) {

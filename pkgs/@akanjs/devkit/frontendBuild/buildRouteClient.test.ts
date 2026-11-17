@@ -81,7 +81,7 @@ const writeBarrelFixture = async (rootDir?: string) => {
     cwdPath: appDir,
     dist: { cwdPath: path.join(root, "dist/apps/demo") },
     workspace: { workspaceRoot: root },
-    getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [] }),
+    getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [], clientRuntime: "all" }),
     getTsConfig: async () => ({ compilerOptions: { paths } }),
     getPublicEnv: () => ({}),
   } as never;
@@ -243,7 +243,7 @@ describe("route client store bootstrap", () => {
       cwdPath: appDir,
       dist: { cwdPath: path.join(root, "dist/apps/demo") },
       workspace: { workspaceRoot: root },
-      getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
+      getConfig: async () => ({ barrelImports: [], optimizeImports: [], clientRuntime: "all" }),
       getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
       getPublicEnv: () => ({}),
     } as never;
@@ -300,7 +300,7 @@ describe("route client store bootstrap", () => {
       cwdPath: appDir,
       dist: { cwdPath: path.join(root, "dist/apps/demo") },
       workspace: { workspaceRoot: root },
-      getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
+      getConfig: async () => ({ barrelImports: [], optimizeImports: [], clientRuntime: "all" }),
       getPublicEnv: () => ({}),
     } as never;
 

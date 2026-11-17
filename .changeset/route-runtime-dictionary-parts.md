@@ -3,7 +3,7 @@
 "@akanjs/devkit": minor
 ---
 
-Under `clientRuntime: "route"`, a page loads the dictionary texts it can show rather than every module's. With `"all"`, the default, the dictionary files are byte for byte what they were; its bundles are not, since the page's runtime entry carries the loader, which changes nothing a page shows.
+Under `clientRuntime: "route"`, a page loads the dictionary texts it can show rather than every module's. With `"all"`, the dictionary files are byte for byte what they were; its bundles are not, since the page's runtime entry carries the loader, which changes nothing a page shows.
 
 - **What a route can show.** `akan build` and the development server read the keys each route's client modules name: a written key, a template whose module name is written, and a key picked from literal values or property names of an object in the same file, from a typed union, or from a template type with a written module name. To those they add the models, scalars and enums whose labels and options the framework's lists, views, forms and remove dialogs build at run time, reached through the module pieces the route loads, and `base`. A route that hands the translator on or keeps it in a variable, or has a key the build cannot follow, such as one read from data, loads the whole page dictionary, and `akan build` warns with its file, line and reason. A route that renders a `Signal` or `Constant` component loads the whole page dictionary too, and so does a route that keeps the whole client runtime, whose files `akan quality runtime` names. Server components need nothing: their texts arrive rendered.
 - **Files.** Each language's dictionary is packed into files by module, sized on the default language, so that a route loads at most four of them besides the API description file. Each file is written to `/_akan/dict` with the table naming the file of every module. A route whose client components name an endpoint's description or argument key loads the API description file with them.
@@ -17,4 +17,4 @@ Under `clientRuntime: "route"`, a page loads the dictionary texts it can show ra
 
 **Upgrading.**
 
-Nothing to do under `"all"`. Under `"route"`, a client component whose key the build cannot follow makes its route load the whole dictionary, and `akan build` names it: writing the key out, or picking it from an object or union in the same file, lets the route load only its own files. A text shown once outside React, such as your own toast that calls `Translator.translateByLocale`, can wait on `Translator.ready(lang, key)` first, so a late module's text is not shown as its key.
+A client component whose key the build cannot follow makes its route load the whole dictionary, and `akan build` names it: writing the key out, or picking it from an object or union in the same file, lets the route load only its own files. A text shown outside React is covered in the upgrade note of the entry that makes `"route"` the default.

@@ -220,7 +220,7 @@ export class RouteClientBuilder {
     const { name } = this.#app;
     const whole = (why: string, first = "Run") => {
       this.#app.logger.warn(
-        `[client-runtime] clientRuntime: "route" is set, but ${why}, so every page of this build loads the whole client runtime. ${first} \`akan sync ${name}\` and build again.`,
+        `[client-runtime] ${why}, so every page of this build loads the whole client runtime, not only what it uses. ${first} \`akan sync ${name}\` and build again.`,
       );
       return null;
     };
@@ -412,7 +412,10 @@ export class RouteClientBuilder {
   #signalDescriptors(routeRuntime: RouteRuntime) {
     const scopes = routeRuntime.table.layers.map(({ scope }) => scope);
     return new SignalDescriptors(this.#app.workspace.workspaceRoot, scopes, {
-      onUnread: (reason) => this.#app.logger.warn(`[client-runtime] ${reason}, so their pieces run the macro`),
+      onUnread: (reason) =>
+        this.#app.logger.warn(
+          `[client-runtime] ${reason}, so each of their pieces reads its signal again: a slower build of the same pages. Run \`akan sync ${this.#app.name}\` if their generated files are from an earlier release.`,
+        ),
       takenFromPieces: (absPath) => routeRuntime.takenFromPieces(absPath),
     }).plugin;
   }
