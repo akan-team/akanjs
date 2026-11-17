@@ -106,6 +106,21 @@ describe("RuntimeUse.analyze, a key asserted as a name", () => {
     ]).toEqual([memoAndNote, memoAndNote, memoAndNote]);
   });
 
+  test("keeps the whole runtime for a spread written through a cast `this`, which is not the store's own typed `set`", () => {
+    const mergeOf = (write: string) => storeOf(`  merge(patch: { draft: string }) {\n    ${write};\n  }`);
+    expect([
+      mergeOf("this.set({ ...patch })"),
+      mergeOf("(this as any).set({ ...patch })"),
+      mergeOf("(this as unknown as { set(p: object): void }).set({ ...patch })"),
+      mergeOf("(this as any)['set']({ ...patch })"),
+    ]).toEqual([
+      ["apps/demo/memo store"],
+      "computed-access: patch",
+      "computed-access: patch",
+      "computed-access: patch",
+    ]);
+  });
+
   test("reports an asserted name the runtime does not have, and keeps the whole runtime for a key nothing asserts", () => {
     expect([
       analyze(`${head}export const a = (key: string) => st.use[key as "nothing"]();\n`),

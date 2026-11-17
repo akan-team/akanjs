@@ -37,6 +37,7 @@ export type RuntimeHandleKind =
 export interface RuntimeHandle {
   kind: RuntimeHandleKind;
   members?: ReadonlySet<string>;
+  cast?: boolean;
 }
 
 export type RuntimeBinding =

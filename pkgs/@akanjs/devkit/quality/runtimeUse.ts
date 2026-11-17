@@ -400,8 +400,9 @@ export class RuntimeUse {
       this.#problem("whole-runtime-import", literal, "the runtime module is handed to code that may load it whole");
   }
 
-  #follow(node: ts.Expression, handle: RuntimeHandle) {
+  #follow(node: ts.Expression, reached: RuntimeHandle) {
     const { current, parent } = climbCasts(node);
+    const handle = current !== node && reached.kind === "self" ? { ...reached, cast: true } : reached;
     if (ts.isPropertyAccessExpression(parent) && parent.expression === current)
       return this.#apply(parent, this.#step(handle, parent.name.text));
     if (ts.isElementAccessExpression(parent) && parent.expression === current) return this.#keyed(parent, handle);
@@ -502,7 +503,8 @@ export class RuntimeUse {
         return agenticMembers.has(name) ? { none: true } : { unknown: true };
       case "root":
       case "self":
-        if (name === "get" || name === "set" || name === "pick") return { method: name, own: handle.kind === "self" };
+        if (name === "get" || name === "set" || name === "pick")
+          return { method: name, own: handle.kind === "self" && !handle.cast };
         if (name === "slice") return to("st.slice");
         if (handle.members?.has(name) && !this.#consumer?.lookup("st.do", name)) return { none: true };
         return { leaf: "st.do", key: name };
