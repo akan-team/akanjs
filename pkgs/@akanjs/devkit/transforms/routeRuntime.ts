@@ -2,10 +2,12 @@ import { readFileSync } from "node:fs";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import { RuntimeImports } from "../quality/runtimeImports";
 import { RuntimeNameTable } from "../quality/runtimeNameTable";
 import { RuntimeScopeReport } from "../quality/runtimeScopeReport";
 import { RuntimeUse, type RuntimeUseVerdict } from "../quality/runtimeUse";
+import { type RouteRuntimeBundle, RouteRuntimeGraph } from "./routeRuntimeGraph";
 
 export interface RouteRuntimeResult {
   source: string;
@@ -20,10 +22,19 @@ interface TextEdit {
   text: string;
 }
 
+interface Planned {
+  graph: RouteRuntimeGraph;
+  //? Every file a store file imports, itself included: it loads no store piece, which would import that store back.
+  storeSide: Set<string>;
+  //? The files a page loading pieces reaches. Every other file the bundle holds keeps the whole runtime as written.
+  routed: Set<string>;
+}
+
 const handleNames = new Set(["fetch", "sig", "st"]);
 const macroAttribute = /with\s*\{\s*type\s*:\s*["']macro["']\s*\}/;
 const storeFile = /^((?:apps|libs)\/[^/]+)\/lib\/_?[^/]+\/([^/]+)\.store\.ts$/;
 const wholeFile = /^((?:apps|libs)\/[^/]+)\/lib\/(useClient|st)\.ts$/;
+const runtimeFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:(?:useClient|st|usePage)\.ts|__client\/[^/]+\.ts)$/;
 const storePiece = /^((?:apps|libs)\/[^/]+)\/lib\/__client\/([^/_][^/]*)\.st$/;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
 //? The tab's one store: a scope's `lib/st.ts` exports this same object, and a key answers once its module has loaded.
@@ -38,6 +49,11 @@ export class RouteRuntime {
   readonly #pieces: ReadonlySet<string>;
   readonly #read: (absPath: string) => string | null;
   readonly #storeNeeds = new Map<string, string[] | null>();
+  readonly #ownNeeds = new Map<string, string[] | null>();
+  readonly #sideNeeds = new Map<string, string[] | null>();
+  readonly #routes = new Map<string, { source: string; result: RouteRuntimeResult | null }>();
+  readonly #wholeReaders = new Map<string, boolean>();
+  #planned: Planned | null = null;
 
   static async read(workspaceRoot: string, appScope: string): Promise<RouteRuntime | null> {
     const table = await RuntimeNameTable.read(workspaceRoot, appScope);
@@ -120,6 +136,7 @@ export class RouteRuntime {
 
   //? A scope's `lib/useClient.ts` holds every descriptor in one macro call: answered from the pieces, none ships twice.
   redirectOf(absPath: string): string | null {
+    if (this.#planned) return null;
     const [, scope, file] = this.fileNameOf(absPath)?.match(wholeFile) ?? [];
     if (!scope || !file) return null;
     const piece = assembled[file as keyof typeof assembled];
@@ -131,24 +148,139 @@ export class RouteRuntime {
       : own;
   }
 
+  //* Reads a bundle of the same entries in which every entry loads the whole runtime, and answers which entries keep
+  //* it: one reaching a file whose modules cannot be told, and one every route of which holds such an entry. The
+  //* files only those entries reach stay as written, so such a page loads what it loads under `clientRuntime: "all"`.
+  plan({ importsByModule, entries, entriesByRoute }: RouteRuntimeBundle): Set<string> {
+    const graph = new RouteRuntimeGraph(importsByModule, (absPath) => runtimeFile.test(this.fileNameOf(absPath) ?? ""));
+    const stores = graph.modules.filter((module) => storeFile.test(this.fileNameOf(module) ?? ""));
+    const storeSide = new Set([...graph.closureOf(stores)].filter((file) => this.fileNameOf(file)));
+    const planned: Planned = { graph, storeSide, routed: new Set() };
+    this.#planned = planned;
+    for (const memo of [this.#storeNeeds, this.#ownNeeds, this.#sideNeeds, this.#routes, this.#wholeReaders])
+      memo.clear();
+    const roots = [...new Set([...entries, ...graph.lazyRoots])];
+    const keeps = this.#keptOf(roots, new Set(entries), [...(entriesByRoute?.values() ?? [])], planned);
+    const routed = graph.closureOf(roots.filter((root) => !keeps.has(root)));
+    //? A set yields what is added while it is walked: a store reached through its piece brings the files it imports.
+    for (const file of routed)
+      for (const piece of this.#routeOf(file)?.pieces ?? []) {
+        const [, , module] = piece.match(storePiece) ?? [];
+        if (module) graph.closureOf(this.#storeFilesOf(module, graph), routed);
+      }
+    planned.routed = routed;
+    return keeps;
+  }
+
+  #keptOf(roots: string[], entries: Set<string>, routes: (readonly string[])[], planned: Planned): Set<string> {
+    const { graph } = planned;
+    const closures = new Map(roots.map((root) => [root, graph.closureOf([root])]));
+    const lazyOf = new Map(
+      roots.map((root) => [root, [...(closures.get(root) ?? [])].flatMap((file) => graph.lazyImportsOf(file))]),
+    );
+    const whole = new Set(roots.filter((root) => this.#loadsWhole(root, closures.get(root) ?? [], planned)));
+    //? A module asked for by `import()` gets no entry of its own to load the whole runtime first, so its asker does.
+    for (let more = roots; more.length > 0; ) {
+      more = roots.filter((root) => !whole.has(root) && lazyOf.get(root)?.some((lazy) => whole.has(lazy)));
+      for (const root of more) whole.add(root);
+    }
+    const wholeRoute = (route: readonly string[]) => route.some((entry) => whole.has(entry));
+    const inWhole = new Set(routes.filter(wholeRoute).flat());
+    const inOther = new Set(routes.filter((route) => !wholeRoute(route)).flat());
+    const keeps = new Set(roots.filter((root) => whole.has(root) || (inWhole.has(root) && !inOther.has(root))));
+    const askers = new Map<string, string[]>();
+    for (const [root, lazies] of lazyOf)
+      for (const lazy of lazies) askers.set(lazy, [...(askers.get(lazy) ?? []), root]);
+    for (let more = [...askers]; more.length > 0; ) {
+      more = [...askers].filter(
+        ([lazy, askedBy]) => !keeps.has(lazy) && !entries.has(lazy) && askedBy.every((root) => keeps.has(root)),
+      );
+      for (const [lazy] of more) keeps.add(lazy);
+    }
+    return keeps;
+  }
+
+  //? The files the last plan found to need every module, which a page built to load pieces must not reach.
+  get wholeReaders(): Set<string> {
+    return new Set([...this.#wholeReaders].filter(([, reads]) => reads).map(([file]) => file));
+  }
+
+  #storeFilesOf(module: string, graph: RouteRuntimeGraph): string[] {
+    return this.#table.layers
+      .flatMap(({ scope }) =>
+        [module, `_${module}`].map((dir) => path.join(this.#workspaceRoot, scope, "lib", dir, `${module}.store.ts`)),
+      )
+      .filter((file) => graph.has(file));
+  }
+
+  #loadsWhole(root: string, closure: Iterable<string>, planned: Planned): boolean {
+    //? Nothing imports an entry, so no importer loads the stores a store-side entry's code names.
+    if (planned.storeSide.has(root) && this.#sideNeedsOf(root, planned)?.length !== 0) return true;
+    for (const file of closure) if (this.#readsWhole(file, planned)) return true;
+    return false;
+  }
+
+  #readsWhole(absPath: string, planned: Planned): boolean {
+    const known = this.#wholeReaders.get(absPath);
+    if (known !== undefined) return known;
+    const reads = this.#readsWholeNow(absPath, planned);
+    this.#wholeReaders.set(absPath, reads);
+    return reads;
+  }
+
+  #readsWholeNow(absPath: string, planned: Planned): boolean {
+    if (StoreBootstrap.modelRuntimeFilter.test(absPath)) return true;
+    if (!this.fileNameOf(absPath)) return false;
+    const source = this.#read(absPath);
+    if (source === null) return false;
+    const routed = this.#route(source, absPath);
+    if (routed) return !routed.perModule;
+    //? A file left as written (a macro host, a generated barrel) keeps its imports of the whole runtime.
+    return planned.graph.importsOf(absPath).some((imported) => wholeFile.test(this.fileNameOf(imported) ?? ""));
+  }
+
+  #routeOf(absPath: string): RouteRuntimeResult | null {
+    const source = this.fileNameOf(absPath) ? this.#read(absPath) : null;
+    return source === null ? null : this.#route(source, absPath);
+  }
+
   transform(source: string, absPath: string): RouteRuntimeResult | null {
+    const key = path.resolve(absPath);
+    if (this.#planned?.graph.has(key) && !this.#planned.routed.has(key)) return null;
+    return this.#route(source, key);
+  }
+
+  #route(source: string, absPath: string): RouteRuntimeResult | null {
+    const known = this.#routes.get(absPath);
+    if (known?.source === source) return known.result;
+    const result = this.#routeNow(source, absPath);
+    this.#routes.set(absPath, { source, result });
+    return result;
+  }
+
+  #routeNow(source: string, absPath: string): RouteRuntimeResult | null {
     const fileName = this.fileNameOf(absPath);
     if (!fileName || !RuntimeScopeReport.isRuntimeSource(fileName) || macroAttribute.test(source)) return null;
     const [, storeScope, storeModule] = fileName.match(storeFile) ?? [];
-    if (!storeModule && !RuntimeImports.mayUseRuntime(source, fileName)) return { source, perModule: true, pieces: [] };
+    const planned = this.#planned;
+    const storeSide = !!storeModule || !!planned?.storeSide.has(absPath);
+    const sideNeeds = planned && !storeSide ? this.#importedNeedsOf(absPath, planned) : [];
+    if (!storeModule && !sideNeeds.length && !RuntimeImports.mayUseRuntime(source, fileName))
+      return { source, perModule: true, pieces: [] };
     const sourceFile = RouteRuntime.#parse(fileName, source);
     if (!sourceFile) return null;
     const verdict = RuntimeUse.analyze({ fileName, text: source, sourceFile }, this.#table);
     const aliasOf = (piece: string) => `@${piece}`;
-    if (storeScope && storeModule) {
-      const pieces = this.#descriptorsOf(verdict, { scope: storeScope, module: storeModule }) ?? [];
+    if (storeSide) {
+      const store = storeScope && storeModule ? { scope: storeScope, module: storeModule } : undefined;
+      const pieces = this.#descriptorsOf(verdict, store) ?? [];
       const edits = sourceFile.statements.flatMap((statement) =>
         this.#importEdit(statement, sourceFile, fileName, !verdict.resolvable),
       );
       if (pieces.length) edits.push(this.#leading(sourceFile, this.#after(pieces, aliasOf)));
       return { source: RouteRuntime.#apply(source, edits), perModule: true, pieces };
     }
-    const pieces = this.#piecesOf(verdict);
+    const pieces = this.#piecesOf(verdict, sideNeeds);
     if (!pieces) {
       const edit = this.#leading(sourceFile, this.wholeImports);
       return { source: RouteRuntime.#apply(source, [edit]), perModule: false, pieces: [] };
@@ -171,7 +303,11 @@ export class RouteRuntime {
   }
 
   //? Null where a descriptor the file names has no piece: only the whole runtime answers it then.
-  #descriptorsOf(verdict: RuntimeUseVerdict, store?: { scope: string; module: string }): string[] | null {
+  #descriptorsOf(
+    verdict: RuntimeUseVerdict,
+    store?: { scope: string; module: string },
+    strict = false,
+  ): string[] | null {
     const descriptors = new Set<string>();
     if (verdict.resolvable && verdict.baseDescriptor) descriptors.add(`${this.#table.scope}/lib/__client/_base.fetch`);
     const own = store ? [...this.#table.dependenciesOf(store.scope, store.module), store] : [];
@@ -182,16 +318,16 @@ export class RouteRuntime {
     for (const { scope, module, needs } of verdict.resolvable ? verdict.owners : []) {
       const descriptor = this.#descriptorOf(scope, module);
       if (descriptor) descriptors.add(descriptor);
-      else if (needs === "descriptor" && !store) return null;
+      else if (needs === "descriptor" && strict) return null;
     }
     return [...descriptors];
   }
 
-  //? A store file imports no store piece: the piece of a store it names imports that store's file, which may name
-  //? this one back. What its actions reach when they run is loaded by each file naming this store instead.
-  #piecesOf(verdict: RuntimeUseVerdict): string[] | null {
+  //? A store-side file imports no store piece: the piece of a store it names imports that store's file, which may
+  //? import this one back. What its code reaches when it runs is loaded by each file outside importing it instead.
+  #piecesOf(verdict: RuntimeUseVerdict, sideNeeds: (string[] | null)[] = []): string[] | null {
     if (!verdict.resolvable) return null;
-    const descriptors = this.#descriptorsOf(verdict);
+    const descriptors = this.#descriptorsOf(verdict, undefined, true);
     if (!descriptors) return null;
     const stores = new Set<string>();
     for (const { scope, module, needs } of verdict.owners) {
@@ -199,6 +335,7 @@ export class RouteRuntime {
       const store = `${scope}/lib/__client/${module}.st`;
       if (!this.#pieces.has(store) || !this.#reaches(store, stores)) return null;
     }
+    for (const needs of sideNeeds) if (!needs?.every((need) => this.#reaches(need, stores))) return null;
     return [...descriptors, ...stores];
   }
 
@@ -231,22 +368,57 @@ export class RouteRuntime {
     const key = `${scope}/${module}`;
     const known = this.#storeNeeds.get(key);
     if (known !== undefined) return known;
-    const needs = this.#readNeeds(scope, module);
+    const [file] = [module, `_${module}`]
+      .map((dir) => path.join(this.#workspaceRoot, scope, "lib", dir, `${module}.store.ts`))
+      .filter((candidate) => this.#read(candidate) !== null);
+    const needs = !file ? [] : this.#planned ? this.#sideNeedsOf(file, this.#planned) : this.#ownNeedsOf(file);
     this.#storeNeeds.set(key, needs);
     return needs;
   }
 
-  #readNeeds(scope: string, module: string): string[] | null {
-    const files = [module, `_${module}`].map((dir) => `${scope}/lib/${dir}/${module}.store.ts`);
-    const read = files.flatMap((fileName) => {
-      const text = this.#read(path.join(this.#workspaceRoot, fileName));
-      return text === null ? [] : [{ fileName, text }];
-    });
-    const [file] = read;
-    if (!file) return [];
-    const sourceFile = macroAttribute.test(file.text) ? null : RouteRuntime.#parse(file.fileName, file.text);
+  //? What a file outside the store side loads for each store-side file it imports, as it does for a store it names.
+  #importedNeedsOf(absPath: string, planned: Planned): (string[] | null)[] {
+    return planned.graph
+      .importsOf(absPath)
+      .filter((file) => planned.storeSide.has(file))
+      .map((file) => this.#sideNeedsOf(file, planned))
+      .filter((needs) => needs?.length !== 0);
+  }
+
+  //? With the store-side files it imports, whose code runs inside the same import cycle.
+  #sideNeedsOf(absPath: string, planned: Planned): string[] | null {
+    const known = this.#sideNeeds.get(absPath);
+    if (known !== undefined) return known;
+    const needs = new Set<string>();
+    let told = true;
+    for (const file of planned.graph.closureOf([absPath])) {
+      const own = this.#ownNeedsOf(file);
+      if (!own) told = false;
+      for (const need of own ?? []) needs.add(need);
+    }
+    const result = told ? [...needs] : null;
+    this.#sideNeeds.set(absPath, result);
+    return result;
+  }
+
+  #ownNeedsOf(absPath: string): string[] | null {
+    const known = this.#ownNeeds.get(absPath);
+    if (known !== undefined) return known;
+    const needs = this.#readNeeds(absPath);
+    this.#ownNeeds.set(absPath, needs);
+    return needs;
+  }
+
+  #readNeeds(absPath: string): string[] | null {
+    const fileName = this.fileNameOf(absPath);
+    if (!fileName || !RuntimeScopeReport.isRuntimeSource(fileName)) return [];
+    const text = this.#read(absPath);
+    if (text === null) return [];
+    const [, , module] = fileName.match(storeFile) ?? [];
+    if (!module && !RuntimeImports.mayUseRuntime(text, fileName)) return [];
+    const sourceFile = macroAttribute.test(text) ? null : RouteRuntime.#parse(fileName, text);
     if (!sourceFile) return null;
-    const verdict = RuntimeUse.analyze({ ...file, sourceFile }, this.#table);
+    const verdict = RuntimeUse.analyze({ fileName, text, sourceFile }, this.#table);
     if (!verdict.resolvable) return null;
     const stores: string[] = [];
     for (const owner of verdict.owners) {
