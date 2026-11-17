@@ -737,13 +737,14 @@ describe("an app's client runtime pieces", () => {
     expect(await read("item.cnst.ts")).toContain(
       'import { item as lib0 } from "@libs/stock/lib/__client/item.cnst";\nimport * as cnst from "../item/item.constant";\n\nloadedAfter(lib0);\nexport const item = ConstantRegistry.buildModel("item" as const, cnst.ItemInput,',
     );
+    expect(await read("item.cnst.ts")).toEndWith(', "shop");\nexport { item as loaded };\n');
     expect(await read("_base.fetch.ts")).not.toContain("@libs/");
     expect(await read("_base.fetch.ts")).toContain('getSerializedSignalOf("base")');
     expect(await read("audit.fetch.ts")).toContain(
       'import { loaded as lib0 } from "@libs/stock/lib/__client/audit.fetch";',
     );
     expect(await read("item.fetch.ts")).toContain(
-      'import { loaded as lib0 } from "@libs/stock/lib/__client/item.fetch";\nimport { item as cnst0 } from "./item.cnst";',
+      'import { loaded as lib0 } from "@libs/stock/lib/__client/item.fetch";\nimport { loaded as cnst0 } from "./item.cnst";',
     );
     expect(await read("item.fetch.ts")).toContain(
       "\nloadedAfter(lib0, cnst0);\nexport const loaded = FetchClient.build<typeof signal>({}, ",
@@ -753,7 +754,7 @@ describe("an app's client runtime pieces", () => {
     expect(await read("demo.st.ts")).toContain('import { loaded as fetch0 } from "./demo.fetch";');
     expect(await read("demo.st.ts")).toContain('import { DemoStore } from "../_demo/demo.store";');
     expect(await read("item.st.ts")).toContain(
-      'import { item as cnst0 } from "./item.cnst";\nimport { loaded as fetch0 } from "./item.fetch";\nimport { item as lib0 } from "@libs/stock/lib/__client/item.st";\nimport { ItemStore } from "../item/item.store";\n\nloadedAfter(cnst0, fetch0, lib0);\nexport const item = StoreRegistry.register(ItemStore);',
+      'import { loaded as cnst0 } from "./item.cnst";\nimport { loaded as fetch0 } from "./item.fetch";\nimport { item as lib0 } from "@libs/stock/lib/__client/item.st";\nimport { ItemStore } from "../item/item.store";\n\nloadedAfter(cnst0, fetch0, lib0);\nexport const item = StoreRegistry.register(ItemStore);',
     );
     expect(await read("note.st.ts")).not.toContain(".fetch");
     expect(await read("note.st.ts")).not.toContain("loadedAfter");
@@ -830,7 +831,7 @@ describe("an app's client runtime pieces", () => {
       'import { loaded as fetch0 } from "./file.fetch";\nimport { loaded as fetch1 } from "./user.fetch";\n',
     );
     expect(piece).toContain(
-      'import { user as cnst0 } from "./user.cnst";\nimport { loaded as fetch0 } from "./file.fetch";\n',
+      'import { loaded as cnst0 } from "./user.cnst";\nimport { loaded as fetch0 } from "./file.fetch";\n',
     );
     expect(piece).toContain(
       "\nloadedAfter(cnst0, fetch0, fetch1);\nexport const user = StoreRegistry.register(UserStore);",

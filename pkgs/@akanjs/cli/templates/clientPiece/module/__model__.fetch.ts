@@ -23,7 +23,7 @@ export default function getContent(
   const after = [...libs.map((_, index) => `lib${index}`), ...(constants ?? []).map((_, index) => `cnst${index}`)];
   return `
 ${after.length ? 'import { loadedAfter } from "akanjs/base";\n' : ""}import { FetchClient } from "akanjs/fetch";
-${libs.map((libInfo, index) => `import { loaded as lib${index} } from "@libs/${libInfo.name}/lib/__client/${dict.model}.fetch";\n`).join("")}${constants ? constants.map((owner, index) => `import { ${owner.module} as cnst${index} } from "${specifierOf(owner)}";\n`).join("") : 'import * as cnst from "../cnst";\n'}import { fetch, sig } from "../usePage";
+${libs.map((libInfo, index) => `import { loaded as lib${index} } from "@libs/${libInfo.name}/lib/__client/${dict.model}.fetch";\n`).join("")}${constants ? constants.map((owner, index) => `import { loaded as cnst${index} } from "${specifierOf(owner)}";\n`).join("") : 'import * as cnst from "../cnst";\n'}import { fetch, sig } from "../usePage";
 import { getSerializedSignalOf } from "../sig" with { type: "macro" };
 import type * as signal from "../sig";
 

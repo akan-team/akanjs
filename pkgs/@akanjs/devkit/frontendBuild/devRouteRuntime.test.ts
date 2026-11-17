@@ -83,10 +83,11 @@ const writeMemoModel = async (file: (relative: string) => string) => {
     "lib/memo/Memo.Zone.tsx": '"use client";\nexport const View = () => "memo-view";\n',
     "lib/memo/memo.constant.ts": 'export const MemoStatus = ["active"] as const;\n',
     "lib/memo/memo.store.ts": storeSource("memo", ["memoText"]),
-    "lib/__client/memo.cnst.ts": 'import * as cnst from "../memo/memo.constant";\nexport const memo = { cnst };\n',
-    "lib/__client/memo.fetch.ts": 'import { memo as cnst0 } from "./memo.cnst";\nexport const loaded = [cnst0];\n',
+    "lib/__client/memo.cnst.ts":
+      'import * as cnst from "../memo/memo.constant";\nexport const memo = { cnst };\nexport { memo as loaded };\n',
+    "lib/__client/memo.fetch.ts": 'import { loaded as cnst0 } from "./memo.cnst";\nexport const loaded = [cnst0];\n',
     "lib/__client/memo.st.ts":
-      'import { memo as cnst0 } from "./memo.cnst";\nimport { loaded as fetch0 } from "./memo.fetch";\nexport const memo = [cnst0, fetch0];\n',
+      'import { loaded as cnst0 } from "./memo.cnst";\nimport { loaded as fetch0 } from "./memo.fetch";\nexport const memo = [cnst0, fetch0];\n',
   };
   for (const [relative, text] of Object.entries(files)) await write(file(relative), text);
 };

@@ -33,7 +33,7 @@ export default function getContent(
   ];
   return `
 ${after.length ? 'import { loadedAfter } from "akanjs/base";\n' : ""}import { StoreRegistry } from "akanjs/store";
-${registration ? `import { ${registration.module} as cnst0 } from "${registrationOf(registration)}";\n` : ""}${fetched.map((module, index) => `import { loaded as fetch${index} } from "./${module}.fetch";\n`).join("")}${libs.map((libInfo, index) => `import { ${dict.model} as lib${index} } from "@libs/${libInfo.name}/lib/__client/${dict.model}.st";\n`).join("")}import { ${dict.Model}Store } from "${storePath}";
+${registration ? `import { loaded as cnst0 } from "${registrationOf(registration)}";\n` : ""}${fetched.map((module, index) => `import { loaded as fetch${index} } from "./${module}.fetch";\n`).join("")}${libs.map((libInfo, index) => `import { ${dict.model} as lib${index} } from "@libs/${libInfo.name}/lib/__client/${dict.model}.st";\n`).join("")}import { ${dict.Model}Store } from "${storePath}";
 
 ${after.length ? `loadedAfter(${after.join(", ")});\n` : ""}export const ${dict.model} = StoreRegistry.register(${dict.Model}Store);
 StoreRegistry.build(StoreRegistry.merge("${dict.model}" as const, ${dict.model}));

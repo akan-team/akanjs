@@ -595,13 +595,13 @@ export const read = () => [__akanCnst0, __akanCnst1, __akanCnst2, fetch.memoNote
     ]);
     expect(lone("apps/demo/lib/__client/memo.cnst.ts")).toBeNull();
     expect(lone("apps/demo/lib/__client/board.cnst.ts")).toEqual({
-      source: 'export { board } from "../cnst";\n',
+      source: 'export { board } from "../cnst";\nexport * as loaded from "../cnst";\n',
       perModule: true,
       pieces: [],
       wholeConstants: true,
     });
     expect(lone("libs/kit/lib/__client/note.cnst.ts")?.source).toBe(
-      `import "${root}/apps/demo/lib/cnst.ts";\nexport { note } from "../cnst";\n`,
+      `export { note } from "../cnst";\nexport * as loaded from "${root}/apps/demo/lib/cnst.ts";\n`,
     );
     expect(lone("apps/demo/lib/board/board.constant.ts")).toBeNull();
     expect(lone("apps/demo/lib/cnst.ts")?.source).toBe(

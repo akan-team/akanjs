@@ -32,5 +32,6 @@ ${before.length ? 'import { loadedAfter } from "akanjs/base";\n' : ""}import { C
 ${before.map(({ owner, name }) => `import { ${owner.module} as ${name} } from "${specifierOf(owner)}";\n`).join("")}import * as cnst from "../${scalar ? `__scalar/${model}` : model}/${model}.constant";
 
 ${before.length ? `loadedAfter(${before.map(({ name }) => name).join(", ")});\n` : ""}export const ${model} = ${register};
+export { ${model} as loaded };
 `;
 }
