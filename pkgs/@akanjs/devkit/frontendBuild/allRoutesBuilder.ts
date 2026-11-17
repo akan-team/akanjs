@@ -199,6 +199,7 @@ export class AllRoutesBuilder {
       discovery: this.#discovery,
       command: this.#command,
       entriesByRoute: this.#entriesByRoute,
+      sizedEntriesByRoute: this.#ssrEntriesByRoute,
     }).build();
     this.#app.verbose(`[build-all] bundled ${delta.newEntries.length} entries (${Date.now() - started}ms)`);
     return delta;

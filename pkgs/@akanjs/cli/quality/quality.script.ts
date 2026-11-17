@@ -7,6 +7,7 @@ import {
   formatQualityScanResult,
   formatSsrScanResult,
 } from "@akanjs/devkit/quality/qualityScanner";
+import { RouteRuntimeReport } from "@akanjs/devkit/quality/routeRuntimeReport";
 import { RuntimeScopeReport } from "@akanjs/devkit/quality/runtimeScopeReport";
 import { Logger } from "akanjs/common";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
@@ -31,11 +32,14 @@ export class QualityScript extends script("quality", [WorkspaceRunner]) {
     const spinner = workspace.spinning("Reading which client files a page can load module by module...");
     const result = await RuntimeScopeReport.scan(workspace.workspaceRoot);
     const objects = await ObjectImportReport.scan(workspace);
+    const builds = await RouteRuntimeReport.read(workspace.workspaceRoot);
     spinner.succeed(`Runtime scan completed (${result.scopes.length} scopes, ${result.notes.length} notes)`);
-    if (format === "json") Logger.rawLog(JSON.stringify({ ...result, objects }, null, 2));
+    if (format === "json") Logger.rawLog(JSON.stringify({ ...result, objects, builds }, null, 2));
     else
       Logger.rawLog(
-        [RuntimeScopeReport.format(result), ObjectImportReport.format(objects)].filter(Boolean).join("\n\n"),
+        [RuntimeScopeReport.format(result), ObjectImportReport.format(objects), RouteRuntimeReport.format(builds)]
+          .filter(Boolean)
+          .join("\n\n"),
       );
   }
 

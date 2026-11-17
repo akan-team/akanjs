@@ -1405,7 +1405,8 @@ await new RouteClientBuilder({
   .catch((error) => {
     failure = error.message;
   });
-const browser = graphs.at(-1);
+const measuredAgainst = (graph) => [...graph.chunksByModule.values()].flat().some((chunk) => chunk.split(path.sep).includes("client-whole"));
+const browser = graphs.filter((graph) => !measuredAgainst(graph)).at(-1);
 const nameOf = (file) => path.relative(root, file);
 const chunksOf = (file) => (browser.chunksByModule.get(path.join(root, file)) ?? []).map((chunk) => path.basename(chunk));
 const importsOf = (file) => (browser.importsByModule.get(file) ?? []).map((imported) => nameOf(imported.path));

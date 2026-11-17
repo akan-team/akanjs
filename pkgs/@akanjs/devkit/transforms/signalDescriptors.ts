@@ -3,8 +3,15 @@ import type { BunPlugin } from "bun";
 
 type ScopeDescriptors = Record<string, string>;
 
+interface ScopeSignals {
+  //? Every name the scope's signal holds, with or without a literal.
+  names: string[];
+  literals: ScopeDescriptors;
+}
+
 interface ScopeRead {
   file: string;
+  names?: string[];
   read?: ScopeDescriptors;
   failure?: string;
 }
@@ -12,19 +19,25 @@ interface ScopeRead {
 export interface SignalDescriptorsOptions {
   onUnread?: (reason: string) => void;
   timeoutMs?: number;
+  //? The pieces a scope's `lib/useClient.ts` takes descriptors from, so it holds none of theirs again.
+  takenFromPieces?: (absPath: string) => string[] | null;
 }
 
 //* Bun runs a macro module again on each bundler thread, so a build of many pieces reads each scope's signal once here.
 export class SignalDescriptors {
   static readonly readTimeoutMs = 60_000;
   static readonly #pieceFile = /[\\/]lib[\\/]__client[\\/][^\\/]+\.fetch\.ts$/;
+  static readonly #wholeFile = /[\\/]lib[\\/]useClient\.ts$/;
   static readonly #macroImport = 'import { getSerializedSignalOf } from "../sig" with { type: "macro" };';
   static readonly #macroCall = /\bgetSerializedSignalOf\("([^"\\]+)"\)/g;
+  static readonly #wholeImport = 'import { getSerializedSignal } from "./sig" with { type: "macro" };';
+  static readonly #wholeCall = "getSerializedSignal()";
   readonly #workspaceRoot: string;
   readonly #sigFiles: string[];
   readonly #onUnread: (reason: string) => void;
   readonly #timeoutMs: number;
-  readonly #reads = new Map<string, Promise<ScopeDescriptors | null>>();
+  readonly #takenFromPieces: (absPath: string) => string[] | null;
+  readonly #reads = new Map<string, Promise<ScopeSignals | null>>();
   #env: Record<string, string> = {};
 
   //? In a process of its own: a module imported into this one stays cached after its file changes.
@@ -46,7 +59,7 @@ for (const file of ${JSON.stringify(sigFiles)}) {
     const { fetch, getSerializedSignalOf } = await import(file);
     const names = ["base", ...Object.keys(fetch.ownSerializedSignal)];
     const literals = names.map((name) => [name, literalOf(getSerializedSignalOf(name))]);
-    await send({ file, read: Object.fromEntries(literals.filter(([, literal]) => literal !== undefined)) });
+    await send({ file, names, read: Object.fromEntries(literals.filter(([, literal]) => literal !== undefined)) });
   } catch (error) {
     await send({ file, failure: String(error?.message ?? error) });
   }
@@ -73,8 +86,13 @@ process.exit(0);
   constructor(
     workspaceRoot: string,
     scopes: readonly string[],
-    { onUnread = () => undefined, timeoutMs = SignalDescriptors.readTimeoutMs }: SignalDescriptorsOptions = {},
+    {
+      onUnread = () => undefined,
+      timeoutMs = SignalDescriptors.readTimeoutMs,
+      takenFromPieces = () => null,
+    }: SignalDescriptorsOptions = {},
   ) {
+    this.#takenFromPieces = takenFromPieces;
     this.#workspaceRoot = workspaceRoot;
     this.#sigFiles = scopes.map((scope) => path.join(workspaceRoot, scope, "lib/sig.ts"));
     this.#onUnread = onUnread;
@@ -90,6 +108,11 @@ process.exit(0);
           const contents = await this.inline(await Bun.file(args.path).text(), args.path);
           return contents === null ? undefined : { contents, loader: "ts" };
         });
+        build.onLoad({ filter: SignalDescriptors.#wholeFile }, async (args) => {
+          const pieces = this.#takenFromPieces(args.path);
+          const contents = pieces && (await this.withoutPieces(await Bun.file(args.path).text(), args.path, pieces));
+          return contents ? { contents, loader: "ts" } : undefined;
+        });
       },
     };
   }
@@ -101,14 +124,51 @@ process.exit(0);
     const name = call?.[1];
     if (!SignalDescriptors.#pieceFile.test(absPath) || !call || !name || calls.length !== 1) return null;
     if (source.split(macroImport).length !== 2) return null;
-    const descriptors = await this.#descriptorsOf(path.resolve(path.dirname(absPath), "../sig.ts"));
+    const descriptors = (await this.#descriptorsOf(path.resolve(path.dirname(absPath), "../sig.ts")))?.literals;
     const literal = descriptors && Object.hasOwn(descriptors, name) ? descriptors[name] : undefined;
     if (literal === undefined) return null;
     const end = call.index + call[0].length;
     return `${source.slice(0, call.index)}${literal}${source.slice(end)}`.replace(macroImport, "");
   }
 
-  #descriptorsOf(sigFile: string): Promise<ScopeDescriptors | null> {
+  //* A scope's `lib/useClient.ts` with the descriptors of these pieces left out and the pieces imported in their place.
+  //* Null where a name cannot be accounted for, so the file keeps its macro and every descriptor.
+  async withoutPieces(source: string, absPath: string, pieces: readonly string[]): Promise<string | null> {
+    const [macroImport, macroCall] = [SignalDescriptors.#wholeImport, SignalDescriptors.#wholeCall];
+    if (source.split(macroImport).length !== 2 || source.split(macroCall).length !== 2) return null;
+    const signals = await this.#descriptorsOf(path.resolve(path.dirname(absPath), "sig.ts"));
+    if (!signals) return null;
+    const { names, literals } = signals;
+    if (!names.length || names.some((name) => !Object.hasOwn(literals, name))) return null;
+    //? The first name stands for what the scope takes from its base, and a signal of the base may itself be named `base`.
+    const [, ...own] = names;
+    const fromBase = JSON.parse(literals.base ?? "{}") as Record<string, unknown>;
+    const taken = new Set<string>();
+    for (const piece of pieces) {
+      const calls = [...(await Bun.file(piece).text()).matchAll(SignalDescriptors.#macroCall)];
+      const name = calls[0]?.[1];
+      if (!name || calls.length !== 1) return null;
+      if (name === "base") for (const held of Object.keys(fromBase)) taken.add(held);
+      else taken.add(name);
+    }
+    const kept = [...new Set(own)].filter((name) => !taken.has(name));
+    if (kept.includes("base") && !Object.hasOwn(fromBase, "base")) return null;
+    const literalOf = (name: string) =>
+      name === "base" ? JSON.stringify({ base: fromBase.base }) : (literals[name] ?? "{}");
+    const literal = `{${kept
+      .map((name) => literalOf(name).slice(1, -1))
+      .filter(Boolean)
+      .join(",")}}`;
+    const loaded = pieces.map((_, index) => `__akanPiece${index}`);
+    const imports = [
+      'import { loadedAfter as __akanPiecesFirst } from "akanjs/base";',
+      ...pieces.map((piece, index) => `import { loaded as ${loaded[index]} } from ${JSON.stringify(piece)};`),
+      `__akanPiecesFirst(${loaded.join(", ")});`,
+    ];
+    return `${imports.join("\n")}\n${source.replace(macroImport, "").replace(macroCall, () => literal)}`;
+  }
+
+  #descriptorsOf(sigFile: string): Promise<ScopeSignals | null> {
     const known = this.#reads.get(sigFile);
     if (known) return known;
     const batch = [...new Set([sigFile, ...this.#sigFiles])].filter((file) => !this.#reads.has(file));
@@ -122,8 +182,8 @@ process.exit(0);
   }
 
   //? `--no-env-file`: the build's `NODE_ENV` define would make Bun load `.env.production` files the build never loaded.
-  async #read(sigFiles: string[]): Promise<Map<string, ScopeDescriptors>> {
-    const read = new Map<string, ScopeDescriptors>();
+  async #read(sigFiles: string[]): Promise<Map<string, ScopeSignals>> {
+    const read = new Map<string, ScopeSignals>();
     const failures = new Map<string, string>();
     const child = Bun.spawn([process.execPath, "--no-env-file", "--eval", SignalDescriptors.#readScript(sigFiles)], {
       cwd: this.#workspaceRoot,
@@ -132,7 +192,7 @@ process.exit(0);
       stderr: "ignore",
       serialization: "json",
       ipc: (message: ScopeRead) => {
-        if (message.read) read.set(message.file, message.read);
+        if (message.read) read.set(message.file, { names: message.names ?? [], literals: message.read });
         else failures.set(message.file, message.failure ?? "");
       },
     });

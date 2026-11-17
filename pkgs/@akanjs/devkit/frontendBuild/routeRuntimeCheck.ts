@@ -7,7 +7,19 @@ export interface RouteRuntimeNarrowed {
   wholeReaders: ReadonlySet<string>;
   //? The files `akan quality runtime` names for keeping every constant; only through one may a page reach `lib/cnst.ts`.
   wholeConstantReaders?: ReadonlySet<string>;
+  routes?: ReadonlyMap<string, readonly string[]>;
 }
+
+const repeatable = [
+  {
+    whole: /^((?:apps|libs)\/[^/]+)\/lib\/useClient\.ts$/,
+    piece: /^((?:apps|libs)\/[^/]+)\/lib\/__client\/[^/]+\.fetch\.ts$/,
+  },
+  {
+    whole: /^((?:apps|libs)\/[^/]+)\/lib\/cnst\.ts$/,
+    piece: /^((?:apps|libs)\/[^/]+)\/lib\/__client\/[^/]+\.cnst\.ts$/,
+  },
+];
 
 const pieceFile = /^(?:apps|libs)\/[^/]+\/lib\/__client\/[^/]+\.ts$/;
 const constantPiece = /^(?:apps|libs)\/[^/]+\/lib\/__client\/[^/]+\.cnst\.ts$/;
@@ -47,6 +59,33 @@ export class RouteRuntimeCheck {
         ...(more > 0 ? [`  - and ${more} more`] : []),
         advice,
       ].join("\n"),
+    );
+  }
+
+  //* Each scope file a route loads with a piece of the same scope beside it that repeats part of it. A piece repeats
+  //* nothing where the file takes that part from the piece, or the piece answers from the file: one imports the other.
+  get repeated(): string[] {
+    const routesOf = new Map<string, string[]>();
+    for (const [route, entries] of this.#narrowed?.routes ?? []) {
+      const loaded = new Set(entries);
+      for (const module of loaded)
+        for (const { path: imported } of this.#graph.importsByModule.get(module) ?? []) loaded.add(imported);
+      const names = new Map([...loaded].map((module) => [module, this.#nameOf(module)]));
+      for (const { whole, piece } of repeatable)
+        for (const [file, fileName] of names) {
+          const scope = fileName.match(whole)?.[1];
+          if (!scope) continue;
+          for (const [other, otherName] of names) {
+            if (otherName.match(piece)?.[1] !== scope) continue;
+            if (this.#staticImportsOf(file).includes(other) || this.#staticImportsOf(other).includes(file)) continue;
+            const pair = `${fileName} and ${otherName}`;
+            routesOf.set(pair, [...(routesOf.get(pair) ?? []), route]);
+          }
+        }
+    }
+    return [...routesOf].map(
+      ([pair, routes]) =>
+        `${pair} both load on ${routes.length} route(s), the first ${routes[0]}: the piece holds again what the file holds`,
     );
   }
 
