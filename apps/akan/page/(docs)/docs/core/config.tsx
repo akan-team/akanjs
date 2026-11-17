@@ -139,9 +139,9 @@ const configKeys = [
   {
     key: "clientRuntime",
     type: '"all" | "route"',
-    default: '"all"',
-    en: 'Whether every page loads every model\'s constants, descriptors and stores ("all"), or only a route whose client code uses them ("route").',
-    ko: '모든 페이지가 모든 모델의 상수, 엔드포인트 정의, 스토어를 불러올지("all"), 클라이언트 코드가 쓰는 라우트만 불러올지("route") 정합니다.',
+    default: '"route"',
+    en: '"route" loads in a page\'s browser code the constants, descriptors, stores and dictionary texts of the modules the page uses. "all" loads every module\'s on every page; it is deprecated and is removed in the next minor release.',
+    ko: '"route"는 페이지의 브라우저 코드에 그 페이지가 쓰는 모듈의 상수, 엔드포인트 정의, 스토어, 사전 문구만 불러옵니다. "all"은 모든 페이지에서 모든 모듈의 것을 불러오며, deprecated이고 다음 minor 릴리스에서 제거됩니다.',
   },
 ];
 
@@ -530,9 +530,9 @@ const buildFields = [
   {
     key: "clientRuntime",
     type: '"all" | "route"',
-    default: '"all"',
-    en: '"route" gives a page\'s browser code only the models and stores its client modules name, and every one where a module picks a name at run time or renders a Load, Model or Data component.',
-    ko: '"route"면 그 페이지의 클라이언트 모듈이 이름을 적은 모델과 스토어만 브라우저 코드에 싣고, 이름을 실행 중에 고르거나 Load·Model·Data 컴포넌트를 렌더링하는 모듈이 있으면 전부 싣습니다.',
+    default: '"route"',
+    en: '"route" gives a page\'s browser code only the models and stores its client modules name, and every one where a module picks a name at run time or renders a Load, Model or Data component. "all" (deprecated) gives every page every one.',
+    ko: '"route"면 그 페이지의 클라이언트 모듈이 이름을 적은 모델과 스토어만 브라우저 코드에 싣고, 이름을 실행 중에 고르거나 Load·Model·Data 컴포넌트를 렌더링하는 모듈이 있으면 전부 싣습니다. "all"(deprecated)은 모든 페이지에 전부 싣습니다.',
   },
   {
     key: "database.modes",

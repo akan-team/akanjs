@@ -151,8 +151,8 @@ export default page()
           {
             name: "clientRuntime",
             desc: l.trans({
-              en: "Whether every page loads every model's constants and stores, or only the routes whose client code uses them.",
-              ko: "모든 페이지가 모든 모델의 상수와 스토어를 불러올지, 클라이언트 코드가 쓰는 라우트만 불러올지 정합니다.",
+              en: 'What a page\'s browser code loads: only what the page uses ("route", the default), or every module\'s on every page ("all", deprecated).',
+              ko: '페이지의 브라우저 코드가 불러오는 것입니다. 그 페이지가 쓰는 것만 불러오거나("route", 기본값), 모든 페이지에서 모든 모듈의 것을 불러옵니다("all", deprecated).',
             }),
             marks: appOnly,
           },
@@ -2067,34 +2067,31 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    <code>clientRuntime</code> decides what the browser code of a page loads before its components. With{" "}
-                    <code>"all"</code>, the default, every page loads every model's endpoint descriptors and stores.
-                    With <code>"route"</code>, a page loads only the page runtime (<code>usePage</code>,{" "}
-                    <code>msg</code>, <code>Err</code>), and the descriptors and stores come with the client modules
-                    that use them:
+                    <code>clientRuntime</code> decides what the browser code of a server-rendered page loads. With{" "}
+                    <code>"route"</code>, the default, a page loads the page runtime (<code>usePage</code>,{" "}
+                    <code>msg</code>, <code>Err</code>) and then the stores, endpoint descriptors, constants and
+                    dictionary texts of the modules its client code names or the server hands it. A file that picks a
+                    name at run time loads every module's, and <code>akan quality runtime</code> names each such file,
+                    its line and the routes it holds. <code>"all"</code> loads everything on every page; it is
+                    deprecated and is removed in the next minor release, <code>akan build</code> and{" "}
+                    <code>akan start</code> say so in one line, and deleting the line from <code>akan.config.ts</code>{" "}
+                    is the way off it.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>clientRuntime</code>은 페이지의 브라우저 코드가 컴포넌트보다 먼저 불러오는 것을 정합니다.
-                    기본값 <code>"all"</code>이면 모든 페이지가 모든 모델의 엔드포인트 정의와 스토어를 불러옵니다.{" "}
+                    <code>clientRuntime</code>은 서버 렌더링 페이지의 브라우저 코드가 무엇을 불러올지 정합니다. 기본값{" "}
                     <code>"route"</code>면 페이지는 페이지 런타임(<code>usePage</code>, <code>msg</code>,{" "}
-                    <code>Err</code>)만 불러오고, 엔드포인트 정의와 스토어는 그것을 쓰는 클라이언트 모듈과 함께 옵니다:
+                    <code>Err</code>)을 불러온 뒤, 클라이언트 코드가 이름을 적었거나 서버가 넘겨준 모듈의 스토어,
+                    엔드포인트 정의, 상수, 사전 문구만 불러옵니다. 이름을 실행 중에 고르는 파일은 모든 모듈의 것을
+                    불러오며, <code>akan quality runtime</code>이 그런 파일과 줄 번호, 그 파일에 묶인 라우트를 알려
+                    줍니다. <code>"all"</code>은 모든 페이지에서 전부 불러옵니다. 이 값은 deprecated이며 다음 minor
+                    릴리스에서 제거됩니다. <code>akan build</code>와 <code>akan start</code>가 한 줄로 알려 주며,{" "}
+                    <code>akan.config.ts</code>에서 그 줄을 지우면 됩니다.
                   </span>
                 ),
               })}
             </div>
-            <Code.Snippet
-              className="w-full"
-              title="apps/dashboard/akan.config.ts"
-              code={`import type { AppConfig } from "akanjs";
-
-const config: AppConfig = {
-  clientRuntime: "route",
-};
-
-export default config;`}
-            />
             <ul className={bullets}>
               <li>
                 {l.trans({
@@ -2342,8 +2339,7 @@ export default config;`}
                       or when a store file would be defined through a piece that imports it back. The development server
                       serves each module on its own and checks nothing, so the production build is the guard: build
                       before you ship a change to which module a client file names. A page that needs every module keeps
-                      the runtime it has under <code>"all"</code>, and <code>akan quality runtime</code> lists which
-                      component brings it there.
+                      the whole runtime, and <code>akan quality runtime</code> lists which component brings it there.
                     </span>
                   ),
                   ko: (
@@ -2352,8 +2348,8 @@ export default config;`}
                       조각의 청크보다 먼저 실행되거나, 스토어 파일이 자신을 다시 import하는 조각을 거쳐 정의되면{" "}
                       <code>akan build</code>는 두 소스 파일의 이름을 알리고 멈춥니다. 개발 서버는 모듈을 하나씩
                       내려주고 아무것도 검사하지 않으므로 프로덕션 빌드가 안전장치입니다. 클라이언트 파일이 이름을 적는
-                      모듈을 바꿨다면 배포 전에 빌드하세요. 모든 모듈이 필요한 페이지는 <code>"all"</code>일 때의
-                      런타임을 그대로 쓰며, 어떤 컴포넌트 때문인지는 <code>akan quality runtime</code>이 알려 줍니다.
+                      모듈을 바꿨다면 배포 전에 빌드하세요. 모든 모듈이 필요한 페이지는 전체 런타임을 그대로 쓰며, 어떤
+                      컴포넌트 때문인지는 <code>akan quality runtime</code>이 알려 줍니다.
                     </span>
                   ),
                 })}
