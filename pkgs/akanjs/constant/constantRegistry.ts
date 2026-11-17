@@ -28,15 +28,10 @@ export class ConstantRegistry {
   );
   //? A registration piece and the whole `cnst.ts` can both run in one tab; a repeat must not displace an app's extension.
   //? One exports object can register several names, and a name can come again with other classes: neither is a repeat.
-  static readonly #built = new WeakMap<object, Map<string, { refs: unknown[]; cnst: unknown }>>();
-  static #repeatOf(constExports: object, refName: string, refs: unknown[]): unknown {
-    const built = ConstantRegistry.#built.get(constExports)?.get(refName);
-    const same = built?.refs.length === refs.length && built.refs.every((ref, index) => ref === refs[index]);
-    return same ? built.cnst : undefined;
-  }
-  static #remember(constExports: object, refName: string, refs: unknown[], cnst: unknown) {
-    const byName = ConstantRegistry.#built.get(constExports) ?? new Map<string, { refs: unknown[]; cnst: unknown }>();
-    ConstantRegistry.#built.set(constExports, byName.set(refName, { refs, cnst }));
+  static readonly #built = new WeakMap<object, Map<string, { [modelType: string]: unknown }>>();
+  static #remember(constExports: object, refName: string, cnst: object) {
+    const byName = ConstantRegistry.#built.get(constExports) ?? new Map<string, { [modelType: string]: unknown }>();
+    ConstantRegistry.#built.set(constExports, byName.set(refName, cnst as { [modelType: string]: unknown }));
   }
   static getOrigin(kind: ConstantOriginKind, key: string): string[] {
     return ConstantRegistry.origin.get(`${kind}:${key}`) ?? [];
@@ -161,10 +156,16 @@ export class ConstantRegistry {
     constExports: Record<string, unknown>,
     origin?: string,
   ) {
-    const refs = [inputRef, objectRef, fullRef, lightRef, insightRef];
-    const built = ConstantRegistry.#repeatOf(constExports, refName, refs);
-    if (built) return built as never;
-    const modelRefSet = new Set(refs);
+    const built = ConstantRegistry.#built.get(constExports)?.get(refName);
+    if (
+      built?.input === inputRef &&
+      built.object === objectRef &&
+      built.full === fullRef &&
+      built.light === lightRef &&
+      built.insight === insightRef
+    )
+      return built as never;
+    const modelRefSet = new Set([inputRef, objectRef, fullRef, lightRef, insightRef]);
     for (const modelRef of modelRefSet) ConstantRegistry.modelRefNameMap.set(modelRef, refName);
     inputRef.modelType = "input";
     objectRef.modelType = "object";
@@ -205,7 +206,7 @@ export class ConstantRegistry {
     const owner = ConstantRegistry.#ownerOf(origin, `lib/${refName}`);
     ConstantRegistry.#claims.claim("database", refName, [fullRef, lightRef, inputRef, objectRef, insightRef], owner);
     ConstantRegistry.#registerExports(constExports, modelRefSet, origin, owner);
-    ConstantRegistry.#remember(constExports, refName, refs, cnst);
+    ConstantRegistry.#remember(constExports, refName, cnst);
     return cnst;
   }
   static buildScalar<T extends string, Model>(
@@ -214,8 +215,8 @@ export class ConstantRegistry {
     constExports: Record<string, unknown>,
     origin?: string,
   ): ScalarConstantModel<T, Model, DefaultOf<Model>, DocumentModel<Model>, PurifiedModel<Model>> {
-    const built = ConstantRegistry.#repeatOf(constExports, refName, [Model]);
-    if (built) return built as never;
+    const built = ConstantRegistry.#built.get(constExports)?.get(refName);
+    if (built?.model === Model) return built as never;
     ConstantRegistry.modelRefNameMap.set(Model, refName);
     const cnst = { refName, model: Model } as unknown as ScalarConstantModel<
       T,
@@ -229,7 +230,7 @@ export class ConstantRegistry {
     const owner = ConstantRegistry.#ownerOf(origin, `lib/__scalar/${refName}`);
     ConstantRegistry.#claims.claim("scalar", refName, [Model], owner);
     ConstantRegistry.#registerExports(constExports, new Set([Model]), origin, owner);
-    ConstantRegistry.#remember(constExports, refName, [Model], cnst);
+    ConstantRegistry.#remember(constExports, refName, cnst);
     return cnst;
   }
   static #registerExports(
