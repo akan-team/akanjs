@@ -225,6 +225,41 @@ Object.assign(pageSig, FetchClient.build(cnst, getSerializedSignal(), { base: pa
       expect(whole).not.toContain('type: "macro"');
     });
 
+    test("keeps a signal named `base` that the scope takes from its base, unless the base piece holds it", async () => {
+      const query = (name: string) =>
+        `{ endpoint: { ${name}: { type: "query", args: [], returns: { refName: "String" } } } }`;
+      const libSig = `const serialized = {
+  base: ${query("pingBase")},
+  agent: ${query("askAgent")},
+  trolley: ${query("pingAt")},
+  crate: ${query("countOf")},
+};
+export const fetch = { ownSerializedSignal: serialized };
+export const getSerializedSignalOf = (name) =>
+  name === "base" ? { base: serialized.base, agent: serialized.agent } : { [name]: serialized[name] };
+`;
+      const { root, pieceDir } = await writeScope(libSig);
+      const [trolley] = await writePieces(pieceDir, ["trolley"]);
+      const basePiece = path.join(pieceDir, "_base.fetch.ts");
+      await writeText(basePiece, pieceOf("base"));
+      const file = path.join(root, "apps/shop/lib/useClient.ts");
+      const occurrencesOf = (source: string | null, text: string) => (source ?? "").split(text).length - 1;
+
+      const beside = await new SignalDescriptors(root, ["apps/shop"]).withoutPieces(wholeSource, file, [trolley ?? ""]);
+      expect(occurrencesOf(beside, "pingBase")).toBe(1);
+      expect(occurrencesOf(beside, "askAgent")).toBe(1);
+      expect(occurrencesOf(beside, "countOf")).toBe(1);
+      expect(occurrencesOf(beside, "pingAt")).toBe(0);
+
+      const taken = await new SignalDescriptors(root, ["apps/shop"]).withoutPieces(wholeSource, file, [
+        basePiece,
+        trolley ?? "",
+      ]);
+      expect(occurrencesOf(taken, "pingBase")).toBe(0);
+      expect(occurrencesOf(taken, "askAgent")).toBe(0);
+      expect(occurrencesOf(taken, "countOf")).toBe(1);
+    });
+
     test("keeps its macro and every descriptor where a name has no literal, or a piece names none", async () => {
       const { root, pieceDir } = await writeScope();
       const [trolley] = await writePieces(pieceDir, ["trolley"]);

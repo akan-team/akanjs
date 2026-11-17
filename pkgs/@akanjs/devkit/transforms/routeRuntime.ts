@@ -51,6 +51,7 @@ const constantsFile = /^((?:apps|libs)\/[^/]+)\/lib\/cnst\.ts$/;
 const registration = /^export const (\w+) = ConstantRegistry\.build(?:Model|Scalar)\(.*$/gm;
 const pieceImport = /\bfrom\s+"((?:\.|@(?:apps|libs)\/)[^"]+)"/g;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
+const byCodeUnit = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
 
 const exportOf = (piece: string) => {
   const name = piece.slice(piece.lastIndexOf("/") + 1);
@@ -283,7 +284,7 @@ export class RouteRuntime {
     if (!scope || file !== "useClient" || !narrow) return null;
     const pieces = [...narrow.pieces]
       .filter((piece) => piece.startsWith(`${scope}/lib/__client/`) && piece.endsWith(".fetch"))
-      .sort((a, b) => a.localeCompare(b));
+      .sort(byCodeUnit);
     return pieces.length ? pieces.map((piece) => this.#absoluteOf(piece)) : null;
   }
 
@@ -405,7 +406,7 @@ export class RouteRuntime {
       scope === this.#table.scope
         ? [...this.#pieces]
             .filter((piece) => constantPieceFile.test(`${piece}.ts`) && !narrow.pieces.has(piece))
-            .sort((a, b) => a.localeCompare(b))
+            .sort(byCodeUnit)
         : [];
     if (registered === source && !answering.length) return null;
     const imports = answering.map((piece) => `import ${JSON.stringify(this.#absoluteOf(piece))};`);

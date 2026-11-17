@@ -140,17 +140,23 @@ process.exit(0);
     if (!signals) return null;
     const { names, literals } = signals;
     if (!names.length || names.some((name) => !Object.hasOwn(literals, name))) return null;
+    //? The first name stands for what the scope takes from its base, and a signal of the base may itself be named `base`.
+    const [, ...own] = names;
+    const fromBase = JSON.parse(literals.base ?? "{}") as Record<string, unknown>;
     const taken = new Set<string>();
     for (const piece of pieces) {
       const calls = [...(await Bun.file(piece).text()).matchAll(SignalDescriptors.#macroCall)];
       const name = calls[0]?.[1];
       if (!name || calls.length !== 1) return null;
-      taken.add(name);
-      if (name === "base") for (const own of Object.keys(JSON.parse(literals.base ?? "{}") as object)) taken.add(own);
+      if (name === "base") for (const held of Object.keys(fromBase)) taken.add(held);
+      else taken.add(name);
     }
-    const kept = names.filter((name) => name !== "base" && !taken.has(name));
+    const kept = [...new Set(own)].filter((name) => !taken.has(name));
+    if (kept.includes("base") && !Object.hasOwn(fromBase, "base")) return null;
+    const literalOf = (name: string) =>
+      name === "base" ? JSON.stringify({ base: fromBase.base }) : (literals[name] ?? "{}");
     const literal = `{${kept
-      .map((name) => (literals[name] ?? "{}").slice(1, -1))
+      .map((name) => literalOf(name).slice(1, -1))
       .filter(Boolean)
       .join(",")}}`;
     const loaded = pieces.map((_, index) => `__akanPiece${index}`);

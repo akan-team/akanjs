@@ -62,7 +62,7 @@ export class RouteRuntimePays {
         }
       const [best] = [...scores]
         .filter(([entry, { score }]) => score > 0 && !isRefused?.(entry))
-        .sort(([a, x], [b, y]) => y.score - x.score || a.localeCompare(b));
+        .sort(([a, x], [b, y]) => y.score - x.score || (a < b ? -1 : a > b ? 1 : 0));
       if (!best) break;
       keep(best[0], best[1].route);
     }
