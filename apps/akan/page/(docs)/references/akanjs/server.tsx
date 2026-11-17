@@ -548,8 +548,8 @@ export default page()
       {
         name: "setClientReport(setting?)",
         desc: l.trans({
-          en: "Opens `/_akan/client-report` and has pages send the errors their browser hit to `setErrorReporter`, each with the signed id the server gave its page view. Off unless set.",
-          ko: "`/_akan/client-report`를 열고, 페이지가 브라우저에서 난 에러를 서버가 그 페이지 뷰에 준 서명된 id와 함께 보내 `setErrorReporter`로 전하게 합니다. 설정하지 않으면 꺼져 있습니다.",
+          en: "Opens `/_akan/client-report` and has pages send the errors their browser hit to `setErrorReporter`, each with the signed id the server gave its page view; a native app's page asks the route for its id. Off unless set.",
+          ko: "`/_akan/client-report`를 열고, 페이지가 브라우저에서 난 에러를 서버가 그 페이지 뷰에 준 서명된 id와 함께 보내 `setErrorReporter`로 전하게 합니다. 네이티브 앱의 페이지는 그 id를 route에 요청해 받습니다. 설정하지 않으면 꺼져 있습니다.",
         }),
       },
     ];
