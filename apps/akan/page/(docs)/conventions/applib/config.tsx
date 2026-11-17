@@ -2206,6 +2206,32 @@ export default config;`}
                   ),
                 })}
               </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A page loads only the parts of an object it names.</strong> <code>Memo.Zone.View</code>,{" "}
+                      <code>&lt;Field.Text /&gt;</code> or <code>const {"{ Util }"} = Memo</code> loads that part's file
+                      and not the object's other parts, when the object's file only gathers imports, as a model's
+                      generated <code>index.ts</code> does. A file that calls a function, runs a statement or changes an
+                      import while it loads keeps the whole object, as does an object passed on, spread or rendered
+                      itself. <code>akan quality runtime</code> counts what stays whole by reason, and{" "}
+                      <code>--format json</code> lists each import with its line.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>페이지는 객체에서 이름을 적은 부분만 불러옵니다.</strong> <code>Memo.Zone.View</code>,{" "}
+                      <code>&lt;Field.Text /&gt;</code>, <code>const {"{ Util }"} = Memo</code>는 객체 파일이 모델의
+                      생성된 <code>index.ts</code>처럼 import를 모으기만 할 때, 그 부분의 파일만 불러오고 객체의 다른
+                      부분은 불러오지 않습니다. 로드되면서 함수를 호출하거나 문장을 실행하거나 import를 바꾸는 파일은
+                      객체 전체를 불러오며, 다른 곳에 넘기거나 펼치거나 그 자체를 렌더링한 객체도 마찬가지입니다.{" "}
+                      <code>akan quality runtime</code>은 전체로 남은 import를 이유별로 세고, <code>--format json</code>
+                      은 각 import를 줄 번호와 함께 보여 줍니다.
+                    </span>
+                  ),
+                })}
+              </li>
             </ul>
           </Docs.Description>
         </Scroll.Slide>
