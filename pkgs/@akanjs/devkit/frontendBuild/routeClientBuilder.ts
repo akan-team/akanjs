@@ -8,6 +8,7 @@ import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
+import { SignalDescriptors } from "../transforms/signalDescriptors";
 import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
@@ -204,6 +205,7 @@ export class RouteClientBuilder {
       app: this.#app,
       entries: bootstrapEntries.buildEntries,
       plugins: [
+        ...(routeRuntime ? [this.#signalDescriptors(routeRuntime)] : []),
         await createBarrelImportsPlugin(this.#app, {
           pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
           external: VENDOR_SPECIFIERS,
@@ -215,6 +217,13 @@ export class RouteClientBuilder {
       command: this.#command,
       reactFastRefresh,
     }).bundle();
+  }
+
+  #signalDescriptors(routeRuntime: RouteRuntime) {
+    const scopes = routeRuntime.table.layers.map(({ scope }) => scope);
+    return new SignalDescriptors(this.#app.workspace.workspaceRoot, scopes, {
+      onUnread: (reason) => this.#app.logger.warn(`[client-runtime] ${reason}, so their pieces run the macro`),
+    }).plugin;
   }
 
   async #buildSsrBundle(bootstrapEntries: BootstrapEntries) {
