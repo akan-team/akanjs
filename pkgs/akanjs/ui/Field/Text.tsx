@@ -2,6 +2,7 @@
 import { cn, usePage } from "akanjs/client";
 import { formatPhone, isPhoneNumber } from "akanjs/common";
 import { useFieldTool } from "akanjs/store";
+import { memo } from "react";
 import { agentAttrs } from "../agentAttrs";
 import { Input } from "../Input";
 import { Label } from "./Label";
@@ -40,7 +41,7 @@ interface TextFieldProps {
 export interface TextProps extends TextFieldProps {
   inputStyleType?: "bordered" | "borderless" | "underline";
 }
-export const Text = ({
+const TextField = ({
   label,
   desc,
   labelClassName,
@@ -81,11 +82,12 @@ export const Text = ({
     </div>
   );
 };
+export const Text = memo(TextField);
 
 export interface TextAreaProps extends TextFieldProps {
   rows?: number;
 }
-export const TextArea = ({
+const TextAreaField = ({
   label,
   desc,
   labelClassName,
@@ -126,6 +128,7 @@ export const TextArea = ({
     </div>
   );
 };
+export const TextArea = memo(TextAreaField);
 
 export interface EmailProps extends TextFieldProps {
   inputStyleType?: "bordered" | "borderless" | "underline";

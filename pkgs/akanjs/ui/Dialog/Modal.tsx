@@ -69,7 +69,7 @@ export const Modal = ({
     onCancel?.();
   }, [confirmClose, l, onCancel, setOpen]);
 
-  const bindDismissDrag = useDismissDrag({
+  const dismissDrag = useDismissDrag({
     threshold: () => DISMISS_DRAG_PX,
     flickSpeed: 0.5,
     enabled: () => isSheetNow(presentation, placement),
@@ -80,7 +80,7 @@ export const Modal = ({
     },
     gesture: { axis: "y", filterTaps: true },
   });
-  const dragProps = presentation === "dialog" ? {} : bindDismissDrag();
+  const dragProps = presentation === "dialog" ? {} : dismissDrag.bind();
 
   useBodyScrollLock(isActive);
   useEscapeKey(isActive, requestClose);
@@ -119,6 +119,7 @@ export const Modal = ({
         requestClose();
       }}
     >
+      {dismissDrag.driver}
       <OverlayPortalProvider value={root}>
         <div
           ref={ref}
