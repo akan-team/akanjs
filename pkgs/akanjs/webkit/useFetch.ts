@@ -1,6 +1,6 @@
 "use client";
 import { isThenable } from "akanjs/common";
-import { useEffect, useMemo, useState } from "react";
+import { startTransition, useEffect, useMemo, useState } from "react";
 
 export const useFetch = <Return>(
   fnOrPromise: Promise<Return> | Return,
@@ -20,7 +20,12 @@ export const useFetch = <Return>(
     void (async () => {
       try {
         const ret = await fnOrPromise;
-        if (!cancelled) setSettled({ source: fnOrPromise, value: ret });
+        if (cancelled) return;
+        const next = { source: fnOrPromise, value: ret };
+        //? Outside a transition, a newer value whose streams are still pending sends Suspense boundaries already
+        //? drawn back to their fallbacks: a native app's refresh blanked the page it kept, as a web one's does not.
+        if (keepPrevious) startTransition(() => setSettled(next));
+        else setSettled(next);
       } catch (err) {
         if (cancelled) return;
         const content = `Error: ${typeof err === "string" ? err : (err as Error).message}`;
