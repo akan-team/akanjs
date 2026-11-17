@@ -1,6 +1,7 @@
 import "../../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import type { CsrContextType, RouterInstance } from "akanjs/client";
+import { type ReactNode, useEffect } from "react";
 import { mount, setTestEnv } from "../testHelpers.fixture";
 
 let CSR: typeof import("./CSR").CSR;
@@ -12,7 +13,7 @@ beforeAll(async () => {
   client = await import("akanjs/client");
 });
 
-const frameOf = (name: string, calls: string[], idx: number, stackEntries: unknown[] = []) => {
+const frameOf = (name: string, calls: string[], idx: number, stackEntries: unknown[] = [], state: object = {}) => {
   const router: RouterInstance = {
     push: (href) => void calls.push(`${name} push ${href}`),
     replace: (href) => void calls.push(`${name} replace ${href}`),
@@ -28,6 +29,7 @@ const frameOf = (name: string, calls: string[], idx: number, stackEntries: unkno
     topSafeAreaRef: { current: null },
     bottomSafeAreaRef: { current: null },
     frameLayout: { keyboard: { sticky: false, visible: false }, keyboardAccessory: { top: 0, height: 0 } },
+    ...state,
   };
   return (
     <client.csrContext.Provider value={csr as unknown as CsrContextType}>
@@ -70,5 +72,48 @@ describe("CSR.Wrapper", () => {
     expect(container?.className).toContain("pointer-events-none");
     expect(target?.className).toContain("pointer-events-auto");
     frame.unmount();
+  });
+
+  test("the page under stays asleep while a switch in place draws its page ahead, and wakes under a slide", () => {
+    const woken: string[] = [];
+    const Under = () => {
+      useEffect(() => void woken.push("under"), []);
+      return null;
+    };
+    const locationOf = (segment: string, transition: "none" | "stack", render: () => ReactNode = () => null) => ({
+      href: `/en/${segment}`,
+      pathname: `/en/${segment}`,
+      params: {},
+      searchParams: {},
+      pathRoute: {
+        path: `/:lang/${segment}`,
+        pageState: { ...client.defaultPageState, transition },
+        renderRootLayouts: [],
+        renderLayouts: [],
+        renderPage: { kind: "page", render },
+      },
+    });
+    const under = locationOf("under", "none", () => <Under />);
+    const current = locationOf("current", "none");
+    const frameWaitingOn = (pending: ReturnType<typeof locationOf>) =>
+      frameOf(
+        "frame",
+        [],
+        1,
+        [
+          { key: "under", location: under, pageType: "prev", zIndex: 0 },
+          { key: "current", location: current, pageType: "current", zIndex: 1 },
+          { key: "pending", location: pending, pageType: "pending", zIndex: 2 },
+        ],
+        { location: current, pendingLocation: pending, phase: "preparing" },
+      );
+
+    const drawnAhead = mount(frameWaitingOn(locationOf("tab", "none")));
+    expect(woken).toEqual([]);
+    drawnAhead.unmount();
+
+    const sliding = mount(frameWaitingOn(locationOf("detail", "stack")));
+    expect(woken).toEqual(["under"]);
+    sliding.unmount();
   });
 });

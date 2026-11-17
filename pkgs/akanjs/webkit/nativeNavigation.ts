@@ -1,6 +1,7 @@
 "use client";
 import { router as clientRouter, debugFrame, normalizeDeepLinkHref } from "akanjs/client";
 import { app, appState, desktopPlatform, isNativeApp, push } from "akanjs/client/native";
+import { OpenSurfaces } from "./openSurfaces";
 
 export interface NativeBackState {
   path: string;
@@ -69,9 +70,12 @@ export class NativeNavigation {
         this.back();
       }),
       app.listen("backProgress", ({ phase, progress }) => {
+        //? A back that will close a dialog does not leave the page, so the page shows no swipe of its own.
+        if (OpenSurfaces.takesBack()) return;
         if (phase !== "progressed") debugFrame("native.backProgress", { phase });
         this.options.onBackProgress?.({ phase, progress });
       }),
+      OpenSurfaces.listen(() => this.syncBack()),
       appState.listen("memoryWarning", ({ level }) => {
         debugFrame("native.memoryWarning", { level });
         this.options.onMemoryWarning?.();
@@ -89,13 +93,17 @@ export class NativeNavigation {
   }
 
   /**
-   * Tells an Android shell whether back is the page's right now: the keyboard is up, there is history, or the
-   * index is still to come. Otherwise the system takes it and shows its own back-to-home animation.
+   * Tells an Android shell whether back is the page's right now: the keyboard is up, a dialog or sheet is open, there
+   * is history, or the index is still to come. Otherwise the system takes it and shows its own back-to-home animation.
    */
   syncBack(force = false) {
     if (!isNativeApp() || !app.isSupported("setBackEnabled")) return;
     const backState = this.options.backState();
-    const enabled = backState.keyboardVisible || this.options.historyIdx() > 0 || !this.#leavesApp(backState.path);
+    const enabled =
+      backState.keyboardVisible ||
+      OpenSurfaces.takesBack() ||
+      this.options.historyIdx() > 0 ||
+      !this.#leavesApp(backState.path);
     if (!force && enabled === this.#backEnabled) return;
     this.#backEnabled = enabled;
     void app.setBackEnabled({ enabled }).catch(() => undefined);
@@ -141,6 +149,7 @@ export class NativeNavigation {
       void this.options.dismissKeyboard();
       return;
     }
+    if (OpenSurfaces.closeForBack()) return;
     if (this.options.historyIdx() > 0) {
       backState.router.back();
       void clientRouter.navigation().catch(() => this.options.onBackProgress?.({ phase: "cancelled", progress: 0 }));

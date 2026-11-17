@@ -10,6 +10,7 @@ import {
 } from "akanjs/client";
 import { useCallback } from "react";
 import { CsrStack } from "./CsrStack";
+import { CsrPageReadiness } from "./csrPageReadiness";
 import type { CsrKeyboard } from "./useCsrKeyboard";
 import type { CsrLocationState } from "./useCsrLocationState";
 import { type CsrRefs, currentRouter } from "./useCsrRefs";
@@ -25,6 +26,11 @@ import {
 } from "./useFrameRuntime";
 import type { ResolvedFrame } from "./useResolvedFrame";
 import { useBroadcastSyncNavigation } from "./useSyncNavigation";
+
+//? A page switched in place (`transition: "none"`, a tab bar's tab) is drawn out of sight first and swapped in once its
+//? layers are drawn: swapped at once, it showed each async layer's loading fallback for a frame or more, a flash on
+//? every first visit. A page slower than this swaps in with its fallbacks, as before.
+const PAGE_DRAWN_TIMEOUT_MS = 300;
 
 interface ForwardCommit {
   kind: "push" | "replace";
@@ -147,6 +153,25 @@ const commitWhenFrameReady = ({
   window.setTimeout(waitUntilReady, 16);
 };
 
+const commitWhenDrawn = (
+  intent: NavigationIntent,
+  pendingNavigation: CsrRefs["pendingNavigation"],
+  commit: () => void,
+) => {
+  const waitUntilDrawn = () => {
+    if (pendingNavigation.current !== intent) return;
+    const elapsedMs = Date.now() - intent.createdAt;
+    if (!CsrPageReadiness.isDrawn(intent.to.entryId) && elapsedMs < PAGE_DRAWN_TIMEOUT_MS) {
+      window.setTimeout(waitUntilDrawn, 16);
+      return;
+    }
+    pendingNavigation.current = null;
+    debugFrame("navigation.drawn", { id: intent.id, to: intent.to.href, elapsedMs });
+    commit();
+  };
+  window.setTimeout(waitUntilDrawn, 16);
+};
+
 interface CsrNavigationInput {
   viewport: ReturnType<typeof useFrameViewport>["viewport"];
   slots: ReturnType<typeof useFrameSlots>;
@@ -157,20 +182,13 @@ interface CsrNavigationInput {
   keyboard: CsrKeyboard;
 }
 
-export const useCsrNavigation = ({
-  viewport,
-  slots,
+const useFrameTransitionStart = ({
   setTransitionPageStateSnapshot,
-  refs,
-  nav,
-  frame,
+  refs: { pageStateByPathRef },
+  nav: { getLocation },
+  frame: { resolvedLocation },
   keyboard: { keyboardFrame },
 }: CsrNavigationInput) => {
-  const { clearPendingSlots, promotePendingSlots } = slots;
-  const { pageStateByPathRef, navigationIntentId, navigationLocked, pendingNavigation, waitingNavigation } = refs;
-  const { pageContentRef } = refs;
-  const { getLocation, getCurrentLocation, getPrevLocation, setHistoryForward, setLocationState, prevLocation } = nav;
-  const { resolvedLocation } = frame;
   const shouldPrepareFrameTransition = useCallback(
     (nextHref?: string) => {
       if (keyboardFrame.visible) return true;
@@ -189,6 +207,15 @@ export const useCsrNavigation = ({
     window.setTimeout(() => setTransitionPageStateSnapshot(null), 360);
     await prepareForFrameTransition();
   }, []);
+  return { shouldPrepareFrameTransition, startFrameTransition };
+};
+
+export const useCsrNavigation = (input: CsrNavigationInput) => {
+  const { viewport, slots, setTransitionPageStateSnapshot, refs, nav, frame } = input;
+  const { clearPendingSlots, promotePendingSlots } = slots;
+  const { navigationIntentId, navigationLocked, pendingNavigation, waitingNavigation, pageContentRef } = refs;
+  const { getLocation, getCurrentLocation, getPrevLocation, setHistoryForward, setLocationState, prevLocation } = nav;
+  const { shouldPrepareFrameTransition, startFrameTransition } = useFrameTransitionStart(input);
   const settle = (prev: LocationState["prevLocation"]) =>
     setLocationState({
       location: getCurrentLocation(),
@@ -219,27 +246,37 @@ export const useCsrNavigation = ({
           ? { ...target, entryId: fromLocation.entryId }
           : target;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
-      const usePendingNavigation =
+      const slides =
         CsrStack.keyOf(toLocation) !== CsrStack.keyOf(fromLocation) &&
         shouldPrepareFrameTransition(href) &&
         toLocation.pathRoute.pageState.transition !== "none";
-
-      if (!usePendingNavigation) {
+      const commitInPlace = () => {
         setHistoryForward({ type: kind, location: toLocation, scrollTop, scrollToTop });
         settle(kind === "replace" ? prevLocation : fromLocation);
         if (kind === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
         else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
+      };
+      //? A page the stack holds shows what it last drew. While another page slides in, the move is made at once as
+      //? well: that slide's end clears the pending page, so one drawn ahead would be dropped and drawn again.
+      const isDrawnAtOnce =
+        navigationLocked.current ||
+        !CsrPageReadiness.drawsLater(toLocation) ||
+        CsrStack.holds(
+          { history: nav.history.current, location: fromLocation, prevLocation, pendingLocation: null, phase: "idle" },
+          toLocation,
+        );
+      if (!slides && isDrawnAtOnce) {
+        commitInPlace();
         return;
       }
-
-      if (navigationLocked.current) {
+      if (slides && navigationLocked.current) {
         //? Run once the page sliding in has settled: dropped, a redirect from that page's guard would leave it blank.
         const waiting = waitingNavigation.current;
         waitingNavigation.current = { kind: waiting?.kind === "push" ? "push" : kind, href, scrollToTop };
         debugFrame("navigation.wait", { kind, from: fromLocation.href, to: href });
         return;
       }
-      navigationLocked.current = true;
+      if (slides) navigationLocked.current = true;
       const intent: NavigationIntent = {
         id: ++navigationIntentId.current,
         kind,
@@ -250,7 +287,12 @@ export const useCsrNavigation = ({
         createdAt: Date.now(),
       };
       pendingNavigation.current = intent;
-      debugFrame("navigation.intent", { id: intent.id, kind, from: fromLocation.href, to: href });
+      debugFrame(slides ? "navigation.intent" : "navigation.drawAhead", {
+        id: intent.id,
+        kind,
+        from: fromLocation.href,
+        to: href,
+      });
       clearPendingSlots();
       setLocationState({
         location: fromLocation,
@@ -259,7 +301,13 @@ export const useCsrNavigation = ({
         navigationIntent: intent,
         phase: "preparing",
       });
-
+      if (!slides) {
+        commitWhenDrawn(intent, pendingNavigation, () => {
+          commitInPlace();
+          promotePendingSlots();
+        });
+        return;
+      }
       commitWhenFrameReady({
         kind,
         href,

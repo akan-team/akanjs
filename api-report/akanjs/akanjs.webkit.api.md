@@ -172,7 +172,9 @@ export declare const useCsrValues: (rootRouteGuide: RouteGuide, pathRoutes: Path
 
 export declare const useDebounce: <Args extends unknown[], Return>(callback: (...args: Args) => Return, _states?: unknown[], wait?: number) => (...args: Args) => void;
 
-export declare const useEscapeKey: (active: boolean, onEscape: () => void) => void;
+export declare const useEscapeKey: (active: boolean, onEscape: () => void, { back }?: {
+    back?: boolean;
+}) => void;
 
 export declare const useFetch: <Return>(fnOrPromise: Promise<Return> | Return, { onError, keepPrevious, }?: {
     onError?: (err: string) => void;
