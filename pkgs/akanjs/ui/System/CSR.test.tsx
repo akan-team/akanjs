@@ -12,7 +12,7 @@ beforeAll(async () => {
   client = await import("akanjs/client");
 });
 
-const frameOf = (name: string, calls: string[], idx: number, stackEntries: unknown[] = []) => {
+const frameOf = (name: string, calls: string[], idx: number, stackEntries: unknown[] = [], current: object = {}) => {
   const router: RouterInstance = {
     push: (href) => void calls.push(`${name} push ${href}`),
     replace: (href) => void calls.push(`${name} replace ${href}`),
@@ -28,6 +28,7 @@ const frameOf = (name: string, calls: string[], idx: number, stackEntries: unkno
     topSafeAreaRef: { current: null },
     bottomSafeAreaRef: { current: null },
     frameLayout: { keyboard: { sticky: false, visible: false }, keyboardAccessory: { top: 0, height: 0 } },
+    ...current,
   };
   return (
     <client.csrContext.Provider value={csr as unknown as CsrContextType}>
@@ -69,6 +70,31 @@ describe("CSR.Wrapper", () => {
 
     expect(container?.className).toContain("pointer-events-none");
     expect(target?.className).toContain("pointer-events-auto");
+    frame.unmount();
+  });
+
+  test("publishes what the current page registers for the agent, and parks the page kept under it", async () => {
+    const { useAgentGate } = await import("use-agentic");
+    const seen: Record<string, boolean | undefined> = {};
+    const Probe = ({ name }: { name: string }) => {
+      seen[name] = useAgentGate()?.active;
+      return null;
+    };
+    const entryOf = (key: string, pageType: string, zIndex: number) => {
+      const pathRoute = {
+        path: `/:lang/${key}`,
+        pageState: client.defaultPageState,
+        renderRootLayouts: [],
+        renderLayouts: [],
+        renderPage: { kind: "page", render: () => <Probe name={key} /> },
+      };
+      const location = { href: `/en/${key}`, pathname: `/en/${key}`, params: {}, searchParams: {}, pathRoute };
+      return { key, location, pageType, zIndex };
+    };
+    const [under, top] = [entryOf("under", "prev", 1), entryOf("top", "current", 2)];
+    const frame = mount(frameOf("frame", [], 1, [under, top], { location: top.location, phase: "transitioning" }));
+
+    expect(seen).toEqual({ under: false, top: true });
     frame.unmount();
   });
 });

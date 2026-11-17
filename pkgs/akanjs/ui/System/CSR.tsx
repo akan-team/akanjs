@@ -26,6 +26,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { AgentActivity } from "use-agentic";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
 import { animated } from "../animated";
@@ -501,7 +502,9 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
             location={location}
             prefix={prefix}
           >
-            <RenderLayer renders={renders} index={0} params={location.params} searchParams={location.searchParams} />
+            <AgentActivity active={activity === "current"}>
+              <RenderLayer renders={renders} index={0} params={location.params} searchParams={location.searchParams} />
+            </AgentActivity>
           </ClientPathWrapper>
         </animated.div>,
         pageContainers,
