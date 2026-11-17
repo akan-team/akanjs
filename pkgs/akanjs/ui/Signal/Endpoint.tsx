@@ -94,8 +94,6 @@ export const EndpointInterface = ({
   argSections,
   returnsLabel,
 }: EndpointInterfaceProps) => {
-  const { lang } = usePage();
-  useApiDescriptions(lang);
   const returnRef = ConstantRegistry.getModelRef(endpoint.returns.refName, endpoint.returns.modelType);
   return (
     <div className={className}>
