@@ -358,8 +358,9 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         // The shell's origin and engine: one value every origin comparison uses (`__AKAN_NATIVE__.origin`).
         val version = JSONObject.quote(WebView.getCurrentWebViewPackage()?.versionName ?: "")
         val engine = "window.__AKAN_NATIVE__.origin=\"${AkanNativeAssetServer.ORIGIN}\";window.__AKAN_NATIVE__.engine=\"android-webview\";window.__AKAN_NATIVE__.engineVersion=$version;\n"
+        val keyboard = if (imeResize) "" else "window.__AKAN_NATIVE__.keyboardAvoidance=\"page\";\n"
         // A new document starts with the current safe area (N14); later changes are pushed.
-        return INIT_PREFIX + AkanNativeBridge.jsSafe(bootJson) + "," + AkanNativeBridge.jsSafe(env) + INIT_SUFFIX + engine + cssInsets(currentInsets)
+        return INIT_PREFIX + AkanNativeBridge.jsSafe(bootJson) + "," + AkanNativeBridge.jsSafe(env) + INIT_SUFFIX + engine + keyboard + cssInsets(currentInsets)
     }
 
     private fun readAsset(path: String): String = assets.open(path).bufferedReader().use { it.readText() }
@@ -605,8 +606,9 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
             val m = if (Build.VERSION.SDK_INT >= 30) Api30.measure(insets) else legacyMeasure(insets)
             val sys = m.bars
             val density = resources.displayMetrics.density
-            // Keyboard height above the navigation bar, like react-native ReactRootView.
-            val keyboard = if (m.imeVisible) maxOf(0, m.imeBottom - sys.bottom) else 0
+            // Keyboard height above the navigation bar, like react-native ReactRootView; a page that meets the keyboard
+            // itself spans the screen, so it gets the whole overlap, as on iOS.
+            val keyboard = if (!m.imeVisible) 0 else if (imeResize) maxOf(0, m.imeBottom - sys.bottom) else m.imeBottom
             val next = AkanNativeInsets(sys.top / density, sys.right / density, sys.bottom / density, sys.left / density, m.imeVisible, keyboard / density)
             if (next != currentInsets) {
                 val wasVisible = currentInsets.imeVisible
@@ -625,11 +627,13 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
             // "Resize" keyboard mode: shrink the WebView container by the IME so fixed bottom UI stays
             // visible (WebView ignores interactive-widget). Do not consume the insets (crbug 461332423).
             view.setPadding(0, 0, 0, if (m.imeVisible && imeResize) m.imeBottom else 0)
-            val bars = Insets.of(sys.left, sys.top, sys.right, if (m.imeVisible) 0 else sys.bottom)
-            if (Build.VERSION.SDK_INT >= 30) Api30.withBars(insets, bars)
+            // Keyboard mode "none": the WebView never hears of the keyboard, or it shrinks its visual viewport and pans the
+            // page to the focused field on top of what the page does (`keyboardAvoidance`).
+            val bars = Insets.of(sys.left, sys.top, sys.right, if (m.imeVisible && imeResize) 0 else sys.bottom)
+            if (Build.VERSION.SDK_INT >= 30) Api30.withBars(insets, bars, hidesIme = !imeResize)
             else @Suppress("DEPRECATION") WindowInsets.Builder(insets).setSystemWindowInsets(bars).build()
         }
-        if (Build.VERSION.SDK_INT >= 30) Api30.watchImeAnimation(root) { show, heightPx, duration, done ->
+        if (Build.VERSION.SDK_INT >= 30) Api30.watchImeAnimation(root, { !imeResize }) { show, heightPx, duration, done ->
             val phase = if (done) (if (show) "didShow" else "didHide") else (if (show) "willShow" else "willHide")
             keyboardTransition(phase, if (show) heightPx / resources.displayMetrics.density else 0f, duration)
         }
@@ -658,9 +662,9 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
         return Measured(bars, if (imeVisible) sw.bottom else 0, imeVisible)
     }
 
-    /** The CSS variables for these insets, in CSS px; bottom is 0 while the keyboard shows (as WebView's env() does). */
+    /** The CSS variables for these insets, in CSS px; bottom is 0 while the keyboard shows over a resized WebView (as WebView's env() does). */
     private fun cssInsets(i: AkanNativeInsets): String {
-        val bottom = if (i.imeVisible) 0f else i.bottom
+        val bottom = if (i.imeVisible && imeResize) 0f else i.bottom
         return "document.documentElement&&(function(s){s.setProperty('--akan-native-safe-area-top','${i.top}px');" +
             "s.setProperty('--akan-native-safe-area-right','${i.right}px');s.setProperty('--akan-native-safe-area-bottom','${bottom}px');" +
             "s.setProperty('--akan-native-safe-area-left','${i.left}px')})(document.documentElement.style);\n"
@@ -947,19 +951,27 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
             return Measured(insets.getInsets(bars), if (visible) insets.getInsets(ime).bottom else 0, visible)
         }
 
-        fun withBars(insets: WindowInsets, value: Insets): WindowInsets = WindowInsets.Builder(insets).setInsets(bars, value).build()
+        fun withBars(insets: WindowInsets, value: Insets, hidesIme: Boolean): WindowInsets =
+            WindowInsets.Builder(insets).setInsets(bars, value).build().let { if (hidesIme) withoutIme(it) else it }
+
+        fun withoutIme(insets: WindowInsets): WindowInsets {
+            val ime = WindowInsets.Type.ime()
+            return WindowInsets.Builder(insets).setInsets(ime, Insets.NONE).setVisible(ime, false).build()
+        }
 
         /**
          * The IME's show and hide animations: [report] (show, height px above the bars once it ends,
-         * duration ms, ended) at the start and at the end. At the start the view's root insets are
-         * already the end state.
+         * or the whole overlap when [isPage], duration ms, ended) at the start and at the end. At the
+         * start the view's root insets are already the end state. With [isPage] the WebView's own
+         * animation callbacks see no IME either.
          */
-        fun watchImeAnimation(view: View, report: (Boolean, Float, Long, Boolean) -> Unit) {
+        fun watchImeAnimation(view: View, isPage: () -> Boolean, report: (Boolean, Float, Long, Boolean) -> Unit) {
             val ime = WindowInsets.Type.ime()
             fun target(): Pair<Boolean, Float> {
                 val insets = view.rootWindowInsets ?: return false to 0f
                 val show = insets.isVisible(ime)
-                val height = maxOf(0, insets.getInsets(ime).bottom - insets.getInsets(WindowInsets.Type.systemBars()).bottom)
+                val bottom = insets.getInsets(ime).bottom
+                val height = if (isPage()) bottom else maxOf(0, bottom - insets.getInsets(WindowInsets.Type.systemBars()).bottom)
                 return show to height.toFloat()
             }
             view.setWindowInsetsAnimationCallback(object : android.view.WindowInsetsAnimation.Callback(DISPATCH_MODE_CONTINUE_ON_SUBTREE) {
@@ -968,7 +980,8 @@ class AkanNativeActivity : Activity(), AkanNativePluginContext.Host {
                     return bounds
                 }
 
-                override fun onProgress(insets: WindowInsets, running: MutableList<android.view.WindowInsetsAnimation>): WindowInsets = insets
+                override fun onProgress(insets: WindowInsets, running: MutableList<android.view.WindowInsetsAnimation>): WindowInsets =
+                    if (isPage()) withoutIme(insets) else insets
 
                 override fun onEnd(animation: android.view.WindowInsetsAnimation) {
                     if (animation.typeMask and ime != 0) target().let { (show, height) -> report(show, height, animation.durationMillis, true) }

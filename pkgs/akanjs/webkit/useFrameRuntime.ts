@@ -1,5 +1,6 @@
 "use client";
 import {
+  ANDROID_KEYBOARD_ANIMATION_EASING,
   Device,
   debugFrame,
   defaultPageState,
@@ -31,7 +32,7 @@ export const KEYBOARD_SHOW_ANIMATION_DURATION_MS = 420;
 export const KEYBOARD_HIDE_ANIMATION_DURATION_MS = 90;
 export const KEYBOARD_SHOW_ANIMATION_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
 export const KEYBOARD_HIDE_ANIMATION_EASING = "cubic-bezier(0.7, 0, 0.84, 0)";
-export { IOS_KEYBOARD_ANIMATION_EASING };
+export { ANDROID_KEYBOARD_ANIMATION_EASING, IOS_KEYBOARD_ANIMATION_EASING };
 
 export const FRAME_Z_INDEX = {
   page: 10,
@@ -283,7 +284,8 @@ export function resolveKeyboardFrame({
   pageAvoidsKeyboard?: boolean;
   nativeAnimationDuration?: number;
 }): KeyboardFrameState {
-  const useVisualViewportHeight = platformProfile === "android" && visualViewportKeyboardHeight > 0;
+  const useVisualViewportHeight =
+    platformProfile === "android" && !pageAvoidsKeyboard && visualViewportKeyboardHeight > 0;
   const visualFallbackHeight =
     keyboardHeight <= 0 && visualViewportKeyboardHeight > 0 ? visualViewportKeyboardHeight : 0;
   const effectiveKeyboardHeight = useVisualViewportHeight
@@ -304,7 +306,7 @@ export function resolveKeyboardFrame({
       : 0;
   const offset = sticky && !freeze ? Math.max(0, effectiveKeyboardHeight - visualCompensation) : 0;
   const isShowing = effectiveKeyboardHeight > 0 && !freeze;
-  const avoidsContent = platformProfile === "ios" && pageAvoidsKeyboard;
+  const avoidsContent = (platformProfile === "ios" || platformProfile === "android") && pageAvoidsKeyboard;
   const followsKeyboard = avoidsContent && nativeAnimationDuration > 0;
   return {
     height: effectiveKeyboardHeight,
@@ -319,7 +321,9 @@ export function resolveKeyboardFrame({
         ? KEYBOARD_SHOW_ANIMATION_DURATION_MS
         : KEYBOARD_HIDE_ANIMATION_DURATION_MS,
     animationEasing: followsKeyboard
-      ? IOS_KEYBOARD_ANIMATION_EASING
+      ? platformProfile === "android"
+        ? ANDROID_KEYBOARD_ANIMATION_EASING
+        : IOS_KEYBOARD_ANIMATION_EASING
       : isShowing
         ? KEYBOARD_SHOW_ANIMATION_EASING
         : KEYBOARD_HIDE_ANIMATION_EASING,

@@ -84,6 +84,7 @@ export const csrClientBase = () => ({
   csrLocation,
   debugFrame: () => undefined,
   Href,
+  ANDROID_KEYBOARD_ANIMATION_EASING: "ease",
   IOS_KEYBOARD_ANIMATION_EASING: "ease",
   isMcpView,
   isNativeApp,
