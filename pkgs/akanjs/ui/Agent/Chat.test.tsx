@@ -229,7 +229,7 @@ describe("Agent.Chat", () => {
     } as unknown as typeof ResizeObserver;
     const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "ok" }));
     const { container, unmount } = mountChat(session);
-    const log = container.querySelector<HTMLElement>('[role="log"]');
+    const log = container.querySelector<HTMLElement>('[role="log"]')?.parentElement;
     if (!log) throw new Error("no log");
     let scrollTop = 0;
     Object.defineProperty(log, "scrollTop", { get: () => scrollTop, set: (value: number) => (scrollTop = value) });
@@ -246,6 +246,16 @@ describe("Agent.Chat", () => {
     expect(scrollTop).toBe(200);
     unmount();
     globalThis.ResizeObserver = Original;
+  });
+
+  test("in an app the composer rides the keys over a panel that keeps the screen, and the log scrolls with them", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "ok" }));
+    const { container, unmount } = mountChat(session);
+    const field = container.querySelector("textarea");
+    const rider = field?.closest("[data-akan-keyboard-ride]");
+    expect(rider?.hasAttribute("data-akan-keyboard-overlay")).toBe(true);
+    expect(container.querySelector('[role="log"]')?.getAttribute("data-akan-keyboard-ride")).toBe("inset");
+    unmount();
   });
 
   test("gates a confirmed tool behind the approval card and runs it on approve", async () => {

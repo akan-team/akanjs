@@ -63,4 +63,14 @@ describe("useKeyboardFrame", () => {
     expect(seen.frame).toBeUndefined();
     unmount();
   });
+
+  test("in an app whose page meets the keys itself, the panel is left whole for the ride", () => {
+    const native = globalThis as { __AKAN_NATIVE__?: { keyboardAvoidance?: string } };
+    native.__AKAN_NATIVE__ = { keyboardAvoidance: "page" };
+    const { seen, move, unmount } = mountFrame({ fullScreen: true });
+    move(450, 0);
+    expect(seen.frame).toBeUndefined();
+    unmount();
+    delete native.__AKAN_NATIVE__;
+  });
 });
