@@ -355,19 +355,25 @@ const createWorkflowPlanRecommendations = (
   ...(spec.name === "add-field" ? createAddFieldRecommendations(inputs) : []),
 ];
 
+const isBlankInput = (value: unknown) => value === undefined || value === null || value === "";
+
 export const createWorkflowPlan = (spec: WorkflowSpec, rawInputs: Record<string, unknown>): WorkflowPlan => {
   const inputs: Record<string, WorkflowInputValue> = {};
   const diagnostics: WorkflowDiagnostic[] = [];
+  const untaken = Object.keys(rawInputs).filter((name) => !(name in spec.inputs) && !isBlankInput(rawInputs[name]));
+  const untakenNote = untaken.length
+    ? ` It does not take ${untaken.map((name) => `"${name}"`).join(", ")}, which ${untaken.length === 1 ? "was" : "were"} passed.`
+    : "";
 
   for (const [name, inputSpec] of Object.entries(spec.inputs)) {
     const rawValue = rawInputs[name];
-    if (rawValue === undefined || rawValue === null || rawValue === "") {
+    if (isBlankInput(rawValue)) {
       if (inputSpec.required) {
         diagnostics.push({
           severity: "error",
           code: "workflow-input-missing",
           input: name,
-          message: `Workflow ${spec.name} requires input "${name}".`,
+          message: `Workflow ${spec.name} requires input "${name}" (--${name} on the command line).${untakenNote}`,
         });
       }
       continue;
