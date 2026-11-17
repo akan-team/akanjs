@@ -15,7 +15,7 @@ export interface BarrelImportsPluginOptions {
   pipeAfter?: (source: string, args: { path: string }) => string | Promise<string | null> | null;
   /** Barrels the bundle leaves external: a rewritten import would inline the modules the import map already serves. */
   external?: readonly string[];
-  /** The barrels to rewrite, instead of the app config's `barrelImports`. */
+  /** The barrels to rewrite, instead of the app config's `barrelImports`: a CSR bundle's, which narrows no object or package barrel by member. */
   barrels?: readonly string[];
   /** What `akanjs/ui/modelRuntime` holds instead of its empty source, in a build loading only the page runtime. */
   modelRuntime?: string;
@@ -34,11 +34,10 @@ export const createBarrelImportsPlugin = async (
     routeRuntime,
   }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
-  const config = only ? null : await app.getConfig();
-  const barrels = [...new Set(only ?? config?.barrelImports ?? [])].filter(
+  const barrels = [...new Set(only ?? (await app.getConfig()).barrelImports)].filter(
     (barrel) => barrel && !external.includes(barrel),
   );
-  const route = config?.clientRuntime === "route";
+  const route = !only;
   const resolvePackage = await createTsconfigPackageResolver(app);
   const analyzer = new BarrelAnalyzer({
     resolvePackage,

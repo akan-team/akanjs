@@ -845,8 +845,8 @@ describe("an app's client runtime pieces", () => {
     });
   }, 120_000);
 
-  test('say under `clientRuntime: "route"` which sync to run again when a scope\'s modules cannot be read, since its store files then load no upload descriptors first', async () => {
-    const saidWhenSynced = async (app: string, lib: string, config: string) => {
+  test("say which sync to run again when a scope's modules cannot be read, since its store files then load no upload descriptors first", async () => {
+    const saidWhenSynced = async (app: string, lib: string) => {
       const warnings: string[] = [];
       const warn = spyOn(Logger.prototype, "warn").mockImplementation((message: string) => {
         warnings.push(message);
@@ -859,7 +859,7 @@ describe("an app's client runtime pieces", () => {
           app,
           lib,
           libFiles: uploadFilesOf(),
-          appFiles: { ...shopFilesOf(lib), "akan.config.ts": `export default ${config};\n` },
+          appFiles: shopFilesOf(lib),
         });
         const piece = await Bun.file(path.join(root, `libs/${lib}/lib/__client/user.st.ts`)).text();
         expect(piece).not.toContain("file.fetch");
@@ -870,13 +870,12 @@ describe("an app's client runtime pieces", () => {
       return warnings.filter((message) => message.includes("[client-runtime]"));
     };
 
-    const said = await saidWhenSynced("depot", "hangar", "{}");
+    const said = await saidWhenSynced("depot", "hangar");
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain(
       "(user.constant.ts is unreadable)",
     );
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain("Run `akan sync hangar`");
     expect(said.some((message) => message.includes("Run `akan sync depot`"))).toBe(true);
-    expect(await saidWhenSynced("wharf", "crane", '{ clientRuntime: "all" }')).toEqual([]);
   }, 120_000);
 
   test("give a client file exactly the pieces of the modules it names, each generated and each loading only its module", async () => {
@@ -1210,7 +1209,7 @@ await st.do.showBoth();
 console.log(JSON.stringify({ label, itemCount, limitOfItemInPublic, noteText: st.get().noteText }));
 `;
 
-describe('a `clientRuntime: "route"` page reaching a store only by an indirect read', () => {
+describe("a page reaching a store only by an indirect read", () => {
   const [app, lib] = ["atelier", "trunk"];
   let workspace: ReturnType<typeof writeWorkspace> | null = null;
   const built = async (entries: string[]) => {
@@ -1349,7 +1348,6 @@ const writeHarborWorkspace = (
     },
     appFiles: {
       ...shopFilesOf(base),
-      "akan.config.ts": 'export default { clientRuntime: "route" };\n',
       "ui/Count.tsx": `import { st } from "@apps/${app}/client";\nexport const Count = () => st.use.itemCount();\n`,
       "ui/Note.tsx": `import { fetch } from "@apps/${app}/client";\nexport const Note = () => fetch.itemNote();\n`,
       "ui/Org.tsx": `import { st } from "@libs/${upper}/client";\nexport const Org = () => st.use.orgCount();\n`,
@@ -1360,6 +1358,9 @@ const writeHarborWorkspace = (
 
 interface RouteBuilt {
   failure: string | null;
+  warnings: string[];
+  wholeRuntimeEntries: string[];
+  chunksLeftFromEarlierBundles: string[];
   storeChunks: string[];
   fetchPieceChunks: string[];
   storePiecesStoresImport: string[];
@@ -1391,6 +1392,10 @@ ClientEntriesBundler.prototype.bundle = async function () {
   return result;
 };
 let failure = null;
+const warnings = [];
+app.logger.warn = (message) => {
+  warnings.push(message);
+};
 await new RouteClientBuilder({
   app,
   seeds: [],
@@ -1407,6 +1412,11 @@ await new RouteClientBuilder({
   });
 const measuredAgainst = (graph) => [...graph.chunksByModule.values()].flat().some((chunk) => chunk.split(path.sep).includes("client-whole"));
 const browser = graphs.filter((graph) => !measuredAgainst(graph)).at(-1);
+const earlierChunks = graphs.filter((graph) => graph !== browser).flatMap((graph) => [...graph.importsByChunk.keys()]);
+const chunksLeft = [];
+for (const chunk of new Set(earlierChunks))
+  if (!chunk.split(path.sep).includes("client-ssr") && !browser.importsByChunk.has(chunk) && (await Bun.file(chunk).exists()))
+    chunksLeft.push(path.basename(chunk));
 const nameOf = (file) => path.relative(root, file);
 const chunksOf = (file) => (browser.chunksByModule.get(path.join(root, file)) ?? []).map((chunk) => path.basename(chunk));
 const importsOf = (file) => (browser.importsByModule.get(file) ?? []).map((imported) => nameOf(imported.path));
@@ -1421,6 +1431,9 @@ const storeFilesOf = (entry) => reachedBy(entry).filter((file) => file.endsWith(
 const constantsOf = (entry) => reachedBy(entry).filter((file) => file.endsWith("/lib/cnst.ts")).sort();
 console.log(JSON.stringify({
   failure,
+  warnings,
+  wholeRuntimeEntries: entries.filter((entry) => reachedBy(entry).some((file) => /\\/lib\\/(st|useClient)\\.ts$/.test(file))),
+  chunksLeftFromEarlierBundles: chunksLeft,
   storeChunks: chunksOf(store),
   fetchPieceChunks: chunksOf(fetchPiece),
   storePiecesStoresImport: storeFiles.flatMap(importsOf).filter((file) => /__client\\/[^_/][^/]*\\.st\\.ts$/.test(file)),
@@ -1430,7 +1443,7 @@ console.log(JSON.stringify({
 }));
 `;
 
-describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
+describe("a build of a three-scope workspace", () => {
   test("passes its own check with a store and its model's fetch piece in different chunks, a file two entries share apart from the store piece it names, a lib store spreading into `this.set` and two stores naming each other, no store file importing a store piece", async () => {
     const [app, base, upper] = ["harbor", "berth", "jetty"];
     const temp = await writeHarborWorkspace(app, base, upper, {
@@ -1451,6 +1464,8 @@ describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
       app,
     )) as unknown as RouteBuilt;
     expect(built.failure).toBeNull();
+    expect(built.warnings).toEqual([]);
+    expect(built.wholeRuntimeEntries).toEqual([]);
     expect(built.storeChunks).toHaveLength(1);
     expect(built.fetchPieceChunks).toHaveLength(1);
     expect(built.storeChunks).not.toEqual(built.fetchPieceChunks);
@@ -1464,7 +1479,7 @@ describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
     ]);
   }, 240_000);
 
-  test("stops, naming both files, where a file imports a runtime piece only for its effect and the build splits the two apart", async () => {
+  test("warns once, naming both files, where a file imports a runtime piece only for its effect and the build splits the two apart, then builds every page on the whole runtime and leaves no chunk of the refused build", async () => {
     const [app, base, upper] = ["pier", "shed", "dock"];
     const temp = await writeHarborWorkspace(app, base, upper, {
       "ui/Count.tsx": `import { st } from "@apps/${app}/client";\nimport { hand } from "../../../shared/hand";\nexport const Count = () => [st.use.itemCount(), hand];\n`,
@@ -1480,11 +1495,20 @@ describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
       routeBuildScript(temp.root, app, entries, "shared/hand.ts", `apps/${app}/lib/__client/item.fetch.ts`),
       app,
     )) as unknown as RouteBuilt;
-    expect(built.failure?.split("\n")).toEqual([
-      '[client-runtime] the build of `clientRuntime: "route"` would not load its modules in order:',
-      `  - shared/hand.ts needs apps/${app}/lib/__client/item.fetch.ts loaded first, but its chunk ${built.storeChunks[0]} does not import the chunk holding that piece`,
-      'Set `clientRuntime: "all"` in akan.config.ts to build until it is fixed.',
+    expect(built.failure).toBeNull();
+    expect(built.warnings).toHaveLength(1);
+    expect(built.warnings[0]?.split("\n")).toEqual([
+      "[client-runtime] loading per module, this build would not load its modules in order:",
+      expect.stringMatching(
+        new RegExp(
+          `^  - shared/hand\\.ts needs apps/${app}/lib/__client/item\\.fetch\\.ts loaded first, but its chunk \\S+\\.js does not import the chunk holding that piece$`,
+        ),
+      ),
+      "Every page of this build loads the whole client runtime instead, not only what it uses. This is a bug in akan: report it with the lines above.",
     ]);
+    expect(built.wholeRuntimeEntries).toEqual(entries);
+    expect(built.chunksLeftFromEarlierBundles).toEqual([]);
+    expect(await Bun.file(path.join(temp.root, `apps/${app}/.akan/cache/route-runtime.json`)).exists()).toBe(false);
   }, 240_000);
 
   test("passes its own check where an entry no route holds names a model whose constant file reads another lib's constants from that lib's barrel, and loads every constant there and none of that lib's in a route's page", async () => {

@@ -47,7 +47,7 @@ const failuresOf = (shape: GraphShape, narrowed?: NarrowedShape) =>
       : null,
   ).failures;
 
-describe('what a `clientRuntime: "route"` build checks in its own output', () => {
+describe("what a build loading per module checks in its own output", () => {
   const storeAndPiece = { [storeFile]: [fetchPiece], [fetchPiece]: [] };
 
   test("a module's chunk reaches the chunk of each runtime piece it imports, directly, through another chunk or by holding it", () => {
@@ -200,7 +200,7 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
     ]);
   });
 
-  test("a failing build stops with the first failures, how many more there are, and the setting that builds meanwhile", () => {
+  test("a failing check names the first failures, how many more there are, what the build does instead and that it is a bug to report", () => {
     const stores = Array.from(
       { length: RouteRuntimeCheck.shown + 2 },
       (_, index) => `apps/demo/lib/m${index}/m${index}.store.ts`,
@@ -211,9 +211,9 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
       [fetchPiece]: ["/out/fetch.js"],
     };
     const check = new RouteRuntimeCheck(root, graphOf({ imports, chunks }));
-    expect(() => check.assert()).toThrow(
+    expect(check.refusal).toBe(
       [
-        '[client-runtime] the build of `clientRuntime: "route"` would not load its modules in order:',
+        "[client-runtime] loading per module, this build would not load its modules in order:",
         ...stores
           .slice(0, RouteRuntimeCheck.shown)
           .map(
@@ -221,10 +221,10 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
               `  - ${store} needs ${fetchPiece} loaded first, but its chunk store.js does not import the chunk holding that piece`,
           ),
         "  - and 2 more",
-        'Set `clientRuntime: "all"` in akan.config.ts to build until it is fixed.',
+        "Every page of this build loads the whole client runtime instead, not only what it uses. This is a bug in akan: report it with the lines above.",
       ].join("\n"),
     );
-    expect(() => new RouteRuntimeCheck(root, graphOf({ imports: storeAndPiece })).assert()).not.toThrow();
+    expect(new RouteRuntimeCheck(root, graphOf({ imports: storeAndPiece })).refusal).toBeNull();
   });
 
   test("a route loading a scope's whole file and a piece of that scope is named, unless one of the two takes its part from the other", () => {

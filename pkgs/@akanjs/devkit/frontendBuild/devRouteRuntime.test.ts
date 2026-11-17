@@ -55,7 +55,6 @@ const routeWorkspace = async () => {
     workspace: { workspaceRoot: root },
     basePaths: new Set<string>(),
     getConfig: async () => ({
-      clientRuntime: "route",
       optimizeImports: [],
       barrelImports: ["@apps/demo/client", "akanjs/common"],
       basePaths: new Set<string>(),
@@ -226,7 +225,7 @@ describe("DevRouteRuntime", () => {
   });
 });
 
-describe("the dev registry under clientRuntime route", () => {
+describe("the dev registry loading per module", () => {
   const compile = async (app: App, root: string, roots: string[]) => {
     const context = await new SsrDevBundler(app).context();
     const paths = new CsrDevPaths(root);

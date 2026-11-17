@@ -400,6 +400,43 @@ describe("a build planned over the bundle that loads the whole runtime everywher
     expect(alone.piecesOf(uiFile("Side"))).toEqual(tagPieces);
   });
 
+  test("keeps the whole runtime on the one route rendering a client file that exports the store, and on every route once the root layout renders it", () => {
+    const exporting =
+      '"use client";\nimport { st } from "@apps/demo/client";\n\nexport const wholeRuntime = st;\n\nexport const WholeRuntime = () => null;\n';
+    const files = { [uiFile("WholeRuntime")]: exporting, [uiFile("Card")]: namingRead, [uiFile("Side")]: namingSide };
+    const entries = Object.keys(files);
+    const onOneRoute = plan({
+      files,
+      entries,
+      routes: {
+        "/kept": [uiFile("WholeRuntime"), uiFile("Card")],
+        "/read": [uiFile("Card")],
+        "/side": [uiFile("Side")],
+      },
+    });
+    expect(onOneRoute.kept).toEqual([uiFile("WholeRuntime")]);
+    expect(onOneRoute.piecesOf(uiFile("Card"))).toEqual(memoPieces);
+    expect(onOneRoute.target.decided?.causes()).toEqual([
+      expect.objectContaining({
+        rule: "reader",
+        file: "apps/demo/ui/WholeRuntime.tsx",
+        line: 4,
+        message: "`wholeRuntime = st`: other files read the runtime through this one",
+        routes: ["/kept"],
+      }),
+    ]);
+    const fromTheRootLayout = plan({
+      files,
+      entries,
+      routes: { "/read": [uiFile("WholeRuntime"), uiFile("Card")], "/side": [uiFile("WholeRuntime"), uiFile("Side")] },
+    });
+    expect(fromTheRootLayout.kept).toEqual([uiFile("Card"), uiFile("Side"), uiFile("WholeRuntime")]);
+    expect(["Card", "Side"].map((name) => fromTheRootLayout.piecesOf(uiFile(name)))).toEqual([
+      "as written",
+      "as written",
+    ]);
+  });
+
   test("keeps the whole runtime in an entry naming a module that more whole-runtime routes hold than others, and narrows one naming none", () => {
     const plain = "export const Plain = 1;\n";
     const files = { [uiFile("Run")]: pickingRun, [uiFile("Card")]: namingRead, [uiFile("Plain")]: plain };

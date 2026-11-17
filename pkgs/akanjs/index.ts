@@ -473,16 +473,6 @@ export interface AppConfigResult {
   bin: AkanBinConfig;
   barrelImports: string[];
   optimizeImports: string[];
-  /**
-   * `"route"` (the default) loads on a server-rendered page only the stores, endpoints, constants and texts of the
-   * modules it uses; `"all"` loads every module's on every page and is deprecated, removed in the next minor release.
-   * Under `"route"` a module counts as used when the page's client code names it (`st.use.memoList()`,
-   * `fetch.memo(id)`, `cnst.Memo`, `l("memo.title")`) or the server hands it over; a file that picks a name at run
-   * time loads every module's, and `akan quality runtime` names such files. The development server loads what a
-   * production page loads. Server rendering, CSR bundles and native apps load everything. To leave `"all"`, delete the
-   * line and run `akan quality runtime` to see which files would keep the app's pages on the whole runtime.
-   */
-  clientRuntime: "all" | "route";
   images: AkanImageConfig;
   i18n: AkanI18nConfig;
   publicEnv: string[];

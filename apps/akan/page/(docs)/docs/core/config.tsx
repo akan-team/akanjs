@@ -136,13 +136,6 @@ const configKeys = [
     en: "Extra packages whose imports the client build rewrites to the exact source file.",
     ko: "클라이언트 빌드가 정확한 원본 파일 import로 바꿔 줄 추가 패키지입니다.",
   },
-  {
-    key: "clientRuntime",
-    type: '"all" | "route"',
-    default: '"route"',
-    en: '"route" loads in a page\'s browser code the constants, descriptors, stores and dictionary texts of the modules the page uses. "all" loads every module\'s on every page; it is deprecated and is removed in the next minor release.',
-    ko: '"route"는 페이지의 브라우저 코드에 그 페이지가 쓰는 모듈의 상수, 엔드포인트 정의, 스토어, 사전 문구만 불러옵니다. "all"은 모든 페이지에서 모든 모듈의 것을 불러오며, deprecated이고 다음 minor 릴리스에서 제거됩니다.',
-  },
 ];
 
 const nativeFields = [
@@ -526,13 +519,6 @@ const buildFields = [
     default: "akanjs + workspace",
     en: "Extra barrels to flatten while scanning and bundling, for ones outside the workspace.",
     ko: "스캔과 번들링에서 펼칠 추가 barrel 경로이며, 워크스페이스 밖의 barrel에만 씁니다.",
-  },
-  {
-    key: "clientRuntime",
-    type: '"all" | "route"',
-    default: '"route"',
-    en: '"route" gives a page\'s browser code only the models and stores its client modules name, and every one where a module picks a name at run time or renders a Load, Model or Data component. "all" (deprecated) gives every page every one.',
-    ko: '"route"면 그 페이지의 클라이언트 모듈이 이름을 적은 모델과 스토어만 브라우저 코드에 싣고, 이름을 실행 중에 고르거나 Load·Model·Data 컴포넌트를 렌더링하는 모듈이 있으면 전부 싣습니다. "all"(deprecated)은 모든 페이지에 전부 싣습니다.',
   },
   {
     key: "database.modes",

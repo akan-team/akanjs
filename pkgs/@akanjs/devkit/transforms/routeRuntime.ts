@@ -71,7 +71,7 @@ const parsed = (fileName: string, source: string): ts.SourceFile | null => {
   return (sourceFile as unknown as { parseDiagnostics: unknown[] }).parseDiagnostics.length ? null : sourceFile;
 };
 
-//* What a client module imports under `clientRuntime: "route"`: the page runtime's handles plus the pieces of the
+//* What a client module imports where pages load per module: the page runtime's handles plus the pieces of the
 //* modules it names, or the app's whole runtime assembled from the same pieces. Each piece is imported by a name the
 //* module passes to `loadedAfter`, never for its side effect alone, so the piece's chunk loads before the module's.
 export class RouteRuntime {

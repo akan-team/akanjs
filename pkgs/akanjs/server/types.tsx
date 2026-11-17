@@ -121,9 +121,9 @@ export type BaseBuildArtifact = {
   cssAssets: Record<string, CssAsset>;
   /** Per locale; absent in an artifact older than the asset, whose pages carried their dictionary in the flight. */
   dictAssets?: Record<string, DictAsset>;
-  /** Under `clientRuntime: "route"`: the `DictAsset.routeParts.files` each route loads; a route left out loads `url`. */
+  /** A production build: the `DictAsset.routeParts.files` each route loads; a route left out loads `url`. */
   dictRoutes?: Record<string, number[]>;
-  /** Development under `clientRuntime: "route"`: the `DictAsset.routeParts.files` index of each group, one per file. */
+  /** Development: the `DictAsset.routeParts.files` index of each group, one per file. */
   dictGroups?: Record<string, number>;
   domains: string[];
   subRoutes: { [key: string]: string[] };
@@ -167,9 +167,9 @@ export interface CssAsset {
 export interface DictAsset {
   url: string;
   relPath: string;
-  /** Under `clientRuntime: "route"`: the files this locale's dictionary left out, by name, loaded where a page shows them. */
+  /** The files this locale's dictionary left out, by name, loaded where a page shows them. */
   parts?: Record<string, { url: string; relPath: string }>;
-  /** Under `clientRuntime: "route"`: the page file cut into the files routes load; `table` names each group's file. */
+  /** The page file cut into the files routes load; `table` names each group's file. */
   routeParts?: { table: { url: string; relPath: string }; files: { url: string; relPath: string }[] };
 }
 

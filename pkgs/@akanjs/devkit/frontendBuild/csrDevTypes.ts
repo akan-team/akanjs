@@ -56,7 +56,7 @@ export interface CsrDevContext {
   barrelImports?: readonly string[];
   /** What `akanjs/ui/modelRuntime` holds instead of its empty source, when the bootstrap loads only the page runtime. */
   modelRuntime?: string;
-  /** Under `clientRuntime: "route"`: what each client module imports, as the production build decides it. */
+  /** Where pages load per module: what each client module imports, as the production build decides it. */
   routeRuntime?: DevRouteRuntime;
 }
 

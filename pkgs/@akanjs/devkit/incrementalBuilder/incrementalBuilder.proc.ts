@@ -135,7 +135,7 @@ class IncrementalBuilder {
           routeId: msg.routeId,
           generation: msg.generation,
           seenGeneration,
-          ...(dictionaryGroups !== undefined ? { dictionaryGroups } : {}),
+          dictionaryGroups,
         } as BuildRouteResultPayload,
       };
     } catch (err) {
@@ -156,8 +156,7 @@ class IncrementalBuilder {
   async #dictionaryGroupsOf(
     seeds: string[],
     { clientGraph, discoveredEntries, newEntries }: Awaited<ReturnType<RouteClientBuilder["build"]>>,
-  ): Promise<string[] | null | undefined> {
-    if ((await this.#app.getConfig()).clientRuntime !== "route") return undefined;
+  ): Promise<string[] | null> {
     for (const [module, imports] of clientGraph ?? []) this.#dictionaryGraph.set(module, imports);
     const entries = discoveredEntries ?? newEntries;
     const route = { seeds, entries, importsByModule: this.#dictionaryGraph, discovery: this.#discovery };

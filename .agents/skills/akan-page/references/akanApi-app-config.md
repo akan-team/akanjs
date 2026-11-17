@@ -27,8 +27,6 @@ externalLibs?: string[];
 trustedDependencies?: string[];
 barrelImports?: string[];
 optimizeImports?: string[];
-/** `"route"` (the default) loads on a server-rendered page only the stores, endpoints, constants and texts of the modules it uses; `"all"` loads every module's on every page and is deprecated, removed in the next minor release. */
-clientRuntime?: "all" | "route";
 images?: DeepPartial<AkanImageConfig>;
 i18n?: DeepPartial<AkanI18nConfig>;
 publicEnv?: string[];

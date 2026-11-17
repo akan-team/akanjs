@@ -214,7 +214,7 @@ const app = {
   cwdPath: root + "/apps/demo",
   dist: { cwdPath: root + "/dist/apps/demo" },
   workspace: { workspaceRoot: root },
-  getConfig: async () => ({ barrelImports: [], optimizeImports: [], clientRuntime: "all" }),
+  getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
   getTsConfig: async () => ({ compilerOptions: { paths } }),
   getPublicEnv: () => ({}),
   logger: { warn: () => {} },

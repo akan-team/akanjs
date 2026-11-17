@@ -12,7 +12,7 @@ export interface BuildRouteResultPayload {
   generation?: number;
   /** The newest save batch whose files its client-entry discovery had taken in when it started. */
   seenGeneration?: number;
-  /** Under `clientRuntime: "route"`: the dictionary groups the route can show, `null` when it needs every group. */
+  /** The dictionary groups the route can show, `null` when it needs every group. */
   dictionaryGroups?: string[] | null;
 }
 
@@ -230,6 +230,6 @@ export interface BuildRouteClientResult {
   clientDepsByEntry?: Record<string, string[]>;
   /** The newest save batch whose files its client-entry discovery had taken in when it started. */
   seenGeneration?: number;
-  /** Under `clientRuntime: "route"`: the dictionary groups the route can show, `null` when it needs every group. */
+  /** The dictionary groups the route can show, `null` when it needs every group. */
   dictionaryGroups?: string[] | null;
 }

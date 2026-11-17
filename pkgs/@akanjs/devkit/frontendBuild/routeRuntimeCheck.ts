@@ -26,11 +26,12 @@ const constantPiece = /^(?:apps|libs)\/[^/]+\/lib\/__client\/[^/]+\.cnst\.ts$/;
 const wholeFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:useClient|st)\.ts$/;
 const constantsFile = /^(?:apps|libs)\/[^/]+\/lib\/cnst\.ts$/;
 const storeFile = /^(?:apps|libs)\/[^/]+\/lib\/_?[^/]+\/[^/]+\.store\.ts$/;
-const advice = 'Set `clientRuntime: "all"` in akan.config.ts to build until it is fixed.';
+const consequence =
+  "Every page of this build loads the whole client runtime instead, not only what it uses. This is a bug in akan: report it with the lines above.";
 
-//* What a `clientRuntime: "route"` build proves about its own output before it reports success: each runtime piece
-//* loads before the module importing it, no store file or registration piece is imported back by what it loads, and no
-//* page built to load pieces reaches a file that needs the whole runtime, or every constant for no named reason.
+//* What a build loading per module proves about its own output before it is served: each runtime piece loads before
+//* the module importing it, no store file or registration piece is imported back by what it loads, and no page built
+//* to load pieces reaches a file that needs the whole runtime, or every constant for no named reason.
 export class RouteRuntimeCheck {
   static readonly shown = 5;
   readonly #workspaceRoot: string;
@@ -48,18 +49,16 @@ export class RouteRuntimeCheck {
     return [...this.#unordered(), ...this.#cycles(), ...this.#unanswered()];
   }
 
-  assert() {
+  get refusal(): string | null {
     const failures = this.failures;
-    if (failures.length === 0) return;
+    if (failures.length === 0) return null;
     const more = failures.length - RouteRuntimeCheck.shown;
-    throw new Error(
-      [
-        `[client-runtime] the build of \`clientRuntime: "route"\` would not load its modules in order:`,
-        ...failures.slice(0, RouteRuntimeCheck.shown).map((failure) => `  - ${failure}`),
-        ...(more > 0 ? [`  - and ${more} more`] : []),
-        advice,
-      ].join("\n"),
-    );
+    return [
+      "[client-runtime] loading per module, this build would not load its modules in order:",
+      ...failures.slice(0, RouteRuntimeCheck.shown).map((failure) => `  - ${failure}`),
+      ...(more > 0 ? [`  - and ${more} more`] : []),
+      consequence,
+    ].join("\n");
   }
 
   //* Each scope file a route loads with a piece of the same scope beside it that repeats part of it. A piece repeats

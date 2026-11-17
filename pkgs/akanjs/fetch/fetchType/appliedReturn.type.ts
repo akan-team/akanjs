@@ -7,7 +7,7 @@ export type SliceMeta<Sort = unknown> = {
   argLength: number;
   /** Type-only, never set: the slice filter's sort keys, which a `sort` passed beside this meta narrows to. */
   _Sort?: Sort;
-  /** Set by a server render under `clientRuntime: "route"`: the client reference whose load brings this model's store. */
+  /** Set by a server render: the client reference whose load brings this model's store. */
   _runtime?: unknown;
 };
 

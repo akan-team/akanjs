@@ -14,7 +14,7 @@ export interface DictionarySize {
   lang: string;
   pageBrotliBytes: number;
   apiBrotliBytes?: number;
-  //? What a first visit downloads of the dictionary under `clientRuntime: "route"`, over every route.
+  //? What a first visit downloads of the dictionary cut by route, over every route.
   routeBrotliBytes?: DictionaryRouteBytes;
 }
 
