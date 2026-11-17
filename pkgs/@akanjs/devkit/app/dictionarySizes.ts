@@ -18,9 +18,6 @@ export interface DictionarySize {
   routeBrotliBytes?: DictionaryRouteBytes;
 }
 
-//? precompressArtifacts writes no `.br` for a smaller file, so it is served, and counted, raw.
-const minCompressedBytes = 1024;
-
 export class DictionarySizes {
   static of(artifactDir: string): DictionarySize[] {
     const artifactPath = path.join(artifactDir, "base-artifact.json");
@@ -87,8 +84,8 @@ export class DictionarySizes {
     const sidecar = `${file}.br`;
     if (fs.existsSync(sidecar)) return fs.statSync(sidecar).size;
     const raw = fs.readFileSync(file);
-    if (raw.byteLength < minCompressedBytes) return raw.byteLength;
     const params = { [zlib.constants.BROTLI_PARAM_QUALITY]: zlib.constants.BROTLI_MAX_QUALITY };
-    return zlib.brotliCompressSync(raw, { params }).byteLength;
+    //? precompressArtifacts writes no `.br` that would be larger than its file, so that file is served, and counted, raw.
+    return Math.min(raw.byteLength, zlib.brotliCompressSync(raw, { params }).byteLength);
   }
 }
