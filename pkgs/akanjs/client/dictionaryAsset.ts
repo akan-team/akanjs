@@ -9,6 +9,7 @@ export class DictionaryAsset {
   static async load(url: string | null | undefined): Promise<void> {
     if (!url) return;
     const seq = ++DictionaryAsset.#seq;
+    TranslatorState.get().loadSeq = seq;
     const loading = DictionaryAsset.#loads.get(url) ?? DictionaryAsset.#import(url);
     DictionaryAsset.#loads.set(url, loading);
     const { lang, default: dictionary, parts } = await loading;

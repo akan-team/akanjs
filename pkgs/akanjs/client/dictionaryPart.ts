@@ -11,7 +11,8 @@ interface DictionaryPartState {
   mergedByDictionary: WeakMap<object, Set<string>>;
   //? Kept once settled: React replays a suspended reader with the promise it threw and warns on any other.
   loads: Map<string, DictionaryPartLoad>;
-  failed: Set<string>;
+  //? The `loadSeq` each file failed under: a re-render on that page reuses the settled load, as a new try suspends it.
+  failedAt: Map<string, number | undefined>;
 }
 
 const dictionaryPartStateKey = "__AKAN_DICTIONARY_PART__";
@@ -30,7 +31,7 @@ export class DictionaryPart {
     globalScope[dictionaryPartStateKey] ??= {
       mergedByDictionary: new WeakMap(),
       loads: new Map(),
-      failed: new Set(),
+      failedAt: new Map(),
     };
     return globalScope[dictionaryPartStateKey];
   }
@@ -46,8 +47,9 @@ export class DictionaryPart {
     const state = DictionaryPart.#state();
     const load = state.loads.get(url);
     const merged = DictionaryPart.has(lang, url);
-    if (load && (load.status === "pending" || merged || state.failed.has(url))) return load;
+    if (load && (load.status === "pending" || merged || DictionaryPart.#failedOnThisPage(url))) return load;
     if (merged) return settled;
+    state.failedAt.delete(url);
     const next = DictionaryPart.#track(DictionaryPart.#load(lang, url, base));
     state.loads.set(url, next);
     return next;
@@ -76,9 +78,14 @@ export class DictionaryPart {
       DictionaryPart.merge(lang, url, (await importDictionaryModule(url)).default, base);
     } catch (error) {
       //? Settled, not rejected: a page whose file is gone shows without it rather than in its error boundary.
-      DictionaryPart.#state().failed.add(url);
+      DictionaryPart.#state().failedAt.set(url, TranslatorState.get().loadSeq);
       console.error(`[DictionaryPart] ${url} failed to load: ${String(error)}`);
     }
+  }
+
+  static #failedOnThisPage(url: string): boolean {
+    const { failedAt } = DictionaryPart.#state();
+    return failedAt.has(url) && failedAt.get(url) === TranslatorState.get().loadSeq;
   }
 
   static #track(loading: Promise<void>): DictionaryPartLoad {

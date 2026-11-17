@@ -15,6 +15,8 @@ interface TranslatorStateValue {
   replacedByLang: Map<string, object>;
   // The files each locale's snapshot left out, by name, merged where a page shows them (`DictionaryPart`).
   partsByLang: Map<string, Record<string, string> | undefined>;
+  // Counts page dictionary loads, one per navigation: a part that failed to load is tried again at the next one.
+  loadSeq?: number;
   // Browser-only: never written on the server, where concurrent requests share this state.
   activeLocale?: string;
   // Browser-only copy of the server-resolved path, so the first client render matches SSR.

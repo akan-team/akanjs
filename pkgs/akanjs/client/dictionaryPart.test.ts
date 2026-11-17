@@ -149,4 +149,24 @@ export default ${JSON.stringify(pingApi("Sends a ping"))};`,
     expect(isSettled("xi")).toBe(true);
     expect(DictionaryPart.has("xi", missing)).toBe(false);
   });
+
+  test("tries a file that failed again at the next navigation, never when a reader on the same page re-renders", async () => {
+    const error = spyOn(console, "error").mockImplementation(() => undefined);
+    const late = path.join(root, "xj-api-late.js");
+    const page = writeDict("xj", pingPage("Title"), { parts: { api: late } });
+    await DictionaryAsset.load(page);
+    const failed = DictionaryPart.ready("xj", api);
+    await failed;
+    error.mockRestore();
+    fs.writeFileSync(late, `export const lang = "xj";\nexport default ${JSON.stringify(pingApi("Sends a ping"))};`);
+
+    expect(DictionaryPart.ready("xj", api)).toBe(failed);
+    expect(descOf("xj")).toBe("app.signal.ping.desc");
+    await DictionaryAsset.load(page);
+    const retried = DictionaryPart.ready("xj", api);
+    expect(retried).not.toBe(failed);
+    await retried;
+    expect(descOf("xj")).toBe("Sends a ping");
+    expect(DictionaryPart.ready("xj", api)).toBe(retried);
+  });
 });
