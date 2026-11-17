@@ -102,16 +102,25 @@ export class RouteRuntime {
     if ((sourceFile as unknown as { parseDiagnostics: unknown[] }).parseDiagnostics.length) return null;
     const verdict = RuntimeUse.analyze({ fileName, text: source, sourceFile }, this.#table);
     const pieces = verdict.resolvable ? this.#piecesOf(fileName, verdict) : null;
-    if (!pieces)
-      return {
-        source: RouteRuntime.#apply(source, [this.#leading(sourceFile, this.wholeImports)]),
-        perModule: false,
-        pieces: [],
-      };
+    if (!pieces) {
+      const whole = isStore ? this.#wholeBesides(fileName) : this.wholeImports;
+      return { source: RouteRuntime.#apply(source, [this.#leading(sourceFile, whole)]), perModule: false, pieces: [] };
+    }
     const edits = sourceFile.statements.flatMap((statement) => this.#importEdit(statement, sourceFile, fileName));
     const imports = pieces.map((piece) => `import ${JSON.stringify(`@${piece}`)};`);
     if (imports.length) edits.push(this.#leading(sourceFile, imports));
     return { source: RouteRuntime.#apply(source, edits), perModule: true, pieces };
+  }
+
+  //? The assembled store root imports every store file: imported from one, it runs before that file's class exists.
+  #wholeBesides(fileName: string): string[] {
+    const [, , ownModule] = fileName.match(storeFile) ?? [];
+    const others = [...this.#pieces].filter(
+      (piece) => /\/lib\/__client\/[^/_][^/]*\.st$/.test(piece) && !piece.endsWith(`/${ownModule}.st`),
+    );
+    return [`${this.#table.scope}/lib/__client/${assembled.useClient}`, ...others].map((piece) =>
+      this.#importOf(piece),
+    );
   }
 
   #piecesOf(fileName: string, verdict: RuntimeUseVerdict & { resolvable: true }): string[] | null {
@@ -135,7 +144,8 @@ export class RouteRuntime {
       const descriptor = descriptorOf(scope, module);
       if (descriptor) descriptors.add(descriptor);
       else if (needs === "descriptor") return null;
-      if (needs !== "store" || (scope === ownScope && module === ownModule)) continue;
+      //? A lib store an app extends reads names the app's store owns, and the app's store piece imports the lib's.
+      if (needs !== "store" || module === ownModule) continue;
       const store = `${scope}/lib/__client/${module}.st`;
       if (!this.#pieces.has(store)) return null;
       stores.add(store);

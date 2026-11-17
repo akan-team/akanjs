@@ -6,6 +6,7 @@ import { Logger } from "akanjs/common";
 import { type RuntimeFamily, RuntimeNameTable, runtimeFamilies } from "../quality/runtimeNameTable";
 import { RuntimeUse } from "../quality/runtimeUse";
 import { createTempApp, tempRoots, writeJson, writeText } from "../test/testHelpers";
+import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { RouteRuntime } from "../transforms/routeRuntime";
 
 const trackRoot = tempRoots();
@@ -631,6 +632,27 @@ console.log(JSON.stringify({
 }));
 `;
 
+//? One entry is one page's bundle: with several, a shared chunk can run a store before the file a page reaches first.
+const bundleForBrowser = async (
+  { root, app }: Awaited<ReturnType<typeof writeWorkspace>>,
+  appName: string,
+  entries: string[],
+) => {
+  const routeRuntime = await RouteRuntime.read(root, `apps/${appName}`);
+  if (!routeRuntime) throw new Error("the fixture app has no assembled runtime pieces");
+  const built = await Bun.build({
+    entrypoints: entries.map((entry) => path.join(root, entry)),
+    target: "browser",
+    splitting: true,
+    root,
+    outdir: path.join(root, "bundled", entries.join("+").replaceAll(/[^\w+]/g, "-")),
+    define: { "process.env.AKAN_PUBLIC_APP_NAME": JSON.stringify(appName) },
+    plugins: [await createBarrelImportsPlugin(app, { routeRuntime, modelRuntime: routeRuntime.wholeSource })],
+  });
+  const pages = built.outputs.filter(({ kind }) => kind === "entry-point").map((output) => output.path);
+  return { built, pages: pages.map((page) => path.relative(root, page)) };
+};
+
 describe("an app's client runtime pieces", () => {
   test("leave the whole client runtime answering its keys in the order it did before the pieces, in a browser and outside one", async () => {
     const { root } = await writeShopWorkspace("bazaar", "crate");
@@ -738,32 +760,38 @@ describe("an app's client runtime pieces", () => {
     });
   }, 120_000);
 
-  test("say which sync to run again when a scope's modules cannot be read, since its store files then load no upload descriptors first", async () => {
-    const warnings: string[] = [];
-    const warn = spyOn(Logger.prototype, "warn").mockImplementation((message: string) => {
-      warnings.push(message);
-    });
-    const readScopes = spyOn(RuntimeNameTable, "readScopes").mockRejectedValue(
-      new Error("user.constant.ts is unreadable"),
-    );
-    try {
-      const { root } = await writeWorkspace({
-        app: "depot",
-        lib: "hangar",
-        libFiles: uploadFilesOf(),
-        appFiles: shopFilesOf("hangar"),
+  test('say under `clientRuntime: "route"` which sync to run again when a scope\'s modules cannot be read, since its store files then load no upload descriptors first', async () => {
+    const saidWhenSynced = async (app: string, lib: string, config: string) => {
+      const warnings: string[] = [];
+      const warn = spyOn(Logger.prototype, "warn").mockImplementation((message: string) => {
+        warnings.push(message);
       });
-      expect(await Bun.file(path.join(root, "libs/hangar/lib/__client/user.st.ts")).text()).not.toContain("file.fetch");
-    } finally {
-      readScopes.mockRestore();
-      warn.mockRestore();
-    }
-    const said = warnings.filter((message) => message.includes("[client-runtime]"));
+      const readScopes = spyOn(RuntimeNameTable, "readScopes").mockRejectedValue(
+        new Error("user.constant.ts is unreadable"),
+      );
+      try {
+        const { root } = await writeWorkspace({
+          app,
+          lib,
+          libFiles: uploadFilesOf(),
+          appFiles: { ...shopFilesOf(lib), "akan.config.ts": `export default ${config};\n` },
+        });
+        const piece = await Bun.file(path.join(root, `libs/${lib}/lib/__client/user.st.ts`)).text();
+        expect(piece).not.toContain("file.fetch");
+      } finally {
+        readScopes.mockRestore();
+        warn.mockRestore();
+      }
+      return warnings.filter((message) => message.includes("[client-runtime]"));
+    };
+
+    const said = await saidWhenSynced("depot", "hangar", '{ clientRuntime: "route" }');
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain(
       "(user.constant.ts is unreadable)",
     );
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain("Run `akan sync hangar`");
     expect(said.some((message) => message.includes("Run `akan sync depot`"))).toBe(true);
+    expect(await saidWhenSynced("wharf", "crane", "{}")).toEqual([]);
   }, 120_000);
 
   test("give a client file exactly the pieces of the modules it names, each generated and each loading only its module", async () => {
@@ -791,10 +819,10 @@ describe("an app's client runtime pieces", () => {
     });
   }, 120_000);
 
-  test("bundle for a browser with each named module's descriptors once, no other module's and nothing its signal runs on the server", async () => {
+  test("bundle for a browser with each named module's descriptors once for each scope declaring its signal, no other module's and nothing its signal runs on the server", async () => {
     const files: Record<string, string> = shopFilesOf("trolley");
     const pingSignal = "lib/_ping/ping.signal.ts";
-    const { root } = await writeWorkspace({
+    const temp = await writeWorkspace({
       app: "stall",
       lib: "trolley",
       libFiles: stockFiles,
@@ -804,37 +832,20 @@ describe("an app's client runtime pieces", () => {
         "ui/Card.tsx":
           'import { fetch, st } from "@apps/stall/client";\nexport const Card = () => [st.use.label(), fetch.pingAt()];\n',
         "ui/Tile.tsx": 'import { fetch } from "@apps/stall/client";\nexport const Tile = () => fetch.pingAt();\n',
+        "ui/Count.tsx": 'import { st } from "@apps/stall/client";\nexport const Count = () => st.use.itemCount();\n',
       },
     });
-    const runtime = await RouteRuntime.read(root, "apps/stall");
-    if (!runtime) throw new Error("the fixture app has no assembled runtime pieces");
-    const built = await Bun.build({
-      entrypoints: ["Card", "Tile"].map((name) => path.join(root, `apps/stall/ui/${name}.tsx`)),
-      target: "browser",
-      splitting: true,
-      define: { "process.env.AKAN_PUBLIC_APP_NAME": '"stall"' },
-      plugins: [
-        {
-          name: "route-runtime",
-          setup(build) {
-            build.onLoad({ filter: /^(?!.*[\\/]node_modules[\\/]).*\.tsx?$/ }, async ({ path: file }) => {
-              const loader = file.endsWith("x") ? "tsx" : "ts";
-              const redirected = runtime.redirectOf(file);
-              if (redirected) return { contents: redirected, loader };
-              const source = await Bun.file(file).text();
-              return { contents: runtime.transform(source, file)?.source ?? source, loader };
-            });
-          },
-        },
-      ],
-    });
+    const { built } = await bundleForBrowser(
+      temp,
+      "stall",
+      ["Card", "Tile", "Count"].map((name) => `apps/stall/ui/${name}.tsx`),
+    );
     const bundled = (await Promise.all(built.outputs.map((output) => output.text()))).join("\n");
     const descriptorsOf = (endpoint: string) =>
       bundled.match(new RegExp(`\\b${endpoint}: \\{\\s+type: "`, "g"))?.length ?? 0;
 
-    expect(built.outputs.length).toBeGreaterThan(2);
-    expect(descriptorsOf("pingAt")).toBe(1);
-    expect(["auditTrail", "itemCount"].map(descriptorsOf)).toEqual([0, 0]);
+    expect(built.outputs.length).toBeGreaterThan(3);
+    expect(["pingAt", "itemCount", "auditTrail"].map(descriptorsOf)).toEqual([1, 2, 0]);
     expect(bundled).not.toContain("ran-on-the-server");
   }, 120_000);
 
@@ -886,63 +897,136 @@ export class ItemStore extends store(sig.item, () => ({ itemCount: 10, noteDraft
   }
 }
 `;
-const redeclaredScript = (files: string[]) => `
-const { st } = await import("akanjs/store");
-${files.map((file) => `await import("./${file}.ts");`).join("\n")}
+const browserGlobals =
+  'Object.assign(globalThis, { window: globalThis, location: new URL("http://localhost:4200/") });';
+const redeclaredScript = (files: string[], { browser = false } = {}) => `
+${browser ? browserGlobals : ""}
+${files.map((file) => `await import("./${file}");`).join("\n")}
+const { instance: st, store } = globalThis[Symbol.for("akanjs.store.registry")];
 const itemCount = st.get().itemCount;
 await st.do.markWinner();
 await st.do.setTally(3);
-const { instance, store } = globalThis[Symbol.for("akanjs.store.registry")];
 console.log(JSON.stringify({
   default: itemCount,
   action: st.get().winner,
   setter: st.get().tally,
-  generatedSetter: instance.generatedSetters.has("setTally"),
+  generatedSetter: st.generatedSetters.has("setTally"),
   registered: store.get("item").side,
 }));
 `;
-const keptValueScript = (pieces: string[], wholes: string[], itemCount: number) => `
-const { st } = await import("akanjs/store");
-${pieces.map((file) => `await import("./${file}.ts");`).join("\n")}
+const keptValueScript = (pieces: string, wholes: string, itemCount: number) => `
+${browserGlobals}
+await import("./${pieces}");
+const st = globalThis[Symbol.for("akanjs.store.registry")].instance;
 await st.do.setItemCount(${itemCount});
 await st.do.setNoteDraft("typed");
 await st.do.setTally(4);
-${wholes.map((file) => `await import("./${file}.ts");`).join("\n")}
+await import("./${wholes}");
 const { itemCount, noteDraft, tally } = st.get();
 console.log(JSON.stringify({ itemCount, noteDraft, tally }));
 `;
+const pickingLibStore = `import { store } from "akanjs/store";
+
+import { fetch, sig } from "../useClient";
+
+export class ItemStore extends store(sig.item, () => ({ itemCount: 1, picked: "" })) {
+  pick(name: string) {
+    this.set({ picked: typeof (fetch as unknown as Record<string, unknown>)[name] });
+  }
+}
+`;
+const pickedScript = (files: string[], { browser = false } = {}) => `
+${browser ? browserGlobals : ""}
+${files.map((file) => `await import("./${file}");`).join("\n")}
+const st = globalThis[Symbol.for("akanjs.store.registry")].instance;
+await st.do.pick("pingAt");
+console.log(JSON.stringify({ picked: st.get().picked, otherStore: typeof st.do.pickLabel, own: typeof st.do.setTally }));
+`;
+const writeRedeclaringWorkspace = (app: string, lib: string, libStore = redeclaringLibStore) =>
+  writeWorkspace({
+    app,
+    lib,
+    libFiles: {
+      ...stockFiles,
+      "lib/item/item.store.ts": libStore,
+      "ui/Picker.tsx": `import { st } from "@libs/${lib}/client";
+export const Picker = (name: string) => (st.do as unknown as Record<string, () => void>)[name]?.();
+`,
+    },
+    appFiles: {
+      ...shopFilesOf(lib),
+      "lib/item/item.store.ts": redeclaringAppStore,
+      "ui/Count.tsx": `import { st } from "@apps/${app}/client";\nexport const Count = () => st.use.itemCount();\n`,
+      "ui/Field.tsx": 'import "../../../node_modules/akanjs/ui/modelRuntime";\nexport const Field = () => null;\n',
+    },
+  });
+//? Written outside the app and the lib, where the build reads no import: only the files an entry loads are rewritten.
+const writeLoadOrder = async (root: string, name: string, pieces: string[]) => {
+  await writeText(path.join(root, `orders/${name}.ts`), pieces.map((piece) => `import "@${piece}";\n`).join(""));
+  return `orders/${name}.ts`;
+};
 
 describe("an app store that redeclares what the lib store it extends declares", () => {
-  test("answers under every load order of its pieces what the whole runtime answers: the lib's default, its own action and its own declared setter", async () => {
+  const wholeAnswer = { default: 1, action: "app", setter: 6, generatedSetter: true, registered: "app" };
+
+  test("answers under every load order of its pieces, each built as a page loads them, what the whole runtime answers: the lib's default, its own action and its own declared setter", async () => {
     const [app, lib] = ["grocer", "silo"];
-    const { root } = await writeWorkspace({
-      app,
-      lib,
-      libFiles: { ...stockFiles, "lib/item/item.store.ts": redeclaringLibStore },
-      appFiles: { ...shopFilesOf(lib), "lib/item/item.store.ts": redeclaringAppStore },
-    });
-    const answer = (files: string[]) => evaluate(root, redeclaredScript(files), app);
+    const temp = await writeRedeclaringWorkspace(app, lib);
+    const { root } = temp;
     const [appPiece, libPiece] = [`apps/${app}/lib/__client/item.st`, `libs/${lib}/lib/__client/item.st`];
     const [appWhole, libWhole] = [`apps/${app}/lib/__client/_st`, `libs/${lib}/lib/__client/_st`];
+    const libStore = `libs/${lib}/lib/st`;
+    const orders = [[libPiece, appPiece], [appPiece, libPiece], [appPiece, libWhole, appWhole], [libStore], [appWhole]];
 
-    const whole = await answer([`apps/${app}/lib/st`]);
-    expect(whole).toEqual({ default: 1, action: "app", setter: 6, generatedSetter: true, registered: "app" });
-    await pointScopes(root, [`apps/${app}`, `libs/${lib}`], { "useClient.ts": "./usePage" });
-    for (const order of [[libPiece, appPiece], [appPiece, libPiece], [appPiece, libWhole, appWhole], [appWhole]])
-      expect({ order, answer: await answer(order) }).toEqual({ order, answer: whole });
-  }, 120_000);
+    expect(await evaluate(root, redeclaredScript([`apps/${app}/lib/st.ts`]), app)).toEqual(wholeAnswer);
+    for (const [index, order] of orders.entries()) {
+      const { pages } = await bundleForBrowser(temp, app, [await writeLoadOrder(root, `order${index}`, order)]);
+      const answer = await evaluate(root, redeclaredScript(pages, { browser: true }), app);
+      expect({ order, answer }).toEqual({ order, answer: wholeAnswer });
+    }
+  }, 240_000);
+
+  test("answers in a page's own bundle what the whole runtime answers, whether the page first reaches a lib file picking its action at run time, a framework component reaching models by name, or the store's own name", async () => {
+    const [app, lib] = ["florist", "cellar"];
+    const temp = await writeRedeclaringWorkspace(app, lib);
+    for (const page of [`libs/${lib}/ui/Picker.tsx`, `apps/${app}/ui/Field.tsx`, `apps/${app}/ui/Count.tsx`]) {
+      const { pages } = await bundleForBrowser(temp, app, [page]);
+      const answer = await evaluate(temp.root, redeclaredScript(pages, { browser: true }), app);
+      expect({ page, answer }).toEqual({ page, answer: wholeAnswer });
+    }
+  }, 240_000);
+
+  test("loads every model's runtime with a lib store that picks an endpoint at run time, whichever file a page's own bundle reaches first", async () => {
+    const [app, lib] = ["tailor", "attic"];
+    const temp = await writeRedeclaringWorkspace(app, lib, pickingLibStore);
+    const { root } = temp;
+    const whole = await evaluate(root, pickedScript([`apps/${app}/lib/st.ts`]), app);
+    expect(whole).toEqual({ picked: "function", otherStore: "function", own: "function" });
+    const libPiece = await writeLoadOrder(root, "libPiece", [
+      `libs/${lib}/lib/__client/item.st`,
+      `apps/${app}/lib/__client/item.st`,
+    ]);
+    for (const page of [
+      `apps/${app}/ui/Count.tsx`,
+      `libs/${lib}/ui/Picker.tsx`,
+      `apps/${app}/ui/Field.tsx`,
+      libPiece,
+    ]) {
+      const { pages } = await bundleForBrowser(temp, app, [page]);
+      const answer = await evaluate(root, pickedScript(pages, { browser: true }), app);
+      expect({ page, answer }).toEqual({ page, answer: whole });
+    }
+  }, 240_000);
 
   test("keeps a value set by hand when the whole runtime loads after its pieces, whichever declared default the value equals", async () => {
     const [app, lib] = ["baker", "larder"];
-    const { root } = await writeWorkspace({
-      app,
-      lib,
-      libFiles: { ...stockFiles, "lib/item/item.store.ts": redeclaringLibStore },
-      appFiles: { ...shopFilesOf(lib), "lib/item/item.store.ts": redeclaringAppStore },
-    });
-    await pointScopes(root, [`apps/${app}`, `libs/${lib}`], { "useClient.ts": "./usePage" });
-    const pieces = [`libs/${lib}/lib/__client/item.st`, `apps/${app}/lib/__client/item.st`];
-    const wholes = [`libs/${lib}/lib/__client/_st`, `apps/${app}/lib/__client/_st`];
+    const temp = await writeRedeclaringWorkspace(app, lib);
+    const { root } = temp;
+    const { pages } = await bundleForBrowser(temp, app, [
+      await writeLoadOrder(root, "pieces", [`libs/${lib}/lib/__client/item.st`, `apps/${app}/lib/__client/item.st`]),
+      await writeLoadOrder(root, "wholes", [`libs/${lib}/lib/__client/_st`, `apps/${app}/lib/__client/_st`]),
+    ]);
+    const [pieces, wholes] = ["pieces", "wholes"].map((name) => `${pages.find((page) => page.endsWith(`${name}.js`))}`);
     for (const itemCount of [1, 10, 5])
       expect(await evaluate(root, keptValueScript(pieces, wholes, itemCount), app)).toEqual({
         itemCount,

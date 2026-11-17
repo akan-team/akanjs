@@ -182,15 +182,20 @@ export class RouteClientBuilder {
   async #readRouteRuntime(): Promise<RouteRuntime | null> {
     if ((await this.#app.getConfig()).clientRuntime !== "route") return null;
     const { name } = this.#app;
-    const routeRuntime =
-      (await StoreBootstrap.scopeOf(this.#app)) === "page"
-        ? await RouteRuntime.read(this.#app.workspace.workspaceRoot, `apps/${name}`)
-        : null;
-    if (!routeRuntime)
+    const whole = (why: string, first = "Run") => {
       this.#app.logger.warn(
-        `[client-runtime] clientRuntime: "route" is set, but the per-module runtime files of ${name} or a lib it mounts are missing, so every page of this build loads the whole client runtime. Run \`akan sync ${name}\` and build again.`,
+        `[client-runtime] clientRuntime: "route" is set, but ${why}, so every page of this build loads the whole client runtime. ${first} \`akan sync ${name}\` and build again.`,
       );
-    return routeRuntime;
+      return null;
+    };
+    const missing = `the per-module runtime files of ${name} or a lib it mounts are missing`;
+    if ((await StoreBootstrap.scopeOf(this.#app)) !== "page") return whole(missing);
+    try {
+      return (await RouteRuntime.read(this.#app.workspace.workspaceRoot, `apps/${name}`)) ?? whole(missing);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return whole(`the modules of ${name} or a lib it mounts could not be read (${reason})`, "Fix that, then run");
+    }
   }
 
   async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, routeRuntime: RouteRuntime | null) {
