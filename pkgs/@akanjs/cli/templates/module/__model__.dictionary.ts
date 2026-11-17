@@ -31,7 +31,11 @@ ${BiomeForm.dictionaryOf([modelLabelEn, modelLabelKo], [modelDescEn, modelDescKo
   .query<${Model}Filter>((fn) => ({}))
   .sort<${Model}Filter>((t) => ({}))
   .slice<${Model}Slice>((fn) => ({
-${BiomeForm.dictionarySlice("inPublic", [`${Model} In Public`, `${Model} 공개`])}
+${BiomeForm.dictionarySlice(
+  "inPublic",
+  [`${Model} In Public`, `${Model} 공개`],
+  [`Every ${modelLabelEn.toLowerCase()}`, `모든 ${modelLabelKo}`],
+)}
   }))
   .endpoint<${Model}Endpoint>((fn) => ({}))
   .error({})
