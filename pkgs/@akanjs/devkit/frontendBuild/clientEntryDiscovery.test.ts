@@ -1,5 +1,5 @@
 import { afterAll, describe, expect, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
@@ -250,5 +250,37 @@ describe("GraphClientEntryDiscovery", () => {
     await Bun.write(file("C.ts"), '"use client";\nexport const C = () => null;\n');
     const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
     expect(await discovery.discover([file("S.tsx")])).toEqual([file("A.ts"), file("B.ts"), file("C.ts")]);
+  });
+
+  test("a page writing out an object's part reaches only that part's file under a route runtime, until the object moves it", async () => {
+    const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), "akan-discovery-")));
+    dirs.push(dir);
+    const file = (name: string) => path.join(dir, name);
+    await Bun.write(
+      file("lib/memo/index.ts"),
+      'import * as Template from "./Memo.Template";\nimport * as Zone from "./Memo.Zone";\nexport const Memo = { Template, Zone };\n',
+    );
+    for (const part of ["Template", "Zone", "Panel"])
+      await Bun.write(file(`lib/memo/Memo.${part}.tsx`), '"use client";\nexport const View = () => null;\n');
+    await Bun.write(
+      file("S.tsx"),
+      'import { Memo } from "./lib/memo";\nexport const Page = () => <Memo.Zone.View />;\n',
+    );
+    const discoveryOf = (options?: { packageRoot: string }) =>
+      new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never, options);
+    const route = discoveryOf({ packageRoot: dir });
+
+    expect(await discoveryOf().discover([file("S.tsx")])).toEqual([
+      file("lib/memo/Memo.Template.tsx"),
+      file("lib/memo/Memo.Zone.tsx"),
+    ]);
+    expect(await route.discover([file("S.tsx")])).toEqual([file("lib/memo/Memo.Zone.tsx")]);
+
+    await Bun.write(
+      file("lib/memo/index.ts"),
+      'import * as Template from "./Memo.Template";\nimport * as Zone from "./Memo.Panel";\nexport const Memo = { Template, Zone };\n',
+    );
+    route.invalidate([file("lib/memo/index.ts")]);
+    expect(await route.discover([file("S.tsx")])).toEqual([file("lib/memo/Memo.Panel.tsx")]);
   });
 });
