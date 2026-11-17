@@ -214,8 +214,8 @@ export default page()
       {
         name: "readState",
         desc: l.trans({
-          en: "Reads one store key the screen subscribed, masked by its model, or the route's `pathname`, `params` or `searchParams`. The turn's context carries only ids, enum members, numbers and booleans; longer text is read here.",
-          ko: "화면이 구독한 스토어 키 하나를 모델로 마스킹해 읽거나, 라우트의 `pathname`, `params`, `searchParams`를 읽습니다. 턴의 컨텍스트에는 id, enum 값, 숫자, 불리언만 실리고, 더 긴 글은 여기서 읽습니다.",
+          en: "Reads one store key the screen subscribed, masked by its model, the route's `pathname`, `params` or `searchParams`, or a value published with `st.expose` or `st.useState` by its name. The turn's context carries only ids, enum members, numbers and booleans; longer text is read here.",
+          ko: "화면이 구독한 스토어 키 하나를 모델로 마스킹해 읽거나, 라우트의 `pathname`, `params`, `searchParams`를 읽거나, `st.expose`나 `st.useState`로 공개한 값을 이름으로 읽습니다. 턴의 컨텍스트에는 id, enum 값, 숫자, 불리언만 실리고, 더 긴 글은 여기서 읽습니다.",
         }),
       },
       {
