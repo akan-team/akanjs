@@ -75,6 +75,9 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   static dbShutdownTimeoutMs = 20_000;
   /** A cold `akan start`: the base build, then the SSR registry's, before the first request is answered. */
   static devServerReadyTimeoutMs = DevSupervisor.bootTimeoutMs;
+  static wholeRuntimeNotice(appName: string) {
+    return `[client-runtime] apps/${appName}/akan.config.ts sets clientRuntime: "all", which is deprecated and is removed in the next minor release. Delete that line so each page loads only what it uses; \`akan quality runtime\` names the files that would keep a page of ${appName} on the whole runtime.`;
+  }
   readonly #interrupt = new InterruptTeardown();
   async confirmDatabaseModeDependencyInstall(databaseMode: DatabaseMode, installSpecs: string[]) {
     assertPromptable(`Database mode '${databaseMode}' requires missing dependencies: ${installSpecs.join(", ")}`, {
@@ -222,9 +225,11 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     } = {},
   ) {
     await app.scanSync({ write });
-    if (!write && (await app.getConfig()).clientRuntime === "route")
+    const { clientRuntime } = await app.getConfig();
+    if (clientRuntime === "all") app.logger.warn(ApplicationScript.wholeRuntimeNotice(app.name));
+    else if (!write)
       app.logger.warn(
-        `[client-runtime] This build skipped the sync, so under clientRuntime: "route" its pages load the per-module runtime files of ${app.name} and its libs as they were last written, and one written before a model, store or signal changed can leave a page without what it names. Build without \`--write false\`, or run \`akan sync ${app.name}\` first.`,
+        `[client-runtime] This build skipped the sync, so its pages load the per-module runtime files of ${app.name} and its libs as they were last written, and one written before a model, store or signal changed can leave a page without what it names. Build without \`--write false\`, or run \`akan sync ${app.name}\` first.`,
       );
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
     try {
@@ -413,6 +418,7 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
   ) {
     await app.scanSync({ write });
     const akanConfig = await app.getConfig();
+    if (akanConfig.clientRuntime === "all") app.logger.warn(ApplicationScript.wholeRuntimeNotice(app.name));
     const databaseMode = akanConfig.resolveDatabaseMode();
     await this.syncDatabaseModeDependencies(app, akanConfig, databaseMode);
     if (app.getEnv() === "local" && dbup && databaseMode !== "single") {

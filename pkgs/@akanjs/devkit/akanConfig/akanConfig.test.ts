@@ -163,9 +163,10 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfile).toContain('RUN if [ "$TARGETARCH" = "arm64"');
   });
 
-  test("loads the whole client runtime with every client module unless the app asks for route scope", () => {
-    expect(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).clientRuntime).toBe("all");
+  test("loads the client runtime per route unless the app asks for the whole runtime on every page", () => {
+    expect(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).clientRuntime).toBe("route");
     expect(new AkanAppConfig(app, [], packageJson, { clientRuntime: "route" }, baseDevEnv).clientRuntime).toBe("route");
+    expect(new AkanAppConfig(app, [], packageJson, { clientRuntime: "all" }, baseDevEnv).clientRuntime).toBe("all");
     expect(() => new AkanAppConfig(app, [], packageJson, { clientRuntime: "lazy" as never }, baseDevEnv)).toThrow(
       'sets clientRuntime to "lazy"',
     );

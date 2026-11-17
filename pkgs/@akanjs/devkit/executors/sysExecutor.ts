@@ -110,7 +110,7 @@ export class SysExecutor extends Executor {
       const config = synced.type === "app" ? await synced.getConfig().catch(() => null) : null;
       if (config && "clientRuntime" in config && config.clientRuntime === "route")
         this.logger.warn(
-          `[client-runtime] clientRuntime: "route" is set, but the modules of ${scope} could not be read (${error instanceof Error ? error.message : String(error)}), so no store file under ${scope}/${pieceDir} loads the upload module's descriptors first, and a page naming only that store has no upload action. Run \`akan sync ${this.name}\` again once that is fixed.`,
+          `[client-runtime] The modules of ${scope} could not be read (${error instanceof Error ? error.message : String(error)}), so no store file under ${scope}/${pieceDir} loads the upload module's descriptors first, and a page naming only that store has no upload action. Run \`akan sync ${this.name}\` again once that is fixed.`,
         );
       return null;
     });
