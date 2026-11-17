@@ -747,8 +747,9 @@ describe("an app's client runtime pieces", () => {
       'import { loaded as lib0 } from "@libs/stock/lib/__client/item.fetch";\nimport { loaded as cnst0 } from "./item.cnst";',
     );
     expect(await read("item.fetch.ts")).toContain(
-      "\nloadedAfter(lib0, cnst0);\nexport const loaded = FetchClient.build<typeof signal>({}, ",
+      "\nexport const loaded = FetchClient.build<typeof signal>([lib0, cnst0], ",
     );
+    expect(await read("item.fetch.ts")).not.toContain("loadedAfter");
     expect(await read("ping.fetch.ts")).not.toContain("@libs/");
     expect(await read("ping.fetch.ts")).toContain('getSerializedSignalOf("ping")');
     expect(await read("demo.st.ts")).toContain('import { loaded as fetch0 } from "./demo.fetch";');
@@ -1358,7 +1359,7 @@ describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
   }, 240_000);
 
   test("passes its own check where an entry no route holds names a model whose constant file reads another lib's constants from that lib's barrel, and loads every constant there and none of that lib's in a route's page", async () => {
-    const [app, base, upper] = ["wharf", "crane", "barge"];
+    const [app, base, upper] = ["ferry", "winch", "barge"];
     const orgConstant = kitModuleNamed("org", "Org")["lib/org/org.constant.ts"] ?? "";
     const temp = await writeHarborWorkspace(
       app,
