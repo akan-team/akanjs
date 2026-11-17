@@ -124,6 +124,21 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
     expect(failuresOf({ imports: { ...back, [helper]: [] } })).toEqual([]);
   });
 
+  test("a registration piece answering from `lib/cnst.ts` needs that file loaded first, wherever its bare re-export lands", () => {
+    const answering = "apps/demo/lib/__client/board.cnst.ts";
+    const constants = "apps/demo/lib/cnst.ts";
+    const imports = { [fetchPiece]: [answering], [answering]: [constants], [constants]: [] };
+    const chunks = { [fetchPiece]: ["/out/fetch.js"], [answering]: ["/out/empty.js"], [constants]: ["/out/cnst.js"] };
+    const toConstants = { "/out/fetch.js": ["/out/cnst.js"] };
+    const answered = { entries: {}, wholeConstantReaders: [answering] };
+    expect(failuresOf({ imports, chunks, chunkImports: toConstants }, answered)).toEqual([]);
+    expect(failuresOf({ imports, chunks }, answered)).toEqual([
+      "apps/demo/lib/__client/memo.fetch.ts needs apps/demo/lib/__client/board.cnst.ts loaded first, but its chunk fetch.js does not import the chunk holding that piece",
+    ]);
+    expect(failuresOf({ imports, chunks, chunkImports: toConstants }, { entries: {} })).toHaveLength(1);
+    expect(failuresOf({ imports, chunks, chunkImports: toConstants })).toHaveLength(1);
+  });
+
   test("a page built to load only the modules its code names reaches every constant only through a file `akan quality runtime` names", () => {
     const entry = "apps/demo/.akan/generated/client-entry-bootstrap-route/Card.tsx";
     const entries = { [entry]: card };

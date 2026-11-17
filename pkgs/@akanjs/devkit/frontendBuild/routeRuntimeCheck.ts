@@ -72,13 +72,22 @@ export class RouteRuntimeCheck {
     return reached;
   }
 
+  //? A registration piece answering from `lib/cnst.ts` is a bare re-export, which the bundler may leave in a chunk
+  //? nothing imports: what has to load first is the file it re-exports.
+  #loadedFirstFor(piece: string): string[] {
+    const answered = constantPiece.test(this.#nameOf(piece)) && this.#narrowed?.wholeConstantReaders?.has(piece);
+    return answered ? this.#staticImportsOf(piece) : [piece];
+  }
+
   #unordered(): string[] {
     const failures: string[] = [];
     for (const [module, chunks] of this.#graph.chunksByModule)
       for (const piece of this.#staticImportsOf(module)) {
         if (!this.#isPiece(piece)) continue;
-        const holders = this.#graph.chunksByModule.get(piece) ?? [];
-        const unlinked = chunks.find((chunk) => !holders.some((holder) => this.#reachedBy(chunk).has(holder)));
+        const holdersOf = this.#loadedFirstFor(piece).map((first) => this.#graph.chunksByModule.get(first) ?? []);
+        const unlinked = chunks.find((chunk) =>
+          holdersOf.some((holders) => !holders.some((holder) => this.#reachedBy(chunk).has(holder))),
+        );
         if (!unlinked) continue;
         failures.push(
           `${this.#nameOf(module)} needs ${this.#nameOf(piece)} loaded first, but its chunk ${path.basename(unlinked)} does not import the chunk holding that piece`,
