@@ -3,7 +3,7 @@ import type { DynamicRecord } from "akanjs/common";
 import type { BaseInsight, BaseObject } from "akanjs/constant";
 import type { LiveEventPayload } from "akanjs/signal";
 import { expandQueryArgs, normalizeQueryArgs } from "../fetch/client/sliceQueryArgs";
-import { actionErrorMessageOf } from "./actionErrorMessage";
+import { showActionErrorMessage } from "./actionErrorMessage";
 import { type LiveSortableRow, livePlacementIndex } from "./liveInsert";
 import type { SliceListContext } from "./sliceListActions";
 import type { SetGet } from "./types";
@@ -125,9 +125,10 @@ export const sliceLiveActionsOf = (list: SliceListContext) => {
           if (liveWatch?.signature === signature) liveWatch = null;
           liveClosed = { signature, at: new Date() };
           this.set({ [namesOfSlice.modelStaleAt]: new Date() });
-          const content = actionErrorMessageOf(error);
           const store = this as unknown as { showMessage?: (message: object) => void };
-          store.showMessage?.({ type: "error", key: namesOfSlice.watchLiveModel, duration: 5, content });
+          showActionErrorMessage(error, (content) =>
+            store.showMessage?.({ type: "error", key: namesOfSlice.watchLiveModel, duration: 5, content }),
+          );
         },
       });
       liveWatch = { signature, dispose };

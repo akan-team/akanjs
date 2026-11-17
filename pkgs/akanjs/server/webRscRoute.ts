@@ -143,8 +143,8 @@ export class WebRscRoute {
     if (result.type === "not-found") return createRscNotFoundFallbackResponse();
     if (result.status && result.status >= 500) return context.rscErrorResponse("__rsc", "Internal Server Error");
     const response = await createRscNavigationStreamResponse(result, { explain: !context.prodMode });
-    const dictionaryUrl = context.dictionaryUrlOf(rscHeaders, targetUrl.pathname);
-    if (dictionaryUrl) response.headers.set(AKAN_RSC_DICTIONARY_HEADER, dictionaryUrl);
+    const dictionaryUrls = context.dictionaryUrlsOf(rscHeaders, targetUrl.pathname, result.trace?.routeId);
+    if (dictionaryUrls.length) response.headers.set(AKAN_RSC_DICTIONARY_HEADER, dictionaryUrls.join(","));
     return response;
   }
 

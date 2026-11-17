@@ -1,5 +1,5 @@
 import "../../test/registerDom";
-import { beforeAll, describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { act } from "react";
 import { l, mountAsync, setTestEnv } from "../testHelpers.fixture";
 import { type AkanUiOverrides, UiOverrideProvider } from "../UiOverride";
@@ -88,5 +88,29 @@ describe("Messages", () => {
     await wait(80);
     expect(stateOf("UPLOADED")).toBe("out");
     unmount();
+  });
+
+  test("holds a toast whose text is still loading, and the toasts after it, so they show in the order sent", async () => {
+    const { msg, Translator } = await import("akanjs/client");
+    const loaded = Promise.withResolvers<boolean>();
+    const ready = spyOn(Translator, "ready").mockImplementation((_, key) =>
+      key.startsWith("memo.") ? loaded.promise : null,
+    );
+    const unmount = await mount();
+    try {
+      await act(async () => {
+        msg.loading("memo.saving", { key: "save", duration: 0 });
+        msg.success("base.saved", { key: "save", duration: 0 });
+      });
+      expect(stateOf("memo.saving")).toBeUndefined();
+      expect(stateOf("base.saved")).toBeUndefined();
+
+      await act(async () => loaded.resolve(true));
+      expect(stateOf("memo.saving")).toBeUndefined();
+      expect(stateOf("base.saved")).toBe("in");
+    } finally {
+      ready.mockRestore();
+      unmount();
+    }
   });
 });

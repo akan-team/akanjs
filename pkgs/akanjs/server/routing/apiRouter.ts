@@ -31,6 +31,7 @@ export interface HmrStateSource {
     csrGeneration?: number;
     ssrGeneration?: number;
     ssrEpoch?: number;
+    dictionaryStamp?: string;
   };
   /** Called before each hello: brings what the state says about the dev registries up to what is on disk. */
   refresh?: () => void;
@@ -176,6 +177,7 @@ export class ApiRouter {
               csrGeneration: hmrState.state.csrGeneration,
               ssrGeneration: hmrState.state.ssrGeneration,
               ssrEpoch: hmrState.state.ssrEpoch,
+              dictionaryStamp: hmrState.state.dictionaryStamp,
               ...(hmrState.errors ? { failingPhases: errors.map((status) => status.phase) } : {}),
             }),
           );

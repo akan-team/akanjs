@@ -96,6 +96,10 @@ export class WebRouter {
       buildId: 0,
       cssAssets: artifact.cssAssets ?? {},
       cssBytesByUrl,
+      dictionaryStamp: Object.values(artifact.dictAssets ?? {})
+        .map(({ url }) => url)
+        .sort()
+        .join(","),
     };
     this.#prebuilt = prebuilt;
     let htmlCache: HtmlResultCache | null = null;
