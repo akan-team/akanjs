@@ -27,6 +27,7 @@ export type HmrMessage =
       csrGeneration?: number;
       ssrGeneration?: number;
       ssrEpoch?: number;
+      dictionaryStamp?: string;
       /** The phases failing now, each sent right after: a tab drops an error it holds for any other. */
       failingPhases?: string[];
     }

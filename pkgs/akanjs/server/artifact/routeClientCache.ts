@@ -123,6 +123,10 @@ export class RouteClientCache {
     return this.merged;
   }
 
+  dictionaryGroupsOf(routeId: string): string[] | null | undefined {
+    return this.#built.get(routeId)?.dictionaryGroups;
+  }
+
   snapshot(): MergedManifest {
     return {
       generation: this.merged.generation,

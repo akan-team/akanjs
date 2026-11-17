@@ -15,4 +15,4 @@ Under `clientRuntime: "route"`, the descriptions of API endpoints leave the dict
 
 **Upgrading.**
 
-Nothing to do under the default `"all"`. Under `"route"`, a `"use client"` component of your own that reads an endpoint's description or argument text by key (`l("<module>.signal.<endpoint>.desc")`) gets the text on the server and the raw key in the browser: React reports a hydration mismatch, renders that part again in the browser, and the key is what shows. Reading the text in a server component and passing it down as a prop works.
+Nothing to do under the default `"all"`. Under `"route"`, a `"use client"` component of your own that writes an endpoint's description or argument key out (`l("<module>.signal.<endpoint>.desc")`) brings the API file to its route. One that builds the key from data gets the text on the server and the raw key in the browser: React reports a hydration mismatch, renders that part again in the browser, and the key is what shows. Reading the text in a server component and passing it down as a prop works.

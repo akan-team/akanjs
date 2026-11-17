@@ -117,14 +117,27 @@ export class WebRouteContext {
   }
 
   //? The locale the RSC worker's `usePage()` resolves from the same request, so the page and its dictionary agree.
-  dictionaryUrlOf(headers: Headers, pathname: string): string | undefined {
+  //? A route the build could not read, or none at all (a not-found page), gets the whole page file.
+  dictionaryUrlsOf(headers: Headers, pathname: string, routeId?: string): string[] {
     const i18n = parseAkanI18nEnv();
     const { locale } = RequestLocale.resolve(
       { localeHeader: headers.get("x-locale"), pathHeader: headers.get("x-path"), pathname },
       i18n,
     );
     const assets = this.artifact.dictAssets ?? {};
-    return (assets[locale] ?? assets[i18n.defaultLocale])?.url;
+    const asset = assets[locale] ?? assets[i18n.defaultLocale];
+    if (!asset) return [];
+    const files = routeId ? (this.artifact.dictRoutes?.[routeId] ?? this.#builtFilesOf(routeId)) : undefined;
+    const urls = files?.flatMap((idx) => asset.routeParts?.files[idx]?.url ?? []) ?? [];
+    return urls.length && urls.length === files?.length ? urls : [asset.url];
+  }
+
+  //? Development names a route's groups as the route builds; a group no dictionary holds has no file.
+  #builtFilesOf(routeId: string): number[] | undefined {
+    const groups = this.routeCache.dictionaryGroupsOf(routeId);
+    const fileOf = this.artifact.dictGroups;
+    if (!groups || !fileOf) return undefined;
+    return [...new Set(groups.flatMap((group) => fileOf[group] ?? []))].sort((a, b) => a - b);
   }
 
   //? Dev: a back/forward navigation replays a document from the HTTP cache without asking, which would boot a tab onto

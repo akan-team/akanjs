@@ -230,6 +230,8 @@ export type BaseBuildArtifact = {
     pagesBundleBuildId: number;
     cssAssets: Record<string, CssAsset>;
     dictAssets?: Record<string, DictAsset>;
+    dictRoutes?: Record<string, number[]>;
+    dictGroups?: Record<string, number>;
     domains: string[];
     subRoutes: {
         [key: string]: string[];
@@ -269,6 +271,7 @@ export interface BuildRouteClientResult {
     clientDeps: string[];
     clientDepsByEntry?: Record<string, string[]>;
     seenGeneration?: number;
+    dictionaryGroups?: null | string[];
 }
 
 export interface BuildRouteResultPayload {
@@ -291,6 +294,7 @@ export interface BuildRouteResultPayload {
     routeId?: string;
     generation?: number;
     seenGeneration?: number;
+    dictionaryGroups?: null | string[];
 }
 
 export type BuilderControl = {
@@ -735,6 +739,16 @@ export interface DictAsset {
         url: string;
         relPath: string;
     }>;
+    routeParts?: {
+        table: {
+            url: string;
+            relPath: string;
+        };
+        files: {
+            url: string;
+            relPath: string;
+        }[];
+    };
 }
 
 export interface DictionaryData {
@@ -1871,6 +1885,7 @@ export interface RenderState {
     csrGeneration?: number;
     ssrGeneration?: number;
     ssrEpoch?: number;
+    dictionaryStamp?: string;
 }
 
 export type ResolvedAkanImageConfig = Required<AkanImageConfig>;
@@ -1881,6 +1896,7 @@ export declare class RouteClientCache {
     get revision(): number;
     seed(manifest: RoutesManifest): void;
     ensure(routeId: string, seeds: string[]): Promise<MergedManifest>;
+    dictionaryGroupsOf(routeId: string): null | string[] | undefined;
     snapshot(): MergedManifest;
     invalidate(predicate: (routeId: string) => boolean, { files, batch }?: {
         files?: Iterable<string>;

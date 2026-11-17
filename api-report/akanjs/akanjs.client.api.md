@@ -1069,6 +1069,7 @@ export declare class Translator {
     static getRenderPath(): string | undefined;
     static markHydrated(): void;
     static translateByLocale(lang: string, key: string, param?: Record<string, number | string>): string;
+    static ready(lang: string, key: string): Promise<boolean> | null;
     static fillFromDefault(allDictionary: AllDictionary, lang: string, defaultLocale: string): Dictionary;
     static seed(lang: string, dict: Dictionary | undefined): void;
     static replace(lang: string, dict: Dictionary | undefined): void;
