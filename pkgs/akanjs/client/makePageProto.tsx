@@ -8,8 +8,11 @@ import {
   RequestLocale,
 } from "akanjs/common";
 import { untrackedHeaders, untrackedRequest } from "akanjs/fetch";
-import type { ReactNode } from "react";
+import * as React from "react";
+import { type Context, type ReactNode, use } from "react";
 import { csrLocation } from "./csrLocation";
+import type { PathContextType } from "./csrTypes";
+import { sharedContextKey } from "./sharedContextKey";
 import { Translator } from "./translator";
 
 type TransMessage<Locale extends Record<string, unknown>> = {
@@ -52,6 +55,26 @@ const escapeRichParams = (param: { [key: string]: string | number } | undefined)
     ]),
   );
 
+const reactInternals = (
+  React as unknown as { __CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE?: { H: unknown } }
+).__CLIENT_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
+
+//? A frame draws a page before the router moves to it and keeps it under the next one, so a component of that page
+//? reads its own entry's path, not the URL. React holds a context only while it renders (its dispatcher is set), so a
+//? handler or a route body past its first await still reads the URL; `use`, unlike `useContext`, may run conditionally.
+const entryPathname = (): string | undefined => {
+  const context = (globalThis as unknown as { [slot: symbol]: Context<PathContextType> | undefined })[
+    sharedContextKey("path")
+  ];
+  if (!context || !reactInternals?.H) return undefined;
+  try {
+    const { location, followsRouter } = use(context);
+    return followsRouter ? undefined : location?.pathname;
+  } catch {
+    return undefined;
+  }
+};
+
 const getPageInfo = (): { locale: string; path: string } => {
   const { defaultLocale, locales } = parseAkanI18nEnv();
   const localeSet = new Set(locales);
@@ -59,7 +82,7 @@ const getPageInfo = (): { locale: string; path: string } => {
   const activePath = Translator.getActivePath();
   if (activePath) return { locale: activeLocale ?? defaultLocale, path: activePath };
   if (getEnv().side !== "server") {
-    const pathname = Translator.getRenderPath() ?? csrLocation.pathname;
+    const pathname = Translator.getRenderPath() ?? entryPathname() ?? csrLocation.pathname;
     const [, firstSegment = "", ...rest] = pathname.split("/");
     const hasLocalePrefix = localeSet.has(firstSegment);
     // The server-resolved locale first, so client lookups match SSR when the first URL segment is not the locale.
