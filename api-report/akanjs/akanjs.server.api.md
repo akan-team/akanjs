@@ -219,6 +219,41 @@ export interface AkanServerProps extends AkanLibProps {
     openapi?: boolean;
 }
 
+export declare class AppWorker<Message = unknown> {
+    static readonly killWaitMs = 2000;
+    static readonly minRestartMs = 1000;
+    static readonly maxRestartMs = 30000;
+    static readonly startEnv: string[];
+    readonly name: string;
+    private constructor();
+    static pathOf(name: string, { appDir, env }?: PathLookup): string;
+    static spawn<Message = unknown>(name: string, options?: AppWorkerOptions<Message>): AppWorker<Message>;
+    get pid(): null | number;
+    send(message: unknown): void;
+    stop(): Promise<void>;
+}
+
+export declare class AppWorkerError extends AkanError<AppWorkerErrorCode> {
+}
+
+export type AppWorkerErrorCode = "workerNotConnected" | "workerNotDeclared";
+
+export interface AppWorkerOptions<Message = unknown> {
+    args?: string[];
+    env?: {
+        [key: string]: string | undefined;
+    };
+    inheritEnv?: boolean;
+    restart?: boolean | {
+        minMs?: number;
+        maxMs?: number;
+    };
+    logger?: Logger;
+    onStart?: () => void;
+    onMessage?: (message: Message) => void;
+    onExit?: (exitCode: null | number) => void;
+}
+
 export type ArgType = (typeof argTypes)[number];
 
 export type BaseBuildArtifact = {
@@ -2291,6 +2326,11 @@ type OnMergeFn = (routeId: string, info: {
     merged: MergedManifest;
     generation: number;
 }) => Promise<void> | void;
+
+interface PathLookup {
+    appDir?: string;
+    env?: NodeJS.ProcessEnv;
+}
 
 type RouteBuildFn = (routeId: string, info: {
     seeds: string[];

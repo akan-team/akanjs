@@ -58,8 +58,8 @@ export class AppWorker<Message = unknown> {
     name: string,
     { appDir = process.env.AKAN_APP_DIR ?? path.dirname(Bun.main), env = process.env }: PathLookup = {},
   ) {
-    const declare = `declare it in akan.config.ts (workers: { ${AppWorkerPath.name.test(name) ? name : "<name>"}: "<entry file>" })`;
-    if (!AppWorkerPath.name.test(name))
+    const declare = `declare it in akan.config.ts (workers: { ${AppWorkerPath.validName.test(name) ? name : "<name>"}: "<entry file>" })`;
+    if (!AppWorkerPath.validName.test(name))
       throw new AppWorkerError("workerNotDeclared", `${JSON.stringify(name)} is not a worker's name; ${declare}.`);
     const built = AppWorkerPath.built(appDir, name);
     if (existsSync(built)) return built;

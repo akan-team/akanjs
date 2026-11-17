@@ -4,7 +4,7 @@ import path from "node:path";
 export class AppWorkerPath {
   static readonly dir = "workers";
   static readonly envKey = "AKAN_WORKERS";
-  static readonly name = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+  static readonly validName = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
   static built(appDir: string, name: string) {
     return path.join(appDir, AppWorkerPath.dir, `${name}.js`);

@@ -278,6 +278,8 @@ export type AkanWebOption = boolean | {
     csr: boolean;
 };
 
+export type AkanWorkersConfig = Record<string, string>;
+
 export type AppConfig = ((app: AppConfigContext) => AppConfigInput) | AppConfigInput;
 
 export interface AppConfigContext {
@@ -304,6 +306,7 @@ export interface AppConfigResult {
     externalLibs: string[];
     trustedDependencies: string[];
     bin: AkanBinConfig;
+    workers: AkanWorkersConfig;
     barrelImports: string[];
     optimizeImports: string[];
     images: AkanImageConfig;

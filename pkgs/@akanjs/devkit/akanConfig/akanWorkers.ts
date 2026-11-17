@@ -19,7 +19,7 @@ export class AkanWorkers {
       throw new Error(`${owner}: workers maps each worker's name to its entry file`);
     return Object.fromEntries(
       Object.entries(declared).map(([name, entry]) => {
-        if (!AppWorkerPath.name.test(name))
+        if (!AppWorkerPath.validName.test(name))
           throw new Error(`${owner}: workers.${name} is not a name (letters, digits, - and _)`);
         if (typeof entry !== "string" || !AkanWorkers.entry.test(entry) || path.isAbsolute(entry))
           throw new Error(
