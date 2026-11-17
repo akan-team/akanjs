@@ -382,7 +382,7 @@ describe("a build planned over the bundle that loads the whole runtime everywher
       routes: {
         "/a": [uiFile("Run"), uiFile("Plain")],
         "/b": [uiFile("Run"), uiFile("Plain")],
-        "/c": [uiFile("Plain")],
+        "/c": [uiFile("Plain"), uiFile("Card")],
       },
     });
     expect(plainOnly.kept).toEqual([uiFile("Run")]);

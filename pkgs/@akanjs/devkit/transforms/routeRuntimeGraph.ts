@@ -7,7 +7,7 @@ export interface RouteRuntimeBundle {
   //? Absolute paths, from a bundle of the same entries in which every entry loads the whole runtime.
   importsByModule: ReadonlyMap<string, readonly RouteRuntimeImport[]>;
   entries: readonly string[];
-  //? The entries each route renders first; an entry of no route stands alone.
+  //? The entries each route renders first; where they are told, an entry of no route keeps the whole runtime.
   entriesByRoute?: ReadonlyMap<string, readonly string[]>;
 }
 

@@ -1,13 +1,15 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { BaseBuildArtifact, ClientManifest, ClientManifestEntry, SsrManifest } from "akanjs/server";
 import { SSR_DEV_CHUNK, SSR_DEV_ID_PREFIX } from "akanjs/server/hmr/csrDevManifest";
 import { type ClientRuntimeScope, StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
+import { RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
 import { ReactIconImports } from "../transforms/reactIconImports";
 import { RouteRuntime } from "../transforms/routeRuntime";
+import type { RouteRuntimeBundle } from "../transforms/routeRuntimeGraph";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
 import { SignalDescriptors } from "../transforms/signalDescriptors";
 import type { ClientBundleTarget, ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
@@ -15,6 +17,7 @@ import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
 import { RouteRuntimeCheck } from "./routeRuntimeCheck";
+import { RouteRuntimePays } from "./routeRuntimePays";
 import { VendorFileImports } from "./vendorFileImports";
 
 const SSR_CLIENT_ALIAS_EXTERNALS = [
@@ -42,6 +45,8 @@ export interface BuildRouteClientOptions {
   browser?: "chunks" | "registry";
   /** The entries each route loads: under `clientRuntime: "route"` an entry only whole-runtime routes hold keeps it too. */
   entriesByRoute?: ReadonlyMap<string, readonly string[]>;
+  /** The entries each route loads first, which its size is measured over. Defaults to `entriesByRoute`. */
+  sizedEntriesByRoute?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface BuildRouteClientResult {
@@ -64,6 +69,14 @@ interface BootstrapEntries {
   originalByBuildEntry: Map<string, string>;
 }
 
+interface NarrowedBuild {
+  entries: BootstrapEntries;
+  kept: ReadonlySet<string>;
+  bundle: Awaited<ReturnType<ClientEntriesBundler["bundle"]>>;
+}
+
+const referenceSubdir = "client-whole";
+
 export class RouteClientBuilder {
   #app: App;
   #seeds: string[];
@@ -74,6 +87,7 @@ export class RouteClientBuilder {
   #entries?: string[];
   #browser: "chunks" | "registry";
   #entriesByRoute?: ReadonlyMap<string, readonly string[]>;
+  #sizedEntriesByRoute?: ReadonlyMap<string, readonly string[]>;
 
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
@@ -85,6 +99,7 @@ export class RouteClientBuilder {
     this.#entries = options.entries;
     this.#browser = options.browser ?? (this.#command === "start" ? "registry" : "chunks");
     this.#entriesByRoute = options.entriesByRoute;
+    this.#sizedEntriesByRoute = options.sizedEntriesByRoute;
   }
 
   async build(): Promise<BuildRouteClientResult> {
@@ -100,23 +115,17 @@ export class RouteClientBuilder {
     const ssrEntries = await this.#createBootstrapEntries(entries, "whole");
     //? First: its entries all load the whole runtime, so its graph says which of them a per-route build may narrow.
     const ssrBundle = await this.#buildSsrBundle(ssrEntries);
-    const kept = routeRuntime?.plan({
-      importsByModule: ssrBundle.graph.importsByModule,
-      entries: entries.map((entry) => path.resolve(entry)),
-      entriesByRoute: this.#entriesByRoute,
-    });
-    const browserEntries = registry
-      ? null
-      : kept
-        ? await this.#createBootstrapEntries(entries, "page", { kept, whole: ssrEntries })
-        : ssrEntries;
-    const browserBundle = browserEntries ? await this.#buildBrowserBundle(browserEntries, routeRuntime) : null;
-    if (browserBundle && browserEntries && routeRuntime && kept)
-      new RouteRuntimeCheck(this.#app.workspace.workspaceRoot, browserBundle.graph, {
-        entries: new Map([...browserEntries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry))),
-        wholeReaders: routeRuntime.wholeReaders,
-        wholeConstantReaders: routeRuntime.wholeConstantReaders,
-      }).assert();
+    const narrowed = routeRuntime
+      ? await this.#buildNarrowed(entries, ssrEntries, routeRuntime, {
+          importsByModule: ssrBundle.graph.importsByModule,
+          entries: entries.map((entry) => path.resolve(entry)),
+          entriesByRoute: this.#entriesByRoute,
+        })
+      : null;
+    const browserEntries = registry ? null : (narrowed?.entries ?? ssrEntries);
+    const browserBundle =
+      narrowed?.bundle ?? (browserEntries ? await this.#buildBrowserBundle(browserEntries, routeRuntime) : null);
+    if (narrowed && routeRuntime) this.#check(narrowed, routeRuntime);
     const referenceBundle = browserBundle ?? ssrBundle;
     const bootstrapEntries = browserEntries ?? ssrEntries;
     const ssrEntryByOriginal = new Map(
@@ -219,7 +228,115 @@ export class RouteClientBuilder {
     }
   }
 
-  async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, routeRuntime: RouteRuntime | null) {
+  //* The browser bundle of a `clientRuntime: "route"` build. Where the analysis lets a route load per module, the
+  //* build measures it: the same entries are bundled once with every one keeping the whole runtime, and a route no
+  //* smaller per module than there keeps the whole runtime. Each pass only adds kept entries, so the passes end.
+  async #buildNarrowed(
+    entries: string[],
+    whole: BootstrapEntries,
+    runtime: RouteRuntime,
+    planned: RouteRuntimeBundle,
+  ): Promise<NarrowedBuild> {
+    const bundleOf = async (routeRuntime: RouteRuntime, kept: ReadonlySet<string>, outputSubdir?: string) => {
+      const started = Date.now();
+      const browserEntries = await this.#createBootstrapEntries(entries, "page", { kept, whole });
+      const bundle = await this.#buildBrowserBundle(browserEntries, routeRuntime, outputSubdir);
+      this.#app.verbose(`[client-runtime] bundled ${outputSubdir ?? "client"} (${Date.now() - started}ms)`);
+      return { entries: browserEntries, kept, bundle };
+    };
+    let built: NarrowedBuild = await bundleOf(runtime, runtime.plan(planned));
+    const routes = this.#entriesByRoute;
+    const decided = runtime.decided;
+    if (!routes || !decided) return built;
+    const perModuleOf = () => [...routes].filter(([, held]) => !decided.isWhole(held)).map(([route]) => route);
+    const analysed = perModuleOf();
+    const reference = analysed.length > 0 ? await this.#readRouteRuntime() : null;
+    if (reference) {
+      const pays = new RouteRuntimePays();
+      const sizesOf = (build: NarrowedBuild) => pays.sizesOf(build.bundle, this.#sizedBuildEntries(build.entries));
+      reference.plan(planned);
+      const wholeSizes = await sizesOf(await bundleOf(reference, reference.keepAll(), referenceSubdir));
+      await rm(path.join(this.#artifactDir, referenceSubdir), { recursive: true, force: true });
+      for (;;) {
+        const verdicts = RouteRuntimePays.decide({
+          entriesByRoute: routes,
+          isKept: (entry) => built.kept.has(entry),
+          whole: wholeSizes,
+          measured: await sizesOf(built),
+        });
+        if (verdicts.length === 0) break;
+        let kept = built.kept;
+        for (const { entry, ...measured } of verdicts)
+          kept = runtime.keep([entry], { rule: "not-smaller", ...measured });
+        const next = await bundleOf(runtime, kept);
+        for (const chunk of built.bundle.graph.importsByChunk.keys())
+          if (!next.bundle.graph.importsByChunk.has(chunk)) await rm(chunk, { force: true });
+        built = next;
+      }
+    }
+    const perModule = perModuleOf();
+    const report = {
+      app: this.#app.name,
+      routes: routes.size,
+      perModule,
+      notSmaller: analysed.filter((route) => !perModule.includes(route)),
+      causes: decided.causes(),
+    };
+    await RouteRuntimeReport.write(this.#app.cwdPath, report);
+    this.#app.log(`[client-runtime] ${RouteRuntimeReport.summary(report)}`);
+    for (const route of report.notSmaller) this.#app.verbose(`[client-runtime] not smaller per module: ${route}`);
+    for (const route of perModule) this.#app.verbose(`[client-runtime] per module: ${route}`);
+    return built;
+  }
+
+  get #artifactDir() {
+    return path.join(this.#command === "build" ? this.#app.dist.cwdPath : this.#app.cwdPath, ".akan/artifact");
+  }
+
+  #sizedBuildEntries({ originalByBuildEntry }: BootstrapEntries): Map<string, string[]> {
+    const buildEntryOf = new Map([...originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]));
+    return new Map(
+      [...(this.#sizedEntriesByRoute ?? this.#entriesByRoute ?? [])].map(([route, held]) => [
+        route,
+        held.map((entry) => buildEntryOf.get(path.resolve(entry)) ?? path.resolve(entry)),
+      ]),
+    );
+  }
+
+  #check({ entries, kept, bundle }: NarrowedBuild, routeRuntime: RouteRuntime) {
+    const { workspaceRoot } = this.#app.workspace;
+    const buildEntryOf = new Map(
+      [...entries.originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]),
+    );
+    const check = new RouteRuntimeCheck(workspaceRoot, bundle.graph, {
+      entries: new Map([...entries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry))),
+      wholeReaders: routeRuntime.wholeReaders,
+      wholeConstantReaders: routeRuntime.wholeConstantReaders,
+      routes: new Map(
+        [...(this.#entriesByRoute ?? [])].map(([route, held]) => [
+          route,
+          held.map((entry) => buildEntryOf.get(path.resolve(entry)) ?? path.resolve(entry)),
+        ]),
+      ),
+    });
+    check.assert();
+    const { repeated } = check;
+    if (repeated.length === 0) return;
+    const more = repeated.length - RouteRuntimeCheck.shown;
+    this.#app.logger.warn(
+      [
+        `[client-runtime] a page keeping the whole runtime loads a piece of what that runtime already holds:`,
+        ...repeated.slice(0, RouteRuntimeCheck.shown).map((line) => `  - ${line}`),
+        ...(more > 0 ? [`  - and ${more} more`] : []),
+      ].join("\n"),
+    );
+  }
+
+  async #buildBrowserBundle(
+    bootstrapEntries: BootstrapEntries,
+    routeRuntime: RouteRuntime | null,
+    outputSubdir?: string,
+  ) {
     const reactFastRefresh = process.env.AKAN_REACT_FAST_REFRESH !== "0";
     const icons = ReactIconImports.forApp(this.#app);
     const vendorFiles = await VendorFileImports.of(this.#app.workspace.workspaceRoot);
@@ -241,6 +358,7 @@ export class RouteClientBuilder {
       external: vendorFiles.specifiers,
       command: this.#command,
       reactFastRefresh,
+      ...(outputSubdir ? { outputSubdir } : {}),
     }).bundle();
   }
 
@@ -248,6 +366,7 @@ export class RouteClientBuilder {
     const scopes = routeRuntime.table.layers.map(({ scope }) => scope);
     return new SignalDescriptors(this.#app.workspace.workspaceRoot, scopes, {
       onUnread: (reason) => this.#app.logger.warn(`[client-runtime] ${reason}, so their pieces run the macro`),
+      takenFromPieces: (absPath) => routeRuntime.takenFromPieces(absPath),
     }).plugin;
   }
 

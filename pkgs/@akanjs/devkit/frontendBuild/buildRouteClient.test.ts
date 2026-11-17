@@ -423,12 +423,15 @@ describe("route client store bootstrap", () => {
           await Bun.file(path.join(akanjsRoot, file)).text(),
         );
       const warnings: string[] = [];
+      const said: string[] = [];
       const app = {
         ...(fixture.app as object),
         getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [], clientRuntime: "route" }),
         logger: { warn: (message: string) => warnings.push(message) },
+        log: (message: string) => said.push(message),
+        verbose: () => undefined,
       } as never;
-      return { ...fixture, app, warnings };
+      return { ...fixture, app, warnings, said };
     };
     const build = (app: never, entry: string) =>
       new RouteClientBuilder({ app, seeds: [], entries: [entry], artifact: {} as never, browser: "chunks" }).build();
@@ -654,6 +657,7 @@ const app = {
   getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] } } }),
   getPublicEnv: () => ({}),
   logger: { warn: (message) => warnings.push(message) },
+  verbose: () => undefined,
 };
 await new RouteClientBuilder({ app, seeds: [], entries: [entry], artifact: {}, browser: "chunks" }).build();
 console.log(JSON.stringify({ answered, warnings }));
