@@ -6,6 +6,8 @@ import { createRoot } from "react-dom/client";
 import { setTestEnv } from "../ui/testHelpers.fixture";
 
 let useCsrValues: typeof import("./useCsrValues").useCsrValues;
+let CsrSlide: typeof import("./csrSlide").CsrSlide;
+let NativeNavigation: typeof import("./nativeNavigation").NativeNavigation;
 let RenderLayer: typeof import("./RenderLayer").RenderLayer;
 let client: typeof import("akanjs/client");
 let defaultPageState: typeof import("akanjs/client").defaultPageState;
@@ -13,6 +15,8 @@ let defaultPageState: typeof import("akanjs/client").defaultPageState;
 beforeAll(async () => {
   setTestEnv("csrvaluestest");
   ({ useCsrValues } = await import("./useCsrValues"));
+  ({ CsrSlide } = await import("./csrSlide"));
+  ({ NativeNavigation } = await import("./nativeNavigation"));
   ({ RenderLayer } = await import("./RenderLayer"));
   client = await import("akanjs/client");
   ({ defaultPageState } = client);
@@ -204,15 +208,24 @@ interface Screen {
   segment: string;
   transition?: TransitionType;
   guard?: () => void | Promise<void>;
+  cache?: boolean;
+  sync?: boolean;
+  drawsAfterMs?: number;
 }
 
-const screenRouteOf = ({ segment, transition = "none", guard }: Screen): PathRoute => {
+const screenRouteOf = ({ segment, transition = "none", guard, cache, sync, drawsAfterMs }: Screen): PathRoute => {
   const view = () => <main>{segment}</main>;
+  if (sync) return { ...pathRouteOf(segment, transition, cache), renderPage: { kind: "page", render: view } } as never;
+  const slowView = async () => {
+    await new Promise((resolve) => setTimeout(resolve, drawsAfterMs));
+    return view();
+  };
+  const drawn = drawsAfterMs ? slowView : view;
   const mod = (
-    guard ? client.page().guard(guard).render(view).toRouteModule() : client.page().render(view).toRouteModule()
+    guard ? client.page().guard(guard).render(drawn).toRouteModule() : client.page().render(drawn).toRouteModule()
   ) as { default: unknown; guard?: unknown };
   return {
-    ...pathRouteOf(segment, transition),
+    ...pathRouteOf(segment, transition, cache),
     renderPage: { kind: "page", isAsync: true, render: mod.default, guard: mod.guard },
   } as unknown as PathRoute;
 };
@@ -227,6 +240,8 @@ let unmountFrame: (() => void) | null = null;
 afterEach(() => {
   unmountFrame?.();
   unmountFrame = null;
+  //? A test ending on the path the next one opens on would hand it its stack, as a reload does.
+  sessionStorage.clear();
   //? A guard still awaiting when its frame unmounts would otherwise redirect the next test's frame.
   const nowhere = () => undefined;
   client.router.init({
@@ -237,9 +252,14 @@ afterEach(() => {
 });
 
 //? Draws each stack entry's page through RenderLayer as CSR.tsx does, so a pending page's guard runs and moves the router.
-const mountFrame = (path: string, screens: Screen[]) => {
+const mountFrame = (path: string, screens: Screen[], { tabBarOn }: { tabBarOn?: string } = {}) => {
   (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(`http://localhost${path}`);
-  const pathRoutes = screens.map(screenRouteOf);
+  const tabLayout = { render: () => null };
+  const pathRoutes = screens
+    .map(screenRouteOf)
+    .map((pathRoute) =>
+      tabBarOn ? ({ ...pathRoute, renderLayouts: [tabLayout] } as unknown as PathRoute) : pathRoute,
+    );
   const routeGuide = guideOf(pathRoutes);
   const langGuide = routeGuide.children["/:lang"];
   if (langGuide) langGuide.notFoundRouteOf = notFoundRouteOf;
@@ -252,6 +272,17 @@ const mountFrame = (path: string, screens: Screen[]) => {
       client.router.init({ type: "csr", lang: "en", router: { ...values.router, canGoBack } });
     }, []);
     useEffect(() => void seen.shown.push(values.location.pathname), [values.location.pathname]);
+    //? What `Layout.BottomTab` registers: every page under its layout then reads `cache` in its resolved page state.
+    useEffect(() => {
+      if (!tabBarOn) return;
+      return values.registerFrameSlot(`/:lang/${tabBarOn}`, {
+        type: "bottomInset",
+        scope: "layout",
+        source: "bottomTab",
+        cache: true,
+        height: 64,
+      });
+    }, []);
     return values.stackEntries.map(({ key, location, pageType }) => {
       const activity = pageType === "cached" ? "hidden" : pageType;
       return (
@@ -281,6 +312,11 @@ const elapse = (ms: number) =>
   act(async () => {
     await new Promise((resolve) => setTimeout(resolve, ms));
   });
+
+//? `act` holds every render until it returns, so a page drawn ahead reports drawn only between two waits.
+const drawnWithin = async (ms: number) => {
+  for (let waited = 0; waited < ms; waited += 25) await elapse(25);
+};
 
 describe("useCsrValues when a page is refused as it slides in", () => {
   const toSignin = () => client.router.redirect("/signin");
@@ -334,6 +370,27 @@ describe("useCsrValues when a page is refused as it slides in", () => {
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/signin");
     expect(frame.stack()).toEqual(["/en/home", "/en/signin"]);
+  });
+
+  test("a move a guard sends back to the page on screen before it shows is reported as turned back, a plain one is not", async () => {
+    const turnedBack = spyOn(NativeNavigation, "turnedBack");
+    const frame = mountFrame("/en/signin", [
+      { segment: "signin" },
+      { segment: "home", transition: "stack", guard: () => client.router.redirect("/signin") },
+      { segment: "news" },
+    ]);
+
+    await act(async () => void client.router.push("/home"));
+    await elapse(900);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/signin");
+    expect(frame.seen.shown).not.toContain("/en/home");
+    expect(turnedBack).toHaveBeenCalledTimes(1);
+
+    await act(async () => void client.router.push("/news"));
+    await elapse(900);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/news");
+    expect(turnedBack).toHaveBeenCalledTimes(1);
+    turnedBack.mockRestore();
   });
 
   test("a redirect back to the page the visitor is on leaves the stack as it was", async () => {
@@ -405,10 +462,39 @@ describe("useCsrValues while a page slides in", () => {
     await elapse(500);
 
     await act(async () => void client.router.replace("/comments"));
-    await elapse(500);
+    await drawnWithin(500);
 
     expect(frame.stack()).toEqual(["/en/home", "/en/comments"]);
     expect(frame.seen.latest?.prevLocation?.pathname).toBe("/en/home");
+  });
+
+  test("a page that draws later slides in only once it is drawn", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "detail", transition: "stack", drawsAfterMs: 200 },
+    ]);
+
+    await act(async () => void client.router.push("/detail"));
+    await drawnWithin(150);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/home");
+    expect(frame.seen.latest?.phase).toBe("preparing");
+
+    await drawnWithin(200);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/detail");
+    expect(frame.container.textContent).toContain("detail");
+  });
+
+  test("a page slower than the wait slides in with its fallback", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "detail", transition: "stack", drawsAfterMs: 1000 },
+    ]);
+
+    await act(async () => void client.router.push("/detail"));
+    await drawnWithin(400);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/detail");
+    expect(frame.container.textContent).not.toContain("detail");
   });
 
   test("a push made while one page slides in runs once it has, instead of being dropped", async () => {
@@ -426,6 +512,131 @@ describe("useCsrValues while a page slides in", () => {
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/comments");
     expect(frame.stack()).toEqual(["/en/home", "/en/detail", "/en/comments"]);
+  });
+});
+
+describe("useCsrValues when a page is switched in place", () => {
+  test("a page that draws later stays out of sight until it is drawn, then takes the screen", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }, { segment: "news", drawsAfterMs: 80 }]);
+
+    await act(async () => void client.router.push("/news"));
+    expect(frame.seen.latest?.location.pathname).toBe("/en/home");
+    expect(frame.seen.latest?.pendingLocation?.pathname).toBe("/en/news");
+    expect(frame.stack()).toEqual(["/en/home"]);
+
+    await drawnWithin(200);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/news");
+    expect(frame.seen.latest?.phase).toBe("idle");
+    expect(frame.stack()).toEqual(["/en/home", "/en/news"]);
+    expect(frame.container.textContent).toContain("news");
+  });
+
+  test("a page slower than the wait takes the screen with its fallback", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }, { segment: "news", drawsAfterMs: 1000 }]);
+
+    await act(async () => void client.router.push("/news"));
+    await elapse(450);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/news");
+    expect(frame.container.textContent).not.toContain("news");
+  });
+
+  test("a page that draws as it mounts takes the screen in the same commit", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }, { segment: "news", sync: true }]);
+
+    await act(async () => void client.router.push("/news"));
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/news");
+    expect(frame.seen.latest?.pendingLocation).toBeNull();
+  });
+
+  test("under a tab bar, which caches its layout's pages, a drawn page is still found drawn", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }, { segment: "news" }], { tabBarOn: "home" });
+
+    await act(async () => void client.router.push("/news"));
+    await drawnWithin(150);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/news");
+  });
+
+  test("a page the stack kept, hidden since, is shown at once when it is visited again", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home", cache: true },
+      { segment: "news", cache: true },
+      { segment: "more", cache: true },
+    ]);
+    await act(async () => void client.router.push("/news"));
+    await drawnWithin(150);
+    await act(async () => void client.router.push("/more"));
+    await drawnWithin(150);
+    expect(frame.seen.latest?.location.pathname).toBe("/en/more");
+
+    await act(async () => void client.router.push("/home"));
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/home");
+    expect(frame.seen.latest?.pendingLocation).toBeNull();
+  });
+
+  test("switching tabs between pages that do not slide starts no slide, there or back", async () => {
+    const play = spyOn(CsrSlide, "play");
+    mountFrame(
+      "/en/home",
+      [
+        { segment: "home", cache: true },
+        { segment: "news", cache: true },
+      ],
+      { tabBarOn: "home" },
+    );
+    await act(async () => void client.router.replace("/news"));
+    await drawnWithin(150);
+    await act(async () => void client.router.replace("/home"));
+    await drawnWithin(150);
+
+    expect(play).not.toHaveBeenCalled();
+    play.mockRestore();
+  });
+
+  test("a stack page pushed on still slides in", async () => {
+    const play = spyOn(CsrSlide, "play");
+    mountFrame("/en/home", [{ segment: "home" }, { segment: "detail", transition: "stack" }]);
+    await act(async () => void client.router.push("/detail"));
+    await drawnWithin(150);
+
+    expect(play).toHaveBeenCalledTimes(1);
+    play.mockRestore();
+  });
+
+  test("a move made while another page slides in is not drawn ahead: the slide's end would drop its page", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "detail", transition: "stack" },
+      { segment: "news", drawsAfterMs: 80 },
+    ]);
+    await act(async () => void client.router.push("/detail"));
+    await elapse(150);
+    expect(frame.seen.latest?.phase).toBe("transitioning");
+
+    await act(async () => void client.router.push("/news"));
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/news");
+    expect(frame.seen.latest?.pendingLocation).toBeNull();
+    await elapse(500);
+    expect(frame.stack()).toEqual(["/en/home", "/en/detail", "/en/news"]);
+  });
+
+  test("a redirect from the page drawn ahead takes its place, and the page never shows", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "news", guard: () => client.router.redirect("/signin") },
+      { segment: "signin" },
+    ]);
+
+    await act(async () => void client.router.push("/news"));
+    await elapse(450);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/signin");
+    expect(frame.stack()).toEqual(["/en/home", "/en/signin"]);
+    expect(frame.seen.shown).not.toContain("/en/news");
   });
 });
 
@@ -447,7 +658,7 @@ describe("useCsrValues for a path no page matches", () => {
     ]);
 
     await act(async () => void client.router.push("/detail"));
-    await elapse(100);
+    await elapse(400);
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/404");
     expect(frame.stack()).toEqual(["/en/home", "/en/404"]);

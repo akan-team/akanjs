@@ -123,7 +123,22 @@ export class CsrStack {
       delete history.account.leaving;
   }
 
-  static entriesOf({ history, location, prevLocation, pendingLocation, phase }: CsrStackState): CsrStackEntry[] {
+  static entriesOf(state: CsrStackState): CsrStackEntry[] {
+    const { account } = state.history;
+    const drawn = (entry: CsrStackEntry) => {
+      const kept = account?.leaving?.key === entry.key && (entry.pageType === "current" || state.phase !== "idle");
+      const generation = (kept ? account?.leaving?.generation : account?.generation) ?? 0;
+      return generation ? { ...entry, key: `${generation}:${entry.key}` } : entry;
+    };
+    //? Sorted by key so a page keeps its place among its siblings however its role changes.
+    return [...CsrStack.#claimed(state).values()].sort((a, b) => (a.key < b.key ? -1 : 1)).map(drawn);
+  }
+
+  static holds(state: CsrStackState, target: Location) {
+    return CsrStack.#claimed(state).has(CsrStack.keyOf(target));
+  }
+
+  static #claimed({ history, location, prevLocation, pendingLocation, phase }: CsrStackState) {
     const entries = new Map<string, CsrStackEntry>();
     const claim = (entryLocation: Location, pageType: CsrPageType, zIndex: number) => {
       const key = CsrStack.keyOf(entryLocation);
@@ -141,13 +156,6 @@ export class CsrStack {
       retained += 1;
     }
     for (const cached of history.cachedLocationMap.values()) if (!dormant(cached)) claim(cached, "cached", 0);
-    const { account } = history;
-    const drawn = (entry: CsrStackEntry) => {
-      const kept = account?.leaving?.key === entry.key && (entry.pageType === "current" || phase !== "idle");
-      const generation = (kept ? account?.leaving?.generation : account?.generation) ?? 0;
-      return generation ? { ...entry, key: `${generation}:${entry.key}` } : entry;
-    };
-    //? Sorted by key so a page keeps its place among its siblings however its role changes.
-    return [...entries.values()].sort((a, b) => (a.key < b.key ? -1 : 1)).map(drawn);
+    return entries;
   }
 }

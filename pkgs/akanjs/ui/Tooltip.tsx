@@ -54,7 +54,7 @@ const DefaultTooltip = ({ content, children, side = "top", className, variant = 
     showTimer.current = null;
   };
   useEffect(() => cancelShow, []);
-  useEscapeKey(open, () => setOpen(false));
+  useEscapeKey(open, () => setOpen(false), { back: false });
   if (content === undefined || content === null || content === "") return <>{children}</>;
   const landed = position?.side ?? side;
   const vertical = landed === "top" || landed === "bottom";

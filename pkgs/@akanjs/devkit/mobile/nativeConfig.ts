@@ -46,8 +46,9 @@ export interface NativeConfigResult {
 type NativeIos = NonNullable<NonNullable<AkanNativeConfig["native"]>["ios"]>;
 
 export class NativeConfig {
-  //* What every akanjs page may call: routing, lifecycle, links, storage, the device facts the runtime reads, and the
-  //* system sheet useCamera asks camera-or-library with.
+  //* What every akanjs page may call: routing, lifecycle, links, storage, the device facts the runtime reads, the
+  //* system sheet useCamera asks camera-or-library with, and the splash the CSR runtime hides once the first page is
+  //* drawn.
   static readonly basePlugins = [
     "app",
     "app-state",
@@ -60,6 +61,7 @@ export class NativeConfig {
     "preferences",
     "secure-storage",
     "haptics",
+    "splash-screen",
   ] as const;
   //? Only scripts stay strict ('self', inline ones by hash): injected script must not reach the native bridge.
   static readonly defaultCsp: Readonly<Record<string, readonly string[]>> = {
@@ -267,7 +269,7 @@ export class NativeConfig {
       keyboard: { resize: "none" },
       ...(desktop ? { desktop } : {}),
       ...(target.icon ? { icon: NativeConfig.#icon(target.icon, abs) } : {}),
-      ...(target.splash ? { splash: NativeConfig.#splash(target.splash, abs) } : {}),
+      splash: NativeConfig.#splash(target.splash, abs),
       ...(shell ? { shell } : {}),
     };
     return { config, warnings };
@@ -376,12 +378,15 @@ export class NativeConfig {
     return typeof icon === "string" ? abs(icon) : { ...icon, image: abs(icon.image) };
   }
 
+  //? The shell's own hide fires when the document has loaded, before the CSR page is drawn; the runtime hides it then
+  //? (`NativeSplash`), so it stays off unless the app says otherwise.
   static #splash(
-    splash: NonNullable<AkanNativeTarget["splash"]>,
+    splash: AkanNativeTarget["splash"],
     abs: (relative: string) => string,
   ): NonNullable<AkanNativeConfig["splash"]> {
-    if (typeof splash === "string") return { image: abs(splash) };
-    return { ...splash, ...(splash.image ? { image: abs(splash.image) } : {}) };
+    if (!splash) return { autoHide: false };
+    if (typeof splash === "string") return { image: abs(splash), autoHide: false };
+    return { autoHide: false, ...splash, ...(splash.image ? { image: abs(splash.image) } : {}) };
   }
 
   static #desktop(
