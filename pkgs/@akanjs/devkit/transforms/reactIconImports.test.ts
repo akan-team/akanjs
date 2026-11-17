@@ -42,18 +42,23 @@ const setUp = async () => {
 };
 
 describe("ReactIconImports", () => {
-  test("imports each named icon from a module of its own that draws the same icon", async () => {
+  test("imports the icons a file names from one module of that file's own, drawing the same icons", async () => {
     const { icons, importer } = await setUp();
     const source = 'import { BiAlpha, BiBeta as Beta } from "react-icons/bi";\nexport const list = [BiAlpha, Beta];\n';
-    const alpha = await icons.fileOf("react-icons/bi", "BiAlpha", importer);
-    const beta = await icons.fileOf("react-icons/bi", "BiBeta", importer);
+    const file = await icons.fileOf("react-icons/bi", ["BiAlpha", "BiBeta"], importer);
     expect(await icons.rewrite(source, importer)).toBe(
-      `import { BiAlpha } from ${JSON.stringify(alpha)}; import { BiBeta as Beta } from ${JSON.stringify(beta)};\nexport const list = [BiAlpha, Beta];\n`,
+      `import { BiAlpha, BiBeta as Beta } from ${JSON.stringify(file)};\nexport const list = [BiAlpha, Beta];\n`,
     );
-    const drawn = (await import(alpha ?? "")).BiAlpha({ size: 3 });
-    expect(drawn.data.child[0].attr.d).toBe("alpha");
-    expect(drawn.props).toEqual({ size: 3 });
-    expect(await Bun.file(alpha ?? "").text()).not.toContain("beta");
+    const cut = await import(file ?? "");
+    expect(cut.BiAlpha({ size: 3 })).toEqual({ data: expect.objectContaining({ tag: "svg" }), props: { size: 3 } });
+    expect(cut.BiBeta({}).data.child[0].attr.d).toBe("beta");
+    expect(await Bun.file(file ?? "").text()).not.toContain("gamma");
+    const other = await icons.fileOf(
+      "react-icons/bi",
+      ["BiAlpha", "BiBeta"],
+      path.join(path.dirname(importer), "other.tsx"),
+    );
+    expect(other).not.toBe(file);
   });
 
   test("keeps every line where it was, and names it cannot cut on the set", async () => {
@@ -66,7 +71,7 @@ describe("ReactIconImports", () => {
       '} from "react-icons/bi";',
       "export const list = [BiAlpha, BiMissing];",
     ].join("\n");
-    const alpha = await icons.fileOf("react-icons/bi", "BiAlpha", importer);
+    const alpha = await icons.fileOf("react-icons/bi", ["BiAlpha"], importer);
     const rewritten = await icons.rewrite(source, importer);
     expect(rewritten).toBe(
       `import { BiMissing, type BiType } from "react-icons/bi"; import { BiAlpha } from ${JSON.stringify(alpha)};\n\n\n\n\nexport const list = [BiAlpha, BiMissing];`,
@@ -87,7 +92,8 @@ describe("ReactIconImports", () => {
       "const text = 'import { BiAlpha } from \"react-icons/bi\"';",
     ].join("\n");
     expect(await icons.rewrite(source, importer)).toBeNull();
-    expect(await icons.fileOf("react-icons/xx", "XxAlpha", importer)).toBeNull();
+    expect(await icons.fileOf("react-icons/xx", ["XxAlpha"], importer)).toBeNull();
+    expect(await icons.fileOf("react-icons/bi", ["BiAlpha", "BiMissing"], importer)).toBeNull();
   });
 
   test("hands the rewritten source to the next transform, and keeps it when that one has nothing to change", async () => {
@@ -99,7 +105,8 @@ describe("ReactIconImports", () => {
       return null;
     })(source, { path: importer });
     expect(seen).toEqual([rewritten ?? ""]);
-    expect(rewritten).toContain("BiGamma.");
+    const gamma = await icons.fileOf("react-icons/bi", ["BiGamma"], importer);
+    expect(rewritten).toBe(`import { BiGamma } from ${JSON.stringify(gamma)};\n`);
     expect(await icons.pipe((code) => `${code}// next`)("export {};\n", { path: importer })).toBe(
       "export {};\n// next",
     );
@@ -110,7 +117,7 @@ describe("ReactIconImports", () => {
     const icons = new ReactIconImports(root);
     const importer = path.join(import.meta.dir, "page.tsx");
     const names = ["ImPagebreak", "ImPageBreak"];
-    const files = await Promise.all(names.map((name) => icons.fileOf("react-icons/im", name, importer)));
+    const files = await Promise.all(names.map((name) => icons.fileOf("react-icons/im", [name], importer)));
     expect(new Set(files.map((file) => file?.toLowerCase())).size).toBe(2);
     const set = (await import("react-icons/im")) as unknown as Record<string, IconType>;
     for (const [idx, name] of names.entries()) {
@@ -122,7 +129,7 @@ describe("ReactIconImports", () => {
     }
   });
 
-  test("bundles each icon only with the entry naming it, where the set alone shares every named icon", async () => {
+  test("bundles a file's icons into its own output and no shared chunk, where the set shares every named icon", async () => {
     const root = await makeTempRoot();
     await writeIconPackage(root);
     await writeText(
@@ -132,6 +139,10 @@ describe("ReactIconImports", () => {
     await writeText(
       path.join(root, "src", "b.ts"),
       'import { BiBeta } from "react-icons/bi";\nexport const b = BiBeta;\n',
+    );
+    await writeText(
+      path.join(root, "src", "c.ts"),
+      'import { BiAlpha, BiBeta } from "react-icons/bi";\nexport const c = [BiAlpha, BiBeta];\n',
     );
     const dir = JSON.stringify(import.meta.dir);
     const loaded = await printedInOwnProcess(
@@ -147,7 +158,7 @@ const closureOf = (outdir, file) => {
 };
 const build = async (cut) => {
   const icons = new ReactIconImports(path.join(root, "generated"));
-  await icons.fileOf("react-icons/bi", "BiGamma", path.join(root, "src", "a.ts"));
+  await icons.fileOf("react-icons/bi", ["BiGamma"], path.join(root, "src", "a.ts"));
   const outdir = path.join(root, cut ? "cut" : "whole");
   const rewrite = {
     name: "rewrite",
@@ -158,7 +169,7 @@ const build = async (cut) => {
       }),
   };
   const result = await Bun.build({
-    entrypoints: ["a", "b"].map((name) => path.join(root, "src", name + ".ts")),
+    entrypoints: ["a", "b", "c"].map((name) => path.join(root, "src", name + ".ts")),
     outdir,
     splitting: true,
     format: "esm",
@@ -166,20 +177,20 @@ const build = async (cut) => {
     plugins: cut ? [icons.plugin, rewrite] : [],
   });
   if (!result.success) throw new Error(result.logs.join("\\n"));
-  return Object.fromEntries(
-    ["a", "b"].map((name) => {
-      const closure = closureOf(outdir, name + ".js");
-      return [name, ["alpha", "beta", "gamma"].filter((d) => closure.includes('"' + d + '"'))];
-    }),
-  );
+  const drawn = (text) => ["alpha", "beta", "gamma"].filter((d) => text.includes('"' + d + '"'));
+  const chunks = fs.readdirSync(outdir).filter((file) => !["a.js", "b.js", "c.js"].includes(file));
+  return {
+    ...Object.fromEntries(["a", "b", "c"].map((name) => [name, drawn(closureOf(outdir, name + ".js"))])),
+    sharedIconChunks: chunks.filter((file) => drawn(fs.readFileSync(path.join(outdir, file), "utf8")).length > 0).length,
+  };
 };
 console.log(JSON.stringify({ whole: await build(false), cut: await build(true) }));
 `,
       root,
     );
     expect(loaded).toEqual({
-      whole: { a: ["alpha", "beta"], b: ["alpha", "beta"] },
-      cut: { a: ["alpha"], b: ["beta"] },
+      whole: { a: ["alpha", "beta"], b: ["alpha", "beta"], c: ["alpha", "beta"], sharedIconChunks: 1 },
+      cut: { a: ["alpha"], b: ["beta"], c: ["alpha", "beta"], sharedIconChunks: 0 },
     });
   });
 });

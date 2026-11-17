@@ -21,7 +21,10 @@ interface SetImport {
   named: NamedItem[];
 }
 
-//* A set module's one shared chunk carries every icon that any route sharing the chunk names; a module per icon does not.
+//* A set module's one shared chunk carries every icon that any route sharing the chunk names; a module per importer
+//* carries only the icons its file names, and lands in that file's chunk.
+//? Not a module per icon: Bun gives each distinct set of routes reaching an icon a chunk of its own, tens of
+//? sub-kilobyte chunks served unbrotlied and named in every entry, measured heavier than the copies this repeats.
 export class ReactIconImports {
   static readonly #specifier = /^react-icons\/[\w-]+$/;
   //? The package generates every set as this one import followed by one `export function` per icon.
@@ -72,14 +75,18 @@ export class ReactIconImports {
     for (const statement of ReactIconImports.#importsOf(source, importer).reverse()) {
       const set = await this.#setOf(statement.specifier, importer);
       if (!set) continue;
-      const kept: NamedItem[] = [];
-      const lines: string[] = [];
-      for (const item of statement.named) {
-        const file = item.isType ? null : await this.#fileOf(set, item.imported);
-        if (file) lines.push(`import { ${ReactIconImports.#named(item)} } from ${JSON.stringify(file)};`);
-        else kept.push(item);
-      }
-      if (lines.length === 0) continue;
+      const cut = statement.named.filter((item) => !item.isType && ReactIconImports.#bodyOf(set, item.imported));
+      const file =
+        cut.length > 0
+          ? await this.#fileOf(
+              set,
+              importer,
+              cut.map((item) => item.imported),
+            )
+          : null;
+      if (!file) continue;
+      const kept = statement.named.filter((item) => !cut.includes(item));
+      const lines = [`import { ${cut.map(ReactIconImports.#named).join(", ")} } from ${JSON.stringify(file)};`];
       if (kept.length > 0) lines.unshift(ReactIconImports.#keptImport(kept, statement.specifier));
       const newlines = source.slice(statement.start, statement.end).split("\n").length - 1;
       out = `${out.slice(0, statement.start)}${lines.join(" ")}${"\n".repeat(newlines)}${out.slice(statement.end)}`;
@@ -87,9 +94,10 @@ export class ReactIconImports {
     return out === source ? null : out;
   }
 
-  async fileOf(specifier: string, name: string, importer: string): Promise<string | null> {
+  async fileOf(specifier: string, names: string[], importer: string): Promise<string | null> {
     const set = await this.#setOf(specifier, importer);
-    return set ? await this.#fileOf(set, name) : null;
+    if (!set || !names.every((name) => ReactIconImports.#bodyOf(set, name))) return null;
+    return await this.#fileOf(set, importer, names);
   }
 
   static #importsOf(source: string, importer: string): SetImport[] {
@@ -180,16 +188,20 @@ export class ReactIconImports {
     return { text, spans, outDir, lib: fs.realpathSync(lib) };
   }
 
-  async #fileOf(set: IconSet, name: string): Promise<string | null> {
+  static #bodyOf(set: IconSet, name: string): string | null {
     const span = set.spans.get(name);
-    if (!span) return null;
-    //? Sets hold names that differ only in case (GiJetpack, GiJetPack), which share one file on a case-insensitive disk.
-    const file = path.join(set.outDir, `${name}.${Bun.hash(name).toString(36)}.mjs`);
+    const body = span ? set.text.slice(...span) : null;
+    return body && ReactIconImports.#iconBody.test(body) ? body.trimEnd() : null;
+  }
+
+  async #fileOf(set: IconSet, importer: string, names: string[]): Promise<string | null> {
+    const unique = [...new Set(names)];
+    const file = path.join(set.outDir, `${Bun.hash(`${importer}\0${unique.join(",")}`).toString(36)}.mjs`);
     let written = this.#files.get(file);
     if (!written) {
-      const body = set.text.slice(...span);
-      const contents = `import { GenIcon } from ${JSON.stringify(set.lib)};\n${body.trimEnd()}\n`;
-      written = ReactIconImports.#iconBody.test(body) ? ReactIconImports.#write(file, contents) : Promise.resolve(null);
+      const bodies = unique.map((name) => ReactIconImports.#bodyOf(set, name) ?? "");
+      const contents = `import { GenIcon } from ${JSON.stringify(set.lib)};\n${bodies.join("\n")}\n`;
+      written = ReactIconImports.#write(file, contents);
       this.#files.set(file, written);
       if (await written) this.#contents.set(file, contents);
     }
