@@ -78,4 +78,22 @@ export default { app: { title: { t: "再試行" } } };`,
 
     expect(Translator.translateByLocale("ja", "app.title")).toBe("タイトル");
   });
+
+  test("keeps the newer file of a locale when one asked for earlier answers last", async () => {
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    (globalThis as { __dictGate?: Promise<void> }).__dictGate = gate;
+    const left = path.join(root, `xa-${++moduleSeq}.js`);
+    fs.writeFileSync(
+      left,
+      `await globalThis.__dictGate;
+export const lang = "xa";
+export default { app: { title: { t: "Page left" } } };`,
+    );
+    const leaving = DictionaryAsset.load(left);
+    await DictionaryAsset.load(writeModule("xa", "Page shown"));
+    release();
+    await leaving;
+
+    expect(Translator.translateByLocale("xa", "app.title")).toBe("Page shown");
+  });
 });

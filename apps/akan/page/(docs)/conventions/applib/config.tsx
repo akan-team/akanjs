@@ -2186,6 +2186,26 @@ export default config;`}
                   ),
                 })}
               </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>Endpoint descriptions load where a page shows them.</strong> Each language's dictionary
+                      file, which every page loads, leaves out the <code>.desc</code> and <code>.arg</code> texts of
+                      signals; a second file brings them to a page that shows the API explorer. The server, MCP and a
+                      CSR build keep the whole dictionary, and the build prints both sizes per language.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>엔드포인트 설명은 그것을 보여 주는 페이지에서만 불러옵니다.</strong> 모든 페이지가
+                      불러오는 언어별 사전 파일에서 signal의 <code>.desc</code>와 <code>.arg</code> 문구가 빠지고, API
+                      탐색기를 보여 주는 페이지에만 두 번째 파일로 옵니다. 서버, MCP, CSR 빌드는 사전 전체를 그대로
+                      쓰며, 빌드는 언어마다 두 크기를 출력합니다.
+                    </span>
+                  ),
+                })}
+              </li>
             </ul>
           </Docs.Description>
         </Scroll.Slide>
