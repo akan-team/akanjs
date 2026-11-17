@@ -103,6 +103,13 @@ describe("CsrSlide", () => {
     expect(played.every((entry) => entry.cancelled)).toBe(true);
   });
 
+  test("reads where its page is mid-slide, so an interruption goes on from there", () => {
+    const slide = CsrSlide.play(frame({}, {}), { fromUnit: 400, toUnit: 0, duration: 350 });
+    const page = document.querySelector<HTMLElement>("#pageContainer-b .akan-page-content");
+    if (page) page.style.transform = "translateX(230px)";
+    expect(slide?.unitNow()).toBe(230);
+  });
+
   test("hands the slide back to the spring where Web Animations are missing or there is no time to slide", () => {
     expect(CsrSlide.play(frame({}, {}), { fromUnit: 400, toUnit: 0, duration: 0 })).toBeNull();
     HTMLElement.prototype.animate = undefined as unknown as HTMLElement["animate"];

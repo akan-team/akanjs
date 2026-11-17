@@ -22,6 +22,7 @@ const lerp = (from: number, to: number, progress: number) => from + (to - from) 
 const px = (value: number) => `${value}px`;
 const shown = (selector: string) => `${selector} > [data-page-type="current"]`;
 const under = (selector: string) => `${selector} > [data-page-type="prev"]`;
+const pageSelector = `${shown("#pageContainers")} .akan-page-content`;
 
 //* A stack slide runs as Web Animations of transform and opacity, which WebKit hands to Core Animation and Chromium to
 //* its compositor, so a busy main thread no longer drops its frames; driven by a spring, every frame was script on the
@@ -31,9 +32,11 @@ export class CsrSlide {
   //? UIKit's push leaves fast and settles slowly; at a constant speed a full-width slide reads as a jump.
   static readonly easing = "cubic-bezier(0.25, 1, 0.5, 1)";
   readonly #animations: Animation[];
+  readonly #page: HTMLElement | null;
 
-  private constructor(animations: Animation[]) {
+  private constructor(animations: Animation[], page: HTMLElement | null) {
     this.#animations = animations;
+    this.#page = page;
   }
 
   static get supported() {
@@ -49,11 +52,13 @@ export class CsrSlide {
     const from = CsrSlide.partsAt(frame, fromUnit);
     const to = CsrSlide.partsAt(frame, toUnit);
     const animations: Animation[] = [];
+    let page: HTMLElement | null = null;
     for (const [selector, start] of Object.entries(from)) {
       const end = to[selector];
       const changed = Object.keys(start).filter((property) => start[property] !== end[property]);
       const element = changed.length ? document.querySelector<HTMLElement>(selector) : null;
       if (!element) continue;
+      if (selector === pageSelector) page = element;
       const pick = (keyframe: Keyframe) =>
         Object.fromEntries(changed.map((property) => [property, keyframe[property]]));
       animations.push(
@@ -64,7 +69,7 @@ export class CsrSlide {
         }),
       );
     }
-    return animations.length ? new CsrSlide(animations) : null;
+    return animations.length ? new CsrSlide(animations, page) : null;
   }
 
   /** What each part's style is with the page `unit` px from its place: 0 shown, the frame's width gone right. */
@@ -74,7 +79,7 @@ export class CsrSlide {
     const prevOffset = px((unit - width) / 5);
     const bottomInsetTop = (state: FramePageState) => height - state.bottomInset - state.bottomSafeArea;
     return {
-      [`${shown("#pageContainers")} .akan-page-content`]: { transform: `translateX(${px(unit)})` },
+      [pageSelector]: { transform: `translateX(${px(unit)})` },
       [under("#pageContainers")]: { transform: `translateX(${prevOffset})` },
       [`${under("#pageContainers")} .akan-page-content`]: { opacity: `${1 - progress / 2}` },
       [shown("#topInsetContainer")]: {
@@ -108,6 +113,13 @@ export class CsrSlide {
         height: between(prevPageState.bottomSafeArea, pageState.bottomSafeArea),
       },
     };
+  }
+
+  /** Where the page is right now, as the spring's unit, or null when this slide does not move it. */
+  unitNow(): number | null {
+    if (!this.#page || typeof DOMMatrixReadOnly === "undefined") return null;
+    const { transform } = getComputedStyle(this.#page);
+    return !transform || transform === "none" ? 0 : new DOMMatrixReadOnly(transform).m41;
   }
 
   get finished() {

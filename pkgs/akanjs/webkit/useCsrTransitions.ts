@@ -369,21 +369,30 @@ const useStackSlide = (
   const slideRef = useRef<CsrSlide | null>(null);
   const frameRef = useRef(frame);
   frameRef.current = frame;
-  const stopSlide = useCallback(() => {
+  const cancelSlide = useCallback(() => {
     slideRef.current?.cancel();
     slideRef.current = null;
+  }, []);
+  //? An interrupted slide hands where its page is to the spring, so a back or a drag goes on from there, not from rest.
+  const holdSlide = useCallback(() => {
+    const unit = slideRef.current?.unitNow() ?? null;
+    cancelSlide();
+    if (unit === null) return transUnit.get();
+    void transUnit.start(unit, { immediate: true });
+    return unit;
   }, []);
   useEffect(() => {
     onBack.current.stack = async () => {
       const config = backConfigRef.current;
       backConfigRef.current = null;
-      stopSlide();
+      const fromUnit = holdSlide();
+      const share = Math.abs(transUnitRange[0] - fromUnit) / Math.max(1, transUnitRange[0]);
       const slide = CsrSlide.isCalm
         ? null
         : CsrSlide.play(frameRef.current, {
-            fromUnit: transUnit.get(),
+            fromUnit,
             toUnit: transUnitRange[0],
-            duration: config?.duration ?? STACK_TRANSITION_DURATION_MS,
+            duration: config?.duration ?? Math.max(120, STACK_TRANSITION_DURATION_MS * share),
             keep: true,
           });
       if (!slide) {
@@ -397,7 +406,7 @@ const useStackSlide = (
     };
   }, [transUnitRange]);
   useLayoutEffect(() => {
-    stopSlide();
+    cancelSlide();
     if (history.current.type !== "forward" || CsrSlide.isCalm) {
       void transUnit.start(transUnitRange[1], { immediate: true });
       return;
@@ -417,7 +426,7 @@ const useStackSlide = (
       config: { duration: STACK_TRANSITION_DURATION_MS, easing: stackEasing },
     });
   }, [location.entryId ?? location.pathname]);
-  return stopSlide;
+  return holdSlide;
 };
 
 const useStackTrans = (routeState: RouteState): UseCsrTransition => {
@@ -449,13 +458,14 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
     pageContent.style.touchAction = scrollLock.touchAction;
     scrollLockRef.current = null;
   }, [pageContentRef]);
-  const stopSlide = useStackSlide(
+  const holdSlide = useStackSlide(
     spring,
     routeState,
     { width: clientWidth, height: clientHeight, pageState, prevPageState },
     stackBackConfigRef,
   );
   useEffect(() => unlockPageScroll, [unlockPageScroll]);
+  const dragOriginRef = useRef(0);
 
   const pageBind = useDrag(
     ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel }) => {
@@ -480,7 +490,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         }
         if (absX < GESTURE_INTENT_THRESHOLD || absX <= absY * GESTURE_AXIS_LOCK_RATIO) return;
         gestureIntent.current = "gesture";
-        stopSlide();
+        dragOriginRef.current = holdSlide();
         lockPageScroll();
         void Device.getDevice().hideKeyboard();
       }
@@ -488,13 +498,14 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         cancel();
         return;
       }
-      if (mx < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
-      else if (mx > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
-      else if (!last) void transUnit.start(mx, { immediate: true });
+      const unit = dragOriginRef.current + mx;
+      if (unit < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
+      else if (unit > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
+      else if (!last) void transUnit.start(unit, { immediate: true });
       if (last) {
-        const shouldComplete = mx > threshold || (dx > 0 && vx > STACK_VELOCITY_DISMISS_THRESHOLD);
+        const shouldComplete = unit > threshold || (dx > 0 && vx > STACK_VELOCITY_DISMISS_THRESHOLD);
         const target = shouldComplete ? transUnitRange[0] : transUnitRange[1];
-        const duration = getVelocityAwareDuration(target - mx, vx, shouldComplete ? 150 : 180);
+        const duration = getVelocityAwareDuration(target - unit, vx, shouldComplete ? 150 : 180);
         if (shouldComplete) stackBackConfigRef.current = { duration };
         else void transUnit.start(transUnitRange[1], { config: { duration } });
         unlockPageScroll();
@@ -503,7 +514,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         clientRouter.back();
         void clientRouter.navigation().catch(() => {
           stackBackConfigRef.current = null;
-          stopSlide();
+          holdSlide();
           void transUnit.start(transUnitRange[1], { config: { duration } });
         });
       }
