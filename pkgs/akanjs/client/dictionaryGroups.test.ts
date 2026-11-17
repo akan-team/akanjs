@@ -8,6 +8,7 @@ import { Translator } from "./translator";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-dictionary-groups-"));
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+DictionaryGroups.install();
 
 const scope = globalThis as { window?: unknown; __groupFetches?: string[] };
 afterEach(() => {

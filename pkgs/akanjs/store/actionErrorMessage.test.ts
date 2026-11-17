@@ -4,10 +4,12 @@ import os from "node:os";
 import path from "node:path";
 import { Translator } from "akanjs/client";
 import { DictionaryAsset } from "../client/dictionaryAsset";
+import { DictionaryGroups } from "../client/dictionaryGroups";
 import { showActionErrorMessage } from "./actionErrorMessage";
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), "akan-action-error-"));
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
+DictionaryGroups.install();
 
 const writePart = (lang: string, table: string, group: string, dictionary: object) => {
   const file = path.join(root, `${lang}-${group}.js`);

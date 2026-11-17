@@ -36,6 +36,10 @@ export class DictionaryGroups {
     return globalScope[dictionaryGroupsStateKey];
   }
 
+  static install(): void {
+    TranslatorState.get().groups ??= { pending: DictionaryGroups.pending, missed: DictionaryGroups.missed };
+  }
+
   //? `null` when there is nothing to load: the group is merged, the locale holds a page file, or no table was built.
   static pending(lang: string, key: string): Promise<boolean> | null {
     return DictionaryGroups.#wait(lang, key)?.load ?? null;

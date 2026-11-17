@@ -720,5 +720,6 @@ const refreshForLateDictionary = () => {
     else void globalThis.__AKAN_RSC_REFRESH__?.();
   }, 50);
 };
+DictionaryGroups.install();
 DictionaryGroups.onMerged(refreshForLateDictionary);
 void Promise.allSettled([initialThenable, initialDictionary]).then(hydrate);
