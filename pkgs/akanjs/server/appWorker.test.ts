@@ -152,4 +152,23 @@ describe("AppWorker.spawn", () => {
 
     expect(() => worker.send("ping")).toThrow("pass onMessage to open its IPC channel");
   });
+
+  test("a server started as `bun -e <code>`, as a gateway starts its backends, runs the worker and not its own code again", async () => {
+    const file = declare("probe", 'console.log("worker ran", process.argv.slice(2).join(","));');
+    //? Without the guard a server that did run its own code again would spawn itself without end.
+    const serverCode = `if (process.env.AKAN_WORKER_PROBE) { console.log("the server's code ran again"); process.exit(7); }
+const { AppWorker } = await import(${JSON.stringify(path.join(import.meta.dir, "appWorker.ts"))});
+const logger = { info: (line) => console.log(line), warn: (line) => console.log(line), error: (line) => console.log(line) };
+AppWorker.spawn("probe", { args: ["cam-1"], restart: false, logger, env: { AKAN_WORKER_PROBE: "1" }, onExit: (code) => console.log(\`exit \${code}\`) });`;
+    const server = Bun.spawn([process.execPath, "--no-env-file", "-e", serverCode], {
+      cwd: import.meta.dir,
+      env: { ...process.env, [AppWorkerPath.envKey]: JSON.stringify({ probe: file }) },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, exitCode] = await Promise.all([new Response(server.stdout).text(), server.exited]);
+
+    expect(stdout.trim().split("\n")).toEqual(["worker ran cam-1", "exit 0"]);
+    expect(exitCode).toBe(0);
+  });
 });
