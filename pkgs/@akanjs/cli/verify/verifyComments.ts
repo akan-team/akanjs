@@ -5,6 +5,11 @@ import type { VerifyDiagnostic } from "./verifyDiagnostics";
 
 type TypeScript = typeof ts;
 
+export interface AddedComment {
+  text: string;
+  diagnostic: VerifyDiagnostic;
+}
+
 interface CommentRange {
   text: string;
   line: number;
@@ -30,13 +35,20 @@ export class VerifyComments {
   }
 
   static async added(root: string, files: string[]): Promise<VerifyDiagnostic[]> {
+    const diagnostics = (await VerifyComments.found(root, files)).map((comment) => comment.diagnostic);
+    const [first] = diagnostics;
+    if (first) first.fix = VerifyComments.fix;
+    return diagnostics;
+  }
+
+  static async found(root: string, files: string[]): Promise<AddedComment[]> {
     const code = files.filter((file) => VerifyComments.#codeFile.test(file) && existsSync(path.join(root, file)));
     if (!code.length) return [];
     const changed = await VerifyComments.#addedLines(root, code);
     if (!changed) return [];
     const typescript = await VerifyComments.#loadTypescript();
     const templateComments = await VerifyComments.#loadTemplateComments();
-    const diagnostics: VerifyDiagnostic[] = [];
+    const found: AddedComment[] = [];
     for (const file of code) {
       const lines = changed.get(file);
       if (lines?.size === 0) continue;
@@ -46,20 +58,21 @@ export class VerifyComments {
         if (VerifyComments.#trackedTodo.test(comment.text)) continue;
         if (VerifyComments.#scaffolded(comment, templateComments)) continue;
         if (lines && !VerifyComments.#touches(comment, lines)) continue;
-        diagnostics.push({
-          step: "lint",
-          file,
-          line: comment.line,
-          col: comment.col,
-          code: VerifyComments.code,
-          severity: "warning",
-          message: VerifyComments.#excerpt(comment.text),
+        found.push({
+          text: comment.text,
+          diagnostic: {
+            step: "lint",
+            file,
+            line: comment.line,
+            col: comment.col,
+            code: VerifyComments.code,
+            severity: "warning",
+            message: VerifyComments.#excerpt(comment.text),
+          },
         });
       }
     }
-    const [first] = diagnostics;
-    if (first) first.fix = VerifyComments.fix;
-    return diagnostics;
+    return found;
   }
 
   //* Read from each token's leading trivia, never by a bare scan: `// x` inside JSX text is text, not a comment.

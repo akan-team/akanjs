@@ -5,7 +5,7 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
 
 ## Ownership
 - Use Tailwind utility classes for layout, spacing, typography, and responsive behavior.
-- Use Akan's semantic color tokens — never a raw Tailwind palette color (`bg-blue-500`) or a hex value:
+- Use Akan's semantic color tokens:
   - Surfaces/text: `bg-background`, `text-foreground`, `bg-muted`, `text-muted-foreground`, `bg-card`, `bg-popover`, `border-border`, `border-input`, `ring-ring`.
   - Brand/status: `primary`, `secondary`, `accent`, `destructive`, `success`, `warning`, `info`, `neutral`, `open` — each with a `-foreground` pair for text on that surface (e.g. `bg-primary text-primary-foreground`).
 - Compose classes with `cn` from `akanjs/client` (token-aware tailwind-merge) — the only class-combining function. No object syntax: write `cond && "x"`.
@@ -16,30 +16,24 @@ Use TailwindCSS with Akan's semantic design-token layer and the `akanjs/ui` prim
   `Record<...>`. Shared by a second module, the classes become a recipe variant in `ui/Recipe/`; only an enum→variant
   name map (`BadgeVariants["variant"]`) moves to `webkit/`.
 
-## Color Vocabulary — What Lint Refuses
-- Vocabulary closure strips the raw Tailwind palette, so these render as no CSS and fail lint: raw palette classes
-  (`bg-blue-500`, `text-gray-400`), arbitrary color values (`bg-[#3b82f6]`), an arbitrary class built by
-  interpolation, daisyUI's dropped color slots (`bg-base-100`,
-  `text-base-content`, `text-primary-content`, `bg-error` — use `background`/`muted`/`border`, `foreground`,
-  `<color>-foreground`, `destructive`), and color literals in `style={{...}}` (`no-raw-palette-class`,
-  `no-arbitrary-color`, `no-daisyui-legacy-class`, `no-inline-color`, `no-interpolated-arbitrary-class`).
+## Color Vocabulary
+- What lint refuses and its exception are the `style` rule, loaded with every `.tsx` and `.css`. daisyUI's dropped
+  color slots (`bg-base-100`, `text-base-content`, `text-primary-content`, `bg-error`) become `background` / `muted` /
+  `border`, `foreground`, `<color>-foreground` and `destructive`; the exception fits a fixed color such as an
+  OS-chrome mockup or a data-viz palette.
 - daisyUI component classes (`btn-primary`, `card-body`) render no CSS unless the app defines them, so lint only warns;
   `akan verify` drops the warning once the app's or a lib's stylesheet defines the class.
-- A legitimate fixed color (OS-chrome mockups, data-viz) takes a `// biome-ignore lint/plugin: <reason>`.
 - Color literals in SVG color attributes (`fill`, `stroke`, `stopColor`, `floodColor`, `lightingColor`, `color`) and
   in `el.style.<prop> = …` / `el.style.setProperty(…)` writes are flagged as warnings for now; `currentColor`,
   `none`, `transparent`, `var(--…)` and `url(#id)` stay legal.
-- Class order is the sorter's: `nursery/useSortedClasses` is an error and also sorts the string arguments to `cn()`.
-  Output such as `font-bold text-2xl text-foreground` or `border-foreground/5 border-t` is correct — write the
-  classes in any order, run the formatter, leave the result.
 
 ## Recipe Layer
 - Reusable or variant-like styling belongs in a recipe (a cva-style factory), not repeated inline class stacks.
-- Framework primitives ship recipes: `buttonRecipe` and `badgeRecipe` from `akanjs/ui`. Call them as `buttonRecipe(variants, className?)` — the second argument is merged automatically, so you never wrap it in `cn()`:
+- Framework primitives ship recipes: `buttonRecipe` and `badgeRecipe` from `akanjs/ui`. Call them as `buttonRecipe(variants, className?)`:
   - `buttonRecipe({ variant: "primary", size: "lg" }, "w-full rounded-2xl")`
 - Prefer the `akanjs/ui` primitives (`Button`, `Badge`, `Input`, `Field`, `Table` …) over re-implementing a component's look with utility stacks. There is **no `Card`/`Box` primitive** — a card/box is a recipe surface (e.g. `appCard`), not an `akanjs/ui` component; do not `import { Card }`.
 - App-specific repeated surfaces go one-per-file in `apps/<app>/ui/Recipe/` (server-safe, no `"use client"`) via `recipe(tv({ base, variants }))`, imported from `@apps/<app>/ui`. App recipes **extend** (surfaces the lib lacks — chat bubble, tile); they never re-define a lib component in parallel.
-- Full recipe authoring/consumption policy: the `recipeRule` guideline. Never guess recipe names/imports — the authoritative lists are the `style` rule (framework recipes) and each app's or lib's `AGENTS.md` (`## Recipes In Scope`).
+- Full recipe authoring/consumption policy: the `recipeRule` guideline. The recipe lists are the `style` rule (framework recipes) and each app's or lib's `AGENTS.md` (`## Recipes In Scope`).
 
 ## Customization Decision (where a design delta goes)
 When a request implies a distinct look and feel, do not stop at colors — customize the theme and, when needed, the
@@ -115,14 +109,11 @@ are there on every surface; the three keyboard variables are written only on the
   of its column, or in the keyboard slot.
 
 ## Codegen Rules
-- Do not hardcode hex or raw-palette colors (`bg-red-500`, `#ff0000`); use semantic tokens.
-- Do not put inline color literals in `style={{ }}`; use token classes.
 - Do not use `!important` to fight component composition.
 - Do not hide focus states on interactive elements.
 - When an `akanjs/ui` component is structurally too restrictive, re-skin it with a `page/**/_overrides.tsx` slot override (see the componentRule guideline), not `!important` utilities or a fork.
 
 ## Review Checklist
-- All color goes through semantic tokens — no raw palette, no hex, no inline color.
 - Repeated/variant styling uses a recipe; class composition uses `cn` (never raw `twMerge`/`clsx` imports).
 - The instruction points to current docs pages and current Akan builder APIs.
 - The output contract tells the model which file paths to return.

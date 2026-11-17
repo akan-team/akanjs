@@ -168,9 +168,11 @@
   screen block applies the rule to a `Load` scope's label, which is its record's title, and to the ids and labels
   of a list scope's `items` — a row whose id is not a token, a slug or a mixed-case random id, is left out — and
   then says to read the scope with `readScreen`. So instructions never say "the query is in the route context";
-  they say to read `searchParams`. **Three things still ride whole, because no read returns them**: an
-  `Agent.Zone`'s `label` and a value published with `st.expose`, `st.useState` or `useAgentResource`. Publish an
-  id, a count or an enum member there, never text a user wrote. **There is no
+  they say to read `searchParams`. **An `Agent.Zone`'s `label` and a value published with `st.expose`,
+  `st.useState` or `useAgentResource` follow the rule too.** `readScreen` of the zone leads with a label left out.
+  A published value rides as a token, a number, a boolean, an ISO timestamp or a list of those; an object keeps
+  up to twelve such fields and twelve words of values. A resource with anything left out is marked `withheld`, and
+  `readState(name)` answers it whole as page content, so the next change asks first. **There is no
   store-level exposure declaration**: a store class says nothing about agents, and `st.use.x({ agent: false })` is
   how the component that subscribes a value keeps it off the surface. Base-store plumbing does the same at the
   call site — `st.use.path({ agent: false })`, `st.use.tryJwt({ agent: false })` — so routing and the caller's

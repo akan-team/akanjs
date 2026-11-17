@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { readdir, readFile, writeFile } from "node:fs/promises";
+import { readdir, readFile, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import { ModuleExecutor } from "@akanjs/devkit/executors";
@@ -201,6 +201,14 @@ describe("WorkflowRunner", () => {
     expect(output).toContain('requires input "module"');
     expect(output).toContain('requires input "field"');
     expect(output).toContain('requires input "type"');
+  });
+
+  test("names the flag of a missing input and the passed inputs the workflow does not take", async () => {
+    const output = await new WorkflowRunner().plan("create-scalar", { app: "demo", module: "videoDevice", field: "" });
+
+    expect(output).toContain(
+      'Workflow create-scalar requires input "scalar" (--scalar on the command line). It does not take "module", which was passed.',
+    );
   });
 
   test("dry-runs workflow apply from a plan artifact without writing files", async () => {
@@ -997,6 +1005,130 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
     expect(constant).toContain("location: field(Address),");
   });
 
+  describe("create-ui", () => {
+    const zoneTemplate = `"use client";
+import type { ReactNode } from "react";
+
+interface MainProps {
+  className?: string;
+  children?: ReactNode;
+}
+export const Main = ({ className, children }: MainProps) => {
+  return <section className={className}>{children}</section>;
+};
+`;
+    const utilTemplate = `"use client";
+import type { ReactNode } from "react";
+
+interface ActionProps {
+  className?: string;
+  children?: ReactNode;
+}
+export const Action = ({ className, children }: ActionProps) => {
+  return (
+    <button type="button" className={className}>
+      {children}
+    </button>
+  );
+};
+`;
+    const setup = async () => {
+      const { root, workspace, module, app } = track(await createTempModule("task"));
+      await new ModuleRunner().createModuleTemplate(module);
+      await new ModuleRunner().createService(ModuleExecutor.from(app, "_camera"));
+      const runner = new WorkflowRunner();
+      const planOf = async (inputs: WorkflowPlanInputs, out?: string) =>
+        JSON.parse(
+          await runner.plan("create-ui", { app: "demo", ...inputs }, { format: "json", out, workspace }),
+        ) as WorkflowPlan;
+      const applyPlan = async (inputs: WorkflowPlanInputs) => {
+        const planPath = path.join(root, ".akan/workflows/plans/create-ui.json");
+        await planOf(inputs, planPath);
+        return JSON.parse(
+          await runner.apply(planPath, { format: "json", workspace, registry: WorkflowRunner.stepRegistry(workspace) }),
+        ) as WorkflowApplyReport;
+      };
+      return { root, workspace, module, planOf, applyPlan };
+    };
+
+    test("writes a Zone and a Util for a database module", async () => {
+      const { root, module, planOf, applyPlan } = await setup();
+      for (const file of ["Task.Zone.tsx", "Task.Util.tsx"]) await rm(path.join(root, "apps/demo/lib/task", file));
+
+      expect((await planOf({ module: "task", surface: "zone" })).predictedChanges[0]?.target).toBe(
+        "apps/demo/lib/task/Task.Zone.tsx",
+      );
+      expect((await applyPlan({ module: "task", surface: "zone" })).status).toBe("passed");
+      expect((await applyPlan({ module: "task", surface: "util" })).status).toBe("passed");
+
+      expect(await module.readFile("Task.Zone.tsx")).toContain("export const Card");
+      expect(await module.readFile("Task.Util.tsx")).toContain("export const");
+    });
+
+    test("writes a Zone and a Util for a service module addressed with or without its underscore", async () => {
+      const { root, planOf, applyPlan } = await setup();
+
+      for (const [name, surface, content, file] of [
+        ["camera", "zone", zoneTemplate, "Camera.Zone.tsx"],
+        ["_camera", "util", utilTemplate, "Camera.Util.tsx"],
+      ] as const) {
+        const plan = await planOf({ module: name, surface });
+        expect(plan.diagnostics).toEqual([]);
+        expect(plan.predictedChanges[0]?.target).toBe(`apps/demo/lib/_camera/${file}`);
+        const report = await applyPlan({ module: name, surface });
+        expect(report.status).toBe("passed");
+        expect(await readFile(path.join(root, "apps/demo/lib/_camera", file), "utf8")).toBe(content);
+      }
+    });
+
+    test("refuses a View, Unit or Template for a service module", async () => {
+      const { planOf } = await setup();
+
+      for (const module of ["camera", "_camera"])
+        for (const surface of ["view", "unit", "template"]) {
+          const plan = await planOf({ module, surface });
+          expect(plan.diagnostics).toEqual([
+            {
+              severity: "error",
+              code: "workflow-module-not-database",
+              input: "module",
+              message: `apps/demo/lib/_camera is a service module, which stores no model, so create-ui takes only zone or util there; a ${surface} needs a database module.`,
+            },
+          ]);
+        }
+    });
+
+    test("refuses to overwrite a component that exists, at plan time and at apply time, writing nothing", async () => {
+      const { root, module, planOf, applyPlan } = await setup();
+      const cases = [
+        ["task", "zone", "task/Task.Zone.tsx"],
+        ["task", "view", "task/Task.View.tsx"],
+        ["task", "unit", "task/Task.Unit.tsx"],
+        ["task", "template", "task/Task.Template.tsx"],
+        ["camera", "zone", "_camera/Camera.Zone.tsx"],
+      ] as const;
+      await writeText(path.join(root, "apps/demo/lib/_camera/Camera.Zone.tsx"), "// mine\n");
+      await module.writeFile("Task.Zone.tsx", "// mine\n");
+
+      for (const [name, surface, file] of cases) {
+        const target = path.join(root, "apps/demo/lib", file);
+        if (surface !== "zone") await writeText(target, "// mine\n");
+        const plan = await planOf({ module: name, surface });
+        expect(plan.diagnostics).toEqual([
+          expect.objectContaining({
+            severity: "error",
+            code: "workflow-ui-file-exists",
+            message: expect.stringContaining(`apps/demo/lib/${file} already exists`),
+          }),
+        ]);
+        const report = await applyPlan({ module: name, surface });
+        expect(report.status).toBe("failed");
+        expect(report.changedFiles).toEqual([]);
+        expect(await readFile(target, "utf8")).toBe("// mine\n");
+      }
+    });
+  });
+
   describe("a service module", () => {
     const planTaskAndService = async () => {
       const planned = await planTaskWorkflow({ field: "nickname", type: "String" });
@@ -1018,7 +1150,8 @@ export const taskDictionary = modelDictionary("task").model<Task>((t) => ({
         expect(plan.diagnostics).toEqual([
           expect.objectContaining({ severity: "error", code: "workflow-module-not-database", input: "module" }),
         ]);
-        expect(plan.diagnostics[0]?.message).toStartWith(serviceModule.replace("<workflow>", workflow));
+        if (workflow !== "create-ui")
+          expect(plan.diagnostics[0]?.message).toStartWith(serviceModule.replace("<workflow>", workflow));
         expect([plan.predictedChanges, plan.recommendations]).toEqual([[], []]);
       }
       expect((await planOf("add-field", { field: "nickname", type: "String" })).diagnostics[0]?.message).toEndWith(

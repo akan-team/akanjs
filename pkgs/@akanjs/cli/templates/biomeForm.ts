@@ -112,12 +112,19 @@ export class BiomeForm {
     return `  .of((t) =>\n    t([\n${labelLines}\n    ]).desc([\n${descLines}\n    ]),\n  )`;
   }
 
-  static dictionarySlice(key: string, label: readonly [string, string]) {
-    const head = `    ${key}: fn(${BiomeForm.#pair(label)}).arg(`;
-    if (BiomeForm.fits(`${head}(t) => ({})),`)) return `${head}(t) => ({})),`;
-    if (BiomeForm.fits(head)) return `${head}\n      (t) => ({}),\n    ),`;
-    const labelLines = label.map((text) => `      ${JSON.stringify(text)},`).join("\n");
-    return `    ${key}: fn([\n${labelLines}\n    ]).arg((t) => ({})),`;
+  //? Biome breaks a chain of three calls at each call, whatever its width.
+  static dictionarySlice(key: string, label: readonly [string, string], desc: readonly [string, string]) {
+    const named = `    ${key}: fn(${BiomeForm.#pair(label)})`;
+    const described = `      .desc(${BiomeForm.#pair(desc)})`;
+    return [
+      BiomeForm.fits(named) ? named : `    ${key}: fn([\n${BiomeForm.#lines(label, "      ")}\n    ])`,
+      BiomeForm.fits(described) ? described : `      .desc([\n${BiomeForm.#lines(desc, "        ")}\n      ])`,
+      "      .arg((t) => ({})),",
+    ].join("\n");
+  }
+
+  static #lines(pair: readonly [string, string], indent: string) {
+    return pair.map((text) => `${indent}${JSON.stringify(text)},`).join("\n");
   }
 
   static #pair(pair: readonly [string, string]) {

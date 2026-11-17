@@ -456,6 +456,13 @@ export default page()
         }),
       },
       {
+        name: "akan_live_rooms",
+        desc: l.trans({
+          en: "Live-query rooms a process holds, one per room id however many sockets share it. A room sockets on two replicas share counts once on each, so behind a gateway the sum is rooms held per process, not distinct rooms; the gateway's `rooms` counts distinct pubsub rooms.",
+          ko: "프로세스가 들고 있는 live 쿼리 room 수이며, 소켓이 몇 개든 room id 하나에 하나입니다. 같은 room을 두 replica의 소켓이 구독하면 각각 한 번씩 세므로 gateway 뒤의 합계는 고유 room 수가 아니라 프로세스별 보유 room의 합이고, 고유한 pubsub room 수는 gateway의 `rooms`입니다.",
+        }),
+      },
+      {
         name: ["akan_room_replay_bytes", "akan_pubsub_buffered_messages"],
         desc: l.trans({
           en: "Frame bytes kept to send a reconnecting socket what it missed (at most 64 MiB a process), and publishes waiting for the Redis link (at most 10,000); one total each, next to `rooms`.",

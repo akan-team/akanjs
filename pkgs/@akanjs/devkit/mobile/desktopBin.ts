@@ -94,7 +94,7 @@ export class DesktopBin {
         throw new Error(
           `${owner}: bin.${name} names no ${platform} file, the platform this desktop app is built for (it names ${Object.keys(platforms).join(", ") || "none"}).`,
         );
-      const executable = await this.#executable(`${owner}: bin.${name}.${platform}`, source);
+      const executable = await this.executable(`${owner}: bin.${name}.${platform}`, source);
       const target = path.join(dir, DesktopBin.fileName(name, executable));
       await Bun.write(target, Bun.file(executable));
       await chmod(target, 0o755);
@@ -103,7 +103,7 @@ export class DesktopBin {
     return [...chosen.keys()];
   }
 
-  async #executable(at: string, source: AkanBinSource): Promise<string> {
+  async executable(at: string, source: AkanBinSource): Promise<string> {
     const file = "url" in source ? await this.#download(at, source) : source.path;
     if (!(await Bun.file(file).exists())) throw new Error(`${at}: ${file} does not exist`);
     if (!source.file) return file;

@@ -9,7 +9,10 @@ interface Dict {
 }
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: Dict) {
   const { Model, model } = dict;
-  const remove = { tag: "Model.Remove", attrs: [`modelId={${model}Id}`, `slice={fetch.slice.${model}}`] };
+  const remove = {
+    tag: "Model.Remove",
+    attrs: [`className="flex items-center gap-1"`, `modelId={${model}Id}`, `slice={fetch.slice.${model}}`],
+  };
   return {
     filename: `${Model}.Util.tsx`,
     content: `"use client";

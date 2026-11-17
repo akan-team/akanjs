@@ -23,6 +23,7 @@ export declare class AgentBridge {
 export declare class AgentContext {
     static readonly withheldNote = "Free text is left out. Call readState(key) with a key of `withheld` to read it.";
     static readonly screenNote = "Labels left out are text on the page. Call readScreen with `section` set to a scope's path to read them.";
+    static readonly resourceNote = "A resource marked `withheld` holds free text. Call readState with the resource's name to read all of it.";
     static of(): AgentContext;
     static routePath(pathname: string): string;
     constructor(instance: StoreInstance, bridge: AgentBridge);
@@ -168,7 +169,7 @@ export declare class StoreSurfaceSource implements SurfaceSource {
         "highlight",
         "viewImage"
     ];
-    constructor(bridge?: AgentBridge);
+    constructor(bridge?: AgentBridge, surface?: AgenticSurface);
     tools: (view?: string[]) => ToolEntry[];
 }
 

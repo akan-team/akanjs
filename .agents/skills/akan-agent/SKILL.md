@@ -44,8 +44,8 @@ agent nothing, and only the current page's declarations are live.
   param or a list row's title included, is left out and read with `readState` or `readScreen`, so instructions say
   "read `searchParams`", never "the query is in the route context". A search param rides inline when a store
   declares its key with `search()`; of the others at most four short ones do. A zone's `label` and a value
-  published with `st.expose`, `st.useState` or `useAgentResource` ride whole: publish an id or a count there, never
-  text a user wrote.
+  published with `st.expose`, `st.useState` or `useAgentResource` follow the same rule: free text there is read
+  with `readScreen` of the zone or `readState(name)`.
 - A tool value is capped at 20,000 characters.
 - Route guidance is `<Agent.Guide instructions="…" />`; model-facing text is English.
 

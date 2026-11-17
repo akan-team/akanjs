@@ -33,6 +33,8 @@ paths:
 - A layer-root `index.ts` is generated; a `ui/<Folder>/index.tsx` building a namespace is hand-written (a generated
   barrel holds only `export *` lines). `ui/<Folder>/index_.tsx` is the `"use client"` + `lazy()` boundary beside a
   server-safe `index.tsx` — merging the pair breaks RSC.
+- The barrel exports each camelCase file and folder (PascalCase in `ui/`). A dotted file (`vision.worker.ts`) or a
+  `_folder/` stays out: the place for code only a spawned process may load, such as a native addon's.
 
 - **No `//!` or `/*!` in browser-reachable code** (`ui/`, `webkit/`, `common/`, `page/**/*.tsx`, `*.constant.ts`,
   `*.store.ts`, module components; `no-bang-comment-in-client`) — Bun keeps both through minification. Use `// FIXME:`.

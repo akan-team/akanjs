@@ -354,7 +354,7 @@ export class SsrScanner {
   // Zone/Template/Util carry the directive by file role, and `index_.tsx` is the declared lazy() boundary.
   #isConventionClientFile(file: string) {
     if (file.endsWith("/index_.tsx")) return true;
-    return /\.(Zone|Template|Util)\.tsx$/.test(file) && this.#getModuleDir(file) !== null;
+    return /\/lib\/_?[^_/][^/]*\/.*\.(Zone|Template|Util)\.tsx$/.test(file);
   }
 
   #isBalancedFile(file: string) {

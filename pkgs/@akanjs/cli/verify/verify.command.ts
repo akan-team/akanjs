@@ -29,14 +29,20 @@ export class VerifyCommand extends command("verify", [VerifyScript], ({ public: 
     .option("build", Boolean, { flag: "b", desc: "build the changed apps once lint and typecheck pass", default: true })
     .option("max", Number, { flag: "m", desc: "diagnostic lines to print, 0 for all", default: 20 })
     .option("format", String, { flag: "f", desc: "output format", default: "text", enum: ["text", "json"] })
+    .option("comments", Boolean, {
+      flag: "c",
+      desc: "list every comment added since the last commit, an earlier run's included",
+      default: false,
+    })
     .with(Workspace)
-    .exec(async function (targets, files, lintOnly, build, max, format, workspace) {
+    .exec(async function (targets, files, lintOnly, build, max, format, comments, workspace) {
       await this.verifyScript.verify(workspace, listOf(targets), {
         files: listOf(files),
         lintOnly,
         build,
         max,
         format: format === "json" ? "json" : "text",
+        comments,
       });
     }),
 })) {}

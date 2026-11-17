@@ -47,11 +47,8 @@ the literal string `"false"`.
 
 ## Classes
 
-Never hand-order Tailwind classes; the formatter sorts them and its output is correct. Stay inside the
-semantic token vocabulary — `bg-primary`, `text-foreground/70` — because a raw palette class (`bg-blue-500`),
-an arbitrary colour (`bg-[#3b82f6]`), a daisyUI legacy class, and a colour literal in `style={{…}}` all
-render no CSS and fail lint. Reach for `cn` only for a conditional or to merge an incoming `className`, and
-merge the caller last.
+Class order and the colour vocabulary are the `style` rule. Reach for `cn` only for a conditional or to merge an
+incoming `className`, and merge the caller last.
 
 ## Forms
 

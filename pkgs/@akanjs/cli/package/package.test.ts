@@ -373,6 +373,27 @@ describe("PackageRunner", () => {
     );
   });
 
+  test("rejects an akanjs dist that would publish the framework's ARCHITECTURE.md", async () => {
+    const { root, pkg } = track(await createTempPackage("akanjs"));
+    await writeJson(`${root}/dist/pkgs/akanjs/package.json`, {
+      name: "akanjs",
+      version: "1.2.3",
+      publishConfig: { access: "public" },
+      exports: { ".": { types: "./types/index.d.ts", import: "./index.ts" } },
+    });
+    await writeText(`${root}/dist/pkgs/akanjs/README.md`, "# Akan\n");
+    await writeText(`${root}/dist/pkgs/akanjs/README.ko.md`, "# Akan KO\n");
+    const packed = (paths: string[]) =>
+      (async () => JSON.stringify([{ files: paths.map((path) => ({ path })), size: 9 }])) as never;
+
+    pkg.workspace.spawn = packed(["package.json", "ARCHITECTURE.md"]);
+    await expect(new PackageRunner().verifyDistPackage(pkg)).rejects.toThrow(
+      "akanjs would publish ARCHITECTURE.md, a contributor document kept in the repository",
+    );
+    pkg.workspace.spawn = packed(["package.json", "README.md"]);
+    await expect(new PackageRunner().verifyDistPackage(pkg)).resolves.toMatchObject({ name: "akanjs", files: 2 });
+  });
+
   test("verifies dist package metadata with npm pack dry-run", async () => {
     const { root, pkg } = track(await createTempPackage("@sample/tool"));
     await writeJson(`${root}/dist/pkgs/@sample/tool/package.json`, {
