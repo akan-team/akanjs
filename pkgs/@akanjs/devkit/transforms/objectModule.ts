@@ -10,7 +10,10 @@ export interface ObjectMemberImport {
 }
 
 export interface ObjectShape {
-  /** null: a member the analysis cannot point at a file (declared in the object's own file, or computed there). */
+  /**
+   * null: a member the analysis cannot point at a file (declared in the object's own file, or computed there).
+   * `Doc.Zone` keys a member of an object literal written one level down (`{ Doc: { Zone } }`).
+   */
   members: Map<string, ObjectMemberImport | null>;
   /** Members the analysis cannot list (a spread, a computed key, an object copied in by name). */
   open: boolean;
@@ -288,16 +291,27 @@ export class ObjectModule {
       if (entry.target !== local) continue;
       isObject = true;
       if (entry.member === null) this.#addSource(shape, entry.value);
-      else shape.members.set(entry.member, this.#memberOf(entry.value));
+      else ObjectModule.#setMember(shape, entry.member, this.#memberOf(entry.value));
     }
     return isObject ? shape : null;
+  }
+
+  static #setMember(shape: ObjectShape, key: string, member: ObjectMemberImport | null) {
+    for (const known of shape.members.keys()) if (known.startsWith(`${key}.`)) shape.members.delete(known);
+    shape.members.set(key, member);
+  }
+
+  //? A spread or computed key may overwrite any member listed before it, so none of those still names a file.
+  static #cover(shape: ObjectShape, prefix: string) {
+    if (!prefix) shape.open = true;
+    for (const key of shape.members.keys()) if (key.startsWith(prefix)) shape.members.set(key, null);
   }
 
   #addSource(shape: ObjectShape, node: ts.Expression) {
     const value = ObjectModule.#unwrap(node);
     if (ts.isObjectLiteralExpression(value)) this.#addLiteral(shape, value);
     else if (!ts.isArrowFunction(value) && !ts.isFunctionExpression(value) && !this.#isLocalFunction(value))
-      shape.open = true;
+      ObjectModule.#cover(shape, "");
   }
 
   #isLocalFunction(value: ts.Expression) {
@@ -308,20 +322,23 @@ export class ObjectModule {
     return ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped);
   }
 
-  #addLiteral(shape: ObjectShape, literal: ts.ObjectLiteralExpression) {
+  #addLiteral(shape: ObjectShape, literal: ts.ObjectLiteralExpression, prefix = "") {
     for (const property of literal.properties) {
-      if (ts.isSpreadAssignment(property)) {
-        shape.open = true;
+      const name = ts.isSpreadAssignment(property) ? null : ObjectModule.#keyOf(property.name);
+      if (name === null) {
+        ObjectModule.#cover(shape, prefix);
         continue;
       }
-      const key = ObjectModule.#keyOf(property.name);
-      if (key === null) {
-        shape.open = true;
-        continue;
-      }
-      if (ts.isPropertyAssignment(property)) shape.members.set(key, this.#memberOf(property.initializer));
-      else if (ts.isShorthandPropertyAssignment(property)) shape.members.set(key, this.#memberOf(property.name));
-      else shape.members.set(key, null);
+      const key = `${prefix}${name}`;
+      const value = ts.isPropertyAssignment(property) ? ObjectModule.#unwrap(property.initializer) : null;
+      if (name.includes(".")) ObjectModule.#setMember(shape, key, null);
+      else if (value && ts.isObjectLiteralExpression(value) && !prefix) {
+        ObjectModule.#setMember(shape, key, null);
+        this.#addLiteral(shape, value, `${key}.`);
+      } else if (value) ObjectModule.#setMember(shape, key, this.#memberOf(value));
+      else if (ts.isShorthandPropertyAssignment(property))
+        ObjectModule.#setMember(shape, key, this.#memberOf(property.name));
+      else ObjectModule.#setMember(shape, key, null);
     }
   }
 

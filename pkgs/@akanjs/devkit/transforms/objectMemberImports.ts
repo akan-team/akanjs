@@ -136,7 +136,7 @@ export class ObjectMemberImports {
       if (!file) continue;
       const moduleFacts = await this.#modules.facts(file);
       const shape = moduleFacts?.objects.get(candidate.imported);
-      if (!moduleFacts || !shape) continue;
+      if (!moduleFacts || !shape || ![...shape.members.values()].some(Boolean)) continue;
       candidate.file = file;
       read.add(file);
       facts.set(candidate, { facts: moduleFacts, shape });
@@ -259,7 +259,8 @@ export class ObjectMemberImports {
     read: Set<string>,
   ): Promise<MemberTarget | ObjectKeepReason> {
     const [name, inner] = memberPath;
-    const member = name === undefined ? undefined : shape.members.get(name);
+    const nested = inner === undefined ? undefined : shape.members.get(`${name}.${inner}`);
+    const member = nested ?? (name === undefined ? undefined : shape.members.get(name));
     if (!member) return "unresolved-member";
     const bare = ObjectMemberImports.#isPathSpecifier(member.specifier) ? null : member.specifier;
     const target = bare
@@ -270,6 +271,7 @@ export class ObjectMemberImports {
     if (!exports) return "unresolved-member";
     read.add(target);
     if (moduleFacts.useClient && !clientImporter && !exports.useClient) return "server-boundary";
+    if (nested) return { file: target, bare, imported: member.imported, depth: 2 };
     if (member.imported !== "*") return { file: target, bare, imported: member.imported, depth: 1 };
     if (inner !== undefined && exports.names.has(inner)) return { file: target, bare, imported: inner, depth: 2 };
     return { file: target, bare, imported: "*", depth: 1 };

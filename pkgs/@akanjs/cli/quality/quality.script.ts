@@ -1,6 +1,7 @@
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { MaintainabilityBaseline } from "@akanjs/devkit/quality/maintainabilityBaseline";
+import { ObjectImportReport } from "@akanjs/devkit/quality/objectImportReport";
 import {
   AkanQualityScanner,
   formatQualityScanResult,
@@ -29,8 +30,13 @@ export class QualityScript extends script("quality", [WorkspaceRunner]) {
   async runtime(workspace: Workspace, format: "text" | "json" = "text") {
     const spinner = workspace.spinning("Reading which client files a page can load module by module...");
     const result = await RuntimeScopeReport.scan(workspace.workspaceRoot);
+    const objects = await ObjectImportReport.scan(workspace);
     spinner.succeed(`Runtime scan completed (${result.scopes.length} scopes, ${result.notes.length} notes)`);
-    Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : RuntimeScopeReport.format(result));
+    if (format === "json") Logger.rawLog(JSON.stringify({ ...result, objects }, null, 2));
+    else
+      Logger.rawLog(
+        [RuntimeScopeReport.format(result), ObjectImportReport.format(objects)].filter(Boolean).join("\n\n"),
+      );
   }
 
   //* A one-time step when a workspace adopts the maintainability gate; `akan lint` only ever lowers what it records.
