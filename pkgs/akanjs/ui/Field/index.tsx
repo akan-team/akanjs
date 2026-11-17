@@ -1,7 +1,5 @@
-"use client";
 import { cn } from "akanjs/client";
 import type { ReactNode } from "react";
-import { memo } from "react";
 import { MultiToggleSelect, Switch, ToggleSelect } from "./Choice";
 import { List, Tags, TextList } from "./Collection";
 import { Date, DateRange } from "./DateField";
@@ -40,8 +38,8 @@ const FieldSection = ({
 export const Field = Object.assign(FieldSection, {
   Label,
   List,
-  Text: memo(Text),
-  TextArea: memo(TextArea),
+  Text,
+  TextArea,
   Switch,
   ToggleSelect,
   MultiToggleSelect,
