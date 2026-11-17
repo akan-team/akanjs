@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { realpath } from "node:fs/promises";
+import { realpath, utimes } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
 import { tempDirs, writeText as write } from "../test/testHelpers";
@@ -150,6 +150,22 @@ describe("DevRouteRuntime", () => {
     expect(unknown?.contents).not.toContain("draft.st");
     expect(known?.contents).toContain('"../lib/__client/draft.st.ts"');
     expect(known?.stamp).not.toBe(unknown?.stamp);
+  });
+
+  test("a save of a scalar's constant file moves the inputs, and the table read again holds the name it declares", async () => {
+    const { root, file } = await routeWorkspace();
+    const scalar = (names: string[]) =>
+      `import { via } from "akanjs/constant";\n${names.map((name) => `export class ${name} extends via((field) => ({ lat: field(Number) })) {}\n`).join("")}`;
+    await write(file("lib/__scalar/spot/spot.constant.ts"), scalar(["Spot"]));
+    const inputs = DevRouteRuntime.inputsOf(root, ["apps/demo"]);
+    const before = await DevRouteRuntime.read(root, "apps/demo");
+
+    await write(file("lib/__scalar/spot/spot.constant.ts"), scalar(["Spot", "SpotRange"]));
+    await utimes(file("lib/__scalar/spot/spot.constant.ts"), new Date(), new Date(Date.now() + 5_000));
+    const after = await DevRouteRuntime.read(root, "apps/demo");
+
+    expect(DevRouteRuntime.inputsOf(root, ["apps/demo"])).not.toBe(inputs);
+    expect(before?.digest).not.toBe(after?.digest);
   });
 
   test("a file edited to read a store by a name picked at run time takes the assembled runtime instead of pieces", async () => {
