@@ -1779,7 +1779,8 @@ describe("StoreRegistry and root assembly", () => {
       ),
     );
     await whole.do.writeHandedDraft("typed before the reference loaded");
-    await whole.do.initStoreTestItemByTitle("Ada");
+    const sliceActions = whole.do as unknown as Record<string, (title: string) => Promise<void>>;
+    await sliceActions.initStoreTestItemByTitle("Ada");
     const rows = whole.get().storeTestItemListByTitle;
     const sliceBefore = whole.slice.storeTestItemByTitle;
     const heard: string[] = [];
