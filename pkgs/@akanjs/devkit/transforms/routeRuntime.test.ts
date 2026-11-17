@@ -604,10 +604,15 @@ export const read = () => [__akanCnst0, __akanCnst1, __akanCnst2, fetch.memoNote
       `import "${root}/apps/demo/lib/cnst.ts";\nexport { note } from "../cnst";\n`,
     );
     expect(lone("apps/demo/lib/board/board.constant.ts")).toBeNull();
+    expect(lone("apps/demo/lib/cnst.ts")?.source).toBe(
+      `\nimport "${root}/apps/demo/lib/__client/board.cnst.ts";\nimport "${root}/libs/kit/lib/__client/note.cnst.ts";\nimport "${root}/libs/kit/lib/__client/tag.cnst.ts";\n`,
+    );
+    expect(lone("libs/kit/lib/cnst.ts")).toBeNull();
     const both = planned({ "/card": [uiFile("Card")], "/lone": [uiFile("Lone")] });
     expect(both("apps/demo/lib/__client/board.cnst.ts")).toBeNull();
     expect(both("apps/demo/lib/board/board.constant.ts")?.pieces).toEqual(["libs/kit/lib/__client/note.cnst"]);
     expect(both("libs/kit/lib/__client/note.cnst.ts")).toBeNull();
+    expect(both("apps/demo/lib/cnst.ts")?.source).toBe(`\nimport "${root}/libs/kit/lib/__client/tag.cnst.ts";\n`);
   });
 
   test("keeps every constant where a piece it would load was not generated", () => {

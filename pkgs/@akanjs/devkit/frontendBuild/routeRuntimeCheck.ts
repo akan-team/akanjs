@@ -101,7 +101,9 @@ export class RouteRuntimeCheck {
     for (const component of this.#components()) {
       const members = new Set(component);
       const store = component.find((module) => storeFile.test(this.#nameOf(module)));
-      const registration = component.find((module) => constantPiece.test(this.#nameOf(module)));
+      const registration = component.find(
+        (module) => constantPiece.test(this.#nameOf(module)) && !this.#narrowed?.wholeConstantReaders?.has(module),
+      );
       if (!store && registration) {
         const importer = component.find((module) => this.#staticImportsOf(module).includes(registration)) ?? "";
         failures.push(

@@ -137,6 +137,9 @@ describe('what a `clientRuntime: "route"` build checks in its own output', () =>
     ]);
     expect(failuresOf({ imports, chunks, chunkImports: toConstants }, { entries: {} })).toHaveLength(1);
     expect(failuresOf({ imports, chunks, chunkImports: toConstants })).toHaveLength(1);
+    const together = { ...imports, [constants]: [answering] };
+    expect(failuresOf({ imports: together }, answered)).toEqual([]);
+    expect(failuresOf({ imports: together }, { entries: {} })).toHaveLength(1);
   });
 
   test("a page built to load only the modules its code names reaches every constant only through a file `akan quality runtime` names", () => {
