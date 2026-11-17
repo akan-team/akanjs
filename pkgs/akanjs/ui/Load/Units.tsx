@@ -16,7 +16,6 @@ import { sliceNamesOf } from "../sliceNamesOf";
 import Stream from "./Stream";
 import type { StreamError } from "./StreamBoundary";
 import { SliceClaim } from "./sliceClaim";
-import "../modelRuntime";
 
 interface DefaultProps<L extends { id: string }> {
   containerRef?: RefObject<HTMLDivElement | null>;
@@ -83,7 +82,7 @@ function Render<RefName extends string, Light extends { id: string }>({
   const { names, namesOfSlice } = sliceNamesOf(modelName, sliceName);
   const { pageKey } = usePathCtx();
   const activity = usePageActivity();
-  const [claim] = useState(() => new SliceClaim(sliceName, namesOfSlice, pageKey));
+  const [claim] = useState(() => new SliceClaim(init, pageKey));
   const modelList = storeUse[namesOfSlice.modelList]() as DataList<Light>;
   const modelListLoading = storeUse[namesOfSlice.modelListLoading]() as string | boolean;
   const initQueryArgs = (init as DynamicRecord)[names.queryArgsOfModel] as object[];

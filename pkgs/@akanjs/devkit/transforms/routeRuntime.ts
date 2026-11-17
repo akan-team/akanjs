@@ -7,6 +7,7 @@ import { RuntimeImports } from "../quality/runtimeImports";
 import { RuntimeNameTable } from "../quality/runtimeNameTable";
 import { RuntimeScopeReport } from "../quality/runtimeScopeReport";
 import { RuntimeUse, type RuntimeUseVerdict } from "../quality/runtimeUse";
+import { ModelReference } from "./modelReference";
 import { type RouteRuntimeBundle, RouteRuntimeGraph } from "./routeRuntimeGraph";
 
 export interface RouteRuntimeResult {
@@ -34,7 +35,9 @@ const handleNames = new Set(["fetch", "sig", "st"]);
 const macroAttribute = /with\s*\{\s*type\s*:\s*["']macro["']\s*\}/;
 const storeFile = /^((?:apps|libs)\/[^/]+)\/lib\/_?[^/]+\/([^/]+)\.store\.ts$/;
 const wholeFile = /^((?:apps|libs)\/[^/]+)\/lib\/(useClient|st)\.ts$/;
-const runtimeFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:(?:useClient|st|usePage)\.ts|__client\/[^/]+\.ts)$/;
+//? A model's reference file is not one: it is an entry the plan narrows like a page's own client file.
+const runtimeFile =
+  /^(?:apps|libs)\/[^/]+\/lib\/(?:(?:useClient|st|usePage)\.ts|__client\/(?![^/]+\.ref\.ts$)[^/]+\.ts)$/;
 const storePiece = /^((?:apps|libs)\/[^/]+)\/lib\/__client\/([^/_][^/]*)\.st$/;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
 //? The tab's one store: a scope's `lib/st.ts` exports this same object, and a key answers once its module has loaded.
@@ -274,6 +277,8 @@ export class RouteRuntime {
 
   #routeNow(source: string, absPath: string): RouteRuntimeResult | null {
     const fileName = this.fileNameOf(absPath);
+    const referenced = fileName ? ModelReference.modelOf(fileName) : null;
+    if (referenced) return this.#referenceOf(source, referenced);
     if (!fileName || !RuntimeScopeReport.isRuntimeSource(fileName) || macroAttribute.test(source)) return null;
     const [, storeScope, storeModule] = fileName.match(storeFile) ?? [];
     const planned = this.#planned;
@@ -302,6 +307,17 @@ export class RouteRuntime {
     const edits = sourceFile.statements.flatMap((statement) => this.#importEdit(statement, sourceFile, fileName));
     if (pieces.length) edits.push(this.#leading(sourceFile, this.#after(pieces, aliasOf)));
     return { source: RouteRuntime.#apply(source, edits), perModule: true, pieces };
+  }
+
+  //? Loads what a file writing `st.use.<model>` loads: a framework component reads that store for a handed object.
+  #referenceOf(source: string, model: string): RouteRuntimeResult {
+    const store = this.#table.lookup("st.use", model);
+    const needs = store ? "store" : "descriptor";
+    const named = store ?? this.#table.lookup("fetch.serializedSignal", model);
+    const owners = (named?.owners ?? []).map((owner) => ({ ...owner, needs }) as const);
+    const pieces = this.#piecesOf({ resolvable: true, owners, baseStore: false, baseDescriptor: false, reads: true });
+    const loads = pieces ? this.#after(pieces, (piece) => `@${piece}`) : this.wholeImports;
+    return { source: ModelReference.sourceOf(source, loads), perModule: !!pieces, pieces: pieces ?? [] };
   }
 
   static #parse(fileName: string, source: string): ts.SourceFile | null {
