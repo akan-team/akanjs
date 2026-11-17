@@ -262,6 +262,96 @@ describe("DictionaryAssetBuilder", () => {
       60_000,
     );
 
+  describe("under clientRuntime route", () => {
+    const routedDictionary = {
+      en: {
+        base: { t: "Base", ok: { t: "OK" } },
+        memo: { t: "Memo", signal: { getMemo: { t: "Get Memo", desc: { t: "Reads a memo" } } } },
+        user: { t: "User" },
+        util: { t: "Util" },
+      },
+      ko: { base: { t: "기본" }, memo: { t: "메모" } },
+    };
+    const routes = new Map([
+      ["/:lang/memo", ["base", "memo"]],
+      ["/:lang/user", ["base", "user", "unknownGroup"]],
+    ]);
+    interface PartModule {
+      default: Record<string, unknown>;
+      groups: string[];
+      table: string;
+      parts?: object;
+    }
+    const importOf = async <Module>(artifactDir: string, url: string) =>
+      (await import(path.join(artifactDir, url.replace(/^\/_akan\//, "")))) as Module;
+
+    test("writes the files each route loads, and the table naming each group's file, for every locale", async () => {
+      const { app, artifactDir } = await makeApp(dictSourceOf(routedDictionary));
+      const built = await new DictionaryAssetBuilder(app, artifactDir).buildAll(i18n, { splitApi: true, routes });
+
+      expect(Object.keys(built.routes ?? {})).toEqual(["/:lang/memo", "/:lang/user"]);
+      for (const lang of i18n.locales) {
+        const asset = built.assets[lang];
+        const routeParts = asset?.routeParts;
+        if (!asset || !routeParts) throw new Error(`no route files for ${lang}`);
+        const table = await importOf<{ files: string[]; default: Record<string, number> }>(
+          artifactDir,
+          routeParts.table.url,
+        );
+        expect(table.files).toEqual(routeParts.files.map(({ url }) => url));
+        const page = await importOf<PartModule>(artifactDir, asset.url);
+        expect(page.table).toBe(routeParts.table.url);
+        for (const [routeId, shown] of routes) {
+          const merged: Record<string, unknown> = {};
+          for (const idx of built.routes?.[routeId] ?? []) {
+            const part = await importOf<PartModule>(artifactDir, table.files[idx] ?? "");
+            expect(part.table).toBe(routeParts.table.url);
+            expect(part.parts).toEqual(page.parts);
+            for (const group of part.groups) expect(table.default[group]).toBe(idx);
+            Object.assign(merged, part.default);
+          }
+          for (const group of shown.filter((group) => group in page.default))
+            expect(merged[group]).toEqual(page.default[group]);
+          expect(merged.util).toBeUndefined();
+        }
+        expect(Object.keys(table.default).sort()).toEqual(["base", "memo", "user", "util"]);
+        expect(built.routes?.["/:lang/memo"]).not.toContain(table.default.util);
+        expect(built.routes?.["/:lang/user"]).not.toContain(table.default.util);
+      }
+    });
+
+    test('writes the page file of `clientRuntime: "all"` unchanged when no route is handed', async () => {
+      const { app, artifactDir } = await makeApp(dictSourceOf(routedDictionary));
+      const plain = await new DictionaryAssetBuilder(app, path.join(artifactDir, "plain")).buildAll(i18n, {
+        splitApi: true,
+      });
+      const routed = await new DictionaryAssetBuilder(app, path.join(artifactDir, "routed")).buildAll(i18n, {
+        splitApi: true,
+        routes: new Map(),
+      });
+
+      expect(routed).toEqual(plain);
+      expect(plain.routes).toBeUndefined();
+      expect(plain.assets.en?.routeParts).toBeUndefined();
+      expect((await readdir(path.join(artifactDir, "plain/dict"))).length).toBe(4);
+    });
+
+    test("development writes one file per group and the index of each, as each route's groups are read when it builds", async () => {
+      const { app, artifactDir } = await makeApp(dictSourceOf(routedDictionary));
+      const built = await new DictionaryAssetBuilder(app, artifactDir).buildAll(i18n, { everyGroupAlone: true });
+
+      expect(built.routes).toBeUndefined();
+      expect(built.groups).toEqual({ base: 0, memo: 1, user: 2, util: 3 });
+      const files = built.assets.ko?.routeParts?.files ?? [];
+      expect(files).toHaveLength(4);
+      for (const [group, idx] of Object.entries(built.groups ?? {})) {
+        const part = await importOf<PartModule>(artifactDir, files[idx]?.url ?? "");
+        expect(part.groups).toEqual([group]);
+        expect(Object.keys(part.default)).toEqual([group]);
+      }
+    });
+  });
+
   test("writes nothing for an app without a dictionary", async () => {
     const { app, artifactDir } = await makeApp();
     expect(await new DictionaryAssetBuilder(app, artifactDir).build({ defaultLocale: "en", locales: ["en"] })).toEqual(

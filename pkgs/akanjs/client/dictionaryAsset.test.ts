@@ -96,4 +96,99 @@ export default { app: { title: { t: "Page left" } } };`,
 
     expect(Translator.translateByLocale("xa", "app.title")).toBe("Page shown");
   });
+
+  describe("a route's files", () => {
+    const writePart = (lang: string, table: string, groups: Record<string, string>) => {
+      const file = path.join(root, `${lang}-part-${++moduleSeq}.js`);
+      const dictionary = Object.fromEntries(Object.entries(groups).map(([group, title]) => [group, { t: title }]));
+      fs.writeFileSync(
+        file,
+        `globalThis.__dictEvaluations = (globalThis.__dictEvaluations ?? 0) + 1;
+export const lang = ${JSON.stringify(lang)};
+export const table = ${JSON.stringify(table)};
+export const groups = ${JSON.stringify(Object.keys(groups))};
+export default ${JSON.stringify(dictionary)};`,
+      );
+      return file;
+    };
+
+    test("merges every file a route names, as the document and the RSC response list them", async () => {
+      const table = path.join(root, "xb-table-1.js");
+      const base = writePart("xb", table, { base: "Base" });
+      const memo = writePart("xb", table, { memo: "Memo" });
+
+      await DictionaryAsset.load(`${base},${memo}`);
+
+      expect(Translator.translateByLocale("xb", "base")).toBe("Base");
+      expect(Translator.translateByLocale("xb", "memo")).toBe("Memo");
+      expect(DictionaryAsset.holdsEveryGroup("xb")).toBe(false);
+    });
+
+    test("a navigation loads only the next route's new files, and keeps the groups merged before", async () => {
+      const table = path.join(root, "xc-table-1.js");
+      const base = writePart("xc", table, { base: "Base" });
+      const memo = writePart("xc", table, { memo: "Memo" });
+      const user = writePart("xc", table, { user: "User" });
+      await DictionaryAsset.load([base, memo]);
+      const before = evaluations();
+
+      await DictionaryAsset.load([base, user]);
+
+      expect(evaluations() - before).toBe(1);
+      expect(Translator.translateByLocale("xc", "memo")).toBe("Memo");
+      expect(Translator.translateByLocale("xc", "user")).toBe("User");
+    });
+
+    test("a file of another build replaces the locale, dropping the groups the old build's files merged", async () => {
+      const oldMemo = writePart("xd", path.join(root, "xd-table-old.js"), { memo: "Old memo", user: "Old user" });
+      await DictionaryAsset.load(oldMemo);
+
+      await DictionaryAsset.load(writePart("xd", path.join(root, "xd-table-new.js"), { memo: "New memo" }));
+
+      expect(Translator.translateByLocale("xd", "memo")).toBe("New memo");
+      expect(Translator.translateByLocale("xd", "user")).toBe("user");
+    });
+
+    test("a language switch loads the route's files of the new language beside the old one's", async () => {
+      await DictionaryAsset.load(writePart("xe", path.join(root, "xe-table.js"), { memo: "Memo" }));
+
+      await DictionaryAsset.load(writePart("xf", path.join(root, "xf-table.js"), { memo: "메모" }));
+
+      expect(Translator.translateByLocale("xe", "memo")).toBe("Memo");
+      expect(Translator.translateByLocale("xf", "memo")).toBe("메모");
+    });
+
+    test("a page file of the same build holds every group, so a route's file adds nothing to it", async () => {
+      const table = path.join(root, "xg-table.js");
+      const page = path.join(root, `xg-page-${++moduleSeq}.js`);
+      fs.writeFileSync(
+        page,
+        `export const lang = "xg";
+export const table = ${JSON.stringify(table)};
+export default { base: { t: "Base" }, memo: { t: "Memo" } };`,
+      );
+      await DictionaryAsset.load(page);
+
+      expect(DictionaryAsset.holdsEveryGroup("xg")).toBe(true);
+      expect(await DictionaryAsset.add(writePart("xg", table, { memo: "Memo from a part" }))).toBe(true);
+      expect(Translator.translateByLocale("xg", "memo")).toBe("Memo");
+    });
+
+    test("applies the files that loaded when one fails, and the failed one loads on the next try", async () => {
+      const table = path.join(root, "xh-table.js");
+      const base = writePart("xh", table, { base: "Base" });
+      const late = path.join(root, `xh-late-${++moduleSeq}.js`);
+
+      await expect(DictionaryAsset.load([base, late])).rejects.toThrow();
+      expect(Translator.translateByLocale("xh", "base")).toBe("Base");
+      fs.writeFileSync(
+        late,
+        `export const lang = "xh"; export const table = ${JSON.stringify(table)}; export const groups = ["memo"];
+export default { memo: { t: "Memo" } };`,
+      );
+      await DictionaryAsset.load([base, late]);
+
+      expect(Translator.translateByLocale("xh", "memo")).toBe("Memo");
+    });
+  });
 });
