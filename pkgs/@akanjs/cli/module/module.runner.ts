@@ -75,17 +75,15 @@ export class ModuleRunner extends runner("module") {
   }
 
   async createComponentTemplate(module: Module, type: "unit" | "view" | "template" | "zone" | "util") {
+    const service = module.name.startsWith("_");
+    const model = service ? module.name.slice(1) : module.name;
+    const filename = `${capitalize(model)}.${capitalize(type)}.tsx`;
     await module.sys.applyTemplate({
       basePath: `./lib/${module.name}`,
-      template: `module/__Model__.${capitalize(type)}.tsx`,
-      dict: { model: module.name, sysName: module.sys.name, sysType: module.sys.type },
+      template: `${service ? "serviceUi" : "module"}/__Model__.${capitalize(type)}.tsx`,
+      dict: { model, sysName: module.sys.name, sysType: module.sys.type },
     });
-    return {
-      component: {
-        filename: `${capitalize(module.name)}.${capitalize(type)}.tsx`,
-        content: await module.sys.readFile(`lib/${module.name}/${capitalize(module.name)}.${capitalize(type)}.tsx`),
-      },
-    };
+    return { component: { filename, content: await module.sys.readFile(`lib/${module.name}/${filename}`) } };
   }
 
   async createModuleTemplate(module: Module) {

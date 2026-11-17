@@ -27,6 +27,7 @@ import type {
   WorkflowStepResult,
 } from "./types";
 import { addFieldUiPolicyForType } from "./uiPolicy";
+import { isUiSurface } from "./uiTarget";
 
 export const workflowStepKey = (workflow: string, stepId: string) => `${workflow}:${stepId}`;
 
@@ -428,10 +429,13 @@ export const createWorkflowStepRegistry = ({
     },
     [workflowStepKey("create-ui", "create-ui")]: async (_step, plan) => {
       const surface = workflowStringInput(plan.inputs.surface);
-      if (surface !== "view" && surface !== "unit" && surface !== "template") {
+      if (!isUiSurface(surface)) {
         return {
           diagnostics: [
-            unsupportedInput("surface", "Workflow apply currently supports create-ui surfaces: view, unit, template."),
+            unsupportedInput(
+              "surface",
+              "Workflow apply supports create-ui surfaces: view, unit, template, zone, util.",
+            ),
           ],
         };
       }

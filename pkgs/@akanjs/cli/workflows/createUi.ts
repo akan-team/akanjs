@@ -1,5 +1,5 @@
 import type { WorkflowSpec } from "@akanjs/devkit/workflow";
-import { baseValidation, inspectModuleStep, moduleInput, syncGeneratedStep, sysInputs, validateTarget } from "./shared";
+import { baseValidation, inspectModuleStep, syncGeneratedStep, sysInputs, validateTarget } from "./shared";
 
 export const createUiWorkflowSpec: WorkflowSpec = {
   schemaVersion: 1,
@@ -8,7 +8,13 @@ export const createUiWorkflowSpec: WorkflowSpec = {
   whenToUse: "Use when the user asks for a View, Unit, Template, Zone, or Util component for an existing module.",
   inputs: {
     ...sysInputs,
-    ...moduleInput,
+    module: {
+      type: "string",
+      required: true,
+      description:
+        "An existing database module, one with lib/<module>/<module>.constant.ts; or, for zone and util only, a service module, named with or without its leading underscore. Not a scalar module.",
+      mustExist: true,
+    },
     surface: {
       type: "string",
       required: true,
