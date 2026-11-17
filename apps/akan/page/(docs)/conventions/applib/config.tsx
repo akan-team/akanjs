@@ -2122,6 +2122,57 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
+                      <strong>A name counts as written in these indirect forms too.</strong> A cast hides nothing:{" "}
+                      <code>(st.use as Loose).memoList()</code>, <code>st.get() as Wide</code>, <code>!</code> and{" "}
+                      <code>satisfies</code> are read as the name after them, and so is <code>const get = st.get</code>{" "}
+                      called later. A computed key asserted as a name is read as that name, directly (
+                      <code>st.slice[sliceName as "memo"]</code>) or through a <code>const</code> (
+                      <code>const key = name as "memoList"</code>, then{" "}
+                      <code>const {"{ [key]: list }"} = this.get()</code>
+                      ): asserting a key as a name tells the build the value is that name or one owned by the same
+                      module, and a union of names counts as each of them. A name built from a slice the function is
+                      handed, such as <code>{`st.use[\`queryArgsOf\${capitalize(slice.sliceName)}\`]`}</code>, loads
+                      nothing of its own when <code>slice</code> is a parameter or prop typed <code>SliceMeta</code> and
+                      the name is put together with <code>capitalize</code> of <code>akanjs/common</code>, a template or{" "}
+                      <code>+</code>: the slice arrived with its model, from <code>fetch</code> or <code>st.slice</code>{" "}
+                      in a client file or from the server. A slice a server component writes by hand, or a deep copy of
+                      one, brings no model; in a client file, write its names out (
+                      <code>{'{ refName: "memo", sliceName: "memoInBoard" }'}</code>) and the file loads that model.
+                      State handed to a function of the same file (<code>MemoStore.announce(this.get())</code>) is read
+                      where that function reads it. A key nothing asserts and a runtime object handed to another file
+                      still keep the whole runtime, and the note of <code>akan quality runtime</code> says what to write
+                      instead.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>이름은 다음과 같은 간접적인 형태로 적어도 적은 것으로 봅니다.</strong> 타입 단언은
+                      아무것도 가리지 않습니다. <code>(st.use as Loose).memoList()</code>, <code>st.get() as Wide</code>
+                      , <code>!</code>, <code>satisfies</code>는 그 뒤의 이름으로 읽고, <code>const get = st.get</code>
+                      을 나중에 호출해도 같습니다. 이름으로 단언한 계산된 키는 그 이름으로 읽습니다. 직접 적어도 되고(
+                      <code>st.slice[sliceName as "memo"]</code>) <code>const</code>를 거쳐도 됩니다(
+                      <code>const key = name as "memoList"</code> 다음에{" "}
+                      <code>const {"{ [key]: list }"} = this.get()</code>). 키를 이름으로 단언하면, 그 값이 그
+                      이름이거나 같은 모듈이 가진 이름이라고 빌드에 알려 주는 것이며, 이름의 유니언은 각각의 이름으로
+                      셉니다. 함수가 넘겨받은 슬라이스로 만든 이름(
+                      <code>{`st.use[\`queryArgsOf\${capitalize(slice.sliceName)}\`]`}</code>)은 <code>slice</code>가{" "}
+                      <code>SliceMeta</code> 타입의 매개변수나 prop이고 이름을 <code>akanjs/common</code>의{" "}
+                      <code>capitalize</code>, 템플릿, <code>+</code>로 조립했다면 따로 아무것도 불러오지 않습니다.
+                      슬라이스는 클라이언트 파일의 <code>fetch</code>나 <code>st.slice</code>에서, 또는 서버에서 자기
+                      모델과 함께 도착하기 때문입니다. 서버 컴포넌트가 손으로 쓴 슬라이스와 깊은 복사본은 모델을
+                      가져오지 않습니다. 클라이언트 파일에서는 이름을 그대로 적으면(
+                      <code>{'{ refName: "memo", sliceName: "memoInBoard" }'}</code>) 그 파일이 해당 모델을 불러옵니다.
+                      같은 파일의 함수에 넘긴 상태(<code>MemoStore.announce(this.get())</code>)는 그 함수가 읽는
+                      이름으로 읽습니다. 아무도 단언하지 않은 키와 다른 파일로 넘긴 런타임 객체는 여전히 전체 런타임을
+                      불러오며, <code>akan quality runtime</code>의 노트가 대신 무엇을 적으면 되는지 알려 줍니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
                       <strong>Only the browser code of server-rendered pages changes.</strong> Server rendering, a CSR
                       build and a native app still load everything.
                     </span>

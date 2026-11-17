@@ -52,6 +52,16 @@ describe("the models a route's server modules hand to client components", () => 
     expect(read).toEqual({ referenceFiles: [], unread: null });
   });
 
+  test("do not count every model for a server module that copies the names of a slice it was handed", async () => {
+    const read = await readOf({
+      "apps/demo/page/board.tsx": `${client}export const Board = () => fetch.initMemoInBoard();\n`,
+      "apps/demo/ui/copy.ts":
+        'import type { SliceMeta } from "akanjs/fetch";\nexport const copy = (slice: SliceMeta) => ({ refName: slice.refName, sliceName: slice.sliceName, argLength: 0 });\n',
+    });
+
+    expect(read).toEqual({ referenceFiles: [referenceOf("memo")], unread: null });
+  });
+
   test("are every model once a server module picks the name at run time, and say which file and line", async () => {
     const read = await readOf({
       "apps/demo/page/board.tsx": `${client}export const Board = () => fetch.initMemoInBoard();\n`,

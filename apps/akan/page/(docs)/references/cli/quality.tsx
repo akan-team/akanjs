@@ -438,8 +438,8 @@ akan quality baseline`,
       {
         name: "akan.runtime.whole-scope",
         desc: l.trans({
-          en: "`akan quality runtime` only, as a note: a client file reads `st`, `fetch` or `sig` by a computed key, through a cast, or hands it on or re-exports it, so a page that loads the file loads its scope's whole client runtime. The file works as it is.",
-          ko: "`akan quality runtime`에서만 노트로 뜹니다. 클라이언트 파일이 `st`, `fetch`, `sig`를 계산된 키나 타입 단언으로 읽거나, 다른 곳에 넘기거나 다시 export해서, 그 파일을 불러오는 페이지가 스코프의 클라이언트 런타임 전체를 불러옵니다. 파일은 그대로 동작합니다.",
+          en: "`akan quality runtime` only, as a note: a client file reads `st`, `fetch` or `sig` by a computed key nothing asserts as a name, or hands it on or re-exports it, so a page that loads the file loads its scope's whole client runtime. The file works as it is, and the note says what would make the read visible where there is a usual answer: assert the key as a name, name the endpoint, read the names where the object is.",
+          ko: "`akan quality runtime`에서만 노트로 뜹니다. 클라이언트 파일이 `st`, `fetch`, `sig`를 아무도 이름으로 단언하지 않은 계산된 키로 읽거나, 다른 곳에 넘기거나 다시 export해서, 그 파일을 불러오는 페이지가 스코프의 클라이언트 런타임 전체를 불러옵니다. 파일은 그대로 동작하며, 흔한 해법이 있으면 노트가 읽기를 드러내는 방법을 알려 줍니다. 키를 이름으로 단언하거나, 엔드포인트 이름을 적거나, 객체가 있는 곳에서 이름을 읽으면 됩니다.",
         }),
       },
       {
