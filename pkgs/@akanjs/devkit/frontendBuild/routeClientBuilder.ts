@@ -14,7 +14,7 @@ import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
 import { RouteRuntimeCheck } from "./routeRuntimeCheck";
-import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
+import { VendorFileImports } from "./vendorFileImports";
 
 const SSR_CLIENT_ALIAS_EXTERNALS = [
   "react",
@@ -216,18 +216,20 @@ export class RouteClientBuilder {
 
   async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, routeRuntime: RouteRuntime | null) {
     const reactFastRefresh = process.env.AKAN_REACT_FAST_REFRESH !== "0";
+    const vendorFiles = await VendorFileImports.of(this.#app.workspace.workspaceRoot);
     return new ClientEntriesBundler({
       app: this.#app,
       entries: bootstrapEntries.buildEntries,
       plugins: [
         ...(routeRuntime ? [this.#signalDescriptors(routeRuntime)] : []),
+        vendorFiles.plugin(),
         await createBarrelImportsPlugin(this.#app, {
           pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
-          external: VENDOR_SPECIFIERS,
+          external: vendorFiles.specifiers,
           routeRuntime,
         }),
       ],
-      external: VENDOR_SPECIFIERS,
+      external: vendorFiles.specifiers,
       command: this.#command,
       reactFastRefresh,
     }).bundle();

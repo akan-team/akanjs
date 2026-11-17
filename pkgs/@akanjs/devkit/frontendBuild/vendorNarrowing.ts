@@ -16,6 +16,34 @@ export class VendorNarrowing {
   readonly #akanjsRoot: string;
   readonly #vendorExports: Partial<Record<VendorSpecifier, readonly string[]>>;
 
+  static async akanServerPath(workspaceRoot: string): Promise<string> {
+    const candidates: string[] = [];
+    try {
+      candidates.push(path.dirname(Bun.resolveSync("akanjs/server", workspaceRoot)));
+    } catch {
+      // Source workspaces and bundled CLI execution have different resolution roots; try explicit candidates below.
+    }
+    candidates.push(
+      path.join(workspaceRoot, "pkgs/akanjs/server"),
+      path.join(workspaceRoot, "node_modules/akanjs/server"),
+    );
+    try {
+      candidates.push(path.dirname(Bun.resolveSync("akanjs/server", path.dirname(Bun.main))));
+    } catch {
+      // Published CLI installs may hoist dependencies differently; explicit Bun.main candidates cover that.
+    }
+    candidates.push(
+      path.join(path.dirname(Bun.main), "node_modules/akanjs/server"),
+      path.join(path.dirname(Bun.main), "../../akanjs/server"),
+      path.resolve(import.meta.dir, "../../server"),
+      path.resolve(import.meta.dir, "../server"),
+    );
+    for (const candidate of candidates) {
+      if (await Bun.file(path.join(candidate, "rscClient.tsx")).exists()) return candidate;
+    }
+    throw new Error(`[base-artifact] failed to locate akanjs/server; looked in: ${candidates.join(", ")}`);
+  }
+
   //? A devkit newer than the installed akanjs finds no agent vendor or deprecated re-export there, and builds that
   //? akanjs's vendors whole, as the devkit it shipped with did.
   static entriesIn(akanServerPath: string): VendorEntry[] {

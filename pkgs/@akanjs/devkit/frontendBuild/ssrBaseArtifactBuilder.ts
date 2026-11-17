@@ -160,7 +160,7 @@ export class SsrBaseArtifactBuilder {
       runtimeChunks: RuntimeChunks;
     }
   > {
-    const akanServerPath = await this.#resolveAkanServerPath();
+    const akanServerPath = await VendorNarrowing.akanServerPath(this.#app.workspace.workspaceRoot);
     const rscClientEntry = path.resolve(akanServerPath, "rscClient.tsx");
     const rscSegmentOutletEntry = path.resolve(akanServerPath, "rscSegmentOutlet.tsx");
     const vendorEntries = VendorNarrowing.entriesIn(akanServerPath);
@@ -222,34 +222,6 @@ export class SsrBaseArtifactBuilder {
       };
     }
     return moduleMap;
-  }
-
-  async #resolveAkanServerPath() {
-    const candidates: string[] = [];
-    try {
-      candidates.push(path.dirname(Bun.resolveSync("akanjs/server", this.#app.workspace.workspaceRoot)));
-    } catch {
-      // Source workspaces and bundled CLI execution have different resolution roots; try explicit candidates below.
-    }
-    candidates.push(
-      path.join(this.#app.workspace.workspaceRoot, "pkgs/akanjs/server"),
-      path.join(this.#app.workspace.workspaceRoot, "node_modules/akanjs/server"),
-    );
-    try {
-      candidates.push(path.dirname(Bun.resolveSync("akanjs/server", path.dirname(Bun.main))));
-    } catch {
-      // Published CLI installs may hoist dependencies differently; explicit Bun.main candidates cover that.
-    }
-    candidates.push(
-      path.join(path.dirname(Bun.main), "node_modules/akanjs/server"),
-      path.join(path.dirname(Bun.main), "../../akanjs/server"),
-      path.resolve(import.meta.dir, "../../server"),
-      path.resolve(import.meta.dir, "../server"),
-    );
-    for (const candidate of candidates) {
-      if (await Bun.file(path.join(candidate, "rscClient.tsx")).exists()) return candidate;
-    }
-    throw new Error(`[base-artifact] failed to locate akanjs/server; looked in: ${candidates.join(", ")}`);
   }
 
   async #buildStyleAssets(): Promise<{
