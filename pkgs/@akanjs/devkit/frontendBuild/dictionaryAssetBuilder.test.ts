@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { existsSync } from "node:fs";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { App } from "../commandDecorators";
@@ -248,16 +249,18 @@ describe("DictionaryAssetBuilder", () => {
     });
   }, 30_000);
 
-  test.each(["minimal", "akan"])(
-    "splits apps/%s's dictionary into files that merge back to the whole",
-    async (name) => {
-      const builds = await buildBothWays(path.join(workspaceRoot, "apps", name), await tempRoot());
+  //? `lib/dict.ts` is written by `akan sync`, which the package test job of CI does not run.
+  for (const name of ["minimal", "akan"])
+    test.skipIf(!existsSync(path.join(workspaceRoot, "apps", name, "lib/dict.ts")))(
+      `splits apps/${name}'s dictionary into files that merge back to the whole`,
+      async () => {
+        const builds = await buildBothWays(path.join(workspaceRoot, "apps", name), await tempRoot());
 
-      expect(Object.keys(builds)).toEqual(["en", "ko"]);
-      for (const build of Object.values(builds)) expectSplitOf(build);
-    },
-    60_000,
-  );
+        expect(Object.keys(builds)).toEqual(["en", "ko"]);
+        for (const build of Object.values(builds)) expectSplitOf(build);
+      },
+      60_000,
+    );
 
   test("writes nothing for an app without a dictionary", async () => {
     const { app, artifactDir } = await makeApp();
