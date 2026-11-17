@@ -25,6 +25,8 @@ syncPageLibs?: boolean | string[];
 externalLibs?: string[];
 /** Dependencies whose install scripts `bun install --production` runs, in the image and in a desktop app's server. */
 trustedDependencies?: string[];
+/** Code that runs in a process of its own, such as a native addon the server must not load. */
+workers?: DeepPartial<AkanWorkersConfig>;
 barrelImports?: string[];
 optimizeImports?: string[];
 images?: DeepPartial<AkanImageConfig>;

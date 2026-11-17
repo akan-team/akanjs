@@ -8,6 +8,8 @@ export {
   type AkanServerProps,
   type McpServerOption,
 } from "./akanServer";
+export { AppWorker, type AppWorkerOptions } from "./appWorker";
+export { AppWorkerError, type AppWorkerErrorCode } from "./appWorkerError";
 export {
   type BuildChangesPayload,
   type BuilderControl,

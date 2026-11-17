@@ -397,6 +397,11 @@
       "types": "./server/memoryLimit.ts",
       "default": "./server/memoryLimit.ts"
     },
+    "./server/appWorkerPath": {
+      "import": "./server/appWorkerPath.ts",
+      "types": "./server/appWorkerPath.ts",
+      "default": "./server/appWorkerPath.ts"
+    },
     "./server/ed25519Key": {
       "import": "./server/ed25519Key.ts",
       "types": "./server/ed25519Key.ts",

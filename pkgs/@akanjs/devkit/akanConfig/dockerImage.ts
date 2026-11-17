@@ -1,3 +1,5 @@
+import { type Arch, archs, type DockerRun } from "./types";
+
 //? A Bun bump changes both: `docker buildx imagetools inspect oven/bun:<version>-slim` prints the new multi-arch digest.
 export const BUN_IMAGE_PIN = {
   version: "1.4.4",
@@ -15,3 +17,21 @@ export const DOCKER_WRITE_DIRS = [
   "/workspace/data",
   "/workspace/.akan/artifact/image-cache",
 ];
+
+export const dockerRunScripts = (runs: DockerRun[]) =>
+  runs.map((run) =>
+    typeof run === "string"
+      ? `RUN ${run}`
+      : Object.entries(run)
+          .map(
+            ([arch, script]) => `RUN if [ "$TARGETARCH" = "${arch}" ]; then \
+    ${script}; \
+  fi`,
+          )
+          .join("\n"),
+  );
+
+export const dockerImageScript = (image: string | { [key in Arch]?: string }) =>
+  typeof image === "string"
+    ? `FROM ${image}`
+    : archs.map((arch) => `FROM ${image[arch] ?? DEFAULT_DOCKER_IMAGE} AS ${arch}`).join("\n");
