@@ -1,7 +1,8 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import path from "node:path";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import { tempDirs, writeText as write } from "../test/testHelpers";
+import { RouteRuntime } from "../transforms/routeRuntime";
 import { SsrDevBundler } from "./ssrDevBundler";
 
 const makeTempRoot = tempDirs("akan-ssr-dev-bundler-");
@@ -124,5 +125,42 @@ describe("SsrDevBundler under clientRuntime route", () => {
     expect(warnings).toHaveLength(2);
     expect((await new SsrDevBundler(appOf(root, "all", warnings)).context()).routeRuntime).toBeUndefined();
     expect(warnings).toHaveLength(2);
+  });
+
+  test("loads per module again once a lib the app mounts is synced, with no change to the app's own files", async () => {
+    const root = await makeTempRoot();
+    await writeLib(root, pageFiles);
+    await write(path.join(root, "apps/demo/lib/st.ts"), 'export { st as shared } from "@libs/shared/client";\n');
+    await writeFrameworkBase(root);
+    const warnings: string[] = [];
+    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
+
+    expect((await bundler.context()).routeRuntime).toBeUndefined();
+    expect(warnings).toEqual([expect.stringContaining("runtime files of demo or a lib it mounts are missing")]);
+
+    await write(path.join(root, "libs/shared/lib/st.ts"), "export const st = {};\n");
+    expect((await bundler.context()).routeRuntime?.scopes).toEqual(["libs/shared", "apps/demo"]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  test("says what failed when the modules cannot be read, and loads per module again once they can", async () => {
+    const root = await makeTempRoot();
+    await writeLib(root, pageFiles);
+    await writeFrameworkBase(root);
+    const warnings: string[] = [];
+    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
+    const read = spyOn(RouteRuntime, "read").mockRejectedValue(new Error("memo.store.ts is unreadable"));
+    try {
+      expect((await bundler.context()).routeRuntime).toBeUndefined();
+      await bundler.context();
+    } finally {
+      read.mockRestore();
+    }
+
+    expect(warnings).toEqual([
+      expect.stringContaining("the modules of demo or a lib it mounts could not be read (memo.store.ts is unreadable)"),
+    ]);
+    expect(warnings[0]).toContain("Fix that, then run `akan sync demo`.");
+    expect((await bundler.context()).routeRuntime).toBeDefined();
   });
 });

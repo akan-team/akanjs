@@ -24,8 +24,8 @@ export class SsrDevBundler extends DevRegistryBundler {
   readonly reloadsOnEntryChange = false;
   #discovery: ClientEntryDiscovery | null = null;
   readonly #sharedDiscovery: (() => ClientEntryDiscovery) | null;
-  #route: { inputs: string; runtime: DevRouteRuntime | null } | null = null;
-  #wholeWarned = false;
+  #route: { inputs: string; runtime: DevRouteRuntime } | null = null;
+  #wholeWarned: string | null = null;
 
   /** `discovery` is the resident builder's, which it keeps current with every save; a worker discovers afresh. */
   constructor(app: App, { discovery }: { discovery?: () => ClientEntryDiscovery } = {}) {
@@ -45,9 +45,9 @@ export class SsrDevBundler extends DevRegistryBundler {
           (barrel) => barrel && !(VENDOR_SPECIFIERS as readonly string[]).includes(barrel),
         )
       : workspaceBarrels(akanConfig.barrelImports);
-    const routeRuntime =
-      routed && (await StoreBootstrap.scopeOf(this.app)) === "page" ? await this.#routeRuntime() : null;
-    this.#warnWhole(routed && !routeRuntime);
+    const route = routed ? await this.#routeRuntime() : null;
+    const routeRuntime = typeof route === "string" ? null : route;
+    this.#warnWhole(typeof route === "string" ? route : null);
     const modelRuntime = routeRuntime?.wholeSource;
     const configKey = Bun.hash(
       JSON.stringify([
@@ -75,25 +75,34 @@ export class SsrDevBundler extends DevRegistryBundler {
     };
   }
 
-  async #routeRuntime(): Promise<DevRouteRuntime | null> {
+  //? A runtime that could not be read is never kept: syncing a lib it mounts changes none of the app's own inputs.
+  async #routeRuntime(): Promise<DevRouteRuntime | string> {
+    const { name } = this.app;
+    const whole = (why: string, first = "Run") =>
+      `[client-runtime] clientRuntime: "route" is set, but ${why}, so every page of the development server loads the whole client runtime. ${first} \`akan sync ${name}\`.`;
+    const missing = whole(`the per-module runtime files of ${name} or a lib it mounts are missing`);
+    if ((await StoreBootstrap.scopeOf(this.app)) !== "page") return missing;
     const root = this.app.workspace.workspaceRoot;
-    const scope = `apps/${this.app.name}`;
-    const scopes = this.#route?.runtime?.scopes ?? [scope];
+    const scope = `apps/${name}`;
+    const scopes = this.#route?.runtime.scopes ?? [scope];
     const inputs = DevRouteRuntime.inputsOf(root, scopes);
     if (this.#route?.inputs === inputs) return this.#route.runtime;
-    const runtime = await DevRouteRuntime.read(root, scope);
-    const moved = runtime && JSON.stringify(runtime.scopes) !== JSON.stringify(scopes);
-    this.#route = { inputs: moved ? DevRouteRuntime.inputsOf(root, runtime.scopes) : inputs, runtime };
-    return runtime;
+    this.#route = null;
+    try {
+      const runtime = await DevRouteRuntime.read(root, scope);
+      if (!runtime) return missing;
+      const moved = JSON.stringify(runtime.scopes) !== JSON.stringify(scopes);
+      this.#route = { inputs: moved ? DevRouteRuntime.inputsOf(root, runtime.scopes) : inputs, runtime };
+      return runtime;
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return whole(`the modules of ${name} or a lib it mounts could not be read (${reason})`, "Fix that, then run");
+    }
   }
 
-  #warnWhole(whole: boolean) {
-    const { name } = this.app;
-    if (whole && !this.#wholeWarned)
-      this.app.logger.warn(
-        `[client-runtime] clientRuntime: "route" is set, but the per-module runtime files of ${name} or a lib it mounts are missing, so every page of the development server loads the whole client runtime. Run \`akan sync ${name}\`.`,
-      );
-    this.#wholeWarned = whole;
+  #warnWhole(warning: string | null) {
+    if (warning && warning !== this.#wholeWarned) this.app.logger.warn(warning);
+    this.#wholeWarned = warning;
   }
 
   //? The client runtime of an SSR page inlines no dictionary (`lib/usePage.ts` reads one only when rendering csr), so
