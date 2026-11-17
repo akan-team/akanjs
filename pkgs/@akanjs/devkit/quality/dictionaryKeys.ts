@@ -30,6 +30,9 @@ const impliedNames = new Map([["Dashboard", "summary"]]);
 const tableMethods = new Set(["map", "forEach", "filter", "flatMap", "find", "findLast", "some", "every"]);
 const subsetMethods = new Set(["filter", "slice", "sort", "toSorted", "reverse", "toReversed", "concat", "at"]);
 const objectReaders = new Set(["keys", "values", "entries"]);
+const memberCalls = new Set(["field", "enum", "trans"]);
+const translatorChain = new Set(["_", "rich"]);
+const groupHead = /^[A-Za-z_$][\w$]*\./;
 const maxDepth = 16;
 
 const strip = (node: ts.Expression): ts.Expression =>
@@ -86,9 +89,12 @@ export class DictionaryKeys {
   }
 
   #visit(node: ts.Node) {
+    if (ts.isExpression(node) && this.#isTranslator(node) && this.#isReference(node)) this.#checkTranslatorUse(node);
     if (ts.isImportDeclaration(node)) this.#readImport(node);
     else if (ts.isStringLiteralLike(node)) this.#addText(node.text, node.text);
     else if (ts.isTemplateExpression(node))
+      this.#addText(node.head.text, [node.head.text, ...node.templateSpans.map((span) => span.literal.text)].join("*"));
+    else if (ts.isTemplateLiteralTypeNode(node))
       this.#addText(node.head.text, [node.head.text, ...node.templateSpans.map((span) => span.literal.text)].join("*"));
     else if (ts.isIdentifier(node) && className.test(node.text)) this.#classNames.add(node.text);
     else if (ts.isCallExpression(node)) this.#readCall(node);
@@ -126,11 +132,52 @@ export class DictionaryKeys {
   }
 
   #readCall(call: ts.CallExpression) {
-    for (const argument of call.arguments)
-      if (this.#isTranslator(strip(argument))) this.#fail(argument, "passes the translator on");
     const key = this.#keyOf(call);
     if (!key || this.#follows(key, 0)) return;
     this.#fail(key, this.#whyOf(strip(key)));
+  }
+
+  #isReference(node: ts.Expression): boolean {
+    const { parent } = node;
+    if (ts.isShorthandPropertyAssignment(parent)) return true;
+    if ((parent as { name?: ts.Node }).name === node) return false;
+    if (ts.isBindingElement(parent) || ts.isImportSpecifier(parent) || ts.isExportSpecifier(parent))
+      return parent.propertyName !== node;
+    return !ts.isTypeQueryNode(parent) && !ts.isQualifiedName(parent);
+  }
+
+  #checkTranslatorUse(node: ts.Expression) {
+    const outerOf = (inner: ts.Node): ts.Node => {
+      let outer = inner;
+      while (
+        ts.isParenthesizedExpression(outer.parent) ||
+        ts.isAsExpression(outer.parent) ||
+        ts.isSatisfiesExpression(outer.parent) ||
+        ts.isNonNullExpression(outer.parent) ||
+        ts.isTypeAssertionExpression(outer.parent)
+      )
+        outer = outer.parent;
+      return outer;
+    };
+    const outer = outerOf(node);
+    const { parent } = outer;
+    if (ts.isCallExpression(parent) && parent.expression === outer) return;
+    if (ts.isPropertyAccessExpression(parent) && parent.expression === outer) {
+      if (translatorChain.has(parent.name.text)) return;
+      const access = outerOf(parent);
+      if (
+        memberCalls.has(parent.name.text) &&
+        ts.isCallExpression(access.parent) &&
+        access.parent.expression === access
+      )
+        return;
+    }
+    this.#fail(
+      node,
+      ts.isCallExpression(parent)
+        ? "passes the translator on"
+        : "is used other than as a call, which no key can be read from",
+    );
   }
 
   #isTranslator(node: ts.Expression): boolean {
@@ -209,33 +256,49 @@ export class DictionaryKeys {
     return false;
   }
 
-  #isTable(expression: ts.Expression, depth: number): boolean {
+  //? With `names`, the property names are the keys: each one is added to the groups, and a name that is not written fails.
+  #isTable(expression: ts.Expression, depth: number, names = false): boolean {
     if (depth > maxDepth) return false;
     const node = strip(expression);
     const value = (inner: ts.Expression) => this.#isValue(inner, depth + 1);
     if (ts.isArrayLiteralExpression(node))
       return node.elements.every((element) =>
-        ts.isSpreadElement(element) ? this.#isTable(element.expression, depth + 1) : value(element),
+        ts.isSpreadElement(element) ? this.#isTable(element.expression, depth + 1, names) : value(element),
       );
     if (ts.isObjectLiteralExpression(node))
       return node.properties.every((property) => {
+        if (names && !this.#addPropertyName(property)) return false;
         if (ts.isPropertyAssignment(property)) return value(property.initializer);
         if (ts.isShorthandPropertyAssignment(property)) return value(property.name);
-        if (ts.isSpreadAssignment(property)) return this.#isTable(property.expression, depth + 1);
+        if (ts.isSpreadAssignment(property)) return this.#isTable(property.expression, depth + 1, names);
         return ts.isMethodDeclaration(property);
       });
-    if (ts.isIdentifier(node)) return this.#bindingFollows(node, depth + 1, true);
+    if (ts.isIdentifier(node)) return this.#bindingFollows(node, depth + 1, true, names);
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
-      return this.#isTable(node.expression, depth + 1);
+      return !names && this.#isTable(node.expression, depth + 1);
     if (!ts.isCallExpression(node)) return false;
     const callee = strip(node.expression);
     if (!ts.isPropertyAccessExpression(callee)) return false;
     const method = callee.name.text;
     if (ts.isIdentifier(callee.expression) && callee.expression.text === "Object" && objectReaders.has(method))
-      return !!node.arguments[0] && this.#isTable(node.arguments[0], depth + 1);
+      return !!node.arguments[0] && this.#isTable(node.arguments[0], depth + 1, method !== "values");
     if (!subsetMethods.has(method)) return false;
-    const own = this.#isTable(callee.expression, depth + 1);
+    const own = this.#isTable(callee.expression, depth + 1, names);
     return own && (method !== "concat" || node.arguments.every((argument) => this.#isTable(argument, depth + 1)));
+  }
+
+  #addPropertyName(property: ts.ObjectLiteralElementLike): boolean {
+    if (ts.isSpreadAssignment(property)) return true;
+    const { name } = property;
+    if (ts.isComputedPropertyName(name)) {
+      const inner = strip(name.expression);
+      if (!ts.isStringLiteralLike(inner) && !ts.isNumericLiteral(inner)) return false;
+      this.#addText(inner.text, inner.text);
+      return true;
+    }
+    if (ts.isPrivateIdentifier(name)) return false;
+    this.#addText(name.text, name.text);
+    return true;
   }
 
   //? A value in a table is either text the file writes or something no key is made from (a number, an icon, a handler).
@@ -257,19 +320,21 @@ export class DictionaryKeys {
     return this.#follows(node, depth) || this.#isTable(node, depth);
   }
 
-  #bindingFollows(identifier: ts.Identifier, depth: number, asTable: boolean): boolean {
+  #bindingFollows(identifier: ts.Identifier, depth: number, asTable: boolean, names = false): boolean {
     const declared = this.#scope.resolve(identifier);
     if (!declared) return false;
     const declaration = declared.parent;
     const root = this.#rootOf(declaration) ?? declaration;
-    if (ts.isParameter(root)) return this.#parameterFollows(root, declaration, depth, asTable);
+    if (ts.isParameter(root)) return !names && this.#parameterFollows(root, declaration, depth, asTable);
     if (!ts.isVariableDeclaration(root)) return false;
     const list = root.parent;
+    if (ts.isVariableDeclarationList(list) && ts.isForInStatement(list.parent))
+      return !asTable && !names && root === declaration && this.#isTable(list.parent.expression, depth + 1, true);
     if (ts.isVariableDeclarationList(list) && ts.isForOfStatement(list.parent))
-      return this.#isTable(list.parent.expression, depth + 1);
+      return !names && this.#isTable(list.parent.expression, depth + 1);
     if (!ts.isVariableDeclarationList(list) || !(list.flags & ts.NodeFlags.Const) || !root.initializer) return false;
-    if (root !== declaration) return this.#isTable(root.initializer, depth + 1);
-    return asTable ? this.#isTable(root.initializer, depth + 1) : this.#follows(root.initializer, depth + 1);
+    if (root !== declaration) return !names && this.#isTable(root.initializer, depth + 1);
+    return asTable ? this.#isTable(root.initializer, depth + 1, names) : this.#follows(root.initializer, depth + 1);
   }
 
   #parameterFollows(parameter: ts.ParameterDeclaration, declaration: ts.Node, depth: number, asTable: boolean) {
@@ -321,24 +386,24 @@ export class DictionaryKeys {
     if (ts.isUnionTypeNode(type)) return type.types.every(next);
     if (ts.isLiteralTypeNode(type)) return true;
     if (type.kind === ts.SyntaxKind.UndefinedKeyword || type.kind === ts.SyntaxKind.NullKeyword) return true;
-    if (ts.isTemplateLiteralTypeNode(type)) return type.head.text.includes(".");
+    if (ts.isTemplateLiteralTypeNode(type)) return groupHead.test(type.head.text);
     if (ts.isArrayTypeNode(type)) return asTable && next(type.elementType);
     if (ts.isTypeOperatorNode(type) && type.operator === ts.SyntaxKind.ReadonlyKeyword) return next(type.type);
     if (ts.isTypeOperatorNode(type) && type.operator === ts.SyntaxKind.KeyOfKeyword)
-      return ts.isTypeQueryNode(type.type) && this.#queryIsTable(type.type, depth);
+      return ts.isTypeQueryNode(type.type) && this.#queryIsTable(type.type, depth, true);
     if (ts.isIndexedAccessTypeNode(type)) {
       let object = type.objectType;
       while (ts.isParenthesizedTypeNode(object)) object = object.type;
-      return ts.isTypeQueryNode(object) && this.#queryIsTable(object, depth);
+      return ts.isTypeQueryNode(object) && this.#queryIsTable(object, depth, false);
     }
     if (!ts.isTypeReferenceNode(type) || !ts.isIdentifier(type.typeName)) return false;
     const declared = this.#typeDeclaration(type.typeName.text);
     return !!declared && ts.isTypeAliasDeclaration(declared) && next(declared.type);
   }
 
-  #queryIsTable(query: ts.TypeQueryNode, depth: number): boolean {
+  #queryIsTable(query: ts.TypeQueryNode, depth: number, names: boolean): boolean {
     const name = query.exprName;
-    return ts.isIdentifier(name) && this.#isTable(name, depth + 1);
+    return ts.isIdentifier(name) && this.#isTable(name, depth + 1, names);
   }
 
   #typeDeclaration(name: string): ts.TypeAliasDeclaration | ts.InterfaceDeclaration | undefined {

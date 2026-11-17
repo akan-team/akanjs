@@ -74,6 +74,85 @@ describe("DictionaryKeys", () => {
     expect(keys.unread.map(({ why }) => why)).toEqual(["t passes the translator on"]);
   });
 
+  test("counts the property names of an object the file holds when a key is built from them", () => {
+    const shapes = {
+      keys: `Object.keys(tabs).map((name) => l(\`\${name}.modelName\`))`,
+      entries: `Object.entries(tabs).map(([name]) => l(\`\${name}.modelName\`))`,
+      forIn: `(() => { for (const name in tabs) return l(\`\${name}.modelName\`); })()`,
+    };
+    for (const [shape, use] of Object.entries(shapes)) {
+      const keys = read(`
+        const tabs = { order: BiBox, "refund": BiUndo, [\`note\`]: 1, 7: 2 };
+        export const Nav = () => { const { l } = usePage(); return <>{${use}}</>; };
+      `);
+      expect(keys.unread, shape).toEqual([]);
+      expect(keys.names, shape).toEqual(expect.arrayContaining(["order", "refund", "note"]));
+    }
+    const typed = read(`
+      const tabs = { order: 1, refund: 2 };
+      export const Nav = ({ name }: { name: keyof typeof tabs }) => { const { l } = usePage(); return l(\`\${name}.modelName\`); };
+    `);
+    expect(typed.unread).toEqual([]);
+    expect(typed.names).toEqual(expect.arrayContaining(["order", "refund"]));
+  });
+
+  test("fails to the whole dictionary for property names it cannot count", () => {
+    const wrap = (table: string, use: string) =>
+      read(`
+        import { other } from "./other";
+        ${table}
+        export const Nav = ({ name }: { name: keyof typeof tabs }) => { const { l } = usePage(); return <>{${use}}</>; };
+      `);
+    const use = `Object.keys(tabs).map((name) => l(\`\${name}.modelName\`))`;
+    expect(wrap("const tabs = { [dynamic()]: 1 };", use).unread).toHaveLength(1);
+    expect(wrap("const tabs = { ...other, order: 1 };", use).unread).toHaveLength(1);
+    expect(wrap("const tabs = other;", use).unread).toHaveLength(1);
+    expect(
+      wrap("const tabs = { order: 1 };", `Object.keys(other).map((name) => l(\`\${name}.modelName\`))`).unread,
+    ).toHaveLength(1);
+    expect(
+      wrap("const tabs = { a: { order: 1 } };", `Object.keys(tabs.a).map((name) => l(\`\${name}.modelName\`))`).unread,
+    ).toHaveLength(1);
+    expect(wrap("const tabs = { [dynamic()]: 1 };", `l(\`\${name}.modelName\`)`).unread).toHaveLength(1);
+  });
+
+  test("counts the literal head of a template type as its group, and fails a head with none", () => {
+    const keys = read(`
+      interface Props { label: \`memo.\${string}\` }
+      export const Label = ({ label }: Props) => { const { l } = usePage(); return l(label); };
+    `);
+    expect(keys.unread).toEqual([]);
+    expect(keys.names).toContain("memo");
+    const headless = read(`
+      export const Label = ({ label }: { label: \`\${string}.title\` }) => { const { l } = usePage(); return l(label); };
+    `);
+    expect(headless.unread).toHaveLength(1);
+  });
+
+  test("reads a translator used other than as a call or a member call it understands as unread", () => {
+    const uses = [
+      "const t = l; return t('memo.title');",
+      "const page = usePage(); const t = page.l; return t('memo.title');",
+      "return <Row t={l} />;",
+      "return helper({ l });",
+      "return [l];",
+      "return l._ ? 1 : 0;",
+    ];
+    for (const use of uses) {
+      const keys = read(`export const A = () => { const { l } = usePage(); ${use} };`);
+      expect(keys.unread.length, use).toBeGreaterThan(0);
+    }
+    expect(read(`export const useT = () => { const { l } = usePage(); return l; };`).unread).toHaveLength(1);
+    const understood = read(`
+      export const A = ({ m }: { m: string }) => {
+        const page = usePage();
+        const { l } = page;
+        return <>{l("memo.title")}{l._("memo.title")}{l.rich("memo.title")}{l.trans({ en: "a", ko: "b" })}{page.l("memo.title")}{l.field(m, "title")}{l.enum(m, "x")}</>;
+      };
+    `);
+    expect(understood.unread).toEqual([]);
+  });
+
   test("marks a framework surface that shows the texts of any module", () => {
     expect(read(`import { Signal } from "akanjs/ui";`).anyModule).toContain("Signal from akanjs/ui");
     expect(read(`import { Field } from "akanjs/ui/Constant";`).anyModule).toContain("Constant from akanjs/ui/Constant");
