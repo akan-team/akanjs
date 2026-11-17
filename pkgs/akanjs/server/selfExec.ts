@@ -30,9 +30,22 @@ export class SelfExec {
     return beBun === undefined ? env : { ...env, BUN_BE_BUN: beBun };
   }
 
+  static readonly #codeFlags = ["-e", "--eval", "-p", "--print"];
+
+  //? A gateway starts a backend as `bun -e <code>` and Bun keeps both in execArgv: passed on, the child reruns that code.
+  static runtimeFlags(execArgv: string[] = process.execArgv): string[] {
+    const flags: string[] = [];
+    for (let idx = 0; idx < execArgv.length; idx++) {
+      const flag = execArgv[idx] ?? "";
+      if (SelfExec.#codeFlags.includes(flag)) idx++;
+      else if (!SelfExec.#codeFlags.some((codeFlag) => flag.startsWith(`${codeFlag}=`))) flags.push(flag);
+    }
+    return flags;
+  }
+
   //? The runtime flags this process started with (a carried server's --no-env-file, --use-system-ca, …) go along too:
   //? the child runs in the same working folder, where they are what keeps a stray .env or bunfig.toml out.
   static command(script: string, ...args: string[]): string[] {
-    return [process.execPath, ...process.execArgv, script, ...args];
+    return [process.execPath, ...SelfExec.runtimeFlags(), script, ...args];
   }
 }

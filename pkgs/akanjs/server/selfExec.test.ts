@@ -21,10 +21,20 @@ describe("SelfExec", () => {
   test("runs this executable again with the runtime flags it started with", () => {
     expect(SelfExec.command("/app/main.js", "ops", "snapshot")).toEqual([
       process.execPath,
-      ...process.execArgv,
+      ...SelfExec.runtimeFlags(),
       "/app/main.js",
       "ops",
       "snapshot",
     ]);
+    expect(SelfExec.runtimeFlags(["--no-env-file", "--use-system-ca"])).toEqual(["--no-env-file", "--use-system-ca"]);
+  });
+
+  test("leaves out the code a `bun -e` or `bun -p` process was started with", () => {
+    const code = 'import("/app/server.ts")';
+    expect(SelfExec.runtimeFlags(["-e", code])).toEqual([]);
+    expect(SelfExec.runtimeFlags(["--no-env-file", "--eval", code, "--smol"])).toEqual(["--no-env-file", "--smol"]);
+    expect(SelfExec.runtimeFlags(["--no-env-file", `--eval=${code}`])).toEqual(["--no-env-file"]);
+    expect(SelfExec.runtimeFlags(["-p", "-e", "--smol"])).toEqual(["--smol"]);
+    expect(SelfExec.runtimeFlags([`--print=${code}`, "--smol"])).toEqual(["--smol"]);
   });
 });
