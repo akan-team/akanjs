@@ -13,6 +13,7 @@ export interface VerifyOptions {
   build?: boolean;
   max?: number;
   format?: "text" | "json";
+  comments?: boolean;
 }
 
 export class VerifyScript extends script("verify", [WorkspaceRunner, ApplicationRunner]) {
@@ -27,7 +28,7 @@ export class VerifyScript extends script("verify", [WorkspaceRunner, Application
     const consoleOutput = Logger.consoleOutput;
     Logger.consoleOutput = false;
     const result = await new VerifyPipeline(workspace, this.workspaceRunner, this.applicationRunner)
-      .run(scope, { lintOnly: options.lintOnly, build: options.build })
+      .run(scope, { lintOnly: options.lintOnly, build: options.build, repeatComments: options.comments ?? false })
       .finally(() => {
         Logger.consoleOutput = consoleOutput;
       });
