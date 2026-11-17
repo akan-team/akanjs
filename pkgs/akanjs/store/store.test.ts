@@ -1,7 +1,7 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
 import { Translator } from "akanjs/client/translator";
-import { AbortSignals } from "akanjs/common";
+import { AbortSignals, Logger } from "akanjs/common";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
 import { type ClientSignal, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
@@ -354,6 +354,44 @@ describe("StoreInstance runtime", () => {
     expect(instance.get().messages).toEqual([
       { content: "Blocked Ada", type: "error", key: "failWithTranslatedError", duration: 3 },
     ]);
+  });
+
+  test("an action rejects with its own error when building its message throws or its texts fail to load, and nothing is unhandled", async () => {
+    setupEnv();
+    Translator.seed("en", { actionTest: { error: { blocked: { t: "Blocked" } } } });
+    Translator.setActiveLocale("en");
+    class UnreadableMessageStore extends store("unreadableMessage" as const, () => ({ shown: 0 })) {
+      showMessage() {
+        this.set({ shown: this.get().shown + 1 });
+      }
+      async fail() {
+        throw new Error("actionTest.error.blocked");
+      }
+    }
+    StoreRegistry.register(UnreadableMessageStore);
+    const instance = new StoreInstance(makeRoot("unreadableMessageRoot", UnreadableMessageStore));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    const warn = spyOn(Logger, "warn").mockImplementation(() => undefined);
+    const translate = spyOn(Translator, "translateByLocale").mockImplementation(() => {
+      throw new Error("translator broke");
+    });
+    try {
+      await expect(instance.do.fail()).rejects.toThrow("actionTest.error.blocked");
+      translate.mockRestore();
+      const ready = spyOn(Translator, "ready").mockImplementation(() => Promise.reject(new Error("file gone")));
+      await expect(instance.do.fail()).rejects.toThrow("actionTest.error.blocked");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      ready.mockRestore();
+      expect(unhandled).toEqual([]);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(instance.get().shown).toBe(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      translate.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   test("a silent action rejects with its own error and shows no toast, while its siblings still show theirs", async () => {
