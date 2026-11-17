@@ -318,7 +318,7 @@ export class ObjectMemberImports {
         if (!item || item.startsWith("type ")) continue;
         const local =
           item
-            .split(/\s+as\s+/)
+            .split(/\sas\s/)
             .pop()
             ?.trim() ?? "";
         if (!IDENTIFIER_RE.test(local)) continue;

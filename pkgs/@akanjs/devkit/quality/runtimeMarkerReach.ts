@@ -10,7 +10,7 @@ export interface RuntimeMarkerPin {
 
 const markerFile = /(?:^|\/)akanjs\/ui\/modelRuntime\.ts$/;
 const pageFile = /^((?:apps|libs)\/[^/]+\/page)\/(?:.+\/)?[^/]+\.tsx$/;
-const useClientDirective = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use client["']/;
+const useClientDirective = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
 const suffixes = ["", ".ts", ".tsx", "/index.ts", "/index.tsx"];
 const typeOnly = "";
 

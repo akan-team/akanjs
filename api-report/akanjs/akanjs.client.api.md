@@ -1302,6 +1302,8 @@ export declare const mergePageConfigs: (configChain?: PageConfig[]) => PageConfi
 
 export declare const msg: RuntimeMsg;
 
+export declare const nativeKeyboardEasing: () => "cubic-bezier(0.2, 0, 0, 1)" | "cubic-bezier(0.38, 0.7, 0.125, 1)";
+
 export declare const nativePlatform: () => "android" | "ios" | null;
 
 export declare const navigateRsc: (href: string, options?: {
