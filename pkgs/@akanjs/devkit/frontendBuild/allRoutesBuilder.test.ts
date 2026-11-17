@@ -44,7 +44,7 @@ const writeApp = async () => {
     dist: { cwdPath: path.join(root, "dist/apps/demo") },
     workspace: { workspaceRoot: root },
     getPageKeys: async () => ["./_index.tsx", "./memo.tsx", "./shell.tsx"],
-    getConfig: async () => ({ basePaths: [], optimizeImports: [], barrelImports: [] }),
+    getConfig: async () => ({ basePaths: [], optimizeImports: [], barrelImports: [], clientRuntime: "all" }),
     getTsConfig: async () => ({ compilerOptions: { paths } }),
     getPublicEnv: () => ({}),
     log: () => undefined,

@@ -870,13 +870,13 @@ describe("an app's client runtime pieces", () => {
       return warnings.filter((message) => message.includes("[client-runtime]"));
     };
 
-    const said = await saidWhenSynced("depot", "hangar", '{ clientRuntime: "route" }');
+    const said = await saidWhenSynced("depot", "hangar", "{}");
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain(
       "(user.constant.ts is unreadable)",
     );
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain("Run `akan sync hangar`");
     expect(said.some((message) => message.includes("Run `akan sync depot`"))).toBe(true);
-    expect(await saidWhenSynced("wharf", "crane", "{}")).toEqual([]);
+    expect(await saidWhenSynced("wharf", "crane", '{ clientRuntime: "all" }')).toEqual([]);
   }, 120_000);
 
   test("give a client file exactly the pieces of the modules it names, each generated and each loading only its module", async () => {

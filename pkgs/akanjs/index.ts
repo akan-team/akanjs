@@ -474,13 +474,14 @@ export interface AppConfigResult {
   barrelImports: string[];
   optimizeImports: string[];
   /**
-   * What the browser code of a server-rendered page loads. `"route"` (the default): the stores, endpoint descriptors,
-   * constants and dictionary texts of the modules the page's client code names (`st.use.memoList()`, `fetch.memo(id)`,
-   * `cnst.Memo`, `l("memo.title")`) or the server hands it; a file that picks a name at run time loads every module's,
-   * and `akan quality runtime` names such files. The development server loads what a production page loads. Server
-   * rendering, CSR bundles and native apps load everything. `"all"` loads everything on every page; it is deprecated
-   * and is removed in the minor release after the one that made `"route"` the default. Delete the line instead, and
-   * run `akan quality runtime` to see which files would keep the app's pages on the whole runtime.
+   * `"route"` (the default) loads in a server-rendered page's browser code only the stores, endpoint descriptors,
+   * constants and dictionary texts of the modules the page uses; `"all"` loads every module's on every page, is
+   * deprecated, and is removed in the minor release after the one that made `"route"` the default. Under `"route"` a
+   * module counts as used when the page's client code names it (`st.use.memoList()`, `fetch.memo(id)`, `cnst.Memo`,
+   * `l("memo.title")`) or the server hands it over; a file that picks a name at run time loads every module's, and
+   * `akan quality runtime` names such files. The development server loads what a production page loads. Server
+   * rendering, CSR bundles and native apps load everything. To leave `"all"`, delete the line and run
+   * `akan quality runtime` to see which files would keep the app's pages on the whole runtime.
    */
   clientRuntime: "all" | "route";
   images: AkanImageConfig;

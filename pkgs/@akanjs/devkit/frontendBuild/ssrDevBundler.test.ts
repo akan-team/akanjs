@@ -124,7 +124,9 @@ describe("SsrDevBundler under clientRuntime route", () => {
     await bundler.context();
     await bundler.context();
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain("loads the whole client runtime. Run `akan sync demo`.");
+    expect(warnings[0]).toBe(
+      "[client-runtime] the per-module runtime files of demo or a lib it mounts are missing, so every page of the development server loads the whole client runtime, not only what it uses. Run `akan sync demo`.",
+    );
 
     await writeLib(root, pageFiles.slice(-1));
     expect((await bundler.context()).routeRuntime).toBeDefined();

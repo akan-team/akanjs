@@ -27,7 +27,7 @@ externalLibs?: string[];
 trustedDependencies?: string[];
 barrelImports?: string[];
 optimizeImports?: string[];
-/** `"route"` loads a model's descriptors and store in the browser only on a route whose client code names that model, or renders an `akanjs/ui` component that reaches a model by name; `"all"` (the default) loads them on every page. */
+/** `"route"` (the default) loads in a server-rendered page's browser code only the stores, endpoint descriptors, constants and dictionary texts of the modules the page uses; `"all"` loads every module's on every page, is deprecated, and is removed in the minor release after the one that made `"route"` the default. */
 clientRuntime?: "all" | "route";
 images?: DeepPartial<AkanImageConfig>;
 i18n?: DeepPartial<AkanI18nConfig>;
