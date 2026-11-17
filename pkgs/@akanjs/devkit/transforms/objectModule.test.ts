@@ -74,6 +74,27 @@ describe("ObjectModule: a module an importer may skip for the members it names",
       clause: "bare-import",
       line: 1,
     });
+    const tail = ['import { A } from "./A";', "export const X = { A };"];
+    expect(read(['import {} from "./register";', ...tail]).failed).toEqual({ clause: "bare-import", line: 1 });
+    expect(read(['import { type T } from "./types";', ...tail]).failed).toBeNull();
+  });
+
+  test("fails a re-export, which runs a module no member of the object loads (reexport)", () => {
+    const tail = ['import { A } from "./A";', "export const X = { A };"];
+    for (const line of [
+      'export * from "./register";',
+      'export * as parts from "./register";',
+      'export { helper } from "./register";',
+      'export { type T, helper } from "./register";',
+      'export {} from "./register";',
+    ])
+      expect(read([line, ...tail]).failed).toEqual({ clause: "reexport", line: 1 });
+    for (const line of [
+      'export type { T } from "./types";',
+      'export type * from "./types";',
+      'export { type T } from "./types";',
+    ])
+      expect(read([line, ...tail]).failed).toBeNull();
   });
 
   test("fails a statement with an effect, a `let`, or a member put on a name the module does not declare (effect-statement)", () => {
@@ -109,6 +130,56 @@ describe("ObjectModule: a module an importer may skip for the members it names",
       "mutated-import",
     );
     expect(read([head, "export const X = Object.assign(Field, { A });"]).failed?.clause).toBe("mutated-import");
+    expect(read([head, "export const X = Object.assign(Field.Sub, { A });"]).failed?.clause).toBe("mutated-import");
+  });
+
+  test("fails a member put on anything but an object the module created above it, which the object would not record", () => {
+    const head = 'import { Base } from "./Base";\nimport { A } from "./A";\nimport { B } from "./B";';
+    const failedOn = (...lines: string[]) => read([head, ...lines]).failed;
+
+    expect(failedOn("const Alias = Base;", "Alias.Extra = B;", "export const X = { A };")).toEqual({
+      clause: "effect-statement",
+      line: 5,
+    });
+    expect(failedOn("const Alias = Base;", "Object.assign(Alias, { B });", "export const X = { A };")?.clause).toBe(
+      "effect-statement",
+    );
+    expect(failedOn("X.A = B;", "export const X = { A };")).toEqual({ clause: "effect-statement", line: 4 });
+    expect(failedOn("const Own = { A };", "export const X = { Sub: Object.assign(Own, { B }) };")?.clause).toBe(
+      "effect-value",
+    );
+    const shadowed = ['import { Object } from "./Object";', 'import { A } from "./A";'];
+    expect(read([...shadowed, "export const X = Object.assign({}, { A });"]).failed?.clause).toBe("call");
+  });
+
+  test("records a member put on an object under every name bound to it, in the order the module runs", () => {
+    const lines = [
+      'import { A } from "./A";',
+      'import { B } from "./B";',
+      'import { C } from "./C";',
+      "export function Root() { return null; }",
+      "export const Toast = Object.assign(Root, { A });",
+      "Root.B = B;",
+      "Toast.A = C;",
+    ];
+
+    expect(read(lines).failed).toBeNull();
+    for (const object of ["Root", "Toast"])
+      expect(membersOf(lines, object)).toEqual({
+        A: { specifier: "./C", imported: "C" },
+        B: { specifier: "./B", imported: "B" },
+      });
+  });
+
+  test("names no file for a member a function with members of its own may replace when it is copied in", () => {
+    const head = ['import { A } from "./A";', 'import { B } from "./B";', "export const X = { A };"];
+    const merged = [...head, "const Base = () => null;", "Base.A = B;", "Object.assign(X, Base);"];
+
+    expect(membersOf(merged, "X")).toEqual({ A: null });
+    expect(read(merged).objects.get("X")?.open).toBe(true);
+    expect(membersOf([...head, "const Plain = () => null;", "Object.assign(X, Plain);"], "X")).toEqual({
+      A: { specifier: "./A", imported: "A" },
+    });
   });
 
   test("points a member written one level down at its file, and no deeper", () => {
