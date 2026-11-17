@@ -85,17 +85,18 @@ describe("DevRouteRuntime", () => {
     expect(routed?.contents).not.toContain("tally.st");
   });
 
-  test("a model's reference file takes that model's store piece by a relative path, as a binding its value uses", async () => {
+  test("a model's reference file takes that model's store piece by a relative path, by a name it passes to `loadedAfter`", async () => {
     const { root, file } = await routeWorkspace();
     const source = '"use client";\n\nexport const reference = "draft";\n';
     await write(file("lib/__client/draft.ref.ts"), source);
+    await write(file("lib/_draft/draft.store.ts"), storeSource("draft", ["draft", "draftText"]));
     const runtime = await DevRouteRuntime.read(root, "apps/demo");
 
     const routed = runtime?.transform(source, file("lib/__client/draft.ref.ts"));
 
     expect(routed?.perModule).toBe(true);
     expect(routed?.contents).toBe(
-      '"use client";\n\nimport { draft as store } from "./draft.st.ts";\n\nexport const reference = store.refName;\n',
+      '"use client";\nimport { loadedAfter as __akanLoadedAfter } from "akanjs/base";\nimport { draft as __akanLoaded0 } from "./draft.st.ts";\n__akanLoadedAfter(__akanLoaded0);\n\nexport const reference = "draft";\n',
     );
   });
 

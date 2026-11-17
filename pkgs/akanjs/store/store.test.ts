@@ -1762,6 +1762,51 @@ describe("StoreRegistry and root assembly", () => {
     expect(built.use).toHaveProperty("firstValue");
   });
 
+  test("a model's own piece loading after the whole runtime built its store adds no second store", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class HandedStore extends store(signal, () => ({ handedDraft: "" })) {
+      writeHandedDraft(value: string) {
+        this.set({ handedDraft: value });
+      }
+    }
+    class BesideStore extends store("besideStore" as const, () => ({ besideValue: 1 })) {}
+    const whole = StoreRegistry.build(
+      StoreRegistry.merge(
+        "wholeRuntimeRoot" as const,
+        StoreRegistry.register(HandedStore),
+        StoreRegistry.register(BesideStore),
+      ),
+    );
+    await whole.do.writeHandedDraft("typed before the reference loaded");
+    await whole.do.initStoreTestItemByTitle("Ada");
+    const rows = whole.get().storeTestItemListByTitle;
+    const sliceBefore = whole.slice.storeTestItemByTitle;
+    const heard: string[] = [];
+    const unsubscribe = whole.sub(
+      (state) => state.handedDraft,
+      (draft) => heard.push(draft),
+    );
+    const listCalls = signal.calls.storeTestItemListByTitle.mock.calls.length;
+
+    const piece = StoreRegistry.register(HandedStore);
+    const afterPiece = StoreRegistry.build(StoreRegistry.merge("storeTestItem" as const, piece));
+
+    expect(afterPiece as unknown).toBe(whole);
+    expect(StoreRegistry.get("storeTestItem")).toBe(HandedStore);
+    expect(heard).toEqual([]);
+    expect(afterPiece.get()).toMatchObject({ handedDraft: "typed before the reference loaded", besideValue: 1 });
+    expect(afterPiece.get().storeTestItemListByTitle).toBe(rows);
+    expect(sliceBefore.get().storeTestItemList).toBe(rows);
+    expect(afterPiece.slice.storeTestItemByTitle.get().storeTestItemList).toBe(rows);
+    expect(signal.calls.storeTestItemListByTitle.mock.calls.length).toBe(listCalls);
+
+    await afterPiece.do.writeHandedDraft("typed after");
+    expect(heard).toEqual(["typed after"]);
+    expect(whole.get().handedDraft).toBe("typed after");
+    unsubscribe();
+  });
+
   test("builds slice facades from root slice metadata", async () => {
     setupEnv();
     const signal = makeSignal();

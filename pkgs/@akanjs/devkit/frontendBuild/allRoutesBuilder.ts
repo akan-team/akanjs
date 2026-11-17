@@ -67,7 +67,8 @@ export class AllRoutesBuilder {
       const handed = await handoffs?.read(await discovery.serverModules(seeds, { importsAs }));
       const loaded = [...new Set([...ssrEntries, ...(handed?.referenceFiles ?? [])])].sort();
       this.#ssrEntriesByRoute.set(entry.routeId, loaded);
-      this.#entriesByRoute.set(entry.routeId, [...new Set([...routeEntries, ...loaded])]);
+      const besidesReferences = handed ? routeEntries.filter((file) => !ModelReference.isFile(file)) : routeEntries;
+      this.#entriesByRoute.set(entry.routeId, [...new Set([...besidesReferences, ...loaded])]);
       if (handed?.unread) {
         const pinned = `${handed.unread.file} (${handed.unread.why})`;
         unread.set(pinned, [...(unread.get(pinned) ?? []), entry.routeId]);
