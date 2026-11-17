@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import type { BuilderMessage } from "akanjs/server";
+import { AppBin } from "../app/appBin";
 import type { App } from "../commandDecorators";
 import { WorkspaceExecutor } from "../executors";
 import type { DevStdioMode } from "../incrementalBuilder";
@@ -199,7 +200,14 @@ export class AkanAppHost {
     }
     if (!this.#backend.running) this.#backend.start();
     this.#idle.arm();
+    void this.#warnMissingBin();
     return this;
+  }
+  //? A bin two libs declare differently fails the build that carries it; a dev start has nothing to carry.
+  async #warnMissingBin() {
+    const names = await new AppBin(this.app, await this.app.getConfig()).names().catch(() => []);
+    const missing = AppBin.missing(names);
+    if (missing) this.logger.warn(missing);
   }
   async stop() {
     //? Nothing reapplies once it stops: a pages ok received meanwhile would bring children back after it.
