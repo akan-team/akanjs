@@ -189,6 +189,26 @@ export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
     expect(result?.source).not.toMatch(/__client\/[\w.]+\.st"/);
   });
 
+  test("a model's reference loads that model's store, not another store with a state field of the model's name", async () => {
+    const { demo } = await runtimeFixtureTables({
+      demo: {
+        "apps/demo/lib/_auth/auth.store.ts": `import { store } from "akanjs/store";
+
+export class AuthStore extends store("auth" as const, () => ({ memo: null as string | null, note: "" })) {}
+`,
+      },
+    });
+    const withAuth = new RouteRuntime(root, demo, piecesOf([...appPieces, "auth.st"]));
+    const reference = (model: string) =>
+      transform(
+        `"use client";\n\nexport const reference = "${model}";\n`,
+        `apps/demo/lib/__client/${model}.ref.ts`,
+        withAuth,
+      );
+    expect(reference("memo")?.pieces).toEqual(["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/memo.st"]);
+    expect(reference("note")?.pieces).toEqual(["apps/demo/lib/__client/note.fetch", "apps/demo/lib/__client/note.st"]);
+  });
+
   test("loads the framework's own descriptors for a call to one of them", () => {
     const result = transform('import { fetch } from "@apps/demo/client";\nexport const check = () => fetch.ping();\n');
     expect(result?.pieces).toEqual(["apps/demo/lib/__client/_base.fetch"]);

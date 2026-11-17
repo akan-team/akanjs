@@ -489,7 +489,10 @@ export class RouteRuntime {
     const store = this.#table.lookup("st.use", model);
     const needs = store ? "store" : "descriptor";
     const named = store ?? this.#table.lookup("fetch.serializedSignal", model);
-    const owners = (named?.owners ?? []).map((owner) => ({ ...owner, needs }) as const);
+    const declaring = named?.owners ?? [];
+    //? Another store with a state field named like the model declares the same `st.use` key.
+    const own = declaring.filter((owner) => owner.module === model);
+    const owners = (own.length ? own : declaring).map((owner) => ({ ...owner, needs }) as const);
     const constants = { reads: [], imports: [], problems: [] };
     const verdict = {
       resolvable: true,
