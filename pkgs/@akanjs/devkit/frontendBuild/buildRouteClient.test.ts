@@ -2,7 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
-import { tempDirs, writeText as write } from "../test/testHelpers";
+import { printedInOwnProcess, tempDirs, writeText as write } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
 import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
@@ -86,6 +86,15 @@ const writeBarrelFixture = async (rootDir?: string) => {
   } as never;
   return { root, appDir, app };
 };
+
+const signalFixture = `const serialized = { draft: { endpoint: { draftOf: { type: "query", args: [], returns: { refName: "draft-descriptor-ref" } } } } };
+export const fetch = { ownSerializedSignal: serialized };
+export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : { [name]: serialized[name as "draft"] });
+`;
+
+const signalPiece = `import { getSerializedSignalOf } from "../sig" with { type: "macro" };
+export const descriptors = getSerializedSignalOf("draft");
+`;
 
 const bundledText = async (dir: string) =>
   (
@@ -577,6 +586,49 @@ describe("route client store bootstrap", () => {
         expect(warnings).toEqual([expect.stringContaining("Run `akan sync demo`")]);
         expect(warnings[0]).toContain("runtime files of demo or a lib it mounts are missing");
       });
+
+    test("a route's browser build answers a module piece with descriptors read from the signal, not by its macro", async () => {
+      const { root, appDir } = await routeFixture();
+      for (const scope of ["apps/demo", "libs/kit"]) await write(path.join(root, scope, "lib/sig.ts"), signalFixture);
+      await write(path.join(appDir, "lib/__client/draft.fetch.ts"), signalPiece);
+      const entry = path.join(appDir, "ui/Fetch.tsx");
+      await write(
+        entry,
+        '"use client";\nimport { descriptors } from "@apps/demo/lib/__client/draft.fetch";\nexport const Fetch = () => descriptors;\n',
+      );
+
+      const built = await printedInOwnProcess(
+        `
+const { RouteClientBuilder } = await import(${JSON.stringify(path.join(import.meta.dir, "routeClientBuilder.ts"))});
+const { SignalDescriptors } = await import(${JSON.stringify(path.join(import.meta.dir, "../transforms/signalDescriptors.ts"))});
+const [root, entry, barrelImports] = ${JSON.stringify([root, entry, fixtureBarrels])};
+let answered = 0;
+const inline = SignalDescriptors.prototype.inline;
+SignalDescriptors.prototype.inline = async function (...args) {
+  const contents = await inline.apply(this, args);
+  if (contents !== null) answered += 1;
+  return contents;
+};
+const warnings = [];
+const app = {
+  name: "demo",
+  cwdPath: root + "/apps/demo",
+  dist: { cwdPath: root + "/dist/apps/demo" },
+  workspace: { workspaceRoot: root },
+  getConfig: async () => ({ barrelImports, optimizeImports: [], clientRuntime: "route" }),
+  getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] } } }),
+  getPublicEnv: () => ({}),
+  logger: { warn: (message) => warnings.push(message) },
+};
+await new RouteClientBuilder({ app, seeds: [], entries: [entry], artifact: {}, browser: "chunks" }).build();
+console.log(JSON.stringify({ answered, warnings }));
+`,
+        root,
+      );
+
+      expect(built).toEqual({ answered: 1, warnings: [] });
+      expect(await bundledText(path.join(appDir, ".akan/artifact/client"))).toContain("draft-descriptor-ref");
+    }, 30_000);
 
     test("an app whose modules cannot be read keeps the whole runtime in its browser chunks and is told what failed", async () => {
       const { appDir, app, warnings } = await routeFixture();
