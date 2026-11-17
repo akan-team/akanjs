@@ -28,6 +28,7 @@ const { renderToReadableStream } = await import("react-server-dom-webpack/server
 const { Field } = await import(path.join(ui, "Field/index.tsx"));
 const { Layout } = await import(path.join(ui, "Layout/index.ts"));
 const { Model } = await import(path.join(ui, "Model/index.ts"));
+const { Dialog } = await import(path.join(ui, "Dialog/index.tsx"));
 
 const references = new Set<string>();
 const clientManifest = new Proxy(
@@ -48,6 +49,9 @@ const stream = await renderToReadableStream(
     </Field>
     <Layout.Header>Head</Layout.Header>
     <Model.View>Body</Model.View>
+    <Dialog open>
+      <Dialog.LegacyModal>Legacy</Dialog.LegacyModal>
+    </Dialog>
   </main>,
   clientManifest,
   { onError: (error: unknown) => void errors.push(String(error)) },

@@ -84,7 +84,7 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
       onCancel?.();
     };
 
-    const bind = useDismissDrag({
+    const { bind, driver } = useDismissDrag({
       threshold: (height) => height / 3,
       heightOf: () => ref.current?.offsetHeight ?? 0,
       onDrag: (y, height) => void api.start({ y: height ? (Math.max(0, y) / height) * PARKED : 0, immediate: true }),
@@ -113,13 +113,9 @@ export const BottomSheet = forwardRef<BottomSheetRef, BottomSheetProps>(
 
     return (
       <>
+        {driver}
         {trigger ? (
-          <div
-            className="contents"
-            onClick={() => {
-              setSelfOpen(true);
-            }}
-          >
+          <div className="contents" onClick={() => setSelfOpen(true)}>
             {trigger}
           </div>
         ) : null}
