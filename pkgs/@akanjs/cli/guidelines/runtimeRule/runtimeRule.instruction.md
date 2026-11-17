@@ -646,7 +646,12 @@ const config: AppConfig = {
   archive, or Homebrew's ffmpeg with its 55 dylibs — runs on the computer that built it and nowhere else.
 - **A lib's `bin` reaches only the apps that depend on it**, unlike its `docker` steps; the app's own entry of the
   same name wins, and two libs that declare one name differently fail the build.
-- **The image does not read `bin`.** Keep installing through `docker.preRuns` there.
+- **The image carries the Linux entries.** `akan build` fetches each entry's `linux-x64` and `linux-arm64` file into
+  the build's `bin/amd64/` and `bin/arm64/`, and the Dockerfile puts the one its `TARGETARCH` names first on PATH
+  (`ENV PATH=/workspace/bin/$TARGETARCH:$PATH`), ahead of a copy a `docker.preRuns` step installed. An entry with no
+  Linux file is left to `docker.preRuns`, and an app that writes its own Dockerfile adds that `ENV` line itself.
+- **`akan start` carries nothing**: it warns when a declared name is not on this computer's PATH, where a dev
+  server that spawns it by name fails. Install it there yourself.
 - **A package that builds itself at install goes in `trustedDependencies`.** `bun install --production` runs no
   dependency's install or postinstall script unless the package is trusted, so an addon with no prebuild arrives
   unbuilt and fails at its first call. The list lands in the built `package.json`, so it applies to the image and to

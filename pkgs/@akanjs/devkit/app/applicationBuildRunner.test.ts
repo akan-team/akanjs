@@ -81,6 +81,7 @@ console.info(new SampleService().name);
     );
     const app = {
       getConfig: async () => config,
+      getScanInfo: () => ({ getLibs: () => [] }),
       dist: new Executor("dist", root),
       workspace: { workspaceRoot: root },
       logger: { warn: () => undefined },
@@ -106,6 +107,7 @@ console.info(new SampleService().name);
     );
     const app = {
       getConfig: async () => config,
+      getScanInfo: () => ({ getLibs: () => [] }),
       dist: new Executor("dist", root),
       workspace: { workspaceRoot: root },
       logger: { warn: () => undefined },
@@ -405,6 +407,7 @@ console.info(new SampleService().name);
     const warnings: string[] = [];
     const app = {
       getConfig: async () => config,
+      getScanInfo: () => ({ getLibs: () => [] }),
       dist: new Executor("dist", root),
       workspace: { workspaceRoot: root },
       logger: { warn: (message: string) => warnings.push(message) },

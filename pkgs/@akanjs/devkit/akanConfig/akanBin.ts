@@ -23,6 +23,10 @@ export class AkanBin {
     );
   }
 
+  static imagePath(binDir: string) {
+    return `/workspace/${binDir}/$TARGETARCH:$PATH`;
+  }
+
   static isArchive(source: AkanBinSource): boolean {
     return AkanBin.archive.test("url" in source ? new URL(source.url).pathname : source.path);
   }
