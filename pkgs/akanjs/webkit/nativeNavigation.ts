@@ -1,7 +1,7 @@
 "use client";
 import { router as clientRouter, debugFrame, normalizeDeepLinkHref } from "akanjs/client";
 import { app, appState, desktopPlatform, isNativeApp, push } from "akanjs/client/native";
-import { OpenSurfaces } from "./useEscapeKey";
+import { OpenSurfaces } from "./openSurfaces";
 
 export interface NativeBackState {
   path: string;
@@ -71,7 +71,7 @@ export class NativeNavigation {
       }),
       app.listen("backProgress", ({ phase, progress }) => {
         //? A back that will close a dialog does not leave the page, so the page shows no swipe of its own.
-        if (OpenSurfaces.isOpen()) return;
+        if (OpenSurfaces.takesBack()) return;
         if (phase !== "progressed") debugFrame("native.backProgress", { phase });
         this.options.onBackProgress?.({ phase, progress });
       }),
@@ -101,7 +101,7 @@ export class NativeNavigation {
     const backState = this.options.backState();
     const enabled =
       backState.keyboardVisible ||
-      OpenSurfaces.isOpen() ||
+      OpenSurfaces.takesBack() ||
       this.options.historyIdx() > 0 ||
       !this.#leavesApp(backState.path);
     if (!force && enabled === this.#backEnabled) return;
@@ -149,7 +149,7 @@ export class NativeNavigation {
       void this.options.dismissKeyboard();
       return;
     }
-    if (OpenSurfaces.closeNewest()) return;
+    if (OpenSurfaces.closeForBack()) return;
     if (this.options.historyIdx() > 0) {
       backState.router.back();
       void clientRouter.navigation().catch(() => this.options.onBackProgress?.({ phase: "cancelled", progress: 0 }));

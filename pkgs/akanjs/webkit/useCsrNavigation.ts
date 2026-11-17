@@ -153,6 +153,25 @@ const commitWhenFrameReady = ({
   window.setTimeout(waitUntilReady, 16);
 };
 
+const commitWhenDrawn = (
+  intent: NavigationIntent,
+  pendingNavigation: CsrRefs["pendingNavigation"],
+  commit: () => void,
+) => {
+  const waitUntilDrawn = () => {
+    if (pendingNavigation.current !== intent) return;
+    const elapsedMs = Date.now() - intent.createdAt;
+    if (!CsrPageReadiness.isDrawn(intent.to.entryId) && elapsedMs < PAGE_DRAWN_TIMEOUT_MS) {
+      window.setTimeout(waitUntilDrawn, 16);
+      return;
+    }
+    pendingNavigation.current = null;
+    debugFrame("navigation.drawn", { id: intent.id, to: intent.to.href, elapsedMs });
+    commit();
+  };
+  window.setTimeout(waitUntilDrawn, 16);
+};
+
 interface CsrNavigationInput {
   viewport: ReturnType<typeof useFrameViewport>["viewport"];
   slots: ReturnType<typeof useFrameSlots>;
@@ -163,20 +182,13 @@ interface CsrNavigationInput {
   keyboard: CsrKeyboard;
 }
 
-export const useCsrNavigation = ({
-  viewport,
-  slots,
+const useFrameTransitionStart = ({
   setTransitionPageStateSnapshot,
-  refs,
-  nav,
-  frame,
+  refs: { pageStateByPathRef },
+  nav: { getLocation },
+  frame: { resolvedLocation },
   keyboard: { keyboardFrame },
 }: CsrNavigationInput) => {
-  const { clearPendingSlots, promotePendingSlots } = slots;
-  const { pageStateByPathRef, navigationIntentId, navigationLocked, pendingNavigation, waitingNavigation } = refs;
-  const { pageContentRef } = refs;
-  const { getLocation, getCurrentLocation, getPrevLocation, setHistoryForward, setLocationState, prevLocation } = nav;
-  const { resolvedLocation } = frame;
   const shouldPrepareFrameTransition = useCallback(
     (nextHref?: string) => {
       if (keyboardFrame.visible) return true;
@@ -195,6 +207,15 @@ export const useCsrNavigation = ({
     window.setTimeout(() => setTransitionPageStateSnapshot(null), 360);
     await prepareForFrameTransition();
   }, []);
+  return { shouldPrepareFrameTransition, startFrameTransition };
+};
+
+export const useCsrNavigation = (input: CsrNavigationInput) => {
+  const { viewport, slots, setTransitionPageStateSnapshot, refs, nav, frame } = input;
+  const { clearPendingSlots, promotePendingSlots } = slots;
+  const { navigationIntentId, navigationLocked, pendingNavigation, waitingNavigation, pageContentRef } = refs;
+  const { getLocation, getCurrentLocation, getPrevLocation, setHistoryForward, setLocationState, prevLocation } = nav;
+  const { shouldPrepareFrameTransition, startFrameTransition } = useFrameTransitionStart(input);
   const settle = (prev: LocationState["prevLocation"]) =>
     setLocationState({
       location: getCurrentLocation(),
@@ -225,73 +246,37 @@ export const useCsrNavigation = ({
           ? { ...target, entryId: fromLocation.entryId }
           : target;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
-      const usePendingNavigation =
+      const slides =
         CsrStack.keyOf(toLocation) !== CsrStack.keyOf(fromLocation) &&
         shouldPrepareFrameTransition(href) &&
         toLocation.pathRoute.pageState.transition !== "none";
-
-      if (!usePendingNavigation) {
-        const toKey = CsrStack.keyOf(toLocation);
-        //? A replace made while a page was drawn ahead (its guard's redirect, a second tap) takes that page's place.
-        const superseded = cancelPendingNavigation();
-        const move = superseded?.kind === "push" && kind === "replace" ? "push" : kind;
-        const commit = () => {
-          setHistoryForward({ type: move, location: toLocation, scrollTop, scrollToTop });
-          settle(move === "replace" ? prevLocation : fromLocation);
-          promotePendingSlots();
-          if (move === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
-          else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
-        };
-        const isDrawnAtOnce =
-          toKey === CsrStack.keyOf(fromLocation) ||
-          !CsrPageReadiness.drawsLater(toLocation.pathRoute) ||
-          CsrPageReadiness.isDrawn(toKey);
-        if (isDrawnAtOnce) {
-          commit();
-          return;
-        }
-        const intent: NavigationIntent = {
-          id: ++navigationIntentId.current,
-          kind: move,
-          from: fromLocation,
-          to: toLocation,
-          scrollTop,
-          scrollToTop,
-          createdAt: Date.now(),
-        };
-        pendingNavigation.current = intent;
-        debugFrame("navigation.drawAhead", { id: intent.id, kind: move, from: fromLocation.href, to: href });
-        clearPendingSlots();
-        setLocationState({
-          location: fromLocation,
-          prevLocation,
-          pendingLocation: toLocation,
-          navigationIntent: intent,
-          phase: "preparing",
-        });
-        const commitWhenDrawn = () => {
-          if (pendingNavigation.current !== intent) return;
-          const elapsedMs = Date.now() - intent.createdAt;
-          if (!CsrPageReadiness.isDrawn(toKey) && elapsedMs < PAGE_DRAWN_TIMEOUT_MS) {
-            window.setTimeout(commitWhenDrawn, 16);
-            return;
-          }
-          pendingNavigation.current = null;
-          debugFrame("navigation.drawn", { id: intent.id, to: href, elapsedMs });
-          commit();
-        };
-        window.setTimeout(commitWhenDrawn, 16);
+      const commitInPlace = () => {
+        setHistoryForward({ type: kind, location: toLocation, scrollTop, scrollToTop });
+        settle(kind === "replace" ? prevLocation : fromLocation);
+        if (kind === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
+        else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
+      };
+      //? A page the stack holds shows what it last drew. While another page slides in, the move is made at once as
+      //? well: that slide's end clears the pending page, so one drawn ahead would be dropped and drawn again.
+      const isDrawnAtOnce =
+        navigationLocked.current ||
+        !CsrPageReadiness.drawsLater(toLocation) ||
+        CsrStack.holds(
+          { history: nav.history.current, location: fromLocation, prevLocation, pendingLocation: null, phase: "idle" },
+          toLocation,
+        );
+      if (!slides && isDrawnAtOnce) {
+        commitInPlace();
         return;
       }
-
-      if (navigationLocked.current) {
+      if (slides && navigationLocked.current) {
         //? Run once the page sliding in has settled: dropped, a redirect from that page's guard would leave it blank.
         const waiting = waitingNavigation.current;
         waitingNavigation.current = { kind: waiting?.kind === "push" ? "push" : kind, href, scrollToTop };
         debugFrame("navigation.wait", { kind, from: fromLocation.href, to: href });
         return;
       }
-      navigationLocked.current = true;
+      if (slides) navigationLocked.current = true;
       const intent: NavigationIntent = {
         id: ++navigationIntentId.current,
         kind,
@@ -302,7 +287,12 @@ export const useCsrNavigation = ({
         createdAt: Date.now(),
       };
       pendingNavigation.current = intent;
-      debugFrame("navigation.intent", { id: intent.id, kind, from: fromLocation.href, to: href });
+      debugFrame(slides ? "navigation.intent" : "navigation.drawAhead", {
+        id: intent.id,
+        kind,
+        from: fromLocation.href,
+        to: href,
+      });
       clearPendingSlots();
       setLocationState({
         location: fromLocation,
@@ -311,7 +301,13 @@ export const useCsrNavigation = ({
         navigationIntent: intent,
         phase: "preparing",
       });
-
+      if (!slides) {
+        commitWhenDrawn(intent, pendingNavigation, () => {
+          commitInPlace();
+          promotePendingSlots();
+        });
+        return;
+      }
       commitWhenFrameReady({
         kind,
         href,
@@ -329,7 +325,6 @@ export const useCsrNavigation = ({
       });
     },
     [
-      cancelPendingNavigation,
       clearPendingSlots,
       broadcastSyncNavigation,
       getCurrentLocation,
