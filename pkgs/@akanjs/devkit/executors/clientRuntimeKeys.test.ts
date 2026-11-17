@@ -760,32 +760,38 @@ describe("an app's client runtime pieces", () => {
     });
   }, 120_000);
 
-  test("say which sync to run again when a scope's modules cannot be read, since its store files then load no upload descriptors first", async () => {
-    const warnings: string[] = [];
-    const warn = spyOn(Logger.prototype, "warn").mockImplementation((message: string) => {
-      warnings.push(message);
-    });
-    const readScopes = spyOn(RuntimeNameTable, "readScopes").mockRejectedValue(
-      new Error("user.constant.ts is unreadable"),
-    );
-    try {
-      const { root } = await writeWorkspace({
-        app: "depot",
-        lib: "hangar",
-        libFiles: uploadFilesOf(),
-        appFiles: shopFilesOf("hangar"),
+  test('say under `clientRuntime: "route"` which sync to run again when a scope\'s modules cannot be read, since its store files then load no upload descriptors first', async () => {
+    const saidWhenSynced = async (app: string, lib: string, config: string) => {
+      const warnings: string[] = [];
+      const warn = spyOn(Logger.prototype, "warn").mockImplementation((message: string) => {
+        warnings.push(message);
       });
-      expect(await Bun.file(path.join(root, "libs/hangar/lib/__client/user.st.ts")).text()).not.toContain("file.fetch");
-    } finally {
-      readScopes.mockRestore();
-      warn.mockRestore();
-    }
-    const said = warnings.filter((message) => message.includes("[client-runtime]"));
+      const readScopes = spyOn(RuntimeNameTable, "readScopes").mockRejectedValue(
+        new Error("user.constant.ts is unreadable"),
+      );
+      try {
+        const { root } = await writeWorkspace({
+          app,
+          lib,
+          libFiles: uploadFilesOf(),
+          appFiles: { ...shopFilesOf(lib), "akan.config.ts": `export default ${config};\n` },
+        });
+        const piece = await Bun.file(path.join(root, `libs/${lib}/lib/__client/user.st.ts`)).text();
+        expect(piece).not.toContain("file.fetch");
+      } finally {
+        readScopes.mockRestore();
+        warn.mockRestore();
+      }
+      return warnings.filter((message) => message.includes("[client-runtime]"));
+    };
+
+    const said = await saidWhenSynced("depot", "hangar", '{ clientRuntime: "route" }');
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain(
       "(user.constant.ts is unreadable)",
     );
     expect(said.find((message) => message.includes("libs/hangar/lib/__client"))).toContain("Run `akan sync hangar`");
     expect(said.some((message) => message.includes("Run `akan sync depot`"))).toBe(true);
+    expect(await saidWhenSynced("wharf", "crane", "{}")).toEqual([]);
   }, 120_000);
 
   test("give a client file exactly the pieces of the modules it names, each generated and each loading only its module", async () => {

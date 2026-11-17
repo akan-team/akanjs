@@ -1,9 +1,10 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import { tempDirs, writeText as write } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
+import { RouteRuntime } from "../transforms/routeRuntime";
 import { CLIENT_BUNDLE_NAMING } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
@@ -572,7 +573,28 @@ describe("route client store bootstrap", () => {
         const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
         for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
         expect(warnings).toEqual([expect.stringContaining("Run `akan sync demo`")]);
+        expect(warnings[0]).toContain("runtime files of demo or a lib it mounts are missing");
       });
+
+    test("an app whose modules cannot be read keeps the whole runtime in its browser chunks and is told what failed", async () => {
+      const { appDir, app, warnings } = await routeFixture();
+      const read = spyOn(RouteRuntime, "read").mockRejectedValue(new Error("memo.store.ts is unreadable"));
+      try {
+        await build(app, path.join(appDir, "ui/A.tsx"));
+      } finally {
+        read.mockRestore();
+      }
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
+      expect(warnings).toEqual([
+        expect.stringContaining(
+          "the modules of demo or a lib it mounts could not be read (memo.store.ts is unreadable)",
+        ),
+      ]);
+      expect(warnings[0]).toContain("Fix that, then run `akan sync demo` and build again.");
+      expect(warnings[0]).not.toContain("missing");
+    });
   });
 
   test("a route reaching a lib's cnst through its client barrel carries no module UI", async () => {

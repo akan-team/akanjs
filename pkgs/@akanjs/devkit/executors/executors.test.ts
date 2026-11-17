@@ -1631,9 +1631,8 @@ describe("SysExecutor dependency sync", () => {
     });
     expect(info).toHaveBeenCalledTimes(1);
     expect(info.mock.calls[0]?.[0]).toContain(": react-dom (");
-    const dependencyWarnings = warn.mock.calls.filter(([message]) => !String(message).startsWith("[client-runtime]"));
-    expect(dependencyWarnings).toHaveLength(1);
-    expect(dependencyWarnings[0]?.[0]).toContain("libs/prunedeps/package.json lists left-pad, is-odd");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("libs/prunedeps/package.json lists left-pad, is-odd");
   });
 
   test("keeps what externalLibs, trustedDependencies or akan.keepDependencies names", async () => {
