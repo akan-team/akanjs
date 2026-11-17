@@ -9,6 +9,6 @@ export const useKeyboardFrame = (): CSSProperties | undefined => {
   const { keyboardHeight, height, offsetTop } = useVisualViewportFrame();
   if (typeof window === "undefined") return undefined;
   if (window.matchMedia(breakpointQuery("sm", { below: true })).matches)
-    return height < window.innerHeight ? { top: offsetTop, bottom: "auto", height } : undefined;
+    return height < window.innerHeight ? { top: offsetTop, bottom: "auto", height, paddingBottom: 0 } : undefined;
   return keyboardHeight ? { paddingBottom: keyboardHeight } : undefined;
 };

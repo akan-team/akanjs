@@ -128,8 +128,9 @@ const launcherSides = {
 const launcherHiddenBelow = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" } as const;
 
 const panelLayer = "fixed inset-0 sm:inset-auto sm:right-4 sm:bottom-4";
+//? Full screen on a phone, the panel lies under the status bar and the home indicator, so it keeps clear of both.
 const panelSize =
-  "h-dvh w-screen rounded-none sm:h-[min(600px,calc(100dvh-2rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-box";
+  "h-dvh w-screen rounded-none pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))] pb-[max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))] sm:h-[min(600px,calc(100dvh-2rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-box sm:pt-0 sm:pb-0";
 
 const stickyEdge = 80;
 
@@ -487,6 +488,16 @@ const ChatPanel = ({
   sticky,
   title,
 }: ChatPanelProps) => {
+  //? The keyboard shortens the log with no new message, so a log read to its end is kept there as it shrinks.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (sticky.current) list.scrollTop = list.scrollHeight;
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
   const clear = () => {
     files.clear();
     queue.take();
