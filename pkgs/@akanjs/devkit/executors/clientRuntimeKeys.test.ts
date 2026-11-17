@@ -919,13 +919,30 @@ await import("./${wholes}");
 const { itemCount, noteDraft, tally } = st.get();
 console.log(JSON.stringify({ itemCount, noteDraft, tally }));
 `;
-const writeRedeclaringWorkspace = (app: string, lib: string) =>
+const pickingLibStore = `import { store } from "akanjs/store";
+
+import { fetch, sig } from "../useClient";
+
+export class ItemStore extends store(sig.item, () => ({ itemCount: 1, picked: "" })) {
+  pick(name: string) {
+    this.set({ picked: typeof (fetch as unknown as Record<string, unknown>)[name] });
+  }
+}
+`;
+const pickedScript = (files: string[], { browser = false } = {}) => `
+${browser ? browserGlobals : ""}
+${files.map((file) => `await import("./${file}");`).join("\n")}
+const st = globalThis[Symbol.for("akanjs.store.registry")].instance;
+await st.do.pick("pingAt");
+console.log(JSON.stringify({ picked: st.get().picked, otherStore: typeof st.do.pickLabel, own: typeof st.do.setTally }));
+`;
+const writeRedeclaringWorkspace = (app: string, lib: string, libStore = redeclaringLibStore) =>
   writeWorkspace({
     app,
     lib,
     libFiles: {
       ...stockFiles,
-      "lib/item/item.store.ts": redeclaringLibStore,
+      "lib/item/item.store.ts": libStore,
       "ui/Picker.tsx": `import { st } from "@libs/${lib}/client";
 export const Picker = (name: string) => (st.do as unknown as Record<string, () => void>)[name]?.();
 `,
@@ -970,6 +987,28 @@ describe("an app store that redeclares what the lib store it extends declares", 
       const { pages } = await bundleForBrowser(temp, app, [page]);
       const answer = await evaluate(temp.root, redeclaredScript(pages, { browser: true }), app);
       expect({ page, answer }).toEqual({ page, answer: wholeAnswer });
+    }
+  }, 240_000);
+
+  test("loads every model's runtime with a lib store that picks an endpoint at run time, whichever file a page's own bundle reaches first", async () => {
+    const [app, lib] = ["tailor", "attic"];
+    const temp = await writeRedeclaringWorkspace(app, lib, pickingLibStore);
+    const { root } = temp;
+    const whole = await evaluate(root, pickedScript([`apps/${app}/lib/st.ts`]), app);
+    expect(whole).toEqual({ picked: "function", otherStore: "function", own: "function" });
+    const libPiece = await writeLoadOrder(root, "libPiece", [
+      `libs/${lib}/lib/__client/item.st`,
+      `apps/${app}/lib/__client/item.st`,
+    ]);
+    for (const page of [
+      `apps/${app}/ui/Count.tsx`,
+      `libs/${lib}/ui/Picker.tsx`,
+      `apps/${app}/ui/Field.tsx`,
+      libPiece,
+    ]) {
+      const { pages } = await bundleForBrowser(temp, app, [page]);
+      const answer = await evaluate(root, pickedScript(pages, { browser: true }), app);
+      expect({ page, answer }).toEqual({ page, answer: whole });
     }
   }, 240_000);
 

@@ -112,6 +112,18 @@ export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {}
     expect(result?.source).not.toContain("memo.st");
   });
 
+  test("gives a lib store file the app extends its descriptors, and not the app's store piece that imports it", () => {
+    const source = `import { store } from "akanjs/store";
+
+import { sig } from "../useClient";
+
+export class NoteStore extends store(sig.note, () => ({ noteCount: 0 })) {}
+`;
+    const result = transform(source, "libs/kit/lib/note/note.store.ts");
+    expect(result?.pieces).toEqual(["apps/demo/lib/__client/note.fetch"]);
+    expect(result?.source).not.toContain("note.st");
+  });
+
   test("loads the framework's own descriptors for a call to one of them", () => {
     const result = transform('import { fetch } from "@apps/demo/client";\nexport const check = () => fetch.ping();\n');
     expect(result?.pieces).toEqual(["apps/demo/lib/__client/_base.fetch"]);
@@ -146,6 +158,27 @@ describe("a client file whose modules cannot be told", () => {
     const result = transform(source, "apps/demo/ui/Card.tsx", withoutTagStore);
     expect(result?.perModule).toBe(false);
     expect(result?.source).toBe(`${whole}${source}`);
+  });
+
+  test("loads every descriptor and every other module's store piece in a store file, never the store root that imports it", () => {
+    const source = `import { store } from "akanjs/store";
+
+import { fetch, sig } from "../useClient";
+
+export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
+  run(name: string) {
+    return fetch[name]();
+  }
+}
+`;
+    const pieces = ["apps/demo/lib/__client/_useClient", "apps/demo/lib/__client/note.st"].concat(
+      ["note.st", "tag.st", "util.st"].map((piece) => `libs/kit/lib/__client/${piece}`),
+    );
+    expect(transform(source, "apps/demo/lib/memo/memo.store.ts")).toEqual({
+      source: `${pieces.map((piece) => `import "/ws/${piece}.ts"; `).join("")}${source}`,
+      perModule: false,
+      pieces: [],
+    });
   });
 
   test("loads the whole runtime in a lib file too, as the app's", () => {
