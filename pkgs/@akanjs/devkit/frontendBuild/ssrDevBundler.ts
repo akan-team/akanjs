@@ -13,7 +13,7 @@ import { CsrDevPaths } from "./csrDevPaths";
 import type { CsrDevContext } from "./csrDevTypes";
 import { DevRegistryBundler } from "./devRegistryBundler";
 import { DevRouteRuntime } from "./devRouteRuntime";
-import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
+import { VendorFileImports } from "./vendorFileImports";
 
 //* Dev-only client code of SSR pages as a module registry, under `.akan/artifact/ssr-dev`. Its roots are a bootstrap
 //* (the app's client runtime) and every `"use client"` entry; React and the akanjs vendor facets stay the import map's,
@@ -38,11 +38,12 @@ export class SsrDevBundler extends DevRegistryBundler {
     const define = bundleDefine(this.app, "start", "ssr");
     const optimizeImports = [...akanConfig.optimizeImports];
     const routed = akanConfig.clientRuntime === "route";
+    const externals = await VendorFileImports.specifiersIn(this.app.workspace.workspaceRoot);
     //? Under "route", the framework barrels narrow as in a route build: `akanjs/ui` whole names every model runtime
     //? marker, which would load every module's store on every page.
     const barrelImports = routed
       ? [...new Set(akanConfig.barrelImports)].filter(
-          (barrel) => barrel && !(VENDOR_SPECIFIERS as readonly string[]).includes(barrel),
+          (barrel) => barrel && !(externals as readonly string[]).includes(barrel),
         )
       : workspaceBarrels(akanConfig.barrelImports);
     const route = routed ? await this.#routeRuntime() : null;
@@ -56,7 +57,7 @@ export class SsrDevBundler extends DevRegistryBundler {
         Bun.version,
         define,
         optimizeImports,
-        VENDOR_SPECIFIERS,
+        externals,
         barrelImports,
         ...(modelRuntime === undefined ? [] : [modelRuntime]),
       ]),
@@ -69,7 +70,7 @@ export class SsrDevBundler extends DevRegistryBundler {
       optimizeImports,
       configKey,
       refreshFile: null,
-      externals: VENDOR_SPECIFIERS,
+      externals,
       barrelImports,
       ...(routeRuntime ? { modelRuntime, routeRuntime } : {}),
     };
