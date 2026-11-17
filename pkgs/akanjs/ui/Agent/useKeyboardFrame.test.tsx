@@ -39,15 +39,15 @@ const mountFrame = ({ fullScreen }: { fullScreen: boolean }) => {
 };
 
 describe("useKeyboardFrame", () => {
-  test("pins a full-screen panel to the visible rectangle while iOS pans it to the field", () => {
+  test("pins a full-screen panel to the visible rectangle while iOS pans it to the field, the keys over its home indicator", () => {
     const { seen, move, unmount } = mountFrame({ fullScreen: true });
     expect(seen.frame).toBeUndefined();
 
     move(450, 350);
-    expect(seen.frame).toEqual({ top: 350, bottom: "auto", height: 450 });
+    expect(seen.frame).toEqual({ top: 350, bottom: "auto", height: 450, paddingBottom: 0 });
 
     move(450, 0);
-    expect(seen.frame).toEqual({ top: 0, bottom: "auto", height: 450 });
+    expect(seen.frame).toEqual({ top: 0, bottom: "auto", height: 450, paddingBottom: 0 });
 
     move(800, 0);
     expect(seen.frame).toBeUndefined();
@@ -62,5 +62,15 @@ describe("useKeyboardFrame", () => {
     move(800, 0);
     expect(seen.frame).toBeUndefined();
     unmount();
+  });
+
+  test("in an app whose page meets the keys itself, the panel is left whole for the ride", () => {
+    const native = globalThis as { __AKAN_NATIVE__?: { keyboardAvoidance?: string } };
+    native.__AKAN_NATIVE__ = { keyboardAvoidance: "page" };
+    const { seen, move, unmount } = mountFrame({ fullScreen: true });
+    move(450, 0);
+    expect(seen.frame).toBeUndefined();
+    unmount();
+    delete native.__AKAN_NATIVE__;
   });
 });

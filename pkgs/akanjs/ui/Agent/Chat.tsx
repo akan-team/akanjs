@@ -128,8 +128,10 @@ const launcherSides = {
 const launcherHiddenBelow = { sm: "max-sm:hidden", md: "max-md:hidden", lg: "max-lg:hidden" } as const;
 
 const panelLayer = "fixed inset-0 sm:inset-auto sm:right-4 sm:bottom-4";
+//? Full screen on a phone, the panel lies under the status bar and the home indicator, so it keeps clear of both, and
+//? in an app its box ends where the page's does, so the keyboard ride measures the composer against it.
 const panelSize =
-  "h-dvh w-screen rounded-none sm:h-[min(600px,calc(100dvh-2rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-box";
+  "h-[calc(100dvh-var(--akan-keyboard-cover,0px))] w-screen rounded-none pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))] pb-[max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))] [html[data-akan-keyboard]_&]:pb-0 sm:h-[min(600px,calc(100dvh-2rem))] sm:w-[min(24rem,calc(100vw-2rem))] sm:rounded-box sm:pt-0 sm:pb-0";
 
 const stickyEdge = 80;
 
@@ -487,6 +489,16 @@ const ChatPanel = ({
   sticky,
   title,
 }: ChatPanelProps) => {
+  //? The keyboard shortens the log with no new message, so a log read to its end is kept there as it shrinks.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      if (sticky.current && !list.hasAttribute("data-akan-keyboard-glide")) list.scrollTop = list.scrollHeight;
+    });
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
   const clear = () => {
     files.clear();
     queue.take();
@@ -521,59 +533,67 @@ const ChatPanel = ({
             />
           ) : null}
           <div
-            aria-busy={session.isRunning}
-            aria-live="polite"
-            className="scrollbar-thin flex flex-1 flex-col gap-2 overflow-y-auto px-4 py-3"
+            className="scrollbar-thin flex flex-1 flex-col overflow-y-auto px-4 py-3"
             onScroll={() => {
               const list = listRef.current;
               if (list) sticky.current = list.scrollHeight - list.scrollTop - list.clientHeight < stickyEdge;
             }}
             ref={listRef}
-            role="log"
           >
-            {bubbles.length
-              ? bubbles
-              : (intro ?? <p className="py-6 text-center text-foreground/40 text-sm">{l("base.agentIntro")}</p>)}
-            {session.isCompacting ? (
-              <p className="flex items-center gap-2 text-foreground/50 text-xs">
-                <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
-                {l("base.agentSummarizing")}
-              </p>
-            ) : null}
+            <div
+              aria-busy={session.isRunning}
+              aria-live="polite"
+              className="flex flex-col gap-2"
+              data-akan-keyboard-ride="inset"
+              role="log"
+            >
+              {bubbles.length
+                ? bubbles
+                : (intro ?? <p className="py-6 text-center text-foreground/40 text-sm">{l("base.agentIntro")}</p>)}
+              {session.isCompacting ? (
+                <p className="flex items-center gap-2 text-foreground/50 text-xs">
+                  <span className="size-1.5 shrink-0 animate-pulse rounded-full bg-primary" />
+                  {l("base.agentSummarizing")}
+                </p>
+              ) : null}
+            </div>
           </div>
           <ChatPendingCards portal={inline ? layers.enclosingPortal : layers.cardOverlays} session={session} />
-          {queue.queued ? (
-            <Queued message={queue.queued} onCancel={() => queue.take()} onEdit={composer.unpark} />
-          ) : null}
-          <Menu
-            onPick={(row) => row.pick()}
-            prefix={composer.list === composer.menu ? "/" : "@"}
-            rows={composer.list.rows}
-            selected={composer.list.selected}
-          />
-          <Composer
-            attached={files.attached}
-            pending={files.pending}
-            draft={draft}
-            handleRef={handleRef}
-            inputRef={inputRef}
-            isMenuOpen={!!composer.list.at()}
-            mentions={mentions}
-            {...(speech.canListen ? { mic: { listening: speech.listening, onToggle: speech.toggle } } : {})}
-            onDraft={composer.write}
-            onFiles={(picked) => void files.add(picked)}
-            onKeyDown={composer.onKeyDown}
-            onRemoveFile={files.remove}
-            onRemoveReference={refs.remove}
-            onSend={composer.send}
-            references={refs.references}
-            onStop={() => {
-              speech.silence();
-              composer.unpark();
-              session.abort();
-            }}
-            session={session}
-          />
+          {/* In an app the panel keeps the whole screen while the keys are up, as a native chat does, and this rides them. */}
+          <div className="shrink-0" data-akan-keyboard-overlay="" data-akan-keyboard-ride="">
+            {queue.queued ? (
+              <Queued message={queue.queued} onCancel={() => queue.take()} onEdit={composer.unpark} />
+            ) : null}
+            <Menu
+              onPick={(row) => row.pick()}
+              prefix={composer.list === composer.menu ? "/" : "@"}
+              rows={composer.list.rows}
+              selected={composer.list.selected}
+            />
+            <Composer
+              attached={files.attached}
+              pending={files.pending}
+              draft={draft}
+              handleRef={handleRef}
+              inputRef={inputRef}
+              isMenuOpen={!!composer.list.at()}
+              mentions={mentions}
+              {...(speech.canListen ? { mic: { listening: speech.listening, onToggle: speech.toggle } } : {})}
+              onDraft={composer.write}
+              onFiles={(picked) => void files.add(picked)}
+              onKeyDown={composer.onKeyDown}
+              onRemoveFile={files.remove}
+              onRemoveReference={refs.remove}
+              onSend={composer.send}
+              references={refs.references}
+              onStop={() => {
+                speech.silence();
+                composer.unpark();
+                session.abort();
+              }}
+              session={session}
+            />
+          </div>
         </OverlayPortalProvider>
       </aside>
       {inline ? null : <PanelOverlayHosts asking={isAsking(session)} {...layers.overlayHosts} />}
