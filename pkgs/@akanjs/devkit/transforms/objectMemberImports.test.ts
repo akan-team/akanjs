@@ -40,6 +40,22 @@ const writeObjects = async () => {
     "ui/Memoed/A.tsx": "export const A = () => null;\n",
     "ui/Memoed/B.tsx": "export const B = () => null;\n",
     "ui/settings.ts": "export const settings = { columns: 2 };\n",
+    "ui/Runner/index.ts": [
+      'import { run } from "./run";',
+      'import { arrow, lexical, picked, plain } from "./free";',
+      'export const Runner = { run, arrow, lexical, picked, plain, label: "runner" };',
+    ].join("\n"),
+    "ui/Runner/run.ts": "export function run(this: { label: string }) {\n  return this.label;\n}\n",
+    "ui/Runner/free.ts": [
+      "export const arrow = () => 1;",
+      "export function plain() {",
+      "  return [1].map(function (this: unknown) { return this; });",
+      "}",
+      "export function lexical() {",
+      "  return () => this;",
+      "}",
+      "export const picked = [() => 1][0];",
+    ].join("\n"),
   };
   for (const [file, content] of Object.entries(files)) await write(path.join(root, file), content);
   const objects = new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(async () => null) });
@@ -135,6 +151,85 @@ describe("ObjectMemberImports", () => {
     expect(await keptFor('import { Memoed } from "../ui/Memoed";', "<Memoed.B />")).toEqual([
       { object: "Memoed", file: fileOf("ui/Memoed/index.tsx"), line: 1, reason: "call" },
     ]);
+  });
+
+  test("keeps the whole object for a member called through it, unless the member's declaration reads no `this`", async () => {
+    const { fileOf, rewrite } = await writeObjects();
+    const runner = 'import { Runner } from "../ui/Runner";';
+    const reasonsOf = async (use: string) =>
+      (await rewrite([runner, `export const value = ${use};`]))?.kept.map(({ reason }) => reason);
+
+    for (const use of [
+      "Runner.run()",
+      "Runner.run`x`",
+      "(Runner.run)()",
+      "Runner.run!()",
+      "Runner.run?.()",
+      "Runner.lexical()",
+      "Runner.picked()",
+    ])
+      expect(await reasonsOf(use)).toEqual(["method-call"]);
+
+    const result = await rewrite([
+      runner,
+      'import { Memo } from "../lib/memo";',
+      'export const value = [Runner.arrow(), Runner.plain(), Runner.run, <Runner.run />, Runner.run.call({ label: "" })];',
+      "export const removed = Memo.Util.Remove();",
+    ]);
+    expect(result?.kept).toEqual([]);
+    expect(result?.narrowed.map(({ members }) => members)).toEqual([
+      ["arrow()", "plain()", "run", "run.call()"],
+      ["Util.Remove()"],
+    ]);
+    expect(result?.contents).toContain(
+      '[Runner$arrow(), Runner$plain(), Runner$run, <Runner$run />, Runner$run.call({ label: "" })]',
+    );
+    expect(result?.contents).toContain(
+      `import { run as Runner$run } from ${JSON.stringify(fileOf("ui/Runner/run.ts"))};`,
+    );
+  });
+
+  test("keeps the whole object for a member written through it, by a loop or a destructuring assignment too", async () => {
+    const { rewrite } = await writeObjects();
+    const reasonsOf = async (body: string) =>
+      (
+        await rewrite([
+          'import { Memo } from "../lib/memo";',
+          "export const View = Memo.Zone.View;",
+          `export const run = () => ${body};`,
+        ])
+      )?.kept.map(({ reason }) => reason);
+
+    for (const body of [
+      "{ for (Memo.Zone of [null]); }",
+      "{ for (Memo.Zone in {}); }",
+      "([Memo.Zone] = [null])",
+      "([, ...Memo.Zone] = [])",
+      "({ zone: Memo.Zone } = { zone: null })",
+      "({ zone: [Memo.Zone = null] } = { zone: [] })",
+      "({ ...Memo.Zone } = {})",
+      "((Memo.Zone as unknown) = null)",
+      "(Memo.Zone += 1)",
+      "Memo.Zone++",
+      "delete Memo.Zone",
+    ])
+      expect(await reasonsOf(body)).toEqual(["written"]);
+    expect(
+      await reasonsOf("{ for (const zone of [Memo.Zone]) return [[Memo.Zone.View], { zone: Memo.Zone }, zone]; }"),
+    ).toEqual([]);
+  });
+
+  test("keeps the import of an object destructured into no names, which still reads it", async () => {
+    const { fileOf, rewrite } = await writeObjects();
+
+    const result = await rewrite([
+      'import { Memo } from "../lib/memo";',
+      "const {} = Memo;",
+      "export const z = Memo.Zone;",
+    ]);
+
+    expect(result?.contents ?? null).toBeNull();
+    expect(result?.kept).toEqual([{ object: "Memo", file: fileOf("lib/memo/index.ts"), line: 2, reason: "passed-on" }]);
   });
 
   test('narrows a member past a "use client" object only for a client importer, so a server page keeps its reference', async () => {

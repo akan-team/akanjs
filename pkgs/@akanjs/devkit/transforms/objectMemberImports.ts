@@ -17,6 +17,7 @@ export type ObjectKeepReason =
   | "computed-member"
   | "spread"
   | "rendered-or-called"
+  | "method-call"
   | "written"
   | "shadowed"
   | "unresolved-member"
@@ -184,11 +185,13 @@ export class ObjectMemberImports {
     const moduleFacts = await this.#modules.facts(file);
     const shape = moduleFacts?.objects.get(object);
     const targets = await Promise.all(
-      members.map(async (member) =>
-        moduleFacts && shape
-          ? await this.#targetOf(file, moduleFacts, shape, member.split("."), file, clientImporter, new Set())
-          : null,
-      ),
+      members.map(async (member) => {
+        if (!moduleFacts || !shape) return null;
+        const called = member.endsWith("()");
+        const memberPath = (called ? member.slice(0, -2) : member).split(".");
+        const target = await this.#targetOf(file, moduleFacts, shape, memberPath, file, clientImporter, new Set());
+        return await this.#calledTargetOf(target, memberPath, called);
+      }),
     );
     return Bun.hash(JSON.stringify([moduleFacts?.failed ?? null, targets])).toString(36);
   }
@@ -215,7 +218,8 @@ export class ObjectMemberImports {
     const exports = await Promise.all(
       (await this.filesOf(file)).map(async (member) => {
         const scanned = await this.#modules.exportsOf(member);
-        return [member, scanned ? [[...scanned.names].sort(), scanned.star, scanned.useClient] : null];
+        const thisFree = [...(await this.#modules.thisFreeOf(member))].sort();
+        return [member, scanned ? [[...scanned.names].sort(), scanned.star, scanned.useClient, thisFree] : null];
       }),
     );
     return Bun.hash(JSON.stringify([moduleFacts?.useClient, moduleFacts?.failed, objects, exports])).toString(36);
@@ -233,20 +237,34 @@ export class ObjectMemberImports {
     const targets: ObjectMemberUse[] = [];
     const uses = [
       ...candidate.paths,
-      ...candidate.destructures.flatMap(({ keys, node }) => keys.map((key) => ({ path: [key], nodes: [node] }))),
+      ...candidate.destructures.flatMap(({ keys, node }) =>
+        keys.map((key) => ({ path: [key], nodes: [node], called: false })),
+      ),
     ];
     for (const use of uses) {
-      const target = await this.#targetOf(file, moduleFacts, shape, use.path, importer, clientImporter, read);
+      const found = await this.#targetOf(file, moduleFacts, shape, use.path, importer, clientImporter, read);
+      const target = await this.#calledTargetOf(found, use.path, use.called);
       const node = use.nodes[0] ?? candidate.element;
       if (typeof target === "string") return { reason: target, node };
       targets.push({
         member: use.path.slice(0, target.depth).join("."),
-        written: use.path.join("."),
+        written: `${use.path.join(".")}${use.called ? "()" : ""}`,
         target,
         nodes: use.nodes,
       });
     }
     return targets;
+  }
+
+  //? Called through the object, a member gets the object as `this`; imported alone it would get none.
+  async #calledTargetOf(
+    target: MemberTarget | ObjectKeepReason,
+    memberPath: string[],
+    called: boolean,
+  ): Promise<MemberTarget | ObjectKeepReason> {
+    if (typeof target === "string" || !called || target.depth !== memberPath.length) return target;
+    if (target.imported !== "*" && (await this.#modules.thisFreeOf(target.file)).has(target.imported)) return target;
+    return "method-call";
   }
 
   async #targetOf(
@@ -374,11 +392,13 @@ export class ObjectMemberImports {
       nodes.push(parent);
       current = parent;
     }
-    if (nodes.length > 0) {
+    const last = nodes.at(-1);
+    if (last) {
       if (nodes.some((node) => ObjectMemberImports.#isWritten(node))) return keep("written");
       candidate.paths.push({
         path: nodes.map((node) => ((node as ts.PropertyAccessExpression).name as ts.Identifier).text),
         nodes,
+        called: ObjectMemberImports.#isCallee(last),
       });
       return;
     }
@@ -391,6 +411,7 @@ export class ObjectMemberImports {
         if (!ts.isIdentifier(name) && !ts.isStringLiteral(name)) return keep("computed-member");
         keys.push(name.text);
       }
+      if (keys.length === 0) return keep("passed-on");
       candidate.destructures.push({ node: id, keys });
       return;
     }
@@ -410,8 +431,18 @@ export class ObjectMemberImports {
     return ts.isTaggedTemplateExpression(parent) && parent.tag === id;
   }
 
-  static #isWritten(node: ts.Node) {
+  static #isCallee(node: ts.Node) {
+    let current = node;
+    while (ObjectMemberImports.#isTransparent(current.parent)) current = current.parent;
+    const parent = current.parent;
+    if (ts.isCallExpression(parent)) return parent.expression === current;
+    return ts.isTaggedTemplateExpression(parent) && parent.tag === current;
+  }
+
+  //? A node inside an array or object literal is written when that literal is a destructuring target.
+  static #isWritten(node: ts.Node): boolean {
     const parent = node.parent;
+    if (ObjectMemberImports.#isTransparent(parent)) return ObjectMemberImports.#isWritten(parent);
     if (ts.isBinaryExpression(parent))
       return (
         parent.left === node &&
@@ -420,7 +451,23 @@ export class ObjectMemberImports {
       );
     if (ts.isPrefixUnaryExpression(parent) || ts.isPostfixUnaryExpression(parent))
       return [ts.SyntaxKind.PlusPlusToken, ts.SyntaxKind.MinusMinusToken].includes(parent.operator);
+    if (ts.isForInStatement(parent) || ts.isForOfStatement(parent)) return parent.initializer === node;
+    if (ts.isPropertyAssignment(parent))
+      return parent.initializer === node && ObjectMemberImports.#isWritten(parent.parent);
+    if (ts.isSpreadAssignment(parent)) return ObjectMemberImports.#isWritten(parent.parent);
+    if (ts.isArrayLiteralExpression(parent) || ts.isSpreadElement(parent))
+      return ObjectMemberImports.#isWritten(parent);
     return ts.isDeleteExpression(parent);
+  }
+
+  static #isTransparent(node: ts.Node) {
+    return (
+      ts.isParenthesizedExpression(node) ||
+      ts.isNonNullExpression(node) ||
+      ts.isAsExpression(node) ||
+      ts.isSatisfiesExpression(node) ||
+      ts.isTypeAssertionExpression(node)
+    );
   }
 
   static #isPropertyName(id: ts.Identifier) {

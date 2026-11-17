@@ -2,6 +2,7 @@ import fs from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { type ModuleExports, ObjectModule, type ObjectModuleFacts } from "./objectModule";
+import { ThisFreeExports } from "./thisFreeExports";
 
 const MODULE_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 
@@ -28,6 +29,7 @@ export const resolveModuleFile = async (fromFile: string, specifier: string): Pr
 export class ObjectModuleAnalyzer {
   readonly #facts = new Map<string, Promise<ObjectModuleFacts | null>>();
   readonly #exports = new Map<string, Promise<ModuleExports | null>>();
+  readonly #thisFree = new Map<string, Promise<Set<string>>>();
 
   facts(file: string): Promise<ObjectModuleFacts | null> {
     const key = ObjectModuleAnalyzer.#keyOf(file);
@@ -58,11 +60,29 @@ export class ObjectModuleAnalyzer {
     return exports;
   }
 
+  thisFreeOf(file: string): Promise<Set<string>> {
+    const key = ObjectModuleAnalyzer.#keyOf(file);
+    let names = this.#thisFree.get(key);
+    if (!names) {
+      names = ObjectModuleAnalyzer.#text(file).then((source) => {
+        if (source === null) return new Set<string>();
+        try {
+          return ThisFreeExports.read(source, file);
+        } catch {
+          return new Set<string>();
+        }
+      });
+      this.#thisFree.set(key, names);
+    }
+    return names;
+  }
+
   forget(files: Iterable<string>) {
     for (const file of files) {
       const key = ObjectModuleAnalyzer.#keyOf(file);
       this.#facts.delete(key);
       this.#exports.delete(key);
+      this.#thisFree.delete(key);
     }
   }
 

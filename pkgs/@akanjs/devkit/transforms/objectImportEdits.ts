@@ -10,7 +10,7 @@ export interface ObjectImportCandidate {
   shadowed: boolean;
   typeUse: boolean;
   keep: { reason: ObjectKeepReason; node: ts.Node } | null;
-  paths: { path: string[]; nodes: ts.Expression[] }[];
+  paths: { path: string[]; nodes: ts.Expression[]; called: boolean }[];
   destructures: { node: ts.Identifier; keys: string[] }[];
 }
 

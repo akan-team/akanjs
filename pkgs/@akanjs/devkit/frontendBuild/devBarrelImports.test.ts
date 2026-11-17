@@ -74,4 +74,27 @@ describe("DevBarrelImports", () => {
     await write(file("lib/memo/index.ts"), memoIndex("Memo.Panel"));
     expect(await round().fingerprint(key, ["@server", "Zone.View"])).not.toBe(hash ?? "");
   });
+
+  test("hashes a part called through the object with whether it reads `this`, so a save that makes it read one moves both", async () => {
+    const root = await realpath(await makeTempRoot());
+    const file = (name: string) => path.join(root, name);
+    await write(file("lib/memo/index.ts"), 'import * as Util from "./Memo.Util";\nexport const Memo = { Util };\n');
+    await write(file("lib/memo/Memo.Util.ts"), "export function format() {\n  return 1;\n}\n");
+    const importer = file("page/_index.tsx");
+    const key = `object:${file("lib/memo/index.ts")}#Memo`;
+    const round = () => new DevBarrelImports([], async () => null, { packageRoot: root });
+    const digest = async () => (await round().stamps([key], (id) => path.relative(root, id)))[key]?.digest;
+
+    const narrowed = (
+      await round().rewrite('import { Memo } from "../lib/memo";\nexport const n = Memo.Util.format();\n', importer)
+    )?.narrowed[key];
+    const before = await digest();
+    await write(file("lib/memo/Memo.Util.ts"), "export function format() {\n  return 2;\n}\n");
+    expect(narrowed?.names).toEqual(["@server", "Util.format()"]);
+    expect(await digest()).toBe(before ?? "");
+
+    await write(file("lib/memo/Memo.Util.ts"), "export function format(this: unknown) {\n  return this;\n}\n");
+    expect(await digest()).not.toBe(before ?? "");
+    expect(await round().fingerprint(key, narrowed?.names ?? [])).not.toBe(narrowed?.hash ?? "");
+  });
 });
