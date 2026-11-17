@@ -1,5 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { runtimeFixtureTables } from "../quality/runtimeTable.fixture";
+import { RuntimeUse, type RuntimeUseReason } from "../quality/runtimeUse";
 import { RouteRuntime } from "./routeRuntime";
 
 const root = "/ws";
@@ -35,11 +36,19 @@ const transform = (source: string, file = "apps/demo/ui/Card.tsx", target = runt
 const bound = (...pieces: [name: string, specifier: string][]) =>
   [
     'import { loadedAfter as __akanLoadedAfter } from "akanjs/base";',
-    ...pieces.map(([name, specifier], index) => `import { ${name} as __akanLoaded${index} } from "${specifier}";`),
+    ...pieces.map(([name, specifier], index) =>
+      name === "*"
+        ? `import * as __akanLoaded${index} from "${specifier}";`
+        : `import { ${name} as __akanLoaded${index} } from "${specifier}";`,
+    ),
     `__akanLoadedAfter(${pieces.map((_, index) => `__akanLoaded${index}`).join(", ")});`,
   ].join(" ");
 
-const whole = `${bound(["sig", "/ws/apps/demo/lib/__client/_useClient.ts"], ["st", "/ws/apps/demo/lib/__client/_st.ts"])} `;
+const whole = `${bound(
+  ["*", "/ws/apps/demo/lib/cnst.ts"],
+  ["sig", "/ws/apps/demo/lib/__client/_useClient.ts"],
+  ["st", "/ws/apps/demo/lib/__client/_st.ts"],
+)} `;
 
 describe("a client file under the per-route runtime", () => {
   test("takes its handles from the page runtime and gains the pieces of the modules it names", () => {
@@ -426,6 +435,204 @@ export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
     expect(piecesOf(uiFile("Card"))).toEqual([...memoPieces, ...named]);
     expect(piecesOf(uiFile("Other"))).toEqual(named);
     expect(plan({ files, imports, entries: [relabelFile] }).kept).toEqual([relabelFile]);
+  });
+});
+
+const memoConstant = `import { enumOf, via } from "akanjs/constant";
+
+export const MemoStatus = enumOf("memoStatus", ["draft", "done"] as const);
+export class MemoInput extends via((field) => ({ title: field(String), status: field(MemoStatus) })) {}
+export class MemoObject extends via(MemoInput, (field) => ({})) {}
+export class LightMemo extends via(MemoObject, ["title"] as const, (resolve) => ({})) {}
+export class Memo extends via(MemoObject, LightMemo, (resolve) => ({})) {}
+`;
+const boardConstant = `import { via } from "akanjs/constant";
+import { cnst } from "@libs/kit";
+
+export class BoardInput extends via((field) => ({ note: field(cnst.Note) })) {}
+export class BoardObject extends via(BoardInput, (field) => ({})) {}
+export class LightBoard extends via(BoardObject, [] as const, (resolve) => ({})) {}
+export class Board extends via(BoardObject, LightBoard, (resolve) => ({})) {}
+`;
+
+describe("the constants a file reads under the per-route runtime", () => {
+  let constants: RouteRuntime;
+  let constantsOf: (pieces: Set<string>) => RouteRuntime;
+  beforeAll(async () => {
+    const files = {
+      "apps/demo/lib/memo/memo.constant.ts": memoConstant,
+      "apps/demo/lib/board/board.constant.ts": boardConstant,
+    };
+    const { demo } = await runtimeFixtureTables({ demo: files });
+    constantsOf = (pieces) =>
+      new RouteRuntime(
+        root,
+        demo,
+        pieces,
+        (absPath) => files[absPath.slice(`${root}/`.length) as keyof typeof files] ?? null,
+      );
+    constants = constantsOf(
+      piecesOf([...appPieces, "memo.cnst", "board.cnst"], [...kitPieces, "note.cnst", "tag.cnst"]),
+    );
+  });
+  const read = (source: string, file = "apps/demo/ui/Card.tsx") => constants.transform(source, `${root}/${file}`);
+  const cnstImports = (...lines: [name: string, specifier: string][]) =>
+    lines.map(([name, specifier], index) => `import { ${name} as __akanCnst${index} } from "${specifier}";`).join(" ");
+
+  test("takes each constant from the file declaring it, and a model from its registration piece, which loads first", () => {
+    const source = `import { cnst, fetch } from "@apps/demo/client";
+export const read = () => [cnst.MemoStatus, cnst.memo, cnst.kit.Note, fetch.memoNote()];
+`;
+    const result = read(source);
+    expect(result?.pieces).toEqual([
+      "apps/demo/lib/__client/memo.cnst",
+      "libs/kit/lib/__client/note.cnst",
+      "apps/demo/lib/__client/memo.fetch",
+    ]);
+    expect(result?.source).toBe(`${bound(
+      ["memo", "@apps/demo/lib/__client/memo.cnst"],
+      ["note", "@libs/kit/lib/__client/note.cnst"],
+      ["loaded", "@apps/demo/lib/__client/memo.fetch"],
+    )} ${cnstImports(
+      ["MemoStatus", "../lib/memo/memo.constant"],
+      ["memo", "@apps/demo/lib/__client/memo.cnst"],
+      ["Note", "../../../libs/kit/lib/note/note.constant"],
+    )} import { fetch } from "@apps/demo/lib/usePage"; import type { cnst } from "@apps/demo/client";
+export const read = () => [__akanCnst0, __akanCnst1, __akanCnst2, fetch.memoNote()];
+`);
+  });
+
+  test("takes the names a destructuring of the constants holds, and the whole-runtime file's constants likewise", () => {
+    const destructured = read(
+      'import { cnst } from "@apps/demo/client";\nconst { MemoStatus, memo } = cnst;\nexport const pick = (value: cnst.Memo) => [MemoStatus, memo, value];\n',
+    );
+    expect(destructured?.pieces).toEqual(["apps/demo/lib/__client/memo.cnst"]);
+    expect(destructured?.source.split("\n").slice(0, 2)).toEqual([
+      `${bound(["memo", "@apps/demo/lib/__client/memo.cnst"])} ${cnstImports(
+        ["MemoStatus", "../lib/memo/memo.constant"],
+        ["memo", "@apps/demo/lib/__client/memo.cnst"],
+      )} import type { cnst } from "@apps/demo/client";`,
+      'const { MemoStatus, memo } = { "MemoStatus": __akanCnst0, "memo": __akanCnst1 };',
+    ]);
+    const namespace = read('import * as cnst from "../lib/cnst";\nexport const model = () => cnst.memo;\n');
+    expect(namespace?.source).toContain('import type * as cnst from "../lib/cnst";');
+    expect(namespace?.source).toContain("export const model = () => __akanCnst0;");
+  });
+
+  test("keeps a lib file's constants from the lib, and leaves a constant used only as a type to the type checker", () => {
+    expect(
+      read('import { cnst } from "@libs/kit/client";\nexport const note = () => cnst.Note;\n', "libs/kit/ui/Note.tsx")
+        ?.pieces,
+    ).toEqual(["libs/kit/lib/__client/note.cnst"]);
+    const typed = 'import { cnst } from "@apps/demo/client";\nexport const same = (value: cnst.Memo) => value;\n';
+    expect(read(typed)).toEqual({
+      source: typed.replace("import { cnst }", "import type { cnst }"),
+      perModule: true,
+      pieces: [],
+    });
+  });
+
+  test.each<[string, string, RuntimeUseReason]>([
+    ["a computed member", "export const pick = (name: string) => cnst[name];", "computed-access"],
+    ["the constants handed on", "export const names = () => Object.keys(cnst);", "passed-on"],
+    ["a spread", "export const all = { ...cnst };", "passed-on"],
+    ["a name the scope does not hand out", "export const none = () => cnst.Nope;", "unknown-name"],
+    [
+      "a rest in a destructuring",
+      "const { memo, ...rest } = cnst;\nexport const both = [memo, rest];",
+      "hidden-by-destructuring",
+    ],
+  ])("keeps every constant for %s, and says why", (_, body, reason) => {
+    const source = `import { cnst } from "@apps/demo/client";\n${body}\n`;
+    expect(read(source)).toEqual({ source, perModule: true, pieces: [], wholeConstants: true });
+    expect(constants.wholeConstantReaders).toContain(`${root}/apps/demo/ui/Card.tsx`);
+    const { constants: use } = RuntimeUse.analyze({ fileName: "apps/demo/ui/Card.tsx", text: source }, constants.table);
+    expect(use.problems.map((problem) => problem.reason)).toEqual([reason]);
+  });
+
+  test("takes a lib model a constant file reads from that lib's registration piece, never the barrel's whole constants", () => {
+    const result = read(boardConstant, "apps/demo/lib/board/board.constant.ts");
+    expect(result?.pieces).toEqual(["libs/kit/lib/__client/note.cnst"]);
+    expect(result?.source.split("\n").slice(0, 2)).toEqual([
+      `${bound(["note", "@libs/kit/lib/__client/note.cnst"])} ${cnstImports([
+        "Note",
+        "../../../../libs/kit/lib/note/note.constant",
+      ])} import { via } from "akanjs/constant";`,
+      'import type { cnst } from "@libs/kit";',
+    ]);
+    expect(result?.source).toContain("field(__akanCnst0)");
+  });
+
+  const registered = (model: string, kind = "Model") =>
+    `export const ${model} = ConstantRegistry.build${kind}("${model}" as const, ${model}Cnst);`;
+  const fromPiece = (model: string) => `export { ${model} } from "./__client/${model}.cnst";`;
+
+  test("registers a model per page only where a page loading no whole runtime reaches it, and takes it from the constants of every model elsewhere", async () => {
+    const files: Record<string, string> = {
+      "apps/demo/lib/memo/memo.constant.ts": memoConstant,
+      "apps/demo/lib/board/board.constant.ts": boardConstant,
+      "apps/demo/lib/__client/memo.cnst.ts":
+        'import * as cnst from "../memo/memo.constant";\nexport const memo = cnst;\n',
+      "apps/demo/lib/__client/board.cnst.ts":
+        'import * as cnst from "../board/board.constant";\nexport const board = cnst;\n',
+      "libs/kit/lib/__client/note.cnst.ts":
+        'import * as cnst from "../note/note.constant";\nexport const note = cnst;\n',
+      "apps/demo/ui/Card.tsx": 'import { cnst } from "@apps/demo/client";\nexport const card = () => cnst.memo;\n',
+      "apps/demo/ui/Lone.tsx": 'import { cnst } from "@apps/demo/client";\nexport const lone = () => cnst.board;\n',
+      "apps/demo/lib/cnst.ts": `${registered("board")}\n${registered("memo")}\n`,
+      "libs/kit/lib/cnst.ts": `${registered("note")}\n${registered("tag", "Scalar")}\n`,
+    };
+    const { demo } = await runtimeFixtureTables({ demo: files });
+    const pieces = piecesOf([...appPieces, "memo.cnst", "board.cnst"], [...kitPieces, "note.cnst", "tag.cnst"]);
+    const planned = (routes: Record<string, string[]>) => {
+      const target = new RouteRuntime(root, demo, pieces, (absPath) => files[absPath.slice(`${root}/`.length)] ?? null);
+      const entries = [uiFile("Card"), uiFile("Lone")];
+      target.plan({
+        importsByModule: new Map(entries.map((entry) => [entry, []])),
+        entries,
+        entriesByRoute: new Map(Object.entries(routes)),
+      });
+      return (file: string) => target.transform(files[file] ?? "", `${root}/${file}`);
+    };
+    const lone = planned({ "/card": [uiFile("Card")] });
+    expect(lone("apps/demo/ui/Lone.tsx")?.pieces).toEqual([
+      "apps/demo/lib/__client/board.cnst",
+      "libs/kit/lib/__client/note.cnst",
+    ]);
+    expect(lone("apps/demo/lib/__client/memo.cnst.ts")).toBeNull();
+    expect(lone("apps/demo/lib/__client/board.cnst.ts")).toEqual({
+      source: 'export { board } from "../cnst";\nexport * as loaded from "../cnst";\n',
+      perModule: true,
+      pieces: [],
+      wholeConstants: true,
+    });
+    expect(lone("libs/kit/lib/__client/note.cnst.ts")?.source).toBe(
+      `export { note } from "../cnst";\nexport * as loaded from "${root}/apps/demo/lib/cnst.ts";\n`,
+    );
+    expect(lone("apps/demo/lib/board/board.constant.ts")).toBeNull();
+    expect(lone("apps/demo/lib/cnst.ts")?.source).toBe(
+      `${registered("board")}\n${fromPiece("memo")}\n\nimport "${root}/apps/demo/lib/__client/board.cnst.ts";\nimport "${root}/libs/kit/lib/__client/note.cnst.ts";\nimport "${root}/libs/kit/lib/__client/tag.cnst.ts";\n`,
+    );
+    expect(lone("libs/kit/lib/cnst.ts")).toBeNull();
+    const both = planned({ "/card": [uiFile("Card")], "/lone": [uiFile("Lone")] });
+    expect(both("apps/demo/lib/__client/board.cnst.ts")).toBeNull();
+    expect(both("apps/demo/lib/board/board.constant.ts")?.pieces).toEqual(["libs/kit/lib/__client/note.cnst"]);
+    expect(both("libs/kit/lib/__client/note.cnst.ts")).toBeNull();
+    expect(both("apps/demo/lib/cnst.ts")?.source).toBe(
+      `${fromPiece("board")}\n${fromPiece("memo")}\n\nimport "${root}/libs/kit/lib/__client/tag.cnst.ts";\n`,
+    );
+    expect(both("libs/kit/lib/cnst.ts")?.source).toBe(`${fromPiece("note")}\n${registered("tag", "Scalar")}\n\n\n`);
+  });
+
+  test("keeps every constant where a piece it would load was not generated", () => {
+    const source = 'import { cnst } from "@apps/demo/client";\nexport const model = () => cnst.memo;\n';
+    const withoutMemo = constantsOf(piecesOf([...appPieces, "board.cnst"], [...kitPieces, "note.cnst", "tag.cnst"]));
+    expect(withoutMemo.transform(source, `${root}/apps/demo/ui/Card.tsx`)).toEqual({
+      source,
+      perModule: true,
+      pieces: [],
+      wholeConstants: true,
+    });
   });
 });
 

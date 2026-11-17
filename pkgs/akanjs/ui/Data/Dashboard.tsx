@@ -6,6 +6,7 @@ import { usePageLocation } from "akanjs/webkit";
 import { useState } from "react";
 
 import { dictLabel, formatStat } from "./dataText";
+import "../modelRuntime";
 
 export interface DashboardProps<_T extends string, _State> {
   className?: string;

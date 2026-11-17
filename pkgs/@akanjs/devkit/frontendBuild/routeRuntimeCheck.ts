@@ -5,16 +5,20 @@ export interface RouteRuntimeNarrowed {
   //? Build entry to the source entry it wraps, for each entry built to load only the modules its code names.
   entries: ReadonlyMap<string, string>;
   wholeReaders: ReadonlySet<string>;
+  //? The files `akan quality runtime` names for keeping every constant; only through one may a page reach `lib/cnst.ts`.
+  wholeConstantReaders?: ReadonlySet<string>;
 }
 
 const pieceFile = /^(?:apps|libs)\/[^/]+\/lib\/__client\/[^/]+\.ts$/;
+const constantPiece = /^(?:apps|libs)\/[^/]+\/lib\/__client\/[^/]+\.cnst\.ts$/;
 const wholeFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:useClient|st)\.ts$/;
+const constantsFile = /^(?:apps|libs)\/[^/]+\/lib\/cnst\.ts$/;
 const storeFile = /^(?:apps|libs)\/[^/]+\/lib\/_?[^/]+\/[^/]+\.store\.ts$/;
 const advice = 'Set `clientRuntime: "all"` in akan.config.ts to build until it is fixed.';
 
 //* What a `clientRuntime: "route"` build proves about its own output before it reports success: each runtime piece
-//* loads before the module importing it, no store file is defined through a piece that imports it back, and no page
-//* built to load pieces reaches a file that needs the whole runtime.
+//* loads before the module importing it, no store file or registration piece is imported back by what it loads, and no
+//* page built to load pieces reaches a file that needs the whole runtime, or every constant for no named reason.
 export class RouteRuntimeCheck {
   static readonly shown = 5;
   readonly #workspaceRoot: string;
@@ -68,13 +72,22 @@ export class RouteRuntimeCheck {
     return reached;
   }
 
+  //? A registration piece answering from `lib/cnst.ts` is a bare re-export, which the bundler may leave in a chunk
+  //? nothing imports: what has to load first is the file it re-exports.
+  #loadedFirstFor(piece: string): string[] {
+    const answered = constantPiece.test(this.#nameOf(piece)) && this.#narrowed?.wholeConstantReaders?.has(piece);
+    return answered ? this.#staticImportsOf(piece) : [piece];
+  }
+
   #unordered(): string[] {
     const failures: string[] = [];
     for (const [module, chunks] of this.#graph.chunksByModule)
       for (const piece of this.#staticImportsOf(module)) {
         if (!this.#isPiece(piece)) continue;
-        const holders = this.#graph.chunksByModule.get(piece) ?? [];
-        const unlinked = chunks.find((chunk) => !holders.some((holder) => this.#reachedBy(chunk).has(holder)));
+        const holdersOf = this.#loadedFirstFor(piece).map((first) => this.#graph.chunksByModule.get(first) ?? []);
+        const unlinked = chunks.find((chunk) =>
+          holdersOf.some((holders) => !holders.some((holder) => this.#reachedBy(chunk).has(holder))),
+        );
         if (!unlinked) continue;
         failures.push(
           `${this.#nameOf(module)} needs ${this.#nameOf(piece)} loaded first, but its chunk ${path.basename(unlinked)} does not import the chunk holding that piece`,
@@ -88,6 +101,15 @@ export class RouteRuntimeCheck {
     for (const component of this.#components()) {
       const members = new Set(component);
       const store = component.find((module) => storeFile.test(this.#nameOf(module)));
+      const registration = component.find(
+        (module) => constantPiece.test(this.#nameOf(module)) && !this.#narrowed?.wholeConstantReaders?.has(module),
+      );
+      if (!store && registration) {
+        const importer = component.find((module) => this.#staticImportsOf(module).includes(registration)) ?? "";
+        failures.push(
+          `${this.#nameOf(registration)} loads files that import it back through ${this.#nameOf(importer)}, which reads the model before it is registered`,
+        );
+      }
       if (!store || !component.some((module) => this.#isPiece(module))) continue;
       const pieceOf = (module: string) =>
         this.#staticImportsOf(module).find((imported) => members.has(imported) && this.#isPiece(imported));
@@ -105,22 +127,40 @@ export class RouteRuntimeCheck {
   #unanswered(): string[] {
     if (!this.#narrowed) return [];
     const failures: string[] = [];
-    const { entries, wholeReaders } = this.#narrowed;
+    const { entries, wholeReaders, wholeConstantReaders = new Set<string>() } = this.#narrowed;
     for (const [buildEntry, entry] of entries) {
-      const importerOf = new Map([[buildEntry, buildEntry]]);
-      for (const module of importerOf.keys())
-        for (const imported of this.#staticImportsOf(module))
-          if (!importerOf.has(imported)) importerOf.set(imported, module);
+      const importerOf = this.#importersFrom([buildEntry]);
       const narrowed = `${this.#nameOf(entry)} was built to load only the modules its code names`;
       const reader = [...importerOf.keys()].find((module) => wholeReaders.has(module));
       const whole = [...importerOf.keys()].find((module) => wholeFile.test(this.#nameOf(module)));
+      const constantsOf = this.#importersFrom([buildEntry], wholeConstantReaders);
+      //? An entry no route holds takes its models from pieces answering from `lib/cnst.ts`, and their constant files
+      //? stay as written: what a named file already loads costs the page nothing by another path.
+      const named = this.#importersFrom([...constantsOf.keys()].filter((module) => wholeConstantReaders.has(module)));
+      const constants = [...constantsOf.keys()].find(
+        (module) => constantsFile.test(this.#nameOf(module)) && !named.has(module),
+      );
       if (reader) failures.push(`${narrowed}, but it reaches ${this.#nameOf(reader)}, which needs every module`);
       else if (whole)
         failures.push(
           `${narrowed}, but ${this.#nameOf(importerOf.get(whole) ?? whole)} imports ${this.#nameOf(whole)}, the runtime of every module`,
         );
+      else if (constants)
+        failures.push(
+          `${narrowed}, but ${this.#nameOf(constantsOf.get(constants) ?? constants)} imports ${this.#nameOf(constants)}, the constants of every model, for no reason \`akan quality runtime\` names`,
+        );
     }
     return failures;
+  }
+
+  #importersFrom(roots: string[], stops: ReadonlySet<string> = new Set()): Map<string, string> {
+    const importerOf = new Map(roots.map((root) => [root, root]));
+    for (const module of importerOf.keys()) {
+      if (stops.has(module)) continue;
+      for (const imported of this.#staticImportsOf(module))
+        if (!importerOf.has(imported)) importerOf.set(imported, module);
+    }
+    return importerOf;
   }
 
   //? Tarjan's algorithm with its own stack: a real import chain is deeper than the call stack allows.

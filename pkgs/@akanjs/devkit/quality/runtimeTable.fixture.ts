@@ -1,4 +1,5 @@
 import ts from "typescript";
+import { RuntimeConstantFacts } from "./runtimeConstantFacts";
 import { type RuntimeLayer, RuntimeModuleFacts, type RuntimeSourceFile } from "./runtimeModuleFacts";
 import { RuntimeNameTable } from "./runtimeNameTable";
 
@@ -159,22 +160,25 @@ export class UserStore extends store(sig.user, () => ({})) {}
 `,
 };
 
-export const runtimeFixtureLayer = (scope: string, files: Record<string, string>) =>
-  RuntimeModuleFacts.layerOf(
-    scope,
-    Object.entries(files).map(
-      ([file, text]): RuntimeSourceFile => ({
-        file,
-        sourceFile: ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
-      }),
-    ),
+export const runtimeFixtureLayer = (scope: string, files: Record<string, string>, constantLibs: string[] = []) => {
+  const sources = Object.entries(files).map(
+    ([file, text]): RuntimeSourceFile => ({
+      file,
+      sourceFile: ts.createSourceFile(file, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS),
+    }),
   );
+  const constants = sources.flatMap((source) => RuntimeConstantFacts.of(source) ?? []);
+  return { ...RuntimeModuleFacts.layerOf(scope, sources), constants, constantLibs };
+};
 
-export const runtimeFixtureTables = async () => {
+export const runtimeFixtureTables = async (
+  extra: { kit?: Record<string, string>; demo?: Record<string, string> } = {},
+) => {
   const base = await RuntimeNameTable.readBase(import.meta.dir);
-  const kitLayer = runtimeFixtureLayer("libs/kit", kitFiles);
+  const kitLayer = runtimeFixtureLayer("libs/kit", { ...kitFiles, ...extra.kit });
   const kit = RuntimeNameTable.fromLayers([kitLayer], base);
-  const demo = RuntimeNameTable.fromLayers([kitLayer, runtimeFixtureLayer("apps/demo", demoFiles)], base);
+  const demoLayer = runtimeFixtureLayer("apps/demo", { ...demoFiles, ...extra.demo }, ["kit"]);
+  const demo = RuntimeNameTable.fromLayers([kitLayer, demoLayer], base);
   return { kit, demo };
 };
 

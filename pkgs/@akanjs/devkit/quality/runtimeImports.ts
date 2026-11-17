@@ -1,4 +1,5 @@
 import path from "node:path";
+import { RuntimeConstantFacts } from "./runtimeConstantFacts";
 import type { RuntimeFamily } from "./runtimeNameTable";
 
 export type RuntimeImportKind =
@@ -40,7 +41,13 @@ export type RuntimeBinding =
   | { type: "handle"; handle: RuntimeHandle }
   | { type: "rootStore" }
   | { type: "storeFactory" }
-  | { type: "whole"; name: string };
+  | { type: "whole"; name: string }
+  | { type: "cnst"; scope: string };
+
+export interface RuntimeConstantTarget {
+  scope: string;
+  kind: "cnst" | "barrel";
+}
 
 export type RuntimeImportUse =
   | { binding: RuntimeBinding }
@@ -50,6 +57,7 @@ export type RuntimeImportUse =
 const runtimePathPattern =
   /^((?:apps|libs)\/[^/]+)\/(client|lib\/useClient|lib\/usePage|lib\/st|lib\/sig|lib\/__client\/.+)$/;
 const frameworkPathPattern = /^akanjs\/(store|client|fetch)(\/.+)?$/;
+const constantPathPattern = /^((?:apps|libs)\/[^/]+)\/lib\/cnst$/;
 const quotedPattern = /(?=(["'])((?:\\(?:\r\n|[\s\S])|(?!\1)[^\\\n\r])*)\1)|(?=`((?:\\[\s\S]|[^\\`])*)`)/g;
 const loaderPattern = /\brequire\b|\bimport\s*(?:\(|\/[/*])/;
 const escapePattern = /\\(u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|\r\n|[\s\S])/g;
@@ -88,10 +96,24 @@ export class RuntimeImports {
   static readonly frameworkWholeNames: ReadonlySet<string> = frameworkWholeNames;
 
   static mayUseRuntime(text: string, fileName: string) {
-    if (loaderPattern.test(text)) return true;
+    return (
+      loaderPattern.test(text) ||
+      RuntimeImports.#quotes(text, (specifier) => !!RuntimeImports.targetOf(specifier, fileName))
+    );
+  }
+
+  static mayUseConstants(text: string, fileName: string) {
+    return RuntimeImports.#quotes(
+      text,
+      (specifier) =>
+        !!RuntimeImports.constantTargetOf(specifier, fileName) || !!RuntimeConstantFacts.ownerOf(specifier, fileName),
+    );
+  }
+
+  static #quotes(text: string, found: (specifier: string) => boolean) {
     for (const [, , quoted, template] of text.matchAll(quotedPattern)) {
       const raw = quoted ?? template?.replace(/\r\n?/g, "\n") ?? "";
-      if (RuntimeImports.targetOf(RuntimeImports.#decode(raw), fileName)) return true;
+      if (found(RuntimeImports.#decode(raw))) return true;
     }
     return false;
   }
@@ -116,6 +138,16 @@ export class RuntimeImports {
     const piece = match[2].match(/^lib\/__client\/(.+)$/)?.[1];
     const kind = piece === undefined ? match[2].replace(/^lib\//, "") : wholePieces.has(piece) ? piece : "piece";
     return { scope: match[1], kind: kind as RuntimeImportKind };
+  }
+
+  static constantTargetOf(specifier: string, fileName: string): RuntimeConstantTarget | null {
+    const barrel = specifier.match(/^@(libs\/[^/]+)$/)?.[1];
+    if (barrel) return { scope: barrel, kind: "barrel" };
+    const aliased = specifier.match(/^@((?:apps|libs)\/[\s\S]+)$/)?.[1];
+    const joined =
+      aliased ?? (specifier.startsWith(".") ? path.posix.join(path.posix.dirname(fileName), specifier) : null);
+    const scope = joined && RuntimeImports.#stripped(path.posix.normalize(joined)).match(constantPathPattern)?.[1];
+    return scope ? { scope, kind: "cnst" } : null;
   }
 
   static useOf(target: RuntimeImportTarget, imported: string, typeOnly: boolean): RuntimeImportUse {

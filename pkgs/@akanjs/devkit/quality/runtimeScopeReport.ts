@@ -8,6 +8,7 @@ import { WorkspaceSourceFiles } from "./workspaceSourceFiles";
 export interface RuntimeScopeNote extends RuntimeUseProblem {
   file: string;
   scope: string;
+  constants?: boolean;
 }
 
 export interface RuntimeScopeSummary {
@@ -18,6 +19,7 @@ export interface RuntimeScopeSummary {
   readers: number;
   resolvable: number;
   wholeScope: number;
+  wholeConstants: number;
   analysisMs: number;
   slowestFile: { file: string; ms: number } | null;
   approximations: string[];
@@ -35,9 +37,15 @@ const generatedFile =
 const serverOnlyDir = /^(?:apps|libs)\/[^/]+\/(?:srvkit|env|script|native|plugin)\//;
 const testFile = /\.(?:test|spec)\.tsx?$|\/__(?:fixtures|tests)__\//;
 const useClientDirective = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use client["']/;
+const constantFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:__lib\/lib|(?:__scalar\/)?([^/_][^/]*)\/\1)\.constant\.ts$/;
 
 export class RuntimeScopeReport {
   static readonly rule = "akan.runtime.whole-scope";
+  static readonly constantsRule = "akan.runtime.whole-constants";
+
+  static isConstantFile(file: string) {
+    return constantFile.test(file);
+  }
 
   static isRuntimeSource(file: string) {
     if (!/^(?:apps|libs)\/[^/]+\/.+\.tsx?$/.test(file) || file.endsWith(".d.ts")) return false;
@@ -71,8 +79,9 @@ export class RuntimeScopeReport {
       const summary = scope && summaries.get(scope);
       if (!scope || !summary || !/\.tsx?$/.test(file)) continue;
       const { content, sourceFile } = await sources.read(file);
-      if (!RuntimeScopeReport.isClientFile(file, content)) continue;
-      summary.clientFiles++;
+      const constantFile = RuntimeScopeReport.isConstantFile(file);
+      if (!constantFile && !RuntimeScopeReport.isClientFile(file, content)) continue;
+      if (!constantFile) summary.clientFiles++;
       const table = tables.get(scope);
       if (!table) continue;
       const started = performance.now();
@@ -80,23 +89,37 @@ export class RuntimeScopeReport {
       const ms = performance.now() - started;
       summary.analysisMs += ms;
       if (!summary.slowestFile || ms > summary.slowestFile.ms) summary.slowestFile = { file, ms };
-      if (verdict.resolvable && !verdict.reads) continue;
+      const [constantProblem] = verdict.constants.problems;
+      if (constantProblem) {
+        summary.wholeConstants++;
+        notes.push(RuntimeScopeReport.noteOf(file, scope, constantProblem, true));
+      }
+      if (constantFile || (verdict.resolvable && !verdict.reads)) continue;
       summary.readers++;
       if (verdict.resolvable) summary.resolvable++;
       else {
         summary.wholeScope++;
-        const { problems: _, resolvable: __, ...problem } = verdict;
-        notes.push({ file, scope, ...problem });
+        notes.push(RuntimeScopeReport.noteOf(file, scope, verdict));
       }
     }
     const markerPins = new RuntimeMarkerReach(workspaceRoot).pinsOf(files);
     return { scopes: [...summaries.values()], notes, markerPins };
   }
 
+  static noteOf(
+    file: string,
+    scope: string,
+    { reason, line, column, text, message }: RuntimeUseProblem,
+    constants = false,
+  ): RuntimeScopeNote {
+    return { file, scope, reason, line, column, text, message, ...(constants ? { constants } : {}) };
+  }
+
   static format({ scopes, notes, markerPins }: RuntimeScopeResult) {
-    const fileLines = notes.map(
-      ({ file, line, column, message, scope }) =>
-        `${file}:${line}:${column} - note ${RuntimeScopeReport.rule}: ${message}. The file works; a page that loads it loads ${scope}'s whole client runtime.`,
+    const fileLines = notes.map(({ file, line, column, message, scope, constants }) =>
+      constants
+        ? `${file}:${line}:${column} - note ${RuntimeScopeReport.constantsRule}: ${message}. The file works; a page that loads it loads the constants of every model ${scope} reaches.`
+        : `${file}:${line}:${column} - note ${RuntimeScopeReport.rule}: ${message}. The file works; a page that loads it loads ${scope}'s whole client runtime.`,
     );
     const scopeLines = scopes.map((summary) => {
       const timing = `table ${summary.tableMs.toFixed(0)}ms, analysis ${summary.analysisMs.toFixed(0)}ms`;
@@ -105,7 +128,8 @@ export class RuntimeScopeReport {
       const approximated = summary.approximations.length
         ? `, ${summary.approximations.length} module declarations read approximately`
         : "";
-      return `${summary.scope}: ${summary.readers} of ${summary.clientFiles} client files read the runtime, ${summary.resolvable} per module, ${summary.wholeScope} whole (${timing}${slowest}${approximated})`;
+      const constants = summary.wholeConstants ? `, ${summary.wholeConstants} keep every constant` : "";
+      return `${summary.scope}: ${summary.readers} of ${summary.clientFiles} client files read the runtime, ${summary.resolvable} per module, ${summary.wholeScope} whole${constants} (${timing}${slowest}${approximated})`;
     });
     const noteLines = [...fileLines, ...RuntimeMarkerReach.format(markerPins)];
     return [...noteLines, ...(noteLines.length ? [""] : []), ...scopeLines].join("\n");
@@ -120,6 +144,7 @@ export class RuntimeScopeReport {
       readers: 0,
       resolvable: 0,
       wholeScope: 0,
+      wholeConstants: 0,
       analysisMs: 0,
       slowestFile: null,
       approximations: table?.approximations ?? [],

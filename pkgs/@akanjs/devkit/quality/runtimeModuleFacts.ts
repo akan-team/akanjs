@@ -1,5 +1,6 @@
 import { createAst, createFactReader } from "@akanjs/language";
 import ts from "typescript";
+import type { RuntimeConstantFact } from "./runtimeConstantFacts";
 
 export type RuntimeModuleKind = "database" | "service";
 
@@ -56,6 +57,8 @@ export interface RuntimeLayer {
   scope: string;
   modules: RuntimeModuleFact[];
   approximations: string[];
+  constants?: RuntimeConstantFact[];
+  constantLibs?: string[];
 }
 
 interface ModuleFiles {

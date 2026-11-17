@@ -140,8 +140,8 @@ const configKeys = [
     key: "clientRuntime",
     type: '"all" | "route"',
     default: '"all"',
-    en: 'Whether every page loads every model\'s descriptors and stores ("all"), or only a route whose client code uses them ("route").',
-    ko: '모든 페이지가 모든 모델의 엔드포인트 정의와 스토어를 불러올지("all"), 클라이언트 코드가 쓰는 라우트만 불러올지("route") 정합니다.',
+    en: 'Whether every page loads every model\'s constants, descriptors and stores ("all"), or only a route whose client code uses them ("route").',
+    ko: '모든 페이지가 모든 모델의 상수, 엔드포인트 정의, 스토어를 불러올지("all"), 클라이언트 코드가 쓰는 라우트만 불러올지("route") 정합니다.',
   },
 ];
 

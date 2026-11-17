@@ -103,6 +103,7 @@ export class SysExecutor extends Executor {
       own,
     ];
     const { RuntimeNameTable } = await import("../quality/runtimeNameTable");
+    const { RuntimeConstantGraph } = await import("../quality/runtimeConstantGraph");
     const table = await RuntimeNameTable.readScopes(this.workspace.workspaceRoot, [
       ...new Set(scopesOf(scanInfo, scope)),
     ]).catch(async (error: unknown) => {
@@ -113,6 +114,7 @@ export class SysExecutor extends Executor {
         );
       return null;
     });
+    const constants = table ? RuntimeConstantGraph.ofDisk(this.workspace.workspaceRoot, table) : null;
     const written = (
       await Promise.all([
         this._applyTemplate({ basePath: pieceDir, template: "clientPiece/scope", scanInfo }),
@@ -126,8 +128,23 @@ export class SysExecutor extends Executor {
               Model: capitalize(model),
               descriptorsFirst: (table?.dependenciesOf(scope, model) ?? []).map(({ module }) => module).join(","),
             },
+            options: {
+              constants: constants?.fetchNeedsOf(model) ?? undefined,
+              registration: constants?.modelOf(model) ?? undefined,
+            },
           }),
         ),
+        ...(constants
+          ? [...scanInfo.getDatabaseModules(), ...scanInfo.getScalarModules()].map((model) =>
+              this._applyTemplate({
+                basePath: pieceDir,
+                template: "clientPiece/constant",
+                scanInfo,
+                dict: { model, Model: capitalize(model) },
+                options: constants.piecesBefore({ scope, module: model }),
+              }),
+            )
+          : []),
       ])
     ).flat();
     const kept = new Set(written.map(({ filePath }) => path.basename(filePath)));

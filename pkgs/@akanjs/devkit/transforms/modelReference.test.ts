@@ -33,7 +33,7 @@ const pieces = new Set([
 ]);
 const memoPieces = ["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/memo.st"];
 const wholeLoads =
-  'import { loadedAfter as __akanLoadedAfter } from "akanjs/base"; import { sig as __akanLoaded0 } from "/ws/apps/demo/lib/__client/_useClient.ts"; import { st as __akanLoaded1 } from "/ws/apps/demo/lib/__client/_st.ts"; __akanLoadedAfter(__akanLoaded0, __akanLoaded1);';
+  'import { loadedAfter as __akanLoadedAfter } from "akanjs/base"; import * as __akanLoaded0 from "/ws/apps/demo/lib/cnst.ts"; import { sig as __akanLoaded1 } from "/ws/apps/demo/lib/__client/_useClient.ts"; import { st as __akanLoaded2 } from "/ws/apps/demo/lib/__client/_st.ts"; __akanLoadedAfter(__akanLoaded0, __akanLoaded1, __akanLoaded2);';
 
 let demo: RuntimeNameTable;
 const runtimeOf = (files: Record<string, string> = {}) =>

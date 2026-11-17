@@ -136,6 +136,117 @@ describe("RefNameClaims", () => {
     expect(ConstantRegistry.getDatabase("overrideMember").full).toBe(AppFull as never);
   });
 
+  test("hands back the first registration when a model registers again with the same classes", () => {
+    const LibInput = via((field) => ({ name: field(String) }));
+    const LibObject = via(LibInput, () => ({}));
+    const LibLight = via(LibObject, ["name"] as const, () => ({}));
+    class LibFull extends via(LibObject, LibLight, () => ({})) {}
+    const LibInsight = via(LibFull, () => ({}));
+    const libExports = { LibFull };
+    const libModel = () =>
+      ConstantRegistry.buildModel("againMember", LibInput, LibObject, LibFull, LibLight, LibInsight, libExports, "lib");
+    const first = libModel();
+
+    const AppInput = via((field) => ({ nick: field(String) }), LibInput);
+    const AppObject = via(AppInput, () => ({}), LibObject);
+    const AppLight = via(AppObject, ["nick"] as const, () => ({}), LibLight);
+    class AppFull extends via(AppObject, AppLight, () => ({}), LibFull) {}
+    const AppInsight = via(AppFull, () => ({}), LibInsight);
+    ConstantRegistry.buildModel("againMember", AppInput, AppObject, AppFull, AppLight, AppInsight, {}, "app");
+
+    expect(libModel()).toBe(first);
+    expect(ConstantRegistry.getDatabase("againMember").full).toBe(AppFull as never);
+    expect(ConstantRegistry.getOrigin("database", "againMember")).toEqual(["lib", "app"]);
+    const Geo = via((field) => ({ lat: field(Int) }));
+    const geoExports = { Geo };
+    const geo = ConstantRegistry.buildScalar("againGeo", Geo, geoExports, "lib");
+    expect(ConstantRegistry.buildScalar("againGeo", Geo, geoExports, "lib")).toBe(geo);
+
+    const RivalInput = via((field) => ({ title: field(String) }));
+    const RivalObject = via(RivalInput, () => ({}));
+    const RivalLight = via(RivalObject, ["title"] as const, () => ({}));
+    class RivalFull extends via(RivalObject, RivalLight, () => ({})) {}
+    const RivalInsight = via(RivalFull, () => ({}));
+    ConstantRegistry.buildModel(
+      "againMember",
+      RivalInput,
+      RivalObject,
+      RivalFull,
+      RivalLight,
+      RivalInsight,
+      {},
+      "rival",
+    );
+    expect(() => ConstantRegistry.assertConsistentRefNames()).toThrow('model "againMember"');
+    ConstantRegistry.buildModel("againMember", AppInput, AppObject, AppFull, AppLight, AppInsight, {}, "rival");
+    expect(() => ConstantRegistry.assertConsistentRefNames()).not.toThrow();
+  });
+
+  test("registers each of two models built from one exports object under its own name", () => {
+    const OneInput = via((field) => ({ name: field(String) }));
+    const OneObject = via(OneInput, () => ({}));
+    const OneLight = via(OneObject, ["name"] as const, () => ({}));
+    class OneFull extends via(OneObject, OneLight, () => ({})) {}
+    const OneInsight = via(OneFull, () => ({}));
+    const TwoInput = via((field) => ({ title: field(String) }));
+    const TwoObject = via(TwoInput, () => ({}));
+    const TwoLight = via(TwoObject, ["title"] as const, () => ({}));
+    class TwoFull extends via(TwoObject, TwoLight, () => ({})) {}
+    const TwoInsight = via(TwoFull, () => ({}));
+    const Lat = via((field) => ({ lat: field(Int) }));
+    const Lng = via((field) => ({ lng: field(Int) }));
+    const shared = { OneFull, TwoFull, Lat, Lng };
+
+    const one = ConstantRegistry.buildModel("sharedOne", OneInput, OneObject, OneFull, OneLight, OneInsight, shared);
+    const two = ConstantRegistry.buildModel("sharedTwo", TwoInput, TwoObject, TwoFull, TwoLight, TwoInsight, shared);
+    const lat = ConstantRegistry.buildScalar("sharedLat", Lat, shared);
+    const lng = ConstantRegistry.buildScalar("sharedLng", Lng, shared);
+
+    expect([one.refName, two.refName, lat.refName, lng.refName]).toEqual([
+      "sharedOne",
+      "sharedTwo",
+      "sharedLat",
+      "sharedLng",
+    ]);
+    expect(ConstantRegistry.getDatabase("sharedTwo").full).toBe(TwoFull as never);
+    expect(ConstantRegistry.getScalar("sharedLng").model).toBe(Lng as never);
+    expect(ConstantRegistry.buildModel("sharedOne", OneInput, OneObject, OneFull, OneLight, OneInsight, shared)).toBe(
+      one,
+    );
+  });
+
+  test("registers a name again when its exports object brings it other classes", () => {
+    const edited = {};
+    const build = () => {
+      const Input = via((field) => ({ name: field(String) }));
+      const Obj = via(Input, () => ({}));
+      const Light = via(Obj, ["name"] as const, () => ({}));
+      class Full extends via(Obj, Light, () => ({})) {}
+      const model = ConstantRegistry.buildModel(
+        "editedMember",
+        Input,
+        Obj,
+        Full,
+        Light,
+        via(Full, () => ({})),
+        edited,
+      );
+      return { model, Full };
+    };
+    const [first, second] = [build(), build()];
+    const Pin = via((field) => ({ lat: field(Int) }));
+    const NextPin = via((field) => ({ lat: field(Int) }));
+    const pin = ConstantRegistry.buildScalar("editedPin", Pin, edited);
+    const nextPin = ConstantRegistry.buildScalar("editedPin", NextPin, edited);
+
+    expect(second.model).not.toBe(first.model);
+    expect(second.model.full).toBe(second.Full as never);
+    expect(ConstantRegistry.getDatabase("editedMember").full).toBe(second.Full as never);
+    expect(nextPin).not.toBe(pin);
+    expect(ConstantRegistry.getScalar("editedPin").model).toBe(NextPin as never);
+    expect(() => ConstantRegistry.assertConsistentRefNames()).not.toThrow();
+  });
+
   test("refuses an app model of a lib's refName that does not extend it", () => {
     const LibInput = via((field) => ({ name: field(String), nick: field(String) }));
     const LibObject = via(LibInput, () => ({}));
