@@ -5,35 +5,28 @@ description: "Write filters, slices and list loading: query descriptors, init pa
 
 # Akan queries and slices
 
+The `module` rule, loaded with every `lib/` file, holds the musts: a slice returns a query, at most 500 rows, soft
+removal and `purge`, the hookless `updateById` / `removeById`, secret projections, the cascade direction and when a
+search slice is safe. This skill adds what it does not say.
+
 ## Filters and slices
 
-- A filter in `<model>.document.ts` declares its args; a slice in `<model>.signal.ts` serves it to stores. A slice
-  `exec` returns a `query<Filter>(…)` descriptor — never a `list<Filter>` array — and you cannot chain sort or
-  limit on it.
+- A filter in `<model>.document.ts` declares its args; a slice in `<model>.signal.ts` serves it to stores. The
+  `query<Filter>(…)` descriptor a slice returns takes no chained sort or limit.
 - Page through the store: `initX(…, { sort, page, limit })`, then `st.do.loadMoreOf<Model>()` while
   `hasMoreOf<Model>`. Never compare `count > page * limit`.
-- Never ask for more than 500 rows: the server serves at most 500 per request and drops the rest silently.
-  A figure over the whole set belongs in an insight or an endpoint.
-- The root slice takes a filter name and its args, never a raw query, and its `root:` guard is always `Admin`.
+- The root slice takes a filter name and its args, never a raw query.
 - No value is `q.empty`, never `q.missing`.
-- A projection is bare on the facade (`pickById(id, { secret: true })`) and under `select` on a filter accessor —
-  the only way to read a `field.secret` value.
 
-## Writes and removal
+## Writes
 
-- Removal is soft: reads see live rows unless `{ withRemoved: true }`. The one hard delete is `purge<Filter>` /
-  `purgeMany`, for data past retention.
-- A filter's `remove*` / `update*`, `updateById` and `removeById` run no hooks and no cascade. A model with a
-  cascade or `_postRemove` removes through `remove<Model>(id)`.
-- Load a set once (`load<Model>Many`, one filter query) and create one with `create<Model>Many(rows)` instead of one
-  call per item in a loop — lint fails a per-item service call an endpoint reaches. `create<Model>Many` runs every
-  row's `_preCreate` before writing any, so a check there does not see the batch's own rows.
+- A filter's `update*` runs no hooks and no cascade, like its `remove*`.
+- `create<Model>Many(rows)` runs every row's `_preCreate` before writing any, so a check there does not see the
+  batch's own rows.
 
-## Search and cascade
+## Search
 
 - `q.search(text, { prefix: true })` sits in a filter at an AND position, over fields with the `text` role. Blank
-  input matches nothing — never a passthrough. A search slice only over data safe to enumerate.
-- `cascade` names a direction, and the wrong one loses data: `removeRef` on the owner's relation, `removeWith` on
-  the child's reference to its owner.
+  input matches nothing — never a passthrough.
 
 Full detail: `get_guideline` with `queryRule`, and `workspaceRecipes` for a worked slice.

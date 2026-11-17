@@ -29,11 +29,8 @@ dictionary is a `serviceDictionary`.
 
 Inside a service, in preference order: `service<srv.XService>()` for another module's service,
 `plug(AdapterClass)` for an adapter, `use<T>()` only for an `option.ts`-registered legacy singleton, and
-`env(...)` for config. Injection resolves by field name — a field named `<refName>Service` finds the service
-registered under `<refName>`, and the `Service` suffix is required.
-
-An external API or piece of infrastructure is an `adapt()` class in `srvkit/`, injected with `plug`. It
-self-registers, so do **not** add it to `lib/option.ts`.
+`env(...)` for config. Injection resolves by field name: a field named `<refName>Service` finds the service
+registered under `<refName>`. The adapter's place and the field-name suffix are the `server` rule.
 
 ## Recipe: pages backed by an external HTTP API
 

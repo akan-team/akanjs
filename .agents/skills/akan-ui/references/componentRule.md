@@ -28,7 +28,6 @@ Use this for shared UI rules across module, scalar, app UI, and docs components.
 ## Codegen Rules
 - Do not put business workflow decisions in render code.
 - Do not use undocumented UI components or props.
-- Do not use hardcoded colors when semantic token classes (`bg-primary`, `text-foreground`, …) work.
 - Do not create broad component abstractions before repeated patterns exist.
 
 ## Review Checklist

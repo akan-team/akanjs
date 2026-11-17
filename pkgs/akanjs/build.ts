@@ -370,7 +370,7 @@ const build = async () => {
     await $`mkdir -p ${OUT_DIR}`;
     await $`cp -R ${PACKAGE_DIR}/. ${OUT_DIR}`;
     //* `local/` is where test runs leave their databases and logs; gitignored, but `cp -R` would ship it.
-    for (const entry of ["akan.baseline.json", "build.ts", "build", "tsconfig.json", "local"])
+    for (const entry of ["akan.baseline.json", "build.ts", "build", "tsconfig.json", "local", "ARCHITECTURE.md"])
       await rm(`${OUT_DIR}/${entry}`, { recursive: true, force: true });
     for (const embedded of EMBEDDED_PACKAGES) await embedPackageSource(embedded);
     await removeTestFiles();
