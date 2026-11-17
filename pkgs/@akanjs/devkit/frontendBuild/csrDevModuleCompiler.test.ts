@@ -3,6 +3,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { App } from "../commandDecorators";
+import { printedInOwnProcess, tempDirs } from "../test/testHelpers";
 import { CsrDevModuleCompiler } from "./csrDevModuleCompiler";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
@@ -187,6 +188,28 @@ describe("CsrDevModuleCompiler", () => {
 
   afterAll(async () => {
     await rm(root, { recursive: true, force: true });
+  });
+
+  test("answers the model runtime marker with the context's source, in an installed package and in app code", async () => {
+    const markers = ["node_modules/akanjs/ui/modelRuntime.ts", "pkgs/akanjs/ui/modelRuntime.ts"].map(file);
+    for (const marker of markers) await Bun.write(marker, "export {};\n");
+    await Bun.write(file("apps/demo/lib/st.ts"), 'export const st = "store";\n');
+    const paths = new CsrDevPaths(root);
+    const modelRuntime = `import ${JSON.stringify(file("apps/demo/lib/st.ts"))};\n`;
+    const compiler = new CsrDevModuleCompiler({
+      app: { verbose: () => undefined, logger: { error: (message: string) => logged.push(message) } } as unknown as App,
+      paths,
+      resolver: new CsrDevResolver({ paths, context, entryFiles: [] }),
+      context: { ...context, modelRuntime },
+      outDir: file("out"),
+      routePrefix: "/_akan/registry/",
+    });
+
+    const { modules } = await compiler.compile(markers, new Set());
+
+    for (const marker of markers)
+      expect(modules.find((module) => module.file === marker)?.deps).toEqual([file("apps/demo/lib/st.ts")]);
+    expect(modules.map((module) => module.file)).toContain(file("apps/demo/lib/st.ts"));
   });
 
   test("a pre-bundled file keeps its own __reExport and __toESM, which Bun leaves in place of its own", async () => {
@@ -387,4 +410,67 @@ describe("CsrDevModuleCompiler barrel narrowing", () => {
       "apps/demo/page/added.tsx",
     ]);
   });
+});
+
+describe("CsrDevModuleCompiler loading per module", () => {
+  const makeTempRoot = tempDirs("akan-csr-dev-descriptors-");
+
+  test("answers a module piece's macro with descriptors read from the signal, in a process of its own", async () => {
+    const root = CsrDevPaths.realpath(await makeTempRoot());
+    await Bun.write(
+      path.join(root, "apps/demo/lib/sig.ts"),
+      `const serialized = { draft: { endpoint: { draftOf: { type: "query", args: [], returns: { refName: "draft-descriptor-ref" } } } } };
+export const fetch = { ownSerializedSignal: serialized };
+export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : { [name]: serialized[name as "draft"] });
+`,
+    );
+    const piece = path.join(root, "apps/demo/lib/__client/draft.fetch.ts");
+    await Bun.write(
+      piece,
+      'import { getSerializedSignalOf } from "../sig" with { type: "macro" };\nexport const descriptors = getSerializedSignalOf("draft");\n',
+    );
+    const dir = JSON.stringify(import.meta.dir);
+
+    const compiled = (await printedInOwnProcess(
+      `
+const path = await import("node:path");
+const { CsrDevModuleCompiler } = await import(path.join(${dir}, "csrDevModuleCompiler.ts"));
+const { CsrDevPaths } = await import(path.join(${dir}, "csrDevPaths.ts"));
+const { CsrDevResolver } = await import(path.join(${dir}, "csrDevResolver.ts"));
+const { SignalDescriptors } = await import(path.join(${dir}, "../transforms/signalDescriptors.ts"));
+const [root, piece] = ${JSON.stringify([root, piece])};
+let answered = 0;
+const inline = SignalDescriptors.prototype.inline;
+SignalDescriptors.prototype.inline = async function (...args) {
+  const contents = await inline.apply(this, args);
+  if (contents !== null) answered += 1;
+  return contents;
+};
+const logged = [];
+const context = {
+  ...${JSON.stringify(context)},
+  routeRuntime: { scopes: ["apps/demo"], redirectOf: () => null, transform: () => null },
+};
+const paths = new CsrDevPaths(root);
+const compiler = new CsrDevModuleCompiler({
+  app: {
+    verbose: () => undefined,
+    logger: { error: (message) => logged.push(message), warn: (message) => logged.push(message) },
+    workspace: { workspaceRoot: root },
+  },
+  paths,
+  resolver: new CsrDevResolver({ paths, context, entryFiles: [] }),
+  context,
+  outDir: path.join(root, "out"),
+  routePrefix: "/_akan/registry/",
+});
+const { modules } = await compiler.compile([piece], new Set());
+console.log(JSON.stringify({ answered, logged, factories: modules.map(({ factory }) => factory) }));
+`,
+      root,
+    )) as { answered: number; logged: string[]; factories: string[] };
+
+    expect({ answered: compiled.answered, logged: compiled.logged }).toEqual({ answered: 1, logged: [] });
+    expect(compiled.factories.join("\n")).toContain("draft-descriptor-ref");
+  }, 30_000);
 });

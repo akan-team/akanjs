@@ -191,6 +191,25 @@ describe("resolveSsrPageEntries", () => {
     }
   });
 
+  test("registers the models' client references after the store, only where the per-route runtime asks for them", async () => {
+    const appRoot = await makeTempRoot();
+    await write(path.join(appRoot, "env", "env.client.ts"), "export const env = {};\n");
+    await write(path.join(appRoot, "lib", "st.ts"), "export const st = {};\n");
+    await write(path.join(appRoot, "page", "_layout.tsx"), 'export const theme = "dark";\n');
+    const pageKeys = ["./_layout.tsx", "./_index.tsx"];
+    const sourceOf = async (modelReferences?: boolean) => {
+      const entries = await resolveSsrPageEntries({ appCwdPath: appRoot, appName: "demo", pageKeys, modelReferences });
+      return Bun.file(entries.find((entry) => entry.key === "./__root_layout.tsx")?.moduleAbsPath ?? "").text();
+    };
+
+    const whole = await sourceOf();
+    expect(whole).not.toContain("__client/refs");
+    expect(await sourceOf(false)).toBe(whole);
+    expect(await sourceOf(true)).toContain(
+      'import "@apps/demo/lib/useClient";\nimport "@apps/demo/lib/st";\nimport "@apps/demo/lib/__client/refs";\n',
+    );
+  });
+
   test("imports no store bootstrap for an app without a store", async () => {
     const appRoot = await makeTempRoot();
     await write(path.join(appRoot, "env", "env.client.ts"), "export const env = {};\n");

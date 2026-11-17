@@ -3,6 +3,7 @@ import { modelNames, sliceNames } from "akanjs/common";
 import { type BaseInsight, type BaseObject, withSharedInstances } from "akanjs/constant";
 
 import { FetchHandle } from "./fetchHandle";
+import { ModelRuntimes } from "./modelRuntimes";
 
 export interface SliceInitInput {
   refName: string;
@@ -26,7 +27,7 @@ export interface SliceInitInput {
  */
 export class SliceInitHandle {
   readonly #input: SliceInitInput;
-  #serverInit?: object;
+  #serverInit?: { refName: string; [key: string]: unknown };
   #modelList?: DataList<BaseObject>;
   #modelInsight?: object;
 
@@ -65,7 +66,7 @@ export class SliceInitHandle {
       sliceNames(refName).state;
     const lastPage =
       modelObjInsight?.count && limit > 0 ? Math.max(Math.floor((modelObjInsight.count - 1) / limit) + 1, 1) : 1;
-    this.#serverInit ??= {
+    const serverInit = this.#serverInit ?? {
       refName,
       sliceName,
       argLength,
@@ -80,7 +81,8 @@ export class SliceInitHandle {
       [sortOfModel]: sort,
       [modelInitAt]: new Date(),
     };
-    return this.#serverInit;
+    this.#serverInit = serverInit;
+    return ModelRuntimes.of(serverInit);
   }
 
   // A route hands `xInit` down and never reads the list, so the instances are built only for a caller that does.

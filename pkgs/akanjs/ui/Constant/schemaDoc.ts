@@ -16,6 +16,7 @@ import {
   type TextFieldRole,
 } from "akanjs/constant";
 import { ownerOf, ownerOrderOf } from "../Reference/origin";
+import "../modelRuntime";
 
 export const databaseModelVariants = ["input", "object", "full", "light", "insight"] as const;
 export type DatabaseModelVariant = (typeof databaseModelVariants)[number];

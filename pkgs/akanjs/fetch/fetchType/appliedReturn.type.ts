@@ -7,6 +7,8 @@ export type SliceMeta<Sort = unknown> = {
   argLength: number;
   /** Type-only, never set: the slice filter's sort keys, which a `sort` passed beside this meta narrows to. */
   _Sort?: Sort;
+  /** Set by a server render: the client reference whose load brings this model's store. */
+  _runtime?: unknown;
 };
 
 /** What the root slice takes: one of the model's declared filter queries, and the args that filter asks for. */
@@ -68,14 +70,14 @@ export type ClientInit<
   Filter extends FilterInstance = any,
 > = PromiseOrObject<ServerInit<RefName, Light, Insight, QueryArgs, Filter>>;
 
-export type ServerView<RefName extends string, Model> = { refName: RefName } & {
+export type ServerView<RefName extends string, Model> = { refName: RefName; _runtime?: unknown } & {
   [K in `${RefName}Obj`]: GetStateObject<Model>;
 } & {
   [K in `${RefName}ViewAt`]: Date;
 };
 export type ClientView<RefName extends string, Model> = PromiseOrObject<ServerView<RefName, Model>>;
 
-export type ServerEdit<RefName extends string, Model> = { refName: RefName } & {
+export type ServerEdit<RefName extends string, Model> = { refName: RefName; _runtime?: unknown } & {
   [K in `${RefName}Obj`]: GetStateObject<Model>;
 } & {
   [K in `${RefName}ViewAt`]: Date;

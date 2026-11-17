@@ -126,6 +126,7 @@ export {
   isMobileDevice,
   isNativeTarget,
   isPageKeyboardAvoidance,
+  nativeKeyboardEasing,
 } from "./device";
 export {
   breakpointQuery,

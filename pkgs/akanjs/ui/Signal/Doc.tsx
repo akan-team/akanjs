@@ -37,6 +37,7 @@ import {
 import { RestApiEndpoints } from "./RestApi";
 import { guardCountText, signalText } from "./signalText";
 import { WebSocketEndpoints } from "./WebSocket";
+import "../modelRuntime";
 
 interface GuardItemProps {
   active: boolean;

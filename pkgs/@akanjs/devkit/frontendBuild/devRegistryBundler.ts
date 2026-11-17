@@ -106,7 +106,7 @@ export abstract class DevRegistryBundler {
     return graph !== null && files.every((file) => graph.modules[this.paths.idOf(file)] !== undefined);
   }
 
-  /** A save of one goes to a whole build: `lib/useClient.ts` inlines what they declare through macros. */
+  /** A save of one goes to a whole build: `lib/useClient.ts` and `lib/usePage.ts` inline what they declare. */
   isMetadataFile(file: string): boolean {
     return isAkanRuntimeMetadataFile(file);
   }
@@ -147,6 +147,7 @@ export abstract class DevRegistryBundler {
       resolution: {},
       pending: [],
       metadata,
+      ...(context.routeRuntime ? { routeTable: context.routeRuntime.digest } : {}),
     };
     this.merge(graph, resolver, compiled, barrels);
     await this.writer.markBuilding();
@@ -172,7 +173,7 @@ export abstract class DevRegistryBundler {
   }
 
   async barrelImports(context: CsrDevContext): Promise<DevBarrelImports | null> {
-    return await DevBarrelImports.create(this.app, context.barrelImports ?? []);
+    return await DevBarrelImports.create(this.app, context);
   }
 
   merge(
@@ -189,6 +190,7 @@ export abstract class DevRegistryBundler {
         deps: module.deps.map((dep) => (CsrDevPaths.isStub(dep) ? dep : this.paths.idOf(dep))),
         ...(module.helpers ? { helpers: module.helpers.hash } : {}),
         ...(module.narrowed ? { narrowed: module.narrowed } : {}),
+        ...(module.routed ? { routed: module.routed } : {}),
       };
     const narrowing = new Set(Object.values(graph.modules).flatMap((module) => Object.keys(module.narrowed ?? {})));
     graph.barrels = Object.fromEntries(

@@ -581,6 +581,7 @@ void run().catch((error) => {
     const base = await new SsrBaseArtifactBuilder(this.#app, "build", {
       serverEnv: this.#serverEnvPlugin(baseDevEnv.env, branches),
       vendorExports,
+      dictionaryRoutes: allRoutes.dictionaryRoutes,
     }).build();
     this.#modulesByRoute = (await routes.writeModulePreloads(base.runtimeChunks)).modulesByRoute();
     return { base, allRoutes };

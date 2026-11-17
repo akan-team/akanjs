@@ -40,10 +40,12 @@ export class SsrBaseArtifactBuilder {
   #started = Date.now();
   #serverEnv: BunPlugin | undefined;
   #vendorExports: Partial<Record<VendorSpecifier, readonly string[]>>;
+  #dictionaryRoutes?: ReadonlyMap<string, readonly string[]>;
 
   /**
    * `serverEnv`: the build's server env plugin, so the route bundle carries the env files the backend does and no more.
    * `vendorExports`: the only names a vendor entry exports, for a build whose every client module is already bundled.
+   * `dictionaryRoutes`: the dictionary groups each route can show, for a build that cuts the page dictionary by route.
    */
   constructor(
     app: App,
@@ -51,12 +53,18 @@ export class SsrBaseArtifactBuilder {
     {
       serverEnv,
       vendorExports = {},
-    }: { serverEnv?: BunPlugin; vendorExports?: Partial<Record<VendorSpecifier, readonly string[]>> } = {},
+      dictionaryRoutes,
+    }: {
+      serverEnv?: BunPlugin;
+      vendorExports?: Partial<Record<VendorSpecifier, readonly string[]>>;
+      dictionaryRoutes?: ReadonlyMap<string, readonly string[]>;
+    } = {},
   ) {
     this.#app = app;
     this.#command = command;
     this.#serverEnv = serverEnv;
     this.#vendorExports = vendorExports;
+    this.#dictionaryRoutes = dictionaryRoutes;
     this.#artifactDir = `${command === "build" ? app.dist.cwdPath : app.cwdPath}/.akan/artifact`;
     this.#absArtifactDir = path.resolve(this.#artifactDir);
   }
@@ -80,7 +88,7 @@ export class SsrBaseArtifactBuilder {
     };
     const { rscClientUrl, rscRuntimeClientManifest, rscRuntimeSsrManifest, vendorMap, runtimeChunks } = await timed(
       "runtime",
-      () => this.#buildRuntimeClientEntries(),
+      () => this.buildRuntimeClientEntries(),
     );
     const pageEntries = await timed("routes", async () => {
       const pageKeys = await this.#app.getPageKeys();
@@ -88,8 +96,16 @@ export class SsrBaseArtifactBuilder {
       return await resolveSsrPageEntriesForApp(this.#app, pageKeys);
     });
     const { cssCompiler, optimizedFonts, cssAssets } = await timed("styles", () => this.#buildStyleAssets());
-    const dictAssets = await timed("dictionary", () =>
-      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).build(akanConfig.i18n),
+    const {
+      assets: dictAssets,
+      routes: dictRoutes,
+      groups: dictGroups,
+    } = await timed("dictionary", () =>
+      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).buildAll(akanConfig.i18n, {
+        splitApi: true,
+        routes: this.#dictionaryRoutes,
+        everyGroupAlone: this.#command === "start",
+      }),
     );
     const pagesBundle = await timed("pages", () =>
       new PagesBundleBuilder(this.#app, this.#command, pageEntries, this.#serverEnv).build(),
@@ -113,6 +129,8 @@ export class SsrBaseArtifactBuilder {
       vendorMap,
       cssAssets,
       dictAssets,
+      ...(dictRoutes ? { dictRoutes } : {}),
+      ...(dictGroups ? { dictGroups } : {}),
       pagesBundlePath:
         this.#command === "build"
           ? path.relative(this.#absArtifactDir, pagesBundle.bundlePath)
@@ -152,13 +170,13 @@ export class SsrBaseArtifactBuilder {
     await rename(`${artifactPath}.tmp`, artifactPath);
   }
 
-  async #buildRuntimeClientEntries(): Promise<
+  async buildRuntimeClientEntries(): Promise<
     Pick<BaseBuildArtifact, "rscClientUrl" | "rscRuntimeClientManifest" | "rscRuntimeSsrManifest"> & {
       vendorMap: Record<VendorSpecifier, string>;
       runtimeChunks: RuntimeChunks;
     }
   > {
-    const akanServerPath = await this.#resolveAkanServerPath();
+    const akanServerPath = await VendorNarrowing.akanServerPath(this.#app.workspace.workspaceRoot);
     const rscClientEntry = path.resolve(akanServerPath, "rscClient.tsx");
     const rscSegmentOutletEntry = path.resolve(akanServerPath, "rscSegmentOutlet.tsx");
     const vendorEntries = VendorNarrowing.entriesIn(akanServerPath);
@@ -220,34 +238,6 @@ export class SsrBaseArtifactBuilder {
       };
     }
     return moduleMap;
-  }
-
-  async #resolveAkanServerPath() {
-    const candidates: string[] = [];
-    try {
-      candidates.push(path.dirname(Bun.resolveSync("akanjs/server", this.#app.workspace.workspaceRoot)));
-    } catch {
-      // Source workspaces and bundled CLI execution have different resolution roots; try explicit candidates below.
-    }
-    candidates.push(
-      path.join(this.#app.workspace.workspaceRoot, "pkgs/akanjs/server"),
-      path.join(this.#app.workspace.workspaceRoot, "node_modules/akanjs/server"),
-    );
-    try {
-      candidates.push(path.dirname(Bun.resolveSync("akanjs/server", path.dirname(Bun.main))));
-    } catch {
-      // Published CLI installs may hoist dependencies differently; explicit Bun.main candidates cover that.
-    }
-    candidates.push(
-      path.join(path.dirname(Bun.main), "node_modules/akanjs/server"),
-      path.join(path.dirname(Bun.main), "../../akanjs/server"),
-      path.resolve(import.meta.dir, "../../server"),
-      path.resolve(import.meta.dir, "../server"),
-    );
-    for (const candidate of candidates) {
-      if (await Bun.file(path.join(candidate, "rscClient.tsx")).exists()) return candidate;
-    }
-    throw new Error(`[base-artifact] failed to locate akanjs/server; looked in: ${candidates.join(", ")}`);
   }
 
   async #buildStyleAssets(): Promise<{

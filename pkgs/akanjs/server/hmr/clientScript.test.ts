@@ -390,6 +390,27 @@ describe("HMR_CLIENT_SCRIPT", () => {
     expect(systemPage.reloadCount).toBe(1);
   });
 
+  test("an SSR tab refetches its payload when a dictionary save restarted the backend at the same build id", async () => {
+    const refreshed: unknown[] = [];
+    const harness = createHmrHarness({
+      selfOverrides: {
+        __AKAN_SSR_EPOCH__: 5,
+        __AKAN_RSC_REFRESH__: (options: unknown) => {
+          refreshed.push(options);
+          return Promise.resolve();
+        },
+      },
+      runTimers: true,
+    });
+    harness.ws?.sendMessage({ type: "hello", buildId: 0, ssrEpoch: 5, dictionaryStamp: "/_akan/dict/en-a.js" });
+    harness.ws?.sendMessage({ type: "hello", buildId: 0, ssrEpoch: 5, dictionaryStamp: "/_akan/dict/en-a.js" });
+    expect(refreshed).toEqual([]);
+    harness.ws?.sendMessage({ type: "hello", buildId: 0, ssrEpoch: 5, dictionaryStamp: "/_akan/dict/en-b.js" });
+    await Promise.resolve();
+    expect(refreshed).toEqual([{ buildId: 0 }]);
+    expect(harness.reloadCount).toBe(0);
+  });
+
   test("a tab holding a registry reloads when the dev server has none, as after a new session or a config restart", () => {
     // Every backend starts at build id 0, so the build id alone cannot tell a restart that cleared .akan.
     const gone = createHmrHarness({ selfOverrides: { __AKAN_SSR_EPOCH__: 5 }, runTimers: true });

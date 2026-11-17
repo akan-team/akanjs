@@ -7,12 +7,25 @@ export interface AllDictionary {
   [key: string]: Dictionary;
 }
 
+export interface TranslatorGroups {
+  pending(lang: string, key: string): Promise<boolean> | null;
+  missed(lang: string, key: string): void;
+}
+
 interface TranslatorStateValue {
   langDictionaryMap: Map<string, Dictionary>;
   // A seeded snapshot is one reference per build, so a repeat seed skips the merge.
   seededDicts: WeakSet<object>;
   // The snapshot each locale was last replaced with: a tab may get an older build's dictionary back mid-deploy.
   replacedByLang: Map<string, object>;
+  // The files each locale's snapshot left out, by name, merged where a page shows them (`DictionaryPart`).
+  partsByLang: Map<string, Record<string, string> | undefined>;
+  // The table naming the route file of each of the locale's groups, for a key whose group no loaded file holds.
+  tableByLang: Map<string, string | undefined>;
+  //? A slot, not an import in `Translator`: that would bundle the dictionary loader into every page's chunks.
+  groups?: TranslatorGroups;
+  // Counts page dictionary loads, one per navigation: a part that failed to load is tried again at the next one.
+  loadSeq?: number;
   // Browser-only: never written on the server, where concurrent requests share this state.
   activeLocale?: string;
   // Browser-only copy of the server-resolved path, so the first client render matches SSR.
@@ -32,15 +45,19 @@ export class TranslatorState {
       langDictionaryMap: new Map<string, Dictionary>(),
       seededDicts: new WeakSet<object>(),
       replacedByLang: new Map<string, object>(),
+      partsByLang: new Map<string, Record<string, string> | undefined>(),
+      tableByLang: new Map<string, string | undefined>(),
     };
     return globalScope[translatorStateKey];
   }
-  static replace(lang: string, dict: Dictionary | undefined) {
+  static replace(lang: string, dict: Dictionary | undefined, parts?: Record<string, string>, table?: string) {
     if (!dict) return;
     const state = TranslatorState.get();
     if (state.replacedByLang.get(lang) === dict) return;
     state.seededDicts.add(dict);
     state.replacedByLang.set(lang, dict);
     state.langDictionaryMap.set(lang, { ...dict });
+    state.partsByLang.set(lang, parts);
+    state.tableByLang.set(lang, table);
   }
 }

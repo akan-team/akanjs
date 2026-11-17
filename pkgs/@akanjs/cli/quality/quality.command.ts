@@ -6,14 +6,15 @@ export class QualityCommand extends command("quality", [QualityScript], ({ publi
     desc: "Scan apps and libs for Akan code quality warnings",
     readOnly: ({ action }) => action !== "baseline",
   })
-    .arg("action", String, { desc: "quality action", default: "scan", enum: ["scan", "ssr", "baseline"] })
+    .arg("action", String, { desc: "quality action", default: "scan", enum: ["scan", "ssr", "runtime", "baseline"] })
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .option("force", Boolean, { flag: "F", desc: "baseline: rewrite an existing akan.baseline.json", default: false })
     .with(Workspace)
     .exec(async function (action, format, force, workspace) {
       if (action === "scan") await this.qualityScript.scan(workspace, format);
       else if (action === "ssr") await this.qualityScript.ssr(workspace, format);
+      else if (action === "runtime") await this.qualityScript.runtime(workspace, format);
       else if (action === "baseline") await this.qualityScript.baseline(workspace, { force });
-      else throw new Error(`Unknown quality action: ${action}. Use "scan", "ssr" or "baseline".`);
+      else throw new Error(`Unknown quality action: ${action}. Use "scan", "ssr", "runtime" or "baseline".`);
     }),
 })) {}

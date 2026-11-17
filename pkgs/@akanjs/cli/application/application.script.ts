@@ -222,6 +222,10 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     } = {},
   ) {
     await app.scanSync({ write });
+    if (!write)
+      app.logger.warn(
+        `[client-runtime] This build skipped the sync, so its pages load the per-module runtime files of ${app.name} and its libs as they were last written, and one written before a model, store or signal changed can leave a page without what it names. Build without \`--write false\`, or run \`akan sync ${app.name}\` first.`,
+      );
     if (!quiet) Logger.rawLog(`Creating an optimized production build for ${app.name}...`);
     try {
       const result = await this.applicationRunner.build(app, {

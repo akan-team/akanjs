@@ -90,6 +90,29 @@ describe("StoreInstance hydration", () => {
     unmount();
   });
 
+  test("a computed key a later root adds starts from the state as it is, in the server snapshot too", async () => {
+    const { store } = await import("./store");
+    const { StoreInstance } = await import("./storeInstance");
+    const { StoreRegistry } = await import("./storeRegistry");
+    class CountLibStore extends store("hydrationCount" as const, () => ({ count: 1 })) {}
+    StoreRegistry.register(CountLibStore);
+    class CountAppStore extends store(
+      "hydrationCount" as const,
+      () => ({ count: 10 }),
+      ({ computed }) => ({ tripled: computed(["count"], (count: number) => count * 3) }),
+      CountLibStore,
+    ) {}
+    StoreRegistry.register(CountAppStore);
+    const instance = new StoreInstance(StoreRegistry.merge("hydrationCountLibRoot", CountLibStore));
+    instance.addStore(StoreRegistry.merge("hydrationCountAppRoot", CountAppStore));
+    const Count = () => <span>{instance.sel((s) => `${String(s.count)}:${String(s.tripled)}`)}</span>;
+    const { serverHtml, errors, unmount } = await hydrate(<Count />);
+    expect(instance.get()).toMatchObject({ count: 1, tripled: 3 });
+    expect(serverHtml).toContain("1:3");
+    expect(errors).toEqual([]);
+    unmount();
+  });
+
   test("a persisted value hydrates as the default the server rendered, then shows", async () => {
     const { store } = await import("./store");
     const { StoreInstance } = await import("./storeInstance");

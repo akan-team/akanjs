@@ -16,6 +16,7 @@ export const HMR_CLIENT_SCRIPT = `(function(){
   var attempts = 0;
   var socket = null;
   var lastBuildId = null;
+  var lastDictionaryStamp = null;
   var refreshRuntimePromise = null;
   var refreshRuntime = null;
   var pendingRefreshRegistrations = [];
@@ -135,7 +136,10 @@ export const HMR_CLIENT_SCRIPT = `(function(){
         if (typeof msg.ssrGeneration === "number") self.__AKAN_SSR_HELLO_GENERATION__ = msg.ssrGeneration;
         var sameRegistry = holdsSsrRegistry(msg.ssrEpoch);
         if (sameRegistry) catchUpSsrRegistry(msg.ssrGeneration);
-        if (lastBuildId === null || msg.buildId === lastBuildId) {
+        // A dictionary save restarts the backend at build id 0 again, so only its files' stamp says the texts moved.
+        var dictionaryMoved = lastDictionaryStamp !== null && typeof msg.dictionaryStamp === "string" && msg.dictionaryStamp !== lastDictionaryStamp;
+        if (typeof msg.dictionaryStamp === "string") lastDictionaryStamp = msg.dictionaryStamp;
+        if (lastBuildId === null || (msg.buildId === lastBuildId && !dictionaryMoved)) {
           lastBuildId = msg.buildId;
           return;
         }

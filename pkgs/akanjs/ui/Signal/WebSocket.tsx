@@ -21,6 +21,7 @@ import { endpointEntriesOf, isWsEndpoint, matchesGuards, matchesSearch, runtimeF
 import { ListenerResult } from "./Listener";
 import { makeRequestExample } from "./makeExample";
 import { noSearchMatchText, noSignalText, signalText } from "./signalText";
+import "../modelRuntime";
 
 export interface WebSocketEndpointsProps {
   refName: string;

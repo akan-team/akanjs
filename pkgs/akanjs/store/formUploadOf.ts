@@ -1,5 +1,6 @@
 import { capitalize, formSetterNames, modelNames } from "akanjs/common";
 import { actionTagOf } from "./actionTag";
+import { StoreFacade } from "./storeFacade";
 import { StoreRegistry } from "./storeRegistry";
 
 interface HeldFile {
@@ -19,9 +20,11 @@ export const formUploadOf = (setter: unknown): FormUpload | null => {
   const refName = formKey.slice(0, -"Form".length);
   const names = formSetterNames(capitalize(refName), field);
   if (tag?.action !== names.setFieldOnModel) return null;
-  const actions = StoreRegistry.instance.do as unknown as { [key: string]: unknown };
-  const upload = actions[names.uploadFieldOnModel];
-  const writeOn = actions[modelNames(refName).writeOnModel] as ((path: string, value: unknown) => unknown) | undefined;
+  const actions = StoreRegistry.instance.do;
+  const upload = StoreFacade.peek(actions, names.uploadFieldOnModel);
+  const writeOn = StoreFacade.peek(actions, modelNames(refName).writeOnModel) as
+    | ((path: string, value: unknown) => unknown)
+    | undefined;
   if (typeof upload !== "function" || typeof writeOn !== "function") return null;
   // Read at write time, not when the poll started: a file the field no longer holds is not written back.
   const refresh = (files: HeldFile[]) => {

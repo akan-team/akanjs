@@ -52,7 +52,7 @@ export const useRelationOptions = <Light extends { id: string }>({
   const storeGet = st.get as unknown as <V>() => { [key: string]: V };
   const storeList = storeUse[names.modelList]() as DataList<Light>;
   const storeListLoading = storeUse[names.modelListLoading]() as boolean;
-  const ownWindow = useRelationWindow<Light>(names.modelList, argLength);
+  const ownWindow = useRelationWindow<Light>(slice);
   const isWindowed = limit !== undefined || sort !== undefined;
   const sliceList = isWindowed ? ownWindow.list : storeList;
   const listLoading = isWindowed ? ownWindow.loading : storeListLoading;
@@ -69,7 +69,7 @@ export const useRelationOptions = <Light extends { id: string }>({
     const off = LightRefCache.subscribe((readRefName, id) => {
       if (readRefName === refName && wanted.has(id)) setResolvedCount((count) => count + 1);
     });
-    LightRefCache.load(refName, [...wanted]);
+    LightRefCache.load(slice, [...wanted]);
     return off;
   }, [refName, missingKey]);
 

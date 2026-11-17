@@ -14,6 +14,8 @@ import { Select } from "../Select";
 import { Tooltip } from "../Tooltip";
 import { ObjectType } from "./Object";
 import { signalUi } from "./style";
+import { useApiDescriptions } from "./useApiDescriptions";
+import "../modelRuntime";
 
 interface ArgProps {
   argType: DefaultPrimitiveName;
@@ -46,7 +48,8 @@ interface ArgTableProps {
   args: SerializedArg[];
 }
 const ArgTable = ({ refName, endpointKey, args }: ArgTableProps) => {
-  const { l } = usePage();
+  const { l, lang } = usePage();
+  useApiDescriptions(lang);
   const onCopy = (text: string) => {
     void navigator.clipboard.writeText(text);
     st.do.showMessage({

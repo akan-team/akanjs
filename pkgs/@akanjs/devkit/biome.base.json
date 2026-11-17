@@ -91,6 +91,7 @@
         "apps/*/lib/srv.ts",
         "apps/*/lib/st.ts",
         "apps/*/lib/sig.ts",
+        "apps/*/lib/usePage.ts",
         "apps/*/lib/useClient.ts",
         "apps/*/lib/useServer.ts",
         "apps/*/client.ts",
@@ -102,6 +103,7 @@
         "libs/*/lib/srv.ts",
         "libs/*/lib/st.ts",
         "libs/*/lib/sig.ts",
+        "libs/*/lib/usePage.ts",
         "libs/*/lib/useClient.ts",
         "libs/*/lib/useServer.ts",
         "libs/*/client.ts",
@@ -109,7 +111,9 @@
         "libs/*/index.ts",
         "libs/*/lib/*/index.tsx",
         "apps/*/lib/__lib/**",
-        "libs/*/lib/__lib/**"
+        "libs/*/lib/__lib/**",
+        "apps/*/lib/__client/**",
+        "libs/*/lib/__client/**"
       ],
       "linter": { "enabled": false },
       "formatter": { "enabled": false },

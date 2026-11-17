@@ -73,12 +73,14 @@ local.properties
 # Akanjs files
 **/akan.*.json
 */*/lib/__lib/**
+*/*/lib/__client/**
 */*/lib/cnst.ts
 */*/lib/dict.ts
 */*/lib/db.ts
 */*/lib/srv.ts
 */*/lib/st.ts
 */*/lib/sig.ts
+*/*/lib/usePage.ts
 */*/lib/useClient.ts
 */*/lib/useServer.ts
 */*/lib/*/index.ts*

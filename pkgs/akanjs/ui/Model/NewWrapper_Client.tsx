@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { agentAttrs } from "../agentAttrs";
 import { type DraftProp, newDraftScope } from "./draftScope";
 import { NewFormOrigin } from "./newFormOrigin";
+import { resetModels } from "./resetModels";
 
 interface NewWrapperProps<Full = any> {
   className?: string;
@@ -59,9 +60,7 @@ export const NewWrapper_Client = <Full,>({
       });
       NewFormOrigin.set(modelName, sliceName);
       void storeDo[names.newModel](crystal, { modal, setDefault, sliceName, draftScope });
-      resets?.forEach((reset) => {
-        void storeDo[modelNames(reset).resetModel]();
-      });
+      resetModels(resets);
     });
   return (
     <div

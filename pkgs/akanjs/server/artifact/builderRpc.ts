@@ -120,6 +120,7 @@ export class BuilderRpc {
       clientDeps: payload.clientDeps,
       clientDepsByEntry: payload.clientDepsByEntry,
       ...(payload.seenGeneration !== undefined ? { seenGeneration: payload.seenGeneration } : {}),
+      ...(payload.dictionaryGroups !== undefined ? { dictionaryGroups: payload.dictionaryGroups } : {}),
     };
   }
 

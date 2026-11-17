@@ -13,6 +13,8 @@ import { ObjectDetail, ObjectType } from "./Object";
 import { ResponseExample } from "./Response";
 import { signalText } from "./signalText";
 import { getGuardBadgeClassName, getWsBadgeClassName } from "./style";
+import { useApiDescriptions } from "./useApiDescriptions";
+import "../modelRuntime";
 
 interface ArgSectionProps {
   label: string;
@@ -45,7 +47,8 @@ export const EndpointCollapse = ({
   extraBadge,
   children,
 }: EndpointCollapseProps) => {
-  const { l } = usePage();
+  const { l, lang } = usePage();
+  useApiDescriptions(lang);
   const label = dictText(l, `${refName}.signal.${endpointKey}`);
   const desc = dictText(l, `${refName}.signal.${endpointKey}.desc`);
   return (

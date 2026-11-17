@@ -89,7 +89,13 @@ export class DevArtifactPruner {
     return {
       pages: artifact?.pagesBundlePath ? [path.resolve(this.#artifactDir, artifact.pagesBundlePath)] : [],
       styles: Object.values(artifact?.cssAssets ?? {}).map((asset) => path.join(this.#artifactDir, asset.cssRelPath)),
-      dicts: Object.values(artifact?.dictAssets ?? {}).map((asset) => path.join(this.#artifactDir, asset.relPath)),
+      dicts: Object.values(artifact?.dictAssets ?? {})
+        .flatMap((asset) => [
+          asset,
+          ...Object.values(asset.parts ?? {}),
+          ...(asset.routeParts ? [asset.routeParts.table, ...asset.routeParts.files] : []),
+        ])
+        .map((asset) => path.join(this.#artifactDir, asset.relPath)),
     };
   }
 }

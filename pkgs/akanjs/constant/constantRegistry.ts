@@ -26,6 +26,13 @@ export class ConstantRegistry {
   static readonly #claims = new RefNameClaims((ref) =>
     PrimitiveRegistry.has(ref) || ConstantRegistry.has(ref) ? ConstantRegistry.getModelName(ref) : undefined,
   );
+  //? A registration piece and the whole `cnst.ts` can both run in one tab; a repeat must not displace an app's extension.
+  //? One exports object can register several names, and a name can come again with other classes: neither is a repeat.
+  static readonly #built = new WeakMap<object, Map<string, { [modelType: string]: unknown }>>();
+  static #remember(constExports: object, refName: string, cnst: object) {
+    const byName = ConstantRegistry.#built.get(constExports) ?? new Map<string, { [modelType: string]: unknown }>();
+    ConstantRegistry.#built.set(constExports, byName.set(refName, cnst as { [modelType: string]: unknown }));
+  }
   static getOrigin(kind: ConstantOriginKind, key: string): string[] {
     return ConstantRegistry.origin.get(`${kind}:${key}`) ?? [];
   }
@@ -149,6 +156,15 @@ export class ConstantRegistry {
     constExports: Record<string, unknown>,
     origin?: string,
   ) {
+    const built = ConstantRegistry.#built.get(constExports)?.get(refName);
+    if (
+      built?.input === inputRef &&
+      built.object === objectRef &&
+      built.full === fullRef &&
+      built.light === lightRef &&
+      built.insight === insightRef
+    )
+      return built as never;
     const modelRefSet = new Set([inputRef, objectRef, fullRef, lightRef, insightRef]);
     for (const modelRef of modelRefSet) ConstantRegistry.modelRefNameMap.set(modelRef, refName);
     inputRef.modelType = "input";
@@ -156,7 +172,15 @@ export class ConstantRegistry {
     fullRef.modelType = "full";
     lightRef.modelType = "light";
     insightRef.modelType = "insight";
-    const cnst: ConstantModel<
+    //? The `_`-prefixed members are types only; a literal holding them ships their nulls to every page.
+    const cnst = {
+      refName,
+      input: inputRef,
+      object: objectRef,
+      full: fullRef,
+      light: lightRef,
+      insight: insightRef,
+    } as unknown as ConstantModel<
       T,
       Input,
       Obj,
@@ -176,36 +200,13 @@ export class ConstantRegistry {
       QueryOf<any>,
       GetStateObject<Light>,
       GetStateObject<Insight>
-    > = {
-      refName,
-      input: inputRef as unknown as ConstantCls<Input>,
-      object: objectRef as unknown as ConstantCls<Obj>,
-      full: fullRef as unknown as ConstantCls<Full, FullFieldObj>,
-      light: lightRef as unknown as ConstantCls<Light>,
-      insight: insightRef as unknown as ConstantCls<Insight>,
-      _CapitalizedRefName: null as unknown as Capitalize<T>,
-      _Input: null as unknown as Input,
-      _Obj: null as unknown as Obj,
-      _Full: null as unknown as Full,
-      _Light: null as unknown as Light,
-      _Insight: null as unknown as Insight,
-      _Default: null as unknown as DefaultOf<Full>,
-      _DefaultInput: null as unknown as DefaultOf<Input>,
-      _DefaultState: null as unknown as GetStateObject<Full>,
-      _DefaultStateInput: null as unknown as GetStateObject<Input>,
-      _DefaultInsight: null as unknown as DefaultOf<Insight>,
-      _PurifiedInput: null as unknown as PurifiedModel<Input>,
-      _Doc: null as unknown as DocumentModel<Full>,
-      _DocInput: null as unknown as DocumentModel<Input>,
-      _QueryOfDoc: null as unknown as QueryOf<any>,
-      _StateLight: null as unknown as GetStateObject<Light>,
-      _StateInsight: null as unknown as GetStateObject<Insight>,
-    };
+    >;
     ConstantRegistry.setDatabase(refName, cnst as unknown as ConstantModel);
     ConstantRegistry.#addOrigin("database", refName, origin);
     const owner = ConstantRegistry.#ownerOf(origin, `lib/${refName}`);
     ConstantRegistry.#claims.claim("database", refName, [fullRef, lightRef, inputRef, objectRef, insightRef], owner);
     ConstantRegistry.#registerExports(constExports, modelRefSet, origin, owner);
+    ConstantRegistry.#remember(constExports, refName, cnst);
     return cnst;
   }
   static buildScalar<T extends string, Model>(
@@ -214,19 +215,22 @@ export class ConstantRegistry {
     constExports: Record<string, unknown>,
     origin?: string,
   ): ScalarConstantModel<T, Model, DefaultOf<Model>, DocumentModel<Model>, PurifiedModel<Model>> {
+    const built = ConstantRegistry.#built.get(constExports)?.get(refName);
+    if (built?.model === Model) return built as never;
     ConstantRegistry.modelRefNameMap.set(Model, refName);
-    const cnst = {
-      refName,
-      model: Model as unknown as ConstantCls<Model>,
-      _Default: null as unknown as DefaultOf<Model>,
-      _Doc: null as unknown as DocumentModel<Model>,
-      _PurifiedInput: null as unknown as PurifiedModel<Model>,
-    };
+    const cnst = { refName, model: Model } as unknown as ScalarConstantModel<
+      T,
+      Model,
+      DefaultOf<Model>,
+      DocumentModel<Model>,
+      PurifiedModel<Model>
+    >;
     ConstantRegistry.#addOrigin("scalar", refName, origin);
     ConstantRegistry.setScalar(refName, cnst as unknown as ScalarConstantModel);
     const owner = ConstantRegistry.#ownerOf(origin, `lib/__scalar/${refName}`);
     ConstantRegistry.#claims.claim("scalar", refName, [Model], owner);
     ConstantRegistry.#registerExports(constExports, new Set([Model]), origin, owner);
+    ConstantRegistry.#remember(constExports, refName, cnst);
     return cnst;
   }
   static #registerExports(

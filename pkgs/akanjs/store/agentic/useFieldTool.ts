@@ -5,6 +5,7 @@ import { useScopePath, useSurface } from "use-agentic";
 import { actionTagOf } from "../actionTag";
 // Through the `"use client"` shim, not `react` — see `StToolBuilder`.
 import { useEffect, useRef } from "../hooks";
+import { StoreFacade } from "../storeFacade";
 import { StoreRegistry } from "../storeRegistry";
 import { type FormFieldRef, FormFields } from "./formFields";
 
@@ -16,7 +17,7 @@ const normalized = (value: unknown, transform: unknown): unknown => {
 };
 
 const dispatcherOf = (action: string) =>
-  StoreRegistry.instance.do[action] as ((...args: unknown[]) => unknown) | undefined;
+  StoreFacade.peek(StoreRegistry.instance.do, action) as ((...args: unknown[]) => unknown) | undefined;
 
 const rowsOf = (ref: FormFieldRef): unknown[] => {
   const form = StoreRegistry.instance.get()[databaseStateNames(ref.refName).modelForm] as

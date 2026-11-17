@@ -16,6 +16,7 @@ import { getExampleData } from "./makeExample";
 import { ResponseResult } from "./Response";
 import { noSearchMatchText, noSignalText, signalText } from "./signalText";
 import { getMcpBadgeClassName, getMethodBadgeClassName, getMethodLabel } from "./style";
+import "../modelRuntime";
 
 type RestApiFetchFn = (
   ...args: [...args: unknown[], option: { token?: string; crystalize?: boolean }]

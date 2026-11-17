@@ -10,6 +10,7 @@ export interface SsrBootstrapData {
   token: string;
   modules: string[];
   routeState?: string;
+  /** The page dictionary file, or where the dictionary is cut by route the route's files, comma-separated. */
   dictionaryUrl?: string;
   importMapKey?: string;
   prefix?: { api: string; ws: string };

@@ -1071,6 +1071,7 @@ export declare class Translator {
     static getRenderPath(): string | undefined;
     static markHydrated(): void;
     static translateByLocale(lang: string, key: string, param?: Record<string, number | string>): string;
+    static ready(lang: string, key: string): Promise<boolean> | null;
     static fillFromDefault(allDictionary: AllDictionary, lang: string, defaultLocale: string): Dictionary;
     static seed(lang: string, dict: Dictionary | undefined): void;
     static replace(lang: string, dict: Dictionary | undefined): void;
@@ -1300,6 +1301,8 @@ export declare const makePageProto: <Dict extends {
 export declare const mergePageConfigs: (configChain?: PageConfig[]) => PageConfig;
 
 export declare const msg: RuntimeMsg;
+
+export declare const nativeKeyboardEasing: () => "cubic-bezier(0.2, 0, 0, 1)" | "cubic-bezier(0.38, 0.7, 0.125, 1)";
 
 export declare const nativePlatform: () => "android" | "ios" | null;
 

@@ -1,17 +1,24 @@
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import path from "node:path";
 import type { BaseBuildArtifact, ClientManifest, ClientManifestEntry, SsrManifest } from "akanjs/server";
 import { SSR_DEV_CHUNK, SSR_DEV_ID_PREFIX } from "akanjs/server/hmr/csrDevManifest";
-import { StoreBootstrap } from "../artifact/storeBootstrap";
+import { type ClientRuntimeScope, StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
+import { type RouteRuntimeBuildReport, RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
+import { ReactIconImports } from "../transforms/reactIconImports";
+import { RouteRuntime } from "../transforms/routeRuntime";
+import type { RouteRuntimeBundle } from "../transforms/routeRuntimeGraph";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
-import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildTypes";
+import { SignalDescriptors } from "../transforms/signalDescriptors";
+import type { ClientBundleTarget, ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
-import { VENDOR_SPECIFIERS } from "./vendorSpecifiers";
+import { RouteRuntimeCheck } from "./routeRuntimeCheck";
+import { type RoutePaysVerdict, RouteRuntimePays } from "./routeRuntimePays";
+import { VendorFileImports } from "./vendorFileImports";
 
 const SSR_CLIENT_ALIAS_EXTERNALS = [
   "react",
@@ -36,6 +43,10 @@ export interface BuildRouteClientOptions {
   entries?: string[];
   /** Defaults to `registry` under `start`: the browser loads each entry from the SSR dev registry, so only `client-ssr` builds. */
   browser?: "chunks" | "registry";
+  /** The entries each route loads: an entry only whole-runtime routes hold keeps the whole runtime too. */
+  entriesByRoute?: ReadonlyMap<string, readonly string[]>;
+  /** The entries each route loads first, which its size is measured over. Defaults to `entriesByRoute`. */
+  sizedEntriesByRoute?: ReadonlyMap<string, readonly string[]>;
 }
 
 export interface BuildRouteClientResult {
@@ -49,12 +60,28 @@ export interface BuildRouteClientResult {
   registryEntries?: string[];
   /** Chunks mode: the importmap specifiers each browser chunk imports statically. */
   externalsByChunkUrl?: Record<string, string[]>;
+  /** The imports of every module the browser loads, or in registry mode of the SSR bundle standing in for it. */
+  clientGraph?: ReadonlyMap<string, readonly ClientModuleImport[]>;
 }
 
 interface BootstrapEntries {
   buildEntries: string[];
   originalByBuildEntry: Map<string, string>;
 }
+
+interface NarrowedBuild {
+  entries: BootstrapEntries;
+  kept: ReadonlySet<string>;
+  bundle: Awaited<ReturnType<ClientEntriesBundler["bundle"]>>;
+  runtime: RouteRuntime;
+  report?: RouteRuntimeBuildReport;
+}
+
+type BundleOf = (runtime: RouteRuntime, kept: ReadonlySet<string>, outputSubdir?: string) => Promise<NarrowedBuild>;
+
+const referenceSubdir = "client-whole";
+//? Each trial bundles the whole app again, and the entries left to try shrink slowly where pages share most of them.
+const measuredTrials = 6;
 
 export class RouteClientBuilder {
   #app: App;
@@ -65,6 +92,8 @@ export class RouteClientBuilder {
   #discovery?: ClientEntryDiscovery;
   #entries?: string[];
   #browser: "chunks" | "registry";
+  #entriesByRoute?: ReadonlyMap<string, readonly string[]>;
+  #sizedEntriesByRoute?: ReadonlyMap<string, readonly string[]>;
 
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
@@ -75,6 +104,8 @@ export class RouteClientBuilder {
     this.#discovery = options.discovery;
     this.#entries = options.entries;
     this.#browser = options.browser ?? (this.#command === "start" ? "registry" : "chunks");
+    this.#entriesByRoute = options.entriesByRoute;
+    this.#sizedEntriesByRoute = options.sizedEntriesByRoute;
   }
 
   async build(): Promise<BuildRouteClientResult> {
@@ -84,12 +115,34 @@ export class RouteClientBuilder {
       ? [...new Set([...discovered, ...(await (await this.#getDiscovery()).discover(this.#graphSeeds))])].sort()
       : discovered.filter((e) => !this.#knownEntries.has(e));
 
-    const bootstrapEntries = await this.#createBootstrapEntries(entries);
     //? Registry mode builds no browser bundle: the SSR bundle has the same entries, exports and imports to read.
     const registry = this.#browser === "registry" ? new CsrDevPaths(this.#app.workspace.workspaceRoot) : null;
-    const browserBundle = registry ? null : await this.#buildBrowserBundle(bootstrapEntries);
-    const ssrBundle = await this.#buildSsrBundle(bootstrapEntries);
+    const routeRuntime = registry ? null : await this.#readRouteRuntime();
+    if (!registry && !routeRuntime) await rm(path.join(this.#app.cwdPath, RouteRuntimeReport.file), { force: true });
+    const ssrEntries = await this.#createBootstrapEntries(entries, "whole");
+    //? First: its entries all load the whole runtime, so its graph says which of them a per-route build may narrow.
+    const ssrBundle = await this.#buildSsrBundle(ssrEntries);
+    const narrowed = routeRuntime
+      ? await this.#buildNarrowed(entries, ssrEntries, routeRuntime, {
+          importsByModule: ssrBundle.graph.importsByModule,
+          entries: entries.map((entry) => path.resolve(entry)),
+          entriesByRoute: this.#entriesByRoute,
+        })
+      : null;
+    const trusted = narrowed && this.#check(narrowed) ? narrowed : null;
+    const browserEntries = registry ? null : (trusted?.entries ?? ssrEntries);
+    const browserBundle =
+      trusted?.bundle ?? (browserEntries ? await this.#buildBrowserBundle(browserEntries, null) : null);
+    if (trusted?.report) await this.#say(trusted.report);
+    if (narrowed && !trusted && browserBundle) {
+      await rm(path.join(this.#app.cwdPath, RouteRuntimeReport.file), { force: true });
+      await RouteClientBuilder.#removeChunks(narrowed.bundle, browserBundle);
+    }
     const referenceBundle = browserBundle ?? ssrBundle;
+    const bootstrapEntries = browserEntries ?? ssrEntries;
+    const ssrEntryByOriginal = new Map(
+      [...ssrEntries.originalByBuildEntry].map(([buildEntry, originalEntry]) => [originalEntry, buildEntry]),
+    );
 
     const acceptedEntries = new Set(entries);
     const routeEntries = new Set(discovered);
@@ -111,7 +164,9 @@ export class RouteClientBuilder {
         : bundleRow;
       manifestDelta[manifestEntry.key] = row;
 
-      const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(manifestEntry.buildEntry);
+      const ssrOutput = ssrBundle.entryOutputAbsByAbsPath.get(
+        ssrEntryByOriginal.get(manifestEntry.originalEntry) ?? manifestEntry.buildEntry,
+      );
       if (!ssrOutput) continue;
 
       ssrModuleMap[row.id] ??= {};
@@ -137,6 +192,7 @@ export class RouteClientBuilder {
       clientDepsByEntry,
       ...(registry ? { registryEntries: [...acceptedEntries].sort() } : {}),
       ...(browserBundle ? { externalsByChunkUrl: Object.fromEntries(browserBundle.externalsByChunkUrl) } : {}),
+      clientGraph: referenceBundle.graph.importsByModule,
     };
   }
 
@@ -165,21 +221,222 @@ export class RouteClientBuilder {
     };
   }
 
-  async #buildBrowserBundle(bootstrapEntries: BootstrapEntries) {
+  async #readRouteRuntime(): Promise<RouteRuntime | null> {
+    const { name } = this.#app;
+    const whole = (why: string, first = "Run") => {
+      this.#app.logger.warn(
+        `[client-runtime] ${why}, so every page of this build loads the whole client runtime, not only what it uses. ${first} \`akan sync ${name}\` and build again.`,
+      );
+      return null;
+    };
+    const missing = `the per-module runtime files of ${name} or a lib it mounts are missing`;
+    if ((await StoreBootstrap.scopeOf(this.#app)) !== "page") return whole(missing);
+    try {
+      return (await RouteRuntime.read(this.#app.workspace.workspaceRoot, `apps/${name}`)) ?? whole(missing);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return whole(`the modules of ${name} or a lib it mounts could not be read (${reason})`, "Fix that, then run");
+    }
+  }
+
+  async #buildNarrowed(
+    entries: string[],
+    whole: BootstrapEntries,
+    runtime: RouteRuntime,
+    planned: RouteRuntimeBundle,
+  ): Promise<NarrowedBuild> {
+    const bundleOf: BundleOf = async (routeRuntime, kept, outputSubdir) => {
+      const started = Date.now();
+      const browserEntries = await this.#createBootstrapEntries(entries, "page", { kept, whole });
+      const bundle = await this.#buildBrowserBundle(browserEntries, routeRuntime, outputSubdir);
+      this.#app.verbose(`[client-runtime] bundled ${outputSubdir ?? "client"} (${Date.now() - started}ms)`);
+      return { entries: browserEntries, kept, bundle, runtime: routeRuntime };
+    };
+    const first = await bundleOf(runtime, runtime.plan(planned));
+    const routes = this.#entriesByRoute;
+    if (!routes || !runtime.decided) return first;
+    const perModuleIn = ({ kept }: NarrowedBuild) =>
+      [...routes].filter(([, held]) => !held.some((entry) => kept.has(entry))).map(([route]) => route);
+    const analysed = perModuleIn(first);
+    const { built, refused } =
+      analysed.length > 0
+        ? await this.#keptWhereNotSmaller(first, routes, planned, bundleOf)
+        : { built: first, refused: [] };
+    const perModule = perModuleIn(built);
+    return {
+      ...built,
+      report: {
+        app: this.#app.name,
+        routes: routes.size,
+        perModule,
+        notSmaller: analysed.filter((route) => !perModule.includes(route)),
+        refused,
+        causes: built.runtime.decided?.causes() ?? [],
+      },
+    };
+  }
+
+  async #say(report: RouteRuntimeBuildReport) {
+    await RouteRuntimeReport.write(this.#app.cwdPath, report);
+    this.#app.log(`[client-runtime] ${RouteRuntimeReport.summary(report)}`);
+    for (const route of report.notSmaller) this.#app.verbose(`[client-runtime] not smaller per module: ${route}`);
+    for (const route of report.refused ?? [])
+      this.#app.verbose(`[client-runtime] larger with the whole runtime here: ${route}`);
+    for (const route of report.perModule) this.#app.verbose(`[client-runtime] per module: ${route}`);
+  }
+
+  static async #removeChunks(replaced: NarrowedBuild["bundle"], served: NarrowedBuild["bundle"]) {
+    for (const chunk of replaced.graph.importsByChunk.keys())
+      if (!served.graph.importsByChunk.has(chunk)) await rm(chunk, { force: true });
+  }
+
+  //? A pass either keeps entries or refuses some for good, and neither set ever loses one, so the passes end.
+  async #keptWhereNotSmaller(
+    first: NarrowedBuild,
+    routes: ReadonlyMap<string, readonly string[]>,
+    planned: RouteRuntimeBundle,
+    bundleOf: BundleOf,
+  ): Promise<{ built: NarrowedBuild; refused: string[] }> {
+    const pays = new RouteRuntimePays();
+    const sizesOf = (build: NarrowedBuild) => pays.sizesOf(build.bundle, this.#sizedBuildEntries(build.entries));
+    //? A keep is never taken back, so a build that did not pay is replaced from a runtime read again.
+    const bundleWith = async (verdicts: readonly RoutePaysVerdict[], last: NarrowedBuild | null, subdir?: string) => {
+      const runtime = await this.#readRouteRuntime();
+      if (!runtime) return null;
+      let kept = runtime.plan(planned);
+      for (const { entry, ...measured } of verdicts) kept = runtime.keep([entry], { rule: "not-smaller", ...measured });
+      const build = await bundleOf(runtime, subdir ? runtime.keepAll() : kept, subdir);
+      if (last) await RouteClientBuilder.#removeChunks(last.bundle, build.bundle);
+      return build;
+    };
+    const reference = await bundleWith([], null, referenceSubdir);
+    if (!reference) return { built: first, refused: [] };
+    const wholeSizes = await sizesOf(reference);
+    await rm(path.join(this.#artifactDir, referenceSubdir), { recursive: true, force: true });
+    let current = { build: first, sizes: await sizesOf(first), verdicts: [] as RoutePaysVerdict[] };
+    let onDisk = first;
+    const refused = new Set<string>();
+    const refusedRoutes = new Set<string>();
+    for (let trial = 0; trial < measuredTrials; trial++) {
+      const verdicts = RouteRuntimePays.decide({
+        entriesByRoute: routes,
+        isKept: (entry) => current.build.kept.has(entry),
+        isRefused: (entry) => refused.has(entry),
+        whole: wholeSizes,
+        measured: current.sizes,
+      });
+      if (verdicts.length === 0) break;
+      const tried = await bundleWith([...current.verdicts, ...verdicts], onDisk);
+      if (!tried) break;
+      onDisk = tried;
+      const sizes = await sizesOf(tried);
+      const larger = RouteRuntimePays.larger({
+        entriesByRoute: routes,
+        wasKept: (entry) => current.build.kept.has(entry),
+        isKept: (entry) => tried.kept.has(entry),
+        before: current.sizes,
+        after: sizes,
+      });
+      if (larger.length === 0) {
+        current = { build: tried, sizes, verdicts: [...current.verdicts, ...verdicts] };
+        continue;
+      }
+      for (const route of larger) {
+        refusedRoutes.add(route);
+        for (const entry of routes.get(route) ?? []) refused.add(entry);
+      }
+      if (!verdicts.some(({ entry }) => refused.has(entry))) for (const { entry } of verdicts) refused.add(entry);
+    }
+    const built = onDisk === current.build ? onDisk : ((await bundleWith(current.verdicts, onDisk)) ?? onDisk);
+    return { built, refused: [...refusedRoutes] };
+  }
+
+  get #artifactDir() {
+    return path.join(this.#command === "build" ? this.#app.dist.cwdPath : this.#app.cwdPath, ".akan/artifact");
+  }
+
+  #sizedBuildEntries({ originalByBuildEntry }: BootstrapEntries): Map<string, string[]> {
+    const buildEntryOf = new Map([...originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]));
+    return new Map(
+      [...(this.#sizedEntriesByRoute ?? this.#entriesByRoute ?? [])].map(([route, held]) => [
+        route,
+        held.map((entry) => buildEntryOf.get(path.resolve(entry)) ?? path.resolve(entry)),
+      ]),
+    );
+  }
+
+  #check({ entries, kept, bundle, runtime: routeRuntime }: NarrowedBuild): boolean {
+    const { workspaceRoot } = this.#app.workspace;
+    const buildEntryOf = new Map(
+      [...entries.originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]),
+    );
+    const check = new RouteRuntimeCheck(workspaceRoot, bundle.graph, {
+      entries: new Map([...entries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry))),
+      wholeReaders: routeRuntime.wholeReaders,
+      wholeConstantReaders: routeRuntime.wholeConstantReaders,
+      routes: new Map(
+        [...(this.#entriesByRoute ?? [])].map(([route, held]) => [
+          route,
+          held.map((entry) => buildEntryOf.get(path.resolve(entry)) ?? path.resolve(entry)),
+        ]),
+      ),
+    });
+    const { refusal, repeated } = check;
+    if (refusal) {
+      this.#app.logger.warn(refusal);
+      return false;
+    }
+    if (repeated.length === 0) return true;
+    const more = repeated.length - RouteRuntimeCheck.shown;
+    this.#app.logger.warn(
+      [
+        `[client-runtime] a page keeping the whole runtime loads a piece of what that runtime already holds:`,
+        ...repeated.slice(0, RouteRuntimeCheck.shown).map((line) => `  - ${line}`),
+        ...(more > 0 ? [`  - and ${more} more`] : []),
+      ].join("\n"),
+    );
+    return true;
+  }
+
+  async #buildBrowserBundle(
+    bootstrapEntries: BootstrapEntries,
+    routeRuntime: RouteRuntime | null,
+    outputSubdir?: string,
+  ) {
     const reactFastRefresh = process.env.AKAN_REACT_FAST_REFRESH !== "0";
+    const icons = ReactIconImports.forApp(this.#app);
+    const vendorFiles = await VendorFileImports.of(this.#app.workspace.workspaceRoot);
     return new ClientEntriesBundler({
       app: this.#app,
       entries: bootstrapEntries.buildEntries,
       plugins: [
+        icons.plugin,
+        ...(routeRuntime ? [this.#signalDescriptors(routeRuntime)] : []),
+        vendorFiles.plugin(),
         await createBarrelImportsPlugin(this.#app, {
-          pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
-          external: VENDOR_SPECIFIERS,
+          pipeAfter: icons.pipe(
+            reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
+          ),
+          external: vendorFiles.specifiers,
+          routeRuntime,
         }),
       ],
-      external: VENDOR_SPECIFIERS,
+      external: vendorFiles.specifiers,
       command: this.#command,
       reactFastRefresh,
+      ...(outputSubdir ? { outputSubdir } : {}),
     }).bundle();
+  }
+
+  #signalDescriptors(routeRuntime: RouteRuntime) {
+    const scopes = routeRuntime.table.layers.map(({ scope }) => scope);
+    return new SignalDescriptors(this.#app.workspace.workspaceRoot, scopes, {
+      onUnread: (reason) =>
+        this.#app.logger.warn(
+          `[client-runtime] ${reason}, so each of their pieces reads its signal again: a slower build of the same pages. Run \`akan sync ${this.#app.name}\` if their generated files are from an earlier release.`,
+        ),
+      takenFromPieces: (absPath) => routeRuntime.takenFromPieces(absPath),
+    }).plugin;
   }
 
   async #buildSsrBundle(bootstrapEntries: BootstrapEntries) {
@@ -193,18 +450,32 @@ export class RouteClientBuilder {
     }).bundle();
   }
 
-  async #createBootstrapEntries(entries: string[]): Promise<BootstrapEntries> {
+  //? `narrowed.kept`: an entry keeping the whole runtime is the same file a build of every page on it bundles.
+  async #createBootstrapEntries(
+    entries: string[],
+    scope: ClientRuntimeScope,
+    narrowed?: { kept: ReadonlySet<string>; whole: BootstrapEntries },
+  ): Promise<BootstrapEntries> {
     if (!(await Bun.file(path.join(this.#app.cwdPath, "lib", "st.ts")).exists())) {
       return { buildEntries: entries, originalByBuildEntry: new Map() };
     }
+    const wholeByOriginal = new Map(
+      [...(narrowed?.whole.originalByBuildEntry ?? [])].map(([buildEntry, original]) => [original, buildEntry]),
+    );
 
-    const outdir = path.join(this.#app.cwdPath, ".akan", "generated", "client-entry-bootstrap");
+    const dirName = scope === "page" ? "client-entry-bootstrap-route" : "client-entry-bootstrap";
+    const outdir = path.join(this.#app.cwdPath, ".akan", "generated", dirName);
     await mkdir(outdir, { recursive: true });
 
     const originalByBuildEntry = new Map<string, string>();
     const buildEntries = await Promise.all(
       entries.map(async (entry) => {
         const absEntry = path.resolve(entry);
+        const whole = narrowed?.kept.has(absEntry) ? wholeByOriginal.get(absEntry) : undefined;
+        if (whole) {
+          originalByBuildEntry.set(whole, absEntry);
+          return whole;
+        }
         const hash = Bun.hash(`${this.#app.name}\n${absEntry}`).toString(36);
         const base = path.basename(absEntry).replace(/[^A-Za-z0-9._-]/g, "_");
         const wrapperEntry = path.join(outdir, `${base}-${hash}.tsx`);
@@ -215,6 +486,7 @@ export class RouteClientBuilder {
             appName: this.#app.name,
             originalEntry: absEntry,
             exportNames,
+            scope,
           }),
         );
         originalByBuildEntry.set(path.resolve(wrapperEntry), absEntry);
@@ -317,11 +589,12 @@ export class RouteClientBuilder {
     appName: string;
     originalEntry: string;
     exportNames: string[];
+    scope?: ClientRuntimeScope;
   }): string {
     const originalEntry = JSON.stringify(path.resolve(args.originalEntry));
     const namedExports = args.exportNames.filter((name) => name !== "default");
     const lines = [
-      ...StoreBootstrap.importLines(args.appName),
+      ...StoreBootstrap.importLines(args.appName, args.scope),
       ...(namedExports.length > 0 ? [`export { ${namedExports.join(", ")} } from ${originalEntry};`] : []),
     ];
     if (args.exportNames.includes("default")) lines.push(`export { default } from ${originalEntry};`);

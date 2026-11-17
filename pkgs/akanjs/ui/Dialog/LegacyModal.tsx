@@ -95,7 +95,7 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
     [closeModal, confirmClose],
   );
 
-  const bind = useDismissDrag({
+  const { bind, driver } = useDismissDrag({
     threshold: (height) => height * 0.5,
     flickSpeed: 0.5,
     cutAt: 70,
@@ -109,9 +109,7 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
     gesture: { from: () => [0, translate.get()], filterTaps: true, bounds: { top: 0 }, rubberband: true },
   });
 
-  const opacity = translate.to((t) => {
-    return interpolate(OPACITY.END, OPACITY.START, t);
-  });
+  const opacity = translate.to((t) => interpolate(OPACITY.END, OPACITY.START, t));
   const translateY = translate.to((t) => {
     return `${t * 100}%`;
   });
@@ -184,6 +182,7 @@ export const LegacyModal = ({ className, bodyClassName, confirmClose, children, 
           requestClose();
         }}
       >
+        {driver}
         <OverlayPortalProvider value={root}>
           <animated.div
             ref={ref}

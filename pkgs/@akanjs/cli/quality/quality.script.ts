@@ -1,11 +1,15 @@
 import { script, type Workspace } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor } from "@akanjs/devkit/executors";
 import { MaintainabilityBaseline } from "@akanjs/devkit/quality/maintainabilityBaseline";
+import { ObjectImportReport } from "@akanjs/devkit/quality/objectImportReport";
 import {
   AkanQualityScanner,
   formatQualityScanResult,
   formatSsrScanResult,
 } from "@akanjs/devkit/quality/qualityScanner";
+import { RouteRuntimeReport } from "@akanjs/devkit/quality/routeRuntimeReport";
+import { RuntimeMarkerReach } from "@akanjs/devkit/quality/runtimeMarkerReach";
+import { RuntimeScopeReport } from "@akanjs/devkit/quality/runtimeScopeReport";
 import { Logger } from "akanjs/common";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
 
@@ -23,6 +27,23 @@ export class QualityScript extends script("quality", [WorkspaceRunner]) {
     const result = { ...scanned, warnings: scanned.warnings.filter((warning) => warning.scope === "ssr") };
     spinner.succeed(`SSR scan completed (${result.scannedFiles} files, ${result.warnings.length} warnings)`);
     Logger.rawLog(format === "json" ? JSON.stringify(result, null, 2) : formatSsrScanResult(result));
+  }
+
+  async runtime(workspace: Workspace, format: "text" | "json" = "text") {
+    const spinner = workspace.spinning("Reading which client files a page can load module by module...");
+    const scanned = await RuntimeScopeReport.scan(workspace.workspaceRoot);
+    const objects = await ObjectImportReport.scan(workspace);
+    const builds = await RouteRuntimeReport.read(workspace.workspaceRoot);
+    const built = builds.map(({ app }) => app);
+    const result = { ...scanned, markerPins: RuntimeMarkerReach.unbuilt(scanned.markerPins, built) };
+    spinner.succeed(`Runtime scan completed (${result.scopes.length} scopes, ${result.notes.length} notes)`);
+    if (format === "json") Logger.rawLog(JSON.stringify({ ...result, objects, builds }, null, 2));
+    else
+      Logger.rawLog(
+        [RuntimeScopeReport.format(result), ObjectImportReport.format(objects), RouteRuntimeReport.format(builds)]
+          .filter(Boolean)
+          .join("\n\n"),
+      );
   }
 
   //* A one-time step when a workspace adopts the maintainability gate; `akan lint` only ever lowers what it records.

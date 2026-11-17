@@ -484,7 +484,7 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
           detached = true;
         },
       } as never,
-      hmrState: { state: { buildId: 7, cssAssets: {} } },
+      hmrState: { state: { buildId: 7, cssAssets: {}, dictionaryStamp: "/_akan/dict/en-a.js" } },
     });
 
     handlers.open?.(ws);
@@ -493,7 +493,12 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
 
     expect(attached).toBe(true);
     expect(detached).toBe(true);
-    expect(JSON.parse(sent[0] ?? "{}")).toEqual({ type: "hello", buildId: 7, cssAssets: {} });
+    expect(JSON.parse(sent[0] ?? "{}")).toEqual({
+      type: "hello",
+      buildId: 7,
+      cssAssets: {},
+      dictionaryStamp: "/_akan/dict/en-a.js",
+    });
     expect(sent).toHaveLength(1);
   });
 });
