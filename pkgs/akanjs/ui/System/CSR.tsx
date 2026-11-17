@@ -27,6 +27,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AgentActivity } from "use-agentic";
+import { NativeSplash } from "../../webkit/nativeSplash";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
 import { animated } from "../animated";
@@ -349,6 +350,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
           <animated.div
             key={id}
             id={id}
+            data-page-type={pageType}
             inert={hidden}
             aria-hidden={hidden ? true : undefined}
             className={cn(
@@ -436,6 +438,10 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
   useEffect(() => {
     if (pageType === "current") NativeUpdates.confirm();
   }, [pageType]);
+  useEffect(
+    () => (pageType === "current" ? NativeSplash.hideOnceDrawn(location) : undefined),
+    [pageType, location.entryId],
+  );
   //? The root renders in the same commit as the first page, so a tree mounted afresh finds it only after committing.
   const [pageContainers, setPageContainers] = useState(() => document.getElementById("pageContainers"));
   useLayoutEffect(() => {
@@ -455,19 +461,21 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
         : { page: null, pageContentRef: null, pageClassName: "", pageBind: () => ({}) };
   //? A page nobody sees keeps its state and DOM but not its effects: a cached page, the page a transition-less switch
   //? left once it settled, and the page under the current one while the app is in the background. Otherwise the page
-  //? under an animated transition stays live, since a swipe back shows it.
+  //? under an animated transition stays live, since a swipe back shows it. The next transition-less switch drawing
+  //? its page ahead is no such transition: woken for that wait, the page under would run every effect it has again.
+  const isLeftInPlace =
+    pageType === "prev" &&
+    currentLocation.pathRoute.pageState.transition === "none" &&
+    (csr.phase === "idle" || csr.pendingLocation?.pathRoute.pageState.transition === "none");
   const activity: PageActivity =
-    pageType === "cached" ||
-    (pageType === "prev" &&
-      (csr.isBackgrounded || (currentLocation.pathRoute.pageState.transition === "none" && csr.phase === "idle")))
-      ? "hidden"
-      : pageType;
+    pageType === "cached" || (pageType === "prev" && csr.isBackgrounded) || isLeftInPlace ? "hidden" : pageType;
   return (
     <Activity mode={activity === "hidden" ? "hidden" : "visible"}>
       {createPortal(
         <animated.div
           id={`pageContainer-${key}`}
           data-path={pathRoute.path}
+          data-page-type={pageType}
           inert={pageType !== "current"}
           aria-hidden={pageType === "current" ? undefined : true}
           style={{

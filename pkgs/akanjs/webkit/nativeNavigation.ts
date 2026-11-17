@@ -1,6 +1,7 @@
 "use client";
 import { router as clientRouter, debugFrame, normalizeDeepLinkHref } from "akanjs/client";
 import { app, appState, desktopPlatform, isNativeApp, push } from "akanjs/client/native";
+import { OpenSurfaces } from "./openSurfaces";
 
 export interface NativeBackState {
   path: string;
@@ -26,6 +27,10 @@ interface NativeNavigationOptions {
 
 /** A native shell's deep links, push taps and Android back button, for the CSR frame that owns the history. */
 export class NativeNavigation {
+  //? An index that sends a page straight back (a signed-out visitor's home redirecting to the sign-in) would keep every
+  //? back on that page: a fallback that only redirects until it is on the page it left leaves the app instead.
+  static #fallingBack: { navigation: NativeNavigation; path: string; navigations: number; redirects: number } | null =
+    null;
   #mountedAt = Date.now();
   #handled: { href: string; handledAt: number } | null = null;
   #didResetStack = false;
@@ -69,9 +74,12 @@ export class NativeNavigation {
         this.back();
       }),
       app.listen("backProgress", ({ phase, progress }) => {
+        //? A back that will close a dialog does not leave the page, so the page shows no swipe of its own.
+        if (OpenSurfaces.takesBack()) return;
         if (phase !== "progressed") debugFrame("native.backProgress", { phase });
         this.options.onBackProgress?.({ phase, progress });
       }),
+      OpenSurfaces.listen(() => this.syncBack()),
       appState.listen("memoryWarning", ({ level }) => {
         debugFrame("native.memoryWarning", { level });
         this.options.onMemoryWarning?.();
@@ -89,13 +97,18 @@ export class NativeNavigation {
   }
 
   /**
-   * Tells an Android shell whether back is the page's right now: the keyboard is up, there is history, or the
-   * index is still to come. Otherwise the system takes it and shows its own back-to-home animation.
+   * Tells an Android shell whether back is the page's right now: the keyboard is up, a dialog or sheet is open, there
+   * is history, or the index is still to come. Otherwise the system takes it and shows its own back-to-home animation.
    */
   syncBack(force = false) {
+    this.#leaveIfSentBack();
     if (!isNativeApp() || !app.isSupported("setBackEnabled")) return;
     const backState = this.options.backState();
-    const enabled = backState.keyboardVisible || this.options.historyIdx() > 0 || !this.#leavesApp(backState.path);
+    const enabled =
+      backState.keyboardVisible ||
+      OpenSurfaces.takesBack() ||
+      this.options.historyIdx() > 0 ||
+      !this.#leavesApp(backState.path);
     if (!force && enabled === this.#backEnabled) return;
     this.#backEnabled = enabled;
     void app.setBackEnabled({ enabled }).catch(() => undefined);
@@ -141,6 +154,7 @@ export class NativeNavigation {
       void this.options.dismissKeyboard();
       return;
     }
+    if (OpenSurfaces.closeForBack()) return;
     if (this.options.historyIdx() > 0) {
       backState.router.back();
       void clientRouter.navigation().catch(() => this.options.onBackProgress?.({ phase: "cancelled", progress: 0 }));
@@ -151,6 +165,32 @@ export class NativeNavigation {
       return;
     }
     clientRouter.backOrFallback(window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/", { scrollToTop: false });
+    NativeNavigation.#fallingBack = {
+      navigation: this,
+      path: backState.path,
+      navigations: clientRouter.navigationCount(),
+      redirects: clientRouter.redirectCount(),
+    };
+  }
+
+  /** The frame's word that a move was sent back to the page on screen before it showed, as a refusing guard does. */
+  static turnedBack() {
+    const fallingBack = NativeNavigation.#fallingBack;
+    if (fallingBack) fallingBack.navigation.#leaveIfSentBack();
+  }
+
+  //? A move of the visitor's own since the fallback ends it; a redirect is the index (or a guard on the way) answering.
+  #leaveIfSentBack() {
+    const fallingBack = NativeNavigation.#fallingBack;
+    if (fallingBack?.navigation !== this) return;
+    const redirects = clientRouter.redirectCount() - fallingBack.redirects;
+    if (clientRouter.navigationCount() - fallingBack.navigations !== redirects) {
+      NativeNavigation.#fallingBack = null;
+      return;
+    }
+    if (!redirects || this.options.historyIdx() > 0 || this.options.backState().path !== fallingBack.path) return;
+    NativeNavigation.#fallingBack = null;
+    void app.exit().catch(() => undefined);
   }
 
   //? a stack a deep link started has nothing under it, so back leaves the app rather than inventing a history

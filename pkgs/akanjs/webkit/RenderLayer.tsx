@@ -8,12 +8,14 @@ import {
   type ReactNode,
   useContext,
   useEffect,
+  useId,
   useRef,
   useState,
   useSyncExternalStore,
 } from "react";
 import { CsrGuards } from "./CsrGuards";
 import { CsrFrameDump } from "./csrFrameDump";
+import { CsrPageReadiness } from "./csrPageReadiness";
 import { CsrRefresh } from "./csrRefresh";
 import { RenderFailure } from "./RenderFailure";
 import { useFetch } from "./useFetch";
@@ -59,7 +61,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     <RenderLayer renders={renders} index={index + 1} params={params} searchParams={searchParams} leaf={leaf} />
   );
   const routeRender = renders[index];
-  const isAsyncRender = isAsyncRouteRender(routeRender);
+  const isAsyncRender = CsrPageReadiness.isAsync(routeRender);
   const renderedRef = useRef<RenderedRoute | null>(null);
   const [, setFailures] = useState(0);
   const activity = usePageActivity();
@@ -201,10 +203,14 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
       record.subscribed = false;
     };
   }, [record]);
-  if (!routeRender) return null;
-  if (!isAsyncRender && (!guarded || isSyncAdmitted))
-    return createElement(routeRender.render as never, { children, params, searchParams } as never);
+  const isSyncDrawn = !isAsyncRender && (!guarded || isSyncAdmitted);
   const failure = renderedRef.current?.failure;
+  const isRefused = isRefusedAt(renderedRef.current, locationId, fulfilled);
+  const drawn = isAsyncRender || isRefused ? null : drawnPropsRef.current;
+  const isLoading = !!routeRender && !isSyncDrawn && !failure && !isRefused && !drawn && (!value || !isAsyncRender);
+  useLayerReadiness(location?.entryId, isLoading);
+  if (!routeRender) return null;
+  if (isSyncDrawn) return createElement(routeRender.render as never, { children, params, searchParams } as never);
   if (failure)
     return (
       <RenderFailure
@@ -215,16 +221,25 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         }}
       />
     );
-  //? A refused location draws nothing of what it refused, whatever the layer drew for another, nor while it is asked again.
-  const isRefused =
-    (!!locationId && renderedRef.current?.refusedAt === locationId) ||
-    (!!renderedRef.current?.afterRefusal && !fulfilled);
-  const drawn = isAsyncRender || isRefused ? null : drawnPropsRef.current;
   if (drawn) return createElement(routeRender.render as never, { children, ...drawn } as never);
   if (!value || !isAsyncRender || isRefused)
     return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
   return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
 });
+
+//? A refused location draws nothing of what it refused, whatever the layer drew for another, nor while it is asked again.
+function isRefusedAt(rendered: RenderedRoute | null, locationId: string | null, fulfilled: boolean): boolean {
+  return (!!locationId && rendered?.refusedAt === locationId) || (!!rendered?.afterRefusal && !fulfilled);
+}
+
+//? Only a stack entry's page has an entry id: the root layouts, drawn outside any page's wrapper, report for none.
+const useLayerReadiness = (entryId: string | undefined, isLoading: boolean) => {
+  const layerId = useId();
+  useEffect(() => {
+    if (entryId) CsrPageReadiness.report(entryId, layerId, isLoading);
+  }, [entryId, isLoading]);
+  useEffect(() => (entryId ? () => CsrPageReadiness.drop(entryId, layerId) : undefined), [entryId]);
+};
 
 interface LayerRun {
   render: RouteRender["render"];
@@ -271,10 +286,6 @@ function reportFailure(result: ReactNode | Promise<ReactNode>, layer: string): R
 function entryPathOf(pathname: string | undefined): string | undefined {
   if (!pathname) return pathname;
   return new URL(`http://localhost${pathname}`).pathname;
-}
-
-function isAsyncRouteRender(routeRender?: RouteRender): boolean {
-  return Boolean(routeRender?.isAsync || routeRender?.render.constructor.name === "AsyncFunction");
 }
 
 function composeLoadingFallback(renders: RouteRender[], params: Record<string, string>): ReactNode {

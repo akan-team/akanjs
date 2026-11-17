@@ -11,9 +11,14 @@ import {
   type UseCsrTransition,
 } from "akanjs/client";
 import { clamp } from "akanjs/common";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { CsrSlide, type CsrSlideFrame } from "./csrSlide";
+import { isDragLift } from "./isDragLift";
+import { STACK_TRANSITION_DURATION_MS } from "./useFrameRuntime";
 
 const linearEasing = (t: number) => t;
+//? CsrSlide.easing as a function, for a WebView without Web Animations.
+const stackEasing = (t: number) => 1 - (1 - t) ** 4;
 
 const getBottomInsetTop = (clientHeight: number, pageState: PathRoute["pageState"]) =>
   clientHeight - pageState.bottomInset - pageState.bottomSafeArea;
@@ -156,7 +161,8 @@ const usePlayOnForward = (
   { history, location }: RouteState,
   config: { duration: number; easing?: (t: number) => number },
 ) => {
-  useEffect(() => {
+  //? Before paint: started from a passive effect, the incoming page showed one frame at rest before it slid in.
+  useLayoutEffect(() => {
     if (history.current.type === "forward") {
       void transUnit.start(transUnitRange[0], { immediate: true });
       void transUnit.start(transUnitRange[1], { config });
@@ -355,8 +361,80 @@ const useScaleOutTrans = (routeState: RouteState): UseCsrTransition => {
   };
 };
 
+const useStackSlide = (
+  { transUnit, transUnitRange }: Pick<UseCsrTransition, "transUnit" | "transUnitRange">,
+  { history, location, onBack }: RouteState,
+  frame: CsrSlideFrame,
+  backConfigRef: RefObject<{ duration: number } | null>,
+) => {
+  const slideRef = useRef<CsrSlide | null>(null);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+  const cancelSlide = useCallback(() => {
+    slideRef.current?.cancel();
+    slideRef.current = null;
+  }, []);
+  //? An interrupted slide hands where its page is to the spring, so a back or a drag goes on from there, not from rest.
+  const holdSlide = useCallback(() => {
+    const unit = slideRef.current?.unitNow() ?? null;
+    cancelSlide();
+    if (unit === null) return transUnit.get();
+    void transUnit.start(unit, { immediate: true });
+    return unit;
+  }, []);
+  useEffect(() => {
+    onBack.current.stack = async () => {
+      const config = backConfigRef.current;
+      backConfigRef.current = null;
+      const fromUnit = holdSlide();
+      const share = Math.abs(transUnitRange[0] - fromUnit) / Math.max(1, transUnitRange[0]);
+      const slide = CsrSlide.isCalm
+        ? null
+        : CsrSlide.play(frameRef.current, {
+            fromUnit,
+            toUnit: transUnitRange[0],
+            duration: config?.duration ?? Math.max(120, STACK_TRANSITION_DURATION_MS * share),
+            keep: true,
+          });
+      if (!slide) {
+        await transUnit.start(transUnitRange[0], config ? { config } : undefined);
+        return;
+      }
+      //? Kept at its end until the page under takes the screen, which cancels it; ended, the page would snap back.
+      slideRef.current = slide;
+      await slide.finished;
+      await transUnit.start(transUnitRange[0], { immediate: true });
+    };
+  }, [transUnitRange]);
+  useLayoutEffect(() => {
+    cancelSlide();
+    //? Every page runs this hook whatever its transition, and a slide moves the frame's parts itself rather than a
+    //? spring only a stack page reads, so a page that does not slide in (a tab switched with `none`) must not start one.
+    const isStack = frameRef.current.pageState.transition === "stack";
+    if (history.current.type !== "forward" || CsrSlide.isCalm || !isStack) {
+      void transUnit.start(transUnitRange[1], { immediate: true });
+      return;
+    }
+    const slide = CsrSlide.play(frameRef.current, {
+      fromUnit: transUnitRange[0],
+      toUnit: transUnitRange[1],
+      duration: STACK_TRANSITION_DURATION_MS,
+    });
+    if (slide) {
+      slideRef.current = slide;
+      void transUnit.start(transUnitRange[1], { immediate: true });
+      return;
+    }
+    void transUnit.start(transUnitRange[0], { immediate: true });
+    void transUnit.start(transUnitRange[1], {
+      config: { duration: STACK_TRANSITION_DURATION_MS, easing: stackEasing },
+    });
+  }, [location.entryId ?? location.pathname]);
+  return holdSlide;
+};
+
 const useStackTrans = (routeState: RouteState): UseCsrTransition => {
-  const { clientWidth, clientHeight, location, prevLocation, onBack, pageContentRef } = routeState;
+  const { clientWidth, clientHeight, location, prevLocation, pageContentRef } = routeState;
   const spring = useSlideSpring(clientWidth);
   const { transUnit, transUnitRange, transProgress } = spring;
   const initThreshold = useMemo(() => Math.floor(clientWidth), [clientWidth]);
@@ -384,18 +462,17 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
     pageContent.style.touchAction = scrollLock.touchAction;
     scrollLockRef.current = null;
   }, [pageContentRef]);
-  useEffect(() => {
-    onBack.current.stack = async () => {
-      const config = stackBackConfigRef.current;
-      stackBackConfigRef.current = null;
-      await transUnit.start(transUnitRange[0], config ? { config } : undefined);
-    };
-  }, [transUnitRange]);
+  const holdSlide = useStackSlide(
+    spring,
+    routeState,
+    { width: clientWidth, height: clientHeight, pageState, prevPageState },
+    stackBackConfigRef,
+  );
   useEffect(() => unlockPageScroll, [unlockPageScroll]);
-  usePlayOnForward(spring, routeState, { duration: 150 });
+  const dragOriginRef = useRef(0);
 
   const pageBind = useDrag(
-    ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel }) => {
+    ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel, event }) => {
       if (first) {
         gestureIntent.current = "pending";
         stackBackConfigRef.current = null;
@@ -417,6 +494,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         }
         if (absX < GESTURE_INTENT_THRESHOLD || absX <= absY * GESTURE_AXIS_LOCK_RATIO) return;
         gestureIntent.current = "gesture";
+        dragOriginRef.current = holdSlide();
         lockPageScroll();
         void Device.getDevice().hideKeyboard();
       }
@@ -424,13 +502,15 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         cancel();
         return;
       }
-      if (mx < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
-      else if (mx > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
-      else if (!last) void transUnit.start(mx, { immediate: true });
+      const unit = dragOriginRef.current + mx;
+      if (unit < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
+      else if (unit > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
+      else if (!last) void transUnit.start(unit, { immediate: true });
       if (last) {
-        const shouldComplete = mx > threshold || (dx > 0 && vx > STACK_VELOCITY_DISMISS_THRESHOLD);
+        const shouldComplete =
+          isDragLift(event) && (unit > threshold || (dx > 0 && vx > STACK_VELOCITY_DISMISS_THRESHOLD));
         const target = shouldComplete ? transUnitRange[0] : transUnitRange[1];
-        const duration = getVelocityAwareDuration(target - mx, vx, shouldComplete ? 150 : 180);
+        const duration = getVelocityAwareDuration(target - unit, vx, shouldComplete ? 150 : 180);
         if (shouldComplete) stackBackConfigRef.current = { duration };
         else void transUnit.start(transUnitRange[1], { config: { duration } });
         unlockPageScroll();
@@ -439,11 +519,13 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         clientRouter.back();
         void clientRouter.navigation().catch(() => {
           stackBackConfigRef.current = null;
+          holdSlide();
           void transUnit.start(transUnitRange[1], { config: { duration } });
         });
       }
     },
-    { filterTaps: true },
+    //? Captured, the drag ends when the element under the finger leaves the DOM; the window keeps it to the lift.
+    { filterTaps: true, pointer: { capture: false } },
   );
 
   return {
@@ -509,7 +591,7 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
   usePlayOnForward(spring, routeState, { duration: 220, easing: linearEasing });
 
   const pageBind = useDrag(
-    ({ first, last, movement: [, my], initial: [, iy], cancel }) => {
+    ({ first, last, movement: [, my], initial: [, iy], cancel, event }) => {
       if (iy > initThreshold) {
         cancel();
         return;
@@ -518,12 +600,15 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
       if (my < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
       else if (my > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
       else if (!last) void transUnit.start(my, { immediate: true });
-      else if (my < threshold) void transUnit.start(transUnitRange[1]);
-      if (!last || my <= threshold) return;
+      if (!last) return;
+      if (!isDragLift(event) || my <= threshold) {
+        void transUnit.start(transUnitRange[1]);
+        return;
+      }
       clientRouter.back();
       void clientRouter.navigation().catch(() => transUnit.start(transUnitRange[1]));
     },
-    { axis: "y", filterTaps: true, threshold: 10 },
+    { axis: "y", filterTaps: true, threshold: 10, pointer: { capture: false } },
   );
 
   return {

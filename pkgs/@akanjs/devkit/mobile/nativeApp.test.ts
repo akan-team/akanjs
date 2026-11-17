@@ -273,12 +273,12 @@ describe("NativeApp", () => {
     expect(() => NativeApp.assertInstaller("ios", true)).toThrow(/not for ios/);
   });
 
-  test("opens a dev build on its target's home, the CSR shell under the locale", () => {
+  test("opens a dev build on its target's home, the CSR shell under the locale, the device's language to pick", () => {
     expect(new NativeApp(fakeApp(), target({ indexPath: "/explore" })).startPath("en", "ios")).toBe(
-      "/en/explore?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fexplore",
+      "/en/explore?csr=true&akanMobileTarget=default&akanMobileLang=device&akanMobileIndexPath=%2Fexplore",
     );
     expect(new NativeApp(fakeApp(), target({ name: "admin", basePath: "/admin/" })).startPath("ko", "android")).toBe(
-      "/ko/admin?csr=true&akanMobileTarget=admin&akanMobileBasePath=admin",
+      "/ko/admin?csr=true&akanMobileTarget=admin&akanMobileLang=device&akanMobileBasePath=admin",
     );
   });
 
@@ -289,9 +289,11 @@ describe("NativeApp", () => {
     expect(app.indexPath("android")).toBe("/mobile");
     expect(app.indexPath("macos")).toBe("/");
     expect(app.indexPath("windows")).toBe("/");
-    expect(app.startPath("en", "macos")).toBe("/en?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2F");
+    expect(app.startPath("en", "macos")).toBe(
+      "/en?csr=true&akanMobileTarget=default&akanMobileLang=device&akanMobileIndexPath=%2F",
+    );
     expect(app.startPath("en", "ios")).toBe(
-      "/en/mobile?csr=true&akanMobileTarget=default&akanMobileIndexPath=%2Fmobile",
+      "/en/mobile?csr=true&akanMobileTarget=default&akanMobileLang=device&akanMobileIndexPath=%2Fmobile",
     );
   });
 

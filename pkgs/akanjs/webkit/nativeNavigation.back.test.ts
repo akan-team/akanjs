@@ -138,4 +138,75 @@ describe("NativeNavigation on Android", () => {
     expect(swipes.at(-1)).toEqual({ phase: "cancelled", progress: 0 });
     stop();
   });
+
+  test("closes the newest open dialog before going back, and keeps back from the system while one is open", async () => {
+    const shell = installAndroid();
+    Object.assign(window, { addEventListener: () => undefined, removeEventListener: () => undefined });
+    const backs: string[] = [];
+    const swipes: NativeBackProgress[] = [];
+    const { NativeNavigation } = await import("./nativeNavigation");
+    const { OpenSurfaces } = await import("./openSurfaces");
+    const stop = new NativeNavigation({
+      historyIdx: () => 0,
+      backState: () => ({
+        path: "/:lang/explore",
+        keyboardHeight: 0,
+        keyboardVisible: false,
+        router: { back: () => backs.push("router") },
+      }),
+      dismissKeyboard: () => undefined,
+      onBackProgress: (swipe) => swipes.push(swipe),
+    }).listen();
+    await settle();
+    const closeSheet = OpenSurfaces.open(() => backs.push("sheet"));
+    const closeDialog = OpenSurfaces.open(() => backs.push("dialog"));
+    await settle();
+    expect(reported.at(-1)).toBe(true);
+
+    shell.emit("app", "backProgress", { phase: "started", progress: 0, swipeEdge: "left" });
+    shell.emit("app", "backButton", {});
+    await settle();
+    expect(backs).toEqual(["dialog"]);
+    expect(swipes).toEqual([]);
+
+    closeDialog();
+    closeSheet();
+    await settle();
+    expect(reported.at(-1)).toBe(false);
+    stop();
+  });
+
+  test("a tooltip left open by a focused button takes no back: the page goes back and its swipe shows", async () => {
+    const shell = installAndroid();
+    Object.assign(window, { addEventListener: () => undefined, removeEventListener: () => undefined });
+    const backs: string[] = [];
+    const swipes: NativeBackProgress[] = [];
+    const { NativeNavigation } = await import("./nativeNavigation");
+    const { OpenSurfaces } = await import("./openSurfaces");
+    const stop = new NativeNavigation({
+      historyIdx: () => 0,
+      backState: () => ({
+        path: "/:lang/explore",
+        keyboardHeight: 0,
+        keyboardVisible: false,
+        router: { back: () => backs.push("router") },
+      }),
+      dismissKeyboard: () => undefined,
+      onBackProgress: (swipe) => swipes.push(swipe),
+    }).listen();
+    await settle();
+    const closeTooltip = OpenSurfaces.open(() => backs.push("tooltip"), { takesBack: false });
+    await settle();
+    expect(reported.at(-1)).toBe(false);
+
+    shell.emit("app", "backProgress", { phase: "started", progress: 0, swipeEdge: "left" });
+    await settle();
+    shell.emit("app", "backButton", {});
+    await settle();
+    expect(swipes).toEqual([{ phase: "started", progress: 0 }]);
+    expect(backs).toEqual([]);
+
+    closeTooltip();
+    stop();
+  });
 });

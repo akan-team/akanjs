@@ -6,6 +6,12 @@ const routerState = {
   isInitialized: true,
   entered: [] as { href: string; resetStack: boolean }[],
   fallbacks: [] as string[],
+  navigations: 0,
+  redirects: 0,
+};
+const redirect = () => {
+  routerState.navigations += 1;
+  routerState.redirects += 1;
 };
 const events = { exits: 0, backs: 0, dismissed: 0 };
 const presentations: unknown[] = [];
@@ -25,7 +31,10 @@ beforeAll(() => {
       },
       backOrFallback: (path: string) => {
         routerState.fallbacks.push(path);
+        routerState.navigations += 1;
       },
+      navigationCount: () => routerState.navigations,
+      redirectCount: () => routerState.redirects,
       navigation: () => Promise.resolve(),
     },
   }));
@@ -94,6 +103,8 @@ afterEach(() => {
   routerState.isInitialized = true;
   routerState.entered.length = 0;
   routerState.fallbacks.length = 0;
+  routerState.navigations = 0;
+  routerState.redirects = 0;
   Object.assign(events, { exits: 0, backs: 0, dismissed: 0 });
   presentations.length = 0;
   Object.defineProperty(globalThis, "window", { value: undefined, configurable: true });
@@ -138,6 +149,64 @@ describe("NativeNavigation", () => {
 
     expect(events).toEqual({ dismissed: 1, backs: 1, exits: 1 });
     expect(routerState.fallbacks).toEqual(["/explore"]);
+  });
+
+  const signinOf = async () => {
+    const { NativeNavigation } = await import("./nativeNavigation");
+    const state = { path: "/:lang/admin/signin" };
+    const navigation = new NativeNavigation({
+      historyIdx: () => 0,
+      backState: () => ({ ...state, keyboardHeight: 0, keyboardVisible: false, router: { back: () => undefined } }),
+      dismissKeyboard: () => undefined,
+    });
+    return { NativeNavigation, navigation, state };
+  };
+
+  test("back leaves the app when the index refuses the visitor back to the page before it shows", async () => {
+    installShell();
+    const { NativeNavigation, navigation } = await signinOf();
+    navigation.back();
+    expect(routerState.fallbacks).toEqual(["/explore"]);
+    expect(events.exits).toBe(0);
+
+    redirect();
+    NativeNavigation.turnedBack();
+    await settle();
+    expect(events.exits).toBe(1);
+  });
+
+  test("back leaves the app when the index shows and redirects the visitor back to the page", async () => {
+    installShell();
+    const { navigation, state } = await signinOf();
+    navigation.back();
+    state.path = "/:lang/admin/explore";
+    navigation.syncBack();
+    await settle();
+    expect(events.exits).toBe(0);
+
+    redirect();
+    state.path = "/:lang/admin/signin";
+    navigation.syncBack();
+    await settle();
+    expect(events.exits).toBe(1);
+  });
+
+  test("a fallback the visitor moved on from, or no back at all, leaves nothing to exit on", async () => {
+    installShell();
+    const { NativeNavigation, navigation, state } = await signinOf();
+    NativeNavigation.turnedBack();
+    navigation.back();
+    state.path = "/:lang/admin/explore";
+    navigation.syncBack();
+    routerState.navigations += 1;
+    state.path = "/:lang/admin/signin";
+    navigation.syncBack();
+    redirect();
+    NativeNavigation.turnedBack();
+    await settle();
+
+    expect(routerState.fallbacks).toEqual(["/explore"]);
+    expect(events.exits).toBe(0);
   });
 
   test("back on a stack a deep link started leaves the app", async () => {

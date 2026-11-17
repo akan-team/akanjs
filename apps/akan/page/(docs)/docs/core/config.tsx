@@ -203,8 +203,8 @@ const nativeFields = [
   {
     key: "splash",
     type: "string | { image?, backgroundColor?, autoHide?, timeout? }",
-    en: "A PNG shown centered at launch, or the launch screen's image, color and when it hides.",
-    ko: "실행할 때 가운데에 보이는 PNG이거나, 시작 화면의 이미지, 색, 숨기는 시점입니다.",
+    en: "A PNG shown centered at launch, or the launch screen's image, color and when it hides. The splash stays until the first page is drawn, loading fallbacks gone; autoHide: true hides it as soon as the document loads instead.",
+    ko: "실행할 때 가운데에 보이는 PNG이거나, 시작 화면의 이미지, 색, 숨기는 시점입니다. 시작 화면은 첫 페이지가 로딩 대체 화면 없이 다 그려질 때까지 남습니다. autoHide: true면 문서를 불러오자마자 숨깁니다.",
   },
   {
     key: "backgroundColor",
