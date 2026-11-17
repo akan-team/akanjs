@@ -58,8 +58,7 @@ type Step =
 const stMethods = new Set(["get", "set", "sel", "ref", "sub"]);
 const agenticMembers = new Set(["tool", "expose", "useState"]);
 const signalData = new Set(["refName", "cnst", "slices", "serializedSignal", "_slice"]);
-//? The fetch client's own members that reach no module's endpoint. `handler`, `instance`, `clone` and the maps the
-//? descriptors fill (`ownSerializedSignal`, `sortKeyMap`, …) stay out: a name or a module is picked through them.
+//? Fetch client members reaching no endpoint; `handler`, `instance`, `clone` and the descriptor maps do pick a name.
 const fetchClientMembers = new Set([
   "ws",
   "http",
@@ -445,9 +444,7 @@ export class RuntimeUse {
     for (const parameter of parameters.slice(0, count)) this.#bindParameter(parameter, { kind: "state" });
   }
 
-  //? `own`: a store class's uncast `this.set`. It is typed by that store's own state, whose store is the one running,
-  //? and `StoreInstance.set` writes the keys it is handed without looking a module up, so keys not written out there
-  //? name no other module.
+  //? `own`: a store's uncast `this.set`, typed by its own state; `StoreInstance.set` writes its keys and looks up no module.
   #written(argument: ts.Expression, own = false) {
     const value = RuntimeUse.#unwrap(argument);
     const updater = RuntimeUse.#inlineFunction(value);

@@ -315,23 +315,26 @@ const writeWorkspace = async ({
   libFiles = { ...kitFiles, ...kitModuleNamed("tag", "Tag") },
   appFiles = demoFiles,
   kept = false,
+  moreLibs = {} as Record<string, Record<string, string>>,
 } = {}) => {
   const created = await createTempApp(app, await realpath(os.tmpdir()));
   const temp = kept ? created : trackRoot(created);
   const { root } = temp;
-  const libDir = path.join(root, "libs", lib);
   await mkdir(path.join(root, "node_modules"), { recursive: true });
   await symlink(akanjsRoot, path.join(root, "node_modules/akanjs"));
   await writeJson(path.join(root, "tsconfig.json"), {
     compilerOptions: { target: "ESNext", paths: { "@apps/*": ["./apps/*"], "@libs/*": ["./libs/*"] } },
     references: [],
   });
-  for (const dir of [path.join(root, "apps", app), libDir])
+  await writeJson(path.join(root, "apps", app, "tsconfig.json"), { extends: "../../tsconfig.json" });
+  for (const [name, files] of Object.entries({ [lib]: libFiles, ...moreLibs })) {
+    const dir = path.join(root, "libs", name);
     await writeJson(path.join(dir, "tsconfig.json"), { extends: "../../tsconfig.json" });
-  await writeJson(path.join(libDir, "package.json"), { type: "module", name: `@${lib}`, version: "0.0.1" });
-  await writeText(path.join(libDir, "akan.config.ts"), "export default {};\n");
-  await writeText(path.join(libDir, "lib/__scalar/.keep"), "");
-  for (const [file, content] of Object.entries(libFiles)) await writeText(path.join(libDir, file), content);
+    await writeJson(path.join(dir, "package.json"), { type: "module", name: `@${name}`, version: "0.0.1" });
+    await writeText(path.join(dir, "akan.config.ts"), "export default {};\n");
+    await writeText(path.join(dir, "lib/__scalar/.keep"), "");
+    for (const [file, content] of Object.entries(files)) await writeText(path.join(dir, file), content);
+  }
   for (const [file, content] of Object.entries(appFiles)) await writeText(path.join(root, "apps", app, file), content);
   await temp.app.scan();
   return temp;
@@ -1130,4 +1133,175 @@ describe("an app store that redeclares what the lib store it extends declares", 
         tally: 8,
       });
   }, 120_000);
+});
+
+const noticeStore = `import { store } from "akanjs/store";
+
+export class NoticeStore extends store("notice" as const, () => ({ noticeCount: 0, noticeText: "" })) {
+  applyNotice(patch: { noticeCount?: number; noticeText?: string }) {
+    this.set({ ...patch });
+  }
+}
+`;
+const orgStoreOf = (lib: string) => `import { kitLabel } from "@libs/${lib}/common";
+import { store } from "akanjs/store";
+
+import { st } from "../st";
+import { fetch, sig } from "../useClient";
+
+export class OrgStore extends store(sig.org, () => ({ orgCount: 0, orgLabel: kitLabel })) {
+  async refreshOrgCount() {
+    this.set({ orgCount: await fetch.orgCount() });
+    st.do.applyNotice({ noticeText: "org" });
+    st.do.callCrew();
+  }
+}
+`;
+const crewStore = `import { store } from "akanjs/store";
+
+import { st } from "../st";
+
+export class CrewStore extends store("crew" as const, () => ({ crewCalls: 0 })) {
+  callCrew() {
+    this.set({ crewCalls: st.get().orgCount });
+  }
+}
+`;
+const emptyServiceDictionary = `import { serviceDictionary } from "akanjs/dictionary";
+
+export const dictionary = serviceDictionary(["en", "ko"]).translate({});
+`;
+
+//? Three scopes shaped like a workspace that failed: a lib store spreading into \`this.set\` that another lib's store
+//? uses, two stores naming each other, and a store reached by fewer entries than its model's fetch piece.
+const writeHarborWorkspace = (app: string, base: string, upper: string, moreAppFiles: Record<string, string> = {}) =>
+  writeWorkspace({
+    app,
+    lib: base,
+    libFiles: {
+      ...stockFiles,
+      "lib/_notice/notice.dictionary.ts": emptyServiceDictionary,
+      "lib/_notice/notice.store.ts": noticeStore,
+    },
+    moreLibs: {
+      [upper]: {
+        "lib/option.ts": option,
+        ...kitModuleNamed("org", "Org"),
+        "lib/org/org.store.ts": orgStoreOf(base),
+        "lib/_crew/crew.dictionary.ts": emptyServiceDictionary,
+        "lib/_crew/crew.store.ts": crewStore,
+      },
+    },
+    appFiles: {
+      ...shopFilesOf(base),
+      "akan.config.ts": 'export default { clientRuntime: "route" };\n',
+      "ui/Count.tsx": `import { st } from "@apps/${app}/client";\nexport const Count = () => st.use.itemCount();\n`,
+      "ui/Note.tsx": `import { fetch } from "@apps/${app}/client";\nexport const Note = () => fetch.itemNote();\n`,
+      "ui/Org.tsx": `import { st } from "@libs/${upper}/client";\nexport const Org = () => st.use.orgCount();\n`,
+      "ui/Both.tsx": `import { st } from "@apps/${app}/client";\nexport const Both = () => [st.use.itemCount(), st.use.orgCount()];\n`,
+      ...moreAppFiles,
+    },
+  });
+
+interface RouteBuilt {
+  failure: string | null;
+  storeChunks: string[];
+  fetchPieceChunks: string[];
+  storePiecesStoresImport: string[];
+  storesBesideOrg: string[];
+}
+
+const routeBuildScript = (root: string, appName: string, entries: string[], store: string, fetchPiece: string) => `
+const path = await import("node:path");
+const { AppExecutor } = await import(${devkitFile("executors/appExecutor.ts")});
+const { WorkspaceExecutor } = await import(${devkitFile("executors/workspaceExecutor.ts")});
+const { ClientEntriesBundler } = await import(${devkitFile("frontendBuild/clientEntriesBundler.ts")});
+const { RouteClientBuilder } = await import(${devkitFile("frontendBuild/routeClientBuilder.ts")});
+const [root, appName, entries, store, fetchPiece] = ${JSON.stringify([root, appName, entries, store, fetchPiece])};
+const app = AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), appName);
+const graphs = [];
+const bundle = ClientEntriesBundler.prototype.bundle;
+ClientEntriesBundler.prototype.bundle = async function () {
+  const result = await bundle.call(this);
+  graphs.push(result.graph);
+  return result;
+};
+let failure = null;
+await new RouteClientBuilder({
+  app,
+  seeds: [],
+  entries: entries.map((entry) => path.join(root, entry)),
+  artifact: {},
+  browser: "chunks",
+})
+  .build()
+  .catch((error) => {
+    failure = error.message;
+  });
+const browser = graphs.at(-1);
+const nameOf = (file) => path.relative(root, file);
+const chunksOf = (file) => (browser.chunksByModule.get(path.join(root, file)) ?? []).map((chunk) => path.basename(chunk));
+const importsOf = (file) => (browser.importsByModule.get(file) ?? []).map((imported) => nameOf(imported.path));
+const storeFiles = [...browser.importsByModule.keys()].filter((file) => file.endsWith(".store.ts"));
+console.log(JSON.stringify({
+  failure,
+  storeChunks: chunksOf(store),
+  fetchPieceChunks: chunksOf(fetchPiece),
+  storePiecesStoresImport: storeFiles.flatMap(importsOf).filter((file) => /__client\\/[^_/][^/]*\\.st\\.ts$/.test(file)),
+  storesBesideOrg: [...browser.importsByModule.keys()].map(nameOf).filter((file) => /__client\\/[^_/][^/]*\\.st\\.ts$/.test(file)).sort(),
+}));
+`;
+
+describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
+  test("passes its own check with a store and its model's fetch piece in different chunks, a lib store spreading into `this.set` and two stores naming each other, no store file importing a store piece", async () => {
+    const [app, base, upper] = ["harbor", "berth", "jetty"];
+    const temp = await writeHarborWorkspace(app, base, upper);
+    const entries = ["Count", "Note", "Org", "Both"].map((name) => `apps/${app}/ui/${name}.tsx`);
+    const built = (await evaluate(
+      temp.root,
+      routeBuildScript(
+        temp.root,
+        app,
+        entries,
+        `apps/${app}/lib/item/item.store.ts`,
+        `apps/${app}/lib/__client/item.fetch.ts`,
+      ),
+      app,
+    )) as unknown as RouteBuilt;
+    expect(built.failure).toBeNull();
+    expect(built.storeChunks).toHaveLength(1);
+    expect(built.fetchPieceChunks).toHaveLength(1);
+    expect(built.storeChunks).not.toEqual(built.fetchPieceChunks);
+    expect(built.storePiecesStoresImport).toEqual([]);
+    expect(built.storesBesideOrg).toEqual([
+      `apps/${app}/lib/__client/item.st.ts`,
+      `libs/${base}/lib/__client/item.st.ts`,
+      `libs/${base}/lib/__client/notice.st.ts`,
+      `libs/${upper}/lib/__client/crew.st.ts`,
+      `libs/${upper}/lib/__client/org.st.ts`,
+    ]);
+  }, 240_000);
+
+  test("stops, naming both files, where a file imports a runtime piece only for its effect and the build splits the two apart", async () => {
+    const [app, base, upper] = ["pier", "shed", "dock"];
+    const temp = await writeHarborWorkspace(app, base, upper, {
+      "ui/Count.tsx": `import { st } from "@apps/${app}/client";\nimport { hand } from "../../../shared/hand";\nexport const Count = () => [st.use.itemCount(), hand];\n`,
+      "ui/Org.tsx": `import { st } from "@libs/${upper}/client";\nimport { hand } from "../../../shared/hand";\nexport const Org = () => [st.use.orgCount(), hand];\n`,
+    });
+    await writeText(
+      path.join(temp.root, "shared/hand.ts"),
+      `import "@apps/${app}/lib/__client/item.fetch";\nexport const hand = "hand";\n`,
+    );
+    const entries = ["Count", "Note", "Org", "Both"].map((name) => `apps/${app}/ui/${name}.tsx`);
+    const built = (await evaluate(
+      temp.root,
+      routeBuildScript(temp.root, app, entries, "shared/hand.ts", `apps/${app}/lib/__client/item.fetch.ts`),
+      app,
+    )) as unknown as RouteBuilt;
+    expect(built.failure?.split("\n")).toEqual([
+      '[client-runtime] the build of `clientRuntime: "route"` would not load its modules in order:',
+      `  - shared/hand.ts needs apps/${app}/lib/__client/item.fetch.ts loaded first, but its chunk ${built.storeChunks[0]} does not import the chunk holding that piece`,
+      'Set `clientRuntime: "all"` in akan.config.ts to build until it is fixed.',
+    ]);
+  }, 240_000);
 });

@@ -148,9 +148,7 @@ export class RouteRuntime {
       : own;
   }
 
-  //* Reads a bundle of the same entries in which every entry loads the whole runtime, and answers which entries keep
-  //* it: one reaching a file whose modules cannot be told, and one every route of which holds such an entry. The
-  //* files only those entries reach stay as written, so such a page loads what it loads under `clientRuntime: "all"`.
+  //* Over a bundle whose every entry loads the whole runtime: the entries that keep it, whose files stay as written.
   plan({ importsByModule, entries, entriesByRoute }: RouteRuntimeBundle): Set<string> {
     const graph = new RouteRuntimeGraph(importsByModule, (absPath) => runtimeFile.test(this.fileNameOf(absPath) ?? ""));
     const stores = graph.modules.filter((module) => storeFile.test(this.fileNameOf(module) ?? ""));
@@ -184,10 +182,27 @@ export class RouteRuntime {
       more = roots.filter((root) => !whole.has(root) && lazyOf.get(root)?.some((lazy) => whole.has(lazy)));
       for (const root of more) whole.add(root);
     }
-    const wholeRoute = (route: readonly string[]) => route.some((entry) => whole.has(entry));
-    const inWhole = new Set(routes.filter(wholeRoute).flat());
-    const inOther = new Set(routes.filter((route) => !wholeRoute(route)).flat());
-    const keeps = new Set(roots.filter((root) => whole.has(root) || (inWhole.has(root) && !inOther.has(root))));
+    const keeps = new Set(whole);
+    const bringsPieces = (root: string) =>
+      [...(closures.get(root) ?? [])].some((file) =>
+        this.#routeOf(file)?.pieces.some((piece) => !piece.endsWith("/_base.fetch")),
+      );
+    //? A narrowed entry's pieces repeat what a whole-runtime page already carries; pages a kept entry makes whole recount.
+    for (let more = roots; more.length > 0; ) {
+      const count = (held: boolean) => {
+        const counts = new Map<string, number>();
+        for (const route of routes)
+          if (route.some((entry) => keeps.has(entry)) === held)
+            for (const entry of route) counts.set(entry, (counts.get(entry) ?? 0) + 1);
+        return counts;
+      };
+      const [inWhole, inOther] = [count(true), count(false)];
+      more = roots.filter((root) => {
+        const [holding, others] = [inWhole.get(root) ?? 0, inOther.get(root) ?? 0];
+        return !keeps.has(root) && holding > others && (others === 0 || bringsPieces(root));
+      });
+      for (const root of more) keeps.add(root);
+    }
     const askers = new Map<string, string[]>();
     for (const [root, lazies] of lazyOf)
       for (const lazy of lazies) askers.set(lazy, [...(askers.get(lazy) ?? []), root]);

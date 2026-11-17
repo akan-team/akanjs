@@ -263,6 +263,172 @@ describe("a client file whose modules cannot be told", () => {
   });
 });
 
+const namingRead = 'import { st } from "@apps/demo/client";\nexport const read = () => st.use.draft();\n';
+const namingSide = 'import { st } from "@apps/demo/client";\nexport const side = () => st.use.tagFilter();\n';
+const pickingRun = 'import { st } from "@apps/demo/client";\nexport const run = (name: string) => st.do[name]();\n';
+const uiFile = (name: string) => `${root}/apps/demo/ui/${name}.tsx`;
+const memoStoreFile = `${root}/apps/demo/lib/memo/memo.store.ts`;
+const relabelFile = `${root}/apps/demo/webkit/relabel.ts`;
+
+interface PlannedBundle {
+  files: Record<string, string>;
+  imports?: Record<string, (string | { lazy: string })[]>;
+  entries: string[];
+  routes?: Record<string, string[]>;
+}
+
+const plan = ({ files, imports = {}, entries, routes }: PlannedBundle) => {
+  const target = withStores(files);
+  const importsByModule = new Map(
+    Object.keys(files).map((file) => [
+      file,
+      (imports[file] ?? []).map((imported) =>
+        typeof imported === "string" ? { path: imported, lazy: false } : { path: imported.lazy, lazy: true },
+      ),
+    ]),
+  );
+  const kept = target.plan({
+    importsByModule,
+    entries,
+    entriesByRoute: routes ? new Map(Object.entries(routes)) : undefined,
+  });
+  const piecesOf = (file: string) => {
+    const result = target.transform(files[file] ?? "", file);
+    return result ? result.pieces : "as written";
+  };
+  return { target, kept: [...kept].sort(), piecesOf };
+};
+
+describe("a build planned over the bundle that loads the whole runtime everywhere", () => {
+  const memoPieces = ["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/memo.st"];
+  const tagPieces = ["apps/demo/lib/__client/tag.fetch", "libs/kit/lib/__client/tag.st"];
+
+  test("keeps the whole runtime in an entry reaching a file whose modules cannot be told, and leaves the files only it reaches as written", () => {
+    const { target, kept, piecesOf } = plan({
+      files: {
+        [uiFile("Frame")]:
+          'import { run } from "./Run";\nimport { side } from "./Side";\nexport const Frame = [run, side];\n',
+        [uiFile("Run")]: pickingRun,
+        [uiFile("Side")]: namingSide,
+        [uiFile("Card")]: `import { side } from "./Side";\n${namingRead}export const Card = side;\n`,
+        [uiFile("Lone")]: namingSide,
+      },
+      imports: {
+        [uiFile("Frame")]: [uiFile("Run"), uiFile("Side"), uiFile("Lone")],
+        [uiFile("Card")]: [uiFile("Side")],
+      },
+      entries: [uiFile("Frame"), uiFile("Card")],
+    });
+    expect(kept).toEqual([uiFile("Frame")]);
+    expect([...target.wholeReaders]).toEqual([uiFile("Run")]);
+    expect(["Frame", "Run", "Lone"].map((name) => piecesOf(uiFile(name)))).toEqual([
+      "as written",
+      "as written",
+      "as written",
+    ]);
+    expect(piecesOf(uiFile("Side"))).toEqual(tagPieces);
+    expect(piecesOf(uiFile("Card"))).toEqual(memoPieces);
+    expect(target.redirectOf(`${root}/apps/demo/lib/st.ts`)).toBeNull();
+  });
+
+  test("keeps the whole runtime in an entry only whole-runtime routes hold, and narrows one another route holds too", () => {
+    const files = { [uiFile("Run")]: pickingRun, [uiFile("Card")]: namingRead, [uiFile("Side")]: namingSide };
+    const entries = Object.keys(files);
+    const routes = {
+      "/picked": [uiFile("Run"), uiFile("Card")],
+      "/read": [uiFile("Card")],
+      "/side": [uiFile("Run"), uiFile("Side")],
+    };
+    const byRoute = plan({ files, entries, routes });
+    expect(byRoute.kept).toEqual([uiFile("Run"), uiFile("Side")]);
+    expect(byRoute.piecesOf(uiFile("Side"))).toBe("as written");
+    expect(byRoute.piecesOf(uiFile("Card"))).toEqual(memoPieces);
+    const alone = plan({ files, entries });
+    expect(alone.kept).toEqual([uiFile("Run")]);
+    expect(alone.piecesOf(uiFile("Side"))).toEqual(tagPieces);
+  });
+
+  test("keeps the whole runtime in an entry naming a module that more whole-runtime routes hold than others, and narrows one naming none", () => {
+    const plain = "export const Plain = 1;\n";
+    const files = { [uiFile("Run")]: pickingRun, [uiFile("Card")]: namingRead, [uiFile("Plain")]: plain };
+    const entries = Object.keys(files);
+    const shared = [uiFile("Card"), uiFile("Plain")];
+    const mostlyWhole = plan({
+      files,
+      entries,
+      routes: { "/a": [uiFile("Run"), ...shared], "/b": [uiFile("Run"), ...shared], "/read": shared },
+    });
+    expect(mostlyWhole.kept).toEqual([uiFile("Card"), uiFile("Plain"), uiFile("Run")]);
+    expect(mostlyWhole.piecesOf(uiFile("Card"))).toBe("as written");
+    const evenly = plan({
+      files,
+      entries,
+      routes: { "/a": [uiFile("Run"), ...shared], "/read": shared, "/plain": [uiFile("Plain")] },
+    });
+    expect(evenly.kept).toEqual([uiFile("Run")]);
+    expect(evenly.piecesOf(uiFile("Card"))).toEqual(memoPieces);
+    const plainOnly = plan({
+      files,
+      entries,
+      routes: {
+        "/a": [uiFile("Run"), uiFile("Plain")],
+        "/b": [uiFile("Run"), uiFile("Plain")],
+        "/c": [uiFile("Plain")],
+      },
+    });
+    expect(plainOnly.kept).toEqual([uiFile("Run")]);
+  });
+
+  test("keeps the whole runtime in an entry asking with `import()` for a file that needs every module, and in a file only such entries ask for", () => {
+    const files = {
+      [uiFile("Card")]: namingRead,
+      [uiFile("Run")]: pickingRun,
+      [uiFile("Side")]: namingSide,
+      [uiFile("Other")]: namingRead,
+    };
+    const asking = { [uiFile("Card")]: [{ lazy: uiFile("Run") }, { lazy: uiFile("Side") }] };
+    const entries = [uiFile("Card"), uiFile("Other")];
+    const lazy = plan({ files, imports: asking, entries });
+    expect(lazy.kept).toEqual([uiFile("Card"), uiFile("Run"), uiFile("Side")]);
+    expect(lazy.piecesOf(uiFile("Other"))).toEqual(memoPieces);
+    const shared = plan({ files, imports: { ...asking, [uiFile("Other")]: [{ lazy: uiFile("Side") }] }, entries });
+    expect(shared.kept).toEqual([uiFile("Card"), uiFile("Run")]);
+    expect(shared.piecesOf(uiFile("Side"))).toEqual(tagPieces);
+  });
+
+  test("gives a file a store file imports no store piece, and loads the stores its code names in each file outside importing it or naming that store", () => {
+    const files = {
+      [memoStoreFile]: `import { store } from "akanjs/store";
+
+import { relabel } from "../../webkit/relabel";
+import { sig } from "../useClient";
+
+export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
+  relabel() {
+    relabel();
+  }
+}
+`,
+      [relabelFile]:
+        'import { st } from "@apps/demo/client";\nexport const relabel = () => st.do.pickLabel(st.get().tagFilter);\n',
+      [uiFile("Card")]: namingRead,
+      [uiFile("Other")]: 'import { relabel } from "../webkit/relabel";\nexport const Other = () => relabel();\n',
+    };
+    const imports = { [memoStoreFile]: [relabelFile], [uiFile("Other")]: [relabelFile] };
+    const { target, kept, piecesOf } = plan({ files, imports, entries: [uiFile("Card"), uiFile("Other")] });
+    const named = ["libs/kit/lib/__client/tag.st", "libs/kit/lib/__client/util.st"];
+    expect(kept).toEqual([]);
+    expect(piecesOf(relabelFile)).toEqual(["apps/demo/lib/__client/tag.fetch"]);
+    expect(target.transform(files[relabelFile] ?? "", relabelFile)?.source).toContain(
+      'import { st } from "akanjs/store";',
+    );
+    expect(piecesOf(memoStoreFile)).toEqual(["apps/demo/lib/__client/memo.fetch"]);
+    expect(piecesOf(uiFile("Card"))).toEqual([...memoPieces, ...named]);
+    expect(piecesOf(uiFile("Other"))).toEqual(named);
+    expect(plan({ files, imports, entries: [relabelFile] }).kept).toEqual([relabelFile]);
+  });
+});
+
 describe("a file the per-route runtime does not touch", () => {
   const source = 'import { st } from "@apps/demo/client";\nexport const read = () => st.use.draft();\n';
 
