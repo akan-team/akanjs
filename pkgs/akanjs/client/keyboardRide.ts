@@ -16,15 +16,17 @@ const isInset = (rider: HTMLElement) => rider.dataset.akanKeyboardRide === "inse
  * up, since the shorter box would clip a rider still on its way, and keys going down give the taller box at once while
  * the riders start from where they were drawn. When the focused field sits in `data-akan-keyboard-overlay`, the page
  * keeps the whole screen, as a native chat screen does, so what lies under the glass keys stays drawn: the riders go
- * where the shorter box would put them and stay there, and an `inset` rider (a list's content) trades its transform
- * for bottom padding once the keys are up, so the list still scrolls to its top.
+ * where the shorter box would put them and stay there. An `inset` rider (a list's content) is not carried: it takes the
+ * rise as bottom padding at once, so the list still scrolls to its top, and a list resting at its end scrolls the rise
+ * with the keys, and back down with them.
  */
 export class KeyboardRide {
   static #committed = 0;
   static #target = 0;
   static #isOverlay = false;
   static #timer: ReturnType<typeof setTimeout> | null = null;
-  static #insets = new Map<HTMLElement, { paddingBottom: string; rise: number }>();
+  static #insets = new Map<HTMLElement, { paddingBottom: string; base: string; rise: number }>();
+  static #glides = new Map<HTMLElement, number>();
 
   static move(height: number, durationMs: number) {
     if (height === KeyboardRide.#target) return;
@@ -44,23 +46,34 @@ export class KeyboardRide {
     if (KeyboardRide.#timer) clearTimeout(KeyboardRide.#timer);
     KeyboardRide.#timer = null;
 
-    const riders = [...document.querySelectorAll<HTMLElement>(RIDE_SELECTOR)].filter(
+    const shown = [...document.querySelectorAll<HTMLElement>(RIDE_SELECTOR)].filter(
       (element) => element.getClientRects().length > 0,
     );
+    //? WebKit on iOS drew no frame for the whole ride while it carried a long list as a transform; a scroll it draws.
+    const lists = isOverlay ? shown.filter(isInset) : [];
+    const riders = shown.filter((rider) => !lists.includes(rider));
+    KeyboardRide.#stopGlides();
+    const listEnds = lists.map((list) => KeyboardRide.#scrollersAtEnd([list]).at(0) ?? null);
     //? An inset rider's box reaches past what it shows by the padding it took for the rise; it was drawn that much higher.
     const drawn = riders.map((rider) => bottomOf(rider) - (KeyboardRide.#insets.get(rider)?.rise ?? 0));
     for (const rider of riders) {
       rider.style.transition = "none";
       rider.style.transform = "";
     }
-    KeyboardRide.#releaseInsets();
-    const scrollers = KeyboardRide.#scrollersAtEnd(riders);
+    KeyboardRide.#releaseInsets(lists);
+    const scrollers = KeyboardRide.#scrollersAtEnd(shown);
     const previous = KeyboardRide.#committed;
     const isHeld = !isOverlay && height > previous;
     KeyboardRide.#commit(height, scrollers);
     const settled = riders.map(bottomOf);
+    const listsSettled = lists.map(bottomOf);
     if (isHeld || isOverlay) KeyboardRide.#commit(isOverlay ? 0 : previous, scrollers);
     const laid = isHeld || isOverlay ? riders.map(bottomOf) : settled;
+    lists.forEach((list, idx) => {
+      const scroller = listEnds[idx] ?? null;
+      if (height > 0) KeyboardRide.#raiseList(list, bottomOf(list) - (listsSettled[idx] ?? 0), scroller, durationMs);
+      else KeyboardRide.#lowerList(list, scroller, durationMs);
+    });
     riders.forEach((rider, idx) => {
       rider.style.transform = `translateY(${drawn[idx] - laid[idx]}px)`;
     });
@@ -73,9 +86,7 @@ export class KeyboardRide {
     KeyboardRide.#timer = setTimeout(() => {
       KeyboardRide.#timer = null;
       if (isHeld) KeyboardRide.#commit(height, KeyboardRide.#scrollersAtEnd(riders));
-      const isKept = isOverlay && height > 0;
-      if (isKept) KeyboardRide.#holdInsets(riders, settled, laid);
-      const settling = riders.filter((rider) => !isKept || isInset(rider));
+      const settling = isOverlay && height > 0 ? [] : riders;
       for (const rider of settling) {
         rider.style.transition = "none";
         rider.style.transform = "";
@@ -93,21 +104,78 @@ export class KeyboardRide {
     for (const scroller of scrollers) scroller.scrollTop = scroller.scrollHeight;
   }
 
-  //? The list grows by the rise at its end and scrolls there, which draws it where the transform had carried it.
-  static #holdInsets(riders: HTMLElement[], settled: number[], laid: number[]) {
-    const scrollers = KeyboardRide.#scrollersAtEnd(riders.filter(isInset));
-    riders.forEach((rider, idx) => {
-      const rise = laid[idx] - settled[idx];
-      if (!isInset(rider) || rise <= 0) return;
-      KeyboardRide.#insets.set(rider, { paddingBottom: rider.style.paddingBottom, rise });
-      rider.style.paddingBottom = `calc(${getComputedStyle(rider).paddingBottom} + ${rise}px)`;
-    });
-    for (const scroller of scrollers) scroller.scrollTop = scroller.scrollHeight;
+  //? The list grows by the rise at its end at once, so it still scrolls to its top, and one resting there follows it.
+  static #raiseList(list: HTMLElement, rise: number, scroller: HTMLElement | null, durationMs: number) {
+    const held = KeyboardRide.#insets.get(list);
+    const base = held?.base ?? getComputedStyle(list).paddingBottom;
+    if (rise <= 0) return;
+    KeyboardRide.#insets.set(list, { paddingBottom: held?.paddingBottom ?? list.style.paddingBottom, base, rise });
+    list.style.paddingBottom = `calc(${base} + ${rise}px)`;
+    if (scroller) KeyboardRide.#glide(scroller, scroller.scrollHeight - scroller.clientHeight, durationMs);
   }
 
-  static #releaseInsets() {
-    for (const [rider, { paddingBottom }] of KeyboardRide.#insets) rider.style.paddingBottom = paddingBottom;
-    KeyboardRide.#insets.clear();
+  static #lowerList(list: HTMLElement, scroller: HTMLElement | null, durationMs: number) {
+    const held = KeyboardRide.#insets.get(list);
+    if (!held) return;
+    const release = () => {
+      list.style.paddingBottom = held.paddingBottom;
+      KeyboardRide.#insets.delete(list);
+    };
+    if (scroller) KeyboardRide.#glide(scroller, Math.max(0, scroller.scrollTop - held.rise), durationMs, release);
+    else release();
+  }
+
+  static #releaseInsets(kept: HTMLElement[]) {
+    for (const [rider, { paddingBottom }] of KeyboardRide.#insets) {
+      if (kept.includes(rider)) continue;
+      rider.style.paddingBottom = paddingBottom;
+      KeyboardRide.#insets.delete(rider);
+    }
+  }
+
+  static #glide(scroller: HTMLElement, to: number, durationMs: number, done?: () => void) {
+    const from = scroller.scrollTop;
+    const ease = KeyboardRide.#easeOf(nativeKeyboardEasing());
+    const startedAt = performance.now();
+    const step = (now: number) => {
+      const progress = durationMs > 0 ? Math.min(1, (now - startedAt) / durationMs) : 1;
+      scroller.scrollTop = from + (to - from) * ease(progress);
+      if (progress < 1) {
+        KeyboardRide.#glides.set(scroller, requestAnimationFrame(step));
+        return;
+      }
+      KeyboardRide.#glides.delete(scroller);
+      done?.();
+    };
+    KeyboardRide.#glides.set(scroller, requestAnimationFrame(step));
+  }
+
+  static #stopGlides() {
+    for (const frame of KeyboardRide.#glides.values()) cancelAnimationFrame(frame);
+    KeyboardRide.#glides.clear();
+  }
+
+  //? The keys' own curve, a CSS cubic-bezier, solved for x by bisection so the scroll keeps pace with them.
+  static #easeOf(easing: string) {
+    const parsed = easing
+      .replace(/^cubic-bezier\(|\)$/g, "")
+      .split(",")
+      .map(Number);
+    const [x1, y1, x2, y2] = parsed.length === 4 && parsed.every(Number.isFinite) ? parsed : [0.25, 0.1, 0.25, 1];
+    const curve = (a: number, b: number, t: number) => 3 * a * (1 - t) ** 2 * t + 3 * b * (1 - t) * t ** 2 + t ** 3;
+    return (progress: number) => {
+      let low = 0;
+      let high = 1;
+      let t = progress;
+      for (let step = 0; step < 24; step++) {
+        const x = curve(x1, x2, t);
+        if (Math.abs(x - progress) < 1e-4) break;
+        if (x < progress) low = t;
+        else high = t;
+        t = (low + high) / 2;
+      }
+      return curve(y1, y2, t);
+    };
   }
 
   static #scrollersAtEnd(riders: HTMLElement[]) {
