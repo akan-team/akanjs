@@ -7,6 +7,7 @@ import {
   PrimitiveScalar,
   SERVER_VALUE,
 } from "akanjs/base";
+import { formSetterNames } from "akanjs/common";
 import { type ConstantField, ConstantRegistry, via } from "akanjs/constant";
 import { FormFields } from "./formFields";
 
@@ -48,5 +49,29 @@ describe("FormFields with an agent-faced primitive", () => {
 
   test("leaves it out of the form patch, which the editor owning the field writes instead", () => {
     expect(FormFields.patchable("fieldNotePage").map(({ key }) => key)).toEqual(["title"]);
+  });
+});
+
+describe("FormFields.ref", () => {
+  test("finds the setter of a model registered after an earlier lookup, as a page loading a model later does", () => {
+    expect(FormFields.ref(formSetterNames("FieldNotePage", "title").setFieldOnModel)?.refName).toBe("fieldNotePage");
+    const LateInput = via((f) => ({ caption: f(String) }));
+    const LateObj = via(LateInput, () => ({}));
+    const LateLight = via(LateObj, ["caption"] as const, () => ({}));
+    const LateFull = via(LateObj, LateLight, () => ({}));
+    ConstantRegistry.buildModel(
+      "lateNotePage",
+      LateInput,
+      LateObj,
+      LateFull,
+      LateLight,
+      via(LateFull, () => ({})),
+      {},
+    );
+
+    expect(FormFields.ref(formSetterNames("LateNotePage", "caption").setFieldOnModel)).toMatchObject({
+      refName: "lateNotePage",
+      key: "caption",
+    });
   });
 });
