@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { mkdir, realpath, symlink } from "node:fs/promises";
 import path from "node:path";
 import { printedInOwnProcess, tempDirs, writeText as write } from "../test/testHelpers";
-import { ObjectMemberImports } from "./objectMemberImports";
+import { type ObjectKeepReason, ObjectMemberImports } from "./objectMemberImports";
 
 const makeTempRoot = tempDirs("akan-object-member-imports-");
 
@@ -114,7 +114,7 @@ describe("ObjectMemberImports", () => {
       return result?.kept.map(({ object, file, line, reason }) => ({ object, file, line, reason }));
     };
     const memo = 'import { Memo } from "../lib/memo";';
-    const memoKept = (reason: string, line = 2) => [
+    const memoKept = (reason: ObjectKeepReason, line = 2) => [
       { object: "Memo", file: fileOf("lib/memo/index.ts"), line, reason },
     ];
     const withMember = (use: string) => `[Memo.Zone.View, ${use}]`;

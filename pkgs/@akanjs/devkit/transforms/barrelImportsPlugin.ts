@@ -34,9 +34,11 @@ export const createBarrelImportsPlugin = async (
     routeRuntime,
   }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
-  const config = await app.getConfig();
-  const barrels = [...new Set(only ?? config.barrelImports)].filter((barrel) => barrel && !external.includes(barrel));
-  const route = config.clientRuntime === "route";
+  const config = only ? null : await app.getConfig();
+  const barrels = [...new Set(only ?? config?.barrelImports ?? [])].filter(
+    (barrel) => barrel && !external.includes(barrel),
+  );
+  const route = config?.clientRuntime === "route";
   const resolvePackage = await createTsconfigPackageResolver(app);
   const analyzer = new BarrelAnalyzer({
     resolvePackage,

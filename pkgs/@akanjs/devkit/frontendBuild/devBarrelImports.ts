@@ -4,7 +4,7 @@ import { BarrelAnalyzer, type PackageEntry } from "../transforms/barrelAnalyzer"
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
 import { ObjectMemberImports, type ObjectMemberRewrite } from "../transforms/objectMemberImports";
 import { CsrDevPaths } from "./csrDevPaths";
-import type { CsrDevBarrelStamp, CsrDevNarrowedImport } from "./csrDevTypes";
+import type { CsrDevBarrelStamp, CsrDevContext, CsrDevNarrowedImport } from "./csrDevTypes";
 
 export interface DevBarrelRewrite {
   contents: string | null;
@@ -55,13 +55,15 @@ export class DevBarrelImports {
       : null;
   }
 
-  static async create(app: App, barrels: readonly string[]): Promise<DevBarrelImports | null> {
-    if (barrels.length === 0) return null;
-    const route = (await app.getConfig()).clientRuntime === "route";
+  static async create(
+    app: App,
+    { barrelImports = [], routeRuntime }: Pick<CsrDevContext, "barrelImports" | "routeRuntime">,
+  ): Promise<DevBarrelImports | null> {
+    if (barrelImports.length === 0) return null;
     return new DevBarrelImports(
-      barrels,
+      barrelImports,
       await createTsconfigPackageResolver(app),
-      route ? { packageRoot: app.workspace.workspaceRoot } : {},
+      routeRuntime ? { packageRoot: app.workspace.workspaceRoot } : {},
     );
   }
 
