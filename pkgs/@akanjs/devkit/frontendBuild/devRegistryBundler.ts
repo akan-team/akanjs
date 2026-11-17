@@ -147,6 +147,7 @@ export abstract class DevRegistryBundler {
       resolution: {},
       pending: [],
       metadata,
+      ...(context.routeRuntime ? { routeTable: context.routeRuntime.digest } : {}),
     };
     this.merge(graph, resolver, compiled, barrels);
     await this.writer.markBuilding();
@@ -189,6 +190,7 @@ export abstract class DevRegistryBundler {
         deps: module.deps.map((dep) => (CsrDevPaths.isStub(dep) ? dep : this.paths.idOf(dep))),
         ...(module.helpers ? { helpers: module.helpers.hash } : {}),
         ...(module.narrowed ? { narrowed: module.narrowed } : {}),
+        ...(module.routed ? { routed: module.routed } : {}),
       };
     const narrowing = new Set(Object.values(graph.modules).flatMap((module) => Object.keys(module.narrowed ?? {})));
     graph.barrels = Object.fromEntries(

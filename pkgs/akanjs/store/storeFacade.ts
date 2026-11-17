@@ -11,8 +11,24 @@ export class StoreFacade {
       get: (facade, key, receiver) => {
         if (typeof key === "symbol" || key in facade || StoreFacade.#probedKeys.has(key))
           return Reflect.get(facade, key, receiver);
+        //? Inline so a production build, which folds this method to `return target`, drops the messages with it.
+        //? Set by the dev server's bootstrap under `clientRuntime: "route"`, where a page loads only the stores its
+        //? files name: each module's store keys, keyed by `<module> (<scope>)`. A production bundle never carries it.
+        const owners = (globalThis as { [owners: symbol]: unknown })[Symbol.for("akanjs.store.owners")] as
+          | Partial<Record<StoreFacadeName, Record<string, string[]>>>
+          | undefined;
+        if (!owners)
+          throw new Error(
+            `st.${name}.${key} is not registered: no store loaded on this page declares it. Check the name, or import st from the app's client barrel in a client component of this route.`,
+          );
+        const modules = Object.entries(owners[name] ?? {})
+          .filter(([, keys]) => keys.includes(key))
+          .map(([module]) => module);
+        const fix = `name st.${name}.${key} statically in the file that reads it, or import st from the app's client barrel there.`;
         throw new Error(
-          `st.${name}.${key} is not registered: no store loaded on this page declares it. Check the name, or import st from the app's client barrel in a client component of this route.`,
+          modules.length > 0
+            ? `st.${name}.${key} is not registered: it belongs to the store of ${modules.join(" or ")}, which this page has not loaded. To load it, ${fix}`
+            : `st.${name}.${key} is not registered: no store loaded on this page declares it. Check the name; if a store declares it, ${fix}`,
         );
       },
     });

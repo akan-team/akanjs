@@ -29,7 +29,11 @@ export class DevBarrelImports {
     return new DevBarrelImports(barrels, await createTsconfigPackageResolver(app));
   }
 
-  async rewrite(source: string, importer: string): Promise<DevBarrelRewrite | null> {
+  async rewrite(
+    source: string,
+    importer: string,
+    { perModule = false }: { perModule?: boolean } = {},
+  ): Promise<DevBarrelRewrite | null> {
     const named = this.#barrels.filter((barrel) => source.includes(barrel));
     if (named.length === 0) return null;
     const packages = await this.#packagesOf(named);
@@ -39,6 +43,7 @@ export class DevBarrelImports {
       keepLines: true,
       specifierOf: (subpath) => DevBarrelImports.#relative(subpath, from, packages),
       onImport: (barrel, imported) => names.set(barrel, new Set([...(names.get(barrel) ?? []), ...imported])),
+      perModule,
     });
     const narrowed = await Promise.all(
       [...names].map(async ([barrel, set]) => {

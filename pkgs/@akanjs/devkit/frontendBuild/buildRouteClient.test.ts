@@ -1,13 +1,15 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import { tempDirs, writeText as write } from "../test/testHelpers";
 import { createTsconfigPackageResolver } from "../transforms/barrelImportsPlugin";
+import { RouteRuntime } from "../transforms/routeRuntime";
 import { CLIENT_BUNDLE_NAMING } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { RouteClientBuilder } from "./routeClientBuilder";
+import { RouteModulePreloads } from "./routeModulePreloads";
 
 const makeTempRoot = tempDirs("akan-client-entry-");
 
@@ -398,17 +400,30 @@ describe("route client store bootstrap", () => {
         path.join(fixture.appDir, `lib/${StoreBootstrap.baseDescriptors}.ts`),
         'export const base = Object.freeze({ mark: "base-descriptors" });\n',
       );
+      for (const file of StoreBootstrap.assembled)
+        await write(
+          path.join(fixture.appDir, `lib/${file}.ts`),
+          `export const st = Object.freeze({ mark: "assembled:${file}" });\nexport const { fetch, sig } = st as never;\n`,
+        );
+      const akanjsRoot = path.dirname(Bun.resolveSync("akanjs/package.json", import.meta.dir));
+      for (const file of ["package.json", "store/baseSt.ts", "signal/base.signal.ts", "signal/agent.signal.ts"])
+        await write(
+          path.join(fixture.root, "node_modules/akanjs", file),
+          await Bun.file(path.join(akanjsRoot, file)).text(),
+        );
+      const warnings: string[] = [];
       const app = {
         ...(fixture.app as object),
         getConfig: async () => ({ barrelImports: fixtureBarrels, optimizeImports: [], clientRuntime: "route" }),
+        logger: { warn: (message: string) => warnings.push(message) },
       } as never;
-      return { ...fixture, app };
+      return { ...fixture, app, warnings };
     };
     const build = (app: never, entry: string) =>
       new RouteClientBuilder({ app, seeds: [], entries: [entry], artifact: {} as never, browser: "chunks" }).build();
 
     test("a store-free route's browser chunks carry the page runtime and the framework's own descriptors, its SSR chunks the whole runtime", async () => {
-      const { appDir, app } = await routeFixture();
+      const { appDir, app, warnings } = await routeFixture();
       const entry = path.join(appDir, "ui/A.tsx");
 
       const result = await build(app, entry);
@@ -419,12 +434,13 @@ describe("route client store bootstrap", () => {
       for (const marker of ['"runtime-marker"', '"store-marker"', "lib-store-marker"])
         expect(browser).not.toContain(marker);
       for (const marker of ['"runtime-marker"', '"store-marker"', "lib-store-marker"]) expect(ssr).toContain(marker);
+      expect(warnings).toEqual([]);
       expect(Object.keys(result.manifestDelta)).toEqual(["apps/demo/ui/A.tsx#A"]);
       const row = result.manifestDelta["apps/demo/ui/A.tsx#A"];
       expect(result.ssrManifestDelta.moduleMap[row?.id ?? ""]?.A?.id).toContain(`${path.sep}client-ssr${path.sep}`);
     });
 
-    test("a framework file importing the model runtime marker brings the app's descriptors and stores", async () => {
+    test("a framework file importing the model runtime marker brings the app's assembled descriptors and stores", async () => {
       const { root, appDir, app } = await routeFixture();
       const entry = path.join(root, "node_modules/akanjs/ui/Data/List.tsx");
       await write(path.join(root, "node_modules/akanjs/ui/modelRuntime.ts"), "export {};\n");
@@ -433,20 +449,152 @@ describe("route client store bootstrap", () => {
       await build(app, entry);
 
       const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
-      for (const marker of ["list-marker", '"runtime-marker"', '"store-marker"', "lib-store-marker"])
+      for (const marker of ["list-marker", ...StoreBootstrap.assembled.map((file) => `assembled:${file}`)])
         expect(browser).toContain(marker);
+      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
     });
 
-    for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors])
-      test(`an app not synced to lib/${file}.ts keeps the whole runtime in its browser chunks`, async () => {
-        const { appDir, app } = await routeFixture();
+    test("a file reading a store by a name picked at run time brings the assembled runtime, not a second copy", async () => {
+      const { appDir, app } = await routeFixture();
+      const entry = path.join(appDir, "ui/Pick.tsx");
+      await write(
+        entry,
+        '"use client";\nimport { st } from "@apps/demo/client";\nexport const Pick = (name: string) => [st.use[name], "pick-marker"];\n',
+      );
+
+      await build(app, entry);
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ["pick-marker", ...StoreBootstrap.assembled.map((file) => `assembled:${file}`)])
+        expect(browser).toContain(marker);
+      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
+    });
+
+    const writeStorePieces = async (appDir: string) => {
+      for (const [name, key] of [
+        ["draft", "draftText"],
+        ["tally", "tallyCount"],
+      ]) {
+        await write(
+          path.join(appDir, `lib/_${name}/${name}.store.ts`),
+          `import { store } from "akanjs/store";\nexport class ${name}Store extends store("${name}" as const, () => ({ ${key}: 0 })) {}\n`,
+        );
+        await write(
+          path.join(appDir, `lib/__client/${name}.st.ts`),
+          `export const piece = Object.freeze({ mark: "piece:${name}.st" });\n(globalThis as { pieces?: unknown[] }).pieces?.push(piece);\n`,
+        );
+      }
+      await write(
+        path.join(appDir, `lib/${StoreBootstrap.pageRuntime}.ts`),
+        'export const st = Object.freeze({ mark: "page-runtime-only", use: { draftText: () => 0 } });\n',
+      );
+    };
+    const writeDraftEntry = async (appDir: string) => {
+      const entry = path.join(appDir, "ui/Draft.tsx");
+      await write(
+        entry,
+        '"use client";\nimport { st } from "@apps/demo/client";\nexport const Draft = () => [st.use.draftText(), "draft-ui-marker"];\n',
+      );
+      return entry;
+    };
+    const wholeOrOtherPieces = [
+      "piece:tally.st",
+      ...StoreBootstrap.assembled.map((file) => `assembled:${file}`),
+      '"runtime-marker"',
+      '"store-marker"',
+    ];
+
+    test("a file naming one module's state brings that module's store piece, no other module's and no assembled runtime", async () => {
+      const { appDir, app } = await routeFixture();
+      await writeStorePieces(appDir);
+
+      await build(app, await writeDraftEntry(appDir));
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ["draft-ui-marker", "page-runtime-only", "piece:draft.st"])
+        expect(browser).toContain(marker);
+      for (const marker of wholeOrOtherPieces) expect(browser).not.toContain(marker);
+    });
+
+    test("a file importing one module's store piece by hand brings that piece and the assembled runtime, not a second copy", async () => {
+      const { appDir, app } = await routeFixture();
+      await writeStorePieces(appDir);
+      const entry = path.join(appDir, "ui/Hand.tsx");
+      await write(
+        entry,
+        '"use client";\nimport "@apps/demo/lib/__client/draft.st";\nexport const Hand = () => "hand-ui-marker";\n',
+      );
+
+      await build(app, entry);
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of [
+        "hand-ui-marker",
+        "piece:draft.st",
+        ...StoreBootstrap.assembled.map((file) => `assembled:${file}`),
+      ])
+        expect(browser).toContain(marker);
+      for (const marker of ["piece:tally.st", '"runtime-marker"', '"store-marker"'])
+        expect(browser).not.toContain(marker);
+    });
+
+    test("the files a route is sized by hold the store piece of the module its client code names, and no assembled runtime", async () => {
+      const { root, appDir, app } = await routeFixture();
+      await writeStorePieces(appDir);
+      const entry = await writeDraftEntry(appDir);
+
+      const { manifestDelta } = await build(app, entry);
+
+      const sizedUrls = new RouteModulePreloads({
+        runtimeChunks: { runtime: [], vendors: {} },
+        entriesByRoute: new Map([["/:lang/draft", [entry]]]),
+        clientManifest: manifestDelta,
+        externalsByChunkUrl: {},
+        workspaceRoot: root,
+      }).modulesByRoute()["/:lang/draft"];
+      const sized = (
+        await Promise.all(
+          (sizedUrls ?? []).map((url) =>
+            Bun.file(path.join(appDir, ".akan/artifact", url.replace(/^\/_akan\//, ""))).text(),
+          ),
+        )
+      ).join("\n");
+      for (const marker of ["draft-ui-marker", "page-runtime-only", "piece:draft.st"]) expect(sized).toContain(marker);
+      for (const marker of wholeOrOtherPieces) expect(sized).not.toContain(marker);
+    });
+
+    for (const file of [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors, ...StoreBootstrap.assembled])
+      test(`an app not synced to lib/${file}.ts keeps the whole runtime in its browser chunks and is told to sync`, async () => {
+        const { appDir, app, warnings } = await routeFixture();
         await Bun.file(path.join(appDir, `lib/${file}.ts`)).delete();
 
         await build(app, path.join(appDir, "ui/A.tsx"));
 
         const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
         for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
+        expect(warnings).toEqual([expect.stringContaining("Run `akan sync demo`")]);
+        expect(warnings[0]).toContain("runtime files of demo or a lib it mounts are missing");
       });
+
+    test("an app whose modules cannot be read keeps the whole runtime in its browser chunks and is told what failed", async () => {
+      const { appDir, app, warnings } = await routeFixture();
+      const read = spyOn(RouteRuntime, "read").mockRejectedValue(new Error("memo.store.ts is unreadable"));
+      try {
+        await build(app, path.join(appDir, "ui/A.tsx"));
+      } finally {
+        read.mockRestore();
+      }
+
+      const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
+      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
+      expect(warnings).toEqual([
+        expect.stringContaining(
+          "the modules of demo or a lib it mounts could not be read (memo.store.ts is unreadable)",
+        ),
+      ]);
+      expect(warnings[0]).toContain("Fix that, then run `akan sync demo` and build again.");
+      expect(warnings[0]).not.toContain("missing");
+    });
   });
 
   test("a route reaching a lib's cnst through its client barrel carries no module UI", async () => {

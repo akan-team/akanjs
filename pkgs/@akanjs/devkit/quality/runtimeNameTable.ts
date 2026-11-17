@@ -91,7 +91,11 @@ export class RuntimeNameTable {
 
   static async read(workspaceRoot: string, scope: string) {
     const scopes = await RuntimeNameTable.#scopesOf(workspaceRoot, scope);
-    if (!scopes) return null;
+    return scopes ? RuntimeNameTable.readScopes(workspaceRoot, scopes) : null;
+  }
+
+  //? `scopes` in load order, each lib before the scope mounting it: what `akan sync` knows before `lib/st.ts` exists.
+  static async readScopes(workspaceRoot: string, scopes: string[]) {
     const layers = await Promise.all(
       scopes.map((layerScope) => RuntimeNameTable.#readLayer(workspaceRoot, layerScope)),
     );
@@ -191,12 +195,13 @@ export class RuntimeNameTable {
     const setters = state.filter((key) => !derived.has(key)).map(stateSetterName);
     for (const key of state) this.#add("st.use", key, definer, owner);
     for (const key of [...setters, ...store.actions]) this.#add("st.do", key, definer, owner);
-    if (!store.signal || !module.signal) return;
+    if (!store.signal) return;
     const { actions, uploads } = this.#generatedActions(ordered, index, module);
-    for (const key of actions) this.#add("st.do", key, definer, owner);
     const uses = this.#fileOwnerFor(module);
-    for (const key of uploads) this.#add("st.do", key, definer, owner, { uses });
     if (uploads.length && uses) this.#dependencies.set(`${module.scope}/${module.module}`, [uses]);
+    if (!module.signal) return;
+    for (const key of actions) this.#add("st.do", key, definer, owner);
+    for (const key of uploads) this.#add("st.do", key, definer, owner, { uses });
     //? The root store keeps one slice map per model, the outermost store's.
     if (index !== RuntimeNameTable.#outermostIndexOf(ordered, module.module, "store")) return;
     for (const { suffix, by } of RuntimeNameTable.#effectiveSignalOf(ordered, index, module.module).slices ?? [])

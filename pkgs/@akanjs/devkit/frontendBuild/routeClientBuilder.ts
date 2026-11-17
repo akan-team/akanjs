@@ -6,6 +6,7 @@ import { type ClientRuntimeScope, StoreBootstrap } from "../artifact/storeBootst
 import type { App } from "../commandDecorators";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
+import { RouteRuntime } from "../transforms/routeRuntime";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
 import type { ClientBundleTarget, ClientEntryDiscovery } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
@@ -86,14 +87,15 @@ export class RouteClientBuilder {
 
     //? Registry mode builds no browser bundle: the SSR bundle has the same entries, exports and imports to read.
     const registry = this.#browser === "registry" ? new CsrDevPaths(this.#app.workspace.workspaceRoot) : null;
-    const scope = registry ? "whole" : await StoreBootstrap.scopeOf(this.#app);
+    const routeRuntime = registry ? null : await this.#readRouteRuntime();
+    const scope: ClientRuntimeScope = routeRuntime ? "page" : "whole";
     const ssrEntries = await this.#createBootstrapEntries(entries, "whole");
     const browserEntries = registry
       ? null
       : scope === "page"
         ? await this.#createBootstrapEntries(entries, "page")
         : ssrEntries;
-    const browserBundle = browserEntries ? await this.#buildBrowserBundle(browserEntries, scope) : null;
+    const browserBundle = browserEntries ? await this.#buildBrowserBundle(browserEntries, routeRuntime) : null;
     const ssrBundle = await this.#buildSsrBundle(ssrEntries);
     const referenceBundle = browserBundle ?? ssrBundle;
     const bootstrapEntries = browserEntries ?? ssrEntries;
@@ -177,7 +179,26 @@ export class RouteClientBuilder {
     };
   }
 
-  async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, scope: ClientRuntimeScope) {
+  async #readRouteRuntime(): Promise<RouteRuntime | null> {
+    if ((await this.#app.getConfig()).clientRuntime !== "route") return null;
+    const { name } = this.#app;
+    const whole = (why: string, first = "Run") => {
+      this.#app.logger.warn(
+        `[client-runtime] clientRuntime: "route" is set, but ${why}, so every page of this build loads the whole client runtime. ${first} \`akan sync ${name}\` and build again.`,
+      );
+      return null;
+    };
+    const missing = `the per-module runtime files of ${name} or a lib it mounts are missing`;
+    if ((await StoreBootstrap.scopeOf(this.#app)) !== "page") return whole(missing);
+    try {
+      return (await RouteRuntime.read(this.#app.workspace.workspaceRoot, `apps/${name}`)) ?? whole(missing);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      return whole(`the modules of ${name} or a lib it mounts could not be read (${reason})`, "Fix that, then run");
+    }
+  }
+
+  async #buildBrowserBundle(bootstrapEntries: BootstrapEntries, routeRuntime: RouteRuntime | null) {
     const reactFastRefresh = process.env.AKAN_REACT_FAST_REFRESH !== "0";
     return new ClientEntriesBundler({
       app: this.#app,
@@ -186,7 +207,8 @@ export class RouteClientBuilder {
         await createBarrelImportsPlugin(this.#app, {
           pipeAfter: reactFastRefresh ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh : undefined,
           external: VENDOR_SPECIFIERS,
-          modelRuntime: scope === "page" ? StoreBootstrap.modelRuntimeSource(this.#app) : undefined,
+          modelRuntime: routeRuntime?.wholeSource,
+          routeRuntime,
         }),
       ],
       external: VENDOR_SPECIFIERS,

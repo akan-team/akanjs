@@ -531,8 +531,8 @@ const buildFields = [
     key: "clientRuntime",
     type: '"all" | "route"',
     default: '"all"',
-    en: '"route" leaves a page\'s models and stores out of its browser code unless a client module on it imports fetch or st, or renders a Load, Model or Data component.',
-    ko: '"route"면 그 페이지의 클라이언트 모듈이 fetch나 st를 import하거나 Load·Model·Data 컴포넌트를 렌더링할 때만 모델과 스토어를 브라우저 코드에 싣습니다.',
+    en: '"route" gives a page\'s browser code only the models and stores its client modules name, and every one where a module picks a name at run time or renders a Load, Model or Data component.',
+    ko: '"route"면 그 페이지의 클라이언트 모듈이 이름을 적은 모델과 스토어만 브라우저 코드에 싣고, 이름을 실행 중에 고르거나 Load·Model·Data 컴포넌트를 렌더링하는 모듈이 있으면 전부 싣습니다.',
   },
   {
     key: "database.modes",

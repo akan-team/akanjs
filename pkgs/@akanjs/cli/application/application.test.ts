@@ -494,6 +494,32 @@ describe("ApplicationScript", () => {
     }
   });
 
+  test('build told to skip the sync under clientRuntime: "route" says its per-module runtime files may be stale and what to run', async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const { app } = track(await createTempApp("demo"));
+    app.scanSync = mock(async () => undefined) as never;
+    let clientRuntime = "route";
+    app.getConfig = mock(async () => ({ clientRuntime })) as never;
+    const warned = spyOn(app.logger, "warn").mockImplementation(() => undefined);
+    const build = spyOn(script.applicationRunner, "build").mockImplementation(async () => {
+      throw new Error("stopped");
+    });
+    try {
+      await expect(script.build(app, { quiet: true })).rejects.toThrow("stopped");
+      expect(warned).not.toHaveBeenCalled();
+      await expect(script.build(app, { quiet: true, write: false })).rejects.toThrow("stopped");
+      expect(warned.mock.calls.map(([message]) => message)).toEqual([
+        expect.stringContaining("Build without `--write false`, or run `akan sync demo` first."),
+      ]);
+      clientRuntime = "all";
+      await expect(script.build(app, { quiet: true, write: false })).rejects.toThrow("stopped");
+      expect(warned).toHaveBeenCalledTimes(1);
+    } finally {
+      build.mockRestore();
+      warned.mockRestore();
+    }
+  });
+
   test("build reports the route JS budget unless handed another budget mode", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));

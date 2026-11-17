@@ -1,5 +1,5 @@
 import ts from "typescript";
-import { RuntimeModuleFacts, type RuntimeSourceFile } from "./runtimeModuleFacts";
+import { type RuntimeLayer, RuntimeModuleFacts, type RuntimeSourceFile } from "./runtimeModuleFacts";
 import { RuntimeNameTable } from "./runtimeNameTable";
 
 const kitFiles: Record<string, string> = {
@@ -178,8 +178,8 @@ export const runtimeFixtureTables = async () => {
   return { kit, demo };
 };
 
-export const runtimeUploadTable = async () =>
+export const runtimeUploadTable = async (outer: RuntimeLayer[] = []) =>
   RuntimeNameTable.fromLayers(
-    [runtimeFixtureLayer("libs/fk", uploadFiles)],
+    [runtimeFixtureLayer("libs/fk", uploadFiles), ...outer],
     await RuntimeNameTable.readBase(import.meta.dir),
   );

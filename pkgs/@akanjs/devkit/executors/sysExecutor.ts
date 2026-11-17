@@ -90,13 +90,29 @@ export class SysExecutor extends Executor {
     );
     return written;
   }
-  async #syncClientPieces(scanInfo: AppInfo | LibInfo): Promise<FileContent[]> {
+  async #syncClientPieces(scanInfo: AppInfo | LibInfo, synced: SysExecutor): Promise<FileContent[]> {
     const pieceDir = "lib/__client";
     const modulesOf = (info: AppInfo | LibInfo): string[] => [
       ...[...info.getLibInfos().values()].flatMap(modulesOf),
       ...info.getDatabaseModules(),
       ...info.getServiceModules(),
     ];
+    const scope = `${this.type}s/${this.name}`;
+    const scopesOf = (info: AppInfo | LibInfo, own: string): string[] => [
+      ...[...info.getLibInfos().values()].flatMap((libInfo) => scopesOf(libInfo, `libs/${libInfo.name}`)),
+      own,
+    ];
+    const { RuntimeNameTable } = await import("../quality/runtimeNameTable");
+    const table = await RuntimeNameTable.readScopes(this.workspace.workspaceRoot, [
+      ...new Set(scopesOf(scanInfo, scope)),
+    ]).catch(async (error: unknown) => {
+      const config = synced.type === "app" ? await synced.getConfig().catch(() => null) : null;
+      if (config && "clientRuntime" in config && config.clientRuntime === "route")
+        this.logger.warn(
+          `[client-runtime] clientRuntime: "route" is set, but the modules of ${scope} could not be read (${error instanceof Error ? error.message : String(error)}), so no store file under ${scope}/${pieceDir} loads the upload module's descriptors first, and a page naming only that store has no upload action. Run \`akan sync ${this.name}\` again once that is fixed.`,
+        );
+      return null;
+    });
     const written = (
       await Promise.all([
         this._applyTemplate({ basePath: pieceDir, template: "clientPiece/scope", scanInfo }),
@@ -105,7 +121,11 @@ export class SysExecutor extends Executor {
             basePath: pieceDir,
             template: "clientPiece/module",
             scanInfo,
-            dict: { model, Model: capitalize(model) },
+            dict: {
+              model,
+              Model: capitalize(model),
+              descriptorsFirst: (table?.dependenciesOf(scope, model) ?? []).map(({ module }) => module).join(","),
+            },
           }),
         ),
       ])
@@ -115,12 +135,13 @@ export class SysExecutor extends Executor {
     await Promise.all(stale.map((file) => this.remove(`${pieceDir}/${file}`)));
     return written;
   }
-  #getScanTemplateTasks(scanInfo: AppInfo | LibInfo): (Promise<FileContent[]> | null)[] {
+  //? `synced` is the app or lib whose sync this is: a lib's files are written by the sync of each app mounting it.
+  #getScanTemplateTasks(scanInfo: AppInfo | LibInfo, synced: SysExecutor): (Promise<FileContent[]> | null)[] {
     return [
       this.#seedEnvFiles(),
       this._applyTemplate({ basePath: "env", template: "env", scanInfo }),
       this._applyTemplate({ basePath: "lib", template: "lib", scanInfo }),
-      this.#syncClientPieces(scanInfo),
+      this.#syncClientPieces(scanInfo, synced),
       this._applyTemplate({ basePath: ".", template: "server.ts", scanInfo }),
       this._applyTemplate({ basePath: ".", template: "client.ts", scanInfo }),
       this.type === "lib" ? this._applyTemplate({ basePath: ".", template: "index.ts", scanInfo }) : null,
@@ -162,12 +183,12 @@ export class SysExecutor extends Executor {
     //* Locked: `writeLib` rewrites dependency-lib barrels that other dev servers regenerate and watch too.
     if (write)
       await CodegenLock.run(this.workspace.workspaceRoot, `scan:${this.name}`, async () => {
-        await Promise.all(this.#getScanTemplateTasks(scanInfo));
+        await Promise.all(this.#getScanTemplateTasks(scanInfo, this));
         await this.writeJson(`akan.${this.type}.json`, scanInfo.getScanResult());
         await this.#updateDependencies(scanInfo);
         if (writeLib) {
           const libInfos = [...scanInfo.getLibInfos().values()];
-          await Promise.all(libInfos.flatMap((libInfo) => libInfo.exec.#getScanTemplateTasks(libInfo)));
+          await Promise.all(libInfos.flatMap((libInfo) => libInfo.exec.#getScanTemplateTasks(libInfo, this)));
         }
         await this.syncAgentsIndex(scanInfo);
       });

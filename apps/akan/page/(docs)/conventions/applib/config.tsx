@@ -2100,18 +2100,20 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>What brings the whole runtime.</strong> A client module that imports <code>fetch</code> or{" "}
-                      <code>st</code> from the app's or a lib's <code>client</code> barrel, or a <code>Load</code>,{" "}
-                      <code>Model</code> or <code>Data</code> component on the page. A lib's barrel brings that lib and
-                      the libs under it.
+                      <strong>What a client module brings.</strong> A client module that imports <code>fetch</code> or{" "}
+                      <code>st</code> from the app's or a lib's <code>client</code> barrel brings the descriptors and
+                      stores of only the modules it names (<code>st.use.memoList()</code>, <code>fetch.memo(id)</code>).
+                      A module that picks a name at run time (<code>st.do[name]</code>), or a <code>Load</code>,{" "}
+                      <code>Model</code> or <code>Data</code> component on the page, brings the app's whole runtime.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>전체 런타임을 불러오는 것.</strong> 앱이나 라이브러리의 <code>client</code> barrel에서{" "}
-                      <code>fetch</code>나 <code>st</code>를 import하는 클라이언트 모듈, 또는 페이지의 <code>Load</code>
-                      ·<code>Model</code>·<code>Data</code> 컴포넌트입니다. 라이브러리 barrel은 그 라이브러리와 그 아래
-                      라이브러리를 불러옵니다.
+                      <strong>클라이언트 모듈이 불러오는 것.</strong> 앱이나 라이브러리의 <code>client</code> barrel에서{" "}
+                      <code>fetch</code>나 <code>st</code>를 import하는 클라이언트 모듈은 이름을 적은 모듈(
+                      <code>st.use.memoList()</code>, <code>fetch.memo(id)</code>)의 엔드포인트 정의와 스토어만
+                      불러옵니다. 이름을 실행 중에 고르는 모듈(<code>st.do[name]</code>)이나 페이지의 <code>Load</code>·
+                      <code>Model</code>·<code>Data</code> 컴포넌트는 앱의 전체 런타임을 불러옵니다.
                     </span>
                   ),
                 })}
@@ -2136,16 +2138,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Check a route in a production build.</strong> The development server keeps{" "}
-                      <code>akanjs/ui</code> whole, so a page importing from it loads the whole runtime there, and a
-                      missing import shows only after <code>akan build</code>.
+                      <strong>A route behaves the same in development.</strong> The development server loads what a
+                      production page loads, so a name a route misses shows while you work: reading a store key the page
+                      has not loaded fails with the name of the module whose store declares it.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>라우트는 프로덕션 빌드에서 확인합니다.</strong> 개발 서버는 <code>akanjs/ui</code>를
-                      통째로 불러오므로 그것을 import하는 페이지는 개발 중에 전체 런타임을 불러오고, 빠진 import는{" "}
-                      <code>akan build</code> 뒤에야 드러납니다.
+                      <strong>라우트는 개발 중에도 똑같이 동작합니다.</strong> 개발 서버는 프로덕션 페이지가 불러오는
+                      것만 불러오므로, 라우트에 빠진 이름은 작업하는 동안 드러납니다. 페이지가 불러오지 않은 스토어 키를
+                      읽으면 그 키를 선언한 스토어의 모듈 이름과 함께 실패합니다.
                     </span>
                   ),
                 })}
@@ -2154,16 +2156,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Read a store only where you import it.</strong> A store's state, persisted keys included,
-                      appears when its code loads, so <code>st.get()</code> of a store no module on the route imports
-                      has no value there.
+                      <strong>Read a store only where a module names it.</strong> A store's state, persisted keys
+                      included, appears when its code loads, so <code>st.get()</code> of a store no client module on the
+                      route names has no value there.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>스토어는 import한 곳에서만 읽습니다.</strong> 스토어의 상태는 저장된 키까지 그 코드가
-                      로드될 때 생기므로, 라우트의 어떤 모듈도 import하지 않은 스토어를 <code>st.get()</code>으로 읽으면
-                      값이 없습니다.
+                      <strong>스토어는 모듈이 이름을 적은 곳에서만 읽습니다.</strong> 스토어의 상태는 저장된 키까지 그
+                      코드가 로드될 때 생기므로, 라우트의 어떤 클라이언트 모듈도 이름을 적지 않은 스토어를{" "}
+                      <code>st.get()</code>으로 읽으면 값이 없습니다.
                     </span>
                   ),
                 })}
@@ -2172,16 +2174,14 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Reach an extended lib store through the app.</strong> An app store that extends a lib's
-                      store adds its actions, state and slices only on a route that loads the app's runtime, so code
-                      using them imports <code>st</code> from the app's <code>client</code> barrel, not the lib's.
+                      <strong>An extended lib store loads as the app's.</strong> A lib module naming a store the app
+                      extends loads the app's store, with the actions, state and slices the app adds.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>확장한 라이브러리 스토어는 앱을 거쳐 씁니다.</strong> 라이브러리 스토어를 확장한 앱
-                      스토어의 액션·상태·슬라이스는 앱 런타임을 불러오는 라우트에만 생기므로, 그것을 쓰는 코드는{" "}
-                      <code>st</code>를 라이브러리가 아닌 앱의 <code>client</code> barrel에서 import합니다.
+                      <strong>확장한 라이브러리 스토어는 앱의 것으로 로드됩니다.</strong> 앱이 확장한 스토어의 이름을
+                      적은 라이브러리 모듈은 앱이 더한 액션·상태·슬라이스까지 담긴 앱의 스토어를 불러옵니다.
                     </span>
                   ),
                 })}
