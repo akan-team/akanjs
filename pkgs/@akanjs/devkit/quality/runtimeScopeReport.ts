@@ -1,5 +1,6 @@
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { type RuntimeMarkerPin, RuntimeMarkerReach } from "./runtimeMarkerReach";
 import { RuntimeNameTable } from "./runtimeNameTable";
 import { RuntimeUse, type RuntimeUseProblem } from "./runtimeUse";
 import { WorkspaceSourceFiles } from "./workspaceSourceFiles";
@@ -25,6 +26,7 @@ export interface RuntimeScopeSummary {
 export interface RuntimeScopeResult {
   scopes: RuntimeScopeSummary[];
   notes: RuntimeScopeNote[];
+  markerPins: RuntimeMarkerPin[];
 }
 
 const moduleConventionFile = /\/lib\/.+\.(?:constant|dictionary|document|service|signal)\.ts$/;
@@ -63,7 +65,8 @@ export class RuntimeScopeReport {
       scopes.map((scope) => [scope, RuntimeScopeReport.#emptySummary(scope, tables.get(scope), tableMs.get(scope))]),
     );
     const notes: RuntimeScopeNote[] = [];
-    for (const file of await sources.collect()) {
+    const files = await sources.collect();
+    for (const file of files) {
       const scope = file.match(/^((?:apps|libs)\/[^/]+)\//)?.[1];
       const summary = scope && summaries.get(scope);
       if (!scope || !summary || !/\.tsx?$/.test(file)) continue;
@@ -86,11 +89,12 @@ export class RuntimeScopeReport {
         notes.push({ file, scope, ...problem });
       }
     }
-    return { scopes: [...summaries.values()], notes };
+    const markerPins = new RuntimeMarkerReach(workspaceRoot).pinsOf(files);
+    return { scopes: [...summaries.values()], notes, markerPins };
   }
 
-  static format({ scopes, notes }: RuntimeScopeResult) {
-    const noteLines = notes.map(
+  static format({ scopes, notes, markerPins }: RuntimeScopeResult) {
+    const fileLines = notes.map(
       ({ file, line, column, message, scope }) =>
         `${file}:${line}:${column} - note ${RuntimeScopeReport.rule}: ${message}. The file works; a page that loads it loads ${scope}'s whole client runtime.`,
     );
@@ -103,6 +107,7 @@ export class RuntimeScopeReport {
         : "";
       return `${summary.scope}: ${summary.readers} of ${summary.clientFiles} client files read the runtime, ${summary.resolvable} per module, ${summary.wholeScope} whole (${timing}${slowest}${approximated})`;
     });
+    const noteLines = [...fileLines, ...RuntimeMarkerReach.format(markerPins)];
     return [...noteLines, ...(noteLines.length ? [""] : []), ...scopeLines].join("\n");
   }
 

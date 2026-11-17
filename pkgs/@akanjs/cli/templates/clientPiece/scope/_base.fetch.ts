@@ -10,6 +10,7 @@ import { fetch, sig } from "../usePage";
 import { getSerializedSignalOf } from "../sig" with { type: "macro" };
 import type * as signal from "../sig";
 
-Object.assign(sig, FetchClient.build<typeof signal>({}, getSerializedSignalOf("base"), { base: fetch }).sig);
+export const loaded = FetchClient.build<typeof signal>({}, getSerializedSignalOf("base"), { base: fetch }).sig;
+Object.assign(sig, loaded);
 `;
 }

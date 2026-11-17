@@ -393,7 +393,7 @@ export class CsrDevModuleCompiler {
   }
 
   #barrelImports(): Promise<DevBarrelImports | null> {
-    this.#barrels ??= DevBarrelImports.create(this.#app, this.#context.barrelImports ?? []);
+    this.#barrels ??= DevBarrelImports.create(this.#app, this.#context);
     return this.#barrels;
   }
 

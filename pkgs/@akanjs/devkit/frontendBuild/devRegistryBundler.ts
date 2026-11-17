@@ -173,7 +173,7 @@ export abstract class DevRegistryBundler {
   }
 
   async barrelImports(context: CsrDevContext): Promise<DevBarrelImports | null> {
-    return await DevBarrelImports.create(this.app, context.barrelImports ?? []);
+    return await DevBarrelImports.create(this.app, context);
   }
 
   merge(
