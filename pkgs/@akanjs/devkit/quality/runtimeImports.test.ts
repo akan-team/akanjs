@@ -149,13 +149,10 @@ describe("RuntimeImports", () => {
 
     const dir = path.join(import.meta.dir, "../../../akanjs/store/agent");
     const index = await Bun.file(path.join(dir, "index.ts")).text();
-    const files = new Map<string, { imports: string[]; exports: string[] }>();
+    const files = new Map<string, { imports: string[]; exports: string[]; text: string }>();
     for (const [, name = ""] of index.matchAll(/export \* from "\.\/(\w+)";/g)) {
-      const source = ts.createSourceFile(
-        name,
-        await Bun.file(path.join(dir, `${name}.ts`)).text(),
-        ts.ScriptTarget.Latest,
-      );
+      const text = await Bun.file(path.join(dir, `${name}.ts`)).text();
+      const source = ts.createSourceFile(name, text, ts.ScriptTarget.Latest);
       const imports = source.statements.flatMap((statement) => {
         if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) return [];
         const clause = statement.importClause;
@@ -175,7 +172,7 @@ describe("RuntimeImports", () => {
           return statement.declarationList.declarations.map((declaration) => declaration.name.getText(source));
         return [(statement as ts.DeclarationStatement).name?.text ?? "default"];
       });
-      files.set(name, { imports, exports });
+      files.set(name, { imports, exports, text });
     }
     expect(files.size).toBe(12);
     const outside = new Set(["akanjs/base", "use-agentic"]);
@@ -185,6 +182,7 @@ describe("RuntimeImports", () => {
         if (!imports.every((specifier) => outside.has(specifier) || files.has(specifier.replace(/^\.\//, ""))))
           files.delete(name);
     }
+    expect([...files.values()].filter(({ text }) => /globalThis|Symbol\.for\(|import\(/.test(text))).toEqual([]);
     expect([...files.values()].flatMap(({ exports }) => exports).sort()).toEqual(
       [...RuntimeImports.agentScreenNames].sort(),
     );
