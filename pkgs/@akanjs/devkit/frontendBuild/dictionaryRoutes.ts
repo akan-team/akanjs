@@ -82,6 +82,12 @@ export class DictionaryRoutes {
     },
   ): Promise<string[] | null> {
     const { workspaceRoot } = app.workspace;
+    const unbuilt = route.entries.find((entry) => !route.importsByModule.has(path.resolve(entry)));
+    if (unbuilt) {
+      const fileName = path.relative(workspaceRoot, unbuilt).split(path.sep).join("/");
+      app.verbose(`[dictionary] the route loads the whole page dictionary: this builder has not bundled ${fileName}`);
+      return null;
+    }
     const appScope = `apps/${app.name}`;
     const runtime = await RouteRuntime.read(workspaceRoot, appScope).catch(() => null);
     const piecesOf: DictionaryPiecesOf | undefined = runtime

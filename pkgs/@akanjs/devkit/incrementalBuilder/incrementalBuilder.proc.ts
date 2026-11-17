@@ -15,7 +15,7 @@ import type {
 import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
 import type { App } from "../commandDecorators";
 import { AppExecutor, type PageRoot, WorkspaceExecutor } from "../executors";
-import type { ClientEntryDiscovery } from "../frontendBuild/clientBuildTypes";
+import type { ClientEntryDiscovery, ClientModuleImport } from "../frontendBuild/clientBuildTypes";
 import { GraphClientEntryDiscovery } from "../frontendBuild/clientEntryDiscovery";
 import { DictionaryRoutes } from "../frontendBuild/dictionaryRoutes";
 import { RouteClientBuilder } from "../frontendBuild/routeClientBuilder";
@@ -45,6 +45,8 @@ class IncrementalBuilder {
   #discoveredThrough = 0;
   /** How often each reason sent a registry save to a build worker this session: the resident patcher's miss rate. */
   readonly #delegations = new Map<string, number>();
+  //? A route build bundles only entries no earlier route built: the dictionary walk reads every build's graph.
+  readonly #dictionaryGraph = new Map<string, readonly ClientModuleImport[]>();
   readonly #lanes: BuilderLanes;
   readonly #csr: CsrRegistry;
   readonly #ssr: SsrRegistry;
@@ -155,9 +157,10 @@ class IncrementalBuilder {
     seeds: string[],
     { clientGraph, discoveredEntries, newEntries }: Awaited<ReturnType<RouteClientBuilder["build"]>>,
   ): Promise<string[] | null | undefined> {
-    if ((await this.#app.getConfig()).clientRuntime !== "route" || !clientGraph) return undefined;
+    if ((await this.#app.getConfig()).clientRuntime !== "route") return undefined;
+    for (const [module, imports] of clientGraph ?? []) this.#dictionaryGraph.set(module, imports);
     const entries = discoveredEntries ?? newEntries;
-    const route = { seeds, entries, importsByModule: clientGraph, discovery: this.#discovery };
+    const route = { seeds, entries, importsByModule: this.#dictionaryGraph, discovery: this.#discovery };
     return DictionaryRoutes.ofBuiltRoute(this.#app, route).catch((error: unknown) => {
       this.#logger.warn(`dictionary groups of the route could not be read: ${String(error)}`);
       return null;
