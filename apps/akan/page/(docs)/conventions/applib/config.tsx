@@ -2213,10 +2213,11 @@ export default config;`}
                       <strong>A page loads only the parts of an object it names.</strong> <code>Memo.Zone.View</code>,{" "}
                       <code>&lt;Field.Text /&gt;</code> or <code>const {"{ Util }"} = Memo</code> loads that part's file
                       and not the object's other parts, when the object's file only gathers imports, as a model's
-                      generated <code>index.ts</code> does. A file that calls a function, runs a statement or changes an
-                      import while it loads keeps the whole object, as does an object passed on, spread or rendered
-                      itself. <code>akan quality runtime</code> counts what stays whole by reason, and{" "}
-                      <code>--format json</code> lists each import with its line.
+                      generated <code>index.ts</code> does. A file that calls a function, runs a statement, re-exports
+                      or changes an import while it loads keeps the whole object, as does an object passed on, spread,
+                      written to or rendered itself, and a member called through it (<code>Obj.run()</code>) that may
+                      read <code>this</code>. <code>akan quality runtime</code> counts what stays whole by reason, and{" "}
+                      <code>--format json</code> lists each import with its file, line and reason.
                     </span>
                   ),
                   ko: (
@@ -2224,10 +2225,29 @@ export default config;`}
                       <strong>페이지는 객체에서 이름을 적은 부분만 불러옵니다.</strong> <code>Memo.Zone.View</code>,{" "}
                       <code>&lt;Field.Text /&gt;</code>, <code>const {"{ Util }"} = Memo</code>는 객체 파일이 모델의
                       생성된 <code>index.ts</code>처럼 import를 모으기만 할 때, 그 부분의 파일만 불러오고 객체의 다른
-                      부분은 불러오지 않습니다. 로드되면서 함수를 호출하거나 문장을 실행하거나 import를 바꾸는 파일은
-                      객체 전체를 불러오며, 다른 곳에 넘기거나 펼치거나 그 자체를 렌더링한 객체도 마찬가지입니다.{" "}
-                      <code>akan quality runtime</code>은 전체로 남은 import를 이유별로 세고, <code>--format json</code>
-                      은 각 import를 줄 번호와 함께 보여 줍니다.
+                      부분은 불러오지 않습니다. 로드되면서 함수를 호출하거나 문장을 실행하거나 다른 모듈을 다시
+                      내보내거나 import를 바꾸는 파일은 객체 전체를 불러오며, 다른 곳에 넘기거나 펼치거나 값을 쓰거나 그
+                      자체를 렌더링한 객체, 객체를 통해 호출하는 멤버가 <code>this</code>를 읽을 수 있을 때(
+                      <code>Obj.run()</code>)도 마찬가지입니다. <code>akan quality runtime</code>은 전체로 남은 import를
+                      이유별로 세고, <code>--format json</code>은 각 import를 파일, 줄 번호, 이유와 함께 보여 줍니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A part a page does not name does not run there.</strong> Its file's top-level code no
+                      longer runs on that page, so a part file that registers something when it loads must be named by
+                      the page that needs it, or the registration moved to where it is used.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>페이지가 이름을 적지 않은 부분은 그 페이지에서 실행되지 않습니다.</strong> 그 파일의
+                      최상위 코드가 그 페이지에서 더는 실행되지 않으므로, 로드될 때 무언가를 등록하는 부분 파일은 그것이
+                      필요한 페이지에서 이름을 적거나, 등록을 쓰는 곳으로 옮겨야 합니다.
                     </span>
                   ),
                 })}
