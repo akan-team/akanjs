@@ -13,6 +13,7 @@ import {
 import { clamp } from "akanjs/common";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { CsrSlide, type CsrSlideFrame } from "./csrSlide";
+import { isDragLift } from "./isDragLift";
 import { STACK_TRANSITION_DURATION_MS } from "./useFrameRuntime";
 
 const linearEasing = (t: number) => t;
@@ -471,7 +472,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
   const dragOriginRef = useRef(0);
 
   const pageBind = useDrag(
-    ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel }) => {
+    ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel, event }) => {
       if (first) {
         gestureIntent.current = "pending";
         stackBackConfigRef.current = null;
@@ -506,7 +507,8 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
       else if (unit > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
       else if (!last) void transUnit.start(unit, { immediate: true });
       if (last) {
-        const shouldComplete = unit > threshold || (dx > 0 && vx > STACK_VELOCITY_DISMISS_THRESHOLD);
+        const shouldComplete =
+          isDragLift(event) && (unit > threshold || (dx > 0 && vx > STACK_VELOCITY_DISMISS_THRESHOLD));
         const target = shouldComplete ? transUnitRange[0] : transUnitRange[1];
         const duration = getVelocityAwareDuration(target - unit, vx, shouldComplete ? 150 : 180);
         if (shouldComplete) stackBackConfigRef.current = { duration };
@@ -522,7 +524,8 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         });
       }
     },
-    { filterTaps: true },
+    //? Captured, the drag ends when the element under the finger leaves the DOM; the window keeps it to the lift.
+    { filterTaps: true, pointer: { capture: false } },
   );
 
   return {
@@ -588,7 +591,7 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
   usePlayOnForward(spring, routeState, { duration: 220, easing: linearEasing });
 
   const pageBind = useDrag(
-    ({ first, last, movement: [, my], initial: [, iy], cancel }) => {
+    ({ first, last, movement: [, my], initial: [, iy], cancel, event }) => {
       if (iy > initThreshold) {
         cancel();
         return;
@@ -597,12 +600,15 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
       if (my < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
       else if (my > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
       else if (!last) void transUnit.start(my, { immediate: true });
-      else if (my < threshold) void transUnit.start(transUnitRange[1]);
-      if (!last || my <= threshold) return;
+      if (!last) return;
+      if (!isDragLift(event) || my <= threshold) {
+        void transUnit.start(transUnitRange[1]);
+        return;
+      }
       clientRouter.back();
       void clientRouter.navigation().catch(() => transUnit.start(transUnitRange[1]));
     },
-    { axis: "y", filterTaps: true, threshold: 10 },
+    { axis: "y", filterTaps: true, threshold: 10, pointer: { capture: false } },
   );
 
   return {
