@@ -6,6 +6,8 @@ import { VendorNarrowing } from "./vendorNarrowing";
 import { VENDOR_SPECIFIERS, type VendorSpecifier } from "./vendorSpecifiers";
 
 const scriptExtensions = [".ts", ".tsx", ".js", ".jsx"];
+//? Only the vendor a page loaded twice: a file of another vendor reached by its path stays in the build, as before.
+const fileVendors: readonly VendorSpecifier[] = ["akanjs/client"];
 
 //? A route build bundles a file of a vendor package reached by its path, beside the copy the vendor carries and the
 //? state that copy holds; a file the vendor's barrel re-exports whole, under the same names, comes from the vendor.
@@ -48,9 +50,7 @@ export class VendorFileImports {
 
   #mapModules(akanjsRoot: string): Map<string, VendorSpecifier> {
     const specifierByModule = new Map<string, VendorSpecifier>();
-    const packaged = this.specifiers
-      .filter((specifier) => specifier.startsWith("akanjs/"))
-      .sort((a, b) => b.length - a.length);
+    const packaged = this.specifiers.filter((specifier) => fileVendors.includes(specifier));
     for (const specifier of packaged) {
       const barrel = VendorFileImports.#fileOf(path.join(akanjsRoot, specifier.slice("akanjs/".length)));
       if (!barrel) continue;
@@ -102,7 +102,8 @@ export class VendorFileImports {
   }
 
   static wholeReexports(barrel: string): string[] {
-    const source = ts.createSourceFile(barrel, fs.readFileSync(barrel, "utf8"), ts.ScriptTarget.Latest, false);
+    const text = fs.readFileSync(barrel, "utf8");
+    const source = ts.createSourceFile(barrel, text, ts.ScriptTarget.Latest, false);
     const sourceOfName = new Map<string, string | null>();
     const starred = new Map<string, string | null>();
     const files = new Set<string>();
@@ -125,6 +126,9 @@ export class VendorFileImports {
         sourceOfName.set(exported, (element.propertyName ?? element.name).text === exported ? file : null);
       }
     }
+    //? A name the barrel exports itself shadows the one an `export *` brings in, so no starred file owns it.
+    for (const name of VendorFileImports.#scannedExports(barrel, text))
+      if (!sourceOfName.has(name)) sourceOfName.set(name, null);
     const sourceOf = (name: string) => (sourceOfName.has(name) ? sourceOfName.get(name) : starred.get(name)) ?? null;
     return [...files].filter((file) => {
       const names = VendorFileImports.#exportsOf(file);
@@ -136,6 +140,10 @@ export class VendorFileImports {
   static #exportsOf(file: string): string[] | null {
     const source = fs.readFileSync(file, "utf8");
     if (/^\s*export\s*\*/m.test(source)) return null;
+    return VendorFileImports.#scannedExports(file, source);
+  }
+
+  static #scannedExports(file: string, source: string): string[] {
     const loader = file.endsWith(".tsx") || file.endsWith(".jsx") ? "tsx" : "ts";
     return new Bun.Transpiler({ loader }).scan(source).exports;
   }

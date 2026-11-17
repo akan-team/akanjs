@@ -28,6 +28,12 @@ describe("VendorFileImports.vendorOf", () => {
     expect(files.vendorOf("react", inAkanjs("ui/overlayLayer.ts"))).toBeNull();
   });
 
+  test("a file of another vendor stays the importer's, even one its barrel re-exports whole", () => {
+    expect(files.vendorOf("../../store/action", inAkanjs("ui/Model/LoadStore.tsx"))).toBeNull();
+    expect(files.vendorOf("akanjs/base/akanError", inAkanjs("ui/overlayLayer.ts"))).toBeNull();
+    expect(files.vendorOf("../common/akanNames", inAkanjs("client/device.ts"))).toBeNull();
+  });
+
   test("without an akanjs to read, every vendor stays external and no file maps to one", () => {
     const unread = new VendorFileImports(null, VENDOR_SPECIFIERS);
     expect(unread.specifiers).toEqual(VENDOR_SPECIFIERS);
@@ -36,7 +42,7 @@ describe("VendorFileImports.vendorOf", () => {
 });
 
 describe("VendorFileImports.wholeReexports", () => {
-  test("lists only the files a barrel re-exports in full under their own names", async () => {
+  test("lists only the files a barrel re-exports in full under their own names, none it shadows", async () => {
     const root = await makeTempRoot();
     const files: Record<string, string> = {
       "named.ts": "export const a = 1;\nexport const b = 2;\n",
@@ -47,6 +53,8 @@ describe("VendorFileImports.wholeReexports", () => {
       "clashB.ts": "export const g = 2;\n",
       "forwarding.ts": 'export * from "./named";\n',
       "typed.ts": "export interface T {\n  t: number;\n}\n",
+      "shadowed.ts": "export const h = 1;\n",
+      "shadowedByList.ts": "export const k = 1;\n",
       "index.ts": [
         'export { a, b } from "./named";',
         'export * from "./starred";',
@@ -56,6 +64,11 @@ describe("VendorFileImports.wholeReexports", () => {
         'export * from "./clashB";',
         'export * from "./forwarding";',
         'export type { T } from "./typed";',
+        'export * from "./shadowed";',
+        "export const h = 2;",
+        'export * from "./shadowedByList";',
+        "const k = 2;",
+        "export { k };",
         "",
       ].join("\n"),
     };
@@ -93,8 +106,61 @@ describe("VendorFileImports.plugin", () => {
   });
 });
 
+interface BuildsReport {
+  builds: number;
+  runtimeHoldsDevice: boolean;
+  shared: string[];
+}
+const nativeBridge =
+  "the native bridge the barrel leaves out: the vendor's device.ts and storage.ts import it lazily, the page by path, and only the CSR shell loads either";
+const underNativeBridge = "imported by the native bridge, so written with each of its two copies";
+const allowedInBoth: Record<string, string> = {
+  "akanjs/client/native.ts": nativeBridge,
+  "@akanjs/native/packages/core/src/acl.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/boot.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/contract.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/errors.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/kernel.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/live.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/plugin.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/protocol.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/runtime.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/state.ts": underNativeBridge,
+  "@akanjs/native/packages/core/src/veto.ts": underNativeBridge,
+  "@akanjs/native/packages/react/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/app-state/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/app-state/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/app/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/app/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/auth-session/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/browser/src/args.ts": underNativeBridge,
+  "@akanjs/native/plugins/browser/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/browser/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/device/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/device/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/dialog/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/dialog/src/options.ts": underNativeBridge,
+  "@akanjs/native/plugins/dialog/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/file-picker/src/common.ts": underNativeBridge,
+  "@akanjs/native/plugins/file-picker/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/file-picker/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/haptics/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/haptics/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/keyboard/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/keyboard/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/opener/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/opener/src/url.ts": underNativeBridge,
+  "@akanjs/native/plugins/opener/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/preferences/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/preferences/src/web.ts": underNativeBridge,
+  "@akanjs/native/plugins/push/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/secure-storage/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/updates/src/index.ts": underNativeBridge,
+  "@akanjs/native/plugins/volume/src/index.ts": underNativeBridge,
+};
+
 describe("a page's two browser builds", () => {
-  test("bundle no module both of them hold, by the barrel, a linked path or a relative one", async () => {
+  test("share only the native bridge the CSR shell loads, by the barrel, a linked path, a relative one or `akanjs/client/native`", async () => {
     const root = await realpath(await makeTempRoot());
     const appDir = path.join(root, "apps/demo");
     await mkdir(path.join(root, "pkgs"), { recursive: true });
@@ -111,17 +177,22 @@ describe("a page's two browser builds", () => {
       path.join(appDir, "ui/Relative.tsx"),
       '"use client";\nimport { cn } from "../../../pkgs/akanjs/client/cn";\nexport const Relative = () => cn("b");\n',
     );
+    await write(
+      path.join(appDir, "ui/Native.tsx"),
+      '"use client";\nimport { isNativeApp } from "akanjs/client/native";\nexport const Native = () => isNativeApp();\n',
+    );
     const linked = path.join(root, "pkgs/akanjs");
     const entries = [
       path.join(appDir, "ui/Barrel.tsx"),
       path.join(appDir, "ui/Relative.tsx"),
+      path.join(appDir, "ui/Native.tsx"),
       path.join(linked, "client/device.ts"),
       path.join(linked, "client/sharedContext.ts"),
       path.join(linked, "client/csrTypes.ts"),
       path.join(linked, "ui/UiOverride/UiOverride.tsx"),
     ];
 
-    const shared = await printedInOwnProcess(
+    const { shared, ...builds } = (await printedInOwnProcess(
       `
 const fs = await import("node:fs");
 const path = await import("node:path");
@@ -174,8 +245,10 @@ console.log(JSON.stringify({
 }));
 `,
       root,
-    );
+    )) as BuildsReport;
 
-    expect(shared).toEqual({ builds: 2, runtimeHoldsDevice: true, shared: [] });
+    expect(builds).toEqual({ builds: 2, runtimeHoldsDevice: true });
+    expect(shared).toContain("akanjs/client/native.ts");
+    expect(shared.filter((file) => !Object.hasOwn(allowedInBoth, file))).toEqual([]);
   }, 120_000);
 });
