@@ -563,7 +563,7 @@ export class CsrDevPatcher {
   static #extendingAppStores(context: CsrDevContext, graph: CsrDevGraph, changed: Set<string>): string[] {
     const { routeRuntime } = context;
     if (!routeRuntime) return [];
-    return [...changed].flatMap((id) => routeRuntime.appStoresAfter(id)).filter((id) => !!graph.modules[id]);
+    return [...changed].flatMap((id) => routeRuntime.appStoresAfter(id, (module) => graph.modules[module]?.deps));
   }
 
   static #remember(code: CsrDevCode, compiled: CsrDevCompileResult["modules"]) {

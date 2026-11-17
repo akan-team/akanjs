@@ -27,6 +27,7 @@ export class DevRouteRuntime {
   //? Not in the bootstrap: a store save changes the table, and a change reaching the bootstrap reloads the tab.
   static readonly ownersModule = "storeOwners";
   static readonly #libStoreRoot = /^libs\/[^/]+\/lib\/(?:st|__client\/(_st|[^/]+\.st))\.ts$/;
+  static readonly #libStoreClass = /^libs\/[^/]+\/lib\/(_?([^/]+))\/\2\.store\.ts$/;
   readonly #workspaceRoot: string;
   readonly #runtime: RouteRuntime;
   readonly scopes: string[];
@@ -86,11 +87,15 @@ export class DevRouteRuntime {
   }
 
   //? A lib store run again takes its registry entry and actions back from the app's store extending it.
-  appStoresAfter(id: string): string[] {
-    const [libRoot, piece = "_st"] = id.match(DevRouteRuntime.#libStoreRoot) ?? [];
+  appStoresAfter(id: string, depsOf: (id: string) => readonly string[] | undefined): string[] {
+    const appLib = `${this.#runtime.table.scope}/lib`;
+    const [storeClass, dir = "", model = ""] = id.match(DevRouteRuntime.#libStoreClass) ?? [];
+    const [libRoot, piece = "_st"] = storeClass ? [id, `${model}.st`] : (id.match(DevRouteRuntime.#libStoreRoot) ?? []);
     if (!libRoot) return [];
-    const appClient = `${this.#runtime.table.scope}/lib/__client`;
-    return [...new Set([`${appClient}/${piece}.ts`, `${appClient}/_st.ts`])];
+    const after = [`${appLib}/__client/${piece}.ts`, `${appLib}/__client/_st.ts`];
+    const appStore = `${appLib}/${dir}/${model}.store.ts`;
+    if (storeClass && DevRouteRuntime.#imports(depsOf, appStore, id)) after.unshift(appStore);
+    return [...new Set(after)].filter((file) => !!depsOf(file));
   }
 
   get owners(): StoreOwners {
@@ -120,6 +125,19 @@ export class DevRouteRuntime {
     if (path.isAbsolute(relative)) return relative.split(path.sep).join("/");
     const posix = relative.split(path.sep).join("/");
     return posix.startsWith("../") ? posix : `./${posix}`;
+  }
+
+  static #imports(depsOf: (id: string) => readonly string[] | undefined, from: string, target: string): boolean {
+    const seen = new Set([from]);
+    const queue = [from];
+    for (const id of queue)
+      for (const dep of depsOf(id) ?? []) {
+        if (dep === target) return true;
+        if (seen.has(dep)) continue;
+        seen.add(dep);
+        queue.push(dep);
+      }
+    return false;
   }
 
   static #dirsIn(dir: string): string[] {
