@@ -3,10 +3,12 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
+import { RuntimeConstantGraph } from "../quality/runtimeConstantGraph";
 import { RuntimeImports } from "../quality/runtimeImports";
 import { RuntimeNameTable } from "../quality/runtimeNameTable";
 import { RuntimeScopeReport } from "../quality/runtimeScopeReport";
 import { RuntimeUse, type RuntimeUseVerdict } from "../quality/runtimeUse";
+import { type ConstantRewrite, RouteConstants } from "./routeConstants";
 import { type RouteRuntimeBundle, RouteRuntimeGraph } from "./routeRuntimeGraph";
 
 export interface RouteRuntimeResult {
@@ -36,6 +38,7 @@ const storeFile = /^((?:apps|libs)\/[^/]+)\/lib\/_?[^/]+\/([^/]+)\.store\.ts$/;
 const wholeFile = /^((?:apps|libs)\/[^/]+)\/lib\/(useClient|st)\.ts$/;
 const runtimeFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:(?:useClient|st|usePage)\.ts|__client\/[^/]+\.ts)$/;
 const storePiece = /^((?:apps|libs)\/[^/]+)\/lib\/__client\/([^/_][^/]*)\.st$/;
+const constantFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:__lib\/lib|(?:__scalar\/)?([^/_][^/]*)\/\1)\.constant\.ts$/;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
 //? The tab's one store: a scope's `lib/st.ts` exports this same object, and a key answers once its module has loaded.
 const tabStore = '"akanjs/store"';
@@ -48,6 +51,7 @@ export class RouteRuntime {
   readonly #table: RuntimeNameTable;
   readonly #pieces: ReadonlySet<string>;
   readonly #read: (absPath: string) => string | null;
+  readonly #constants: RouteConstants;
   readonly #storeNeeds = new Map<string, string[] | null>();
   readonly #ownNeeds = new Map<string, string[] | null>();
   readonly #sideNeeds = new Map<string, string[] | null>();
@@ -78,6 +82,8 @@ export class RouteRuntime {
     this.#table = table;
     this.#pieces = pieces;
     this.#read = read;
+    const graph = new RuntimeConstantGraph(table, (file) => read(path.join(workspaceRoot, file)));
+    this.#constants = new RouteConstants(graph, pieces);
   }
 
   static #readFile(absPath: string) {
@@ -105,6 +111,7 @@ export class RouteRuntime {
     const name = piece.slice(piece.lastIndexOf("/") + 1);
     if (name === assembled.st) return "st";
     if (name === assembled.useClient) return "sig";
+    if (name.endsWith(".cnst")) return name.slice(0, -".cnst".length);
     return name.endsWith(".st") ? name.slice(0, -".st".length) : "loaded";
   }
 
@@ -185,7 +192,7 @@ export class RouteRuntime {
     const keeps = new Set(whole);
     const bringsPieces = (root: string) =>
       [...(closures.get(root) ?? [])].some((file) =>
-        this.#routeOf(file)?.pieces.some((piece) => !piece.endsWith("/_base.fetch")),
+        this.#routeOf(file)?.pieces.some((piece) => !piece.endsWith("/_base.fetch") && !piece.endsWith(".cnst")),
       );
     //? A narrowed entry's pieces repeat what a whole-runtime page already carries; pages a kept entry makes whole recount.
     for (let more = roots; more.length > 0; ) {
@@ -274,34 +281,57 @@ export class RouteRuntime {
 
   #routeNow(source: string, absPath: string): RouteRuntimeResult | null {
     const fileName = this.fileNameOf(absPath);
-    if (!fileName || !RuntimeScopeReport.isRuntimeSource(fileName) || macroAttribute.test(source)) return null;
+    if (!fileName || macroAttribute.test(source)) return null;
+    if (constantFile.test(fileName)) return this.#constantFileOf(source, fileName);
+    if (!RuntimeScopeReport.isRuntimeSource(fileName)) return null;
     const [, storeScope, storeModule] = fileName.match(storeFile) ?? [];
     const planned = this.#planned;
     const storeSide = !!storeModule || !!planned?.storeSide.has(absPath);
     const sideNeeds = planned && !storeSide ? this.#importedNeedsOf(absPath, planned) : [];
-    if (!storeModule && !sideNeeds.length && !RuntimeImports.mayUseRuntime(source, fileName))
-      return { source, perModule: true, pieces: [] };
+    const mayUse = RuntimeImports.mayUseRuntime(source, fileName) || RuntimeImports.mayUseConstants(source, fileName);
+    if (!storeModule && !sideNeeds.length && !mayUse) return { source, perModule: true, pieces: [] };
     const sourceFile = RouteRuntime.#parse(fileName, source);
     if (!sourceFile) return null;
     const verdict = RuntimeUse.analyze({ fileName, text: source, sourceFile }, this.#table);
-    const aliasOf = (piece: string) => `@${piece}`;
-    if (storeSide) {
-      const store = storeScope && storeModule ? { scope: storeScope, module: storeModule } : undefined;
-      const pieces = this.#descriptorsOf(verdict, store) ?? [];
-      const edits = sourceFile.statements.flatMap((statement) =>
-        this.#importEdit(statement, sourceFile, fileName, !verdict.resolvable),
-      );
-      if (pieces.length) edits.push(this.#leading(sourceFile, this.#after(pieces, aliasOf)));
-      return { source: RouteRuntime.#apply(source, edits), perModule: true, pieces };
-    }
-    const pieces = this.#piecesOf(verdict, sideNeeds);
+    const pieces = storeSide
+      ? (this.#descriptorsOf(
+          verdict,
+          storeScope && storeModule ? { scope: storeScope, module: storeModule } : undefined,
+        ) ?? [])
+      : this.#piecesOf(verdict, sideNeeds);
     if (!pieces) {
       const edit = this.#leading(sourceFile, this.wholeImports);
       return { source: RouteRuntime.#apply(source, [edit]), perModule: false, pieces: [] };
     }
-    const edits = sourceFile.statements.flatMap((statement) => this.#importEdit(statement, sourceFile, fileName));
-    if (pieces.length) edits.push(this.#leading(sourceFile, this.#after(pieces, aliasOf)));
-    return { source: RouteRuntime.#apply(source, edits), perModule: true, pieces };
+    const constants = this.#constants.rewrite(sourceFile, fileName, verdict.constants);
+    const edits = sourceFile.statements.flatMap((statement) =>
+      this.#importEdit(statement, sourceFile, fileName, { handlesOnly: storeSide && !verdict.resolvable, constants }),
+    );
+    return this.#routed(source, sourceFile, edits, pieces, constants);
+  }
+
+  #constantFileOf(source: string, fileName: string): RouteRuntimeResult | null {
+    if (!RuntimeImports.mayUseConstants(source, fileName)) return null;
+    const sourceFile = RouteRuntime.#parse(fileName, source);
+    if (!sourceFile) return null;
+    const { constants: use } = RuntimeUse.analyze({ fileName, text: source, sourceFile }, this.#table);
+    const constants = this.#constants.rewrite(sourceFile, fileName, use, { constantFile: true });
+    if (!constants?.edits.length) return null;
+    return this.#routed(source, sourceFile, [], [], constants);
+  }
+
+  #routed(
+    source: string,
+    sourceFile: ts.SourceFile,
+    edits: TextEdit[],
+    pieces: string[],
+    constants: ConstantRewrite | null,
+  ): RouteRuntimeResult {
+    const all = [...(constants?.pieces ?? []), ...pieces];
+    const leading = [...this.#after(all, (piece) => `@${piece}`), ...(constants?.imports ?? [])];
+    const changes = [...edits, ...(constants?.edits ?? [])];
+    if (leading.length) changes.push(this.#leading(sourceFile, leading));
+    return { source: RouteRuntime.#apply(source, changes), perModule: true, pieces: all };
   }
 
   static #parse(fileName: string, source: string): ts.SourceFile | null {
@@ -446,7 +476,12 @@ export class RouteRuntime {
   }
 
   //? `handlesOnly`: in a file whose names cannot be told, an import is repointed only where it takes nothing but handles.
-  #importEdit(statement: ts.Statement, sourceFile: ts.SourceFile, fileName: string, handlesOnly = false): TextEdit[] {
+  #importEdit(
+    statement: ts.Statement,
+    sourceFile: ts.SourceFile,
+    fileName: string,
+    { handlesOnly = false, constants = null }: { handlesOnly?: boolean; constants?: ConstantRewrite | null } = {},
+  ): TextEdit[] {
     if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) return [];
     const clause = statement.importClause;
     const target = RuntimeImports.targetOf(statement.moduleSpecifier.text, fileName);
@@ -475,12 +510,14 @@ export class RouteRuntime {
       element.isTypeOnly ? "" : (element.propertyName ?? element.name).text;
     const isHandle = (element: ts.ImportSpecifier) => handleNames.has(handleOf(element));
     const [handles, rest] = [elements.filter(isHandle), elements.filter((element) => !isHandle(element))];
-    if (!handles.length) return [];
+    const typedCnst = (element: ts.ImportSpecifier) => !!constants && handleOf(element) === "cnst";
+    if (!handles.length)
+      return constants ? RouteConstants.typedEdits(statement, sourceFile, (imported) => imported === "cnst") : [];
     const namesOf = (list: ts.ImportSpecifier[]) => list.map((element) => element.getText(sourceFile)).join(", ");
-    const typesOnly = rest.every((element) => element.isTypeOnly);
+    const typesOnly = rest.every((element) => element.isTypeOnly || typedCnst(element));
     const restNames = typesOnly
       ? rest.map((element) => element.getText(sourceFile).replace(/^type\s+/, "")).join(", ")
-      : namesOf(rest);
+      : rest.map((element) => `${typedCnst(element) ? "type " : ""}${element.getText(sourceFile)}`).join(", ");
     const [stores, descriptors] = [
       handles.filter((element) => handleOf(element) === "st"),
       handles.filter((element) => handleOf(element) !== "st"),

@@ -10,6 +10,7 @@ import {
   stateSetterName,
 } from "akanjs/common";
 import ts from "typescript";
+import { type RuntimeConstantEntry, type RuntimeConstantFact, RuntimeConstantFacts } from "./runtimeConstantFacts";
 import {
   type RuntimeFieldFact,
   type RuntimeLayer,
@@ -84,6 +85,7 @@ export class RuntimeNameTable {
     runtimeFamilies.map((family) => [family, new Map()]),
   );
   readonly #dependencies = new Map<string, RuntimeOwner[]>();
+  readonly #constants = new Map<string, Map<string, RuntimeConstantEntry | null>>();
   readonly #file: { refName: string; owner: RuntimeOwner | null } | null;
   readonly scope: string;
   readonly layers: RuntimeLayer[];
@@ -152,6 +154,27 @@ export class RuntimeNameTable {
     ordered.forEach((layer, index) => {
       for (const module of layer.modules) this.#addModule(ordered, index, module);
     });
+    for (const layer of layers) this.#constants.set(layer.scope, RuntimeNameTable.#constantNamesOf(layer, layers));
+  }
+
+  constantOf(scope: string, name: string): RuntimeConstantEntry | null {
+    return this.#constants.get(scope)?.get(name) ?? null;
+  }
+
+  constantsOf(scope: string): RuntimeConstantFact[] {
+    return this.layers.find((layer) => layer.scope === scope)?.constants ?? [];
+  }
+
+  static #constantNamesOf(layer: RuntimeLayer, layers: RuntimeLayer[]) {
+    const names = new Map<string, RuntimeConstantEntry | null>();
+    //? `export *` of two constant files naming one value exports neither, so the name is left unanswered.
+    for (const fact of layer.constants ?? [])
+      for (const name of fact.exports) names.set(name, names.has(name) ? null : { type: "export", fact });
+    for (const fact of layer.constants ?? []) names.set(fact.module, { type: "model", fact });
+    for (const lib of layer.constantLibs ?? [])
+      if (layers.some(({ scope }) => scope === `libs/${lib}`))
+        names.set(lib, { type: "namespace", scope: `libs/${lib}` });
+    return names;
   }
 
   get modules() {
@@ -423,10 +446,28 @@ export class RuntimeNameTable {
         }),
       ),
     );
-    return RuntimeModuleFacts.layerOf(
-      scope,
-      files.filter((file): file is RuntimeSourceFile => !!file),
+    const scalarDir = path.join(libDir, "__scalar");
+    const scalars = await Promise.all(
+      (await readdir(scalarDir, { withFileTypes: true }).catch(() => []))
+        .filter((entry) => entry.isDirectory())
+        .map(async ({ name }) => {
+          const file = `${scope}/lib/__scalar/${name}/${name}.constant.ts`;
+          const absolute = path.join(workspaceRoot, file);
+          return (await Bun.file(absolute).exists()) ? RuntimeNameTable.#parse(file, absolute) : null;
+        }),
     );
+    const read = files.filter((file): file is RuntimeSourceFile => !!file);
+    const constants = [...read, ...scalars.filter((file): file is RuntimeSourceFile => !!file)]
+      .map((source) => RuntimeConstantFacts.of(source))
+      .filter((fact): fact is RuntimeConstantFact => !!fact)
+      .sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+    const cnstFile = Bun.file(path.join(libDir, "cnst.ts"));
+    const constantLibs = (await cnstFile.exists())
+      ? [...(await cnstFile.text()).matchAll(/export\s*\{\s*cnst\s+as\s+(\w+)\s*\}\s*from\s*["']@libs\/(\w+)["']/g)]
+          .filter(([, name, lib]) => name === lib)
+          .map(([, name]) => name as string)
+      : [];
+    return { ...RuntimeModuleFacts.layerOf(scope, read), constants, constantLibs };
   }
 
   static async #parse(file: string, absolute: string): Promise<RuntimeSourceFile> {

@@ -1,6 +1,8 @@
 import ts from "typescript";
+import { RuntimeConstantReads, type RuntimeConstantUse } from "./runtimeConstantReads";
 import {
   type RuntimeBinding,
+  type RuntimeConstantTarget,
   type RuntimeHandle,
   type RuntimeHandleKind,
   RuntimeImports,
@@ -9,7 +11,9 @@ import {
 } from "./runtimeImports";
 import { RuntimeLexicalScope } from "./runtimeLexicalScope";
 import type { RuntimeFamily, RuntimeNameTable, RuntimeNeed, RuntimeOwner } from "./runtimeNameTable";
+import { climb, memberName, type PositionedProblem, problemAt, sortedProblems, staticName } from "./runtimeSyntax";
 
+export type { RuntimeConstantName, RuntimeConstantRead, RuntimeConstantUse } from "./runtimeConstantReads";
 export type { RuntimeImportKind, RuntimeImportTarget } from "./runtimeImports";
 
 export const runtimeUseReasons = [
@@ -37,9 +41,10 @@ export interface RuntimeUseProblem {
   message: string;
 }
 
-export type RuntimeUseVerdict =
+export type RuntimeUseVerdict = (
   | { resolvable: true; owners: RuntimeUseOwner[]; baseStore: boolean; baseDescriptor: boolean; reads: boolean }
-  | ({ resolvable: false; problems: RuntimeUseProblem[] } & RuntimeUseProblem);
+  | ({ resolvable: false; problems: RuntimeUseProblem[] } & RuntimeUseProblem)
+) & { constants: RuntimeConstantUse };
 
 export interface RuntimeUseOptions {
   runtimeOf?: (specifier: string, fileName: string) => RuntimeImportTarget | null;
@@ -78,6 +83,7 @@ const nothingRead: RuntimeUseVerdict = {
   baseStore: false,
   baseDescriptor: false,
   reads: false,
+  constants: { reads: [], imports: [], problems: [] },
 };
 
 export class RuntimeUse {
@@ -89,7 +95,8 @@ export class RuntimeUse {
   readonly #lexical = new RuntimeLexicalScope();
   readonly #bindings = new Map<ts.Identifier, RuntimeBinding>();
   readonly #owners = new Map<string, RuntimeUseOwner>();
-  readonly #problems: (RuntimeUseProblem & { position: number })[] = [];
+  readonly #problems: PositionedProblem[] = [];
+  readonly #constants: RuntimeConstantReads;
   #baseStore = false;
   #baseDescriptor = false;
   #reads = false;
@@ -105,12 +112,13 @@ export class RuntimeUse {
     options: RuntimeUseOptions = {},
   ): RuntimeUseVerdict {
     const storeFile = input.fileName.endsWith(".store.ts");
-    if (!options.runtimeOf && !storeFile && !RuntimeImports.mayUseRuntime(input.text, input.fileName))
-      return nothingRead;
+    const runtime = !!options.runtimeOf || storeFile || RuntimeImports.mayUseRuntime(input.text, input.fileName);
+    if (!runtime && !RuntimeImports.mayUseConstants(input.text, input.fileName)) return nothingRead;
     const source =
       input.sourceFile ??
       ts.createSourceFile(input.fileName, input.text, ts.ScriptTarget.Latest, true, RuntimeUse.#kindOf(input.fileName));
-    return new RuntimeUse(source, input.fileName, consumer, options, storeFile).#run();
+    const verdict = new RuntimeUse(source, input.fileName, consumer, options, storeFile).#run();
+    return runtime ? verdict : { ...nothingRead, constants: verdict.constants };
   }
 
   private constructor(
@@ -125,6 +133,7 @@ export class RuntimeUse {
     this.#consumer = consumer;
     this.#options = options;
     this.#storeFile = storeFile;
+    this.#constants = new RuntimeConstantReads(source, fileName, consumer, () => this.#recording);
   }
 
   #run(): RuntimeUseVerdict {
@@ -135,11 +144,10 @@ export class RuntimeUse {
     }
     this.#recording = true;
     this.#visit(this.#source);
-    const problems = this.#problems
-      .sort((a, b) => a.position - b.position)
-      .map(({ position: _, ...problem }) => problem);
+    const problems = sortedProblems(this.#problems);
+    const constants = this.#constants.use;
     const [first] = problems;
-    if (first) return { resolvable: false, ...first, problems };
+    if (first) return { resolvable: false, ...first, problems, constants };
     const owners = [...this.#owners.values()].sort((a, b) =>
       `${a.scope}/${a.module}` < `${b.scope}/${b.module}` ? -1 : 1,
     );
@@ -149,6 +157,7 @@ export class RuntimeUse {
       baseStore: this.#baseStore,
       baseDescriptor: this.#baseDescriptor,
       reads: this.#reads,
+      constants,
     };
   }
 
@@ -173,6 +182,9 @@ export class RuntimeUse {
 
   #readImport(statement: ts.ImportDeclaration) {
     if (!ts.isStringLiteral(statement.moduleSpecifier)) return;
+    if (!statement.importClause?.isTypeOnly) this.#constants.imported(statement.moduleSpecifier.text);
+    const constant = RuntimeImports.constantTargetOf(statement.moduleSpecifier.text, this.#fileName);
+    if (constant) return this.#readConstantImport(statement, constant);
     const target = this.#targetOf(statement.moduleSpecifier.text);
     const clause = statement.importClause;
     if (!target || (!clause && target.kind.startsWith("framework-"))) return;
@@ -187,8 +199,28 @@ export class RuntimeUse {
       if (name) this.#use(name, RuntimeImports.namespaceUse(target.kind, name.text));
     for (const element of named) {
       const imported = (element.propertyName ?? element.name).text;
-      this.#use(element, RuntimeImports.useOf(target, imported, !!clause?.isTypeOnly || element.isTypeOnly));
+      const typeOnly = !!clause?.isTypeOnly || element.isTypeOnly;
+      if (target.kind === "client" && target.scope && imported === "cnst") {
+        if (!typeOnly) this.#bindings.set(element.name, { type: "cnst", scope: target.scope });
+      } else this.#use(element, RuntimeImports.useOf(target, imported, typeOnly));
     }
+  }
+
+  #readConstantImport(statement: ts.ImportDeclaration, { scope, kind }: RuntimeConstantTarget) {
+    const clause = statement.importClause;
+    if (clause?.isTypeOnly) return;
+    const bindings = clause?.namedBindings;
+    if (kind === "cnst" && !clause?.name && bindings && ts.isNamespaceImport(bindings)) {
+      this.#bindings.set(bindings.name, { type: "cnst", scope });
+      return;
+    }
+    const named =
+      kind === "barrel" && !clause?.name && bindings && ts.isNamedImports(bindings) ? bindings.elements : null;
+    if (!named)
+      return this.#constants.problem("whole-runtime-import", statement, `the import takes ${scope}'s constants whole`);
+    for (const element of named)
+      if (!element.isTypeOnly && (element.propertyName ?? element.name).text === "cnst")
+        this.#bindings.set(element.name, { type: "cnst", scope });
   }
 
   #use(node: ts.ImportSpecifier | ts.Identifier, use: RuntimeImportUse) {
@@ -214,6 +246,7 @@ export class RuntimeUse {
   #readReexport(statement: ts.ExportDeclaration) {
     const specifier = statement.moduleSpecifier;
     if (statement.isTypeOnly || !specifier || !ts.isStringLiteral(specifier)) return;
+    this.#constants.imported(specifier.text);
     const target = this.#targetOf(specifier.text);
     if (!target) return;
     const clause = statement.exportClause;
@@ -221,7 +254,9 @@ export class RuntimeUse {
     if (!clause || ts.isNamespaceExport(clause)) return this.#problem("re-exported", statement, why);
     for (const element of clause.elements) {
       const imported = (element.propertyName ?? element.name).text;
-      if (!element.isTypeOnly && RuntimeImports.useOf(target, imported, false))
+      if (!element.isTypeOnly && target.kind === "client" && imported === "cnst")
+        this.#constants.problem("re-exported", element, why);
+      else if (!element.isTypeOnly && RuntimeImports.useOf(target, imported, false))
         this.#problem("re-exported", element, why);
     }
   }
@@ -233,7 +268,9 @@ export class RuntimeUse {
       const local = element.propertyName ?? element.name;
       const declaration = ts.isIdentifier(local) && !element.isTypeOnly ? this.#lexical.resolve(local) : null;
       const binding = declaration && this.#bindings.get(declaration);
-      if (binding && binding.type !== "storeFactory")
+      if (binding?.type === "cnst")
+        this.#constants.problem("re-exported", element, "other files read the constants here");
+      else if (binding && binding.type !== "storeFactory")
         this.#problem("re-exported", element, "other files read the runtime through this one");
     }
   }
@@ -261,6 +298,7 @@ export class RuntimeUse {
     const declaration = this.#lexical.resolve(identifier);
     const binding = declaration && this.#bindings.get(declaration);
     if (!binding || binding.type === "storeFactory" || binding.type === "rootStore") return;
+    if (binding.type === "cnst") return this.#constants.follow(identifier, binding.scope);
     if (binding.type === "whole")
       return this.#problem("whole-runtime-import", identifier, `${binding.name} hands out the whole client runtime`);
     this.#followRead(identifier, binding.handle);
@@ -318,12 +356,12 @@ export class RuntimeUse {
     const member =
       ts.isPropertyAccessExpression(node) ||
       (ts.isElementAccessExpression(node) && ts.isStringLiteralLike(node.argumentExpression));
-    if (!member || RuntimeUse.#memberName(node) !== "require") return false;
+    if (!member || memberName(node) !== "require") return false;
     return ts.isMetaProperty(node.expression) || free(node.expression);
   }
 
   #loader(node: ts.Expression) {
-    const { current, parent } = RuntimeUse.#climb(node);
+    const { current, parent } = climb(node);
     const called = ts.isCallExpression(parent) && parent.expression === current;
     const [specifier] = called ? parent.arguments : [];
     if (!called) this.#problem("whole-runtime-import", node, "a module loader taken as a value may load any module");
@@ -341,7 +379,7 @@ export class RuntimeUse {
   }
 
   #follow(node: ts.Expression, handle: RuntimeHandle) {
-    const { current, parent } = RuntimeUse.#climb(node);
+    const { current, parent } = climb(node);
     if (ts.isPropertyAccessExpression(parent) && parent.expression === current)
       return this.#apply(parent, this.#step(handle, parent.name.text));
     if (ts.isElementAccessExpression(parent) && parent.expression === current) {
@@ -412,7 +450,7 @@ export class RuntimeUse {
   }
 
   #callMethod(node: ts.Expression, method: StoreMethod, own = false) {
-    const { current, parent } = RuntimeUse.#climb(node);
+    const { current, parent } = climb(node);
     if (!ts.isCallExpression(parent) || parent.expression !== current)
       return this.#problem("passed-on", node, "the store method is taken off the store");
     const spread = parent.arguments.find(ts.isSpreadElement);
@@ -465,7 +503,7 @@ export class RuntimeUse {
           this.#written(property.expression, own, true);
           continue;
         }
-        const name = property.name && RuntimeUse.#staticName(property.name);
+        const name = property.name && staticName(property.name);
         if (name === null) this.#problem("computed-access", property, "the state key is computed");
         else this.#record("st.use", name, property);
       }
@@ -499,7 +537,7 @@ export class RuntimeUse {
       return this.#problem("hidden-by-destructuring", name, "array destructuring hides which names it reads");
     for (const element of name.elements) {
       const key = element.propertyName ?? element.name;
-      const keyName = ts.isIdentifier(key) ? key.text : RuntimeUse.#staticName(key);
+      const keyName = ts.isIdentifier(key) ? key.text : staticName(key);
       if (element.dotDotDotToken || keyName === null) {
         this.#problem("hidden-by-destructuring", element, "a rest or computed key hides which names it reads");
         continue;
@@ -541,25 +579,15 @@ export class RuntimeUse {
 
   #problem(reason: RuntimeUseReason, node: ts.Node, why: string) {
     if (!this.#recording) return;
-    const position = node.getStart(this.#source);
-    if (this.#problems.some((problem) => problem.position === position && problem.reason === reason)) return;
-    const { line, character } = this.#source.getLineAndCharacterOfPosition(position);
-    const raw = node.getText(this.#source).replace(/\s+/g, " ");
-    const text = raw.length > 80 ? `${raw.slice(0, 77)}...` : raw;
-    this.#problems.push({
-      reason,
-      line: line + 1,
-      column: character + 1,
-      text,
-      message: `\`${text}\`: ${why}`,
-      position,
-    });
+    const problem = problemAt(this.#source, reason, node, why);
+    if (this.#problems.some(({ position }) => position === problem.position && problem.reason === reason)) return;
+    this.#problems.push(problem);
   }
 
   static #membersOf(node: ts.ClassLikeDeclaration) {
     const members = new Set<string>();
     for (const member of node.members) {
-      const name = member.name && RuntimeUse.#staticName(member.name);
+      const name = member.name && staticName(member.name);
       const isStatic = !!(ts.getCombinedModifierFlags(member) & ts.ModifierFlags.Static);
       if (name !== null && name !== undefined && !isStatic) members.add(name);
     }
@@ -587,21 +615,6 @@ export class RuntimeUse {
     return value;
   }
 
-  static #memberName(node: ts.PropertyAccessExpression | ts.ElementAccessExpression) {
-    if (ts.isPropertyAccessExpression(node)) return node.name.text;
-    return ts.isStringLiteralLike(node.argumentExpression) ? node.argumentExpression.text : null;
-  }
-
-  static #climb(node: ts.Expression) {
-    let current: ts.Expression = node;
-    let parent = current.parent;
-    while ((ts.isParenthesizedExpression(parent) || ts.isNonNullExpression(parent)) && parent.expression === current) {
-      current = parent;
-      parent = current.parent;
-    }
-    return { current, parent };
-  }
-
   static #unwrap(expression: ts.Expression): ts.Expression {
     let current = expression;
     while (ts.isParenthesizedExpression(current)) current = current.expression;
@@ -622,13 +635,6 @@ export class RuntimeUse {
     };
     ts.forEachChild(body, visit);
     return returned;
-  }
-
-  static #staticName(name: ts.PropertyName | ts.BindingName) {
-    if (ts.isIdentifier(name) || ts.isPrivateIdentifier(name)) return name.text;
-    if (ts.isStringLiteralLike(name) || ts.isNumericLiteral(name)) return name.text;
-    if (ts.isComputedPropertyName(name) && ts.isStringLiteralLike(name.expression)) return name.expression.text;
-    return null;
   }
 
   static #kindOf(fileName: string) {

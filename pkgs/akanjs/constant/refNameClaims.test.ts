@@ -136,6 +136,52 @@ describe("RefNameClaims", () => {
     expect(ConstantRegistry.getDatabase("overrideMember").full).toBe(AppFull as never);
   });
 
+  test("hands back the first registration when a model registers again with the same classes", () => {
+    const LibInput = via((field) => ({ name: field(String) }));
+    const LibObject = via(LibInput, () => ({}));
+    const LibLight = via(LibObject, ["name"] as const, () => ({}));
+    class LibFull extends via(LibObject, LibLight, () => ({})) {}
+    const LibInsight = via(LibFull, () => ({}));
+    const libExports = { LibFull };
+    const libModel = () =>
+      ConstantRegistry.buildModel("againMember", LibInput, LibObject, LibFull, LibLight, LibInsight, libExports, "lib");
+    const first = libModel();
+
+    const AppInput = via((field) => ({ nick: field(String) }), LibInput);
+    const AppObject = via(AppInput, () => ({}), LibObject);
+    const AppLight = via(AppObject, ["nick"] as const, () => ({}), LibLight);
+    class AppFull extends via(AppObject, AppLight, () => ({}), LibFull) {}
+    const AppInsight = via(AppFull, () => ({}), LibInsight);
+    ConstantRegistry.buildModel("againMember", AppInput, AppObject, AppFull, AppLight, AppInsight, {}, "app");
+
+    expect(libModel()).toBe(first);
+    expect(ConstantRegistry.getDatabase("againMember").full).toBe(AppFull as never);
+    expect(ConstantRegistry.getOrigin("database", "againMember")).toEqual(["lib", "app"]);
+    const Geo = via((field) => ({ lat: field(Int) }));
+    const geoExports = { Geo };
+    const geo = ConstantRegistry.buildScalar("againGeo", Geo, geoExports, "lib");
+    expect(ConstantRegistry.buildScalar("againGeo", Geo, geoExports, "lib")).toBe(geo);
+
+    const RivalInput = via((field) => ({ title: field(String) }));
+    const RivalObject = via(RivalInput, () => ({}));
+    const RivalLight = via(RivalObject, ["title"] as const, () => ({}));
+    class RivalFull extends via(RivalObject, RivalLight, () => ({})) {}
+    const RivalInsight = via(RivalFull, () => ({}));
+    ConstantRegistry.buildModel(
+      "againMember",
+      RivalInput,
+      RivalObject,
+      RivalFull,
+      RivalLight,
+      RivalInsight,
+      {},
+      "rival",
+    );
+    expect(() => ConstantRegistry.assertConsistentRefNames()).toThrow('model "againMember"');
+    ConstantRegistry.buildModel("againMember", AppInput, AppObject, AppFull, AppLight, AppInsight, {}, "rival");
+    expect(() => ConstantRegistry.assertConsistentRefNames()).not.toThrow();
+  });
+
   test("refuses an app model of a lib's refName that does not extend it", () => {
     const LibInput = via((field) => ({ name: field(String), nick: field(String) }));
     const LibObject = via(LibInput, () => ({}));
