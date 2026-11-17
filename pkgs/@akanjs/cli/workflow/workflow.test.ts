@@ -203,6 +203,14 @@ describe("WorkflowRunner", () => {
     expect(output).toContain('requires input "type"');
   });
 
+  test("names the flag of a missing input and the passed inputs the workflow does not take", async () => {
+    const output = await new WorkflowRunner().plan("create-scalar", { app: "demo", module: "videoDevice", field: "" });
+
+    expect(output).toContain(
+      'Workflow create-scalar requires input "scalar" (--scalar on the command line). It does not take "module", which was passed.',
+    );
+  });
+
   test("dry-runs workflow apply from a plan artifact without writing files", async () => {
     const { workspace, module, planPath, runner } = await planTaskWorkflow({ field: "priority", type: "String" });
 
