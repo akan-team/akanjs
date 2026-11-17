@@ -134,6 +134,24 @@ describe("Device", () => {
     expect((await Device.load({ supportLanguages: ["en", "ko"] })).lang).toBe("ko");
   });
 
+  test("native shell takes the device language over a placeholder language path", async () => {
+    deviceState.language = "ko";
+    installNativeHost("ios");
+    installWindow("/en/office", { nativeTarget: true });
+    const { Device } = await import("./device");
+
+    expect((await Device.load({ supportLanguages: ["en", "ko"], isPathLangPlaceholder: true })).lang).toBe("ko");
+  });
+
+  test("a device language the app has no pages for falls back to the default locale", async () => {
+    deviceState.language = "ja";
+    installNativeHost("ios");
+    installWindow("/profile", { nativeTarget: true });
+    const { Device } = await import("./device");
+
+    expect((await Device.load({ supportLanguages: ["en", "ko"] })).lang).toBe("en");
+  });
+
   test("ssr render mode creates a web device without asking the native runtime", async () => {
     process.env.AKAN_PUBLIC_RENDER_ENV = "ssr";
     installNativeHost("ios");

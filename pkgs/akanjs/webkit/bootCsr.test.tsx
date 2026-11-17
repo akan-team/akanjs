@@ -9,6 +9,7 @@ const originalEnv = { ...process.env };
 const deviceState = {
   lang: "en",
   platform: "web",
+  loads: [] as unknown[],
 };
 const storageState = {
   jwt: null as string | null,
@@ -34,12 +35,15 @@ beforeAll(() => {
       off: () => undefined,
     },
     Device: {
-      load: async () => ({
-        lang: deviceState.lang,
-        info: { platform: deviceState.platform },
-        topSafeArea: 11,
-        bottomSafeArea: 22,
-      }),
+      load: async (options: unknown) => {
+        deviceState.loads.push(options);
+        return {
+          lang: deviceState.lang,
+          info: { platform: deviceState.platform },
+          topSafeArea: 11,
+          bottomSafeArea: 22,
+        };
+      },
       getDevice: () => ({
         info: { platform: deviceState.platform },
       }),
@@ -179,6 +183,7 @@ afterEach(() => {
   setRequiredEnv();
   deviceState.lang = "en";
   deviceState.platform = "web";
+  deviceState.loads.length = 0;
   storageState.jwt = null;
   initAuthCalls.length = 0;
 });
@@ -238,6 +243,37 @@ describe("bootCsr", () => {
 
     expect(window.__AKAN_MOBILE_TARGET__).toEqual({ name: "default", basePath: "minimal", indexPath: "/explore" });
     expect(replacements).toEqual([]);
+  });
+
+  test("a dev build swaps the default locale it opened on for the device's, and drops the marker", async () => {
+    deviceState.lang = "ko";
+    const replacements: string[] = [];
+    installWindow({
+      href: "https://example.test/en/office?csr=true&akanMobileTarget=office&akanMobileLang=device&akanMobileBasePath=office#top",
+      replace: (href) => replacements.push(href),
+    });
+    const { bootCsr } = await import("./bootCsr");
+
+    await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+
+    expect(deviceState.loads).toEqual([{ supportLanguages: ["en", "ko"], isPathLangPlaceholder: true }]);
+    expect(window.location.pathname).toBe("/ko/office");
+    expect(window.location.search).toBe("?csr=true&akanMobileTarget=office&akanMobileBasePath=office");
+    expect(window.location.hash).toBe("#top");
+    expect(replacements).toEqual([]);
+  });
+
+  test("keeps the language a dev page reloads on once the marker is gone", async () => {
+    deviceState.lang = "en";
+    installWindow({
+      href: "https://example.test/ko/office?csr=true&akanMobileTarget=office&akanMobileBasePath=office",
+    });
+    const { bootCsr } = await import("./bootCsr");
+
+    await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+
+    expect(deviceState.loads).toEqual([{ supportLanguages: ["en", "ko"], isPathLangPlaceholder: false }]);
+    expect(window.location.pathname).toBe("/ko/office");
   });
 
   test("starts a release bundle opened at / on the target's home, without a reload", async () => {

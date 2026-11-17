@@ -14,14 +14,24 @@ declare global {
   }
 }
 
+//* Set by the devkit's NativeApp.startPath.
+const deviceLangParam = "akanMobileLang";
+
 export const bootCsr = async (context: CsrRouteContext) => {
   const i18n = parseAkanI18nEnv();
   window.document.body.style.overflow = "hidden";
   initializeMobileTargetFromSearch();
   if (window.location.pathname === "/404") return;
 
-  const [device, jwt] = await Promise.all([Device.load({ supportLanguages: i18n.locales }), getStoredAuthToken()]);
   const mobileTarget = window.__AKAN_MOBILE_TARGET__;
+  //? A dev build opens on the default locale only because the dev server answers its CSR shell under one; the device's
+  //? language then picks the page, as a release bundle's does, and the marker leaves so a reload keeps the one chosen.
+  const isPathLangPlaceholder =
+    !!mobileTarget && new URLSearchParams(window.location.search).get(deviceLangParam) === "device";
+  const [device, jwt] = await Promise.all([
+    Device.load({ supportLanguages: i18n.locales, isPathLangPlaceholder }),
+    getStoredAuthToken(),
+  ]);
   // A native shell opens its bundle at `/`, but every route sits under `/:lang`; a reload would parse the bundle twice.
   if (mobileTarget && window.location.pathname === "/")
     window.history.replaceState(
@@ -29,6 +39,8 @@ export const bootCsr = async (context: CsrRouteContext) => {
       "",
       `${mobileHomePath(device.lang, mobileTarget)}${window.location.search}${window.location.hash}`,
     );
+  else if (isPathLangPlaceholder)
+    window.history.replaceState(window.history.state, "", onLang(window.location, device.lang, i18n.locales));
   const pathname = csrLocation.pathname;
   if (!mobileTarget && !pathname.startsWith(`/${device.lang}`))
     window.location.replace(`/${device.lang}${pathname}${window.location.search}${window.location.hash}`);
@@ -88,6 +100,15 @@ function initializeMobileTargetFromSearch() {
   const basePath = params.get("akanMobileBasePath")?.replace(/^\/+|\/+$/g, "") ?? "";
   const indexPath = params.get("akanMobileIndexPath") ?? undefined;
   window.__AKAN_MOBILE_TARGET__ = { name, basePath, ...(indexPath ? { indexPath } : {}) };
+}
+
+function onLang(location: Location, lang: string, locales: string[]) {
+  const [, first = "", ...rest] = location.pathname.split("/");
+  const segments = [lang, ...(locales.includes(first) ? rest : [first, ...rest])].filter((segment) => segment.length);
+  const search = new URLSearchParams(location.search);
+  search.delete(deviceLangParam);
+  const query = search.toString();
+  return `/${segments.join("/")}${query ? `?${query}` : ""}${location.hash}`;
 }
 
 // `indexPath` is relative to the basePath, as the router's own stack root is.

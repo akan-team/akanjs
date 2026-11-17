@@ -1,4 +1,5 @@
 "use client";
+import { parseAkanI18nEnv } from "akanjs/common";
 import type { RefObject } from "react";
 import { csrLocation } from "./csrLocation";
 import { readCssSafeAreaInsets } from "./frameConfig";
@@ -110,16 +111,25 @@ const langInPath = (pathname: string, supportLanguages: string[] | readonly stri
   return supportLanguages.find((language) => language === predefinedLangPath);
 };
 
+//? A device can prefer a language the app has no pages for, and a path in it would be a 404.
+const supportedLang = (code: string, supportLanguages: string[] | readonly string[]) => {
+  if (supportLanguages.length === 0 || supportLanguages.includes(code)) return code;
+  const { defaultLocale } = parseAkanI18nEnv();
+  return supportLanguages.includes(defaultLocale) ? defaultLocale : (supportLanguages[0] ?? code);
+};
+
 const createWebDevice = ({
   lang,
   supportLanguages,
+  isPathLangPlaceholder,
 }: {
   lang?: string;
   supportLanguages: string[] | readonly string[];
+  isPathLangPlaceholder?: boolean;
 }) => {
-  const pathname = typeof window === "undefined" ? "" : csrLocation.pathname;
+  const pathname = typeof window === "undefined" || isPathLangPlaceholder ? "" : csrLocation.pathname;
   return new Device({
-    lang: lang ?? langInPath(pathname, supportLanguages) ?? getBrowserLanguage(),
+    lang: lang ?? langInPath(pathname, supportLanguages) ?? supportedLang(getBrowserLanguage(), supportLanguages),
     info: webDeviceInfo,
     topSafeArea: 0,
     bottomSafeArea: 0,
@@ -129,29 +139,35 @@ const createWebDevice = ({
 
 export class Device {
   static instance: Device | null = null;
+  /** `isPathLangPlaceholder`: the path's language segment only reached the page, and the device's language decides. */
   static async load({
     lang,
     supportLanguages = [],
+    isPathLangPlaceholder = false,
   }: {
     lang?: string;
     supportLanguages?: string[] | readonly string[];
+    isPathLangPlaceholder?: boolean;
   }) {
     if (Device.instance) return Device.instance;
     if (getRenderMode() !== "csr" || !isNativeTarget()) {
-      Device.instance = createWebDevice({ lang, supportLanguages });
+      Device.instance = createWebDevice({ lang, supportLanguages, isPathLangPlaceholder });
       return Device.instance;
     }
     const native = await import("./native");
     //? a mobile target opened in a browser has no shell to ask
     if (!native.isNativeApp()) {
-      Device.instance = createWebDevice({ lang, supportLanguages });
+      Device.instance = createWebDevice({ lang, supportLanguages, isPathLangPlaceholder });
       return Device.instance;
     }
     const [info, { code: languageCode }] = await Promise.all([native.device.getInfo(), native.device.getLanguage()]);
     //* The shell writes the insets into --akan-native-safe-area-* before the bundle runs, on both platforms.
     const { top: topSafeArea, bottom: bottomSafeArea } = readCssSafeAreaInsets();
     Device.instance = new Device({
-      lang: lang ?? langInPath(window.location.pathname, supportLanguages) ?? languageCode,
+      lang:
+        lang ??
+        (isPathLangPlaceholder ? undefined : langInPath(window.location.pathname, supportLanguages)) ??
+        supportedLang(languageCode, supportLanguages),
       info,
       topSafeArea,
       bottomSafeArea,

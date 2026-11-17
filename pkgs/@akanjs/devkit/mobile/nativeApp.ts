@@ -564,11 +564,11 @@ export class NativeApp {
   }
 
   /** The first page of a dev build, the target's home as a release bundle opens it; the dev server answers the CSR
-   * shell only for `?csr=true`. */
+   * shell only for `?csr=true`, under a locale, and `akanMobileLang=device` has the page swap `lang` for the device's. */
   startPath(lang: string, platform: NativePlatform) {
     const basePath = this.target.config.basePath?.replace(/^\/+|\/+$/g, "");
     const indexPath = this.indexPath(platform);
-    const params = new URLSearchParams({ csr: "true", akanMobileTarget: this.target.name });
+    const params = new URLSearchParams({ csr: "true", akanMobileTarget: this.target.name, akanMobileLang: "device" });
     if (basePath) params.set("akanMobileBasePath", basePath);
     if (indexPath) params.set("akanMobileIndexPath", indexPath);
     const home = [lang, basePath, indexPath]
