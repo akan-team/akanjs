@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, test } from "bun:test";
 import { runtimeFixtureTables } from "../quality/runtimeTable.fixture";
-import { RuntimeUse } from "../quality/runtimeUse";
+import { RuntimeUse, type RuntimeUseReason } from "../quality/runtimeUse";
 import { RouteRuntime } from "./routeRuntime";
 
 const root = "/ws";
@@ -532,7 +532,7 @@ export const read = () => [__akanCnst0, __akanCnst1, __akanCnst2, fetch.memoNote
     });
   });
 
-  test.each([
+  test.each<[string, string, RuntimeUseReason]>([
     ["a computed member", "export const pick = (name: string) => cnst[name];", "computed-access"],
     ["the constants handed on", "export const names = () => Object.keys(cnst);", "passed-on"],
     ["a spread", "export const all = { ...cnst };", "passed-on"],

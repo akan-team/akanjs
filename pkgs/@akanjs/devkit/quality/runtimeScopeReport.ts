@@ -92,19 +92,27 @@ export class RuntimeScopeReport {
       const [constantProblem] = verdict.constants.problems;
       if (constantProblem) {
         summary.wholeConstants++;
-        notes.push({ file, scope, constants: true, ...constantProblem });
+        notes.push(RuntimeScopeReport.noteOf(file, scope, constantProblem, true));
       }
       if (constantFile || (verdict.resolvable && !verdict.reads)) continue;
       summary.readers++;
       if (verdict.resolvable) summary.resolvable++;
       else {
         summary.wholeScope++;
-        const { problems: _, resolvable: __, ...problem } = verdict;
-        notes.push({ file, scope, ...problem });
+        notes.push(RuntimeScopeReport.noteOf(file, scope, verdict));
       }
     }
     const markerPins = new RuntimeMarkerReach(workspaceRoot).pinsOf(files);
     return { scopes: [...summaries.values()], notes, markerPins };
+  }
+
+  static noteOf(
+    file: string,
+    scope: string,
+    { reason, line, column, text, message }: RuntimeUseProblem,
+    constants = false,
+  ): RuntimeScopeNote {
+    return { file, scope, reason, line, column, text, message, ...(constants ? { constants } : {}) };
   }
 
   static format({ scopes, notes, markerPins }: RuntimeScopeResult) {

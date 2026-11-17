@@ -94,4 +94,30 @@ describe("RuntimeScopeReport", () => {
     expect(RuntimeScopeReport.isConstantFile("apps/demo/lib/__scalar/geo/geo.constant.ts")).toBe(true);
     expect(RuntimeScopeReport.isConstantFile("apps/demo/lib/memo/other.constant.ts")).toBe(false);
   });
+
+  test("notes a file loading the whole runtime as such even when it names each constant it reads", () => {
+    const verdict = {
+      resolvable: false as const,
+      problems: [],
+      reason: "passed-on" as const,
+      line: 9,
+      column: 43,
+      text: "fetch",
+      message: "`fetch`: the names read from it where it goes are not visible here",
+      constants: { reads: [], imports: [], problems: [] },
+    };
+    const note = RuntimeScopeReport.noteOf("apps/demo/ui/Ping.tsx", "apps/demo", verdict);
+    expect(note).toEqual({
+      file: "apps/demo/ui/Ping.tsx",
+      scope: "apps/demo",
+      reason: "passed-on",
+      line: 9,
+      column: 43,
+      text: "fetch",
+      message: "`fetch`: the names read from it where it goes are not visible here",
+    });
+    expect(RuntimeScopeReport.format({ scopes: [], notes: [note], markerPins: [] }).split("\n")[0]).toContain(
+      "note akan.runtime.whole-scope:",
+    );
+  });
 });
