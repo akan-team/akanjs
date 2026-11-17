@@ -407,7 +407,10 @@ const useStackSlide = (
   }, [transUnitRange]);
   useLayoutEffect(() => {
     cancelSlide();
-    if (history.current.type !== "forward" || CsrSlide.isCalm) {
+    //? Every page runs this hook whatever its transition, and a slide moves the frame's parts itself rather than a
+    //? spring only a stack page reads, so a page that does not slide in (a tab switched with `none`) must not start one.
+    const isStack = frameRef.current.pageState.transition === "stack";
+    if (history.current.type !== "forward" || CsrSlide.isCalm || !isStack) {
       void transUnit.start(transUnitRange[1], { immediate: true });
       return;
     }
