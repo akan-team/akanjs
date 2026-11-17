@@ -1,4 +1,4 @@
-import { IOS_KEYBOARD_ANIMATION_EASING } from "./device";
+import { nativeKeyboardEasing } from "./device";
 
 const RIDE_SELECTOR = "[data-akan-keyboard-ride]";
 const OVERLAY_SELECTOR = "[data-akan-keyboard-overlay]";
@@ -8,7 +8,7 @@ const bottomOf = (element: HTMLElement) => element.getBoundingClientRect().botto
 const isInset = (rider: HTMLElement) => rider.dataset.akanKeyboardRide === "inset";
 
 /**
- * Moves the page with an iOS keyboard the shell left to it. A layout change on every frame drops frames on a phone, so
+ * Moves the page with a phone keyboard the shell left to it. A layout change on every frame drops frames on a phone, so
  * the layout changes once and what is marked `data-akan-keyboard-ride` travels the way there as a transform, which
  * WebKit hands to Core Animation. A scroller resting at its end stays there, as a chat list does.
  *
@@ -32,7 +32,7 @@ export class KeyboardRide {
     const root = document.documentElement;
     if (durationMs > 0) {
       root.style.setProperty("--akan-keyboard-duration", `${durationMs}ms`);
-      root.style.setProperty("--akan-keyboard-easing", IOS_KEYBOARD_ANIMATION_EASING);
+      root.style.setProperty("--akan-keyboard-easing", nativeKeyboardEasing());
     }
     const isOverlay =
       height > 0
@@ -65,7 +65,7 @@ export class KeyboardRide {
       rider.style.transform = `translateY(${drawn[idx] - laid[idx]}px)`;
     });
     void root.offsetHeight;
-    const transition = `transform ${durationMs}ms ${IOS_KEYBOARD_ANIMATION_EASING}`;
+    const transition = `transform ${durationMs}ms ${nativeKeyboardEasing()}`;
     riders.forEach((rider, idx) => {
       rider.style.transition = transition;
       rider.style.transform = `translateY(${settled[idx] - laid[idx]}px)`;

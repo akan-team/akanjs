@@ -31,12 +31,17 @@ export interface RuntimeScopeResult {
   markerPins: RuntimeMarkerPin[];
 }
 
-const moduleConventionFile = /\/lib\/.+\.(?:constant|dictionary|document|service|signal)\.ts$/;
+const moduleConventionEnds = ["constant", "dictionary", "document", "service", "signal"].map((kind) => `.${kind}.ts`);
+const isModuleConventionFile = (file: string) => {
+  const lib = file.indexOf("/lib/");
+  const end = moduleConventionEnds.find((suffix) => file.endsWith(suffix));
+  return lib >= 0 && !!end && lib + "/lib/".length < file.length - end.length;
+};
 const generatedFile =
   /^(?:apps|libs)\/[^/]+\/(?:\.akan\/.*|client\.ts|server\.ts|lib\/[^/]+\.ts|lib\/__(?:lib|client)\/.*|lib\/.+\/index\.ts|(?:ui|webkit|srvkit|common)\/index\.ts)$/;
 const serverOnlyDir = /^(?:apps|libs)\/[^/]+\/(?:srvkit|env|script|native|plugin)\//;
 const testFile = /\.(?:test|spec)\.tsx?$|\/__(?:fixtures|tests)__\//;
-const useClientDirective = /^(?:\s|\/\/[^\n]*\n|\/\*[\s\S]*?\*\/)*["']use client["']/;
+const useClientDirective = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
 const constantFile = /^(?:apps|libs)\/[^/]+\/lib\/(?:__lib\/lib|(?:__scalar\/)?([^/_][^/]*)\/\1)\.constant\.ts$/;
 
 export class RuntimeScopeReport {
@@ -49,7 +54,7 @@ export class RuntimeScopeReport {
 
   static isRuntimeSource(file: string) {
     if (!/^(?:apps|libs)\/[^/]+\/.+\.tsx?$/.test(file) || file.endsWith(".d.ts")) return false;
-    if (testFile.test(file) || generatedFile.test(file) || moduleConventionFile.test(file)) return false;
+    if (testFile.test(file) || generatedFile.test(file) || isModuleConventionFile(file)) return false;
     return !serverOnlyDir.test(file) && !/^(?:apps|libs)\/[^/]+\/(?:akan\.config|main)\.ts$/.test(file);
   }
 

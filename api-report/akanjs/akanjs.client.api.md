@@ -3,6 +3,8 @@
 Generated from the declaration emit by `bun run api:report`. Do not edit it by hand.
 
 ```ts
+export declare const ANDROID_KEYBOARD_ANIMATION_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+
 export interface AkanHeadSnapshotNode {
     tag: "link" | "meta" | "title";
     attrs?: Record<string, string>;
@@ -1299,6 +1301,8 @@ export declare const makePageProto: <Dict extends {
 export declare const mergePageConfigs: (configChain?: PageConfig[]) => PageConfig;
 
 export declare const msg: RuntimeMsg;
+
+export declare const nativeKeyboardEasing: () => "cubic-bezier(0.2, 0, 0, 1)" | "cubic-bezier(0.38, 0.7, 0.125, 1)";
 
 export declare const nativePlatform: () => "android" | "ios" | null;
 
