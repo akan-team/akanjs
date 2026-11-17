@@ -151,8 +151,8 @@ export default page()
           {
             name: "clientRuntime",
             desc: l.trans({
-              en: "Whether every page loads every model's stores, or only the routes whose client code uses them.",
-              ko: "모든 페이지가 모든 모델의 스토어를 불러올지, 클라이언트 코드가 쓰는 라우트만 불러올지 정합니다.",
+              en: "Whether every page loads every model's constants and stores, or only the routes whose client code uses them.",
+              ko: "모든 페이지가 모든 모델의 상수와 스토어를 불러올지, 클라이언트 코드가 쓰는 라우트만 불러올지 정합니다.",
             }),
             marks: appOnly,
           },
@@ -2273,6 +2273,36 @@ export default config;`}
                       내려주고 아무것도 검사하지 않으므로 프로덕션 빌드가 안전장치입니다. 클라이언트 파일이 이름을 적는
                       모듈을 바꿨다면 배포 전에 빌드하세요. 모든 모듈이 필요한 페이지는 <code>"all"</code>일 때의
                       런타임을 그대로 쓰며, 어떤 컴포넌트 때문인지는 <code>akan quality runtime</code>이 알려 줍니다.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A page registers the constants of the models it names.</strong> <code>cnst.Memo</code>,{" "}
+                      <code>cnst.MemoStatus</code>, a lib's <code>cnst.util.File</code> or{" "}
+                      <code>const {"{ MemoStatus }"} = cnst</code> loads that model's registration piece,{" "}
+                      <code>lib/__client/memo.cnst.ts</code>, and the pieces of the models its constant file names, so a
+                      page reading one enum no longer loads every model. A file that passes <code>cnst</code> on,
+                      spreads it, calls <code>Object.keys(cnst)</code>, picks a member with a computed key or names
+                      something <code>cnst</code> does not hand out keeps every constant, and so does a framework
+                      component that walks every model, such as the API explorer. <code>akan quality runtime</code>{" "}
+                      names each file that keeps every constant, with its reason.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>페이지는 이름을 적은 모델의 상수만 등록합니다.</strong> <code>cnst.Memo</code>,{" "}
+                      <code>cnst.MemoStatus</code>, 라이브러리의 <code>cnst.util.File</code>,{" "}
+                      <code>const {"{ MemoStatus }"} = cnst</code>는 그 모델의 등록 조각인{" "}
+                      <code>lib/__client/memo.cnst.ts</code>와 그 상수 파일이 이름을 적은 모델의 조각만 불러오므로, enum
+                      하나를 읽는 페이지가 더는 모든 모델을 불러오지 않습니다. <code>cnst</code>를 다른 곳에 넘기거나
+                      펼치거나 <code>Object.keys(cnst)</code>를 부르거나, 계산된 키로 멤버를 고르거나 <code>cnst</code>
+                      에 없는 이름을 적는 파일은 모든 상수를 불러오며, API 탐색기처럼 모든 모델을 훑는 프레임워크
+                      컴포넌트도 마찬가지입니다. 모든 상수를 불러오는 파일은 <code>akan quality runtime</code>이 이유와
+                      함께 알려 줍니다.
                     </span>
                   ),
                 })}
