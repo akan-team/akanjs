@@ -437,8 +437,8 @@ export const Receipt = ({ open, onClose, children }: ReceiptProps) => {
             name: "Dialog.LegacyModal",
             type: "{ onCancel?, confirmClose?, className?, bodyClassName? }",
             desc: l.trans({
-              en: "The previous window: spring open/close and drag-to-dismiss on touch.",
-              ko: "이전 창입니다. 스프링 애니메이션으로 열리고 닫히며, 터치로 끌어내려 닫을 수 있습니다.",
+              en: "The previous window: spring open/close and drag-to-dismiss on touch. Its code and react-spring load the first time it renders, so a page drawing only `Dialog.Modal` carries neither.",
+              ko: "이전 창입니다. 스프링 애니메이션으로 열리고 닫히며, 터치로 끌어내려 닫을 수 있습니다. 코드와 react-spring은 처음 그려질 때 내려받으므로, `Dialog.Modal`만 그리는 페이지에는 둘 다 실리지 않습니다.",
             }),
           },
           {
