@@ -805,7 +805,7 @@ export class FetchClient {
     });
 
     const argLength = slice.args.length;
-    this.slice[sliceName] = ModelRuntimes.of({ refName, sliceName, argLength });
+    this.slice[sliceName] = ModelRuntimes.sliceOf(refName, sliceName, argLength);
     this.#setHandlerFactory(names.init, () => (...argData: unknown[]) => {
       const cnst = ConstantRegistry.getDatabase(refName);
       const queryArgs = normalizeQueryArgs(
@@ -918,7 +918,7 @@ export class FetchClient {
       if (!cnst) return;
       const slices = Object.entries(serializedSignal.slice).map(([suffix, serializedSlice]) => {
         const { slice: sliceName } = sliceNames(refName, suffix);
-        proxy.slice[sliceName] = ModelRuntimes.of({ refName, sliceName, argLength: serializedSlice.args.length });
+        proxy.slice[sliceName] = ModelRuntimes.sliceOf(refName, sliceName, serializedSlice.args.length);
         return { refName, sliceName, serializedSlice };
       });
       sig[refName] = { refName, _slice: null, cnst, fetch: proxy, slices, serializedSignal };
@@ -934,7 +934,6 @@ export class FetchClient {
         else if (prop === "instance") return instance;
         //? Before the handler lookup, whose miss syncs every signal of the process into this client.
         else if (prop === "ownSerializedSignal") return instance.ownSerializedSignal;
-        else if (prop === "slice") return ModelRuntimes.slicesOf(instance.slice);
         else if (typeof prop === "string") {
           const handler = instance.#getOrCreateHandler(prop);
           if (handler) return handler;

@@ -13,6 +13,7 @@ const pages = {
   first: ["widget", "sprocket", "gadget"],
   next: ["bracket", "flange", "gasket"],
   bare: ["rivet", "washer", "spacer"],
+  copied: ["hinge", "latch", "clasp"],
 } as const;
 
 const entry = (id: string, name: string) => ({ id, chunks: [id, id], name, async: true });
@@ -28,7 +29,7 @@ const clientManifest = {
 };
 
 //? The server half is the real one: a `FetchClient` whose handoffs React's flight server writes, in its own process.
-const flightOf = (models: readonly string[], references: "refs" | "bare") =>
+const flightOf = (models: readonly string[], references: "refs" | "bare" | "copies") =>
   Bun.spawn(
     [
       process.execPath,
@@ -195,5 +196,21 @@ describe("a model a server component hands to a client component", () => {
       { component: "New", model: "spacer", runtimeLoaded: false, carried: undefined },
     ]);
     expect(events.filter((event) => pages.bare.some((model) => event.includes(`${model}-ref`)))).toEqual([]);
+  }, 30_000);
+
+  test("is loaded through a spread copy, and renders unloaded through a JSON or a `structuredClone` copy", async () => {
+    served.set("/copied", () => flightOf(pages.copied, "copies"));
+
+    await act(async () => {
+      await globalThis.__AKAN_RSC_NAVIGATE__?.("/copied");
+    });
+    await settled("clasp");
+
+    expect(renderedOf(pages.copied)).toEqual([
+      { component: "View", model: "hinge", runtimeLoaded: true, carried: "hinge" },
+      { component: "Units", model: "latch", runtimeLoaded: false, carried: {} },
+      { component: "New", model: "clasp", runtimeLoaded: false, carried: {} },
+    ]);
+    expect(events.filter((event) => ["latch", "clasp"].some((model) => event.includes(`${model}-ref`)))).toEqual([]);
   }, 30_000);
 });

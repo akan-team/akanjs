@@ -47,7 +47,7 @@ for (const model of models) {
   fetch.instance.handler[`${model}List`] = async () => [{ id: `${model}1`, name: "first" }];
   fetch.instance.handler[`${model}Insight`] = async () => ({ count: 1 });
 }
-if (references === "refs")
+if (references !== "bare")
   FetchClient.setModelRuntimes(
     Object.fromEntries(
       models.map((model) => [
@@ -61,9 +61,19 @@ const capitalized = (model: string) => `${model.charAt(0).toUpperCase()}${model.
 const handoffs = fetch as unknown as Record<string, (...args: unknown[]) => Record<string, Promise<Handoff>>> & {
   slice: Record<string, Handoff>;
 };
+const copied = references === "copies";
+const viewOf = async () => {
+  const view = await handoffs[`view${capitalized(direct)}`]?.(`${direct}1`)[`${direct}View`];
+  return copied ? { ...view } : view;
+};
+const initOf = () => {
+  const init = handoffs[`init${capitalized(promised)}`]?.()[`${promised}Init`] ?? Promise.resolve({});
+  return copied ? init.then((value) => JSON.parse(JSON.stringify(value)) as Handoff) : init;
+};
 const Late = async () => {
   await new Promise((resolve) => setTimeout(resolve, 150));
-  return <New slice={handoffs.slice[streamed] ?? {}} />;
+  const slice = handoffs.slice[streamed] ?? {};
+  return <New slice={copied ? structuredClone(slice) : slice} />;
 };
 
 const stream = await renderToReadableStream(
@@ -71,8 +81,8 @@ const stream = await renderToReadableStream(
     <head />
     <body>
       <main>
-        <View view={await handoffs[`view${capitalized(direct)}`]?.(`${direct}1`)[`${direct}View`]} />
-        <Units init={handoffs[`init${capitalized(promised)}`]?.()[`${promised}Init`] ?? Promise.resolve({})} />
+        <View view={(await viewOf()) ?? {}} />
+        <Units init={initOf()} />
         <Suspense fallback={null}>
           <Late />
         </Suspense>

@@ -27,7 +27,7 @@ export interface SliceInitInput {
  */
 export class SliceInitHandle {
   readonly #input: SliceInitInput;
-  #serverInit?: object;
+  #serverInit?: { refName: string };
   #modelList?: DataList<BaseObject>;
   #modelInsight?: object;
 
@@ -66,7 +66,7 @@ export class SliceInitHandle {
       sliceNames(refName).state;
     const lastPage =
       modelObjInsight?.count && limit > 0 ? Math.max(Math.floor((modelObjInsight.count - 1) / limit) + 1, 1) : 1;
-    this.#serverInit ??= ModelRuntimes.of({
+    this.#serverInit ??= {
       refName,
       sliceName,
       argLength,
@@ -80,8 +80,8 @@ export class SliceInitHandle {
       [queryArgsOfModel]: queryArgs,
       [sortOfModel]: sort,
       [modelInitAt]: new Date(),
-    });
-    return this.#serverInit;
+    };
+    return ModelRuntimes.of(this.#serverInit);
   }
 
   // A route hands `xInit` down and never reads the list, so the instances are built only for a caller that does.
