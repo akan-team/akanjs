@@ -220,6 +220,25 @@ describe("the dev registry under clientRuntime route", () => {
     expect(code).not.toContain("whole-client");
   });
 
+  test("a store file picking an endpoint at run time loads the client runtime and every other module's store piece, never the assembled store", async () => {
+    const { root, file, app } = await routeWorkspace();
+    for (const client of ["lib/useClient.ts", "lib/__client/_useClient.ts"])
+      await write(file(client), "export const fetch = {};\n");
+    await write(
+      file("lib/_draft/draft.store.ts"),
+      'import { store } from "akanjs/store";\nimport { fetch } from "../useClient";\nexport class DraftStore extends store("draft" as const, () => ({ draftText: 0 })) {\n  run(name: string) {\n    return (fetch as Record<string, () => unknown>)[name]?.();\n  }\n}\n',
+    );
+
+    const modules = await compile(app, root, [file("lib/_draft/draft.store.ts")]);
+
+    expect(sortedIds(modules)).toEqual([
+      "apps/demo/lib/__client/_useClient.ts",
+      "apps/demo/lib/__client/tally.st.ts",
+      "apps/demo/lib/_draft/draft.store.ts",
+      "apps/demo/lib/useClient.ts",
+    ]);
+  });
+
   test("a lib's lib/st.ts loads as the lib's assembled store followed by the app's", async () => {
     const { root, file, app } = await routeWorkspace();
     const lib = (relative: string) => path.join(root, "libs/shared", relative);
