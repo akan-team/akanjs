@@ -143,7 +143,8 @@ worker per web-serving replica.
   `/_akan/app/statements` (metrics token) ranks statements by total time and p95 with their senders.
   `AKAN_LOG_SLOW_STATEMENT_MS` (200, `off`) logs one `SlowStatement` warn per fingerprint a minute; a local dev run
   warns once (`QueryPlan`) of a full scan or temp sort, silenced per fingerprint by `AKAN_QUERY_PLAN_IGNORE`.
-  `akan_room_replay_bytes` and `akan_pubsub_buffered_messages` gauge the reconnect replay and the Redis buffer.
+  `akan_room_replay_bytes` and `akan_pubsub_buffered_messages` gauge the reconnect replay and the Redis buffer;
+  `akan_live_rooms` gauges the live-query rooms a process holds (summed per process behind a gateway, not distinct).
 - **Nothing supervises a solo process but the orchestrator**, since the gateway's crash-restart-with-backoff went
   with it. `infra/app/templates/app.yaml` carries the liveness, readiness and startup probes that replace it.
 - **`PORT` is the whole tree's port, and a server-side self-call follows it.** `AkanApp` resolves it once

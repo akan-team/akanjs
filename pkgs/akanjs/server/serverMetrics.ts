@@ -47,7 +47,11 @@ export class ServerMetrics {
   families(): AkanMetricFamily[] {
     const role = this.#owner.serverMode;
     const webRouter = this.#webRouter();
-    setPubsubGauges({ replayBytes: this.#listener.replayBytes, bufferedCount: this.#listener.pubsubBufferedCount });
+    setPubsubGauges({
+      replayBytes: this.#listener.replayBytes,
+      bufferedCount: this.#listener.pubsubBufferedCount,
+      liveRooms: this.#listener.liveRoomCount,
+    });
     return [
       ...new MetricMerge()
         .add(metricRegistry.snapshot({ role }))
@@ -67,6 +71,7 @@ export class ServerMetrics {
       pubsubCoalesceCount: this.#listener.coalescedCount,
       replayBytes: this.#listener.replayBytes,
       pubsubBufferedCount: this.#listener.pubsubBufferedCount,
+      roomCount: this.#listener.liveRoomCount,
       ...(this.#webRouter()?.getMetrics() ?? {}),
     });
     //? Only a replica sends a report; a solo server reads its families live when it is scraped.

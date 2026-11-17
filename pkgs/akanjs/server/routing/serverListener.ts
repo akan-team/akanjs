@@ -68,6 +68,10 @@ export class ServerListener {
     return this.#roomReplay?.bytes ?? 0;
   }
 
+  get liveRoomCount() {
+    return this.#di.live.syncHub.roomCount;
+  }
+
   get pubsubBufferedCount() {
     return this.#websocket?.bufferedCount;
   }
