@@ -563,6 +563,51 @@ export const read = () => [__akanCnst0, __akanCnst1, __akanCnst2, fetch.memoNote
     expect(result?.source).toContain("field(__akanCnst0)");
   });
 
+  test("registers a model per page only where a page loading no whole runtime reaches it, and takes it from the constants of every model elsewhere", async () => {
+    const files: Record<string, string> = {
+      "apps/demo/lib/memo/memo.constant.ts": memoConstant,
+      "apps/demo/lib/board/board.constant.ts": boardConstant,
+      "apps/demo/lib/__client/memo.cnst.ts":
+        'import * as cnst from "../memo/memo.constant";\nexport const memo = cnst;\n',
+      "apps/demo/lib/__client/board.cnst.ts":
+        'import * as cnst from "../board/board.constant";\nexport const board = cnst;\n',
+      "libs/kit/lib/__client/note.cnst.ts":
+        'import * as cnst from "../note/note.constant";\nexport const note = cnst;\n',
+      "apps/demo/ui/Card.tsx": 'import { cnst } from "@apps/demo/client";\nexport const card = () => cnst.memo;\n',
+      "apps/demo/ui/Lone.tsx": 'import { cnst } from "@apps/demo/client";\nexport const lone = () => cnst.board;\n',
+    };
+    const { demo } = await runtimeFixtureTables({ demo: files });
+    const pieces = piecesOf([...appPieces, "memo.cnst", "board.cnst"], [...kitPieces, "note.cnst", "tag.cnst"]);
+    const planned = (routes: Record<string, string[]>) => {
+      const target = new RouteRuntime(root, demo, pieces, (absPath) => files[absPath.slice(`${root}/`.length)] ?? null);
+      const entries = [uiFile("Card"), uiFile("Lone")];
+      target.plan({
+        importsByModule: new Map(entries.map((entry) => [entry, []])),
+        entries,
+        entriesByRoute: new Map(Object.entries(routes)),
+      });
+      return (file: string) => target.transform(files[file] ?? "", `${root}/${file}`);
+    };
+    const lone = planned({ "/card": [uiFile("Card")] });
+    expect(lone("apps/demo/ui/Lone.tsx")?.pieces).toEqual([
+      "apps/demo/lib/__client/board.cnst",
+      "libs/kit/lib/__client/note.cnst",
+    ]);
+    expect(lone("apps/demo/lib/__client/memo.cnst.ts")).toBeNull();
+    expect(lone("apps/demo/lib/__client/board.cnst.ts")).toEqual({
+      source: 'export { board } from "../cnst";\n',
+      perModule: true,
+      pieces: [],
+      wholeConstants: true,
+    });
+    expect(lone("libs/kit/lib/__client/note.cnst.ts")?.source).toBe('export { note } from "../cnst";\n');
+    expect(lone("apps/demo/lib/board/board.constant.ts")).toBeNull();
+    const both = planned({ "/card": [uiFile("Card")], "/lone": [uiFile("Lone")] });
+    expect(both("apps/demo/lib/__client/board.cnst.ts")).toBeNull();
+    expect(both("apps/demo/lib/board/board.constant.ts")?.pieces).toEqual(["libs/kit/lib/__client/note.cnst"]);
+    expect(both("libs/kit/lib/__client/note.cnst.ts")).toBeNull();
+  });
+
   test("keeps every constant where a piece it would load was not generated", () => {
     const source = 'import { cnst } from "@apps/demo/client";\nexport const model = () => cnst.memo;\n';
     const withoutMemo = constantsOf(piecesOf([...appPieces, "board.cnst"], [...kitPieces, "note.cnst", "tag.cnst"]));

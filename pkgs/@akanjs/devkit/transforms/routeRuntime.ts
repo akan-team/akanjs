@@ -32,6 +32,14 @@ interface Planned {
   storeSide: Set<string>;
   //? The files a page loading pieces reaches. Every other file the bundle holds keeps the whole runtime as written.
   routed: Set<string>;
+  //? Null where no route was told: every page then registers only the models it names.
+  narrow: NarrowConstants | null;
+}
+
+interface NarrowConstants {
+  //? Workspace paths without an extension.
+  pieces: Set<string>;
+  constantFiles: Set<string>;
 }
 
 const handleNames = new Set(["fetch", "sig", "st"]);
@@ -42,6 +50,9 @@ const wholeFile = /^((?:apps|libs)\/[^/]+)\/lib\/(useClient|st)\.ts$/;
 const runtimeFile =
   /^(?:apps|libs)\/[^/]+\/lib\/(?:(?:useClient|st|usePage)\.ts|__client\/(?![^/]+\.ref\.ts$)[^/]+\.ts)$/;
 const storePiece = /^((?:apps|libs)\/[^/]+)\/lib\/__client\/([^/_][^/]*)\.st$/;
+const constantPieceFile = /^(?:apps|libs)\/[^/]+\/lib\/__client\/([^/_][^/]*)\.cnst\.ts$/;
+const constantsFile = /^(?:apps|libs)\/[^/]+\/lib\/cnst\.ts$/;
+const pieceImport = /\bfrom\s+"((?:\.|@(?:apps|libs)\/)[^"]+)"/g;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
 //? The tab's one store: a scope's `lib/st.ts` exports this same object, and a key answers once its module has loaded.
 const tabStore = '"akanjs/store"';
@@ -166,7 +177,7 @@ export class RouteRuntime {
     const graph = new RouteRuntimeGraph(importsByModule, (absPath) => runtimeFile.test(this.fileNameOf(absPath) ?? ""));
     const stores = graph.modules.filter((module) => storeFile.test(this.fileNameOf(module) ?? ""));
     const storeSide = graph.closureOf(stores);
-    const planned: Planned = { graph, storeSide, routed: new Set() };
+    const planned: Planned = { graph, storeSide, routed: new Set(), narrow: null };
     this.#planned = planned;
     for (const memo of [this.#storeNeeds, this.#ownNeeds, this.#sideNeeds, this.#routes, this.#wholeReaders])
       memo.clear();
@@ -180,7 +191,45 @@ export class RouteRuntime {
         if (module) graph.closureOf(this.#storeFilesOf(module, graph), routed);
       }
     planned.routed = routed;
+    planned.narrow = entriesByRoute ? this.#narrowOf(keeps, [...entriesByRoute.values()], graph) : null;
     return keeps;
+  }
+
+  //? A model a page registers itself pays only on a page loading no whole runtime. Anywhere else its piece answers
+  //? from `lib/cnst.ts`, which keeps every constant in the one chunk the whole runtime has them in.
+  #narrowOf(keeps: Set<string>, routes: (readonly string[])[], graph: RouteRuntimeGraph): NarrowConstants {
+    const narrow: NarrowConstants = { pieces: new Set(), constantFiles: new Set() };
+    const files = new Set<string>();
+    const visit = (file: string) => {
+      const name = this.fileNameOf(file) ?? "";
+      if (!runtimeFile.test(name) && !constantsFile.test(name)) files.add(file);
+    };
+    const reach = (first: string) => {
+      const queue = [first];
+      for (const piece of queue) {
+        if (narrow.pieces.has(piece) || !this.#pieces.has(piece)) continue;
+        narrow.pieces.add(piece);
+        for (const target of this.#pieceImportsOf(piece))
+          if (this.#pieces.has(target)) queue.push(target);
+          else visit(path.join(this.#workspaceRoot, `${target}.ts`));
+      }
+    };
+    for (const route of routes) if (!route.some((entry) => keeps.has(entry))) route.forEach(visit);
+    for (const file of files) {
+      for (const imported of graph.importsOf(file)) visit(imported);
+      for (const lazy of graph.lazyImportsOf(file)) if (!keeps.has(lazy)) visit(lazy);
+      if (RuntimeScopeReport.isConstantFile(this.fileNameOf(file) ?? "")) narrow.constantFiles.add(file);
+      for (const piece of this.#routeOf(file)?.pieces ?? []) reach(piece);
+    }
+    return narrow;
+  }
+
+  #pieceImportsOf(piece: string): string[] {
+    const scope = piece.split("/").slice(0, 2).join("/");
+    const source = this.#read(this.#absoluteOf(piece)) ?? "";
+    return [...source.matchAll(pieceImport)].map(([, specifier = ""]) =>
+      specifier.startsWith(".") ? path.posix.join(`${scope}/lib/__client`, specifier) : specifier.slice(1),
+    );
   }
 
   #keptOf(roots: string[], entries: Set<string>, routes: (readonly string[])[], planned: Planned): Set<string> {
@@ -233,7 +282,8 @@ export class RouteRuntime {
     return new Set([...this.#wholeReaders].filter(([, reads]) => reads).map(([file]) => file));
   }
 
-  //? The files transformed since the last plan that keep every constant, each named by `akan quality runtime`.
+  //? The files transformed since the last plan that keep every constant: each `akan quality runtime` names, and each
+  //? registration piece no page loading pieces reaches.
   get wholeConstantReaders(): Set<string> {
     return new Set([...this.#routes].filter(([, { result }]) => result?.wholeConstants).map(([file]) => file));
   }
@@ -276,11 +326,26 @@ export class RouteRuntime {
     return source === null ? null : this.#route(source, absPath);
   }
 
-  //? A constant file is reached through a registration piece the planning bundle never holds, so it is routed wherever it is.
+  //? A constant file is reached through a registration piece the planning bundle never holds, so the plan tells it apart.
   transform(source: string, absPath: string): RouteRuntimeResult | null {
     const key = path.resolve(absPath);
-    const constantFile = RuntimeScopeReport.isConstantFile(this.fileNameOf(key) ?? "");
-    if (this.#planned?.graph.has(key) && !this.#planned.routed.has(key) && !constantFile) return null;
+    const fileName = this.fileNameOf(key) ?? "";
+    const narrow = this.#planned?.narrow;
+    const [, model] = fileName.match(constantPieceFile) ?? [];
+    if (narrow && model) {
+      if (narrow.pieces.has(fileName.slice(0, -".ts".length))) return null;
+      const result = {
+        source: `export { ${model} } from "../cnst";\n`,
+        perModule: true,
+        pieces: [],
+        wholeConstants: true,
+      };
+      this.#routes.set(key, { source, result });
+      return result;
+    }
+    if (RuntimeScopeReport.isConstantFile(fileName))
+      return narrow?.constantFiles.has(key) === false ? null : this.#route(source, key);
+    if (this.#planned?.graph.has(key) && !this.#planned.routed.has(key)) return null;
     return this.#route(source, key);
   }
 
