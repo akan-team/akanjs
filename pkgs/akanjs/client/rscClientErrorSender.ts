@@ -1,5 +1,10 @@
-import type { BrowserErrorKind } from "../signal/browserError";
+import type { BrowserErrorKind, BrowserErrorShell } from "../signal/browserError";
 import { ReportText } from "./reportText";
+
+export interface ClientErrorTarget {
+  url: string;
+  shell: BrowserErrorShell;
+}
 
 export class RscClientErrorSender {
   static readonly path = "/_akan/client-report";
@@ -7,11 +12,13 @@ export class RscClientErrorSender {
   static readonly #pageLimit = 5;
   static readonly #limits = { name: 100, message: 1_000, stack: 4_000, digest: 64 } as const;
   readonly #requestId: string;
+  readonly #target: ClientErrorTarget | null;
   readonly #sent = new Set<string>();
   readonly #seen = new WeakSet<object>();
 
-  constructor(requestId: string) {
+  constructor(requestId: string, target: ClientErrorTarget | null = null) {
     this.#requestId = requestId;
+    this.#target = target;
   }
 
   send(error: unknown, kind: BrowserErrorKind, routeId: string | null) {
@@ -24,13 +31,15 @@ export class RscClientErrorSender {
     const signature = `${kind}\n${name}\n${message}`;
     if (this.#sent.size >= RscClientErrorSender.#pageLimit || this.#sent.has(signature)) return;
     this.#sent.add(signature);
-    const report = { requestId: this.#requestId, routeId, kind, name, message, digest };
+    const shell = this.#target ? { shell: this.#target.shell } : {};
+    const report = { requestId: this.#requestId, routeId, kind, name, message, digest, ...shell };
     const body = [stack, stack?.slice(0, 1_000), null]
       .map((cut) => JSON.stringify({ ...report, stack: cut ?? null }))
       .find((text) => new TextEncoder().encode(text).byteLength <= RscClientErrorSender.maxBytes);
     if (!body) return;
     //? A string body goes as `text/plain`, which a page sends with no preflight and the server takes alone.
-    fetch(RscClientErrorSender.path, {
+    //? Never `no-cors` to a shell's server: under `no-referrer` WebKit then sends `Origin: null`, which the route refuses.
+    fetch(this.#target?.url ?? RscClientErrorSender.path, {
       method: "POST",
       body,
       keepalive: true,
