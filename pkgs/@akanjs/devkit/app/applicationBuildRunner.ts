@@ -1,10 +1,12 @@
 import path from "node:path";
 import { toError } from "akanjs/common";
+import { AppWorkerPath } from "akanjs/server/appWorkerPath";
 import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
 import { AkanBin } from "../akanConfig/akanBin";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
+import type { AkanWorkersConfig } from "../akanConfig/types";
 import type { App } from "../commandDecorators";
 import { parseEnvFile, WorkspaceExecutor } from "../executors";
 import {
@@ -474,7 +476,7 @@ export class ApplicationBuildRunner {
   }
 
   async #buildBackend() {
-    const { externalLibs, web, baseDevEnv, branches } = await this.#app.getConfig();
+    const { externalLibs, web, baseDevEnv, branches, workers } = await this.#app.getConfig();
     const backendEntryPoints = [`${this.#app.cwdPath}/main.ts`, `${this.#app.cwdPath}/server.ts`];
     for (const entrypoint of backendEntryPoints) {
       if (!(await Bun.file(entrypoint).exists())) throw new Error(`Backend entrypoint not found: ${entrypoint}`);
@@ -515,11 +517,32 @@ export class ApplicationBuildRunner {
       naming: { entry: "console-runtime.[ext]", chunk: "chunk-[hash].[ext]" },
     });
     await this.#writeConsoleShim();
-    const results = [mainResult, serverResult, rscWorkerResult, consoleRuntimeResult];
+    const workerResults = await this.#buildWorkers(workers, backendConfig);
+    const results = [mainResult, serverResult, rscWorkerResult, consoleRuntimeResult, ...workerResults];
     return {
-      entrypoints: backendEntryPoints.length + (rscWorkerResult ? 2 : 1),
+      entrypoints: backendEntryPoints.length + (rscWorkerResult ? 2 : 1) + workerResults.length,
       outputs: results.reduce((sum, result) => sum + (result?.outputs.length ?? 0), 1),
     };
+  }
+
+  //* Never a chunk of server.js: the process that runs a worker loads nothing of the server, nor the server of it.
+  async #buildWorkers(workers: AkanWorkersConfig, backendConfig: Omit<Bun.BuildConfig, "entrypoints">) {
+    const results: Bun.BuildOutput[] = [];
+    for (const [name, entry] of Object.entries(workers)) {
+      if (!(await Bun.file(entry).exists()))
+        throw new Error(
+          `apps/${this.#app.name}/akan.config.ts: workers.${name} names ${path.relative(this.#app.workspace.workspaceRoot, entry)}, which does not exist.`,
+        );
+      results.push(
+        await this.#buildOrThrow(`worker ${name}`, {
+          ...backendConfig,
+          outdir: path.join(this.#app.dist.cwdPath, AppWorkerPath.dir),
+          entrypoints: [entry],
+          naming: { entry: `${name}.[ext]`, chunk: "chunk-[hash].[ext]" },
+        }),
+      );
+    }
+    return results;
   }
 
   async #writeConsoleShim() {

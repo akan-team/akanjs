@@ -9,34 +9,40 @@ import type { App, Lib } from "../commandDecorators";
 import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
+import { AkanWorkers } from "./akanWorkers";
 import { DesktopServerConfig } from "./desktopServerConfig";
-import { DEFAULT_DOCKER_IMAGE, DOCKER_RUN_USER, DOCKER_WRITE_DIRS } from "./dockerImage";
-import { nativeKeys } from "./nativeKeys";
 import {
-  type AkanApiConfig,
-  type AkanAssetsConfig,
-  type AkanBinConfig,
-  type AkanDatabaseConfig,
-  type AkanNativeAppConfig,
-  type AkanNativeAppResult,
-  type AkanNativeDeepLinks,
-  type AkanNativeSettings,
-  type AkanNativeTarget,
-  type AkanNativeUpdatesConfig,
-  type AkanRouteConfig,
-  type AkanWebConfig,
-  type AkanWebOption,
-  type AppConfigResult,
-  type Arch,
-  archs,
-  type DatabaseMode,
-  type DeepPartial,
-  type DockerConfig,
-  type DockerOption,
-  type DockerRun,
-  type LibAssetsConfig,
-  type LibConfigResult,
-  type LibDockerConfig,
+  DEFAULT_DOCKER_IMAGE,
+  DOCKER_RUN_USER,
+  DOCKER_WRITE_DIRS,
+  dockerImageScript,
+  dockerRunScripts,
+} from "./dockerImage";
+import { nativeKeys } from "./nativeKeys";
+import type {
+  AkanApiConfig,
+  AkanAssetsConfig,
+  AkanBinConfig,
+  AkanDatabaseConfig,
+  AkanNativeAppConfig,
+  AkanNativeAppResult,
+  AkanNativeDeepLinks,
+  AkanNativeSettings,
+  AkanNativeTarget,
+  AkanNativeUpdatesConfig,
+  AkanRouteConfig,
+  AkanWebConfig,
+  AkanWebOption,
+  AkanWorkersConfig,
+  AppConfigResult,
+  DatabaseMode,
+  DeepPartial,
+  DockerConfig,
+  DockerOption,
+  DockerRun,
+  LibAssetsConfig,
+  LibConfigResult,
+  LibDockerConfig,
 } from "./types";
 
 const DEFAULT_BARREL_IMPORTS = ["akanjs/webkit", "akanjs/common", "akanjs/ui", "akanjs/server"];
@@ -167,6 +173,7 @@ export class AkanAppConfig implements AppConfigResult {
   /** The app's own entries; the libs' are in `libBins`. */
   bin: AkanBinConfig;
   libBins: { lib: string; bin: AkanBinConfig }[];
+  workers: AkanWorkersConfig;
   barrelImports: string[];
   optimizeImports: string[];
   images: AkanImageConfig;
@@ -214,6 +221,7 @@ export class AkanAppConfig implements AppConfigResult {
     ];
     this.bin = AkanBin.parse(config?.bin, owner, app.cwdPath);
     this.libBins = libContributions.bin ?? [];
+    this.workers = AkanWorkers.declare(config?.workers, owner, app.cwdPath);
     this.barrelImports = [
       ...DEFAULT_BARREL_IMPORTS,
       ...WORKSPACE_BARREL_FACETS.map((facet) => `@apps/${app.name}/${facet}`),
@@ -444,23 +452,6 @@ export class AkanAppConfig implements AppConfigResult {
         this.branches.forEach((domain) => void domains.add(`${basePath}-${domain}.${serveDomain}`));
       });
   }
-  #getDockerRunScripts(runs: DockerRun[]) {
-    return runs.map((run) => {
-      if (typeof run === "string") return `RUN ${run}`;
-      else
-        return Object.entries(run)
-          .map(
-            ([arch, script]) => `RUN if [ "$TARGETARCH" = "${arch}" ]; then \
-    ${script}; \
-  fi`,
-          )
-          .join("\n");
-    });
-  }
-  #getDockerImageScript(image: string | { [key in Arch]?: string }, defaultImage: string) {
-    if (typeof image === "string") return `FROM ${image}`;
-    else return archs.map((arch) => `FROM ${image[arch] ?? defaultImage} AS ${arch}`).join("\n");
-  }
   /** A declared Dockerfile string is verbatim, so a lib's steps are dropped rather than silently unapplied. */
   static #resolveDocker(docker: DockerOption | undefined, libDocker: LibDockerConfig): DockerConfig {
     if (typeof docker === "string") return docker;
@@ -506,9 +497,9 @@ export class AkanAppConfig implements AppConfigResult {
   #makeDockerfile(environment?: string, lockfile = true, env = this.getProductionEnv(environment)): string {
     if (typeof this.docker === "string") return this.docker;
     const { image, preRuns, postRuns, command } = this.docker;
-    const preRunScripts = this.#getDockerRunScripts(preRuns);
-    const postRunScripts = this.#getDockerRunScripts(postRuns);
-    const imageScript = this.#getDockerImageScript(image, DEFAULT_DOCKER_IMAGE);
+    const preRunScripts = dockerRunScripts(preRuns);
+    const postRunScripts = dockerRunScripts(postRuns);
+    const imageScript = dockerImageScript(image);
     const isLocal = (environment ?? this.baseDevEnv.env) === "local";
     const envLines = Object.entries(env).map(([key, value]) => `ENV ${key}=${value}`);
     return `${imageScript}${isLocal ? `\n${AkanAppConfig.localImageGuard}` : ""}

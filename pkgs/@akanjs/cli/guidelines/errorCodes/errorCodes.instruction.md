@@ -141,6 +141,8 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `unsupportedMediaType` | 415 | `Exception.UnsupportedMediaType` | yes | no | `signal/exception.ts` |
 | `usage` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `verifyFailed` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
+| `workerNotConnected` | 500 | `AppWorkerError` | no | yes | `server/appWorkerError.ts` |
+| `workerNotDeclared` | 500 | `AppWorkerError` | no | yes | `server/appWorkerError.ts` |
 | `wrongTransport` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
 | set when thrown | set when thrown | `Err` | yes | yes | `common/err.ts` |
 | set when thrown | set when thrown | `Err.BadRequest` | yes | yes | `common/err.ts` |
