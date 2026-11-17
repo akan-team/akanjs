@@ -46,17 +46,67 @@ const isHandle = (expr: ts.Expression, handles: Set<string>): boolean => {
 const registryLookups = new Set(["getDatabase", "getScalar", "getModelRef", "getOrigin"]);
 const registryMaps = new Set(["database", "scalar", "enum", "value", "origin"]);
 
+const constantImportsOf = (parsed: Parsed, isSource: (spec: string) => boolean) =>
+  importsOf(parsed)
+    .filter((stmt) => isSource(stmt.moduleSpecifier.text) && !stmt.importClause?.isTypeOnly)
+    .flatMap((stmt) => {
+      const bindings = stmt.importClause?.namedBindings;
+      return bindings && ts.isNamedImports(bindings) ? [...bindings.elements] : [];
+    })
+    .filter((el) => !el.isTypeOnly);
+
 const registriesOf = (parsed: Parsed) =>
   new Set(
-    importsOf(parsed)
-      .filter((stmt) => stmt.moduleSpecifier.text === "akanjs/constant" && !stmt.importClause?.isTypeOnly)
-      .flatMap((stmt) => {
-        const bindings = stmt.importClause?.namedBindings;
-        return bindings && ts.isNamedImports(bindings) ? [...bindings.elements] : [];
-      })
-      .filter((el) => !el.isTypeOnly && (el.propertyName ?? el.name).text === "ConstantRegistry")
+    constantImportsOf(parsed, (spec) => spec === "akanjs/constant" || path.basename(spec) === "constantRegistry")
+      .filter((el) => (el.propertyName ?? el.name).text === "ConstantRegistry")
       .map((el) => el.name.text),
   );
+
+const isRegistryMember = (expr: ts.Expression, members: Set<string>, registries: Set<string>) => {
+  const cur = strip(expr);
+  return (
+    ts.isPropertyAccessExpression(cur) &&
+    members.has(cur.name.text) &&
+    ts.isIdentifier(strip(cur.expression)) &&
+    registries.has((strip(cur.expression) as ts.Identifier).text)
+  );
+};
+
+const literalOnly = (args: readonly ts.Expression[]) => args.every((arg) => ts.isStringLiteralLike(strip(arg)));
+
+//? The functions `akanjs/constant` exports that look a model up by a name they are given, each with the parameters
+//? that carry the name: a UI file calling one reaches the registry as surely as one calling `ConstantRegistry` itself.
+const namedLookupsOf = (files: Parsed[]) => {
+  const lookups = new Map<string, number[]>();
+  for (const parsed of files) {
+    const registries = registriesOf(parsed);
+    const declarations = parsed.sf.statements
+      .filter(
+        (stmt): stmt is ts.VariableStatement =>
+          ts.isVariableStatement(stmt) && !!stmt.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword),
+      )
+      .flatMap((stmt) => stmt.declarationList.declarations);
+    for (const { name, initializer } of declarations) {
+      if (!ts.isIdentifier(name) || !initializer || !ts.isArrowFunction(initializer)) continue;
+      const parameters = initializer.parameters.map((param) => (ts.isIdentifier(param.name) ? param.name.text : ""));
+      const carrying = new Set<number>();
+      const visit = (node: ts.Node) => {
+        if (
+          ts.isCallExpression(node) &&
+          isRegistryMember(node.expression, registryLookups, registries) &&
+          !literalOnly(node.arguments)
+        )
+          for (const arg of node.arguments.map(strip))
+            if (!ts.isObjectLiteralExpression(arg) && !ts.isStringLiteralLike(arg))
+              carrying.add(ts.isIdentifier(arg) ? parameters.indexOf(arg.text) : -1);
+        ts.forEachChild(node, visit);
+      };
+      visit(initializer.body);
+      if (carrying.size > 0) lookups.set(name.text, [...carrying]);
+    }
+  }
+  return lookups;
+};
 
 const isFetchProxyType = (type: ts.TypeNode | undefined) =>
   !!type && ts.isTypeReferenceNode(type) && ts.isIdentifier(type.typeName) && type.typeName.text === "FetchProxy";
@@ -372,23 +422,31 @@ const reachesOf = (parsed: Parsed, handles: Set<string>): Reach[] => {
     const bare = strip(expr);
     return ts.isIdentifier(bare) && handles.has(bare.text);
   };
-  const isRegistryMember = (expr: ts.Expression, members: Set<string>) => {
-    const cur = strip(expr);
-    return (
-      ts.isPropertyAccessExpression(cur) &&
-      members.has(cur.name.text) &&
-      ts.isIdentifier(strip(cur.expression)) &&
-      registries.has((strip(cur.expression) as ts.Identifier).text)
-    );
-  };
-  const literalOnly = (args: ts.NodeArray<ts.Expression>) => args.every((arg) => ts.isStringLiteralLike(strip(arg)));
+  const lookups = new Map(
+    constantImportsOf(parsed, (spec) => spec === "akanjs/constant").flatMap((el): [string, number[]][] => {
+      const carrying = namedLookups.get((el.propertyName ?? el.name).text);
+      return carrying ? [[el.name.text, carrying]] : [];
+    }),
+  );
   const visit = (node: ts.Node) => {
-    if (ts.isCallExpression(node) && isRegistryMember(node.expression, registryLookups) && !literalOnly(node.arguments))
+    if (
+      ts.isCallExpression(node) &&
+      isRegistryMember(node.expression, registryLookups, registries) &&
+      !literalOnly(node.arguments)
+    )
       reach(
         node,
         node.arguments.every((arg) => ts.isObjectLiteralExpression(strip(arg)) || names.namesOrKeys(arg)),
       );
-    if (ts.isPropertyAccessExpression(node) && isRegistryMember(node, registryMaps)) {
+    const callee = ts.isCallExpression(node) ? strip(node.expression) : null;
+    const carrying = callee && ts.isIdentifier(callee) ? lookups.get(callee.text) : undefined;
+    if (ts.isCallExpression(node) && carrying) {
+      const carried = carrying.map((index) => node.arguments[index]);
+      const given = carried.filter((arg): arg is ts.Expression => !!arg);
+      if (given.length < carried.length || !literalOnly(given))
+        reach(node, given.length === carried.length && given.every((arg) => names.namesOrKeys(arg)));
+    }
+    if (ts.isPropertyAccessExpression(node) && isRegistryMember(node, registryMaps, registries)) {
       const lookup = ts.isPropertyAccessExpression(node.parent) ? node.parent : null;
       const call = lookup && ts.isCallExpression(lookup.parent) ? lookup.parent : null;
       if (!(call && ["get", "has"].includes(lookup?.name.text ?? "") && literalOnly(call.arguments)))
@@ -457,10 +515,14 @@ const importsMarker = (parsed: Parsed) =>
       path.resolve(root, path.dirname(parsed.rel), stmt.moduleSpecifier.text).replace(/\.ts$/, "") === marker,
   );
 
-const sources = [...new Bun.Glob("**/*.{ts,tsx}").scanSync({ cwd: root })]
-  .filter((rel) => !testFile.test(rel))
-  .sort((a, b) => a.localeCompare(b))
-  .map((rel) => parse(rel));
+const sourcesIn = (dir: string) =>
+  [...new Bun.Glob("**/*.{ts,tsx}").scanSync({ cwd: path.join(root, dir) })]
+    .filter((rel) => !testFile.test(rel))
+    .sort((a, b) => a.localeCompare(b))
+    .map((rel) => path.join(dir, rel));
+
+const sources = sourcesIn(".").map((rel) => parse(rel));
+const namedLookups = namedLookupsOf(sourcesIn("../constant").map((rel) => parse(rel)));
 
 describe("akanjs/ui/modelRuntime", () => {
   //? Under `clientRuntime: "route"` a page's chunks load a model's runtime only where a module imports it or a handoff
@@ -506,6 +568,24 @@ describe("akanjs/ui/modelRuntime", () => {
     expect(
       reaches('export const a = (ref: never) => [R.getModelName(ref), R.getDatabase("user"), R.enum.has("x")];'),
     ).toBe(false);
+  });
+
+  test("takes a function of `akanjs/constant` that looks a model up by the name it is given as that lookup", () => {
+    const probe = (body: string) => {
+      const parsed = parse("Data/Probe.tsx", `import { fieldQueryMetaOf as metaOf } from "akanjs/constant";\n${body}`);
+      return reachesOf(parsed, new Set()).map(({ handedOver }) => handedOver);
+    };
+    const handoff = 'import type { SliceMeta } from "akanjs/fetch";\n';
+
+    expect([...namedLookups]).toEqual([["fieldQueryMetaOf", [0]]]);
+    expect(probe("export const a = (refName: string, column: string) => metaOf(refName, column);")).toEqual([false]);
+    expect(probe('export const a = (column: string, refName = "summary") => metaOf(refName, column);')).toEqual([
+      false,
+    ]);
+    expect(
+      probe(`${handoff}export const a = (slice: SliceMeta, column: string) => metaOf(slice.refName, column);`),
+    ).toEqual([true]);
+    expect(probe('export const a = (column: string) => metaOf("summary", column);')).toEqual([]);
   });
 
   const imports = [
