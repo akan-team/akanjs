@@ -11,11 +11,12 @@ import {
   type UseCsrTransition,
 } from "akanjs/client";
 import { clamp } from "akanjs/common";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { CsrSlide, type CsrSlideFrame } from "./csrSlide";
 import { STACK_TRANSITION_DURATION_MS } from "./useFrameRuntime";
 
 const linearEasing = (t: number) => t;
-//? UIKit's push leaves fast and settles slowly; at a constant speed a full-width slide reads as a jump.
+//? CsrSlide.easing as a function, for a WebView without Web Animations.
 const stackEasing = (t: number) => 1 - (1 - t) ** 4;
 
 const getBottomInsetTop = (clientHeight: number, pageState: PathRoute["pageState"]) =>
@@ -359,8 +360,68 @@ const useScaleOutTrans = (routeState: RouteState): UseCsrTransition => {
   };
 };
 
+const useStackSlide = (
+  { transUnit, transUnitRange }: Pick<UseCsrTransition, "transUnit" | "transUnitRange">,
+  { history, location, onBack }: RouteState,
+  frame: CsrSlideFrame,
+  backConfigRef: RefObject<{ duration: number } | null>,
+) => {
+  const slideRef = useRef<CsrSlide | null>(null);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+  const stopSlide = useCallback(() => {
+    slideRef.current?.cancel();
+    slideRef.current = null;
+  }, []);
+  useEffect(() => {
+    onBack.current.stack = async () => {
+      const config = backConfigRef.current;
+      backConfigRef.current = null;
+      stopSlide();
+      const slide = CsrSlide.isCalm
+        ? null
+        : CsrSlide.play(frameRef.current, {
+            fromUnit: transUnit.get(),
+            toUnit: transUnitRange[0],
+            duration: config?.duration ?? STACK_TRANSITION_DURATION_MS,
+            keep: true,
+          });
+      if (!slide) {
+        await transUnit.start(transUnitRange[0], config ? { config } : undefined);
+        return;
+      }
+      //? Kept at its end until the page under takes the screen, which cancels it; ended, the page would snap back.
+      slideRef.current = slide;
+      await slide.finished;
+      await transUnit.start(transUnitRange[0], { immediate: true });
+    };
+  }, [transUnitRange]);
+  useLayoutEffect(() => {
+    stopSlide();
+    if (history.current.type !== "forward" || CsrSlide.isCalm) {
+      void transUnit.start(transUnitRange[1], { immediate: true });
+      return;
+    }
+    const slide = CsrSlide.play(frameRef.current, {
+      fromUnit: transUnitRange[0],
+      toUnit: transUnitRange[1],
+      duration: STACK_TRANSITION_DURATION_MS,
+    });
+    if (slide) {
+      slideRef.current = slide;
+      void transUnit.start(transUnitRange[1], { immediate: true });
+      return;
+    }
+    void transUnit.start(transUnitRange[0], { immediate: true });
+    void transUnit.start(transUnitRange[1], {
+      config: { duration: STACK_TRANSITION_DURATION_MS, easing: stackEasing },
+    });
+  }, [location.entryId ?? location.pathname]);
+  return stopSlide;
+};
+
 const useStackTrans = (routeState: RouteState): UseCsrTransition => {
-  const { clientWidth, clientHeight, location, prevLocation, onBack, pageContentRef } = routeState;
+  const { clientWidth, clientHeight, location, prevLocation, pageContentRef } = routeState;
   const spring = useSlideSpring(clientWidth);
   const { transUnit, transUnitRange, transProgress } = spring;
   const initThreshold = useMemo(() => Math.floor(clientWidth), [clientWidth]);
@@ -388,15 +449,13 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
     pageContent.style.touchAction = scrollLock.touchAction;
     scrollLockRef.current = null;
   }, [pageContentRef]);
-  useEffect(() => {
-    onBack.current.stack = async () => {
-      const config = stackBackConfigRef.current;
-      stackBackConfigRef.current = null;
-      await transUnit.start(transUnitRange[0], config ? { config } : undefined);
-    };
-  }, [transUnitRange]);
+  const stopSlide = useStackSlide(
+    spring,
+    routeState,
+    { width: clientWidth, height: clientHeight, pageState, prevPageState },
+    stackBackConfigRef,
+  );
   useEffect(() => unlockPageScroll, [unlockPageScroll]);
-  usePlayOnForward(spring, routeState, { duration: STACK_TRANSITION_DURATION_MS, easing: stackEasing });
 
   const pageBind = useDrag(
     ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel }) => {
@@ -421,6 +480,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         }
         if (absX < GESTURE_INTENT_THRESHOLD || absX <= absY * GESTURE_AXIS_LOCK_RATIO) return;
         gestureIntent.current = "gesture";
+        stopSlide();
         lockPageScroll();
         void Device.getDevice().hideKeyboard();
       }
@@ -443,6 +503,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         clientRouter.back();
         void clientRouter.navigation().catch(() => {
           stackBackConfigRef.current = null;
+          stopSlide();
           void transUnit.start(transUnitRange[1], { config: { duration } });
         });
       }
