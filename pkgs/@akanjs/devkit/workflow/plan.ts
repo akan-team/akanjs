@@ -20,6 +20,7 @@ import type {
   WorkflowSurfaceMode,
 } from "./types";
 import { addFieldUiPolicyForType } from "./uiPolicy";
+import { isUiSurface, resolveUiTarget, uiFileExists } from "./uiTarget";
 import { workflowStatus } from "./utils";
 
 const surfaceModes = new Set<WorkflowSurfaceMode>(["infer", "include", "skip"]);
@@ -355,19 +356,25 @@ const createWorkflowPlanRecommendations = (
   ...(spec.name === "add-field" ? createAddFieldRecommendations(inputs) : []),
 ];
 
+const isBlankInput = (value: unknown) => value === undefined || value === null || value === "";
+
 export const createWorkflowPlan = (spec: WorkflowSpec, rawInputs: Record<string, unknown>): WorkflowPlan => {
   const inputs: Record<string, WorkflowInputValue> = {};
   const diagnostics: WorkflowDiagnostic[] = [];
+  const untaken = Object.keys(rawInputs).filter((name) => !(name in spec.inputs) && !isBlankInput(rawInputs[name]));
+  const untakenNote = untaken.length
+    ? ` It does not take ${untaken.map((name) => `"${name}"`).join(", ")}, which ${untaken.length === 1 ? "was" : "were"} passed.`
+    : "";
 
   for (const [name, inputSpec] of Object.entries(spec.inputs)) {
     const rawValue = rawInputs[name];
-    if (rawValue === undefined || rawValue === null || rawValue === "") {
+    if (isBlankInput(rawValue)) {
       if (inputSpec.required) {
         diagnostics.push({
           severity: "error",
           code: "workflow-input-missing",
           input: name,
-          message: `Workflow ${spec.name} requires input "${name}".`,
+          message: `Workflow ${spec.name} requires input "${name}" (--${name} on the command line).${untakenNote}`,
         });
       }
       continue;
@@ -572,11 +579,32 @@ export const workflowTargetDiagnostics = async (
   const module = planString(inputs, "module");
   const moduleSpec: WorkflowInputSpec | undefined = spec.inputs.module;
   if (!module || !moduleSpec?.mustExist) return [];
-  const refused =
-    (await moduleMissing(workspace, sys, module)) ??
-    (await moduleNotDatabase(sys, spec, module)) ??
-    (await fieldTypeUnknown(sys, spec, module, planString(inputs, "type")));
-  return refused ? [refused] : [];
+  const surface = planString(inputs, "surface");
+  const ui = spec.name === "create-ui" ? await resolveUiTarget(sys, module, surface) : null;
+  if (ui?.diagnostic) return [ui.diagnostic];
+  const refused = ui?.module
+    ? null
+    : ((await moduleMissing(workspace, sys, module)) ??
+      (await moduleNotDatabase(sys, spec, module)) ??
+      (await fieldTypeUnknown(sys, spec, module, planString(inputs, "type"))));
+  if (refused) return [refused];
+  const exists = ui && isUiSurface(surface) ? await uiFileExists(sys, ui.module ?? module, surface) : null;
+  return exists ? [exists] : [];
+};
+
+const inspectCreateUiPlan = async (workspace: Workspace, plan: WorkflowPlan): Promise<WorkflowPlan> => {
+  const sys = await resolveWorkflowSys(workspace, planString(plan.inputs, "app")).catch(() => null);
+  const module = planString(plan.inputs, "module");
+  const surface = planString(plan.inputs, "surface");
+  if (!sys || !module || !isUiSurface(surface)) return plan;
+  const resolved = (await resolveUiTarget(sys, module, surface)).module ?? module;
+  const target = `${getSysRoot(sys)}/${moduleSourcePaths(resolved)[surface]}`;
+  return {
+    ...plan,
+    predictedChanges: plan.predictedChanges.map((change) =>
+      change.target.endsWith(".<Surface>.tsx") ? { ...change, target } : change,
+    ),
+  };
 };
 
 const inspectPlanTarget = async (
@@ -593,6 +621,7 @@ const inspectPlanTarget = async (
       recommendations: [],
     };
   if (plan.workflow === "rename-key") return await inspectRenameKeyPlan(workspace, plan);
+  if (plan.workflow === "create-ui") return await inspectCreateUiPlan(workspace, plan);
   if (plan.workflow !== "add-mutation" && plan.workflow !== "create-interaction") return plan;
   const sys = await resolveWorkflowSys(workspace, planString(plan.inputs, "app")).catch(() => null);
   if (!sys) return plan;

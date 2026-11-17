@@ -80,6 +80,7 @@ export const libFacetRootAllowedFiles = new Set([
   "srv.ts",
   "st.ts",
   "useClient.ts",
+  "usePage.ts",
   "useServer.ts",
 ]);
 

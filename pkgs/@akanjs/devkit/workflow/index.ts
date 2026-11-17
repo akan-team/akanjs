@@ -14,4 +14,5 @@ export * from "./rolloutGate";
 export * from "./source";
 export * from "./types";
 export * from "./uiPolicy";
+export * from "./uiTarget";
 export * from "./utils";

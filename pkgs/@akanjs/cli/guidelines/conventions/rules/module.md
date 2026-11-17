@@ -70,9 +70,10 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 - **Numbers are `Int` or `Float`, never `Number`.** `field(Number)` / `.body("x", Number)` fail to typecheck.
 - **Array fields use `field([T])`** — `tags: field([String])`, `images: field([File])`.
 - **Reading a secret field needs an explicit select, and the two call sites spell it differently.**
-  `field(...).secret()` values are stripped from query results by default. The model facade takes the projection
-  **bare** — `this.userModel.pickById(id, { passwordHash: true })`, likewise `pickOne` / `find` / `findOne` /
-  `findById`. A generated filter accessor takes it **inside the option object** —
+  `field(...).secret()` values are stripped from query results by default. The model facade (`this.User` in the
+  Model class, `this.userModel.User` from a service) takes the projection **bare** —
+  `this.User.pickById(id, { passwordHash: true })`, likewise `pickOne` / `find` / `findOne` / `findById`. A generated
+  filter accessor takes it **inside the option object** —
   `this.userModel.findByAccountId(accountId, statuses, { select: { passwordHash: true } })`. Handing `{ select: … }`
   to the facade projects a field named `select`, which no model has, and throws `Unknown document field path`.
 - **`cascade` names a direction, and the wrong one is a data loss** — `removeRef` on the relation the owner holds,

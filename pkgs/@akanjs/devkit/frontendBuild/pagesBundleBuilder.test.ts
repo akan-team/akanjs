@@ -95,3 +95,87 @@ describe("PagesBundleBuilder.transformServerUseClientFetchSource", () => {
     }
   });
 });
+
+describe("PagesBundleBuilder on the generated layout with lib/usePage.ts", () => {
+  const emptyBuild = "const fetchProto = FetchClient.build<typeof signal>({}, {});";
+  const generatedPage = (fetchProtoLine = emptyBuild) =>
+    [
+      'import { makePageProto, registerClientRuntime } from "akanjs/client";',
+      'import { FetchClient } from "akanjs/fetch";',
+      'import { getAllDictionary } from "./dict" with { type: "macro" };',
+      'import type * as dict from "./dict";',
+      'import type * as signal from "./sig";',
+      "",
+      'const dictionary = process.env.AKAN_PUBLIC_RENDER_ENV === "csr" ? getAllDictionary() : {};',
+      "const pageProto = makePageProto<typeof dict>(dictionary);",
+      fetchProtoLine,
+      'export const runtime = registerClientRuntime({ ...pageProto, ...fetchProto }, { scope: "app" });',
+      "",
+      "export const { msg, Err, usePage, sig, fetch } = runtime;",
+      "",
+    ].join("\n");
+  const generatedUseClientOnPage = (lines: { importLine?: string; signalArg?: string } = {}) =>
+    [
+      'import { FetchClient } from "akanjs/fetch";',
+      'import * as cnst from "./cnst";',
+      'import { fetch as pageFetch, sig as pageSig } from "./usePage";',
+      lines.importLine ?? macroImport,
+      'import type * as signal from "./sig";',
+      "",
+      `Object.assign(pageSig, FetchClient.build<typeof signal>(cnst, ${lines.signalArg ?? "getSerializedSignal()"}, { base: pageFetch }).sig);`,
+      "",
+      "export const fetch = pageFetch;",
+      "export const sig = pageSig;",
+      'export { Err, msg, runtime, usePage } from "./usePage";',
+      "",
+    ].join("\n");
+
+  test("builds usePage.ts's client onto the live server fetch, so a server render calls what it calls today", () => {
+    expect(PagesBundleBuilder.transformServerPageFetchSource(generatedPage())).toBe(
+      `${serverImport}\n${generatedPage("const fetchProto = FetchClient.build<typeof signal>({}, {}, { base: serverFetch });")}`,
+    );
+  });
+
+  test("applies the server fetch's own signal in useClient.ts instead of the signal macro", () => {
+    expect(transform(generatedUseClientOnPage())).toBe(
+      generatedUseClientOnPage({ importLine: serverImport, signalArg: "serverFetch.serializedSignal" }),
+    );
+  });
+
+  test("leaves a usePage.ts or useClient.ts it does not recognise unchanged", () => {
+    const withDescriptors = generatedPage("const fetchProto = FetchClient.build<typeof signal>(cnst, {});");
+    expect(PagesBundleBuilder.transformServerPageFetchSource(withDescriptors)).toBe(withDescriptors);
+    const commented = generatedPage(`// ${emptyBuild}`);
+    expect(PagesBundleBuilder.transformServerPageFetchSource(commented)).toBe(commented);
+    const withoutMacroImport = generatedUseClientOnPage({ importLine: 'import { getSerializedSignal } from "./sig";' });
+    expect(transform(withoutMacroImport)).toBe(withoutMacroImport);
+  });
+});
+
+describe("PagesBundleBuilder on a generated lib/__client fetch piece", () => {
+  const pieceMacroImport = `import { getSerializedSignalOf } from "../sig" with { type: "macro" };`;
+  const generatedPiece = (importLine = pieceMacroImport) =>
+    [
+      'import { FetchClient } from "akanjs/fetch";',
+      'import * as cnst from "../cnst";',
+      'import { fetch, sig } from "../usePage";',
+      importLine,
+      'import type * as signal from "../sig";',
+      "",
+      'Object.assign(sig, FetchClient.build<typeof signal>(cnst, getSerializedSignalOf("memo"), { base: fetch }).sig);',
+      "",
+    ].join("\n");
+
+  test("reads the module's descriptors from the live server signal instead of the build-time macro", () => {
+    expect(PagesBundleBuilder.transformServerClientPieceSource(generatedPiece())).toBe(
+      generatedPiece('import { getSerializedSignalOf } from "../sig";'),
+    );
+  });
+
+  test("leaves a piece it does not recognise unchanged", () => {
+    const commented = generatedPiece(`// ${pieceMacroImport}`);
+    expect(PagesBundleBuilder.transformServerClientPieceSource(commented)).toBe(commented);
+    const otherMacro = generatedPiece(`import { getSerializedSignal } from "../sig" with { type: "macro" };`);
+    expect(PagesBundleBuilder.transformServerClientPieceSource(otherMacro)).toBe(otherMacro);
+  });
+});

@@ -51,7 +51,7 @@ const fileTypeOf = (filename: string) =>
 
 type ModuleKind = "database" | "service" | "scalar";
 
-const internalLibDirs = new Set(["__lib", "__scalar"]);
+const internalLibDirs = new Set(["__lib", "__scalar", "__client"]);
 const moduleNonUiFileTypes = {
   database: new Set(["constant", "dictionary", "document", "service", "signal", "store"]),
   service: new Set(["dictionary", "service", "signal", "store"]),

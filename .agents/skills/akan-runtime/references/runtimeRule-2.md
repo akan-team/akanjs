@@ -36,7 +36,9 @@ normalized to `info` with one warning.
   what the reporter sends: an unawaited send that fails returns as an unhandled rejection. `option.setClientReport({
   sampleRate })`, off unless set, adds what pages hit in the browser as a `BrowserError` through
   `/_akan/client-report`: a report is taken only with the signed id the page's `Server-Timing` gave that page view,
-  for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. With
+  for 30 to 60 minutes and five times, and its text is cleaned of query strings, email addresses and credentials. A
+  native app's bundled page, from another origin, gets its id by a `GET` from a shell origin (`app://localhost`,
+  `https://app.localhost`), counted per address and sampled like a page view, and its reports carry `shell`. With
   more than one gateway or pod, set `AKAN_CLIENT_REPORT_KEY` (a secret, 32+ characters, the same on each) so each takes the others' ids.
 - **Not everything carries context, by design.** The primitive query fast path (an unauthenticated GET of a
   primitive with no args, guards or middlewares) skips it; the schedule adaptor's own `started/finished/error`

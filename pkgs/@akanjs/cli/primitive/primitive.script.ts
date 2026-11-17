@@ -43,9 +43,11 @@ import {
   parseValues,
   plainNameProblem,
   type RenameKeyInput,
+  resolveUiTarget,
   type ScaffoldFile,
   sourceFile,
   type UiSurface,
+  uiFileExists,
   validationCommandsForTarget,
   viaBuilderParameterName,
   type WorkflowDiagnostic,
@@ -72,9 +74,14 @@ export class PrimitiveScript extends script("primitive", [ModuleScript]) {
         "create-ui",
         compactDiagnostics([!sys && PrimitiveScript.#targetMissing(), moduleProblem]),
       );
-    const mod = ModuleExecutor.from(sys, input.module);
+    const target = await resolveUiTarget(sys, input.module, input.surface);
+    const refused = target.diagnostic ?? (await uiFileExists(sys, target.module ?? input.module, input.surface));
+    if (refused) return PrimitiveScript.#refuse("create-ui", [refused]);
+    const mod = ModuleExecutor.from(sys, target.module ?? input.module);
     if (input.surface === "view") return await this.moduleScript.createView(mod);
     if (input.surface === "unit") return await this.moduleScript.createUnit(mod);
+    if (input.surface === "zone") return await this.moduleScript.createZone(mod);
+    if (input.surface === "util") return await this.moduleScript.createUtil(mod);
     return await this.moduleScript.createTemplate(mod);
   }
 

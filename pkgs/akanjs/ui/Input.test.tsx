@@ -1,6 +1,6 @@
 import "../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
-import { act, createRef } from "react";
+import { act, createRef, useState } from "react";
 import { mount, setTestEnv } from "./testHelpers.fixture";
 
 let Input: typeof import("./Input").Input;
@@ -10,6 +10,29 @@ beforeAll(async () => {
   const { registerClientRuntime } = await import("akanjs/client");
   registerClientRuntime({ usePage: () => ({ path: "/", lang: "en", l: (key: string) => key }) } as never);
   ({ Input } = await import("./Input"));
+});
+
+describe("Input", () => {
+  test("drops its invalid message once the value is emptied from outside", () => {
+    let empty = () => undefined;
+    const Form = () => {
+      const [value, setValue] = useState("a");
+      empty = () => {
+        setValue("");
+      };
+      return <Input value={value} validate={(text) => text.length >= 2 || "too short"} />;
+    };
+    const { container, unmount } = mount(<Form />);
+    const input = container.querySelector("input") as HTMLInputElement;
+    act(() => {
+      input.focus();
+      input.blur();
+    });
+    expect(container.textContent).toContain("too short");
+    act(() => empty());
+    expect(container.textContent).not.toContain("too short");
+    unmount();
+  });
 });
 
 describe("Input.Password", () => {

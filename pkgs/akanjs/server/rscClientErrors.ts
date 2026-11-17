@@ -1,5 +1,5 @@
+import type { RscClientErrorSender } from "../client/rscClientErrorSender";
 import type { BrowserErrorKind } from "../signal/browserError";
-import type { RscClientErrorSender } from "./rscClientErrorSender";
 
 export type PageErrorReport = (error: unknown, kind: BrowserErrorKind) => void;
 export const pageErrorReporter = (routeIdOf: () => string | null): PageErrorReport | null => {
@@ -12,7 +12,9 @@ export const pageErrorReporter = (routeIdOf: () => string | null): PageErrorRepo
     //? A route control's digest starts with `AKAN_`: a redirect or a not-found is no error, so it never loads the sender.
     if (String((error as { digest?: unknown } | null)?.digest).startsWith("AKAN_")) return;
     const routeId = routeIdOf();
-    sender ??= import("./rscClientErrorSender").then(({ RscClientErrorSender }) => new RscClientErrorSender(requestId));
+    sender ??= import("../client/rscClientErrorSender").then(
+      ({ RscClientErrorSender }) => new RscClientErrorSender(requestId),
+    );
     sender.then(
       (loaded) => loaded.send(error, kind, routeId),
       () => null,

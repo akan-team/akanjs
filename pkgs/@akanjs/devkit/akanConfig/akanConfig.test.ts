@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { AppExecutor, WorkspaceExecutor } from "../executors";
 import { NativeConfig } from "../mobile/nativeConfig";
 import type { PackageJson } from "../workspace/types";
+import { AkanBin } from "./akanBin";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
 import { BUN_IMAGE_PIN, DEFAULT_DOCKER_IMAGE } from "./dockerImage";
 import type { LibConfigInput } from "./types";
@@ -172,6 +173,16 @@ describe("AkanAppConfig", () => {
     expect(locked.indexOf("--frozen-lockfile")).toBeLessThan(locked.indexOf("echo after"));
     expect(unlocked).toContain("COPY ./package.json ./package.json\nRUN bun install --production\n");
     expect(unlocked).not.toContain("bun.lock");
+  });
+
+  test("a PATH the build hands in lands after the TARGETARCH it reads and the files it points at", () => {
+    const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
+    const carrying = config.dockerfileFor("main", { env: { PATH: AkanBin.imagePath("bin") } });
+
+    expect(carrying).toContain("ENV PATH=/workspace/bin/$TARGETARCH:$PATH\n");
+    expect(carrying.indexOf("ARG TARGETARCH")).toBeLessThan(carrying.indexOf("ENV PATH="));
+    expect(carrying.indexOf("COPY . .")).toBeLessThan(carrying.indexOf("ENV PATH="));
+    expect(config.dockerfileFor("main")).not.toContain("ENV PATH=");
   });
 
   test.skipIf(process.platform === "win32")(

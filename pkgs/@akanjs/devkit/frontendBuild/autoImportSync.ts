@@ -232,8 +232,9 @@ export class AutoImportSync {
     const parts = rel.split(path.sep).filter(Boolean);
     const [scope, project, facet] = parts;
     if ((scope !== "apps" && scope !== "libs") || !project || !facet) return null;
-    //* `lib/__lib/` is rewritten by every `akan sync`, so an edit there is discarded; `lib/__scalar/` is real source.
-    if (facet === "lib" && parts[3] === "__lib") return null;
+    //* `lib/__lib/` and `lib/__client/` are rewritten by every `akan sync`, so an edit there is discarded;
+    //* `lib/__scalar/` is real source.
+    if (facet === "lib" && (parts[3] === "__lib" || parts[3] === "__client")) return null;
     const role = roleFor(facet, base);
     if (!role) return null;
 

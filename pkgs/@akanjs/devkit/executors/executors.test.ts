@@ -4,6 +4,7 @@ import { lstat, mkdir, readFile, readlink, rm, stat, utimes, writeFile } from "n
 import path from "node:path";
 import { AkanAppConfig } from "../akanConfig";
 import { DevGeneratedIndexSync } from "../frontendBuild/devGeneratedIndexSync";
+import { RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import {
   createTempApp,
   createTempLib,
@@ -629,6 +630,7 @@ describe("Workspace and app executor environment contracts", () => {
       "cache/cssCandidates.json",
       "cache/fontCache.json",
       "cache/fonts/Assistant-400-normal-abc.woff2",
+      path.relative(".akan", RouteRuntimeReport.file),
     ];
     const removed = [
       "artifact/client/app.js",

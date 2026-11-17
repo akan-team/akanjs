@@ -110,8 +110,7 @@ export default function ViewEditModal({
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => void };
   const storeSel = st.sel as unknown as <Ret, Val>(selector: (state: { [key: string]: Val }) => Ret) => Ret;
   const { refName, sliceName } = slice;
-  const modelName = refName;
-  const names = modelNames(modelName);
+  const names = modelNames(refName);
   const model = storeUse[names.model]() as { id: string; [key: string]: any } | null;
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
@@ -171,7 +170,7 @@ export default function ViewEditModal({
         modelModal === "view" ? (
           canUpdate ? (
             <EditAction
-              modelName={modelName}
+              modelName={refName}
               label={editLabel ?? l("base.edit")}
               closeView={closeView}
               onAct={() => {
@@ -181,7 +180,7 @@ export default function ViewEditModal({
           ) : null
         ) : (
           <SaveAction
-            modelName={modelName}
+            modelName={refName}
             label={saveLabel ?? l("base.save")}
             closeView={closeView}
             isBlocked={isUploading}
@@ -194,7 +193,7 @@ export default function ViewEditModal({
     >
       {modelModal === "view" ? (
         <>
-          {canUpdate ? null : <CloseViewTool modelName={modelName} closeView={closeView} />}
+          {canUpdate ? null : <CloseViewTool modelName={refName} closeView={closeView} />}
           <View className={viewClassName} model={model} modelLoading={modelLoading} render={renderView} />
         </>
       ) : modelModal === "edit" ? (

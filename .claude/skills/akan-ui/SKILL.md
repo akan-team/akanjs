@@ -49,11 +49,8 @@ the literal string `"false"`.
 
 ## Classes
 
-Never hand-order Tailwind classes; the formatter sorts them and its output is correct. Stay inside the
-semantic token vocabulary — `bg-primary`, `text-foreground/70` — because a raw palette class (`bg-blue-500`),
-an arbitrary colour (`bg-[#3b82f6]`), a daisyUI legacy class, and a colour literal in `style={{…}}` all
-render no CSS and fail lint. Reach for `cn` only for a conditional or to merge an incoming `className`, and
-merge the caller last.
+Class order and the colour vocabulary are the `style` rule. Reach for `cn` only for a conditional or to merge an
+incoming `className`, and merge the caller last.
 
 ## Forms
 
@@ -69,7 +66,7 @@ Full detail: `get_guideline` with `ssrRule`, `componentRule`, `cssRule`, `recipe
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
 - `.agents/skills/akan-ui/references/ssrRule.md` — Purpose · When A Client Boundary Is Earned · Quality Rules · Lint Rules Behind The Boundary · Implementation Playbook · …
-- `.agents/skills/akan-ui/references/cssRule.md` — Purpose · Ownership · Color Vocabulary — What Lint Refuses · Recipe Layer · Customization Decision (where a design delta goes) · …
+- `.agents/skills/akan-ui/references/cssRule.md` — Purpose · Ownership · Color Vocabulary · Recipe Layer · Customization Decision (where a design delta goes) · …
 - `.agents/skills/akan-ui/references/componentRule.md` — Purpose · Ownership · Current Akan Patterns · Customizing Framework Components (Slot Overrides) · Codegen Rules · …
 - `.agents/skills/akan-ui/references/recipeRule.md` — Purpose · Ownership · Consuming Recipes · Recipe vs Component vs Constant — The Gate · Authoring Recipes · …
 - `.agents/skills/akan-ui/references/modelTemplate.md` — Purpose · Ownership · Current Akan Patterns · Codegen Rules · Review Checklist

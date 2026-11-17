@@ -1,8 +1,9 @@
 "use client";
 import type { PageActivity } from "akanjs/client";
-import { isQueryEqual } from "akanjs/common";
+import { isQueryEqual, lowerlize } from "akanjs/common";
+import type { ServerInit } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import type { sliceNamesOf } from "../sliceNamesOf";
+import { sliceNamesOf } from "../sliceNamesOf";
 
 type SliceNames = ReturnType<typeof sliceNamesOf>["namesOfSlice"];
 
@@ -47,11 +48,16 @@ export class SliceClaim {
   #hidden: boolean = false;
   #activity: PageActivity = "current";
 
+  readonly sliceName: string;
+  readonly names: SliceNames;
+
   constructor(
-    readonly sliceName: string,
-    readonly names: SliceNames,
+    init: Pick<ServerInit<string, unknown>, "refName" | "sliceName">,
     readonly pageKey: string | undefined,
-  ) {}
+  ) {
+    this.sliceName = init.sliceName;
+    this.names = sliceNamesOf(lowerlize(init.refName), init.sliceName).namesOfSlice;
+  }
 
   seeded(queryArgs: object[]) {
     this.#hold(queryArgs);

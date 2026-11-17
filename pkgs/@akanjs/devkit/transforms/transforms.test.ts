@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import fs from "node:fs";
+import { realpath } from "node:fs/promises";
 import path from "node:path";
 import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
 import { tempDirs, writeText as write } from "../test/testHelpers";
@@ -448,6 +449,81 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     );
   });
 
+  test("gives a module importing only usePage, msg or Err from a client barrel lib/usePage, not the descriptors and stores", async () => {
+    const root = await makeTempRoot();
+    await write(
+      path.join(root, "apps/demo/client.ts"),
+      [
+        'export * as cnst from "./lib/cnst";',
+        'export { msg, Err, usePage } from "./lib/usePage";',
+        'export { fetch, sig } from "./lib/useClient";',
+        'export { st, RootStore } from "./lib/st";',
+        'export { Memo } from "./lib/memo";',
+        "",
+      ].join("\n"),
+    );
+    await write(path.join(root, "apps/demo/lib/cnst.ts"), "export const Sample = 1;\n");
+    await write(path.join(root, "apps/demo/lib/usePage.ts"), "export const { msg, Err, usePage, fetch, sig } = {};\n");
+    await write(
+      path.join(root, "apps/demo/lib/useClient.ts"),
+      [
+        'import { fetch as pageFetch, sig as pageSig } from "./usePage";',
+        "export const fetch = pageFetch;",
+        "export const sig = pageSig;",
+        'export { Err, msg, usePage } from "./usePage";',
+        "",
+      ].join("\n"),
+    );
+    await write(path.join(root, "apps/demo/lib/st.ts"), "export class RootStore {}\nexport const st = {};\n");
+    await write(path.join(root, "apps/demo/lib/memo/index.ts"), "export const Memo = {};\n");
+    const analyzer = new BarrelAnalyzer({
+      resolvePackage: await createTsconfigPackageResolver({
+        workspace: { workspaceRoot: root },
+        getTsConfig: async () => ({ compilerOptions: { paths: { "@apps/*": ["./apps/*"] } } }),
+      } as never),
+    });
+    const rewrite = async (source: string) => await rewriteBarrelImports(source, ["@apps/demo/client"], analyzer);
+
+    expect(await rewrite('import { usePage, msg as toast, Err, type cnst } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/usePage";',
+        'import { type cnst } from "@apps/demo/client";',
+        'import { usePage, msg as toast, Err } from "@apps/demo/lib/usePage";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { fetch, usePage } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/useClient";',
+        'import "@apps/demo/lib/st";',
+        'import { fetch } from "@apps/demo/lib/useClient";',
+        'import { usePage } from "@apps/demo/lib/usePage";',
+        "",
+      ].join("\n"),
+    );
+    expect(await rewrite('import { Memo, usePage } from "@apps/demo/client";\n')).toBe(
+      [
+        'import "@apps/demo/lib/useClient";',
+        'import "@apps/demo/lib/st";',
+        'import { Memo } from "@apps/demo/lib/memo";',
+        'import { usePage } from "@apps/demo/lib/usePage";',
+        "",
+      ].join("\n"),
+    );
+    expect(
+      await rewriteBarrelImports('import { cnst, Memo } from "@apps/demo/client";\n', ["@apps/demo/client"], analyzer, {
+        perModule: true,
+      }),
+    ).toBe(
+      [
+        'import "@apps/demo/lib/usePage";',
+        'import { Memo } from "@apps/demo/lib/memo";',
+        'import * as cnst from "@apps/demo/lib/cnst";',
+        "",
+      ].join("\n"),
+    );
+  });
+
   test("keeps each statement's line count and writes the specifier specifierOf gives a target", async () => {
     const analyzer = fakeAnalyzer([
       ["A", { subpath: "@scope/pkg/leaf", originalName: "A" }],
@@ -547,5 +623,68 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
         `import { System } from ${JSON.stringify(path.join(root, "node_modules/akanjs/ui/System/index.tsx"))};`,
       ].join("\n")}\n`,
     );
+  });
+
+  test("narrows a re-export of barrel names like an import when asked, and leaves a namespace of the barrel whole", async () => {
+    const analyzer = fakeAnalyzer([
+      ["buttonRecipe", { subpath: "akanjs/ui/Recipe/button", originalName: "buttonRecipe" }],
+      ["inputRecipe", { subpath: "akanjs/ui/Recipe/input", originalName: "inputRecipe" }],
+      ["icons", { subpath: "akanjs/ui/Icon/icons", originalName: "icons", namespace: true }],
+    ]);
+    const source = [
+      'export { buttonRecipe, inputRecipe as input, icons, type Recipe } from "akanjs/ui";',
+      'export * as ui from "akanjs/ui";',
+      'export type { Theme } from "akanjs/ui";',
+      "",
+    ].join("\n");
+
+    expect(await rewriteBarrelImports(source, ["akanjs/ui"], analyzer)).toBeNull();
+    expect(await rewriteBarrelImports(source, ["akanjs/ui"], analyzer, { reexports: true })).toBe(
+      [
+        'export { type Recipe } from "akanjs/ui";',
+        'export { buttonRecipe } from "akanjs/ui/Recipe/button";',
+        'export { inputRecipe as input } from "akanjs/ui/Recipe/input";',
+        'export * as icons from "akanjs/ui/Icon/icons";',
+        'export * as ui from "akanjs/ui";',
+        'export type { Theme } from "akanjs/ui";',
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("maps a name the barrel re-exports from a package to the package, when it resolves the same from the workspace", async () => {
+    const root = await realpath(await makeTempRoot());
+    const pkgDir = path.join(root, "pkgs/ui");
+    await write(
+      path.join(root, "node_modules/use-agentic/package.json"),
+      '{ "name": "use-agentic", "main": "index.js" }',
+    );
+    await write(path.join(root, "node_modules/use-agentic/index.js"), "export const useAgent = () => null;\n");
+    await write(path.join(root, "node_modules/use-agentic/other.js"), "export const other = 1;\n");
+    await write(path.join(pkgDir, "node_modules/pinned/package.json"), '{ "name": "pinned", "main": "index.js" }');
+    await write(path.join(pkgDir, "node_modules/pinned/index.js"), "export const usePinned = () => null;\n");
+    await write(
+      path.join(pkgDir, "index.ts"),
+      [
+        'export { useAgent, useAgent as useAgentReference } from "use-agentic";',
+        'export { usePinned } from "pinned";',
+        'export * from "./Link";',
+        "",
+      ].join("\n"),
+    );
+    await write(
+      path.join(pkgDir, "Link.ts"),
+      'export { other } from "use-agentic";\nexport const Link = () => null;\n',
+    );
+    const resolvePackage = async () => ({ pkgName: "akanjs/ui", entryFile: path.join(pkgDir, "index.ts"), pkgDir });
+
+    const narrowed = await new BarrelAnalyzer({ resolvePackage, packageRoot: root }).analyze("akanjs/ui");
+    const whole = await new BarrelAnalyzer({ resolvePackage }).analyze("akanjs/ui");
+
+    expect(narrowed?.get("useAgent")).toEqual({ subpath: "use-agentic", originalName: "useAgent" });
+    expect(narrowed?.get("useAgentReference")).toEqual({ subpath: "use-agentic", originalName: "useAgent" });
+    expect(narrowed?.get("usePinned")).toEqual({ subpath: "akanjs/ui", originalName: "usePinned" });
+    expect(narrowed?.get("other")).toEqual({ subpath: "akanjs/ui/Link", originalName: "other" });
+    expect(whole?.get("useAgent")).toEqual({ subpath: "akanjs/ui", originalName: "useAgent" });
   });
 });

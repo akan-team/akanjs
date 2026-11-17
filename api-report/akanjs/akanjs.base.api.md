@@ -480,6 +480,8 @@ export declare const getWsPrefix: () => string;
 
 export declare const isEnum: (enumRef: Cls) => boolean;
 
+export declare const loadedAfter: (..._modules: unknown[]) => void;
+
 export declare const logo = "\n     _    _                  _     \n    / \\  | | ____ _ _ __    (_)___ \n   / _ \\ | |/ / _' | '_ \\   | / __|\n  / ___ \\|   < (_| | | | |_ | \\__ \\\n /_/   \\_\\_|\\_\\__,_|_| |_(_)/ |___/\n                          |__/      \n? See more details on docs  https://www.akanjs.com/docs\n\u2605 Star Akanjs on GitHub     https://github.com/akan-team/akanjs\n\n";
 
 export declare const normalizeRoutePrefix: (value: null | string | undefined) => string | undefined;

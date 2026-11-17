@@ -23,8 +23,6 @@ are the `auth` rule, queries and cascades the `module` rule. How-to and detail: 
   on. A remote `Err` from `fetch.clone({ origin })` is rethrown as is, never wrapped or re-keyed.
 - **MCP**: `/mcp` publishes every guarded endpoint by default; `mcp: false` is curation, not authorization. Never
   make a refusal message more helpful.
-- **In-page agent**: `<Agent.Chat />` refuses every call until `option.setAgentAccess(<guard>)`; the LLM is
-  `option.setLlm({ apiKey, model, host })`, never env; the surface is what components declare, never a store class.
 - **Errors**: a state-machine precondition throws in `document.ts`, a cross-document rule in `service.ts`, request
   policy in a `signal.ts` guard. Best-effort code returns a sentinel (`null`, `undefined`, `[0, 0]`, `{}`) — no
   Result types. `try/catch` turns an exception into a decision, and a bodyless `catch {}` needs a one-line reason.

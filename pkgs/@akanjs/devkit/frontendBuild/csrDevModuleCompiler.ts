@@ -1,7 +1,10 @@
 import path from "node:path";
+import { SSR_DEV_DIRNAME } from "akanjs/server/hmr/csrDevManifest";
 import type { BunPlugin } from "bun";
+import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { loaderFor } from "../transforms/moduleSyntax";
+import { SignalDescriptors } from "../transforms/signalDescriptors";
 import { CsrDevFactoryCheck } from "./csrDevFactoryCheck";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
@@ -13,6 +16,7 @@ import type {
   CsrDevSharedHelpers,
 } from "./csrDevTypes";
 import { DevBarrelImports } from "./devBarrelImports";
+import { DevRouteRuntime } from "./devRouteRuntime";
 import { RouteClientBuilder } from "./routeClientBuilder";
 
 interface OutputMetafile {
@@ -52,7 +56,8 @@ export interface CsrDevCompileResult {
 //* Every module becomes its own CJS factory: one Bun.build with each import external, so a save re-runs only the
 //* modules it changed instead of reloading one scope-hoisted file.
 export class CsrDevModuleCompiler {
-  static readonly #storeRoot = /(?:^|\/)lib\/st\.ts$/;
+  static readonly #storeRoot = /(?:^|\/)lib\/(?:st|__client\/(?:_st|[^/]+\.st))\.ts$/;
+  static readonly #storeOwners = `/.akan/generated/${SSR_DEV_DIRNAME}/${DevRouteRuntime.ownersModule}.ts`;
   static readonly #macroImport = /\b(?:with|assert)\s*\{\s*type\s*:\s*["']macro["']/;
   static readonly #factoryArgument =
     /(?<![\w$.])(?:require|module|exports|__akanImport|\$RefreshReg\$|\$RefreshSig\$)(?![\w$]|\s*:)/;
@@ -69,6 +74,7 @@ export class CsrDevModuleCompiler {
   readonly #assets = new Set<string>();
   #barrels: Promise<DevBarrelImports | null> | null = null;
   readonly #narrowed = new Map<string, Record<string, CsrDevNarrowedImport>>();
+  readonly #routed = new Map<string, string>();
 
   constructor({ app, paths, resolver, context, outDir, routePrefix }: CsrDevModuleCompilerOptions) {
     this.#app = app;
@@ -216,6 +222,7 @@ export class CsrDevModuleCompiler {
       }
       const sourceMap = sourceMaps.get(`${artifact.path}.map`);
       const narrowed = this.#narrowed.get(file);
+      const routed = this.#routed.get(file);
       modules.push({
         id,
         file,
@@ -226,6 +233,7 @@ export class CsrDevModuleCompiler {
         mtimeMs: mtimes.get(file) ?? CsrDevPaths.mtimeOf(file),
         hash: hashes.get(file) ?? "",
         ...(narrowed && Object.keys(narrowed).length > 0 ? { narrowed } : {}),
+        ...(routed ? { routed } : {}),
       });
     }
     return { modules, misses, tangled };
@@ -279,8 +287,18 @@ export class CsrDevModuleCompiler {
   //? rewrite leaves a free `__akanMeta` that no factory header declares. So a file importing a macro has its macros run
   //? first by a build of its own, with every other import left as written, and the module build reads that output.
   async #evaluateMacros(files: string[]): Promise<Map<string, string>> {
-    const sources = await Promise.all(files.map(async (file) => [file, await Bun.file(file).text()] as const));
+    const { routeRuntime } = this.#context;
+    const sources = await Promise.all(
+      files
+        .filter((file) => !routeRuntime?.redirectOf(file))
+        .map(async (file) => [file, await Bun.file(file).text()] as const),
+    );
     const importers = sources.filter(([, source]) => CsrDevModuleCompiler.#macroImport.test(source));
+    const descriptors = routeRuntime
+      ? new SignalDescriptors(this.#app.workspace.workspaceRoot, routeRuntime.scopes, {
+          onUnread: (reason) => this.#app.logger.warn(`[csr-dev] ${reason}, so their pieces run the macro`),
+        }).plugin
+      : null;
     const outputs = await Promise.all(
       importers.map(async ([file]) => {
         const result = await Bun.build({
@@ -288,6 +306,7 @@ export class CsrDevModuleCompiler {
           target: "browser",
           format: "esm",
           plugins: [
+            ...(descriptors ? [descriptors] : []),
             {
               name: "akan-csr-macro-pass",
               setup: (build) =>
@@ -314,6 +333,14 @@ export class CsrDevModuleCompiler {
       name: "akan-csr-registry",
       setup: (build) => {
         build.onLoad({ filter: /\.css$/ }, () => ({ contents: "", loader: "js" }));
+        const { modelRuntime, routeRuntime } = this.#context;
+        if (modelRuntime !== undefined)
+          build.onLoad({ filter: StoreBootstrap.modelRuntimeFilter }, () => ({ contents: modelRuntime, loader: "ts" }));
+        if (routeRuntime && !vendor)
+          build.onLoad({ filter: /[\\/]lib[\\/](?:useClient|st)\.ts$/ }, (args) => {
+            const contents = routeRuntime.redirectOf(args.path);
+            return contents === null ? undefined : { contents, loader: "ts" };
+          });
         if (macroOutputs.size > 0) {
           const exact = [...macroOutputs.keys()].map((file) => file.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
           build.onLoad({ filter: new RegExp(`^(?:${exact.join("|")})$`) }, (args) => {
@@ -325,9 +352,16 @@ export class CsrDevModuleCompiler {
           build.onLoad({ filter: /\.(?:tsx?|jsx?)$/ }, async (args) => {
             if (CsrDevPaths.isVendorFile(args.path)) return undefined;
             const source = await Bun.file(args.path).text();
-            const rewrite = await (await this.#barrelImports())?.rewrite(source, args.path);
-            if (rewrite) this.#narrowed.set(CsrDevPaths.realpath(args.path), rewrite.narrowed);
-            const narrowed = rewrite?.contents ?? source;
+            const file = CsrDevPaths.realpath(args.path);
+            const routed = routeRuntime?.transform(source, args.path) ?? null;
+            if (routed) this.#routed.set(file, routed.stamp);
+            else this.#routed.delete(file);
+            const input = routed?.contents ?? source;
+            const rewrite = await (await this.#barrelImports())?.rewrite(input, args.path, {
+              perModule: routed?.perModule,
+            });
+            if (rewrite) this.#narrowed.set(file, rewrite.narrowed);
+            const narrowed = rewrite?.contents ?? input;
             const normalized = args.path.endsWith(".tsx")
               ? RouteClientBuilder.normalizeNamedDefaultFunctionForFastRefresh(narrowed, { path: args.path })
               : null;
@@ -359,7 +393,7 @@ export class CsrDevModuleCompiler {
   }
 
   #barrelImports(): Promise<DevBarrelImports | null> {
-    this.#barrels ??= DevBarrelImports.create(this.#app, this.#context.barrelImports ?? []);
+    this.#barrels ??= DevBarrelImports.create(this.#app, this.#context);
     return this.#barrels;
   }
 
@@ -413,8 +447,10 @@ export class CsrDevModuleCompiler {
         );
     }
     // StoreRegistry.build merges into one global store instance, so every importer already holds the updated `st`:
-    // re-running the store root is the whole update, and bubbling past it would only reach the page modules.
-    if (CsrDevModuleCompiler.#storeRoot.test(id)) patched += "\nmodule.hot.accept();";
+    // re-running the store root, or a module's store piece, is the whole update: bubbling past it would only reach the
+    // page modules.
+    if (CsrDevModuleCompiler.#storeRoot.test(id) || id.endsWith(CsrDevModuleCompiler.#storeOwners))
+      patched += "\nmodule.hot.accept();";
     const shared = CsrDevModuleCompiler.#shareHelpers(patched);
     //? What `import.meta` is in a browser module: a `url` and no `env`, so `import.meta.env` checks (jotai, zustand)
     //? branch as they do in the ESM bundle. On the header line, outside the preamble that modules share.

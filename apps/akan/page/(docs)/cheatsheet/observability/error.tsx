@@ -292,6 +292,13 @@ export default page()
           ko: "서버가 붙입니다. 서버가 실행 중인 빌드와, 300자로 자른 요청의 `User-Agent`입니다.",
         }),
       },
+      {
+        name: "shell",
+        desc: l.trans({
+          en: "`ios`, `android`, `macos`, `windows` or `linux` when a native app's page sent it, taken only from a shell origin; `null` for a page a browser opened. The server logs such a report as `Native <shell> page error` instead of `Browser error`.",
+          ko: "네이티브 앱의 페이지가 보냈다면 `ios`, `android`, `macos`, `windows`, `linux` 중 하나이며, shell origin에서 온 것만 받습니다. 브라우저가 연 페이지는 `null`입니다. 서버는 이런 보고를 `Browser error` 대신 `Native <shell> page error`로 기록합니다.",
+        }),
+      },
     ];
 
     const clientSettingItems = [
@@ -1218,6 +1225,35 @@ export const option = new AkanOption<ModulesOptions>()
                 ),
               })}
             </div>
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    A native app's page is bundled into the app and loaded from <code>app://localhost</code> (iOS,
+                    macOS, Linux) or <code>https://app.localhost</code> (Android, Windows), so no page view gave it an
+                    id. At its first <code>window.onerror</code> or unhandled rejection, which covers React's uncaught
+                    and recoverable errors and a failed native plugin call, it asks{" "}
+                    <code>GET /_akan/client-report</code> on the app's server. The server answers only a shell origin,
+                    counts the ask against <code>perAddress</code>, draws it against <code>sampleRate</code> by the
+                    ask's own request id, and returns a signed id that the page uses as a page view's, asking again
+                    after 30 minutes, or after a minute when the ask did not reach the server. A page with no id sends
+                    nothing.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    네이티브 앱의 페이지는 앱에 묶여 <code>app://localhost</code>(iOS, macOS, Linux)나{" "}
+                    <code>https://app.localhost</code>(Android, Windows)에서 열리므로, id를 준 페이지 뷰가 없습니다.
+                    React의 uncaught·recoverable 에러와 실패한 네이티브 plugin 호출을 포함해 첫{" "}
+                    <code>window.onerror</code>나 처리되지 않은 rejection이 나면, 앱 서버의{" "}
+                    <code>GET /_akan/client-report</code>에 id를 요청합니다. 서버는 shell origin에만 답하고, 이 요청을{" "}
+                    <code>perAddress</code>에 세며, 요청 자신의 요청 id로 <code>sampleRate</code> 표본을 뽑아 서명된
+                    id를 돌려줍니다. 페이지는 이를 페이지 뷰의 id처럼 쓰고 30분이 지나면, 요청이 서버에 닿지 못했다면
+                    1분이 지나면 다시 요청합니다. id가 없는 페이지는 아무것도 보내지 않습니다.
+                  </span>
+                ),
+              })}
+            </div>
             <Docs.OptionTable items={clientSettingItems} />
             <div>
               {l.trans({
@@ -1243,17 +1279,17 @@ export const option = new AkanOption<ModulesOptions>()
                   en: (
                     <span>
                       <strong>Reports it did not ask for.</strong> It keeps only a <code>text/plain</code> POST from the
-                      app's own origin, of 8 KB or less, carrying the id the server gave that page view, within the
-                      limits above. It checks in that order, and only a report with such an id counts toward{" "}
-                      <code>perServer</code>. Every request, kept or not, gets the same empty 204.
+                      app's own origin or a native app's shell origin, of 8 KB or less, carrying the id the server gave
+                      that page view, within the limits above. It checks in that order, and only a report with such an
+                      id counts toward <code>perServer</code>. Every request, kept or not, gets the same empty 204.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>요청하지 않은 보고.</strong> 앱 자신의 origin에서 온 8 KB 이하의 <code>text/plain</code>{" "}
-                      POST로, 서버가 그 페이지 뷰에 준 id를 싣고 위 한도 안에 있는 것만 받습니다. 이 순서로 확인하며,
-                      그런 id를 가진 보고만 <code>perServer</code>에 셉니다. 받든 버리든 모든 요청에 같은 빈 204로
-                      답합니다.
+                      <strong>요청하지 않은 보고.</strong> 앱 자신의 origin이나 네이티브 앱의 shell origin에서 온 8 KB
+                      이하의 <code>text/plain</code> POST로, 서버가 그 페이지 뷰에 준 id를 싣고 위 한도 안에 있는 것만
+                      받습니다. 이 순서로 확인하며, 그런 id를 가진 보고만 <code>perServer</code>에 셉니다. 받든 버리든
+                      모든 요청에 같은 빈 204로 답합니다.
                     </span>
                   ),
                 })}

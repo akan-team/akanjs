@@ -5,6 +5,8 @@ import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap, type PackageEntry } from "./barrelAnalyzer";
 import { loaderFor, type NamedItem } from "./moduleSyntax";
+import { ObjectMemberImports } from "./objectMemberImports";
+import type { RouteRuntime } from "./routeRuntime";
 
 export interface BarrelImportsPluginOptions {
   /** Absolute paths whose content is returned unchanged (e.g. node_modules). */
@@ -13,20 +15,35 @@ export interface BarrelImportsPluginOptions {
   pipeAfter?: (source: string, args: { path: string }) => string | Promise<string | null> | null;
   /** Barrels the bundle leaves external: a rewritten import would inline the modules the import map already serves. */
   external?: readonly string[];
-  /** The barrels to rewrite, instead of the app config's `barrelImports`. */
+  /** The barrels to rewrite, instead of the app config's `barrelImports`: a CSR bundle's, which narrows no object or package barrel by member. */
   barrels?: readonly string[];
+  /** What `akanjs/ui/modelRuntime` holds instead of its empty source, in a build loading only the page runtime. */
+  modelRuntime?: string;
+  /** Gives each client module the runtime pieces of the modules it names, in a build loading only the page runtime. */
+  routeRuntime?: RouteRuntime | null;
 }
 
 export const createBarrelImportsPlugin = async (
   app: App,
-  { skipPath = defaultSkipPath, pipeAfter, external = [], barrels: only }: BarrelImportsPluginOptions = {},
+  {
+    skipPath = defaultSkipPath,
+    pipeAfter,
+    external = [],
+    barrels: only,
+    modelRuntime,
+    routeRuntime,
+  }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
   const barrels = [...new Set(only ?? (await app.getConfig()).barrelImports)].filter(
     (barrel) => barrel && !external.includes(barrel),
   );
+  const route = !only;
+  const resolvePackage = await createTsconfigPackageResolver(app);
   const analyzer = new BarrelAnalyzer({
-    resolvePackage: await createTsconfigPackageResolver(app),
+    resolvePackage,
+    ...(route ? { packageRoot: app.workspace.workspaceRoot } : {}),
   });
+  const objects = route ? new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(resolvePackage) }) : null;
 
   return {
     name: "barrel-imports",
@@ -44,14 +61,28 @@ export const createBarrelImportsPlugin = async (
           const file = Bun.file(realPath);
           //? A build's `files` entry has no copy on disk: Bun loads it itself.
           if (!(await file.exists())) return undefined;
+          if (modelRuntime !== undefined && StoreBootstrap.modelRuntimeFilter.test(realPath))
+            return { contents: modelRuntime, loader };
+          const whole = routeRuntime?.redirectOf(realPath);
+          if (whole) return { contents: whole, loader };
           let source = await file.text();
           if (skipPath(realPath)) return { contents: source, loader };
 
           // Bun's macro evaluator races when a rewritten module holds `with { type: "macro" }` imports while another
           // macro host evaluates (a macro identifier ends up undefined), so macro hosts keep their barrel imports.
-          if (!MACRO_ATTR_RE.test(source) && barrels.length > 0) {
-            const rewritten = await rewriteBarrelImports(source, barrels, analyzer);
+          if (!MACRO_ATTR_RE.test(source)) {
+            const routed = routeRuntime?.transform(source, realPath);
+            if (routed) source = routed.source;
+            const rewritten =
+              barrels.length > 0
+                ? await rewriteBarrelImports(source, barrels, analyzer, {
+                    perModule: routed?.perModule,
+                    reexports: route,
+                  })
+                : null;
             if (rewritten !== null) source = rewritten;
+            const narrowed = await objects?.rewrite(source, realPath);
+            if (narrowed?.contents) source = narrowed.contents;
           }
 
           if (pipeAfter) {
@@ -240,6 +271,10 @@ export interface RewriteBarrelImportsOptions {
   specifierOf?: (subpath: string) => string;
   /** Called for each import of a listed barrel with the value names whose rewrite reads its export map. */
   onImport?: (barrel: string, names: string[]) => void;
+  /** The file names its runtime per module, so a client barrel stands for the page runtime alone. */
+  perModule?: boolean;
+  /** Rewrites `export { a, b as c } from "<barrel>"` as it rewrites an import of the same names. */
+  reexports?: boolean;
 }
 
 export const workspaceBarrels = (barrels: readonly string[]): string[] =>
@@ -249,11 +284,17 @@ export const rewriteBarrelImports = async (
   source: string,
   barrels: string[],
   analyzer: BarrelAnalyzer,
-  { keepLines = false, specifierOf = (subpath: string) => subpath, onImport }: RewriteBarrelImportsOptions = {},
+  {
+    keepLines = false,
+    specifierOf = (subpath: string) => subpath,
+    onImport,
+    perModule = false,
+    reexports = false,
+  }: RewriteBarrelImportsOptions = {},
 ): Promise<string | null> => {
   // Sound pre-filter before the costly parse: a static import cannot name a specifier absent from the text.
   if (!barrels.some((barrel) => source.includes(barrel))) return null;
-  const statements = findImportStatements(source);
+  const statements = findImportStatements(source, reexports);
   if (statements.length === 0) return null;
 
   // Walk import statements in reverse so replacements don't shift earlier ranges.
@@ -267,7 +308,7 @@ export const rewriteBarrelImports = async (
     if (names.length > 0) onImport?.(stmt.specifier, names);
     const map = await analyzer.analyze(stmt.specifier);
     if (!map || map.size === 0) continue;
-    const lines = rewriteSingleStatement(stmt, map, specifierOf);
+    const lines = rewriteSingleStatement(stmt, map, specifierOf, perModule);
     if (lines === null) continue;
     const replacement = keepLines
       ? `${lines.join(" ")}${"\n".repeat(source.slice(stmt.start, stmt.end).split("\n").length - 1)}`
@@ -286,13 +327,14 @@ interface ParsedClause {
 }
 
 interface ImportStatement {
+  kind: "import" | "export";
   start: number;
   end: number;
   clause: ParsedClause | null;
   specifier: string;
 }
 
-const findImportStatements = (source: string): ImportStatement[] => {
+const findImportStatements = (source: string, reexports: boolean): ImportStatement[] => {
   const statements: ImportStatement[] = [];
   // `setParentNodes: false` holds only while nothing reads `node.parent` and positions use `getStart(sourceFile)`.
   const sourceFile = ts.createSourceFile(
@@ -303,11 +345,25 @@ const findImportStatements = (source: string): ImportStatement[] => {
     ts.ScriptKind.TSX,
   );
   for (const statement of sourceFile.statements) {
+    if (reexports && ts.isExportDeclaration(statement)) {
+      const exportClause = statement.exportClause;
+      if (!statement.moduleSpecifier || !ts.isStringLiteral(statement.moduleSpecifier)) continue;
+      if (!exportClause || !ts.isNamedExports(exportClause)) continue;
+      statements.push({
+        kind: "export",
+        start: statement.getStart(sourceFile),
+        end: statement.end,
+        clause: exportClauseOf(statement.isTypeOnly, exportClause),
+        specifier: statement.moduleSpecifier.text,
+      });
+      continue;
+    }
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
     const importClause = statement.importClause;
     if (!importClause) continue;
     statements.push({
+      kind: "import",
       start: statement.getStart(sourceFile),
       end: statement.end,
       clause: clauseOf(importClause),
@@ -315,6 +371,16 @@ const findImportStatements = (source: string): ImportStatement[] => {
     });
   }
   return statements;
+};
+
+const exportClauseOf = (typeOnly: boolean, exportClause: ts.NamedExports): ParsedClause | null => {
+  const named: NamedItem[] = [];
+  for (const element of exportClause.elements) {
+    const imported = element.propertyName ?? element.name;
+    if (!ts.isIdentifier(imported) || !ts.isIdentifier(element.name)) return null;
+    named.push({ imported: imported.text, local: element.name.text, isType: element.isTypeOnly });
+  }
+  return { named, typeOnly };
 };
 
 const clauseOf = (importClause: ts.ImportClause): ParsedClause | null => {
@@ -344,6 +410,7 @@ const rewriteSingleStatement = (
   stmt: ImportStatement,
   map: BarrelExportMap,
   specifierOf: (subpath: string) => string,
+  perModule: boolean,
 ): string[] | null => {
   const { clause } = stmt;
   if (!clause) return null;
@@ -353,6 +420,7 @@ const rewriteSingleStatement = (
   if (clause.typeOnly && !clause.defaultImport) return null;
   if (!clause.named?.length) return null;
 
+  const { kind } = stmt;
   const remaining: NamedItem[] = [];
   const rewrites = new Map<string, NamedItem[]>();
   const namespaceLines: string[] = [];
@@ -367,7 +435,7 @@ const rewriteSingleStatement = (
       continue;
     }
     if (target.namespace) {
-      namespaceLines.push(`import * as ${item.local} from ${JSON.stringify(specifierOf(target.subpath))};`);
+      namespaceLines.push(`${kind} * as ${item.local} from ${JSON.stringify(specifierOf(target.subpath))};`);
       continue;
     }
     const list = rewrites.get(target.subpath) ?? [];
@@ -378,7 +446,7 @@ const rewriteSingleStatement = (
   if (rewrites.size === 0 && namespaceLines.length === 0) return null;
 
   //? An app or lib client barrel's import-time side effects are its client runtime and store, not its module UI.
-  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map) ?? []).map(
+  const lines = (StoreBootstrap.ofClientBarrel(stmt.specifier, map, valueNamesOf(clause), { perModule }) ?? []).map(
     (specifier) => `import ${JSON.stringify(specifierOf(specifier))};`,
   );
 
@@ -386,11 +454,11 @@ const rewriteSingleStatement = (
     const parts: string[] = [];
     if (clause.defaultImport) parts.push(clause.defaultImport);
     if (remaining.length > 0) parts.push(`{ ${remaining.map(serializeNamedItem).join(", ")} }`);
-    lines.push(`import ${parts.join(", ")} from "${stmt.specifier}";`);
+    lines.push(`${kind} ${parts.join(", ")} from "${stmt.specifier}";`);
   }
 
   for (const [subpath, items] of rewrites) {
-    lines.push(`import { ${items.map(serializeNamedItem).join(", ")} } from ${JSON.stringify(specifierOf(subpath))};`);
+    lines.push(`${kind} { ${items.map(serializeNamedItem).join(", ")} } from ${JSON.stringify(specifierOf(subpath))};`);
   }
   lines.push(...namespaceLines);
 

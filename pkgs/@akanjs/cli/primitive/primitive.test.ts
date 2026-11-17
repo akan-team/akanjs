@@ -39,6 +39,27 @@ describe("PrimitiveScript", () => {
     expect(await filesOf()).toEqual(before);
   });
 
+  test("creates a Zone or Util, for a service module too, and never overwrites a component", async () => {
+    const { workspace, module, app } = track(await createTempModule("post"));
+    await new ModuleRunner().createModuleTemplate(module);
+    const service = ModuleExecutor.from(app, "_camera");
+    await new ModuleRunner().createService(service);
+    const script = CommandContainer.get(PrimitiveScript);
+
+    const zone = await script.createUi(workspace, { app: "demo", module: "camera", surface: "zone" });
+    const util = await script.createUi(workspace, { app: "demo", module: "_camera", surface: "util" });
+    const view = await script.createUi(workspace, { app: "demo", module: "camera", surface: "view" });
+    const again = await script.createUi(workspace, { app: "demo", module: "post", surface: "zone" });
+
+    expect(zone.changedFiles.map((file) => file.path)).toEqual(["apps/demo/lib/_camera/Camera.Zone.tsx"]);
+    expect(util.changedFiles.map((file) => file.path)).toEqual(["apps/demo/lib/_camera/Camera.Util.tsx"]);
+    expect(await service.readFile("Camera.Zone.tsx")).toContain("export const Main");
+    expect([view.status, again.status]).toEqual(["failed", "failed"]);
+    expect(again.diagnostics).toEqual([
+      expect.objectContaining({ code: "workflow-ui-file-exists", message: expect.stringContaining("Post.Zone.tsx") }),
+    ]);
+  });
+
   test("adds a source-limited field to module constant and dictionary files", async () => {
     const { workspace, module } = track(await createTempModule("post"));
     await new ModuleRunner().createModuleTemplate(module);

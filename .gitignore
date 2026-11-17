@@ -92,12 +92,15 @@ apps/*/ios/**/GoogleService-Info.plist
 **/akan.pkg.json
 apps/**/lib/__lib
 libs/**/lib/__lib
+apps/**/lib/__client
+libs/**/lib/__client
 apps/*/lib/cnst.ts
 apps/*/lib/dict.ts
 apps/*/lib/db.ts
 apps/*/lib/srv.ts
 apps/*/lib/st.ts
 apps/*/lib/sig.ts
+apps/*/lib/usePage.ts
 apps/*/lib/useClient.ts
 apps/*/lib/useServer.ts
 apps/*/ui/index.ts
@@ -116,6 +119,7 @@ libs/*/lib/db.ts
 libs/*/lib/srv.ts
 libs/*/lib/st.ts
 libs/*/lib/sig.ts
+libs/*/lib/usePage.ts
 libs/*/lib/useClient.ts
 libs/*/lib/useServer.ts
 libs/*/ui/index.ts

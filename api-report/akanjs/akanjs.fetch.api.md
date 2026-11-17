@@ -147,6 +147,9 @@ export declare class FetchClient {
     static setBridge(bridge: FetchBridge | null): void;
     static get bridge(): FetchBridge | null;
     static get bridged(): boolean;
+    static setModelRuntimes(references: null | {
+        [refName: string]: unknown;
+    }): void;
     static resetSharedClient(): void;
     static useTestClientIps(enabled?: boolean): void;
     get ownSerializedSignal(): {
@@ -342,6 +345,7 @@ export declare const SCRIPT_NONCE_HEADER = "x-akan-script-nonce";
 
 export type ServerEdit<RefName extends string, Model> = {
     refName: RefName;
+    _runtime?: unknown;
 } & {
     [K in `${RefName}Obj`]: GetStateObject<Model>;
 } & {
@@ -352,6 +356,7 @@ export type ServerInit<RefName extends string, Light, Insight = any, QueryArgs =
 
 export type ServerView<RefName extends string, Model> = {
     refName: RefName;
+    _runtime?: unknown;
 } & {
     [K in `${RefName}Obj`]: GetStateObject<Model>;
 } & {
@@ -370,6 +375,7 @@ export type SliceMeta<Sort = unknown> = {
     sliceName: string;
     argLength: number;
     _Sort?: Sort;
+    _runtime?: unknown;
 };
 
 export declare class StreamedRead {

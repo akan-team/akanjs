@@ -1,10 +1,11 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
 import { ACTION_META, DataList, Int, SLICE_META, STATE_DERIVED_META, STATE_INIT_META, STATE_META } from "akanjs/base";
 import { Translator } from "akanjs/client/translator";
-import { AbortSignals } from "akanjs/common";
+import { AbortSignals, Logger } from "akanjs/common";
 import { ConstantRegistry, MAX_PAGE_SIZE, via } from "akanjs/constant";
 import { type ClientSignal, HttpClient, restoreRemoteError } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
+import { isValidElement } from "react";
 import type { RootStoreCls } from "./rootStore";
 import { type StoreCls, store } from "./store";
 import { MemoryStorage, setTestEnv } from "./store.fixture";
@@ -353,6 +354,44 @@ describe("StoreInstance runtime", () => {
     expect(instance.get().messages).toEqual([
       { content: "Blocked Ada", type: "error", key: "failWithTranslatedError", duration: 3 },
     ]);
+  });
+
+  test("an action rejects with its own error when building its message throws or its texts fail to load, and nothing is unhandled", async () => {
+    setupEnv();
+    Translator.seed("en", { actionTest: { error: { blocked: { t: "Blocked" } } } });
+    Translator.setActiveLocale("en");
+    class UnreadableMessageStore extends store("unreadableMessage" as const, () => ({ shown: 0 })) {
+      showMessage() {
+        this.set({ shown: this.get().shown + 1 });
+      }
+      async fail() {
+        throw new Error("actionTest.error.blocked");
+      }
+    }
+    StoreRegistry.register(UnreadableMessageStore);
+    const instance = new StoreInstance(makeRoot("unreadableMessageRoot", UnreadableMessageStore));
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown) => unhandled.push(reason);
+    process.on("unhandledRejection", onUnhandled);
+    const warn = spyOn(Logger, "warn").mockImplementation(() => undefined);
+    const translate = spyOn(Translator, "translateByLocale").mockImplementation(() => {
+      throw new Error("translator broke");
+    });
+    try {
+      await expect(instance.do.fail()).rejects.toThrow("actionTest.error.blocked");
+      translate.mockRestore();
+      const ready = spyOn(Translator, "ready").mockImplementation(() => Promise.reject(new Error("file gone")));
+      await expect(instance.do.fail()).rejects.toThrow("actionTest.error.blocked");
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      ready.mockRestore();
+      expect(unhandled).toEqual([]);
+      expect(warn).toHaveBeenCalledTimes(2);
+      expect(instance.get().shown).toBe(0);
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+      translate.mockRestore();
+      warn.mockRestore();
+    }
   });
 
   test("a silent action rejects with its own error and shows no toast, while its siblings still show theirs", async () => {
@@ -1761,6 +1800,52 @@ describe("StoreRegistry and root assembly", () => {
     expect(built.use).toHaveProperty("firstValue");
   });
 
+  test("a model's own piece loading after the whole runtime built its store adds no second store", async () => {
+    setupEnv();
+    const signal = makeSignal();
+    class HandedStore extends store(signal, () => ({ handedDraft: "" })) {
+      writeHandedDraft(value: string) {
+        this.set({ handedDraft: value });
+      }
+    }
+    class BesideStore extends store("besideStore" as const, () => ({ besideValue: 1 })) {}
+    const whole = StoreRegistry.build(
+      StoreRegistry.merge(
+        "wholeRuntimeRoot" as const,
+        StoreRegistry.register(HandedStore),
+        StoreRegistry.register(BesideStore),
+      ),
+    );
+    await whole.do.writeHandedDraft("typed before the reference loaded");
+    const sliceActions = whole.do as unknown as Record<string, (title: string) => Promise<void>>;
+    await sliceActions.initStoreTestItemByTitle("Ada");
+    const rows = whole.get().storeTestItemListByTitle;
+    const sliceBefore = whole.slice.storeTestItemByTitle;
+    const heard: string[] = [];
+    const unsubscribe = whole.sub(
+      (state) => state.handedDraft,
+      (draft) => heard.push(draft),
+    );
+    const listCalls = signal.calls.storeTestItemListByTitle.mock.calls.length;
+
+    const piece = StoreRegistry.register(HandedStore);
+    const afterPiece = StoreRegistry.build(StoreRegistry.merge("storeTestItem" as const, piece));
+
+    expect(afterPiece as unknown).toBe(whole);
+    expect(StoreRegistry.get("storeTestItem")).toBe(HandedStore);
+    expect(heard).toEqual([]);
+    expect(afterPiece.get()).toMatchObject({ handedDraft: "typed before the reference loaded", besideValue: 1 });
+    expect(afterPiece.get().storeTestItemListByTitle).toBe(rows);
+    expect(sliceBefore.get().storeTestItemList).toBe(rows);
+    expect(afterPiece.slice.storeTestItemByTitle.get().storeTestItemList).toBe(rows);
+    expect(signal.calls.storeTestItemListByTitle.mock.calls.length).toBe(listCalls);
+
+    await afterPiece.do.writeHandedDraft("typed after");
+    expect(heard).toEqual(["typed after"]);
+    expect(whole.get().handedDraft).toBe("typed after");
+    unsubscribe();
+  });
+
   test("builds slice facades from root slice metadata", async () => {
     setupEnv();
     const signal = makeSignal();
@@ -1807,6 +1892,302 @@ describe("StoreRegistry and root assembly", () => {
     const setterIsVoid: Exact<ReturnType<typeof built.do.setReturnedValue>, void> = true;
 
     expect([syncIsVoid, asyncIsVoid, argsSurvive, setterIsVoid]).toEqual([true, true, true, true]);
+  });
+});
+
+describe("StoreInstance with a root added later", () => {
+  test("keeps the earlier state, notifies once, hydrates the added persisted key and lets an earlier action reach the added one", async () => {
+    setupEnv();
+    const browser = installBrowser();
+    class EarlyStore extends store("earlyStore" as const, () => ({ earlyValue: 1 })) {
+      async askLate(value: string) {
+        await (this as unknown as { markLate: (value: string) => Promise<void> }).markLate(value);
+      }
+    }
+    class LateStore extends store("lateStore" as const, ({ persist }) => ({
+      lateValue: "initial",
+      lateCount: persist(Int, { default: 1, key: "lateCount" }),
+    })) {
+      markLate(value: string) {
+        this.set({ lateValue: value });
+      }
+    }
+    StoreRegistry.register(EarlyStore);
+    StoreRegistry.register(LateStore);
+    browser.localStorage.setItem(LateStore[STATE_DERIVED_META].persistSession.lateCount.storageKey, JSON.stringify(7));
+    const instance = new StoreInstance(makeRoot("earlyRoot", EarlyStore));
+    instance.set({ earlyValue: 2 });
+    await expect(instance.do.askLate("before")).rejects.toThrow(TypeError);
+    let notified = 0;
+    instance.subscribe(() => notified++);
+
+    instance.addStore(makeRoot("lateRoot", LateStore));
+
+    expect(notified).toBe(1);
+    expect(instance.get()).toMatchObject({ earlyValue: 2, lateValue: "initial", lateCount: 7 });
+    await instance.do.askLate("after");
+    expect(instance.get().lateValue).toBe("after");
+    uninstallBrowser();
+  });
+
+  test("keeps st.do.<action> and a generated setter the same function when a later root repeats their store", () => {
+    setupEnv();
+    class RepeatedStore extends store("repeatedStore" as const, () => ({ repeatedValue: 1 })) {
+      bumpRepeated() {
+        this.set({ repeatedValue: 2 });
+      }
+    }
+    class BesideStore extends store("besideStore" as const, () => ({ besideValue: 1 })) {}
+    StoreRegistry.register(RepeatedStore);
+    StoreRegistry.register(BesideStore);
+    const instance = new StoreInstance(makeRoot("repeatedRoot", RepeatedStore));
+    const { bumpRepeated, setRepeatedValue } = instance.do;
+
+    instance.addStore(makeRoot("besideRoot", RepeatedStore, BesideStore));
+
+    expect(instance.do.bumpRepeated).toBe(bumpRepeated);
+    expect(instance.do.setRepeatedValue).toBe(setRepeatedValue);
+  });
+
+  test("lets a later root's static silent quiet an action an earlier root built from the same method", async () => {
+    setupEnv();
+    class LoudLibStore extends store("quietedStore" as const, () => ({ messages: [] as { key: string }[] })) {
+      showMessage(message: { key: string }) {
+        this.set({ messages: [...this.get().messages, { key: message.key }] });
+      }
+      async failThing() {
+        throw new Error("quietedStore.error.failed");
+      }
+    }
+    StoreRegistry.register(LoudLibStore);
+    class QuietAppStore extends store("quietedStore" as const, () => ({}), LoudLibStore) {
+      static silent = ["failThing"] satisfies (keyof QuietAppStore)[];
+    }
+    StoreRegistry.register(QuietAppStore);
+    const instance = new StoreInstance(makeRoot("loudLibRoot", LoudLibStore));
+    const { failThing } = instance.do;
+
+    instance.addStore(makeRoot("quietAppRoot", QuietAppStore));
+
+    await expect(instance.do.failThing()).rejects.toThrow("quietedStore.error.failed");
+    expect(instance.get().messages).toEqual([]);
+    expect(instance.do.failThing).toBe(failThing);
+  });
+
+  test("keeps a declared set<Key> action when a later root that does not declare it is added", async () => {
+    setupEnv();
+    class DeclaringStore extends store("declaringStore" as const, () => ({ declaredValue: 1 })) {
+      setDeclaredValue(value: number) {
+        this.set({ declaredValue: value * 10 });
+      }
+    }
+    class UnrelatedStore extends store("unrelatedStore" as const, () => ({ unrelatedValue: 1 })) {}
+    StoreRegistry.register(DeclaringStore);
+    StoreRegistry.register(UnrelatedStore);
+    const instance = new StoreInstance(makeRoot("declaringRoot", DeclaringStore));
+    const { setDeclaredValue } = instance.do;
+
+    instance.addStore(makeRoot("unrelatedRoot", UnrelatedStore));
+    await instance.do.setDeclaredValue(2);
+
+    expect(instance.do.setDeclaredValue).toBe(setDeclaredValue);
+    expect(instance.get().declaredValue).toBe(20);
+    expect(instance.generatedSetters.has("setDeclaredValue")).toBe(false);
+  });
+
+  test("keeps a lib store's persisted value when the app store extending it redeclares the key as plain state, whichever root comes first", () => {
+    setupEnv();
+    const browser = installBrowser();
+    class PaletteLibStore extends store("paletteStore" as const, ({ persist }) => ({
+      paletteMode: persist(String, { default: "system", key: "paletteMode" }),
+    })) {}
+    StoreRegistry.register(PaletteLibStore);
+    class PaletteAppStore extends store("paletteStore" as const, () => ({ paletteMode: "dark" }), PaletteLibStore) {}
+    StoreRegistry.register(PaletteAppStore);
+    browser.localStorage.setItem(
+      PaletteLibStore[STATE_DERIVED_META].persistSession.paletteMode.storageKey,
+      JSON.stringify("light"),
+    );
+    const [libRoot, appRoot] = [
+      makeRoot("paletteLibRoot", PaletteLibStore),
+      makeRoot("paletteAppRoot", PaletteAppStore),
+    ];
+
+    const answers = [[libRoot, appRoot], [appRoot, libRoot], [appRoot], [libRoot, appRoot, libRoot, appRoot]].map(
+      ([first, ...rest]) => {
+        const instance = new StoreInstance(first ?? libRoot);
+        for (const root of rest) instance.addStore(root);
+        return instance.get().paletteMode;
+      },
+    );
+
+    expect(answers).toEqual(["light", "light", "light", "light"]);
+    uninstallBrowser();
+  });
+
+  test("replaces st.do.<action> when a later root brings a different method under its name", async () => {
+    setupEnv();
+    class ReplacedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {
+      markReplaced() {
+        this.set({ replacedValue: 2 });
+      }
+    }
+    StoreRegistry.register(ReplacedStore);
+    const instance = new StoreInstance(makeRoot("replacedRoot", ReplacedStore));
+    const before = instance.do.markReplaced;
+    class EditedStore extends store("replacedStore" as const, () => ({ replacedValue: 1 })) {
+      markReplaced() {
+        this.set({ replacedValue: 3 });
+      }
+    }
+    StoreRegistry.register(EditedStore);
+
+    instance.addStore(makeRoot("editedRoot", EditedStore));
+    await instance.do.markReplaced();
+
+    expect(instance.do.markReplaced).not.toBe(before);
+    expect(instance.get().replacedValue).toBe(3);
+  });
+
+  test("touches only the keys the added root brings, however many roots were added before it", () => {
+    setupEnv();
+    const browser = installBrowser();
+    const work = { selectors: 0, searches: 0, storageReads: 0, useWrites: 0, doWrites: 0, derivedMetaReads: 0 };
+    const readItem = browser.localStorage.getItem.bind(browser.localStorage);
+    browser.localStorage.getItem = (key: string) => {
+      work.storageReads++;
+      return readItem(key);
+    };
+    const countedStore = (index: number) => {
+      class CountedStore extends store(
+        `countedStore${index}`,
+        ({ persist }) => ({ [`plain${index}`]: 0, [`kept${index}`]: persist(Int, { default: 0 }) }),
+        ({ computed, search }) => ({
+          [`label${index}`]: computed([`plain${index}`], (plain) => {
+            work.selectors++;
+            return `${plain}`;
+          }),
+          [`query${index}`]: search(`q${index}`, String, { default: "" }),
+        }),
+      ) {}
+      StoreRegistry.register(CountedStore);
+      const searchMeta = CountedStore[STATE_DERIVED_META].search[`query${index}`];
+      const { parseSearch, getDefault } = searchMeta;
+      searchMeta.parseSearch = (searchParams) => {
+        work.searches++;
+        return parseSearch(searchParams);
+      };
+      searchMeta.getDefault = () => {
+        work.searches++;
+        return getDefault();
+      };
+      const { computed } = CountedStore[STATE_DERIVED_META];
+      computed[`label${index}`] = new Proxy(computed[`label${index}`], {
+        get: (target, property, receiver) => {
+          work.derivedMetaReads++;
+          return Reflect.get(target, property, receiver);
+        },
+      });
+      return CountedStore;
+    };
+    const instance = new StoreInstance(makeRoot("countedRoot0", countedStore(0)));
+    const counted = <T extends object>(facade: T, key: "useWrites" | "doWrites") =>
+      new Proxy(facade, {
+        set: (target, property, value, receiver) => {
+          work[key]++;
+          return Reflect.set(target, property, value, receiver);
+        },
+      });
+    instance.use = counted(instance.use, "useWrites");
+    instance.do = counted(instance.do, "doWrites");
+    const workOf = (root: RootStoreCls) => {
+      for (const key of Object.keys(work) as (keyof typeof work)[]) work[key] = 0;
+      instance.addStore(root);
+      return { ...work };
+    };
+    const workPerRoot = Array.from({ length: 40 }, (_, index) => {
+      const added = countedStore(index + 1);
+      return {
+        added: workOf(makeRoot(`countedRoot${index + 1}`, added)),
+        repeated: workOf(makeRoot(`repeatedRoot${index + 1}`, added)),
+      };
+    });
+
+    expect(workPerRoot[0].added).toEqual({
+      selectors: 2,
+      searches: 2,
+      storageReads: 1,
+      useWrites: 4,
+      doWrites: 2,
+      derivedMetaReads: 6,
+    });
+    expect(workPerRoot[0].repeated).toMatchObject({ selectors: 0, searches: 0, storageReads: 0 });
+    expect(workPerRoot.at(-1)).toEqual(workPerRoot[0]);
+    expect(Object.keys(instance.get())).toHaveLength(41 * 4);
+    uninstallBrowser();
+  });
+});
+
+describe("StoreInstance facades on an unknown key", () => {
+  const withNodeEnv = <T>(nodeEnv: string, run: () => T) => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = nodeEnv;
+    try {
+      return run();
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  };
+
+  test("throws in development, naming the facade and the key", () => {
+    setupEnv();
+    class KnownStore extends store("knownStore" as const, () => ({ knownValue: 1 })) {}
+    StoreRegistry.register(KnownStore);
+    const instance = withNodeEnv("development", () => new StoreInstance(makeRoot("knownRoot", KnownStore)));
+
+    expect(() => instance.do.missingAction).toThrow("st.do.missingAction is not registered");
+    expect(() => instance.use.missingValue).toThrow("st.use.missingValue is not registered");
+    expect(() => instance.slice.missingSlice).toThrow("st.slice.missingSlice is not registered");
+    expect(instance.do.setKnownValue).toBeInstanceOf(Function);
+    expect("missingAction" in instance.do).toBe(false);
+    expect(instance.do.then).toBeUndefined();
+  });
+
+  test("lets React's element check read a facade handed as a prop in development", () => {
+    setupEnv();
+    class PropStore extends store("propStore" as const, () => ({ propValue: 1 })) {}
+    StoreRegistry.register(PropStore);
+    const instance = withNodeEnv("development", () => new StoreInstance(makeRoot("propRoot", PropStore)));
+
+    expect(isValidElement(instance.use)).toBe(false);
+    expect(isValidElement(instance.do)).toBe(false);
+    expect(isValidElement(instance.slice)).toBe(false);
+  });
+
+  test("answers undefined in production and under test", () => {
+    setupEnv();
+    class QuietStore extends store("quietStore" as const, () => ({ quietValue: 1 })) {}
+    StoreRegistry.register(QuietStore);
+    for (const nodeEnv of ["production", "test"]) {
+      const instance = withNodeEnv(nodeEnv, () => new StoreInstance(makeRoot("quietRoot", QuietStore)));
+
+      expect(instance.do.missingAction).toBeUndefined();
+      expect(instance.use.missingValue).toBeUndefined();
+      expect(instance.slice.missingSlice).toBeUndefined();
+    }
+  });
+
+  test("calling a key of a store the page did not load throws in production, naming the key", () => {
+    setupEnv();
+    class LoadedStore extends store("loadedStore" as const, () => ({ loadedValue: 1 })) {}
+    StoreRegistry.register(LoadedStore);
+    const instance = withNodeEnv("production", () => new StoreInstance(makeRoot("loadedRoot", LoadedStore)));
+
+    expect(() => instance.use.absentValue()).toThrow(TypeError);
+    expect(() => instance.use.absentValue()).toThrow("use.absentValue is not a function");
+    expect(() => instance.do.setAbsentValue(2)).toThrow("do.setAbsentValue is not a function");
+    expect(() => (instance.slice.absentSlice as { use: unknown }).use).toThrow("slice.absentSlice");
+    expect(instance.do.setLoadedValue).toBeInstanceOf(Function);
   });
 });
 

@@ -99,6 +99,7 @@ describe("ClientErrorReport route", () => {
         digest: "a1b2c3d4",
         buildId: "build-7",
         userAgent: "Mozilla/5.0 (Macintosh) Safari/605.1.15",
+        shell: null,
       });
       expect((error as Error).message).toBe("TypeError: price was undefined\\nfor order 7");
       expect(context).toEqual({
@@ -251,6 +252,111 @@ describe("ClientErrorReport route", () => {
     await answerOf(post({ ...report, requestId: given }));
     await ErrorReporting.flush();
     expect(reported.map(([, context]) => context.traceId)).toEqual([inSample]);
+  });
+});
+
+describe("ClientErrorReport from a native shell's page", () => {
+  const shellOrigin = "https://app.localhost";
+  const ask = (origin: string | null = shellOrigin, address = "198.51.100.7", trace = RequestTrace.fresh()) => {
+    const req = new Request(`http://shop.test${ClientErrorReport.path}`, {
+      headers: origin === null ? {} : { origin, "sec-fetch-site": "cross-site" },
+    });
+    addresses.set(req, address);
+    return RequestTrace.run(trace, () => answerOf(req));
+  };
+  const fromShell = (body: unknown, address?: string) =>
+    post(body, { address, headers: { origin: shellOrigin, "sec-fetch-site": "cross-site" } });
+  const emptyShellAnswer = {
+    ...constantAnswer,
+    headers: { ...constantAnswer.headers, "access-control-allow-origin": shellOrigin, vary: "origin" },
+  };
+
+  test("gives a shell's page an id it alone may read, and a browser page or a closed route none", async () => {
+    expect(await ask()).toEqual(emptyShellAnswer);
+    ClientErrorReport.configure(true);
+    const trace = RequestTrace.fresh();
+    const answer = await ask(shellOrigin, "198.51.100.7", trace);
+
+    expect(answer.status).toBe(200);
+    expect(ClientReportId.verify(answer.body)).toBe(trace.traceId);
+    expect(answer.headers).toMatchObject({
+      "access-control-allow-origin": shellOrigin,
+      "cache-control": "no-store",
+      vary: "origin",
+    });
+    expect((await ask("app://localhost")).headers["access-control-allow-origin"]).toBe("app://localhost");
+    for (const origin of ["http://shop.test", "https://elsewhere.test", "null", null])
+      expect(await ask(origin)).toEqual(constantAnswer);
+  });
+
+  test("counts each ask against the address, and gives an id only to the asks its sample drew", async () => {
+    ClientErrorReport.configure({ perAddress: 2, sampleRate: 0.5 });
+    const inSample = new RequestTrace({
+      traceId: `00000000${pageId.slice(8)}`,
+      parentSpanId: null,
+      sampled: false,
+      link: null,
+    });
+    const outOfSample = new RequestTrace({ ...inSample, traceId: `ffffffff${pageId.slice(8)}` });
+    const answers = [
+      await ask(shellOrigin, "198.51.100.7", outOfSample),
+      await ask(shellOrigin, "198.51.100.7", inSample),
+      await ask(shellOrigin, "198.51.100.7", inSample),
+    ];
+    await answerOf(fromShell({ ...report, requestId: answers[1]?.body, message: "past the address's minute" }));
+    await ErrorReporting.flush();
+
+    expect(answers.map(({ status, body }) => [status, body === "" ? "" : ClientReportId.verify(body)])).toEqual([
+      [204, ""],
+      [200, inSample.traceId],
+      [204, ""],
+    ]);
+    expect(answers.map(({ headers }) => headers["access-control-allow-origin"])).toEqual(
+      answers.map(() => shellOrigin),
+    );
+    expect(reported).toEqual([]);
+  });
+
+  test("hands the reporter a shell's report with the shell it names and the id it was given", async () => {
+    ClientErrorReport.configure(true);
+    const emitted = spyOn((await import("akanjs/common")).Logger, "emit").mockImplementation(() => undefined);
+    try {
+      const { body: requestId } = await ask();
+      const traceId = ClientReportId.verify(requestId);
+      const sent = {
+        ...report,
+        requestId,
+        routeId: null,
+        kind: "rejection",
+        name: "AkanNativeError",
+        shell: "android",
+      };
+      expect(await answerOf(fromShell(sent))).toEqual(emptyShellAnswer);
+      await answerOf(fromShell({ ...sent, message: "a shell it cannot be", shell: "playstation" }));
+      await answerOf(post({ ...sent, message: "a browser page that claims a shell" }));
+      await ErrorReporting.flush();
+
+      expect(reported.map(([error, context]) => [(error as BrowserError).data.shell, context])).toEqual([
+        ["android", { source: "client", traceId, endpoint: null, routeId: null, accountId: null, digest: null }],
+        [null, expect.objectContaining({ traceId })],
+        [null, expect.objectContaining({ traceId })],
+      ]);
+      expect(String(emitted.mock.calls[0]?.[0].message)).toBe(
+        "Native android page error (rejection) on an unknown route: AkanNativeError: price was undefined",
+      );
+    } finally {
+      emitted.mockRestore();
+    }
+  });
+
+  test("spends only the address's minute on a shell's body that names no id this server signed", async () => {
+    ClientErrorReport.configure({ perServer: 1 });
+    for (let i = 0; i < 20; i += 1)
+      await answerOf(fromShell({ ...report, requestId: `${pageId}.${"A".repeat(22)}` }, `2001:db8:${i}::1`));
+    await answerOf(fromShell({ ...report, message: "a real one" }));
+    await ErrorReporting.flush();
+
+    expect(reported.map(([error]) => (error as BrowserError).data.message)).toEqual(["a real one"]);
   });
 });
 

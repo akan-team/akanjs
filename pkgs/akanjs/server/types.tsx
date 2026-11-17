@@ -121,6 +121,10 @@ export type BaseBuildArtifact = {
   cssAssets: Record<string, CssAsset>;
   /** Per locale; absent in an artifact older than the asset, whose pages carried their dictionary in the flight. */
   dictAssets?: Record<string, DictAsset>;
+  /** A production build: the `DictAsset.routeParts.files` each route loads; a route left out loads `url`. */
+  dictRoutes?: Record<string, number[]>;
+  /** Development: the `DictAsset.routeParts.files` index of each group, one per file. */
+  dictGroups?: Record<string, number>;
   domains: string[];
   subRoutes: { [key: string]: string[] };
   basePaths: string[];
@@ -163,6 +167,10 @@ export interface CssAsset {
 export interface DictAsset {
   url: string;
   relPath: string;
+  /** The files this locale's dictionary left out, by name, loaded where a page shows them. */
+  parts?: Record<string, { url: string; relPath: string }>;
+  /** The page file cut into the files routes load; `table` names each group's file. */
+  routeParts?: { table: { url: string; relPath: string }; files: { url: string; relPath: string }[] };
 }
 
 export interface RenderState {
@@ -175,4 +183,6 @@ export interface RenderState {
   ssrGeneration?: number;
   /** When the SSR dev registry was last built whole; a tab booted from an earlier one reloads. */
   ssrEpoch?: number;
+  /** The dictionary files served; a save replaces them through a backend restart, and a tab holding others refetches. */
+  dictionaryStamp?: string;
 }

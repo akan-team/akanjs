@@ -10,7 +10,8 @@ import { ProjectTypecheck } from "@akanjs/devkit/typecheck/projectTypecheck";
 import { TypecheckFailure } from "@akanjs/devkit/typecheck/typecheckFailure";
 import type { ApplicationRunner } from "../application/application.runner";
 import { WorkspaceRunner } from "../workspace/workspace.runner";
-import { VerifyComments } from "./verifyComments";
+import { VerifyCommentLedger } from "./verifyCommentLedger";
+import { type AddedComment, VerifyComments } from "./verifyComments";
 import { type VerifyDiagnostic, VerifyDiagnostics, type VerifyStepName } from "./verifyDiagnostics";
 import { VerifyPrivateMethods } from "./verifyPrivateMethods";
 import type { VerifyResult, VerifyStepResult } from "./verifyReport";
@@ -20,6 +21,7 @@ import { VerifyStyleClasses } from "./verifyStyleClasses";
 export interface VerifyPipelineOptions {
   lintOnly?: boolean;
   build?: boolean;
+  repeatComments?: boolean;
 }
 
 interface StepOutcome {
@@ -38,6 +40,7 @@ export class VerifyPipeline {
   readonly #applicationRunner: ApplicationRunner;
   readonly #steps = new Map<VerifyStepName, VerifyStepResult>();
   readonly #diagnostics: VerifyDiagnostic[] = [];
+  readonly #comments: AddedComment[] = [];
 
   constructor(workspace: Workspace, workspaceRunner: WorkspaceRunner, applicationRunner: ApplicationRunner) {
     this.#workspace = workspace;
@@ -51,7 +54,7 @@ export class VerifyPipeline {
 
   async run(
     changed: VerifyScope,
-    { lintOnly = false, build = true }: VerifyPipelineOptions = {},
+    { lintOnly = false, build = true, repeatComments = true }: VerifyPipelineOptions = {},
   ): Promise<VerifyResult> {
     const startedAt = performance.now();
     const scope = lintOnly ? changed : await this.#withDependents(changed);
@@ -78,6 +81,15 @@ export class VerifyPipeline {
         ? null
         : this.#each("typecheck", scope.targets, (target) => this.#typecheck(target), VerifyPipeline.#concurrency),
     ]);
+    if (!lintOnly)
+      this.#diagnostics.push(
+        ...(await VerifyCommentLedger.settle(
+          this.#root,
+          edited.flatMap((target) => target.files),
+          this.#comments,
+          { repeat: repeatComments },
+        )),
+      );
     const apps = edited.filter((target) => target.type === "app");
     const clean = !this.#diagnostics.some((diagnostic) => diagnostic.severity === "error");
     if (!lintOnly && build && apps.length) {
@@ -159,11 +171,10 @@ export class VerifyPipeline {
     const formattedAfter = await this.#changedSince(rewritten);
     const exec = this.#execOf(target);
     const gates = await this.#workspaceRunner.lintGateFailures(exec, true);
-    const added = comments && target.files.length ? await VerifyComments.added(this.#root, target.files) : [];
+    if (comments && target.files.length) this.#comments.push(...(await VerifyComments.found(this.#root, target.files)));
     return {
       diagnostics: [
         ...biome.diagnostics,
-        ...added,
         ...gates.messages.map((message) => VerifyDiagnostics.fromMessage("lint", message, "akan.lint")),
         ...VerifyDiagnostics.fromMaintainability(gates.maintainability),
       ],

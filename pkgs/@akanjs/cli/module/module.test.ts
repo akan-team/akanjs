@@ -30,6 +30,7 @@ describe("ModuleRunner", () => {
     expect(files.dictionary.content).not.toContain('field: t(["Field", "필드"])');
     expect(files.dictionary.content).toContain('t(["Post", "Post"]).desc(["Enter post.", "Post 값을 입력합니다."])');
     expect(files.dictionary.content).not.toContain("Post description");
+    expect(files.dictionary.content).toContain('      .desc(["Every post", "모든 Post"])');
     expect(files.service.content).toContain("serve");
     expect(files.signal.content).toContain("signal");
     expect(files.unit.filename).toBe("Post.Unit.tsx");
@@ -38,6 +39,9 @@ describe("ModuleRunner", () => {
     expect(await Bun.file(`${module.cwdPath}/post.constant.ts`).exists()).toBe(true);
     expect(await Bun.file(`${module.cwdPath}/post.abstract.md`).exists()).toBe(true);
     expect(await Bun.file(`${module.cwdPath}/Post.View.tsx`).exists()).toBe(true);
+    expect(await Bun.file(`${module.cwdPath}/Post.Util.tsx`).text()).toContain(
+      '<Model.Remove className="flex items-center gap-1" modelId={postId} slice={fetch.slice.post}>',
+    );
   });
 
   test("guards the scaffolded slice with libs/shared's Admin when the system mounts it", async () => {

@@ -1,10 +1,10 @@
 "use client";
-import { msg, usePage } from "akanjs/client";
+import { msg, Translator, usePage } from "akanjs/client";
 import { st } from "akanjs/store";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-import { Toast, type ToastMessage } from "../Toast";
+import { Toast, type ToastMessage, type ToastType } from "../Toast";
 
 interface MsgOption {
   key?: string;
@@ -23,7 +23,7 @@ const exitGraceMs = 2000;
 export const Messages = () => {
   const messages = st.use.messages({ agent: false });
   const pageState = st.use.pageState({ agent: false });
-  const { l } = usePage();
+  const { l, lang } = usePage();
   const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
   const [leavingKeys, setLeavingKeys] = useState<string[]>([]);
   const timers = useRef(new Map<string, ArmedMessage>());
@@ -90,47 +90,33 @@ export const Messages = () => {
   }, []);
 
   useEffect(() => {
+    //? A toast is shown once, so a key of a group the route's dictionary files left out waits for that group's file;
+    //? the toasts after it wait too, or a late `loading` would replace the `success` sent to close it.
+    let waiting: Promise<unknown> | null = null;
+    const show =
+      (type: ToastType) =>
+      (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
+        const send = () =>
+          st.do.showMessage({
+            type,
+            key: option.key,
+            duration: option.duration ?? 3,
+            content: l(msgKey as "base.new", option.data),
+          });
+        const ready = Translator.ready(lang, msgKey);
+        if (!ready && !waiting) return send();
+        const shown = Promise.all([waiting, ready]).then(send);
+        waiting = shown;
+        void shown.finally(() => {
+          if (waiting === shown) waiting = null;
+        });
+      };
     Object.assign(msg, {
-      info: (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
-        st.do.showMessage({
-          type: "info",
-          key: option.key,
-          duration: option.duration ?? 3,
-          content: l(msgKey as "base.new", option.data),
-        });
-      },
-      success: (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
-        st.do.showMessage({
-          type: "success",
-          key: option.key,
-          duration: option.duration ?? 3,
-          content: l(msgKey as "base.new", option.data),
-        });
-      },
-      error: (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
-        st.do.showMessage({
-          type: "error",
-          key: option.key,
-          duration: option.duration ?? 3,
-          content: l(msgKey as "base.new", option.data),
-        });
-      },
-      warning: (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
-        st.do.showMessage({
-          type: "warning",
-          key: option.key,
-          duration: option.duration ?? 3,
-          content: l(msgKey as "base.new", option.data),
-        });
-      },
-      loading: (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
-        st.do.showMessage({
-          type: "loading",
-          key: option.key,
-          duration: option.duration ?? 3,
-          content: l(msgKey as "base.new", option.data),
-        });
-      },
+      info: show("info"),
+      success: show("success"),
+      error: show("error"),
+      warning: show("warning"),
+      loading: show("loading"),
     });
   }, []);
   if (!messages.length || !portalElement) return null;

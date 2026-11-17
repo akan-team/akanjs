@@ -10,6 +10,7 @@ import { Loading } from "../Loading";
 import { Modal } from "../Modal";
 import { dictLabel } from "./dataText";
 import { isReadyQuery, QueryMakerArgs, QueryMakerKey, type ResolvedQuerySetting, useQueryMaker } from "./QueryMaker";
+import "../modelRuntime";
 
 interface RefPickerProps {
   className?: string;

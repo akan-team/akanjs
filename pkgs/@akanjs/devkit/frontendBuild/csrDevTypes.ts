@@ -1,4 +1,5 @@
 import type { PageEntry } from "../artifact/implicitRootLayout";
+import type { DevRouteRuntime } from "./devRouteRuntime";
 
 export interface CsrDevNarrowedImport {
   names: string[];
@@ -19,6 +20,7 @@ export interface CsrDevGraphModule {
   deps: string[];
   helpers?: string;
   narrowed?: Record<string, CsrDevNarrowedImport>;
+  routed?: string;
 }
 
 export interface CsrDevGraph {
@@ -36,6 +38,8 @@ export interface CsrDevGraph {
   /** The stamp of the signal and dictionary sources the last whole build inlined; see `RegistryMetadataFingerprint`. */
   metadata?: string;
   barrels?: Record<string, CsrDevBarrelStamp>;
+  /** The `DevRouteRuntime` digest every module's `routed` stamp was taken under. */
+  routeTable?: string;
 }
 
 export interface CsrDevContext {
@@ -50,6 +54,10 @@ export interface CsrDevContext {
   /** Bare specifiers the page already loads (an SSR page's import map): required as `vendor:<specifier>`, not compiled. */
   externals?: readonly string[];
   barrelImports?: readonly string[];
+  /** What `akanjs/ui/modelRuntime` holds instead of its empty source, when the bootstrap loads only the page runtime. */
+  modelRuntime?: string;
+  /** Where pages load per module: what each client module imports, as the production build decides it. */
+  routeRuntime?: DevRouteRuntime;
 }
 
 export interface CsrDevSharedHelpers {
@@ -68,6 +76,7 @@ export interface CsrDevCompiledModule {
   mtimeMs: number;
   hash: string;
   narrowed?: Record<string, CsrDevNarrowedImport>;
+  routed?: string;
 }
 
 /** Module factories by id and helper definitions by hash, kept in memory so app.js is written without a pass over the disk. */

@@ -35,6 +35,19 @@ describe("akan.ssr.unnecessary-use-client", () => {
       expect(scanOne(UI, `"use client";\n${body}\n`)).not.toContain("akan.ssr.unnecessary-use-client");
   });
 
+  test("a module's Zone, Template or Util carries the directive by role, in a service module too", () => {
+    const plain = `"use client";\nexport const Main = () => <div />;\n`;
+    for (const file of [
+      "apps/demo/lib/task/Task.Zone.tsx",
+      "apps/demo/lib/task/Task.Template.tsx",
+      "apps/demo/lib/_camera/Camera.Zone.tsx",
+      "libs/shared/lib/_camera/Camera.Util.tsx",
+    ])
+      expect(scanOne(file, plain)).not.toContain("akan.ssr.unnecessary-use-client");
+    for (const file of ["apps/demo/lib/task/Task.View.tsx", "apps/demo/lib/__scalar/geo/Geo.Template.tsx"])
+      expect(scanOne(file, plain)).toContain("akan.ssr.unnecessary-use-client");
+  });
+
   test("a third-party import is a reason the AST cannot rule out", () => {
     expect(scanOne(UI, `"use client";\nimport Chart from "recharts";\nexport const Thing = () => <div />;\n`)).toEqual(
       [],

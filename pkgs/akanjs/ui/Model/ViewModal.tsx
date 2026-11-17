@@ -48,8 +48,7 @@ export default function ViewModal({
   const storeUse = st.use as unknown as { [key: string]: () => unknown };
   const storeDo = st.do as unknown as { [key: string]: (...args: any[]) => void };
   const { refName } = slice;
-  const modelName = refName;
-  const names = modelNames(modelName);
+  const names = modelNames(refName);
   const model = storeUse[names.model]() as { id: string; [key: string]: any } | null;
   const modelModal = storeUse[names.modelModal]() as string | null;
   const modelLoading = storeUse[names.modelLoading]() as string | boolean;
@@ -70,7 +69,7 @@ export default function ViewModal({
   };
   return (
     <>
-      {isModalOpen ? <ViewTools modelName={modelName} closeView={closeView} /> : null}
+      {isModalOpen ? <ViewTools modelName={refName} closeView={closeView} /> : null}
       <Modal
         open={isModalOpen}
         onCancel={closeView}

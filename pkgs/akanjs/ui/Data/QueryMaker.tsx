@@ -10,6 +10,7 @@ import Arg from "../Signal/Arg";
 import { sliceNamesOf } from "../sliceNamesOf";
 import { dictLabel } from "./dataText";
 import RefPicker from "./RefPicker";
+import "../modelRuntime";
 
 interface QueryMakerProps {
   className?: string;

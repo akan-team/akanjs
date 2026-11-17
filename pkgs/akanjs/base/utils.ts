@@ -25,3 +25,6 @@ export const applyFnToArrayObjects = <Input, Fn extends (arg: never) => unknown>
   if (Array.isArray(arraiedData)) return arraiedData.map((data) => applyFnToArrayObjects(data, fn)) as Result;
   return fn(arraiedData as never) as Result;
 };
+
+//? Bun's code splitting orders one chunk before another only where a name it imports is used; this call is such a use.
+export const loadedAfter = (..._modules: unknown[]): void => {};

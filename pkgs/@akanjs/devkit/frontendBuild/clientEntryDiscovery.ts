@@ -4,6 +4,7 @@ import { SOURCE_EXTS } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
+import { ObjectMemberImports } from "../transforms/objectMemberImports";
 import type { AkanConfig, ClientEntryDiscovery, DiscoverOptions, ScannedImport } from "./clientBuildTypes";
 
 const USE_CLIENT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
@@ -58,6 +59,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   #swappedEntriesCaches = new WeakMap<object, Map<string, Set<string>>>();
   #readFiles = new Set<string>();
   #barrelImporters = new Map<string, Set<string>>();
+  #objects: ObjectMemberImports | null;
+  #objectReaders = new Map<string, Set<string>>();
   //? Barrels a save went beside, by the analysis before it: a save of any component re-reads its barrel, and only an
   //? export that moved sends that barrel's importers back to the disk.
   #reread = new Map<string, Promise<BarrelExportMap | null>>();
@@ -66,14 +69,24 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   //? answers its caller but caches nothing (a registry check walks this instance beside the slow lane's route builds).
   #epoch = 0;
 
-  constructor(akanConfig: Pick<AkanConfig, "barrelImports">, resolvePackage: PackageResolver) {
+  constructor(
+    akanConfig: Pick<AkanConfig, "barrelImports">,
+    resolvePackage: PackageResolver,
+    { packageRoot }: { packageRoot?: string } = {},
+  ) {
     this.#akanConfig = akanConfig;
     this.#resolvePackage = resolvePackage;
-    this.#analyzer = new BarrelAnalyzer({ resolvePackage });
+    this.#analyzer = new BarrelAnalyzer({ resolvePackage, ...(packageRoot ? { packageRoot } : {}) });
+    this.#objects = packageRoot
+      ? new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(resolvePackage) })
+      : null;
   }
 
+  //? An app narrows as its bundles do, so discovery reaches the member files they load.
   static async create(app: App): Promise<GraphClientEntryDiscovery> {
-    return new GraphClientEntryDiscovery(await app.getConfig(), await createTsconfigPackageResolver(app));
+    return new GraphClientEntryDiscovery(await app.getConfig(), await createTsconfigPackageResolver(app), {
+      packageRoot: app.workspace.workspaceRoot,
+    });
   }
 
   async discover(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
@@ -86,6 +99,26 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       for (const entry of await this.#discoverFromFile(seed, walk)) entries.add(entry);
     }
     return Array.from(entries).sort();
+  }
+
+  async serverModules(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
+    const seen = new Set<string>();
+    const queue = seeds.map((seed) => path.resolve(seed));
+    for (const absPath of queue) {
+      if (seen.has(absPath) || shouldSkipNodeModule(absPath)) continue;
+      const facts = await this.#facts(absPath);
+      if (!facts || facts.isClientEntry) continue;
+      seen.add(absPath);
+      const swaps = importsAs?.get(absPath);
+      for (const imp of facts.imports) {
+        const swapped = swaps?.get(imp.path);
+        const spec = swapped === undefined ? imp.path : swapped;
+        if (!spec || NON_SOURCE_EXT_RE.test(spec)) continue;
+        const resolved = await this.#resolveSpecifier(spec, path.dirname(absPath));
+        if (resolved) queue.push(path.resolve(resolved));
+      }
+    }
+    return [...seen].sort();
   }
 
   async resolveImport(spec: string, importerDir: string): Promise<string | null> {
@@ -116,6 +149,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     this.#swappedEntriesCaches = new WeakMap();
     for (const [barrel, before] of this.#analyzer.forget(files))
       if (!this.#reread.has(barrel)) this.#reread.set(barrel, before);
+    this.#forgetObjects(files);
     //? A file gone, or one never read, can leave a found resolution on its old target (`Chart.tsx` to
     //? `Chart/index.tsx`), so a move drops them all; a save of a file already read keeps them (a walk re-resolving
     //? every package cost 3x). Misses lapse with the epoch on their own (#lookup).
@@ -123,6 +157,18 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     this.#fileExistsCache.clear();
     this.#resolvedFileCache.clear();
     this.#resolvedSpecifierCache.clear();
+  }
+
+  //? An importer's facts hold the member files its object imports narrowed to: a save of the object module or of a
+  //? member file can move them.
+  #forgetObjects(files: string[]) {
+    if (!this.#objects) return;
+    this.#objects.modules.forget(files);
+    for (const file of files) {
+      const absPath = path.resolve(file);
+      for (const importer of this.#objectReaders.get(absPath) ?? []) this.#factsCache.delete(importer);
+      this.#objectReaders.delete(absPath);
+    }
   }
 
   //? An importer's facts hold the files its barrel imports narrowed to, which an export moved between them changes.
@@ -183,13 +229,35 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   }
 
   async #rewrite(content: string, absPath: string): Promise<string> {
+    const rewritten = await this.#rewriteBarrels(content, absPath);
+    return (await this.#narrowObjects(rewritten, absPath)) ?? rewritten;
+  }
+
+  async #rewriteBarrels(content: string, absPath: string): Promise<string> {
     if (this.#akanConfig.barrelImports.length === 0) return content;
     for (const barrel of this.#akanConfig.barrelImports.filter((barrel) => content.includes(barrel)))
       this.#barrelImporters.set(barrel, (this.#barrelImporters.get(barrel) ?? new Set()).add(absPath));
     try {
-      return (await rewriteBarrelImports(content, this.#akanConfig.barrelImports, this.#analyzer)) ?? content;
+      const reexports = this.#objects !== null;
+      return (
+        (await rewriteBarrelImports(content, this.#akanConfig.barrelImports, this.#analyzer, { reexports })) ?? content
+      );
     } catch {
       return content;
+    }
+  }
+
+  async #narrowObjects(content: string, absPath: string): Promise<string | null> {
+    if (!this.#objects) return null;
+    try {
+      const narrowed = await this.#objects.rewrite(content, absPath);
+      for (const file of narrowed?.read ?? []) {
+        const absFile = path.resolve(file);
+        this.#objectReaders.set(absFile, (this.#objectReaders.get(absFile) ?? new Set()).add(absPath));
+      }
+      return narrowed?.contents ?? null;
+    } catch {
+      return null;
     }
   }
 

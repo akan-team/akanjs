@@ -129,6 +129,17 @@ export const writeJson = async (filePath: string, value: object) => {
   await writeText(filePath, `${JSON.stringify(value, null, 2)}\n`);
 };
 
+export const printedInOwnProcess = async (script: string, cwd: string): Promise<unknown> => {
+  const proc = Bun.spawn([process.execPath, "--eval", script], { cwd, stdout: "pipe", stderr: "pipe" });
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if (code !== 0) throw new Error(`the script exited with code ${code}:\n${stderr}`);
+  return JSON.parse(stdout.trim().split("\n").at(-1) ?? "null");
+};
+
 export const heldMtimeIndex = () => {
   const primes: PromiseWithResolvers<void>[] = [];
   const scans: PromiseWithResolvers<string[]>[] = [];
