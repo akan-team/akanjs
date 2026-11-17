@@ -4,6 +4,7 @@ import type { BunPlugin } from "bun";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { loaderFor } from "../transforms/moduleSyntax";
+import { SignalDescriptors } from "../transforms/signalDescriptors";
 import { CsrDevFactoryCheck } from "./csrDevFactoryCheck";
 import { CsrDevPaths } from "./csrDevPaths";
 import { CsrDevResolver } from "./csrDevResolver";
@@ -293,6 +294,11 @@ export class CsrDevModuleCompiler {
         .map(async (file) => [file, await Bun.file(file).text()] as const),
     );
     const importers = sources.filter(([, source]) => CsrDevModuleCompiler.#macroImport.test(source));
+    const descriptors = routeRuntime
+      ? new SignalDescriptors(this.#app.workspace.workspaceRoot, routeRuntime.scopes, {
+          onUnread: (reason) => this.#app.logger.warn(`[csr-dev] ${reason}, so their pieces run the macro`),
+        }).plugin
+      : null;
     const outputs = await Promise.all(
       importers.map(async ([file]) => {
         const result = await Bun.build({
@@ -300,6 +306,7 @@ export class CsrDevModuleCompiler {
           target: "browser",
           format: "esm",
           plugins: [
+            ...(descriptors ? [descriptors] : []),
             {
               name: "akan-csr-macro-pass",
               setup: (build) =>

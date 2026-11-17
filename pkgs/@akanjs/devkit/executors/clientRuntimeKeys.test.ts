@@ -633,35 +633,75 @@ console.log(JSON.stringify({
 
 const devkitFile = (file: string) => JSON.stringify(path.resolve(import.meta.dir, "..", file));
 
-const bundleScript = (root: string, appName: string, entries: string[]) => `
+interface BundleOptions {
+  descriptors?: boolean;
+  editBetween?: { file: string; from: string; to: string };
+}
+
+interface Bundled {
+  outputs: string[];
+  pages: string[];
+  answered: number;
+}
+
+const bundleScript = (
+  root: string,
+  appName: string,
+  entries: string[],
+  { descriptors = false, editBetween }: BundleOptions,
+) => `
 const path = await import("node:path");
 const { AppExecutor } = await import(${devkitFile("executors/appExecutor.ts")});
 const { WorkspaceExecutor } = await import(${devkitFile("executors/workspaceExecutor.ts")});
 const { createBarrelImportsPlugin } = await import(${devkitFile("transforms/barrelImportsPlugin.ts")});
 const { RouteRuntime } = await import(${devkitFile("transforms/routeRuntime.ts")});
-const [root, appName, entries] = ${JSON.stringify([root, appName, entries])};
+const { SignalDescriptors } = await import(${devkitFile("transforms/signalDescriptors.ts")});
+const [root, appName, entries, withDescriptors, edit] = ${JSON.stringify([root, appName, entries, descriptors, editBetween ?? null])};
 const app = AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), appName);
 const routeRuntime = await RouteRuntime.read(root, "apps/" + appName);
 if (!routeRuntime) throw new Error("the fixture app has no assembled runtime pieces");
-const built = await Bun.build({
-  entrypoints: entries.map((entry) => path.join(root, entry)),
-  target: "browser",
-  splitting: true,
-  root,
-  outdir: path.join(root, "bundled", entries.join("+").replaceAll(/[^\\w+]/g, "-")),
-  define: { "process.env.AKAN_PUBLIC_APP_NAME": JSON.stringify(appName) },
-  plugins: [await createBarrelImportsPlugin(app, { routeRuntime, modelRuntime: routeRuntime.wholeSource })],
-});
-console.log(JSON.stringify({
-  outputs: built.outputs.map((output) => output.path),
-  pages: built.outputs.filter(({ kind }) => kind === "entry-point").map((output) => path.relative(root, output.path)),
-}));
+const build = async (outdir) => {
+  let answered = 0;
+  const signalDescriptors = new SignalDescriptors(root, routeRuntime.table.layers.map(({ scope }) => scope));
+  const inline = signalDescriptors.inline.bind(signalDescriptors);
+  signalDescriptors.inline = async (...args) => {
+    const contents = await inline(...args);
+    if (contents !== null) answered += 1;
+    return contents;
+  };
+  const built = await Bun.build({
+    entrypoints: entries.map((entry) => path.join(root, entry)),
+    target: "browser",
+    splitting: true,
+    root,
+    outdir: path.join(root, "bundled", outdir),
+    define: { "process.env.AKAN_PUBLIC_APP_NAME": JSON.stringify(appName) },
+    plugins: [
+      ...(withDescriptors ? [signalDescriptors.plugin] : []),
+      await createBarrelImportsPlugin(app, { routeRuntime, modelRuntime: routeRuntime.wholeSource }),
+    ],
+  });
+  return {
+    outputs: built.outputs.map((output) => output.path),
+    pages: built.outputs.filter(({ kind }) => kind === "entry-point").map((output) => path.relative(root, output.path)),
+    answered,
+  };
+};
+const outdir = entries.join("+").replaceAll(/[^\\w+]/g, "-") + (withDescriptors ? "-descriptors" : "");
+const built = await build(outdir);
+if (edit) {
+  const file = path.join(root, edit.file);
+  await Bun.write(file, (await Bun.file(file).text()).replace(edit.from, edit.to));
+}
+console.log(JSON.stringify(edit ? { ...built, rebuilt: await build(outdir + "-rebuilt") } : built));
 `;
 
 //? One entry is one page's bundle: with several, a shared chunk can run a store before the file a page reaches first.
 //? Built in its own process: in this one a macro can resolve `@libs/*` by a tsconfig cached before the fixture wrote its paths.
-const bundleForBrowser = async (root: string, appName: string, entries: string[]) =>
-  (await evaluate(root, bundleScript(root, appName, entries), appName)) as { outputs: string[]; pages: string[] };
+const bundleForBrowser = async (root: string, appName: string, entries: string[], options: BundleOptions = {}) =>
+  (await evaluate(root, bundleScript(root, appName, entries, options), appName)) as unknown as Bundled & {
+    rebuilt?: Bundled;
+  };
 
 describe("an app's client runtime pieces", () => {
   test("leave the whole client runtime answering its keys in the order it did before the pieces, in a browser and outside one", async () => {
@@ -829,9 +869,10 @@ describe("an app's client runtime pieces", () => {
     });
   }, 120_000);
 
-  test("bundle for a browser with each named module's descriptors once for each scope declaring its signal, no other module's and nothing its signal runs on the server", async () => {
+  test("bundle for a browser with each named module's descriptors once for each scope declaring its signal, no other module's and nothing its signal or service runs on the server, by the macro or by descriptors read once", async () => {
     const files: Record<string, string> = shopFilesOf("trolley");
     const pingSignal = "lib/_ping/ping.signal.ts";
+    const pingService = "lib/_ping/ping.service.ts";
     const temp = await writeWorkspace({
       app: "stall",
       lib: "trolley",
@@ -839,24 +880,66 @@ describe("an app's client runtime pieces", () => {
       appFiles: {
         ...files,
         [pingSignal]: `${files[pingSignal]}`.replace('.exec(() => "")', '.exec(() => "ran-on-the-server")'),
+        [pingService]: `${files[pingService]}`.replace(
+          ")) {}",
+          ')) {\n  pingNow() {\n    return "served-on-the-server";\n  }\n}',
+        ),
         "ui/Card.tsx":
           'import { fetch, st } from "@apps/stall/client";\nexport const Card = () => [st.use.label(), fetch.pingAt()];\n',
         "ui/Tile.tsx": 'import { fetch } from "@apps/stall/client";\nexport const Tile = () => fetch.pingAt();\n',
         "ui/Count.tsx": 'import { st } from "@apps/stall/client";\nexport const Count = () => st.use.itemCount();\n',
       },
     });
-    const { outputs } = await bundleForBrowser(
-      temp.root,
-      "stall",
-      ["Card", "Tile", "Count"].map((name) => `apps/stall/ui/${name}.tsx`),
-    );
-    const bundled = (await Promise.all(outputs.map((output) => Bun.file(output).text()))).join("\n");
-    const descriptorsOf = (endpoint: string) =>
-      bundled.match(new RegExp(`\\b${endpoint}: \\{\\s+type: "`, "g"))?.length ?? 0;
+    for (const descriptors of [false, true]) {
+      const { outputs, answered } = await bundleForBrowser(
+        temp.root,
+        "stall",
+        ["Card", "Tile", "Count"].map((name) => `apps/stall/ui/${name}.tsx`),
+        { descriptors },
+      );
+      const bundled = (await Promise.all(outputs.map((output) => Bun.file(output).text()))).join("\n");
+      const descriptorsOf = (endpoint: string) =>
+        bundled.match(new RegExp(`\\b${endpoint}: \\{\\s+type: "`, "g"))?.length ?? 0;
 
-    expect(outputs.length).toBeGreaterThan(3);
-    expect(["pingAt", "itemCount", "auditTrail"].map(descriptorsOf)).toEqual([1, 2, 0]);
-    expect(bundled).not.toContain("ran-on-the-server");
+      expect(outputs.length).toBeGreaterThan(3);
+      expect(answered > 0).toBe(descriptors);
+      expect(["pingAt", "itemCount", "auditTrail"].map(descriptorsOf)).toEqual([1, 2, 0]);
+      expect(bundled).not.toContain("ran-on-the-server");
+      expect(bundled).not.toContain("served-on-the-server");
+    }
+  }, 120_000);
+
+  test("answer each build's pieces from its signals as they are then, so an edit between two builds in one process ships the new descriptors", async () => {
+    const temp = await writeWorkspace({
+      app: "booth",
+      lib: "hamper",
+      libFiles: stockFiles,
+      appFiles: {
+        ...shopFilesOf("hamper"),
+        "ui/Tile.tsx": 'import { fetch } from "@apps/booth/client";\nexport const Tile = () => fetch.pingAt();\n',
+      },
+    });
+    const { outputs, answered, rebuilt } = await bundleForBrowser(temp.root, "booth", ["apps/booth/ui/Tile.tsx"], {
+      descriptors: true,
+      editBetween: {
+        file: "apps/booth/lib/_ping/ping.signal.ts",
+        from: "query(String, { guards",
+        to: "query(String, { nullable: true, guards",
+      },
+    });
+    const returnsOf = async (files: string[]) => {
+      const bundled = (await Promise.all(files.map((file) => Bun.file(file).text()))).join("\n");
+      return bundled
+        .match(/\bpingAt: \{[^}]*?returns: \{([^}]*)\}/)?.[1]
+        ?.replaceAll(/\s+/g, " ")
+        .trim();
+    };
+
+    expect([answered > 0, (rebuilt?.answered ?? 0) > 0]).toEqual([true, true]);
+    expect([await returnsOf(outputs), await returnsOf(rebuilt?.outputs ?? [])]).toEqual([
+      'refName: "String"',
+      'refName: "String", nullable: true',
+    ]);
   }, 120_000);
 
   test("assemble the same store, fetch and signal keys as the whole client runtime, in a browser and outside one", async () => {
