@@ -26,6 +26,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
+import { NativeSplash } from "../../webkit/nativeSplash";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
 import { animated } from "../animated";
@@ -435,6 +436,10 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
   useEffect(() => {
     if (pageType === "current") NativeUpdates.confirm();
   }, [pageType]);
+  useEffect(
+    () => (pageType === "current" ? NativeSplash.hideOnceDrawn(location) : undefined),
+    [pageType, location.entryId],
+  );
   //? The root renders in the same commit as the first page, so a tree mounted afresh finds it only after committing.
   const [pageContainers, setPageContainers] = useState(() => document.getElementById("pageContainers"));
   useLayoutEffect(() => {

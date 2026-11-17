@@ -28,6 +28,7 @@ export type FrameSlotBucket = "active" | "pending";
 export type FrameSlotMapByBucket = Record<FrameSlotBucket, FrameSlotMap>;
 export const PENDING_FRAME_READY_TIMEOUT_MS = 80;
 export const PENDING_FRAME_READY_MAX_TIMEOUT_MS = 120;
+export const STACK_TRANSITION_DURATION_MS = 350;
 export const KEYBOARD_SHOW_ANIMATION_DURATION_MS = 420;
 export const KEYBOARD_HIDE_ANIMATION_DURATION_MS = 90;
 export const KEYBOARD_SHOW_ANIMATION_EASING = "cubic-bezier(0.16, 1, 0.3, 1)";
@@ -562,7 +563,8 @@ export function createFrameSnapshot({
 const getTransitionDuration = (type: TransitionType) => {
   if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)")?.matches) return 1;
   if (type === "bottomUp" || type === "scaleOut") return 220;
-  if (type === "fade" || type === "stack") return 150;
+  if (type === "stack") return STACK_TRANSITION_DURATION_MS;
+  if (type === "fade") return 150;
   return 0;
 };
 

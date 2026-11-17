@@ -11,9 +11,12 @@ import {
   type UseCsrTransition,
 } from "akanjs/client";
 import { clamp } from "akanjs/common";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
+import { STACK_TRANSITION_DURATION_MS } from "./useFrameRuntime";
 
 const linearEasing = (t: number) => t;
+//? UIKit's push leaves fast and settles slowly; at a constant speed a full-width slide reads as a jump.
+const stackEasing = (t: number) => 1 - (1 - t) ** 4;
 
 const getBottomInsetTop = (clientHeight: number, pageState: PathRoute["pageState"]) =>
   clientHeight - pageState.bottomInset - pageState.bottomSafeArea;
@@ -156,7 +159,8 @@ const usePlayOnForward = (
   { history, location }: RouteState,
   config: { duration: number; easing?: (t: number) => number },
 ) => {
-  useEffect(() => {
+  //? Before paint: started from a passive effect, the incoming page showed one frame at rest before it slid in.
+  useLayoutEffect(() => {
     if (history.current.type === "forward") {
       void transUnit.start(transUnitRange[0], { immediate: true });
       void transUnit.start(transUnitRange[1], { config });
@@ -392,7 +396,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
     };
   }, [transUnitRange]);
   useEffect(() => unlockPageScroll, [unlockPageScroll]);
-  usePlayOnForward(spring, routeState, { duration: 150 });
+  usePlayOnForward(spring, routeState, { duration: STACK_TRANSITION_DURATION_MS, easing: stackEasing });
 
   const pageBind = useDrag(
     ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel }) => {
