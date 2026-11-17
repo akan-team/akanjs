@@ -15,7 +15,7 @@ Under `clientRuntime: "route"`, a page registers the constants of the models its
 - `akan quality runtime` notes each client or constant file that keeps every constant (`akan.runtime.whole-constants`), with its reason, and counts them per app and lib.
 - The build's own check also fails when a registration piece is imported back by a file it loads, or when a page built to load pieces reaches `lib/cnst.ts` other than through a file `akan quality runtime` names or a registration piece answering from it. A page that such a file or piece already makes load every constant may reach them by another path too: a handoff reference no route hands over takes its models from `lib/cnst.ts`, and their constant files stay as written.
 
-In the sample apps the memo pages of `apps/minimal` went from 262.1 KB to 261.0 KB and from 234.7 KB to 233.5 KB (brotli); every other route stays within 0.2 KB of before.
+In the sample apps the memo pages of `apps/minimal` went from 263.5 KB to 262.3 KB and from 236.1 KB to 234.8 KB (brotli); every other route stays within 0.2 KB of before.
 
 **Upgrading.**
 
