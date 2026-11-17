@@ -152,7 +152,7 @@ export class RouteRuntime {
   plan({ importsByModule, entries, entriesByRoute }: RouteRuntimeBundle): Set<string> {
     const graph = new RouteRuntimeGraph(importsByModule, (absPath) => runtimeFile.test(this.fileNameOf(absPath) ?? ""));
     const stores = graph.modules.filter((module) => storeFile.test(this.fileNameOf(module) ?? ""));
-    const storeSide = new Set([...graph.closureOf(stores)].filter((file) => this.fileNameOf(file)));
+    const storeSide = graph.closureOf(stores);
     const planned: Planned = { graph, storeSide, routed: new Set() };
     this.#planned = planned;
     for (const memo of [this.#storeNeeds, this.#ownNeeds, this.#sideNeeds, this.#routes, this.#wholeReaders])
@@ -245,13 +245,12 @@ export class RouteRuntime {
 
   #readsWholeNow(absPath: string, planned: Planned): boolean {
     if (StoreBootstrap.modelRuntimeFilter.test(absPath)) return true;
-    if (!this.fileNameOf(absPath)) return false;
-    const source = this.#read(absPath);
-    if (source === null) return false;
-    const routed = this.#route(source, absPath);
+    const routed = this.#routeOf(absPath);
     if (routed) return !routed.perModule;
-    //? A file left as written (a macro host, a generated barrel) keeps its imports of the whole runtime.
-    return planned.graph.importsOf(absPath).some((imported) => wholeFile.test(this.fileNameOf(imported) ?? ""));
+    //? A file left as written (a macro host, a generated barrel, one outside the scopes) loads only what it imports.
+    if (planned.graph.importsOf(absPath).some((imported) => wholeFile.test(this.fileNameOf(imported) ?? "")))
+      return true;
+    return !planned.storeSide.has(absPath) && this.#importedNeedsOf(absPath, planned).length > 0;
   }
 
   #routeOf(absPath: string): RouteRuntimeResult | null {

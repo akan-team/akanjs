@@ -1209,6 +1209,7 @@ interface RouteBuilt {
   fetchPieceChunks: string[];
   storePiecesStoresImport: string[];
   storesBesideOrg: string[];
+  storeFilesByEntry: Record<string, string[]>;
 }
 
 const routeBuildScript = (root: string, appName: string, entries: string[], store: string, fetchPiece: string) => `
@@ -1243,12 +1244,19 @@ const nameOf = (file) => path.relative(root, file);
 const chunksOf = (file) => (browser.chunksByModule.get(path.join(root, file)) ?? []).map((chunk) => path.basename(chunk));
 const importsOf = (file) => (browser.importsByModule.get(file) ?? []).map((imported) => nameOf(imported.path));
 const storeFiles = [...browser.importsByModule.keys()].filter((file) => file.endsWith(".store.ts"));
+const storeFilesOf = (entry) => {
+  const reached = new Set([...browser.importsByModule.keys()].filter((file) => importsOf(file).includes(entry)));
+  for (const file of reached)
+    for (const imported of browser.importsByModule.get(file) ?? []) if (!imported.lazy) reached.add(imported.path);
+  return [...reached].map(nameOf).filter((file) => file.endsWith(".store.ts")).sort();
+};
 console.log(JSON.stringify({
   failure,
   storeChunks: chunksOf(store),
   fetchPieceChunks: chunksOf(fetchPiece),
   storePiecesStoresImport: storeFiles.flatMap(importsOf).filter((file) => /__client\\/[^_/][^/]*\\.st\\.ts$/.test(file)),
   storesBesideOrg: [...browser.importsByModule.keys()].map(nameOf).filter((file) => /__client\\/[^_/][^/]*\\.st\\.ts$/.test(file)).sort(),
+  storeFilesByEntry: Object.fromEntries(entries.map((entry) => [entry, storeFilesOf(entry)])),
 }));
 `;
 
@@ -1307,5 +1315,47 @@ describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
       `  - shared/hand.ts needs apps/${app}/lib/__client/item.fetch.ts loaded first, but its chunk ${built.storeChunks[0]} does not import the chunk holding that piece`,
       'Set `clientRuntime: "all"` in akan.config.ts to build until it is fixed.',
     ]);
+  }, 240_000);
+
+  test("loads every store in a page reaching, through a file outside `apps/` and `libs/` or one holding a macro import, a file a store imports whose code names another model's store, and only that store where a store imports the outside file too", async () => {
+    const [app, base, upper] = ["marina", "buoy", "keel"];
+    const temp = await writeHarborWorkspace(app, base, upper, {
+      "lib/_bell/bell.dictionary.ts": emptyServiceDictionary,
+      "lib/_bell/bell.store.ts": `import { store } from "akanjs/store";\n\nimport { latch } from "../../../../shared/latch";\n\nexport class BellStore extends store("bell" as const, () => ({ bellCount: 0 })) {\n  strike() {\n    latch();\n    this.set({ bellCount: 1 });\n  }\n}\n`,
+      "ui/chime.ts": `import { st } from "../lib/st";\nexport const chime = () => st.do.applyNotice({ noticeText: "ring" });\n`,
+      "ui/seal.ts": `export const seal = () => "stamp";\n`,
+      "ui/host.ts": `import { seal } from "./seal" with { type: "macro" };\nimport { chime } from "./chime";\nexport const host = [seal(), chime];\n`,
+      "ui/Stamp.tsx": `import { host } from "./host";\nexport const Stamp = () => host;\n`,
+      "ui/Gate.tsx": `import { gate } from "../../../shared/gate";\nexport const Gate = () => gate;\n`,
+      "ui/Ring.tsx": `import { chime } from "./chime";\nexport const Ring = () => chime;\n`,
+      "ui/Latch.tsx": `import { latch } from "../../../shared/latch";\nexport const Latch = () => latch;\n`,
+      "ui/Bell.tsx": `import { st } from "../lib/st";\nexport const Bell = () => st.use.bellCount();\n`,
+    });
+    await writeText(
+      path.join(temp.root, "shared/gate.ts"),
+      `import { chime } from "../apps/${app}/ui/chime";\nexport const gate = chime;\n`,
+    );
+    await writeText(
+      path.join(temp.root, "shared/latch.ts"),
+      `import { chime } from "../apps/${app}/ui/chime";\nexport const latch = chime;\n`,
+    );
+    const entries = ["Note", "Ring", "Stamp", "Gate", "Latch", "Bell"].map((name) => `apps/${app}/ui/${name}.tsx`);
+    const [note, ring, stamp, gate, latch, bell] = entries;
+    const built = (await evaluate(
+      temp.root,
+      routeBuildScript(temp.root, app, entries, `apps/${app}/ui/chime.ts`, `apps/${app}/lib/__client/item.fetch.ts`),
+      app,
+    )) as unknown as RouteBuilt;
+    const noticeStoreFile = `libs/${base}/lib/_notice/notice.store.ts`;
+    const unnamedStoreFile = `libs/${upper}/lib/_crew/crew.store.ts`;
+    expect(built.failure).toBeNull();
+    expect(built.storeFilesByEntry).toEqual({
+      [note]: [],
+      [ring]: [noticeStoreFile],
+      [stamp]: expect.arrayContaining([noticeStoreFile, unnamedStoreFile]),
+      [gate]: expect.arrayContaining([noticeStoreFile, unnamedStoreFile]),
+      [latch]: [noticeStoreFile],
+      [bell]: [`apps/${app}/lib/_bell/bell.store.ts`, noticeStoreFile],
+    });
   }, 240_000);
 });
