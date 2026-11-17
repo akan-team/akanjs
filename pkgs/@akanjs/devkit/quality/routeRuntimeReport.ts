@@ -11,6 +11,14 @@ export interface RouteRuntimeBuildReport {
   //? build kept it for them among this app's other pages: they load per module.
   refused?: string[];
   causes: RouteRuntimeCause[];
+  dictionary?: RouteRuntimeDictionaryFallback[];
+}
+
+export interface RouteRuntimeDictionaryFallback {
+  file: string;
+  line?: number;
+  why: string;
+  routes: string[];
 }
 
 const count = (items: readonly unknown[], one: string, many = `${one}s`) =>
@@ -38,6 +46,7 @@ export class RouteRuntimeReport {
           ...RouteRuntimeReport.#perModuleLines(report.perModule),
           ...report.causes.flatMap((cause) => RouteRuntimeReport.#causeLines(cause)),
           ...RouteRuntimeReport.#refusedLines(report.refused ?? []),
+          ...(report.dictionary ?? []).flatMap((fallback) => RouteRuntimeReport.#dictionaryLines(fallback)),
         ].join("\n"),
       )
       .join("\n\n");
@@ -71,6 +80,15 @@ export class RouteRuntimeReport {
     ];
   }
 
+  static #dictionaryLines({ file, line, why, routes }: RouteRuntimeDictionaryFallback): string[] {
+    const more =
+      routes.length > RouteRuntimeReport.shown ? `, and ${routes.length - RouteRuntimeReport.shown} more` : "";
+    return [
+      `  [dictionary] ${file}${line ? `:${line}` : ""} ${why}`,
+      `    ${count(routes, "route")} ${routes.length === 1 ? "loads" : "load"} every text of the page dictionary: ${routes.slice(0, RouteRuntimeReport.shown).join(", ")}${more}`,
+    ];
+  }
+
   static #chain(chain: readonly string[]) {
     return chain.length > 6
       ? `${chain.slice(0, 2).join(" → ")} → … → ${chain.slice(-3).join(" → ")}`
@@ -79,6 +97,13 @@ export class RouteRuntimeReport {
 
   static async write(appDir: string, report: RouteRuntimeBuildReport) {
     await Bun.write(path.join(appDir, RouteRuntimeReport.file), `${JSON.stringify(report, null, 1)}\n`);
+  }
+
+  static async addDictionary(appDir: string, dictionary: RouteRuntimeDictionaryFallback[]) {
+    const report: RouteRuntimeBuildReport | null = await Bun.file(path.join(appDir, RouteRuntimeReport.file))
+      .json()
+      .catch(() => null);
+    if (report) await RouteRuntimeReport.write(appDir, { ...report, dictionary });
   }
 
   static async read(workspaceRoot: string): Promise<RouteRuntimeBuildReport[]> {

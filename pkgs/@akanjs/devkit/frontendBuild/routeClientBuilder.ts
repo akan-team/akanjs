@@ -412,7 +412,10 @@ export class RouteClientBuilder {
   #signalDescriptors(routeRuntime: RouteRuntime) {
     const scopes = routeRuntime.table.layers.map(({ scope }) => scope);
     return new SignalDescriptors(this.#app.workspace.workspaceRoot, scopes, {
-      onUnread: (reason) => this.#app.logger.warn(`[client-runtime] ${reason}, so their pieces run the macro`),
+      onUnread: (reason) =>
+        this.#app.logger.warn(
+          `[client-runtime] ${reason}, so each of their pieces reads its signal again: a slower build of the same pages. Run \`akan sync ${this.#app.name}\` if their generated files are from an earlier release.`,
+        ),
       takenFromPieces: (absPath) => routeRuntime.takenFromPieces(absPath),
     }).plugin;
   }

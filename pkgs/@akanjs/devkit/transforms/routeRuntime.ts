@@ -121,6 +121,11 @@ export class RouteRuntime {
     this.#constants = new RouteConstants(graph, pieces);
   }
 
+  static #unsynced(scope: string, module: string) {
+    const synced = /^(?:apps|libs)\//.test(scope) ? `akan sync ${path.basename(scope)}` : "akan sync";
+    return `names ${module}, which has no generated piece: run \`${synced}\``;
+  }
+
   static #readFile(absPath: string) {
     try {
       return readFileSync(absPath, "utf8");
@@ -553,16 +558,13 @@ export class RouteRuntime {
 
   #whyWhole(file: string, verdict: RuntimeUseVerdict, sideNeeds: (string[] | null)[]): RouteRuntimeWhy {
     if (!verdict.resolvable) return { file, line: verdict.line, message: verdict.message };
-    const unsynced = (module: string) => ({
-      file,
-      message: `names ${module}, which has no generated piece: run akan sync`,
-    });
+    const unsynced = (scope: string, module: string) => ({ file, message: RouteRuntime.#unsynced(scope, module) });
     const seen = new Set<string>();
     for (const { scope, module, needs } of verdict.owners) {
-      if (needs === "descriptor" && !this.#descriptorOf(scope, module)) return unsynced(module);
+      if (needs === "descriptor" && !this.#descriptorOf(scope, module)) return unsynced(scope, module);
       if (needs !== "store") continue;
       const store = `${scope}/lib/__client/${module}.st`;
-      if (!this.#pieces.has(store)) return unsynced(module);
+      if (!this.#pieces.has(store)) return unsynced(scope, module);
       const why = this.#whyUnreached(store, seen);
       if (why) return why;
     }
@@ -687,12 +689,13 @@ export class RouteRuntime {
     const verdict = RuntimeUse.analyze({ fileName, text, sourceFile }, this.#table);
     if (!verdict.resolvable) return untold(verdict.message, verdict.line);
     const stores: string[] = [];
-    const unsynced = (name: string) => untold(`names ${name}, which has no generated piece: run akan sync`);
+    const unsynced = ({ scope, module: name }: { scope: string; module: string }) =>
+      untold(RouteRuntime.#unsynced(scope, name));
     for (const owner of verdict.owners) {
-      if (owner.needs === "descriptor" && !this.#descriptorOf(owner.scope, owner.module)) return unsynced(owner.module);
+      if (owner.needs === "descriptor" && !this.#descriptorOf(owner.scope, owner.module)) return unsynced(owner);
       if (owner.needs !== "store" || owner.module === module) continue;
       const store = `${owner.scope}/lib/__client/${owner.module}.st`;
-      if (!this.#pieces.has(store)) return unsynced(owner.module);
+      if (!this.#pieces.has(store)) return unsynced(owner);
       stores.push(store);
     }
     return stores;

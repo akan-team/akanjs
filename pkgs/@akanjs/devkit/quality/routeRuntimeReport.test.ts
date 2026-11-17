@@ -66,4 +66,26 @@ describe("what a clientRuntime route build decided, as akan quality runtime prin
     await writeText(path.join(root, "apps/other", RouteRuntimeReport.file), "{}\n");
     expect(await RouteRuntimeReport.read(root)).toEqual([report]);
   });
+
+  test("a route that loads every text of the page dictionary is listed under the file and line that cost it", async () => {
+    const root = await makeTempRoot();
+    const appDir = path.join(root, "apps/demo");
+    const dictionary = [
+      { file: "apps/demo/ui/Label.tsx", line: 4, why: "`l(key)`: the key is picked at run time", routes: ["/a", "/b"] },
+      { file: "apps/demo/ui/Pick.tsx", why: "needs every module's client runtime", routes: ["/c"] },
+    ];
+    await RouteRuntimeReport.addDictionary(appDir, dictionary);
+    expect(await RouteRuntimeReport.read(root)).toEqual([]);
+
+    await RouteRuntimeReport.write(appDir, { ...report, causes: [], refused: [] });
+    await RouteRuntimeReport.addDictionary(appDir, dictionary);
+    const reports = await RouteRuntimeReport.read(root);
+    expect(reports[0]?.dictionary).toEqual(dictionary);
+    expect(RouteRuntimeReport.format(reports).split("\n").slice(2)).toEqual([
+      "  [dictionary] apps/demo/ui/Label.tsx:4 `l(key)`: the key is picked at run time",
+      "    2 routes load every text of the page dictionary: /a, /b",
+      "  [dictionary] apps/demo/ui/Pick.tsx needs every module's client runtime",
+      "    1 route loads every text of the page dictionary: /c",
+    ]);
+  });
 });

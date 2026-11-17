@@ -62,6 +62,18 @@ describe("the pages a framework component reading models by name makes load the 
     ]);
   });
 
+  test("leaves the pages of an app with a build report to that report, which names the routes really held", () => {
+    const pins = ["apps/demo/page/a.tsx", "apps/demonstration/page/a.tsx", "libs/kit/page/a.tsx"].map((page) => ({
+      page,
+      chain: [page, ...relationChain],
+    }));
+    expect(RuntimeMarkerReach.unbuilt(pins, ["demo"]).map(({ page }) => page)).toEqual([
+      "apps/demonstration/page/a.tsx",
+      "libs/kit/page/a.tsx",
+    ]);
+    expect(RuntimeMarkerReach.unbuilt(pins, [])).toEqual(pins);
+  });
+
   test("prints one note per file importing the framework component, with how many pages it holds", () => {
     const pages = ["a", "b", "c", "d"].map((name) => `apps/demo/page/${name}.tsx`);
     const chain = ["apps/demo/ui/Edit.tsx", ...relationChain];

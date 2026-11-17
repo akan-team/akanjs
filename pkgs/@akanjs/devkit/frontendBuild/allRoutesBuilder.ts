@@ -9,6 +9,7 @@ import {
 import { computeRouteSeedIndex, type RouteSeedIndex } from "../artifact/routeSeedIndex";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
+import { type RouteRuntimeDictionaryFallback, RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
@@ -111,22 +112,23 @@ export class AllRoutesBuilder {
     const { workspaceRoot } = this.#app.workspace;
     const reader = await DictionaryRoutes.forApp(workspaceRoot, `apps/${this.#app.name}`, { importsByModule });
     const groupsByRoute = new Map<string, string[]>();
-    const whole = new Map<string, { routeIds: string[]; key: boolean }>();
+    const whole = new Map<string, RouteRuntimeDictionaryFallback>();
     for (const routeId of this.#routeIds) {
       const entries = this.#entriesByRoute.get(routeId) ?? [];
       const read = reader.read({ entries, serverModules: this.#serverModulesByRoute.get(routeId) });
       if (!read.whole) groupsByRoute.set(routeId, read.groups);
       else {
         const pinned = DictionaryRoutes.pinned(read.whole);
-        const known = whole.get(pinned) ?? { routeIds: [], key: read.whole.line !== undefined };
-        whole.set(pinned, { ...known, routeIds: [...known.routeIds, routeId] });
+        const known = whole.get(pinned) ?? { ...read.whole, routes: [] };
+        whole.set(pinned, { ...known, routes: [...known.routes, routeId] });
       }
     }
-    for (const [pinned, { routeIds, key }] of whole) {
-      const line = `[dictionary] ${routeIds.length} route(s) load the whole page dictionary: ${pinned}. Routes: ${routeIds.join(", ")}`;
-      if (key) this.#app.logger.warn(line);
+    for (const [pinned, { routes, line: key }] of whole) {
+      const line = `[dictionary] ${routes.length} route(s) load the whole page dictionary: ${pinned}. Routes: ${routes.join(", ")}`;
+      if (key !== undefined) this.#app.logger.warn(line);
       else this.#app.verbose(line);
     }
+    await RouteRuntimeReport.addDictionary(this.#app.cwdPath, [...whole.values()]);
     return groupsByRoute;
   }
 
