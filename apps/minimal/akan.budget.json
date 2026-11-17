@@ -2,7 +2,7 @@
   "env": "local",
   "routeJsBrotliKB": {
     "/:lang": 275,
-    "/:lang/explore": 466,
+    "/:lang/explore": 463,
     "/:lang/explore/book": 294,
     "/:lang/explore/detail": 294,
     "/:lang/inbox": 293,
@@ -34,6 +34,6 @@
     "/:lang/trips/detail": 294,
     "/:lang/wishlists": 295,
     "/:lang/wishlists/camera": 292,
-    "/:lang/wishlists/collection": 465
+    "/:lang/wishlists/collection": 462
   }
 }
