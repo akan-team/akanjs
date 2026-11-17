@@ -1,33 +1,30 @@
-import { type Dictionary, TranslatorState } from "./translatorState";
-
-interface DictionaryModule {
-  lang: string;
-  default: Dictionary;
-}
+import { type DictionaryModule, importDictionaryModule } from "./dictionaryModule";
+import { TranslatorState } from "./translatorState";
 
 export class DictionaryAsset {
   static readonly #loads = new Map<string, Promise<DictionaryModule>>();
-  static #retrySeq = 0;
+  static readonly #appliedSeqByLang = new Map<string, number>();
+  static #seq = 0;
 
   static async load(url: string | null | undefined): Promise<void> {
     if (!url) return;
+    const seq = ++DictionaryAsset.#seq;
+    TranslatorState.get().loadSeq = seq;
     const loading = DictionaryAsset.#loads.get(url) ?? DictionaryAsset.#import(url);
     DictionaryAsset.#loads.set(url, loading);
-    const { lang, default: dictionary } = await loading;
-    TranslatorState.replace(lang, dictionary);
+    const { lang, default: dictionary, parts } = await loading;
+    //? A file asked for before another of its locale but answered after it belongs to the page that was left.
+    if ((DictionaryAsset.#appliedSeqByLang.get(lang) ?? 0) > seq) return;
+    DictionaryAsset.#appliedSeqByLang.set(lang, seq);
+    TranslatorState.replace(lang, dictionary, parts);
   }
 
-  //? A browser keeps a failed module fetch in its module map, so the retry imports the same file under a fresh query.
   static async #import(url: string): Promise<DictionaryModule> {
     try {
-      return (await import(url)) as DictionaryModule;
-    } catch {
-      try {
-        return (await import(`${url}?retry=${++DictionaryAsset.#retrySeq}`)) as DictionaryModule;
-      } catch (error) {
-        DictionaryAsset.#loads.delete(url);
-        throw error;
-      }
+      return await importDictionaryModule(url);
+    } catch (error) {
+      DictionaryAsset.#loads.delete(url);
+      throw error;
     }
   }
 }
