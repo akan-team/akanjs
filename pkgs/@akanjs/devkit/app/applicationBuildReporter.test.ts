@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { mkdir, writeFile } from "node:fs/promises";
+import path from "node:path";
 import { Logger } from "akanjs/common";
+import { tempDirs } from "../test/testHelpers";
 import { ApplicationBuildReporter, type ApplicationBuildResult } from "./applicationBuildReporter";
+
+const tempRoot = tempDirs("akan-devkit-build-reporter-");
 
 const resultFor = (environment: string): ApplicationBuildResult => ({
   phases: [],
@@ -50,6 +55,33 @@ describe("ApplicationBuildReporter.printSummary", () => {
     expect(lines.indexOf("  …and 2 more")).toBeLessThan(
       lines.indexOf("Route artifacts: dist/apps/shop/.akan/artifact"),
     );
+  });
+
+  test("prints each locale's dictionary size, and its API description file's where the build split one out", async () => {
+    const artifactDir = await tempRoot();
+    await mkdir(path.join(artifactDir, "dict"));
+    await writeFile(path.join(artifactDir, "dict/en.js"), "x".repeat(4096));
+    await writeFile(path.join(artifactDir, "dict/en.js.br"), "x".repeat(1100));
+    await writeFile(path.join(artifactDir, "dict/en-api.js"), "y");
+    await writeFile(path.join(artifactDir, "dict/ko.js"), "z");
+    const dictAssets = {
+      en: {
+        url: "/_akan/dict/en.js",
+        relPath: "dict/en.js",
+        parts: { api: { url: "/_akan/dict/en-api.js", relPath: "dict/en-api.js" } },
+      },
+      ko: { url: "/_akan/dict/ko.js", relPath: "dict/ko.js" },
+    };
+    await writeFile(path.join(artifactDir, "base-artifact.json"), JSON.stringify({ dictAssets }));
+    ApplicationBuildReporter.printSummary({ ...resultFor("main"), artifactDir });
+
+    const lines = rawLog.mock.calls.map(([line = ""]) => line);
+    const en = lines.find((line) => line.startsWith("Dictionary en:"));
+    expect(en).toMatch(/^Dictionary en: 1\.1KB brotli on every page, API descriptions \d+B where shown$/);
+    expect(lines.find((line) => line.startsWith("Dictionary ko:"))).toMatch(
+      /^Dictionary ko: \d+B brotli on every page$/,
+    );
+    expect(lines.indexOf(en ?? "")).toBeLessThan(lines.indexOf(`Route artifacts: ${artifactDir}`));
   });
 
   test("prints only the route JS budget warnings for a quiet build", () => {

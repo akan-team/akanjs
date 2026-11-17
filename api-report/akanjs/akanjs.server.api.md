@@ -731,6 +731,10 @@ export interface DevtoolsRouterContext {
 export interface DictAsset {
     url: string;
     relPath: string;
+    parts?: Record<string, {
+        url: string;
+        relPath: string;
+    }>;
 }
 
 export interface DictionaryData {
