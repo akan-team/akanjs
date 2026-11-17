@@ -13,10 +13,12 @@ const piecesOf = (app = appPieces, kit = kitPieces) =>
 
 let runtime: RouteRuntime;
 let withoutTagStore: RouteRuntime;
+let withStores: (stores: Record<string, string>) => RouteRuntime;
 
 beforeAll(async () => {
   const { demo } = await runtimeFixtureTables();
   runtime = new RouteRuntime(root, demo, piecesOf());
+  withStores = (stores) => new RouteRuntime(root, demo, piecesOf(), (absPath) => stores[absPath] ?? null);
   withoutTagStore = new RouteRuntime(
     root,
     demo,
@@ -30,7 +32,14 @@ beforeAll(async () => {
 const transform = (source: string, file = "apps/demo/ui/Card.tsx", target = runtime) =>
   target.transform(source, `${root}/${file}`);
 
-const whole = 'import "/ws/apps/demo/lib/__client/_useClient.ts"; import "/ws/apps/demo/lib/__client/_st.ts"; ';
+const bound = (...pieces: [name: string, specifier: string][]) =>
+  [
+    'import { loadedAfter as __akanLoadedAfter } from "akanjs/base";',
+    ...pieces.map(([name, specifier], index) => `import { ${name} as __akanLoaded${index} } from "${specifier}";`),
+    `__akanLoadedAfter(${pieces.map((_, index) => `__akanLoaded${index}`).join(", ")});`,
+  ].join(" ");
+
+const whole = `${bound(["sig", "/ws/apps/demo/lib/__client/_useClient.ts"], ["st", "/ws/apps/demo/lib/__client/_st.ts"])} `;
 
 describe("a client file under the per-route runtime", () => {
   test("takes its handles from the page runtime and gains the pieces of the modules it names", () => {
@@ -51,7 +60,11 @@ export const Card = () => {
     ]);
     expect(result?.source.split("\n").slice(0, 2)).toEqual([
       '"use client";',
-      'import "@apps/demo/lib/__client/memo.fetch"; import "@apps/demo/lib/__client/memo.st"; import "@libs/kit/lib/__client/util.st"; import { fetch } from "@apps/demo/lib/usePage"; import { st } from "akanjs/store"; import { Memo } from "@apps/demo/client";',
+      `${bound(
+        ["loaded", "@apps/demo/lib/__client/memo.fetch"],
+        ["memo", "@apps/demo/lib/__client/memo.st"],
+        ["util", "@libs/kit/lib/__client/util.st"],
+      )} import { fetch } from "@apps/demo/lib/usePage"; import { st } from "akanjs/store"; import { Memo } from "@apps/demo/client";`,
     ]);
     expect(result?.source.split("\n").length).toBe(source.split("\n").length);
   });
@@ -66,7 +79,7 @@ export const count = (value: cnst.Memo) => [fetch.memoNote(), value];
     const result = transform(source);
     expect(
       result?.source,
-    ).toBe(`import "@apps/demo/lib/__client/memo.fetch"; import { fetch } from "@apps/demo/lib/usePage"; import type { cnst } from "@apps/demo/client";
+    ).toBe(`${bound(["loaded", "@apps/demo/lib/__client/memo.fetch"])} import { fetch } from "@apps/demo/lib/usePage"; import type { cnst } from "@apps/demo/client";
 
 
 
@@ -84,7 +97,8 @@ export const count = (value: cnst.Memo) => [fetch.memoNote(), value];
       "apps/demo/lib/__client/note.st",
       "libs/kit/lib/__client/tag.st",
     ]);
-    expect(result?.source.startsWith('import "@apps/demo/lib/__client/note.fetch";')).toBe(true);
+    expect(result?.source).toContain('import { loaded as __akanLoaded0 } from "@apps/demo/lib/__client/note.fetch";');
+    expect(result?.source).toContain('import { tag as __akanLoaded3 } from "@libs/kit/lib/__client/tag.st";');
     expect(result?.source).toContain(
       'import { fetch } from "@libs/kit/lib/usePage"; import { st } from "akanjs/store";',
     );
@@ -124,6 +138,48 @@ export class NoteStore extends store(sig.note, () => ({ noteCount: 0 })) {}
     expect(result?.source).not.toContain("note.st");
   });
 
+  test("loads, in each file naming a store, the store pieces that store's own code names", () => {
+    const naming = withStores({
+      "/ws/apps/demo/lib/memo/memo.store.ts": `import { store } from "akanjs/store";
+
+import { st } from "../st";
+import { sig } from "../useClient";
+
+export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
+  relabel() {
+    st.do.pickLabel(st.get().tagFilter);
+  }
+}
+`,
+    });
+    const source = 'import { st } from "@apps/demo/client";\nexport const read = () => st.use.draft();\n';
+    expect(transform(source)?.pieces).toEqual(["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/memo.st"]);
+    expect(transform(source, "apps/demo/ui/Card.tsx", naming)?.pieces).toEqual([
+      "apps/demo/lib/__client/memo.fetch",
+      "apps/demo/lib/__client/memo.st",
+      "libs/kit/lib/__client/tag.st",
+      "libs/kit/lib/__client/util.st",
+    ]);
+  });
+
+  test("gives a store file no piece of a store it names, which that store's piece would import back", () => {
+    const source = `import { store } from "akanjs/store";
+
+import { st } from "../st";
+import { sig } from "../useClient";
+
+export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
+  relabel() {
+    st.do.pickLabel(st.get().tagFilter);
+  }
+}
+`;
+    const result = transform(source, "apps/demo/lib/memo/memo.store.ts");
+    expect(result?.pieces).toEqual(["apps/demo/lib/__client/memo.fetch", "apps/demo/lib/__client/tag.fetch"]);
+    expect(result?.source).toContain('import { st } from "akanjs/store";');
+    expect(result?.source).not.toMatch(/__client\/[\w.]+\.st"/);
+  });
+
   test("loads the framework's own descriptors for a call to one of them", () => {
     const result = transform('import { fetch } from "@apps/demo/client";\nexport const check = () => fetch.ping();\n');
     expect(result?.pieces).toEqual(["apps/demo/lib/__client/_base.fetch"]);
@@ -134,6 +190,18 @@ export class NoteStore extends store(sig.note, () => ({ noteCount: 0 })) {}
     expect(transform(source)).toEqual({ source, perModule: true, pieces: [] });
   });
 });
+
+const pickingStore = `import { store } from "akanjs/store";
+
+import { st } from "../st";
+import { fetch, sig } from "../useClient";
+
+export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
+  run(name: string) {
+    return [fetch[name](), st.get().draft];
+  }
+}
+`;
 
 describe("a client file whose modules cannot be told", () => {
   test("loads the app's whole runtime after its directive when a name is picked at run time", () => {
@@ -160,22 +228,30 @@ describe("a client file whose modules cannot be told", () => {
     expect(result?.source).toBe(`${whole}${source}`);
   });
 
-  test("loads every descriptor and every other module's store piece in a store file, never the store root that imports it", () => {
-    const source = `import { store } from "akanjs/store";
-
-import { fetch, sig } from "../useClient";
-
-export class MemoStore extends store(sig.memo, () => ({ draft: "" })) {
-  run(name: string) {
-    return fetch[name]();
-  }
-}
-`;
-    const pieces = ["apps/demo/lib/__client/_useClient", "apps/demo/lib/__client/note.st"].concat(
-      ["note.st", "tag.st", "util.st"].map((piece) => `libs/kit/lib/__client/${piece}`),
+  test("gives a store file that picks a name at run time its own descriptors and the page runtime's handles, and no store piece", () => {
+    const result = transform(pickingStore, "apps/demo/lib/memo/memo.store.ts");
+    expect(result?.perModule).toBe(true);
+    expect(result?.pieces).toEqual(["apps/demo/lib/__client/memo.fetch"]);
+    expect(result?.source).toBe(
+      `${bound(["loaded", "@apps/demo/lib/__client/memo.fetch"])} ${pickingStore
+        .replace('"../useClient"', '"@apps/demo/lib/usePage"')
+        .replace('"../st"', '"akanjs/store"')}`,
     );
-    expect(transform(source, "apps/demo/lib/memo/memo.store.ts")).toEqual({
-      source: `${pieces.map((piece) => `import "/ws/${piece}.ts"; `).join("")}${source}`,
+  });
+
+  test("leaves a store file's import of the whole store root as written where it takes more than the handle", () => {
+    const source = pickingStore.replace('import { st } from "../st";', 'import * as root from "../st";');
+    const result = transform(source, "apps/demo/lib/memo/memo.store.ts");
+    expect(result?.source).toContain('import * as root from "../st";');
+    expect(result?.source).toContain('import { fetch, sig } from "@apps/demo/lib/usePage";');
+  });
+
+  test("loads the whole runtime in each file naming a store whose own code picks a name at run time", () => {
+    const picking = withStores({ "/ws/apps/demo/lib/memo/memo.store.ts": pickingStore });
+    const source = 'import { st } from "@apps/demo/client";\nexport const read = () => st.use.draft();\n';
+    expect(transform(source)?.perModule).toBe(true);
+    expect(transform(source, "apps/demo/ui/Card.tsx", picking)).toEqual({
+      source: `${whole}${source}`,
       perModule: false,
       pieces: [],
     });
@@ -230,9 +306,7 @@ describe("a scope's whole runtime file", () => {
     expect(runtime.redirectOf("/ws/apps/demo/lib/memo/memo.store.ts")).toBeNull();
   });
 
-  test("is imported by absolute path", () => {
-    expect(runtime.wholeSource).toBe(
-      'import "/ws/apps/demo/lib/__client/_useClient.ts";\nimport "/ws/apps/demo/lib/__client/_st.ts";\n',
-    );
+  test("is imported by absolute path, each piece by a name the importer uses", () => {
+    expect(runtime.wholeSource).toBe(`${whole.trim().split("; ").join(";\n")}\n`);
   });
 });

@@ -11,11 +11,13 @@ export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [
   const storePath = `../${isDatabase ? "" : "_"}${dict.model}/${dict.model}.store`;
   //? `store()` reads another module's descriptor while the class is defined: the upload setters, the file module's.
   const descriptorsFirst = (dict.descriptorsFirst ?? "").split(",").filter(Boolean);
+  const fetched = [...descriptorsFirst, ...(files.has("signal") ? [dict.model] : [])];
+  const after = [...fetched.map((_, index) => `fetch${index}`), ...libs.map((_, index) => `lib${index}`)];
   return `
-${descriptorsFirst.map((module) => `import "./${module}.fetch";\n`).join("")}${files.has("signal") ? `import "./${dict.model}.fetch";\n` : ""}${libs.map((libInfo) => `import "@libs/${libInfo.name}/lib/__client/${dict.model}.st";\n`).join("")}import { StoreRegistry } from "akanjs/store";
-import { ${dict.Model}Store } from "${storePath}";
+${after.length ? 'import { loadedAfter } from "akanjs/base";\n' : ""}import { StoreRegistry } from "akanjs/store";
+${fetched.map((module, index) => `import { loaded as fetch${index} } from "./${module}.fetch";\n`).join("")}${libs.map((libInfo, index) => `import { ${dict.model} as lib${index} } from "@libs/${libInfo.name}/lib/__client/${dict.model}.st";\n`).join("")}import { ${dict.Model}Store } from "${storePath}";
 
-export const ${dict.model} = StoreRegistry.register(${dict.Model}Store);
+${after.length ? `loadedAfter(${after.join(", ")});\n` : ""}export const ${dict.model} = StoreRegistry.register(${dict.Model}Store);
 StoreRegistry.build(StoreRegistry.merge("${dict.model}" as const, ${dict.model}));
 `;
 }

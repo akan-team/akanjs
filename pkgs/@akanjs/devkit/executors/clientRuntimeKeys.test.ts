@@ -729,24 +729,33 @@ describe("an app's client runtime pieces", () => {
     ]);
     expect(await read("_base.fetch.ts")).not.toContain("@libs/");
     expect(await read("_base.fetch.ts")).toContain('getSerializedSignalOf("base")');
-    expect(await read("audit.fetch.ts")).toContain('import "@libs/stock/lib/__client/audit.fetch";');
-    expect(await read("item.fetch.ts")).toContain('import "@libs/stock/lib/__client/item.fetch";');
+    expect(await read("audit.fetch.ts")).toContain(
+      'import { loaded as lib0 } from "@libs/stock/lib/__client/audit.fetch";',
+    );
+    expect(await read("item.fetch.ts")).toContain(
+      'import { loaded as lib0 } from "@libs/stock/lib/__client/item.fetch";\nimport * as cnst from "../cnst";',
+    );
+    expect(await read("item.fetch.ts")).toContain("\nloadedAfter(lib0);\nexport const loaded = FetchClient.build<");
     expect(await read("ping.fetch.ts")).not.toContain("@libs/");
     expect(await read("ping.fetch.ts")).toContain('getSerializedSignalOf("ping")');
-    expect(await read("demo.st.ts")).toContain('import "./demo.fetch";');
+    expect(await read("demo.st.ts")).toContain('import { loaded as fetch0 } from "./demo.fetch";');
     expect(await read("demo.st.ts")).toContain('import { DemoStore } from "../_demo/demo.store";');
     expect(await read("item.st.ts")).toContain(
-      'import "@libs/stock/lib/__client/item.st";\nimport { StoreRegistry } from "akanjs/store";\nimport { ItemStore } from "../item/item.store";',
+      'import { loaded as fetch0 } from "./item.fetch";\nimport { item as lib0 } from "@libs/stock/lib/__client/item.st";\nimport { ItemStore } from "../item/item.store";\n\nloadedAfter(fetch0, lib0);\nexport const item = StoreRegistry.register(ItemStore);',
     );
     expect(await read("note.st.ts")).not.toContain(".fetch");
-    expect((await read("_useClient.ts")).match(/(?<=import "\.\/)[^"]+(?=";)/g)).toEqual([
+    expect(await read("note.st.ts")).not.toContain("loadedAfter");
+    expect((await read("_useClient.ts")).match(/(?<=from "\.\/)[^"]+(?=";)/g)).toEqual([
       "_base.fetch",
       "item.fetch",
       "audit.fetch",
       "demo.fetch",
       "ping.fetch",
     ]);
+    expect(await read("_useClient.ts")).toContain("\nloadedAfter(base, module0, module1, module2, module3);\n");
     expect(await read("_st.ts")).toContain('import { RootStore as stock } from "@libs/stock/lib/__client/_st";');
+    expect(await read("_st.ts")).toContain('import { sig } from "./_useClient";');
+    expect(await read("_st.ts")).toContain("\nloadedAfter(sig);\n");
     for (const whole of ["useClient.ts", "st.ts", "usePage.ts"])
       expect(await Bun.file(path.join(root, "apps/shop/lib", whole)).text()).not.toContain("__client");
 
@@ -801,7 +810,10 @@ describe("an app's client runtime pieces", () => {
       appFiles: shopFilesOf("locker"),
     });
     const piece = await Bun.file(path.join(root, "libs/locker/lib/__client/user.st.ts")).text();
-    expect(piece.trimStart().startsWith('import "./file.fetch";\nimport "./user.fetch";\n')).toBe(true);
+    expect(piece).toContain(
+      'import { loaded as fetch0 } from "./file.fetch";\nimport { loaded as fetch1 } from "./user.fetch";\n',
+    );
+    expect(piece).toContain("\nloadedAfter(fetch0, fetch1);\nexport const user = StoreRegistry.register(UserStore);");
     expect(await Bun.file(path.join(root, "libs/locker/lib/__client/item.st.ts")).text()).not.toContain("file.fetch");
     await pointScopes(root, ["apps/studio", "libs/locker"], { "useClient.ts": "./usePage" });
     expect(await evaluate(root, uploadSetterScript("locker"), "studio")).toEqual({
@@ -1089,22 +1101,13 @@ describe("an app store that redeclares what the lib store it extends declares", 
     }
   }, 240_000);
 
-  test("loads every model's runtime with a lib store that picks an endpoint at run time, whichever file a page's own bundle reaches first", async () => {
+  test("loads every model's runtime with a lib store that picks an endpoint at run time, in each page whose client code names that store or the app store extending it", async () => {
     const [app, lib] = ["tailor", "attic"];
     const temp = await writeRedeclaringWorkspace(app, lib, pickingLibStore);
     const { root } = temp;
     const whole = await evaluate(root, pickedScript([`apps/${app}/lib/st.ts`]), app);
     expect(whole).toEqual({ picked: "function", otherStore: "function", own: "function" });
-    const libPiece = await writeLoadOrder(root, "libPiece", [
-      `libs/${lib}/lib/__client/item.st`,
-      `apps/${app}/lib/__client/item.st`,
-    ]);
-    for (const page of [
-      `apps/${app}/ui/Count.tsx`,
-      `libs/${lib}/ui/Picker.tsx`,
-      `apps/${app}/ui/Field.tsx`,
-      libPiece,
-    ]) {
+    for (const page of [`apps/${app}/ui/Count.tsx`, `libs/${lib}/ui/Picker.tsx`, `apps/${app}/ui/Field.tsx`]) {
       const { pages } = await bundleForBrowser(temp.root, app, [page]);
       const answer = await evaluate(root, pickedScript(pages, { browser: true }), app);
       expect({ page, answer }).toEqual({ page, answer: whole });

@@ -490,7 +490,7 @@ describe("route client store bootstrap", () => {
         );
         await write(
           path.join(appDir, `lib/__client/${name}.st.ts`),
-          `export const piece = Object.freeze({ mark: "piece:${name}.st" });\n(globalThis as { pieces?: unknown[] }).pieces?.push(piece);\n`,
+          `export const ${name} = Object.freeze({ mark: "piece:${name}.st" });\n(globalThis as { pieces?: unknown[] }).pieces?.push(${name});\n`,
         );
       }
       await write(
