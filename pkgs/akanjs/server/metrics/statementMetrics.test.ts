@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import path from "node:path";
 import { createDocumentQueryHelper } from "akanjs/document";
 import { type AkanMetricFamily, StatementProbe } from "akanjs/service";
 import { runTraced, SignalTrace } from "../../signal/trace";
@@ -165,4 +166,55 @@ describe("statement metrics", () => {
     expect(kept.length).toBeLessThanOrEqual(StatementMetrics.maxStatements);
     expect(kept.map((stat) => stat.fingerprint)).toContain(costly.shape.fingerprint);
   });
+});
+
+//? In a child with a deadline: a cap that calls itself with the same arguments never returns, as JSC runs that tail
+//? call as a loop, and no in-process timeout stops a loop that never yields.
+const inChild = (body: string): unknown => {
+  const source = JSON.stringify(path.join(import.meta.dir, "statementMetrics.ts"));
+  const shape = `{ fingerprint: "f", text: "SELECT 1", verb: "select", table: "org", changesSchema: false }`;
+  const script = `import { StatementStat } from ${source};\nconst stat = new StatementStat(${shape});\n${body}`;
+  const { exitCode, stdout } = Bun.spawnSync([process.execPath, "-e", script], { timeout: 8_000 });
+  expect(exitCode).toBe(0);
+  return JSON.parse(stdout.toString());
+};
+const sending = `const sent = (type, key, ms) => stat.sentBy(type ? { endpointType: type, endpointKey: key } : undefined, ms);`;
+
+describe("statement stat caps", () => {
+  test("counts every sender past the cap in one overflow slot, a new key, a new type or an untraced one", () => {
+    const cases = [
+      [
+        `sent("query", "endpoint0", 1);`,
+        { endpoint: "other", count: 27, totalMs: 270 },
+        { endpoint: "query:endpoint0", count: 1, totalMs: 1 },
+      ],
+      [
+        `sent(undefined, "", 1);`,
+        { endpoint: "other", count: 26, totalMs: 260 },
+        { endpoint: "none", count: 2, totalMs: 11 },
+      ],
+    ] as const;
+    for (const [first, overflow, third] of cases) {
+      const sentBy = inChild(`${sending}
+${first}
+for (let i = 1; i < 16; i++) sent("query", \`endpoint\${i}\`, 1);
+for (let i = 16; i < 40; i++) sent("query", \`endpoint\${i}\`, 10);
+sent("mutation", "createOrg", 10);
+sent("pubsub", "orgChanged", 10);
+sent(undefined, "", 10);
+sent("query", "endpoint1", 100);
+process.stdout.write(JSON.stringify(stat.toStat().sentBy));`);
+      expect(sentBy).toEqual([overflow, { endpoint: "query:endpoint1", count: 2, totalMs: 101 }, third]);
+    }
+  }, 20_000);
+
+  test("shares one plan among the query texts past the cap, and keeps each earlier one its own", () => {
+    const plans = inChild(`const plans = Array.from({ length: 12 }, (_, i) => stat.planOf(\`variant\${i}\`));
+process.stdout.write(JSON.stringify({
+  distinct: new Set(plans).size,
+  shared: plans.slice(8).every((plan) => plan === plans[8]),
+  kept: stat.planOf("variant0") === plans[0],
+}));`);
+    expect(plans).toEqual({ distinct: 9, shared: true, kept: true });
+  }, 20_000);
 });

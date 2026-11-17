@@ -114,7 +114,7 @@ export class StatementStat {
   planOf(variant: string): PlanState {
     let plan = this.#plans.get(variant);
     if (!plan) {
-      if (this.#plans.size >= MAX_PLAN_VARIANTS) return this.planOf("");
+      if (this.#plans.size >= MAX_PLAN_VARIANTS && variant !== "") return this.planOf("");
       plan = { epoch: -1, pending: false, dueAt: 0 };
       this.#plans.set(variant, plan);
     }
@@ -151,20 +151,18 @@ export class StatementStat {
   }
 
   #senderOf(type: string, key: string): Sender {
+    const known = this.#senders.get(type)?.get(key);
+    if (known) return known;
+    const overflow = type === "" && key === OVERFLOW_LABEL_VALUE;
+    if (this.#senderCount >= MAX_SENDERS && !overflow) return this.#senderOf("", OVERFLOW_LABEL_VALUE);
     let byKey = this.#senders.get(type);
     if (!byKey) {
-      if (this.#senderCount >= MAX_SENDERS) return this.#senderOf("", OVERFLOW_LABEL_VALUE);
       byKey = new Map();
       this.#senders.set(type, byKey);
     }
-    let sender = byKey.get(key);
-    if (!sender) {
-      if (this.#senderCount >= MAX_SENDERS && key !== OVERFLOW_LABEL_VALUE)
-        return this.#senderOf("", OVERFLOW_LABEL_VALUE);
-      sender = { count: 0, totalMs: 0 };
-      byKey.set(key, sender);
-      this.#senderCount += 1;
-    }
+    const sender = { count: 0, totalMs: 0 };
+    byKey.set(key, sender);
+    this.#senderCount += 1;
     return sender;
   }
 
