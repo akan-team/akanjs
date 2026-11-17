@@ -13,6 +13,8 @@ interface TranslatorStateValue {
   seededDicts: WeakSet<object>;
   // The snapshot each locale was last replaced with: a tab may get an older build's dictionary back mid-deploy.
   replacedByLang: Map<string, object>;
+  // The files each locale's snapshot left out, by name, merged where a page shows them (`DictionaryPart`).
+  partsByLang: Map<string, Record<string, string> | undefined>;
   // Browser-only: never written on the server, where concurrent requests share this state.
   activeLocale?: string;
   // Browser-only copy of the server-resolved path, so the first client render matches SSR.
@@ -32,15 +34,17 @@ export class TranslatorState {
       langDictionaryMap: new Map<string, Dictionary>(),
       seededDicts: new WeakSet<object>(),
       replacedByLang: new Map<string, object>(),
+      partsByLang: new Map<string, Record<string, string> | undefined>(),
     };
     return globalScope[translatorStateKey];
   }
-  static replace(lang: string, dict: Dictionary | undefined) {
+  static replace(lang: string, dict: Dictionary | undefined, parts?: Record<string, string>) {
     if (!dict) return;
     const state = TranslatorState.get();
     if (state.replacedByLang.get(lang) === dict) return;
     state.seededDicts.add(dict);
     state.replacedByLang.set(lang, dict);
     state.langDictionaryMap.set(lang, { ...dict });
+    state.partsByLang.set(lang, parts);
   }
 }

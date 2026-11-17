@@ -80,6 +80,27 @@ describe("DevArtifactPruner", () => {
     expect(await list("dict")).toEqual(["en-current.js", "en-recent.js", "ko-current.js"]);
   });
 
+  test("keeps the API file each of the base artifact's dictionaries names", async () => {
+    await mkdir(path.join(artifactDir, "dict"), { recursive: true });
+    await writeAged("dict/en-current.js", 300_000);
+    await writeAged("dict/en-api-current.js", 300_000);
+    await writeAged("dict/en-api-old.js", 300_000);
+    await writeFile(
+      path.join(artifactDir, "base-artifact.json"),
+      JSON.stringify({
+        dictAssets: {
+          en: {
+            url: "/_akan/dict/en-current.js",
+            relPath: "dict/en-current.js",
+            parts: { api: { url: "/_akan/dict/en-api-current.js", relPath: "dict/en-api-current.js" } },
+          },
+        },
+      }),
+    );
+    await new DevArtifactPruner(artifactDir, { graceMs: 60_000 }).pruneDictionaries();
+    expect(await list("dict")).toEqual(["en-api-current.js", "en-current.js"]);
+  });
+
   test("prunes nothing when the running bundle is not on disk", async () => {
     await writeAged("server/pages-old.js", 600_000);
     await new DevArtifactPruner(artifactDir, { graceMs: 0 }).prunePages(path.join(artifactDir, "server/pages-gone.js"));
