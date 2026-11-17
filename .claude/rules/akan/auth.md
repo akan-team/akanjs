@@ -17,7 +17,9 @@ paths:
   `guards: [Public]` when anonymous access is the intent; `AKAN_UNGUARDED_ENDPOINTS=open` is a deployment's stopgap,
   never the fix.
 - **A `slice()` takes its guard map as a second argument**, and `root:` is always `Admin`:
-  `slice(srv.task, { guards: { root: Admin, get: SignedIn, cru: SignedIn } }, (init) => ({...}))`.
+  `slice(srv.task, { guards: { root: Admin, get: SignedIn, cru: SignedIn } }, (init) => ({...}))`. `Admin` is
+  `libs/shared`'s; an app without that lib is scaffolded with `root: None, cru: None`, shut until it names a guard
+  of its own.
   `guards: { cru: false }` (or per verb) takes a generated verb off HTTP; `mcp: { cru: false }` only keeps it off the
   agent shelf.
 - **An `endpoint()` takes no guard argument** — `endpoint(srv.task, ({ mutation }) => ({...}))` — and the slice map

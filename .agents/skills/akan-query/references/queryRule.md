@@ -54,8 +54,10 @@ this is the full contract behind them.
   drift from the count a live event moved. `loadMoreOf<Model>()` is a no-op once it is false, and `Load.Units`
   draws no infinite-scroll sentinel.
 - Generated list accessors like `listBy(...)` return `Promise<Doc[]>`. For a chainable builder (`.sort().skip().limit().select()`) use the model facade's `find`/`findOne` (`FindManyChain`, `pkgs/akanjs/document/into.ts`).
-- **A projection is bare on the facade and nested under `select` on a filter accessor.** `pickById(id, { secretField:
-  true })` / `find(query, { secretField: true })` take the projection as their second argument; a generated
+- **A projection is bare on the facade and nested under `select` on a filter accessor.** The facade is the property
+  named after the model: `this.User` in the Model class, `this.userModel.User` from a service; `this.userModel` itself
+  carries the generated filter accessors and your own methods only. `pickById(id, { secretField: true })` /
+  `find(query, { secretField: true })` take the projection as their second argument; a generated
   `findBy<Filter>(...args, { select: { secretField: true } })` takes it inside the option object. The shapes do not
   swap: `{ select: … }` handed to the facade projects a field named `select`, which no model has, and throws
   `Unknown document field path`. The facade's third argument is the scope (`{ withRemoved: true }`), never a field.
