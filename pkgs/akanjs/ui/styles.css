@@ -216,6 +216,20 @@ body.akan-mobile-document {
   contain: layout paint;
 }
 
+/* iOS turns a long press on any selectable block into a text selection, so the empty safe-area fills lit up blue
+   under a Copy menu wherever the page itself opts out of selection; the frame's bars are app chrome, never text. */
+@media (pointer: coarse) {
+  .akan-frame-chrome {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .akan-frame-chrome :is(input, textarea, [contenteditable]:not([contenteditable="false"])) {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
 .akan-mobile-frame #pageContainers {
   position: relative;
   z-index: 10;
