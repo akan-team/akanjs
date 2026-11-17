@@ -51,7 +51,8 @@ const runtimeFile =
   /^(?:apps|libs)\/[^/]+\/lib\/(?:(?:useClient|st|usePage)\.ts|__client\/(?![^/]+\.ref\.ts$)[^/]+\.ts)$/;
 const storePiece = /^((?:apps|libs)\/[^/]+)\/lib\/__client\/([^/_][^/]*)\.st$/;
 const constantPieceFile = /^(?:apps|libs)\/[^/]+\/lib\/__client\/([^/_][^/]*)\.cnst\.ts$/;
-const constantsFile = /^(?:apps|libs)\/[^/]+\/lib\/cnst\.ts$/;
+const constantsFile = /^((?:apps|libs)\/[^/]+)\/lib\/cnst\.ts$/;
+const registration = /^export const (\w+) = ConstantRegistry\.build(?:Model|Scalar)\(.*$/gm;
 const pieceImport = /\bfrom\s+"((?:\.|@(?:apps|libs)\/)[^"]+)"/g;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
 //? The tab's one store: a scope's `lib/st.ts` exports this same object, and a key answers once its module has loaded.
@@ -348,7 +349,11 @@ export class RouteRuntime {
       this.#routes.set(key, { source, result });
       return result;
     }
-    if (narrow && fileName === `${this.#table.scope}/lib/cnst.ts`) return this.#answeredFrom(source, narrow);
+    const [, scope] = fileName.match(constantsFile) ?? [];
+    if (narrow && scope) {
+      const answered = this.#answeredFrom(source, narrow, scope);
+      if (answered || scope === this.#table.scope) return answered;
+    }
     if (RuntimeScopeReport.isConstantFile(fileName))
       return narrow?.constantFiles.has(key) === false ? null : this.#route(source, key);
     if (this.#planned?.graph.has(key) && !this.#planned.routed.has(key)) return null;
@@ -357,13 +362,21 @@ export class RouteRuntime {
 
   //? The bundler gives a module its own chunk, empty or not, wherever the pages reaching it differ from its neighbours':
   //? imported from here, an answering piece is reached by exactly the pages reaching this file and lands in its chunk.
-  #answeredFrom(source: string, narrow: NarrowConstants): RouteRuntimeResult | null {
-    const answering = [...this.#pieces]
-      .filter((piece) => constantPieceFile.test(`${piece}.ts`) && !narrow.pieces.has(piece))
-      .sort((a, b) => a.localeCompare(b));
-    if (!answering.length) return null;
+  #answeredFrom(source: string, narrow: NarrowConstants, scope: string): RouteRuntimeResult | null {
+    const registered = source.replace(registration, (line, model: string) =>
+      narrow.pieces.has(`${scope}/lib/__client/${model}.cnst`)
+        ? `export { ${model} } from "./__client/${model}.cnst";`
+        : line,
+    );
+    const answering =
+      scope === this.#table.scope
+        ? [...this.#pieces]
+            .filter((piece) => constantPieceFile.test(`${piece}.ts`) && !narrow.pieces.has(piece))
+            .sort((a, b) => a.localeCompare(b))
+        : [];
+    if (registered === source && !answering.length) return null;
     const imports = answering.map((piece) => `import ${JSON.stringify(this.#absoluteOf(piece))};`);
-    return { source: `${source}\n${imports.join("\n")}\n`, perModule: false, pieces: [] };
+    return { source: `${registered}\n${imports.join("\n")}\n`, perModule: false, pieces: [] };
   }
 
   #route(source: string, absPath: string): RouteRuntimeResult | null {
