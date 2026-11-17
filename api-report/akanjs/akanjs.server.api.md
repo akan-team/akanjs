@@ -1885,6 +1885,7 @@ export interface RenderState {
     csrGeneration?: number;
     ssrGeneration?: number;
     ssrEpoch?: number;
+    dictionaryStamp?: string;
 }
 
 export type ResolvedAkanImageConfig = Required<AkanImageConfig>;
