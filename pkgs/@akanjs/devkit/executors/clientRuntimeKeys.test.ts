@@ -1253,10 +1253,14 @@ console.log(JSON.stringify({
 `;
 
 describe('a `clientRuntime: "route"` build of a three-scope workspace', () => {
-  test("passes its own check with a store and its model's fetch piece in different chunks, a lib store spreading into `this.set` and two stores naming each other, no store file importing a store piece", async () => {
+  test("passes its own check with a store and its model's fetch piece in different chunks, a file two entries share apart from the store piece it names, a lib store spreading into `this.set` and two stores naming each other, no store file importing a store piece", async () => {
     const [app, base, upper] = ["harbor", "berth", "jetty"];
-    const temp = await writeHarborWorkspace(app, base, upper);
-    const entries = ["Count", "Note", "Org", "Both"].map((name) => `apps/${app}/ui/${name}.tsx`);
+    const temp = await writeHarborWorkspace(app, base, upper, {
+      "ui/Tally.tsx": `import { st } from "@apps/${app}/client";\nexport const tally = () => st.use.itemCount();\n`,
+      "ui/Wide.tsx": `import { tally } from "./Tally";\nexport const Wide = () => tally;\n`,
+      "ui/Org.tsx": `import { st } from "@libs/${upper}/client";\nimport { tally } from "./Tally";\nexport const Org = () => [st.use.orgCount(), tally];\n`,
+    });
+    const entries = ["Count", "Note", "Org", "Both", "Wide"].map((name) => `apps/${app}/ui/${name}.tsx`);
     const built = (await evaluate(
       temp.root,
       routeBuildScript(
