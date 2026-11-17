@@ -181,16 +181,21 @@ const decodeRoom = (roomId: string): { key: string; values: (string | null)[] } 
   return { key, values: values as (string | null)[] };
 };
 
+const swapFirst = (text: string, from: string, to: string) => {
+  const at = text.indexOf(from);
+  return at < 0 ? text : `${text.slice(0, at)}${to}${text.slice(at + from.length)}`;
+};
+
 const mutationsOf = (roomId: string) =>
   [
     roomId.replace(/%([0-9A-F]{2})/, (_match, hex: string) => `%${hex.toLowerCase()}`),
-    roomId.replace("%2D", "-"),
-    roomId.replace("%7E", "~"),
+    swapFirst(roomId, "%2D", "-"),
+    swapFirst(roomId, "%7E", "~"),
     roomId.replace(/-~(?=-|$)/, "-%7E"),
-    roomId.replace("%", "%25"),
+    swapFirst(roomId, "%", "%25"),
     roomId.replace(/%([0-9A-F]{2})/, (_match, hex: string) => `%u00${hex}`),
     roomId.replace(/%u([0-9A-F]{4})/, (_match, hex: string) => String.fromCharCode(Number.parseInt(hex, 16))),
-    roomId.replace("-", "--"),
+    swapFirst(roomId, "-", "--"),
     roomId.replace(/-[^-]*$/, ""),
     `${roomId}-`,
     `${roomId}-~`,
