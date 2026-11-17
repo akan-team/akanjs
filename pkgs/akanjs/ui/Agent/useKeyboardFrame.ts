@@ -1,5 +1,5 @@
 "use client";
-import { breakpointQuery } from "akanjs/client";
+import { breakpointQuery, isPageKeyboardAvoidance } from "akanjs/client";
 import { useVisualViewportFrame } from "akanjs/webkit";
 import type { CSSProperties } from "react";
 
@@ -8,7 +8,9 @@ import type { CSSProperties } from "react";
 export const useKeyboardFrame = (): CSSProperties | undefined => {
   const { keyboardHeight, height, offsetTop } = useVisualViewportFrame();
   if (typeof window === "undefined") return undefined;
+  //? In an app the page meets the keys itself (`KeyboardRide`): the panel keeps the screen and its composer rides them.
+  if (isPageKeyboardAvoidance()) return undefined;
   if (window.matchMedia(breakpointQuery("sm", { below: true })).matches)
-    return height < window.innerHeight ? { top: offsetTop, bottom: "auto", height } : undefined;
+    return height < window.innerHeight ? { top: offsetTop, bottom: "auto", height, paddingBottom: 0 } : undefined;
   return keyboardHeight ? { paddingBottom: keyboardHeight } : undefined;
 };

@@ -213,6 +213,51 @@ describe("Agent.Chat", () => {
     unmount();
   });
 
+  test("a log read to its end stays there when the keyboard shortens it, and one scrolled up stays put", () => {
+    const watched = new Map<Element, ResizeObserverCallback>();
+    const Original = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.#callback = callback;
+      }
+      observe(target: Element) {
+        watched.set(target, this.#callback);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "ok" }));
+    const { container, unmount } = mountChat(session);
+    const log = container.querySelector<HTMLElement>('[role="log"]')?.parentElement;
+    if (!log) throw new Error("no log");
+    let scrollTop = 0;
+    Object.defineProperty(log, "scrollTop", { get: () => scrollTop, set: (value: number) => (scrollTop = value) });
+    Object.defineProperty(log, "scrollHeight", { value: 900, configurable: true });
+    Object.defineProperty(log, "clientHeight", { value: 300, configurable: true });
+    const shrink = () => act(() => watched.get(log)?.({} as ResizeObserverEntry[], {} as ResizeObserver));
+
+    shrink();
+    expect(scrollTop).toBe(900);
+
+    scrollTop = 200;
+    act(() => log.dispatchEvent(new Event("scroll")));
+    shrink();
+    expect(scrollTop).toBe(200);
+    unmount();
+    globalThis.ResizeObserver = Original;
+  });
+
+  test("in an app the composer rides the keys over a panel that keeps the screen, and the log scrolls with them", () => {
+    const session = new lib.AgentSession(new lib.AgenticSurface(), scripted({ text: "ok" }));
+    const { container, unmount } = mountChat(session);
+    const field = container.querySelector("textarea");
+    const rider = field?.closest("[data-akan-keyboard-ride]");
+    expect(rider?.hasAttribute("data-akan-keyboard-overlay")).toBe(true);
+    expect(container.querySelector('[role="log"]')?.getAttribute("data-akan-keyboard-ride")).toBe("inset");
+    unmount();
+  });
+
   test("gates a confirmed tool behind the approval card and runs it on approve", async () => {
     let ran = 0;
     const surface = new lib.AgenticSurface();
