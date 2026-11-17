@@ -5,7 +5,6 @@ import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
 import { computeRouteSeedIndex } from "../artifact/routeSeedIndex";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
-import { workspaceBarrels } from "../transforms/barrelImportsPlugin";
 import { bundleDefine } from "./bundleDefine";
 import type { ClientEntryDiscovery } from "./clientBuildTypes";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
@@ -37,16 +36,13 @@ export class SsrDevBundler extends DevRegistryBundler {
     const akanConfig = await this.app.getConfig();
     const define = bundleDefine(this.app, "start", "ssr");
     const optimizeImports = [...akanConfig.optimizeImports];
-    const routed = akanConfig.clientRuntime === "route";
     const externals = await VendorFileImports.specifiersIn(this.app.workspace.workspaceRoot);
-    //? Under "route", the framework barrels narrow as in a route build: `akanjs/ui` whole names every model runtime
-    //? marker, which would load every module's store on every page.
-    const barrelImports = routed
-      ? [...new Set(akanConfig.barrelImports)].filter(
-          (barrel) => barrel && !(externals as readonly string[]).includes(barrel),
-        )
-      : workspaceBarrels(akanConfig.barrelImports);
-    const route = routed ? await this.#routeRuntime() : null;
+    //? The framework barrels narrow as in a route build: `akanjs/ui` whole names every model runtime marker, which
+    //? would load every module's store on every page.
+    const barrelImports = [...new Set(akanConfig.barrelImports)].filter(
+      (barrel) => barrel && !(externals as readonly string[]).includes(barrel),
+    );
+    const route = await this.#routeRuntime();
     const routeRuntime = typeof route === "string" ? null : route;
     this.#warnWhole(typeof route === "string" ? route : null);
     const modelRuntime = routeRuntime?.wholeSource;

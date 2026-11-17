@@ -24,7 +24,7 @@ export interface BuildAllRoutesResult {
   manifest: RoutesManifest;
   manifestPath: string;
   seedIndex: RouteSeedIndex;
-  /** Under `clientRuntime: "route"`: the dictionary groups each route can show; a route left out loads every group. */
+  /** A production build: the dictionary groups each route can show; a route left out loads every group. */
   dictionaryRoutes?: Map<string, string[]>;
 }
 
@@ -60,7 +60,7 @@ export class AllRoutesBuilder {
     this.#discovery = discovery;
     const importsAs = await this.#ssrImportsAs(discovery, pageEntries);
     const handoffs = await this.#readHandoffs();
-    const dictionary = this.#command === "build" && (await this.#app.getConfig()).clientRuntime === "route";
+    const dictionary = this.#command === "build";
     const unread = new Map<string, string[]>();
 
     // Every route's entries go into one Bun.build: chunk splitting only dedupes within a single build.

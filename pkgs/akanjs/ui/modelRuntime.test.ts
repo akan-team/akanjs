@@ -525,7 +525,7 @@ const sources = sourcesIn(".").map((rel) => parse(rel));
 const namedLookups = namedLookupsOf(sourcesIn("../constant").map((rel) => parse(rel)));
 
 describe("akanjs/ui/modelRuntime", () => {
-  //? Under `clientRuntime: "route"` a page's chunks load a model's runtime only where a module imports it or a handoff
+  //? A page's chunks load a model's runtime only where a module imports it or a handoff
   //? object brings its client reference; a framework file naming any other model at runtime has the marker bring all.
   test("is imported by exactly the UI files that reach a model no handoff object brought", () => {
     const aliases = exportedAliasesOf(sources);

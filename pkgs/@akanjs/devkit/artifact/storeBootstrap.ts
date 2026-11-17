@@ -21,7 +21,6 @@ export class StoreBootstrap {
 
   //? `"page"` only where the page runtime files exist: a workspace not synced since it came keeps the whole runtime.
   static async scopeOf(app: App): Promise<ClientRuntimeScope> {
-    if ((await app.getConfig()).clientRuntime !== "route") return "whole";
     const lib = path.join(app.cwdPath, "lib");
     const found = await Promise.all(
       [

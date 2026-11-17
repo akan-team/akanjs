@@ -658,7 +658,7 @@ else {
 }
 `,
     );
-    await writeText(path.join(appDir, "akan.config.ts"), 'export default { clientRuntime: "route" };\n');
+    await writeText(path.join(appDir, "akan.config.ts"), "export default {};\n");
     await writeText(path.join(appDir, "env/env.client.ts"), "export const env = {} as const;\n");
     const pages = {
       first: path.join(appDir, "page/_index.tsx"),

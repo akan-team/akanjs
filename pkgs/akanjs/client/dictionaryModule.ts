@@ -4,7 +4,7 @@ export interface DictionaryModule {
   lang: string;
   default: Dictionary;
   parts?: Record<string, string>;
-  //? Under `clientRuntime: "route"`: the build's group table, which every file cut from one page file names.
+  //? Where the dictionary is cut by route: the build's group table, which every file cut from one page file names.
   table?: string;
   //? Set on a route's file, which holds these groups only; a page file, holding every group, has none.
   groups?: string[];

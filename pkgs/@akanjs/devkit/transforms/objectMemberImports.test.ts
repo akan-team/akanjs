@@ -300,7 +300,7 @@ const app = {
   name: "demo",
   cwdPath: root,
   workspace: { workspaceRoot: root },
-  getConfig: async () => ({ barrelImports: [], optimizeImports: [], clientRuntime: "route" }),
+  getConfig: async () => ({ barrelImports: [], optimizeImports: [] }),
   getTsConfig: async () => ({ compilerOptions: { paths: {} } }),
 };
 const reported = new Map();

@@ -28,14 +28,14 @@ describe("SsrDevBundler bootstrap", () => {
   });
 });
 
-describe("SsrDevBundler under clientRuntime route", () => {
-  const appOf = (root: string, clientRuntime: "all" | "route", warnings: string[] = []) =>
+describe("SsrDevBundler loading per module", () => {
+  const appOf = (root: string, warnings: string[] = []) =>
     ({
       name: "demo",
       cwdPath: path.join(root, "apps/demo"),
       workspace: { workspaceRoot: root },
       basePaths: new Set<string>(),
-      getConfig: async () => ({ clientRuntime, optimizeImports: [], barrelImports: [], basePaths: new Set<string>() }),
+      getConfig: async () => ({ optimizeImports: [], barrelImports: [], basePaths: new Set<string>() }),
       getPublicEnv: () => ({}),
       logger: { warn: (message: string) => warnings.push(message) },
     }) as never;
@@ -63,7 +63,7 @@ describe("SsrDevBundler under clientRuntime route", () => {
     await writeLib(root, pageFiles);
     await writeFrameworkBase(root);
     const warnings: string[] = [];
-    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
+    const bundler = new SsrDevBundler(appOf(root, warnings));
     const context = await bundler.context();
     const { files } = await bundler.writeEntries(context);
 
@@ -91,7 +91,8 @@ describe("SsrDevBundler under clientRuntime route", () => {
         "",
       ].join("\n"),
     );
-    const whole = await new SsrDevBundler(appOf(root, "all")).context();
+    await Bun.file(path.join(root, "apps/demo/lib", pageFiles.at(-1) ?? "")).delete();
+    const whole = await new SsrDevBundler(appOf(root)).context();
     expect(context.configKey).not.toBe(whole.configKey);
     expect(whole.routeRuntime).toBeUndefined();
     expect(whole.modelRuntime).toBeUndefined();
@@ -104,7 +105,7 @@ describe("SsrDevBundler under clientRuntime route", () => {
         root,
         pageFiles.filter((file) => file !== missing),
       );
-      const bundler = new SsrDevBundler(appOf(root, "route"));
+      const bundler = new SsrDevBundler(appOf(root));
       const context = await bundler.context();
       const { files } = await bundler.writeEntries(context);
 
@@ -114,12 +115,12 @@ describe("SsrDevBundler under clientRuntime route", () => {
       );
     });
 
-  test("says once, not on every save, that a route app missing its runtime files loads the whole runtime", async () => {
+  test("says once, not on every save, that an app missing its runtime files loads the whole runtime", async () => {
     const root = await makeTempRoot();
     await writeLib(root, pageFiles.slice(0, -1));
     await writeFrameworkBase(root);
     const warnings: string[] = [];
-    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
+    const bundler = new SsrDevBundler(appOf(root, warnings));
 
     await bundler.context();
     await bundler.context();
@@ -133,8 +134,6 @@ describe("SsrDevBundler under clientRuntime route", () => {
     await Bun.file(path.join(root, "apps/demo/lib", pageFiles.at(-1) ?? "")).delete();
     await bundler.context();
     expect(warnings).toHaveLength(2);
-    expect((await new SsrDevBundler(appOf(root, "all", warnings)).context()).routeRuntime).toBeUndefined();
-    expect(warnings).toHaveLength(2);
   });
 
   test("loads per module again once a lib the app mounts is synced, with no change to the app's own files", async () => {
@@ -143,7 +142,7 @@ describe("SsrDevBundler under clientRuntime route", () => {
     await write(path.join(root, "apps/demo/lib/st.ts"), 'export { st as shared } from "@libs/shared/client";\n');
     await writeFrameworkBase(root);
     const warnings: string[] = [];
-    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
+    const bundler = new SsrDevBundler(appOf(root, warnings));
 
     expect((await bundler.context()).routeRuntime).toBeUndefined();
     expect(warnings).toEqual([expect.stringContaining("runtime files of demo or a lib it mounts are missing")]);
@@ -158,7 +157,7 @@ describe("SsrDevBundler under clientRuntime route", () => {
     await writeLib(root, pageFiles);
     await writeFrameworkBase(root);
     const warnings: string[] = [];
-    const bundler = new SsrDevBundler(appOf(root, "route", warnings));
+    const bundler = new SsrDevBundler(appOf(root, warnings));
     const read = spyOn(RouteRuntime, "read").mockRejectedValue(new Error("memo.store.ts is unreadable"));
     try {
       expect((await bundler.context()).routeRuntime).toBeUndefined();

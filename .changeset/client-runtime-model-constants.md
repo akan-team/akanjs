@@ -4,7 +4,7 @@
 "@akanjs/cli": minor
 ---
 
-Under `clientRuntime: "route"`, a page registers the constants of the models its client code names, not every model's. With `"all"`, every page still loads `lib/cnst.ts`; the one change there is that a registered model no longer carries its type-only `_`-prefixed members as `null` values.
+A page registers the constants of the models its client code names, not every model's. A page that keeps the whole runtime still loads `lib/cnst.ts`; the one change there is that a registered model no longer carries its type-only `_`-prefixed members as `null` values.
 
 - `akan sync` writes one registration piece per model and scalar, `lib/__client/<model>.cnst.ts`, which imports that module's constant file and the pieces of the models the file names, then registers the model. `lib/cnst.ts` keeps its shape and exports. A model's `.fetch` and `.st` pieces load its registration piece first, and so does a handoff reference (`<model>.ref.ts`), which loads one of them. A `.fetch` piece names the pieces it needs first in its own `FetchClient.build` call, so loading them first adds no statement to a page. A registration piece that no page loading only pieces reaches (only pages that also load the whole runtime, or only a handoff) takes its model from `lib/cnst.ts` instead, so those pages keep every constant in the one chunk they already share.
 - The build rewrites `cnst.Memo`, `cnst.memo`, `cnst.MemoStatus`, a lib's `cnst.util.File` and `const { MemoStatus } = cnst` to imports of those names from the file declaring each; a type-only use loads nothing. A file keeps the whole `lib/cnst.ts` when it passes `cnst` on (as an argument, a spread, `Object.keys(cnst)` or another variable), picks a member with a computed key, names something `cnst` does not hand out, or hides names behind a rest or nested destructuring, and so does a constant file that reads its own app's or lib's `cnst`.
@@ -19,4 +19,4 @@ In the sample apps the memo pages of `apps/minimal` went from 263.5 KB to 262.3 
 
 **Upgrading.**
 
-Until the pieces exist (an `akan build` or `akan sync <app>` writes them) the build keeps the whole `lib/cnst.ts`. `akan quality runtime` lists the files that keep every constant and why; rewriting one to `cnst.<Name>` or `const { … } = cnst` lets its pages load fewer constants. What changes for code that looks a model up by name is in the upgrade note of the entry that makes `"route"` the default.
+Until the pieces exist (an `akan build` or `akan sync <app>` writes them) the build keeps the whole `lib/cnst.ts`. `akan quality runtime` lists the files that keep every constant and why; rewriting one to `cnst.<Name>` or `const { … } = cnst` lets its pages load fewer constants. What changes for code that looks a model up by name is in the upgrade note of the entry that makes every app load per route.

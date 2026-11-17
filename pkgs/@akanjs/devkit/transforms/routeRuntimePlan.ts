@@ -50,7 +50,7 @@ export interface RouteRuntimePlanInput {
   nameOf: (file: string) => string;
 }
 
-//* Which roots of a `clientRuntime: "route"` build keep the whole runtime, each with the reason it does. A root is only
+//* Which roots of a build loading per module keep the whole runtime, each with the reason it does. A root is only
 //* ever added: every rule keeps more as others keep more, so replaying them after a new keep ends and cannot undo one.
 export class RouteRuntimePlan {
   static readonly chainsShown = 3;

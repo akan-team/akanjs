@@ -412,7 +412,7 @@ describe("CsrDevModuleCompiler barrel narrowing", () => {
   });
 });
 
-describe("CsrDevModuleCompiler under clientRuntime route", () => {
+describe("CsrDevModuleCompiler loading per module", () => {
   const makeTempRoot = tempDirs("akan-csr-dev-descriptors-");
 
   test("answers a module piece's macro with descriptors read from the signal, in a process of its own", async () => {

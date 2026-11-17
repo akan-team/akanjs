@@ -953,6 +953,42 @@ Suggested quality rules:
               descLabel={l.trans({ en: "Means, and what to change", ko: "뜻과 바꿀 것" })}
               items={runtimeReasons}
             />
+            <div>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>Keeping a page whole on purpose.</strong> No setting does it; one client file that exports
+                    the store does. A page that renders <code>&lt;WholeRuntime /&gt;</code> keeps the whole runtime, and
+                    rendered in the root layout, <code>page/_layout.tsx</code>, it keeps every page whole. The report
+                    then names the file under <code>[reader]</code> with the routes it holds, so the choice stays
+                    visible. A page kept whole loads more, so a route past its budget needs{" "}
+                    <code>akan build &lt;app&gt; --raise-budget</code>.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>페이지를 일부러 전체 런타임에 두기.</strong> 이를 위한 설정은 없고, 스토어를 export하는
+                    클라이언트 파일 하나로 합니다. <code>&lt;WholeRuntime /&gt;</code>을 렌더링한 페이지는 전체 런타임을
+                    유지하고, 루트 레이아웃 <code>page/_layout.tsx</code>에서 렌더링하면 모든 페이지가 전체 런타임을
+                    유지합니다. 리포트는 그 파일을 <code>[reader]</code> 아래에 묶인 라우트와 함께 보여 주므로 선택이
+                    계속 드러납니다. 전체 런타임을 유지하는 페이지는 더 많이 불러오므로, 예산을 넘은 라우트는{" "}
+                    <code>akan build &lt;app&gt; --raise-budget</code>으로 올립니다.
+                  </span>
+                ),
+              })}
+            </div>
+            <Code.Snippet
+              className="w-full"
+              title="apps/<app>/ui/WholeRuntime.tsx"
+              language="tsx"
+              showLineNumbers={false}
+              code={`"use client";
+import { st } from "@apps/<app>/client";
+
+export const wholeRuntime = st;
+
+export const WholeRuntime = () => null;`}
+            />
           </Docs.Description>
         </Scroll.Slide>
         <Divider />

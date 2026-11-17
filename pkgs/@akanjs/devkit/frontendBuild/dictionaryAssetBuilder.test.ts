@@ -262,7 +262,7 @@ describe("DictionaryAssetBuilder", () => {
       60_000,
     );
 
-  describe("under clientRuntime route", () => {
+  describe("for the routes it is handed", () => {
     const routedDictionary = {
       en: {
         base: { t: "Base", ok: { t: "OK" } },
@@ -320,7 +320,7 @@ describe("DictionaryAssetBuilder", () => {
       }
     });
 
-    test('writes the page file of `clientRuntime: "all"` unchanged when no route is handed', async () => {
+    test("writes the one page file unchanged when no route is handed", async () => {
       const { app, artifactDir } = await makeApp(dictSourceOf(routedDictionary));
       const plain = await new DictionaryAssetBuilder(app, path.join(artifactDir, "plain")).buildAll(i18n, {
         splitApi: true,

@@ -106,9 +106,8 @@ export class SysExecutor extends Executor {
     const { RuntimeConstantGraph } = await import("../quality/runtimeConstantGraph");
     const table = await RuntimeNameTable.readScopes(this.workspace.workspaceRoot, [
       ...new Set(scopesOf(scanInfo, scope)),
-    ]).catch(async (error: unknown) => {
-      const config = synced.type === "app" ? await synced.getConfig().catch(() => null) : null;
-      if (config && "clientRuntime" in config && config.clientRuntime === "route")
+    ]).catch((error: unknown) => {
+      if (synced.type === "app")
         this.logger.warn(
           `[client-runtime] The modules of ${scope} could not be read (${error instanceof Error ? error.message : String(error)}), so no store file under ${scope}/${pieceDir} loads the upload module's descriptors first, and a page naming only that store has no upload action. Run \`akan sync ${this.name}\` again once that is fixed.`,
         );

@@ -82,14 +82,11 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       : null;
   }
 
-  //? A `clientRuntime: "route"` app narrows as its bundles do, so discovery reaches the member files they load.
+  //? An app narrows as its bundles do, so discovery reaches the member files they load.
   static async create(app: App): Promise<GraphClientEntryDiscovery> {
-    const config = await app.getConfig();
-    return new GraphClientEntryDiscovery(
-      config,
-      await createTsconfigPackageResolver(app),
-      config.clientRuntime === "route" ? { packageRoot: app.workspace.workspaceRoot } : {},
-    );
+    return new GraphClientEntryDiscovery(await app.getConfig(), await createTsconfigPackageResolver(app), {
+      packageRoot: app.workspace.workspaceRoot,
+    });
   }
 
   async discover(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {

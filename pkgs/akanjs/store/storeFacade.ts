@@ -12,8 +12,8 @@ export class StoreFacade {
         if (typeof key === "symbol" || key in facade || StoreFacade.#probedKeys.has(key))
           return Reflect.get(facade, key, receiver);
         //? Inline so a production build, which folds this method to `return target`, drops the messages with it.
-        //? Set by the dev server's bootstrap under `clientRuntime: "route"`, where a page loads only the stores its
-        //? files name: each module's store keys, keyed by `<module> (<scope>)`. A production bundle never carries it.
+        //? Set by the dev server's bootstrap where a page loads only the stores its files name: each module's store
+        //? keys, keyed by `<module> (<scope>)`. A production bundle never carries it.
         const owners = (globalThis as { [owners: symbol]: unknown })[Symbol.for("akanjs.store.owners")] as
           | Partial<Record<StoreFacadeName, Record<string, string[]>>>
           | undefined;

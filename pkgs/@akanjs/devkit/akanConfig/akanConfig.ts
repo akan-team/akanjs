@@ -169,7 +169,6 @@ export class AkanAppConfig implements AppConfigResult {
   libBins: { lib: string; bin: AkanBinConfig }[];
   barrelImports: string[];
   optimizeImports: string[];
-  clientRuntime: "all" | "route";
   images: AkanImageConfig;
   i18n: AkanI18nConfig;
   api: AkanApiConfig;
@@ -222,11 +221,6 @@ export class AkanAppConfig implements AppConfigResult {
       ...(config?.barrelImports ?? []),
     ];
     this.optimizeImports = [...new Set([...DEFAULT_OPTIMIZE_IMPORTS, ...(config?.optimizeImports ?? [])])];
-    this.clientRuntime = config?.clientRuntime ?? "route";
-    if (this.clientRuntime !== "all" && this.clientRuntime !== "route")
-      throw new Error(
-        `${owner} sets clientRuntime to ${JSON.stringify(this.clientRuntime)}; it takes "all" or "route".`,
-      );
     this.images = mergeImageConfig(config?.images as Partial<AkanImageConfig> | undefined);
     this.i18n = resolveAkanI18nConfig(config?.i18n);
     process.env.AKAN_PUBLIC_DEFAULT_LOCALE = this.i18n.defaultLocale;

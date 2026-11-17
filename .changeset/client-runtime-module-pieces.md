@@ -19,4 +19,4 @@
 
 **Upgrading.**
 
-Nothing to change in app code. The `.gitignore` lines for the new files are in the upgrade note of the entry that makes `"route"` the default.
+Nothing to change in app code. The `.gitignore` lines for the new files are in the upgrade note of the entry that makes every app load per route.

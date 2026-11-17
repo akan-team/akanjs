@@ -2,7 +2,7 @@
 "@akanjs/devkit": minor
 ---
 
-Under `clientRuntime: "route"`, a client file that names a store, a slice or an endpoint in one of the common indirect ways now loads only the modules it names, where before it kept the whole client runtime for itself and for every page reaching it. With `"all"`, nothing changes.
+A client file that names a store, a slice or an endpoint in one of the common indirect ways now loads only the modules it names, where before it kept the whole client runtime for itself and for every page reaching it.
 
 - **A cast hides nothing.** `(st.use as Loose).memoList()`, `const { self } = st.get() as Wide`, `!`, `satisfies` and `<T>value` are read as the name written after them. A name the runtime does not have is reported as an unknown name, a computed key stays computed, and an object handed on stays handed on. `const get = st.get` called later reads the state as `st.get()` does, and the framework's `fetch` cast to the app's is read as the app's.
 - **A key asserted as a name is read as that name.** `st.slice[sliceName as "memo"]`, or `const key = name as "memoList"` followed by `const { [key]: list } = this.get()`, `this.set({ [key]: list })` or `this.pick(key)`. Asserting a key as a name tells the build the value is that name or one owned by the same module. A union of names counts as each of them.
@@ -14,4 +14,4 @@ Under `clientRuntime: "route"`, a client file that names a store, a slice or an 
 
 **Upgrading.**
 
-A client component that builds a store or endpoint name from a slice it was handed now relies on that slice arriving with its model; before, the reading file kept the whole runtime. What that means for a slice written or copied by hand is in the upgrade note of the entry that makes `"route"` the default.
+A client component that builds a store or endpoint name from a slice it was handed now relies on that slice arriving with its model; before, the reading file kept the whole runtime. What that means for a slice written or copied by hand is in the upgrade note of the entry that makes every app load per route.

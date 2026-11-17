@@ -1,7 +1,7 @@
 import type { AppInfo, LibInfo } from "akanjs";
 
 //? The descriptors every scope's signal carries from `akanjs/signal` itself (`base`, `agent`), which no module owns.
-//? No `../cnst`: a page under `clientRuntime: "route"` loads this piece on every route, and neither signal has a slice.
+//? No `../cnst`: a page loading per module loads this piece on every route, and neither signal has a slice.
 export default function getContent(scanInfo: AppInfo | LibInfo | null, dict: { [key: string]: string } = {}) {
   if (!scanInfo) return null;
   return `

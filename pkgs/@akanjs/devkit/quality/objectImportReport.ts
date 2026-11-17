@@ -36,17 +36,13 @@ interface ScopeReader {
 
 const MACRO_ATTR_RE = /with\s*\{\s*type\s*:\s*["']macro["']\s*\}/;
 
-//* What a `clientRuntime: "route"` build does with each object import (`Memo.Zone.View`, `Field.Text`) in apps and
-//* libs: narrowed to the members it names, or kept whole and why. A lib is read as the first such app reads it.
+//* What a build does with each object import (`Memo.Zone.View`, `Field.Text`) in apps and libs: narrowed to the
+//* members it names, or kept whole and why. A lib is read as the first app reads it.
 export class ObjectImportReport {
   static async scan(workspace: WorkspaceExecutor): Promise<ObjectImportResult> {
-    const routeApps: string[] = [];
-    for (const name of (await workspace.getApps()).sort()) {
-      const config = await AppExecutor.from(workspace, name).getConfig();
-      if (config.clientRuntime === "route") routeApps.push(name);
-    }
+    const apps = (await workspace.getApps()).sort();
     const result: ObjectImportResult = { scopes: [], kept: [] };
-    const [firstApp] = routeApps;
+    const [firstApp] = apps;
     if (firstApp === undefined) return result;
     const readers = new Map<string, ScopeReader>();
     const readerOf = async (app: string) => {
@@ -68,7 +64,7 @@ export class ObjectImportReport {
       const [, kind, name] = file.match(/^(apps|libs)\/([^/]+)\//) ?? [];
       if (!kind || !name || !RuntimeScopeReport.isRuntimeSource(file)) continue;
       const app = kind === "apps" ? name : firstApp;
-      if (!routeApps.includes(app)) continue;
+      if (!apps.includes(app)) continue;
       const { content, absolutePath } = await sources.read(file);
       if (MACRO_ATTR_RE.test(content)) continue;
       const reader = await readerOf(app);

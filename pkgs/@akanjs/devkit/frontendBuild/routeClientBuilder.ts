@@ -4,7 +4,7 @@ import type { BaseBuildArtifact, ClientManifest, ClientManifestEntry, SsrManifes
 import { SSR_DEV_CHUNK, SSR_DEV_ID_PREFIX } from "akanjs/server/hmr/csrDevManifest";
 import { type ClientRuntimeScope, StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
-import { RouteRuntimeReport } from "../quality/routeRuntimeReport";
+import { type RouteRuntimeBuildReport, RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
 import { loaderFor } from "../transforms/moduleSyntax";
 import { ReactIconImports } from "../transforms/reactIconImports";
@@ -43,7 +43,7 @@ export interface BuildRouteClientOptions {
   entries?: string[];
   /** Defaults to `registry` under `start`: the browser loads each entry from the SSR dev registry, so only `client-ssr` builds. */
   browser?: "chunks" | "registry";
-  /** The entries each route loads: under `clientRuntime: "route"` an entry only whole-runtime routes hold keeps it too. */
+  /** The entries each route loads: an entry only whole-runtime routes hold keeps the whole runtime too. */
   entriesByRoute?: ReadonlyMap<string, readonly string[]>;
   /** The entries each route loads first, which its size is measured over. Defaults to `entriesByRoute`. */
   sizedEntriesByRoute?: ReadonlyMap<string, readonly string[]>;
@@ -74,6 +74,7 @@ interface NarrowedBuild {
   kept: ReadonlySet<string>;
   bundle: Awaited<ReturnType<ClientEntriesBundler["bundle"]>>;
   runtime: RouteRuntime;
+  report?: RouteRuntimeBuildReport;
 }
 
 type BundleOf = (runtime: RouteRuntime, kept: ReadonlySet<string>, outputSubdir?: string) => Promise<NarrowedBuild>;
@@ -128,10 +129,15 @@ export class RouteClientBuilder {
           entriesByRoute: this.#entriesByRoute,
         })
       : null;
-    const browserEntries = registry ? null : (narrowed?.entries ?? ssrEntries);
+    const trusted = narrowed && this.#check(narrowed) ? narrowed : null;
+    const browserEntries = registry ? null : (trusted?.entries ?? ssrEntries);
     const browserBundle =
-      narrowed?.bundle ?? (browserEntries ? await this.#buildBrowserBundle(browserEntries, routeRuntime) : null);
-    if (narrowed) this.#check(narrowed);
+      trusted?.bundle ?? (browserEntries ? await this.#buildBrowserBundle(browserEntries, null) : null);
+    if (trusted?.report) await this.#say(trusted.report);
+    if (narrowed && !trusted && browserBundle) {
+      await rm(path.join(this.#app.cwdPath, RouteRuntimeReport.file), { force: true });
+      await RouteClientBuilder.#removeChunks(narrowed.bundle, browserBundle);
+    }
     const referenceBundle = browserBundle ?? ssrBundle;
     const bootstrapEntries = browserEntries ?? ssrEntries;
     const ssrEntryByOriginal = new Map(
@@ -216,7 +222,6 @@ export class RouteClientBuilder {
   }
 
   async #readRouteRuntime(): Promise<RouteRuntime | null> {
-    if ((await this.#app.getConfig()).clientRuntime !== "route") return null;
     const { name } = this.#app;
     const whole = (why: string, first = "Run") => {
       this.#app.logger.warn(
@@ -258,20 +263,31 @@ export class RouteClientBuilder {
         ? await this.#keptWhereNotSmaller(first, routes, planned, bundleOf)
         : { built: first, refused: [] };
     const perModule = perModuleIn(built);
-    const report = {
-      app: this.#app.name,
-      routes: routes.size,
-      perModule,
-      notSmaller: analysed.filter((route) => !perModule.includes(route)),
-      refused,
-      causes: built.runtime.decided?.causes() ?? [],
+    return {
+      ...built,
+      report: {
+        app: this.#app.name,
+        routes: routes.size,
+        perModule,
+        notSmaller: analysed.filter((route) => !perModule.includes(route)),
+        refused,
+        causes: built.runtime.decided?.causes() ?? [],
+      },
     };
+  }
+
+  async #say(report: RouteRuntimeBuildReport) {
     await RouteRuntimeReport.write(this.#app.cwdPath, report);
     this.#app.log(`[client-runtime] ${RouteRuntimeReport.summary(report)}`);
     for (const route of report.notSmaller) this.#app.verbose(`[client-runtime] not smaller per module: ${route}`);
-    for (const route of refused) this.#app.verbose(`[client-runtime] larger with the whole runtime here: ${route}`);
-    for (const route of perModule) this.#app.verbose(`[client-runtime] per module: ${route}`);
-    return built;
+    for (const route of report.refused ?? [])
+      this.#app.verbose(`[client-runtime] larger with the whole runtime here: ${route}`);
+    for (const route of report.perModule) this.#app.verbose(`[client-runtime] per module: ${route}`);
+  }
+
+  static async #removeChunks(replaced: NarrowedBuild["bundle"], served: NarrowedBuild["bundle"]) {
+    for (const chunk of replaced.graph.importsByChunk.keys())
+      if (!served.graph.importsByChunk.has(chunk)) await rm(chunk, { force: true });
   }
 
   //? A pass either keeps entries or refuses some for good, and neither set ever loses one, so the passes end.
@@ -290,8 +306,7 @@ export class RouteClientBuilder {
       let kept = runtime.plan(planned);
       for (const { entry, ...measured } of verdicts) kept = runtime.keep([entry], { rule: "not-smaller", ...measured });
       const build = await bundleOf(runtime, subdir ? runtime.keepAll() : kept, subdir);
-      for (const chunk of last?.bundle.graph.importsByChunk.keys() ?? [])
-        if (!build.bundle.graph.importsByChunk.has(chunk)) await rm(chunk, { force: true });
+      if (last) await RouteClientBuilder.#removeChunks(last.bundle, build.bundle);
       return build;
     };
     const reference = await bundleWith([], null, referenceSubdir);
@@ -350,7 +365,7 @@ export class RouteClientBuilder {
     );
   }
 
-  #check({ entries, kept, bundle, runtime: routeRuntime }: NarrowedBuild) {
+  #check({ entries, kept, bundle, runtime: routeRuntime }: NarrowedBuild): boolean {
     const { workspaceRoot } = this.#app.workspace;
     const buildEntryOf = new Map(
       [...entries.originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]),
@@ -366,9 +381,12 @@ export class RouteClientBuilder {
         ]),
       ),
     });
-    check.assert();
-    const { repeated } = check;
-    if (repeated.length === 0) return;
+    const { refusal, repeated } = check;
+    if (refusal) {
+      this.#app.logger.warn(refusal);
+      return false;
+    }
+    if (repeated.length === 0) return true;
     const more = repeated.length - RouteRuntimeCheck.shown;
     this.#app.logger.warn(
       [
@@ -377,6 +395,7 @@ export class RouteClientBuilder {
         ...(more > 0 ? [`  - and ${more} more`] : []),
       ].join("\n"),
     );
+    return true;
   }
 
   async #buildBrowserBundle(
@@ -431,7 +450,7 @@ export class RouteClientBuilder {
     }).bundle();
   }
 
-  //? `narrowed.kept`: an entry keeping the whole runtime is the same file a build of `clientRuntime: "all"` bundles.
+  //? `narrowed.kept`: an entry keeping the whole runtime is the same file a build of every page on it bundles.
   async #createBootstrapEntries(
     entries: string[],
     scope: ClientRuntimeScope,

@@ -6,11 +6,11 @@ import type { App } from "../commandDecorators";
 import { DictionaryPacking } from "./dictionaryPacking";
 
 export interface DictionaryAssetBuildOptions {
-  /** Under `clientRuntime: "route"`: each locale's API descriptions go to a file of their own, loaded where shown. */
+  /** Each locale's API descriptions go to a file of their own, loaded where shown. */
   splitApi?: boolean;
-  /** Under `clientRuntime: "route"`: the groups each route can show; a route left out loads the whole page file. */
+  /** The groups each route can show; a route left out loads the whole page file. */
   routes?: ReadonlyMap<string, readonly string[]>;
-  /** Development under `clientRuntime: "route"`: one file per group, as each route's groups are read when it builds. */
+  /** Development: one file per group, as each route's groups are read when it builds. */
   everyGroupAlone?: boolean;
 }
 

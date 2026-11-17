@@ -96,16 +96,15 @@ export class SsrBaseArtifactBuilder {
       return await resolveSsrPageEntriesForApp(this.#app, pageKeys);
     });
     const { cssCompiler, optimizedFonts, cssAssets } = await timed("styles", () => this.#buildStyleAssets());
-    const byRoute = akanConfig.clientRuntime === "route";
     const {
       assets: dictAssets,
       routes: dictRoutes,
       groups: dictGroups,
     } = await timed("dictionary", () =>
       new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).buildAll(akanConfig.i18n, {
-        splitApi: byRoute,
-        routes: byRoute ? this.#dictionaryRoutes : undefined,
-        everyGroupAlone: byRoute && this.#command === "start",
+        splitApi: true,
+        routes: this.#dictionaryRoutes,
+        everyGroupAlone: this.#command === "start",
       }),
     );
     const pagesBundle = await timed("pages", () =>

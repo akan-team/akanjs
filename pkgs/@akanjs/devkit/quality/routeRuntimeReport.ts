@@ -43,7 +43,7 @@ export class RouteRuntimeReport {
     return reports
       .map((report) =>
         [
-          `Last build of apps/${report.app} under clientRuntime: "route": ${RouteRuntimeReport.summary(report)}.`,
+          `Last build of apps/${report.app}: ${RouteRuntimeReport.summary(report)}.`,
           ...RouteRuntimeReport.#perModuleLines(report.perModule),
           ...report.causes.flatMap((cause) => RouteRuntimeReport.#causeLines(cause)),
           ...RouteRuntimeReport.#refusedLines(report.refused ?? []),

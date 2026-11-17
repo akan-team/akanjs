@@ -32,7 +32,7 @@ const report: RouteRuntimeBuildReport = {
   ],
 };
 
-describe("what a clientRuntime route build decided, as akan quality runtime prints it", () => {
+describe("what a build decided for each route, as akan quality runtime prints it", () => {
   test("the build's one line counts the routes per module, the ones measured no smaller, and the ones kept for a named reason", () => {
     expect(RouteRuntimeReport.summary(report)).toBe(
       "1 route loads per module, 2 keep the whole runtime because per module would not be smaller, 9 keep it for a reason `akan quality runtime` names",
@@ -44,7 +44,7 @@ describe("what a clientRuntime route build decided, as akan quality runtime prin
 
   test("every reason names its file and line or its rule, the entries and routes it holds, and how the file is reached", () => {
     expect(RouteRuntimeReport.format([report]).split("\n")).toEqual([
-      'Last build of apps/demo under clientRuntime: "route": 1 route loads per module, 2 keep the whole runtime because per module would not be smaller, 9 keep it for a reason `akan quality runtime` names.',
+      "Last build of apps/demo: 1 route loads per module, 2 keep the whole runtime because per module would not be smaller, 9 keep it for a reason `akan quality runtime` names.",
       "  per module: /memo",
       "  [reader] apps/demo/ui/Pick.tsx:7 `st.use[name]`: the name is picked at run time",
       "    2 entries on 9 routes: /a, /b, /c, /d, /e, /f, and 3 more",

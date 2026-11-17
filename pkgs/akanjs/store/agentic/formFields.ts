@@ -15,7 +15,7 @@ const MAX_DEPTH = 4;
 
 export class FormFields {
   static #index = new Map<string, FormFieldRef>();
-  //? Under `clientRuntime: "route"` a model registers when a page first loads it, after the index may have been built.
+  //? A model registers when a page first loads it, after the index may have been built.
   static #indexedModels = 0;
 
   static ref(action: string): FormFieldRef | null {

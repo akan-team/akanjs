@@ -149,14 +149,6 @@ export default page()
             marks: appOnly,
           },
           {
-            name: "clientRuntime",
-            desc: l.trans({
-              en: 'What a page\'s browser code loads: only what the page uses ("route", the default), or every module\'s on every page ("all", deprecated).',
-              ko: '페이지의 브라우저 코드가 불러오는 것입니다. 그 페이지가 쓰는 것만 불러오거나("route", 기본값), 모든 페이지에서 모든 모듈의 것을 불러옵니다("all", deprecated).',
-            }),
-            marks: appOnly,
-          },
-          {
             name: "docker",
             desc: l.trans({
               en: "The production image. A library adds `preRuns` and `postRuns` only.",
@@ -2060,34 +2052,29 @@ export default config;`}
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="client-runtime" title="clientRuntime">
-          <Docs.Title>clientRuntime</Docs.Title>
+        <Scroll.Slide id="client-runtime" title={l.trans({ en: "What A Page Loads", ko: "페이지가 불러오는 것" })}>
+          <Docs.Title>{l.trans({ en: "What A Page Loads", ko: "페이지가 불러오는 것" })}</Docs.Title>
           <Docs.Description>
             <div>
               {l.trans({
                 en: (
                   <span>
-                    <code>clientRuntime</code> decides what the browser code of a server-rendered page loads. With{" "}
-                    <code>"route"</code>, the default, a page loads the page runtime (<code>usePage</code>,{" "}
-                    <code>msg</code>, <code>Err</code>) and then the stores, endpoint descriptors, constants and
-                    dictionary texts of the modules its client code names or the server hands it. A file that picks a
-                    name at run time loads every module's, and <code>akan quality runtime</code> names each such file,
-                    its line and the routes it holds. <code>"all"</code> loads everything on every page; it is
-                    deprecated and is removed in the next minor release, <code>akan build</code> and{" "}
-                    <code>akan start</code> say so in one line, and deleting the line from <code>akan.config.ts</code>{" "}
-                    is the way off it.
+                    No field sets what the browser code of a server-rendered page loads: every app loads per route. A
+                    page loads the page runtime (<code>usePage</code>, <code>msg</code>, <code>Err</code>) and then the
+                    stores, endpoint descriptors, constants and dictionary texts of the modules its client code names or
+                    the server hands it. A file that picks a name at run time loads every module's, and{" "}
+                    <code>akan quality runtime</code> names each such file, its line and the routes it holds; its
+                    reference page shows the one file that keeps a page, or every page, on the whole runtime on purpose.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>clientRuntime</code>은 서버 렌더링 페이지의 브라우저 코드가 무엇을 불러올지 정합니다. 기본값{" "}
-                    <code>"route"</code>면 페이지는 페이지 런타임(<code>usePage</code>, <code>msg</code>,{" "}
-                    <code>Err</code>)을 불러온 뒤, 클라이언트 코드가 이름을 적었거나 서버가 넘겨준 모듈의 스토어,
-                    엔드포인트 정의, 상수, 사전 문구만 불러옵니다. 이름을 실행 중에 고르는 파일은 모든 모듈의 것을
-                    불러오며, <code>akan quality runtime</code>이 그런 파일과 줄 번호, 그 파일에 묶인 라우트를 알려
-                    줍니다. <code>"all"</code>은 모든 페이지에서 전부 불러옵니다. 이 값은 deprecated이며 다음 minor
-                    릴리스에서 제거됩니다. <code>akan build</code>와 <code>akan start</code>가 한 줄로 알려 주며,{" "}
-                    <code>akan.config.ts</code>에서 그 줄을 지우면 됩니다.
+                    서버 렌더링 페이지의 브라우저 코드가 무엇을 불러올지 정하는 필드는 없습니다. 모든 앱이 라우트별로
+                    불러옵니다. 페이지는 페이지 런타임(<code>usePage</code>, <code>msg</code>, <code>Err</code>)을
+                    불러온 뒤, 클라이언트 코드가 이름을 적었거나 서버가 넘겨준 모듈의 스토어, 엔드포인트 정의, 상수,
+                    사전 문구만 불러옵니다. 이름을 실행 중에 고르는 파일은 모든 모듈의 것을 불러오며,{" "}
+                    <code>akan quality runtime</code>이 그런 파일과 줄 번호, 그 파일에 묶인 라우트를 알려 줍니다. 한
+                    페이지나 모든 페이지를 일부러 전체 런타임에 두는 파일 하나는 그 명령의 레퍼런스 페이지에 있습니다.
                   </span>
                 ),
               })}
@@ -2334,21 +2321,24 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>The production build checks its own loading order.</strong> <code>akan build</code> stops,
-                      naming the two source files, when a chunk would run before the chunk of a module piece it needs,
-                      or when a store file would be defined through a piece that imports it back. The development server
-                      serves each module on its own and checks nothing, so the production build is the guard: build
-                      before you ship a change to which module a client file names. A page that needs every module keeps
-                      the whole runtime, and <code>akan quality runtime</code> lists which component brings it there.
+                      <strong>The production build checks its own loading order.</strong> When a chunk would run before
+                      the chunk of a module piece it needs, or a store file would be defined through a piece that
+                      imports it back, <code>akan build</code> warns once, naming the two source files, builds every
+                      page on the whole runtime instead and succeeds; the warning is a bug in akan to report. The
+                      development server serves each module on its own and checks nothing, so the production build is
+                      the guard: build before you ship a change to which module a client file names. A page that needs
+                      every module keeps the whole runtime, and <code>akan quality runtime</code> lists which component
+                      brings it there.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>프로덕션 빌드는 스스로 로드 순서를 검사합니다.</strong> 어떤 청크가 자신이 필요한 모듈
                       조각의 청크보다 먼저 실행되거나, 스토어 파일이 자신을 다시 import하는 조각을 거쳐 정의되면{" "}
-                      <code>akan build</code>는 두 소스 파일의 이름을 알리고 멈춥니다. 개발 서버는 모듈을 하나씩
-                      내려주고 아무것도 검사하지 않으므로 프로덕션 빌드가 안전장치입니다. 클라이언트 파일이 이름을 적는
-                      모듈을 바꿨다면 배포 전에 빌드하세요. 모든 모듈이 필요한 페이지는 전체 런타임을 그대로 쓰며, 어떤
+                      <code>akan build</code>는 두 소스 파일의 이름을 한 번 경고하고, 모든 페이지를 전체 런타임으로
+                      빌드한 뒤 성공합니다. 이 경고는 신고할 akan의 버그입니다. 개발 서버는 모듈을 하나씩 내려주고
+                      아무것도 검사하지 않으므로 프로덕션 빌드가 안전장치입니다. 클라이언트 파일이 이름을 적는 모듈을
+                      바꿨다면 배포 전에 빌드하세요. 모든 모듈이 필요한 페이지는 전체 런타임을 그대로 쓰며, 어떤
                       컴포넌트 때문인지는 <code>akan quality runtime</code>이 알려 줍니다.
                     </span>
                   ),
