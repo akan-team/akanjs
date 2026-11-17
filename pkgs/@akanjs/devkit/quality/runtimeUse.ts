@@ -444,8 +444,8 @@ export class RuntimeUse {
     for (const parameter of parameters.slice(0, count)) this.#bindParameter(parameter, { kind: "state" });
   }
 
-  //? `own`: a store's uncast `this.set`, typed by its own state; `StoreInstance.set` writes its keys and looks up no module.
-  #written(argument: ts.Expression, own = false) {
+  //? `own`: a store's uncast `this.set` looks up no module for keys a spread copies; a bare value may be an updater.
+  #written(argument: ts.Expression, own = false, spread = false) {
     const value = RuntimeUse.#unwrap(argument);
     const updater = RuntimeUse.#inlineFunction(value);
     if (updater) {
@@ -453,16 +453,16 @@ export class RuntimeUse {
       const returned = ts.isBlock(updater.body) ? RuntimeUse.#returnsOf(updater.body) : [updater.body as ts.Expression];
       for (const expression of returned) this.#written(expression, own);
     } else if (ts.isConditionalExpression(value)) {
-      this.#written(value.whenTrue, own);
-      this.#written(value.whenFalse, own);
+      this.#written(value.whenTrue, own, spread);
+      this.#written(value.whenFalse, own, spread);
     } else if (ts.isBinaryExpression(value) && value.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
-      this.#written(value.right, own);
+      this.#written(value.right, own, spread);
     else if (!ts.isObjectLiteralExpression(value)) {
-      if (!own) this.#problem("computed-access", argument, "the state keys it writes are not written out");
+      if (!own || !spread) this.#problem("computed-access", argument, "the state keys it writes are not written out");
     } else
       for (const property of value.properties) {
         if (ts.isSpreadAssignment(property)) {
-          this.#written(property.expression, own);
+          this.#written(property.expression, own, true);
           continue;
         }
         const name = property.name && RuntimeUse.#staticName(property.name);

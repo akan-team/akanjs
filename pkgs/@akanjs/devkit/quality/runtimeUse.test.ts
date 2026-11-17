@@ -464,8 +464,43 @@ describe("RuntimeUse.analyze", () => {
       ),
     ).toEqual(["apps/demo/memo store", "apps/demo/note store"]);
     const memoOnly = ["apps/demo/memo store"];
-    expect(storeOf("  merge(patch: { draft: string }) {\n    this.set({ ...patch });\n  }")).toEqual(memoOnly);
-    expect(storeOf("  merge(patch: { draft: string }) {\n    this.set(patch);\n  }")).toEqual(memoOnly);
+    const mergeOf = (write: string, head?: string) =>
+      storeOf(
+        `  #recount = (state: { draft: string; pinned: boolean }) => {\n    state.draft = String(state.pinned);\n  };\n  merge(patch: { draft: string }, ready: boolean) {\n    ${write};\n  }`,
+        head,
+      );
+    expect(
+      [
+        "this.set({ ...patch })",
+        "this.set({ ...(ready ? patch : { draft: '' }) })",
+        "this.set({ ...patch, draft: '' })",
+      ].map((write) => mergeOf(write)),
+    ).toEqual([memoOnly, memoOnly, memoOnly]);
+    expect(mergeOf("this.set((state) => {\n      state.draft = String(state.pinned);\n    })")).toEqual([
+      "apps/demo/memo store",
+      "apps/demo/note store",
+    ]);
+    const recount =
+      'import type { RootStore } from "../st";\nconst recount = (state: { draft: string; pinned: boolean }) => {\n  state.draft = String(state.pinned);\n};\nconst build = () => recount;\n';
+    expect(
+      [
+        "this.set(patch)",
+        "this.set(recount)",
+        "this.set(this.#recount)",
+        "this.set(build())",
+        "this.set(ready ? { draft: '' } : patch)",
+        "this.set(ready && recount)",
+        "this.set(() => patch)",
+      ].map((write) => mergeOf(write, recount)),
+    ).toEqual([
+      "computed-access: patch",
+      "computed-access: recount",
+      "computed-access: this.#recount",
+      "computed-access: build()",
+      "computed-access: patch",
+      "computed-access: recount",
+      "computed-access: patch",
+    ]);
     expect(
       [
         "(this as unknown as RootStore).set({ ...patch })",
