@@ -10,7 +10,7 @@ import {
   router,
   Translator,
 } from "akanjs/client";
-import { Activity, act, type ReactNode, StrictMode, useState } from "react";
+import { Activity, act, type ReactNode, StrictMode, Suspense, use, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { CsrRefresh } from "./csrRefresh";
 import { RenderLayer } from "./RenderLayer";
@@ -841,6 +841,41 @@ describe("RenderLayer", () => {
     await settle();
     expect(container.textContent).toBe("card 2");
     expect(instances).toBe(1);
+  });
+
+  test("keeps a refreshed page's streams drawn until their new values arrive, instead of falling back", async () => {
+    routerOf();
+    let runs = 0;
+    let release: (() => void) | null = null;
+    const Office = ({ of }: { of: Promise<string> }) => <p>{use(of)}</p>;
+    const home: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: (async () => {
+        const run = ++runs;
+        const office =
+          run > 1
+            ? new Promise<string>((resolve) => (release = () => resolve(`office ${run}`)))
+            : Promise.resolve(`office ${run}`);
+        return (
+          <Suspense fallback={<p>loading</p>}>
+            <Office of={office} />
+          </Suspense>
+        );
+      }) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/home", renderRootLayouts: [], renderLayouts: [], renderPage: home };
+    const { container, show } = stackOf([home], pathRoute);
+
+    await show({});
+    expect(container.textContent).toBe("office 1");
+    await refreshAt(pathRoute);
+    expect(runs).toBe(2);
+    expect(container.textContent).toBe("office 1");
+
+    await act(async () => release?.());
+    await settle();
+    expect(container.textContent).toBe("office 2");
   });
 
   test("leaves a parked page alone on a refresh of another entry", async () => {
