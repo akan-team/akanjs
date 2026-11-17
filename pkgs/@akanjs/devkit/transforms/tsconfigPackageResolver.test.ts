@@ -167,6 +167,7 @@ describe("createTsconfigPackageResolver — node_modules fallback", () => {
       entryFile,
       pkgDir: path.join(root, "node_modules/akanjs/ui"),
       preserveFilePath: true,
+      rootDir: path.join(root, "node_modules/akanjs"),
     });
   });
 

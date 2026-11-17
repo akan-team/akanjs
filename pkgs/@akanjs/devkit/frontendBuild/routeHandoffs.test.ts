@@ -99,6 +99,32 @@ describe("the models a route's server modules hand to client components", () => 
     expect(read).toEqual({ referenceFiles: [], unread: null });
   });
 
+  test("do not count a service that calls an endpoint through the server barrel and slices an array of its own", async () => {
+    const read = await readOf({
+      "apps/demo/lib/memo/memo.service.ts":
+        'import { fetch } from "../useServer";\nexport const scan = async (ips: string[]) => [ips.slice(0, 1), await fetch.memoNote(), { fetch: 1 }.fetch];\n',
+    });
+
+    expect(read).toEqual({ referenceFiles: [], unread: null });
+  });
+
+  test("are every model once the server barrel's `fetch` is indexed, passed on or taken apart", async () => {
+    const taken = 'import { fetch } from "@apps/demo/server";\n';
+    const unreadOf = async (name: string, body: string) =>
+      (await readOf({ [`apps/demo/page/${name}.tsx`]: `${taken}${body}\n` })).unread?.file;
+
+    expect(
+      await unreadOf("indexed", "export const any = (name: string) => [name.slice(1), (fetch as never)[name]];"),
+    ).toBe("apps/demo/page/indexed.tsx");
+    expect(
+      await unreadOf("passed", "export const all = (use: (api: unknown) => void) => [[].slice(), use(fetch)];"),
+    ).toBe("apps/demo/page/passed.tsx");
+    expect(
+      await unreadOf("apart", "const { viewMemo } = fetch;\nexport const view = (id: string) => viewMemo(id);"),
+    ).toBe("apps/demo/page/apart.tsx");
+    expect(await unreadOf("sliced", "export const tags = () => fetch.slice.tag;")).toBe("apps/demo/page/sliced.tsx");
+  });
+
   test("name only models with a reference file, so a model the app's sync wrote none for adds nothing", async () => {
     const { demo } = await runtimeFixtureTables();
     const only = new RouteHandoffs(

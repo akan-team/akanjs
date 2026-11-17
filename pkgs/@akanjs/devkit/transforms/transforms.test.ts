@@ -625,6 +625,44 @@ describe("BarrelAnalyzer and rewriteBarrelImports", () => {
     );
   });
 
+  test("maps a name an installed barrel re-exports from the package it carries beside its folder to that file", async () => {
+    const root = await makeTempRoot();
+    const akanjs = path.join(root, "node_modules/akanjs");
+    await write(
+      path.join(akanjs, "ui/index.ts"),
+      'export { SessionContext, useAgent } from "../vendor/use-agentic";\nexport { outside } from "../../other/index";\nexport { Link } from "./Link";\n',
+    );
+    await write(path.join(akanjs, "ui/Link/index.tsx"), "export const Link = () => null;\n");
+    await write(path.join(akanjs, "vendor/use-agentic/index.ts"), 'export * from "./useAgent";\n');
+    await write(
+      path.join(akanjs, "vendor/use-agentic/useAgent.ts"),
+      "export const SessionContext = {};\nexport const useAgent = () => null;\n",
+    );
+    await write(path.join(root, "node_modules/other/index.ts"), "export const outside = 1;\n");
+    const entry = {
+      pkgName: "akanjs/ui",
+      entryFile: path.join(akanjs, "ui/index.ts"),
+      pkgDir: path.join(akanjs, "ui"),
+    };
+    const carried = { subpath: path.join(akanjs, "vendor/use-agentic/useAgent.ts"), originalName: "SessionContext" };
+
+    const installed = await new BarrelAnalyzer({
+      resolvePackage: async () => ({ ...entry, preserveFilePath: true, rootDir: akanjs }),
+    }).analyze("akanjs/ui");
+    const rootless = await new BarrelAnalyzer({
+      resolvePackage: async () => ({ ...entry, preserveFilePath: true }),
+    }).analyze("akanjs/ui");
+
+    expect(installed?.get("SessionContext")).toEqual(carried);
+    expect(installed?.get("useAgent")?.subpath).toBe(carried.subpath);
+    expect(installed?.get("outside")).toEqual({ subpath: path.join(akanjs, "ui/index.ts"), originalName: "outside" });
+    expect(installed?.get("Link")?.subpath).toBe(path.join(akanjs, "ui/Link/index.tsx"));
+    expect(rootless?.get("SessionContext")).toEqual({
+      subpath: path.join(akanjs, "ui/index.ts"),
+      originalName: "SessionContext",
+    });
+  });
+
   test("narrows a re-export of barrel names like an import when asked, and leaves a namespace of the barrel whole", async () => {
     const analyzer = fakeAnalyzer([
       ["buttonRecipe", { subpath: "akanjs/ui/Recipe/button", originalName: "buttonRecipe" }],

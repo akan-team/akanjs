@@ -20,6 +20,8 @@ export interface PackageEntry {
   pkgDir: string;
   /** Emit absolute file paths: an installed package's exports name its barrels, never the files behind them. */
   preserveFilePath?: boolean;
+  /** The installed package's own folder: its entry may re-export a file beside the entry's folder (`../vendor/x`). */
+  rootDir?: string;
 }
 
 export interface BarrelAnalyzerOptions {
@@ -216,7 +218,11 @@ export class BarrelAnalyzer {
 
   #subpathFor(pkg: PackageEntry, absFile: string): string | null {
     const rel = path.relative(pkg.pkgDir, absFile);
-    if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return null;
+    if (!rel || path.isAbsolute(rel)) return null;
+    if (rel.startsWith("..")) {
+      const inPackage = pkg.preserveFilePath && pkg.rootDir ? path.relative(pkg.rootDir, absFile) : "..";
+      if (inPackage.startsWith("..") || path.isAbsolute(inPackage)) return null;
+    }
     if (pkg.preserveFilePath) return absFile.split(path.sep).join("/");
     const ext = CANDIDATE_EXTS.find((candidate) => rel.endsWith(candidate));
     const parts = (ext ? rel.slice(0, -ext.length) : rel).split(path.sep);
