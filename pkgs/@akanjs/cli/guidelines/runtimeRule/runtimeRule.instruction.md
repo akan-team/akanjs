@@ -427,6 +427,56 @@ place a developer writes them; the build turns each into a read of an environmen
   with `private/`; mount it instead. Images built before 3.4.0 still hold the values: rotate the secrets once the
   new images are live.
 
+## Worker Processes — `workers` In `akan.config.ts`
+
+Code the server must not load into its own process — a native addon that can crash or block it, a model runtime, a
+long CPU job — is a worker: an entry file the app's `akan.config.ts` names, built apart from the server and run as a
+process of its own.
+
+```ts
+const config: AppConfig = { workers: { vision: "srvkit/vision.worker.ts" } }; // apps/<app>/akan.config.ts
+```
+
+```ts
+import { AppWorker } from "akanjs/server"; // an adapter under srvkit/
+
+const worker = AppWorker.spawn<VisionReply>("vision", {
+  env: { MODEL_DIR: modelDir },
+  onMessage: (reply) => this.#settle(reply),
+});
+worker.send({ id, frame });
+await worker.stop();
+```
+
+- **The declaration is the whole contract.** A name is letters, digits, `-` and `_`; an entry is a `.ts`, `.mts`,
+  `.js` or `.mjs` path relative to the `akan.config.ts`, which only an app's takes. A bad name, an absolute path or
+  another extension stops the config load, and an entry file missing at build stops the build, each naming the key.
+- **`akan build` writes `workers/<name>.js`**, each worker an entry of its own bundled like the server (the same
+  externals, the same server env plugin), never a chunk of `server.js`. The image and a desktop app's server carry
+  the folder. In a source run (`akan start`, `akan test`) there is no built file, so the worker runs from its
+  declared source; a worker added to the config needs the dev server restarted.
+- **Keep the entry out of the layer barrel.** A dotted file name (`vision.worker.ts`) or an underscore folder
+  (`srvkit/_vision/`) is left out of the generated `index.ts`, so the server never loads what the worker imports.
+  The entry imports what it needs by path, never the `srvkit` barrel or `server.ts`.
+- **`AppWorker.spawn(name, options)`** starts it with the Bun that runs the server and returns at once.
+  `AppWorker.pathOf(name)` is the file it runs, for code that spawns by hand; an undeclared name throws
+  `AppWorkerError` (`workerNotDeclared`).
+- **The server's env does not reach the worker.** It gets what a process needs to start (`PATH`, `HOME`, the temp
+  folder, `TZ`) plus `options.env`, and Bun loads no `.env` file for it, so a secret of the server is handed over by
+  name or not at all. `inheritEnv: true` hands over everything.
+- **Output is relayed to the server's logger**, line by line: stdout as `info`, stderr as `warn`, under
+  `Worker:<name>` or `options.logger`.
+- **`onMessage` opens an IPC channel**: the worker's `process.send(message)` arrives there, and `worker.send(message)`
+  reaches its `process.on("message")`. Without `onMessage`, `send` throws `workerNotConnected`, as it does while the
+  worker is down.
+- **A worker that exits with an error or on a signal is started again**, after 1s, doubling up to 30s, and back to 1s
+  after a message or a run longer than the cap; `restart: { minMs, maxMs }` sets the delays and `restart: false`
+  leaves it down. An exit with code 0 is the worker finishing: it stays down. `onExit(exitCode)` hears each exit
+  `stop` did not cause, `null` for a signal.
+- **`stop()`** sends SIGTERM, then SIGKILL after 2s, and resolves once the process is gone. When the server process
+  exits, every running worker gets SIGTERM; a server killed with SIGKILL leaves its workers running, so a worker that
+  must not outlive it is given `onMessage` and exits on its own `process.on("disconnect")`.
+
 ## Native Apps — The `native` Section
 
 An app's iOS, Android and desktop (macOS, Windows, Linux) apps are the `native` section of its `akan.config.ts`.

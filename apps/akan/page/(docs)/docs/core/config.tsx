@@ -123,6 +123,13 @@ const configKeys = [
     ko: "모든 데스크톱 빌드가 싣고 가는 실행 파일이며 플랫폼마다 적고, PATH 맨 앞에 놓입니다. 이미지는 읽지 않습니다.",
   },
   {
+    key: "workers",
+    type: "Record<string, string>",
+    default: "{}",
+    en: "Entry files akan build bundles apart from the server; AppWorker.spawn(name) runs one as a process of its own.",
+    ko: "akan build가 서버와 따로 번들하는 엔트리 파일이며, AppWorker.spawn(name)이 별도 프로세스로 실행합니다.",
+  },
+  {
     key: "barrelImports",
     type: "string[]",
     default: "akanjs + workspace",

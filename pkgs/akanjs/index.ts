@@ -64,6 +64,12 @@ export type AkanBinSource = AkanBinUrlSource | AkanBinPathSource;
  */
 export type AkanBinConfig = Record<string, { [platform in BinPlatform]?: AkanBinSource }>;
 
+/**
+ * Entry files `akan build` bundles apart from the server, each to `workers/<name>.js`, by the name
+ * `AppWorker.spawn(name)` runs as a process of its own. A path is relative to the `akan.config.ts` that declares it.
+ */
+export type AkanWorkersConfig = Record<string, string>;
+
 export interface AkanRouteDomains {
   main?: string[];
   develop?: string[];
@@ -471,6 +477,8 @@ export interface AppConfigResult {
   trustedDependencies: string[];
   /** Every desktop build, run and dev session carries these, server or not; the image installs through `docker`. */
   bin: AkanBinConfig;
+  /** Code that runs in a process of its own, such as a native addon the server must not load. */
+  workers: AkanWorkersConfig;
   barrelImports: string[];
   optimizeImports: string[];
   images: AkanImageConfig;

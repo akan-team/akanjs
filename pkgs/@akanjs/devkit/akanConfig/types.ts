@@ -27,6 +27,7 @@ export type {
   AkanSyncContext,
   AkanWebConfig,
   AkanWebOption,
+  AkanWorkersConfig,
   AppConfig,
   AppConfigInput,
   AppConfigResult,
