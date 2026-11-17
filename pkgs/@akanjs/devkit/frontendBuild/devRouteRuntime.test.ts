@@ -220,23 +220,28 @@ describe("the dev registry under clientRuntime route", () => {
     expect(code).not.toContain("whole-client");
   });
 
-  test("a store file picking an endpoint at run time loads the client runtime and every other module's store piece, never the assembled store", async () => {
+  test("a store file picking an endpoint at run time takes its handle from the page runtime and loads no store, and each file naming its store loads the assembled runtime", async () => {
     const { root, file, app } = await routeWorkspace();
-    for (const client of ["lib/useClient.ts", "lib/__client/_useClient.ts"])
+    for (const client of ["lib/useClient.ts", "lib/usePage.ts"])
       await write(file(client), "export const fetch = {};\n");
+    const before = await DevRouteRuntime.read(root, "apps/demo");
     await write(
       file("lib/_draft/draft.store.ts"),
       'import { store } from "akanjs/store";\nimport { fetch } from "../useClient";\nexport class DraftStore extends store("draft" as const, () => ({ draftText: 0 })) {\n  run(name: string) {\n    return (fetch as Record<string, () => unknown>)[name]?.();\n  }\n}\n',
     );
 
     const modules = await compile(app, root, [file("lib/_draft/draft.store.ts")]);
+    const runtime = await DevRouteRuntime.read(root, "apps/demo");
+    const [draft, tally] = await Promise.all(
+      ["ui/Draft.tsx", "ui/Tally.tsx"].map(async (ui) => runtime?.transform(await Bun.file(file(ui)).text(), file(ui))),
+    );
 
-    expect(sortedIds(modules)).toEqual([
-      "apps/demo/lib/__client/_useClient.ts",
-      "apps/demo/lib/__client/tally.st.ts",
-      "apps/demo/lib/_draft/draft.store.ts",
-      "apps/demo/lib/useClient.ts",
-    ]);
+    expect(sortedIds(modules)).toEqual(["apps/demo/lib/_draft/draft.store.ts", "apps/demo/lib/usePage.ts"]);
+    expect(draft?.perModule).toBe(false);
+    expect(draft?.contents).toContain('/apps/demo/lib/__client/_useClient.ts";');
+    expect(draft?.contents).toContain('/apps/demo/lib/__client/_st.ts";');
+    expect(tally?.perModule).toBe(true);
+    expect(runtime?.digest).not.toBe(before?.digest);
   });
 
   test("a lib's lib/st.ts loads as the lib's assembled store followed by the app's", async () => {

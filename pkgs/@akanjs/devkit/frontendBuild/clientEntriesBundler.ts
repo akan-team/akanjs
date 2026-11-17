@@ -8,8 +8,10 @@ import {
   type BundleClientEntriesInternalOptions,
   type BundleClientEntriesResult,
   CLIENT_BUNDLE_NAMING,
+  type ClientBundleGraph,
   type ClientBundleTarget,
   type ClientManifest,
+  type ClientModuleImport,
   type MetafileInput,
   type MetafileOutput,
   type OpaqueEntryAliases,
@@ -102,7 +104,43 @@ export class ClientEntriesBundler {
       entryChunkUrlsByAbsPath: this.#entryChunkUrlsByAbsPath,
       externalsByChunkUrl: this.#collectExternalsByChunkUrl(),
       clientReferenceIdByAbsPath: this.#clientReferenceIdByAbsPath,
+      graph: this.#graph(),
     };
+  }
+
+  #graph(): ClientBundleGraph {
+    const absByInput = new Map<string, string>();
+    const absOf = (input: string) => {
+      const known = absByInput.get(input);
+      if (known) return known;
+      const abs = this.#absFromEntryPoint(input);
+      absByInput.set(input, abs);
+      return abs;
+    };
+    const importsByModule = new Map<string, ClientModuleImport[]>();
+    for (const [input, { imports = [] }] of Object.entries(this.#metafileInputs))
+      importsByModule.set(
+        absOf(input),
+        imports
+          .filter((imported) => !imported.external)
+          .map((imported) => ({ path: absOf(imported.path), lazy: imported.kind === "dynamic-import" })),
+      );
+    const chunksByModule = new Map<string, string[]>();
+    const importsByChunk = new Map<string, string[]>();
+    for (const [chunk, info] of this.#metafileOutputsByAbs) {
+      if (!chunk.endsWith(".js")) continue;
+      for (const input of Object.keys(info.inputs ?? {})) {
+        const module = absOf(input);
+        chunksByModule.set(module, [...(chunksByModule.get(module) ?? []), chunk]);
+      }
+      importsByChunk.set(
+        chunk,
+        info.imports
+          .filter((imported) => imported.kind !== "dynamic-import" && imported.path.endsWith(".js"))
+          .map((imported) => this.#absFromOutdir(imported.path)),
+      );
+    }
+    return { importsByModule, chunksByModule, importsByChunk };
   }
 
   async #createOpaqueEntryAliases(): Promise<OpaqueEntryAliases> {

@@ -449,7 +449,9 @@ describe("route client store bootstrap", () => {
       expect(result.ssrManifestDelta.moduleMap[row?.id ?? ""]?.A?.id).toContain(`${path.sep}client-ssr${path.sep}`);
     });
 
-    test("a framework file importing the model runtime marker brings the app's assembled descriptors and stores", async () => {
+    const assembledMarkers = StoreBootstrap.assembled.map((file) => `assembled:${file}`);
+
+    test("a framework file importing the model runtime marker keeps the whole runtime a build of every module loads", async () => {
       const { root, appDir, app } = await routeFixture();
       const entry = path.join(root, "node_modules/akanjs/ui/Data/List.tsx");
       await write(path.join(root, "node_modules/akanjs/ui/modelRuntime.ts"), "export {};\n");
@@ -458,12 +460,11 @@ describe("route client store bootstrap", () => {
       await build(app, entry);
 
       const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
-      for (const marker of ["list-marker", ...StoreBootstrap.assembled.map((file) => `assembled:${file}`)])
-        expect(browser).toContain(marker);
-      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
+      for (const marker of ["list-marker", '"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
+      for (const marker of assembledMarkers) expect(browser).not.toContain(marker);
     });
 
-    test("a file reading a store by a name picked at run time brings the assembled runtime, not a second copy", async () => {
+    test("a file reading a store by a name picked at run time keeps the whole runtime, with no copy assembled from pieces", async () => {
       const { appDir, app } = await routeFixture();
       const entry = path.join(appDir, "ui/Pick.tsx");
       await write(
@@ -474,9 +475,8 @@ describe("route client store bootstrap", () => {
       await build(app, entry);
 
       const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
-      for (const marker of ["pick-marker", ...StoreBootstrap.assembled.map((file) => `assembled:${file}`)])
-        expect(browser).toContain(marker);
-      for (const marker of ['"runtime-marker"', '"store-marker"']) expect(browser).not.toContain(marker);
+      for (const marker of ["pick-marker", '"runtime-marker"', '"store-marker"']) expect(browser).toContain(marker);
+      for (const marker of assembledMarkers) expect(browser).not.toContain(marker);
     });
 
     const writeStorePieces = async (appDir: string) => {
@@ -490,7 +490,7 @@ describe("route client store bootstrap", () => {
         );
         await write(
           path.join(appDir, `lib/__client/${name}.st.ts`),
-          `export const piece = Object.freeze({ mark: "piece:${name}.st" });\n(globalThis as { pieces?: unknown[] }).pieces?.push(piece);\n`,
+          `export const ${name} = Object.freeze({ mark: "piece:${name}.st" });\n(globalThis as { pieces?: unknown[] }).pieces?.push(${name});\n`,
         );
       }
       await write(
@@ -506,12 +506,7 @@ describe("route client store bootstrap", () => {
       );
       return entry;
     };
-    const wholeOrOtherPieces = [
-      "piece:tally.st",
-      ...StoreBootstrap.assembled.map((file) => `assembled:${file}`),
-      '"runtime-marker"',
-      '"store-marker"',
-    ];
+    const wholeOrOtherPieces = ["piece:tally.st", ...assembledMarkers, '"runtime-marker"', '"store-marker"'];
 
     test("a file naming one module's state brings that module's store piece, no other module's and no assembled runtime", async () => {
       const { appDir, app } = await routeFixture();
@@ -525,7 +520,7 @@ describe("route client store bootstrap", () => {
       for (const marker of wholeOrOtherPieces) expect(browser).not.toContain(marker);
     });
 
-    test("a file importing one module's store piece by hand brings that piece and the assembled runtime, not a second copy", async () => {
+    test("a file importing one module's store piece by hand brings that piece and keeps the whole runtime", async () => {
       const { appDir, app } = await routeFixture();
       await writeStorePieces(appDir);
       const entry = path.join(appDir, "ui/Hand.tsx");
@@ -537,14 +532,9 @@ describe("route client store bootstrap", () => {
       await build(app, entry);
 
       const browser = await bundledText(path.join(appDir, ".akan/artifact/client"));
-      for (const marker of [
-        "hand-ui-marker",
-        "piece:draft.st",
-        ...StoreBootstrap.assembled.map((file) => `assembled:${file}`),
-      ])
+      for (const marker of ["hand-ui-marker", "piece:draft.st", '"runtime-marker"', '"store-marker"'])
         expect(browser).toContain(marker);
-      for (const marker of ["piece:tally.st", '"runtime-marker"', '"store-marker"'])
-        expect(browser).not.toContain(marker);
+      for (const marker of ["piece:tally.st", ...assembledMarkers]) expect(browser).not.toContain(marker);
     });
 
     test("the files a route is sized by hold the store piece of the module its client code names, and no assembled runtime", async () => {

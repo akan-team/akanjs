@@ -2252,6 +2252,31 @@ export default config;`}
                   ),
                 })}
               </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>The production build checks its own loading order.</strong> <code>akan build</code> stops,
+                      naming the two source files, when a chunk would run before the chunk of a module piece it needs,
+                      or when a store file would be defined through a piece that imports it back. The development server
+                      serves each module on its own and checks nothing, so the production build is the guard: build
+                      before you ship a change to which module a client file names. A page that needs every module keeps
+                      the runtime it has under <code>"all"</code>, and <code>akan quality runtime</code> lists which
+                      component brings it there.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>프로덕션 빌드는 스스로 로드 순서를 검사합니다.</strong> 어떤 청크가 자신이 필요한 모듈
+                      조각의 청크보다 먼저 실행되거나, 스토어 파일이 자신을 다시 import하는 조각을 거쳐 정의되면{" "}
+                      <code>akan build</code>는 두 소스 파일의 이름을 알리고 멈춥니다. 개발 서버는 모듈을 하나씩
+                      내려주고 아무것도 검사하지 않으므로 프로덕션 빌드가 안전장치입니다. 클라이언트 파일이 이름을 적는
+                      모듈을 바꿨다면 배포 전에 빌드하세요. 모든 모듈이 필요한 페이지는 <code>"all"</code>일 때의
+                      런타임을 그대로 쓰며, 어떤 컴포넌트 때문인지는 <code>akan quality runtime</code>이 알려 줍니다.
+                    </span>
+                  ),
+                })}
+              </li>
             </ul>
           </Docs.Description>
         </Scroll.Slide>

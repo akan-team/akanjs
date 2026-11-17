@@ -443,6 +443,13 @@ akan quality baseline`,
         }),
       },
       {
+        name: "akan.runtime.framework-marker",
+        desc: l.trans({
+          en: "`akan quality runtime` only, as a note: a file imports a framework component that reads models by name (a relation `Field`, `Load`, `Model`, `Data`, `Signal`, `Constant.Doc`), so each page listed loads the whole client runtime. The note shows the imports from that file to the component.",
+          ko: "`akan quality runtime`에서만 노트로 뜹니다. 파일이 모델을 이름으로 읽는 프레임워크 컴포넌트(관계 `Field`, `Load`, `Model`, `Data`, `Signal`, `Constant.Doc`)를 import해서, 나열된 페이지가 클라이언트 런타임 전체를 불러옵니다. 노트는 그 파일에서 컴포넌트까지의 import 경로를 보여 줍니다.",
+        }),
+      },
+      {
         name: "akan.ssr.*",
         href: "#server-share",
         desc: l.trans({

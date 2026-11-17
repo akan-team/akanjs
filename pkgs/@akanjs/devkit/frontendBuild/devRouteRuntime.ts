@@ -38,7 +38,7 @@ export class DevRouteRuntime {
     if (!runtime) return null;
     const scopes = runtime.table.layers.map(({ scope }) => scope);
     const pieces = scopes.map((scope) => DevRouteRuntime.#namesIn(path.join(workspaceRoot, scope, "lib/__client")));
-    const digest = Bun.hash(JSON.stringify([runtime.table.layers, pieces])).toString(36);
+    const digest = Bun.hash(JSON.stringify([runtime.table.layers, pieces, runtime.storeNeeds])).toString(36);
     return new DevRouteRuntime(workspaceRoot, runtime, scopes, digest);
   }
 

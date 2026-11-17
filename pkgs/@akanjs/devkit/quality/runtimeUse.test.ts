@@ -1,4 +1,5 @@
 import { beforeAll, describe, expect, test } from "bun:test";
+import { FetchClient } from "akanjs/fetch";
 import type { RuntimeNameTable } from "./runtimeNameTable";
 import { runtimeFixtureTables, runtimeUploadTable } from "./runtimeTable.fixture";
 import { RuntimeUse, type RuntimeUseOptions, type RuntimeUseVerdict } from "./runtimeUse";
@@ -347,6 +348,33 @@ describe("RuntimeUse.analyze", () => {
     ).toEqual(Array(8).fill(["apps/demo/memo descriptor"]));
   });
 
+  test("reads the fetch client's own members as no module's name, and the ones a name is picked through as the whole runtime", () => {
+    const own = [
+      "ws",
+      "http",
+      "origin",
+      "jwt",
+      "logger",
+      "setJwt",
+      "setTimeout",
+      "connect",
+      "connectOnUse",
+      "disconnect",
+    ];
+    expect(own.map((member) => analyze(`${appImport}export const a = fetch.${member};\n`))).toEqual(
+      Array(own.length).fill([]),
+    );
+    expect(analyze(`${appImport}export const a = () => fetch.configureWs({});\n`)).toEqual([]);
+    expect(analyze(`${appImport}export const a = () => [fetch.ws, fetch.memoNote()];\n`)).toEqual([
+      "apps/demo/memo descriptor",
+    ]);
+    for (const member of ["handler", "instance", "clone"])
+      expect(analyze(`${appImport}export const a = fetch.${member};\n`)).toBeString();
+    const methods = Object.getOwnPropertyNames(FetchClient.prototype).filter((name) => name !== "constructor");
+    const picking = ["ownSerializedSignal", "applySignal", "clone"];
+    expect(methods.filter((name) => !picking.includes(name) && !own.includes(name))).toEqual(["configureWs"]);
+  });
+
   test("needs the file-upload module's descriptor for an upload, which reads it as it runs", () => {
     expect(
       analyze(
@@ -435,6 +463,52 @@ describe("RuntimeUse.analyze", () => {
         "  clearDraft() {\n    this.set({ draft: '' });\n    (this as unknown as RootStore).setPinned(true);\n  }",
       ),
     ).toEqual(["apps/demo/memo store", "apps/demo/note store"]);
+    const memoOnly = ["apps/demo/memo store"];
+    const mergeOf = (write: string, head?: string) =>
+      storeOf(
+        `  #recount = (state: { draft: string; pinned: boolean }) => {\n    state.draft = String(state.pinned);\n  };\n  merge(patch: { draft: string }, ready: boolean) {\n    ${write};\n  }`,
+        head,
+      );
+    expect(
+      [
+        "this.set({ ...patch })",
+        "this.set({ ...(ready ? patch : { draft: '' }) })",
+        "this.set({ ...patch, draft: '' })",
+      ].map((write) => mergeOf(write)),
+    ).toEqual([memoOnly, memoOnly, memoOnly]);
+    expect(mergeOf("this.set((state) => {\n      state.draft = String(state.pinned);\n    })")).toEqual([
+      "apps/demo/memo store",
+      "apps/demo/note store",
+    ]);
+    const recount =
+      'import type { RootStore } from "../st";\nconst recount = (state: { draft: string; pinned: boolean }) => {\n  state.draft = String(state.pinned);\n};\nconst build = () => recount;\n';
+    expect(
+      [
+        "this.set(patch)",
+        "this.set(recount)",
+        "this.set(this.#recount)",
+        "this.set(build())",
+        "this.set(ready ? { draft: '' } : patch)",
+        "this.set(ready && recount)",
+        "this.set(() => patch)",
+      ].map((write) => mergeOf(write, recount)),
+    ).toEqual([
+      "computed-access: patch",
+      "computed-access: recount",
+      "computed-access: this.#recount",
+      "computed-access: build()",
+      "computed-access: patch",
+      "computed-access: recount",
+      "computed-access: patch",
+    ]);
+    expect(
+      [
+        "(this as unknown as RootStore).set({ ...patch })",
+        "(this as unknown as RootStore).set(patch)",
+        "this.set({ [key]: '' })",
+      ].map((write) => storeOf(`  merge(patch: { draft: string }, key: string) {\n    ${write};\n  }`)),
+    ).toEqual([expect.any(String), expect.any(String), expect.any(String)]);
+    expect(analyze(`${appImport}export const a = (patch: object) => st.set({ ...patch });\n`)).toBeString();
     expect(storeOf("  pin() {\n    this.setPinned(true);\n  }")).toEqual([
       "apps/demo/memo store",
       "apps/demo/note store",

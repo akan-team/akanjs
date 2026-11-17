@@ -50,7 +50,7 @@ type StoreMethod = "get" | "set" | "sel" | "ref" | "sub" | "pick";
 type Step =
   | { leaf: RuntimeFamily; key: string; next?: RuntimeHandle }
   | { handle: RuntimeHandle }
-  | { method: StoreMethod }
+  | { method: StoreMethod; own?: boolean }
   | { none: true }
   | { unknown: true }
   | { whole: true };
@@ -58,6 +58,20 @@ type Step =
 const stMethods = new Set(["get", "set", "sel", "ref", "sub"]);
 const agenticMembers = new Set(["tool", "expose", "useState"]);
 const signalData = new Set(["refName", "cnst", "slices", "serializedSignal", "_slice"]);
+//? Fetch client members reaching no endpoint; `handler`, `instance`, `clone` and the descriptor maps do pick a name.
+const fetchClientMembers = new Set([
+  "ws",
+  "http",
+  "origin",
+  "jwt",
+  "logger",
+  "setJwt",
+  "setTimeout",
+  "connect",
+  "connectOnUse",
+  "disconnect",
+  "configureWs",
+]);
 const nothingRead: RuntimeUseVerdict = {
   resolvable: true,
   owners: [],
@@ -358,7 +372,7 @@ export class RuntimeUse {
       this.#record(step.leaf, step.key, node);
       if (step.next) this.#follow(node, step.next);
     } else if ("handle" in step) this.#follow(node, step.handle);
-    else if ("method" in step) this.#callMethod(node, step.method);
+    else if ("method" in step) this.#callMethod(node, step.method, step.own);
     else if ("unknown" in step) this.#problem("unknown-name", node, "the runtime has no such member");
     else if ("whole" in step) this.#problem("whole-runtime-import", node, "it hands out the whole client runtime");
   }
@@ -372,7 +386,7 @@ export class RuntimeUse {
         return agenticMembers.has(name) ? { none: true } : { unknown: true };
       case "root":
       case "self":
-        if (name === "get" || name === "set" || name === "pick") return { method: name };
+        if (name === "get" || name === "set" || name === "pick") return { method: name, own: handle.kind === "self" };
         if (name === "slice") return to("st.slice");
         if (handle.members?.has(name) && !this.#consumer?.lookup("st.do", name)) return { none: true };
         return { leaf: "st.do", key: name };
@@ -380,6 +394,7 @@ export class RuntimeUse {
         return { leaf: "st.use", key: name };
       case "fetch":
         if (name === "slice" || name === "serializedSignal") return to(`fetch.${name}`);
+        if (fetchClientMembers.has(name) && !this.#consumer?.lookup("fetch", name)) return { none: true };
         return { leaf: "fetch", key: name };
       case "sig":
         return { leaf: "sig", key: name, next: { kind: "signal" } };
@@ -396,7 +411,7 @@ export class RuntimeUse {
     }
   }
 
-  #callMethod(node: ts.Expression, method: StoreMethod) {
+  #callMethod(node: ts.Expression, method: StoreMethod, own = false) {
     const { current, parent } = RuntimeUse.#climb(node);
     if (!ts.isCallExpression(parent) || parent.expression !== current)
       return this.#problem("passed-on", node, "the store method is taken off the store");
@@ -410,7 +425,7 @@ export class RuntimeUse {
         else this.#problem("computed-access", key, "the state key is picked at run time");
       }
     else if (method === "set") {
-      if (first) this.#written(first);
+      if (first) this.#written(first, own);
     } else {
       const selector = first && RuntimeUse.#inlineFunction(first);
       if (first && !selector) this.#problem("passed-on", first, "the selector is not written inline");
@@ -429,24 +444,25 @@ export class RuntimeUse {
     for (const parameter of parameters.slice(0, count)) this.#bindParameter(parameter, { kind: "state" });
   }
 
-  #written(argument: ts.Expression) {
+  //? `own`: a store's uncast `this.set` looks up no module for keys a spread copies; a bare value may be an updater.
+  #written(argument: ts.Expression, own = false, spread = false) {
     const value = RuntimeUse.#unwrap(argument);
     const updater = RuntimeUse.#inlineFunction(value);
     if (updater) {
       this.#bindCallback(updater, 1);
       const returned = ts.isBlock(updater.body) ? RuntimeUse.#returnsOf(updater.body) : [updater.body as ts.Expression];
-      for (const expression of returned) this.#written(expression);
+      for (const expression of returned) this.#written(expression, own);
     } else if (ts.isConditionalExpression(value)) {
-      this.#written(value.whenTrue);
-      this.#written(value.whenFalse);
+      this.#written(value.whenTrue, own, spread);
+      this.#written(value.whenFalse, own, spread);
     } else if (ts.isBinaryExpression(value) && value.operatorToken.kind === ts.SyntaxKind.AmpersandAmpersandToken)
-      this.#written(value.right);
-    else if (!ts.isObjectLiteralExpression(value))
-      this.#problem("computed-access", argument, "the state keys it writes are not written out");
-    else
+      this.#written(value.right, own, spread);
+    else if (!ts.isObjectLiteralExpression(value)) {
+      if (!own || !spread) this.#problem("computed-access", argument, "the state keys it writes are not written out");
+    } else
       for (const property of value.properties) {
         if (ts.isSpreadAssignment(property)) {
-          this.#written(property.expression);
+          this.#written(property.expression, own, true);
           continue;
         }
         const name = property.name && RuntimeUse.#staticName(property.name);
