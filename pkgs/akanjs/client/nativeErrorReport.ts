@@ -1,7 +1,7 @@
 import { getEnv } from "akanjs/base";
-import type { RscClientErrorSender } from "../server/rscClientErrorSender";
 import type { BrowserErrorKind, BrowserErrorShell } from "../signal/browserError";
 import { desktopPlatform, nativePlatform } from "./nativeHost";
+import type { RscClientErrorSender } from "./rscClientErrorSender";
 
 export class NativeErrorReport {
   static readonly path = "/_akan/client-report";
@@ -49,7 +49,7 @@ export class NativeErrorReport {
     const res = await fetch(url, { credentials: "omit", cache: "no-store", referrerPolicy: "no-referrer" });
     const requestId = res.status === 200 ? (await res.text()).trim() : "";
     if (!requestId) return null;
-    const { RscClientErrorSender } = await import("../server/rscClientErrorSender");
+    const { RscClientErrorSender } = await import("./rscClientErrorSender");
     return new RscClientErrorSender(requestId, { url, shell });
   }
 }

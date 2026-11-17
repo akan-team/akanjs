@@ -1,5 +1,6 @@
 import { AkanError } from "akanjs/base";
 import { addressBlockOf, hostFromRequest, Logger } from "akanjs/common";
+import { ReportText } from "../client/reportText";
 import {
   BrowserError,
   type BrowserErrorData,
@@ -14,7 +15,6 @@ import { ClientReportId } from "./clientReportId";
 import { ClientReport } from "./hmr/clientReport";
 import { AppInfo } from "./ops/appInfo";
 import { FailureLimiter } from "./ops/failureLimiter";
-import { ReportText } from "./reportText";
 import type { HttpRoutes } from "./types";
 
 export interface ClientReportSetting {
