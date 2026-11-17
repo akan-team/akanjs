@@ -232,8 +232,6 @@ export class RouteClientBuilder {
     }
   }
 
-  //* The browser bundle of a `clientRuntime: "route"` build, and what it decided, written where `akan quality runtime`
-  //* reads it.
   async #buildNarrowed(
     entries: string[],
     whole: BootstrapEntries,
@@ -274,10 +272,7 @@ export class RouteClientBuilder {
     return built;
   }
 
-  //* Where the analysis lets a route load per module, the build measures it. The same entries are bundled once with
-  //* every one keeping the whole runtime; the entries of a route no smaller per module than there are kept and the app
-  //* is bundled again; and that build stands only where the routes it moved came out smaller than they were. Kept and
-  //* refused entries are both only ever added, so the passes end.
+  //? A pass either keeps entries or refuses some for good, and neither set ever loses one, so the passes end.
   async #keptWhereNotSmaller(
     first: NarrowedBuild,
     routes: ReadonlyMap<string, readonly string[]>,

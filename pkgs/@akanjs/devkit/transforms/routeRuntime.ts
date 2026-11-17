@@ -52,6 +52,24 @@ const registration = /^export const (\w+) = ConstantRegistry\.build(?:Model|Scal
 const pieceImport = /\bfrom\s+"((?:\.|@(?:apps|libs)\/)[^"]+)"/g;
 const assembled = { useClient: "_useClient", st: "_st" } as const;
 
+const exportOf = (piece: string) => {
+  const name = piece.slice(piece.lastIndexOf("/") + 1);
+  if (name === assembled.st) return "st";
+  if (name === assembled.useClient) return "sig";
+  if (name === "cnst") return "*";
+  if (name.endsWith(".cnst")) return name.slice(0, -".cnst".length);
+  return name.endsWith(".st") ? name.slice(0, -".st".length) : "loaded";
+};
+
+const saidOf = (why: RouteRuntimeWhy | undefined) =>
+  why ? `${why.file}${why.line ? `:${why.line}` : ""} ${why.message}` : "a file it imports is left as written";
+
+const parsed = (fileName: string, source: string): ts.SourceFile | null => {
+  const kind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind);
+  return (sourceFile as unknown as { parseDiagnostics: unknown[] }).parseDiagnostics.length ? null : sourceFile;
+};
+
 //* What a client module imports under `clientRuntime: "route"`: the page runtime's handles plus the pieces of the
 //* modules it names, or the app's whole runtime assembled from the same pieces. Each piece is imported by a name the
 //* module passes to `loadedAfter`, never for its side effect alone, so the piece's chunk loads before the module's.
@@ -66,10 +84,12 @@ export class RouteRuntime {
   readonly #sideNeeds = new Map<string, string[] | null>();
   readonly #routes = new Map<string, { source: string; result: RouteRuntimeResult | null }>();
   readonly #wholeReaders = new Map<string, RouteRuntimeWhy | null>();
-  readonly #wholeWhy = new Map<string, RouteRuntimeWhy>();
-  readonly #needsWhy = new Map<string, RouteRuntimeWhy>();
-  readonly #sideWhy = new Map<string, RouteRuntimeWhy>();
-  readonly #storeWhy = new Map<string, RouteRuntimeWhy>();
+  readonly #why = {
+    whole: new Map<string, RouteRuntimeWhy>(),
+    needs: new Map<string, RouteRuntimeWhy>(),
+    side: new Map<string, RouteRuntimeWhy>(),
+    store: new Map<string, RouteRuntimeWhy>(),
+  };
   #planned: Planned | null = null;
   #decided: RouteRuntimePlan | null = null;
 
@@ -121,22 +141,13 @@ export class RouteRuntime {
     return `${path.join(this.#workspaceRoot, piece).split(path.sep).join("/")}.ts`;
   }
 
-  static #exportOf(piece: string) {
-    const name = piece.slice(piece.lastIndexOf("/") + 1);
-    if (name === assembled.st) return "st";
-    if (name === assembled.useClient) return "sig";
-    if (name === "cnst") return "*";
-    if (name.endsWith(".cnst")) return name.slice(0, -".cnst".length);
-    return name.endsWith(".st") ? name.slice(0, -".st".length) : "loaded";
-  }
-
   #after(pieces: string[], specifierOf: (piece: string) => string): string[] {
     if (!pieces.length) return [];
     const names = pieces.map((_, index) => `__akanLoaded${index}`);
     return [
       'import { loadedAfter as __akanLoadedAfter } from "akanjs/base";',
       ...pieces.map((piece, index) => {
-        const name = RouteRuntime.#exportOf(piece);
+        const name = exportOf(piece);
         const binding = name === "*" ? `* as ${names[index]}` : `{ ${name} as ${names[index]} }`;
         return `import ${binding} from ${JSON.stringify(specifierOf(piece))};`;
       }),
@@ -181,7 +192,7 @@ export class RouteRuntime {
     this.#planned = planned;
     for (const memo of [this.#storeNeeds, this.#ownNeeds, this.#sideNeeds, this.#routes, this.#wholeReaders])
       memo.clear();
-    for (const memo of [this.#wholeWhy, this.#needsWhy, this.#sideWhy, this.#storeWhy]) memo.clear();
+    for (const memo of Object.values(this.#why)) memo.clear();
     const decided = new RouteRuntimePlan({
       graph,
       entries: new Set(entries),
@@ -196,7 +207,6 @@ export class RouteRuntime {
     return this.#settled(planned, decided);
   }
 
-  //* After a build measured its pages: these entries keep the whole runtime too, with what the plan's rules add.
   keep(entries: Iterable<string>, why: RouteRuntimeKeep): Set<string> {
     if (!this.#planned || !this.#decided) return new Set();
     this.#decided.keep(entries, why);
@@ -309,11 +319,7 @@ export class RouteRuntime {
     const names = needs?.map((need) => need.slice(need.lastIndexOf("/") + 1, -".st".length)).join(", ");
     return needs
       ? `a store file imports it and its code names the store of ${names}, which no importer can load first for an entry`
-      : `a store file imports it and the stores its code names cannot be told (${RouteRuntime.#said(this.#sideWhy.get(root))})`;
-  }
-
-  static #said(why: RouteRuntimeWhy | undefined) {
-    return why ? `${why.file}${why.line ? `:${why.line}` : ""} ${why.message}` : "a file it imports is left as written";
+      : `a store file imports it and the stores its code names cannot be told (${saidOf(this.#why.side.get(root))})`;
   }
 
   #readsWhole(absPath: string, planned: Planned): RouteRuntimeWhy | null {
@@ -332,7 +338,7 @@ export class RouteRuntime {
     if (routed)
       return routed.perModule
         ? null
-        : (this.#wholeWhy.get(absPath) ?? { file, message: "names a module only the whole runtime answers" });
+        : (this.#why.whole.get(absPath) ?? { file, message: "names a module only the whole runtime answers" });
     //? A file left as written (a macro host, a generated barrel, one outside the scopes) loads only what it imports.
     const whole = planned.graph.importsOf(absPath).find((imported) => wholeFile.test(this.fileNameOf(imported) ?? ""));
     if (whole)
@@ -427,7 +433,7 @@ export class RouteRuntime {
     const sideNeeds = planned && !storeSide ? this.#importedNeedsOf(absPath, planned) : [];
     const mayUse = RuntimeImports.mayUseRuntime(source, fileName) || RuntimeImports.mayUseConstants(source, fileName);
     if (!storeModule && !sideNeeds.length && !mayUse) return { source, perModule: true, pieces: [] };
-    const sourceFile = RouteRuntime.#parse(fileName, source);
+    const sourceFile = parsed(fileName, source);
     if (!sourceFile) return null;
     const verdict = RuntimeUse.analyze({ fileName, text: source, sourceFile }, this.#table);
     const pieces = storeSide
@@ -437,7 +443,7 @@ export class RouteRuntime {
         ) ?? [])
       : this.#piecesOf(verdict, sideNeeds);
     if (!pieces) {
-      this.#wholeWhy.set(absPath, this.#whyWhole(fileName, verdict, sideNeeds));
+      this.#why.whole.set(absPath, this.#whyWhole(fileName, verdict, sideNeeds));
       const edit = RouteRuntimeEdits.leading(sourceFile, this.wholeImports);
       return { source: RouteRuntimeEdits.apply(source, [edit]), perModule: false, pieces: [] };
     }
@@ -454,7 +460,7 @@ export class RouteRuntime {
 
   #constantFileOf(source: string, fileName: string): RouteRuntimeResult | null {
     if (!RuntimeImports.mayUseConstants(source, fileName)) return null;
-    const sourceFile = RouteRuntime.#parse(fileName, source);
+    const sourceFile = parsed(fileName, source);
     if (!sourceFile) return null;
     const { constants: use } = RuntimeUse.analyze({ fileName, text: source, sourceFile }, this.#table);
     const constants = this.#constants.rewrite(sourceFile, fileName, use, { constantFile: true });
@@ -493,15 +499,9 @@ export class RouteRuntime {
       constants,
     } as const;
     const pieces = this.#piecesOf(verdict);
-    if (!pieces) this.#wholeWhy.set(absPath, this.#whyWhole(this.#nameOf(absPath), verdict, []));
+    if (!pieces) this.#why.whole.set(absPath, this.#whyWhole(this.#nameOf(absPath), verdict, []));
     const loads = pieces ? this.#after(pieces, (piece) => `@${piece}`) : this.wholeImports;
     return { source: ModelReference.sourceOf(source, loads), perModule: !!pieces, pieces: pieces ?? [] };
-  }
-
-  static #parse(fileName: string, source: string): ts.SourceFile | null {
-    const kind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
-    const sourceFile = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true, kind);
-    return (sourceFile as unknown as { parseDiagnostics: unknown[] }).parseDiagnostics.length ? null : sourceFile;
   }
 
   #descriptorOf(scope: string, module: string) {
@@ -580,7 +580,7 @@ export class RouteRuntime {
       const needs = this.#needsOf(scope, module);
       if (!needs)
         return (
-          this.#storeWhy.get(`${scope}/${module}`) ?? {
+          this.#why.store.get(`${scope}/${module}`) ?? {
             file: `${scope}/lib/${module}/${module}.store.ts`,
             message: "reads names that cannot be told",
           }
@@ -626,8 +626,8 @@ export class RouteRuntime {
       .map((dir) => path.join(this.#workspaceRoot, scope, "lib", dir, `${module}.store.ts`))
       .filter((candidate) => this.#read(candidate) !== null);
     const needs = !file ? [] : this.#planned ? this.#sideNeedsOf(file, this.#planned) : this.#ownNeedsOf(file);
-    const why = file && (this.#sideWhy.get(file) ?? this.#needsWhy.get(file));
-    if (!needs && why) this.#storeWhy.set(key, why);
+    const why = file && (this.#why.side.get(file) ?? this.#why.needs.get(file));
+    if (!needs && why) this.#why.store.set(key, why);
     this.#storeNeeds.set(key, needs);
     return needs;
   }
@@ -649,8 +649,8 @@ export class RouteRuntime {
     let told = true;
     for (const file of planned.graph.closureOf([absPath])) {
       const own = this.#ownNeedsOf(file);
-      const why = own ? undefined : this.#needsWhy.get(file);
-      if (why && !this.#sideWhy.has(absPath)) this.#sideWhy.set(absPath, why);
+      const why = own ? undefined : this.#why.needs.get(file);
+      if (why && !this.#why.side.has(absPath)) this.#why.side.set(absPath, why);
       if (!own) told = false;
       for (const need of own ?? []) needs.add(need);
     }
@@ -675,10 +675,10 @@ export class RouteRuntime {
     const [, , module] = fileName.match(storeFile) ?? [];
     if (!module && !RuntimeImports.mayUseRuntime(text, fileName)) return [];
     const untold = (message: string, line?: number) => {
-      this.#needsWhy.set(absPath, { file: fileName, message, ...(line ? { line } : {}) });
+      this.#why.needs.set(absPath, { file: fileName, message, ...(line ? { line } : {}) });
       return null;
     };
-    const sourceFile = macroAttribute.test(text) ? null : RouteRuntime.#parse(fileName, text);
+    const sourceFile = macroAttribute.test(text) ? null : parsed(fileName, text);
     if (!sourceFile) return untold("holds a macro import or does not parse, so the names it reads are not followed");
     const verdict = RuntimeUse.analyze({ fileName, text, sourceFile }, this.#table);
     if (!verdict.resolvable) return untold(verdict.message, verdict.line);

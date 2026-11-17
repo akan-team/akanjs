@@ -18,7 +18,6 @@ export type RouteRuntimeKeep =
   //? The build every page is measured against, in which every root keeps the whole runtime.
   | { rule: "reference" };
 
-//? One reason roots keep the whole runtime, with every root and route it holds whole.
 export interface RouteRuntimeCause {
   rule: RouteRuntimeKeep["rule"];
   file?: string;
@@ -91,7 +90,6 @@ export class RouteRuntimePlan {
     return route.some((entry) => this.keeps.has(entry));
   }
 
-  //? The imports from a root down to a file it reaches, both included.
   chainTo(root: string, target: string): string[] {
     const { graph } = this.#input;
     const parents = new Map<string, string | null>([[root, null]]);

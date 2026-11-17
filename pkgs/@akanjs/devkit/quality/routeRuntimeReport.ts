@@ -16,8 +16,6 @@ export interface RouteRuntimeBuildReport {
 const count = (items: readonly unknown[], one: string, many = `${one}s`) =>
   `${items.length} ${items.length === 1 ? one : many}`;
 
-//* What the last `clientRuntime: "route"` build of an app decided, kept beside its generated entries: which routes load
-//* per module, and for every entry keeping the whole runtime the file or the rule that makes it.
 export class RouteRuntimeReport {
   static readonly file = ".akan/generated/route-runtime.json";
   static readonly shown = 6;

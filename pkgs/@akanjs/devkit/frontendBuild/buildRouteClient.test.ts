@@ -607,20 +607,26 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
             entriesByRoute,
           }).build();
           const clientOut = path.join(appDir, ".akan/artifact/client");
-          const run = async (route: string) => {
-            const state = globalThis as { __akanSeen?: string[]; $RefreshReg$?: unknown; $RefreshSig$?: unknown };
+          const state = globalThis as { __akanSeen?: string[]; $RefreshReg$?: unknown; $RefreshSig$?: unknown };
+          const seenNow = () => [...(state.__akanSeen ?? [])].sort();
+          const load = async (route: string) => {
             state.__akanSeen = [];
             state.$RefreshReg$ ??= () => undefined;
             state.$RefreshSig$ ??= () => (type: unknown) => type;
             const ids = new Set(
               (routes[route] ?? []).map((entry) => `${path.relative(fixture.root, entry).split(path.sep).join("/")}#`),
             );
+            const exported: Record<string, unknown> = {};
             for (const [key, row] of Object.entries(result.manifestDelta))
               if ([...ids].some((id) => key.startsWith(id)))
-                await import(path.join(clientOut, path.basename(row.chunks[0] ?? "")));
-            return [...state.__akanSeen].sort();
+                Object.assign(exported, await import(path.join(clientOut, path.basename(row.chunks[0] ?? ""))));
+            return exported;
           };
-          return { browser: await bundledText(clientOut), run };
+          const run = async (route: string) => {
+            await load(route);
+            return seenNow();
+          };
+          return { browser: await bundledText(clientOut), run, load, seenNow };
         };
         return { ...fixture, file, buildRoutes };
       };
@@ -649,21 +655,29 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
         expect(await run("/draft")).toEqual([]);
       }, 30_000);
 
-      test("a file a whole page and a page loading per module both ask for with import() brings no second copy to the whole page", async () => {
+      test("a page loading per module that asks with import() for a file needing every module gets the whole runtime then, and no module's descriptors twice", async () => {
         const { file, buildRoutes, warnings, said } = await describedFixture();
-        await write(file("Later"), namingDraft);
-        await write(file("Pick"), `${picking}export const later = () => import("./Later");\n`);
+        await write(file("Shared"), namingDraft);
+        await write(
+          file("Later"),
+          'import { st } from "@apps/demo/client";\nexport const later = (name: string) => [st.use[name], "later-marker"];\n',
+        );
         await write(
           file("Draft"),
-          '"use client";\nexport const Draft = () => [import("./Later"), "draft-ui-marker"];\n',
+          '"use client";\nimport { shared } from "./Shared";\nexport const Draft = () => [shared, "draft-ui-marker"];\nexport const ask = () => import("./Later");\n',
         );
 
-        const { browser } = await buildRoutes({ "/pick": [file("Pick")], "/draft": [file("Draft")] });
+        const { browser, load, seenNow } = await buildRoutes({ "/draft": [file("Draft")] });
 
-        expect(said).toEqual([mixed]);
+        expect(said).toEqual([
+          "[client-runtime] 1 route loads per module, 0 keep the whole runtime because per module would not be smaller",
+        ]);
         expect(warnings).toEqual([]);
-        expect(browser).toContain("shared-marker");
-        expect(timesIn(browser, "draft-descriptor-ref")).toBe(1);
+        for (const marker of ["draft-descriptor-ref", "tally-descriptor-ref"]) expect(timesIn(browser, marker)).toBe(1);
+        const { ask } = (await load("/draft")) as { ask: () => Promise<unknown> };
+        expect(seenNow()).toEqual(["piece:draft"]);
+        await ask();
+        expect(seenNow()).toEqual(["piece:draft", "whole:tally"]);
       }, 30_000);
 
       test("a reference handed over on a whole page and on a page loading per module brings no second copy to the whole page", async () => {

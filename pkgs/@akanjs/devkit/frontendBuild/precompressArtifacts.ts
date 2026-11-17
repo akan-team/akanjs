@@ -76,7 +76,6 @@ export async function servedBrotliBytesOf(artifactDir: string, filePath: string)
   return brotliCompress(buffer, quality).byteLength;
 }
 
-//? What a client chunk weighs once served, whichever folder a build measuring itself wrote it to.
 export function chunkBrotliBytesOf(bytes: Uint8Array): number {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   return bytes.byteLength < MIN_COMPRESS_BYTES

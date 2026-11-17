@@ -28,7 +28,6 @@ export interface RoutePaidInput {
   after: ReadonlyMap<string, number>;
 }
 
-//* Which entries a `clientRuntime: "route"` build keeps whole because loading per module made a page no smaller.
 export class RouteRuntimePays {
   readonly #sizes = new Map<string, number>();
 
@@ -85,7 +84,7 @@ export class RouteRuntimePays {
     return total(after) >= total(before) ? moved : [];
   }
 
-  //* Each route's chunks are the ones its entries import statically, a chunk shared by two entries counted once.
+  //? Only what a route's entries import statically counts: a chunk asked for with `import()` is not its first load.
   async sizesOf(
     bundle: Pick<BundleClientEntriesResult, "entryOutputAbsByAbsPath" | "graph">,
     buildEntriesByRoute: ReadonlyMap<string, readonly string[]>,

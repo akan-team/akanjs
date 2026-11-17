@@ -7,11 +7,9 @@ export interface RouteRuntimeNarrowed {
   wholeReaders: ReadonlySet<string>;
   //? The files `akan quality runtime` names for keeping every constant; only through one may a page reach `lib/cnst.ts`.
   wholeConstantReaders?: ReadonlySet<string>;
-  //? The build entries of every entry a route may load, by route.
   routes?: ReadonlyMap<string, readonly string[]>;
 }
 
-//? A scope's file holding every module's part, and the pieces each holding one module's.
 const repeatable = [
   {
     whole: /^((?:apps|libs)\/[^/]+)\/lib\/useClient\.ts$/,
