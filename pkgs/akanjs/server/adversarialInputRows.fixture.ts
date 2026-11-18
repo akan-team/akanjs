@@ -14,11 +14,17 @@ export interface ByDesignRefusal {
   reason: string;
 }
 
+export interface ByDesignReading {
+  transport: Transport;
+  readAs: WireEntry[];
+  reason: string;
+}
+
 export interface AdversarialRow {
   title: string;
   why: string;
   entries: WireEntry[];
-  byDesign?: ByDesignRefusal;
+  byDesign?: ByDesignRefusal | ByDesignReading;
   finding?: string;
 }
 
@@ -80,11 +86,14 @@ export const adversarialRows: AdversarialRow[] = [
   row("an array where a String is declared", "String coercion would flatten it", { name: `["alpha"]` }),
   row("an object where a String is declared", "String coercion would print [object Object]", { name: `{"a":1}` }),
   {
-    ...row("a bare string where [String] is declared", "one transport may lift it into an array, another not", {
+    ...row("a bare string where [String] is declared", "a handler typed for a list must never get a string", {
       tags: `"a"`,
     }),
-    finding:
-      "a bare string for a [String] argument reaches the HTTP and WebSocket handler as a string, while MCP lifts it to an array",
+    byDesign: {
+      transport: "mcp",
+      readAs: row("", "", { tags: `["a"]` }).entries,
+      reason: "MCP lifts a lone value into a one-item array, since models send a bare value for an array",
+    },
   },
   row("nested arrays where [String] is declared", "the element parser sees an array", { tags: `[["a"]]` }),
   row("non-strings inside [String]", "each element is coerced or refused", { tags: `[1,{"x":1},null]` }),
