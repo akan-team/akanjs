@@ -4,6 +4,7 @@ import type { AkanI18nConfig } from "akanjs/common";
 import type { DictAsset } from "akanjs/server";
 import type { App } from "../commandDecorators";
 import { DictionaryPacking } from "./dictionaryPacking";
+import { dictionaryBrotliBytesOf } from "./precompressArtifacts";
 
 export interface DictionaryAssetBuildOptions {
   /** Each locale's API descriptions go to a file of their own, loaded where shown. */
@@ -56,11 +57,17 @@ export class DictionaryAssetBuilder {
       return { lang, ...(splitApi ? DictionaryAssetBuilder.splitApi(dictionary) : { page: dictionary, api: {} }) };
     });
     const groups = [...new Set(locales.flatMap(({ page }) => Object.keys(page)))].sort();
-    const pack = routes?.size
-      ? DictionaryAssetBuilder.#pack(routes, locales, i18n.defaultLocale, groups)
-      : everyGroupAlone
-        ? { parts: groups.map((group) => [group]), partsByRoute: {} }
-        : null;
+    const packed = routes?.size ? DictionaryAssetBuilder.#pack(routes, locales, i18n.defaultLocale, groups) : null;
+    if (packed?.wholeRoutes.length)
+      this.#app.verbose(
+        `[dictionary] ${packed.wholeRoutes.length} route(s) load the whole page dictionary: their own files would not be smaller. Routes: ${packed.wholeRoutes.join(", ")}`,
+      );
+    const pack =
+      packed && Object.keys(packed.partsByRoute).length
+        ? packed
+        : everyGroupAlone
+          ? { parts: groups.map((group) => [group]), partsByRoute: {} }
+          : null;
     const assets = await Promise.all(locales.map((locale) => this.#writeLocale(locale, pack?.parts)));
     const files = assets.flatMap(([, asset]) => [
       asset,
@@ -91,8 +98,14 @@ export class DictionaryAssetBuilder {
     defaultLocale: string,
     groups: string[],
   ) {
-    const sizing = (locales.find(({ lang }) => lang === defaultLocale) ?? locales[0])?.page ?? {};
-    return DictionaryPacking.pack(routes, (group) => JSON.stringify(sizing[group] ?? {}).length, groups);
+    const { lang = defaultLocale, page: sizing = {} } =
+      locales.find((locale) => locale.lang === defaultLocale) ?? locales[0] ?? {};
+    const servedBytesOf = (held: readonly string[]) => {
+      const texts = Object.fromEntries(held.flatMap((group) => (sizing[group] ? [[group, sizing[group]]] : [])));
+      return dictionaryBrotliBytesOf(DictionaryAssetBuilder.source(lang, texts));
+    };
+    const bytesOf = (group: string) => JSON.stringify(sizing[group] ?? {}).length;
+    return DictionaryPacking.packUnderWhole(routes, bytesOf, groups, servedBytesOf);
   }
 
   //? The same module the root layout's macro evaluates in this process, so the asset and the RSC worker's copy agree.

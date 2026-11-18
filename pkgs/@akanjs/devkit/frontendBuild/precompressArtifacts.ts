@@ -87,6 +87,12 @@ function brotliQualityOf(ext: string): number {
   return BROTLI_QUALITY_BY_EXT[ext as keyof typeof BROTLI_QUALITY_BY_EXT] ?? DEFAULT_BROTLI_QUALITY;
 }
 
+export function dictionaryBrotliBytesOf(source: string): number {
+  const bytes = new TextEncoder().encode(source);
+  const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+  return brotliCompress(buffer, ROOT_BROTLI_QUALITY.dict ?? MAX_BROTLI_QUALITY).byteLength;
+}
+
 function brotliCompress(buffer: ArrayBuffer, quality: number): Buffer {
   return zlib.brotliCompressSync(buffer, {
     params: {
