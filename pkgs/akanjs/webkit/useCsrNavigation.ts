@@ -11,6 +11,7 @@ import {
 import { useCallback } from "react";
 import { CsrStack } from "./CsrStack";
 import { CsrPageReadiness } from "./csrPageReadiness";
+import { CsrSlide } from "./csrSlide";
 import type { CsrKeyboard } from "./useCsrKeyboard";
 import type { CsrLocationState } from "./useCsrLocationState";
 import { type CsrRefs, currentRouter } from "./useCsrRefs";
@@ -263,7 +264,9 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
             ? cached
             : target;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
+      const isStill = CsrSlide.holdStill(kind, fromLocation, toLocation);
       const slides =
+        !isStill &&
         CsrStack.keyOf(toLocation) !== CsrStack.keyOf(fromLocation) &&
         shouldPrepareFrameTransition(href) &&
         toLocation.pathRoute.pageState.transition !== "none";

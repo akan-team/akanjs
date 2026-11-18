@@ -1,5 +1,5 @@
 "use client";
-import type { PathRoute } from "akanjs/client";
+import type { Location, PathRoute } from "akanjs/client";
 
 type FramePageState = PathRoute["pageState"];
 type Keyframe = Record<string, string>;
@@ -45,6 +45,21 @@ export class CsrSlide {
 
   static get isCalm() {
     return typeof window !== "undefined" && !!window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  static #stillEntryId: string | null = null;
+  //? A replace moves as the page it replaces does: a tab that does not slide, switched to one that does, is still a
+  //? tab switch and changes in place. Every transition hook of the page it lands on reads the entry kept here.
+  static holdStill(kind: "push" | "replace", from: Location, to: Location) {
+    const isStill =
+      kind === "replace" &&
+      from.pathRoute.pageState.transition === "none" &&
+      to.pathRoute.pageState.transition !== "none";
+    CsrSlide.#stillEntryId = isStill ? (to.entryId ?? null) : null;
+    return isStill;
+  }
+  static isStill(entryId: string | undefined) {
+    return !!entryId && entryId === CsrSlide.#stillEntryId;
   }
 
   static play(frame: CsrSlideFrame, { fromUnit, toUnit, duration, keep = false }: CsrSlidePlay): CsrSlide | null {

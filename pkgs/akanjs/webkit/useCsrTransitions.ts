@@ -164,7 +164,7 @@ const usePlayOnForward = (
 ) => {
   //? Before paint: started from a passive effect, the incoming page showed one frame at rest before it slid in.
   useLayoutEffect(() => {
-    if (history.current.type === "forward") {
+    if (history.current.type === "forward" && !CsrSlide.isStill(location.entryId)) {
       void transUnit.start(transUnitRange[0], { immediate: true });
       void transUnit.start(transUnitRange[1], { config });
     } else void transUnit.start(transUnitRange[1], { immediate: true });
@@ -412,7 +412,7 @@ const useStackSlide = (
     //? Every page runs this hook whatever its transition, and a slide moves the frame's parts itself rather than a
     //? spring only a stack page reads, so a page that does not slide in (a tab switched with `none`) must not start one.
     const isStack = frameRef.current.pageState.transition === "stack";
-    if (history.current.type !== "forward" || CsrSlide.isCalm || !isStack) {
+    if (history.current.type !== "forward" || CsrSlide.isCalm || !isStack || CsrSlide.isStill(location.entryId)) {
       void transUnit.start(transUnitRange[1], { immediate: true });
       return;
     }
