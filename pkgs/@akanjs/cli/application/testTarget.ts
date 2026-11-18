@@ -1,5 +1,6 @@
 import { readdirSync, realpathSync, statSync } from "node:fs";
 import path from "node:path";
+import { AkanWorkers } from "@akanjs/devkit/akanConfig";
 import type { Exec } from "@akanjs/devkit/commandDecorators";
 import { AppExecutor, LibExecutor, PkgExecutor, SysExecutor } from "@akanjs/devkit/executors";
 import { Logger } from "akanjs/common";
@@ -24,6 +25,19 @@ export const testTargetOf = (exec: Exec) => {
   const root =
     exec instanceof SysExecutor || exec instanceof PkgExecutor ? exec.workspace.workspaceRoot : process.cwd();
   return { root, target: path.relative(root, exec.cwdPath).split(path.sep).join("/") };
+};
+
+export const signalTestEnv = async (exec: AppExecutor | LibExecutor) => {
+  //? The spawned `bun test` inherits `process.env`, where the config's load left every workspace lib's workers.
+  if (exec.hasScanInfo()) AkanWorkers.publish(await exec.selectWorkers());
+  return {
+    AKAN_TEST_SIGNAL: "1",
+    AKAN_TEST_TARGET_TYPE: exec.type,
+    AKAN_TEST_TARGET_NAME: exec.name,
+    AKAN_TEST_LIBS: exec.getScanInfo({ allowEmpty: true })?.getLibs().join(",") ?? "",
+    //? The suite runs from the app or lib folder, where the cwd-relative default `local/` breaks the next sync.
+    AKAN_RUNTIME_DIR: path.join(exec.workspace.workspaceRoot, "local", `${exec.type}s`, exec.name, "runtime"),
+  };
 };
 
 export const reportsNoTestFile = (exec: Exec) => {

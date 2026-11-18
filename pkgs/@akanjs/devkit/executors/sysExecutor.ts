@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { capitalize, getPageSourceFileViolation } from "akanjs/common";
-import { AkanAppConfig, AkanLibConfig } from "../akanConfig";
+import { AkanAppConfig, AkanLibConfig, AkanWorkers } from "../akanConfig";
 import {
   renderScopeAgentBlock,
   renderScopeAgentsMd,
@@ -75,6 +75,15 @@ export class SysExecutor extends Executor {
   } = {}): AllowEmpty extends true ? AppInfo | LibInfo | null : AppInfo | LibInfo {
     if (!this.hasScanInfo() && !allowEmpty) throw new Error("Scan info is not available");
     return this.#scanInfo as AllowEmpty extends true ? AppInfo | LibInfo | null : AppInfo | LibInfo;
+  }
+  async selectWorkers() {
+    const scanInfo = this.#scanInfo ?? (await this.scan({ write: false }));
+    const own = { owner: `${this.type}s/${this.name}/akan.config.ts`, workers: (await this.getConfig()).workers };
+    const libWorkers = [...scanInfo.getLibInfos()].map(([lib, { akanConfig }]) => ({
+      lib,
+      workers: akanConfig.workers,
+    }));
+    return AkanWorkers.select(own, libWorkers, scanInfo.getLibs());
   }
   async #seedEnvFiles(): Promise<FileContent[]> {
     const envDir = path.join(this.cwdPath, "env");

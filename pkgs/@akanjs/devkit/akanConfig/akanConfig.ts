@@ -9,7 +9,7 @@ import type { App, Lib } from "../commandDecorators";
 import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
-import { AkanWorkers } from "./akanWorkers";
+import { AkanWorkers, type LibWorkers } from "./akanWorkers";
 import { DesktopServerConfig } from "./desktopServerConfig";
 import {
   DEFAULT_DOCKER_IMAGE,
@@ -128,6 +128,7 @@ export interface LibContributions {
   trustedDependencies?: string[];
   /** Per lib, since an app carries only the entries of the libs it depends on. */
   bin?: { lib: string; bin: AkanBinConfig }[];
+  workers?: LibWorkers[];
   docker: LibDockerConfig;
   /** Keep globs rewritten to the app's own `public/`, where `akan sync` mounts each lib's assets. */
   keepFonts?: string[];
@@ -137,6 +138,7 @@ const emptyLibContributions = (): LibContributions => ({
   externalLibs: [],
   trustedDependencies: [],
   bin: [],
+  workers: [],
   docker: { preRuns: [], postRuns: [] },
   keepFonts: [],
 });
@@ -174,6 +176,7 @@ export class AkanAppConfig implements AppConfigResult {
   /** The app's own entries; the libs' are in `libBins`. */
   bin: AkanBinConfig;
   libBins: { lib: string; bin: AkanBinConfig }[];
+  /** The app's own entries; `App.selectWorkers` adds those of the libs it depends on. */
   workers: AkanWorkersConfig;
   barrelImports: string[];
   optimizeImports: string[];
@@ -222,7 +225,11 @@ export class AkanAppConfig implements AppConfigResult {
     ];
     this.bin = AkanBin.parse(config?.bin, owner, app.cwdPath);
     this.libBins = libContributions.bin ?? [];
-    this.workers = AkanWorkers.declare(config?.workers, owner, app.cwdPath);
+    this.workers = AkanWorkers.parse(config?.workers, owner, app.cwdPath);
+    //? The dependency scan reads this config, so every workspace lib's entry is published; a start, test or build names the mounted ones.
+    AkanWorkers.publish(
+      AkanWorkers.select({ owner, workers: this.workers }, libContributions.workers ?? [], libs, { strict: false }),
+    );
     this.barrelImports = [
       ...DEFAULT_BARREL_IMPORTS,
       ...WORKSPACE_BARREL_FACETS.map((facet) => `@apps/${app.name}/${facet}`),
@@ -577,6 +584,11 @@ CMD ${JSON.stringify(command)}`;
       bin: libConfigs.flatMap((libConfig) =>
         libConfig && Object.keys(libConfig.bin).length ? [{ lib: libConfig.lib.name, bin: libConfig.bin }] : [],
       ),
+      workers: libConfigs.flatMap((libConfig) =>
+        libConfig && Object.keys(libConfig.workers).length
+          ? [{ lib: libConfig.lib.name, workers: libConfig.workers }]
+          : [],
+      ),
       docker: {
         preRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.preRuns ?? []),
         postRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.postRuns ?? []),
@@ -715,6 +727,7 @@ export class AkanLibConfig implements LibConfigResult {
   externalLibs: string[];
   trustedDependencies: string[];
   bin: AkanBinConfig;
+  workers: AkanWorkersConfig;
   docker: LibDockerConfig;
   assets: LibAssetsConfig;
   /** Live-only: plugins declared in this lib's `akan.config.ts` (never serialized). */
@@ -725,6 +738,7 @@ export class AkanLibConfig implements LibConfigResult {
     const owner = `libs/${lib.name}/akan.config.ts`;
     this.trustedDependencies = normalizePackageNames(config?.trustedDependencies, owner);
     this.bin = AkanBin.parse(config?.bin, owner, lib.cwdPath);
+    this.workers = AkanWorkers.parse(config?.workers, owner, lib.cwdPath);
     this.docker = { preRuns: config?.docker?.preRuns ?? [], postRuns: config?.docker?.postRuns ?? [] };
     this.assets = { keepFonts: normalizeKeepFonts(config?.assets?.keepFonts as string[] | undefined) };
     this.plugins = plugins;

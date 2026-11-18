@@ -30,7 +30,7 @@ import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
 import { type CarriedServer, carriedServerOf } from "./carriedServer";
 import type { InterruptTeardown } from "./interruptTeardown";
-import { reportsNoTestFile, testTargetOf } from "./testTarget";
+import { reportsNoTestFile, signalTestEnv, testTargetOf } from "./testTarget";
 
 export interface LogsOptions {
   level?: string | null;
@@ -350,16 +350,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
     const isSignalTarget = exec instanceof AppExecutor || exec instanceof LibExecutor;
     if (!testPaths.length && reportsNoTestFile(exec)) return;
     const preloadPath = isSignalTarget ? await resolveSignalTestPreloadPath(exec) : null;
-    const env = isSignalTarget
-      ? {
-          AKAN_TEST_SIGNAL: "1",
-          AKAN_TEST_TARGET_TYPE: exec.type,
-          AKAN_TEST_TARGET_NAME: exec.name,
-          AKAN_TEST_LIBS: exec.getScanInfo({ allowEmpty: true })?.getLibs().join(",") ?? "",
-          //? The suite runs from the app or lib folder, where the cwd-relative default `local/` breaks the next sync.
-          AKAN_RUNTIME_DIR: path.join(exec.workspace.workspaceRoot, "local", `${exec.type}s`, exec.name, "runtime"),
-        }
-      : {};
+    const env = isSignalTarget ? await signalTestEnv(exec) : {};
     const args = ["test", "--isolate", ...flags, ...(preloadPath ? ["--preload", preloadPath] : []), ...testPaths];
     await exec.spawn("bun", args, {
       ...(isSignalTarget ? { env: { ...process.env, ...env } } : {}),

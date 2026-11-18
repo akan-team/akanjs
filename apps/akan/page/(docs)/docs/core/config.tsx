@@ -126,8 +126,8 @@ const configKeys = [
     key: "workers",
     type: "Record<string, string>",
     default: "{}",
-    en: "Entry files akan build bundles apart from the server; AppWorker.spawn(name) runs one as a process of its own.",
-    ko: "akan build가 서버와 따로 번들하는 엔트리 파일이며, AppWorker.spawn(name)이 별도 프로세스로 실행합니다.",
+    en: "Entry files akan build bundles apart from the server; AppWorker.spawn(name) runs one as a process of its own. A lib's config takes it too, for every app that depends on the lib.",
+    ko: "akan build가 서버와 따로 번들하는 엔트리 파일이며, AppWorker.spawn(name)이 별도 프로세스로 실행합니다. lib의 설정에도 적을 수 있고, 그 lib에 의존하는 모든 앱에 적용됩니다.",
   },
   {
     key: "barrelImports",
