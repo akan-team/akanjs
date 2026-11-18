@@ -654,16 +654,16 @@ console.info(new SampleService().name);
     expect(order).toEqual(["routes"]);
   });
 
-  test("akan typecheck names the script/ files nothing imports, and a build's typecheck leaves them out", async () => {
+  test("akan typecheck asks for the tests and script/ files nothing imports, and a build's typecheck does not", async () => {
     const { root, app } = await createTempApp("portal");
     const run = spyOn(ProjectTypecheck.prototype, "run").mockImplementation(async () => "");
     try {
       const runner = new ApplicationBuildRunner(app);
       await runner.typecheck({ tests: true });
       await runner.typecheck();
-      const [checked, built] = run.mock.calls.map(([entries]) => entries);
-      expect(checked).toContain("../../script/**/*.ts");
-      expect(built).not.toContain("../../script/**/*.ts");
+      const [checked, built] = run.mock.calls.map(([, options]) => options?.tests);
+      expect(checked).toBe(true);
+      expect(built).toBeUndefined();
     } finally {
       run.mockRestore();
       await rm(root, { recursive: true, force: true });

@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AkanPlugin, AkanSyncContext } from "akanjs";
 import { isRouteSourceFile, parseRouteModuleKey, validatePageSourceFile, validateSubRoutePageKey } from "akanjs/common";
-import { AkanAppConfig, decreaseBuildNum, increaseBuildNum } from "../akanConfig";
+import { AkanAppConfig, AkanWorkers, decreaseBuildNum, increaseBuildNum } from "../akanConfig";
 import type { RouteSourceInfo } from "../app/routeSourceValidator";
 import { getRootBoundarySegments, isRootBoundarySegments } from "../artifact/implicitRootLayout";
 import { FileSys } from "../util/fileSys";
@@ -90,10 +90,12 @@ export class AppExecutor extends SysExecutor {
   getEnv() {
     return WorkspaceExecutor.getBaseDevEnv().env;
   }
-  /** `AKAN_DEV_PORT` pins it; the derived port moves whenever an app directory appears or disappears. */
+  /** `AKAN_DEV_PORT` pins it, else `PORT`; the derived port moves whenever an app directory appears or disappears. */
   async getDevPort() {
-    const pinned = Number(process.env.AKAN_DEV_PORT);
-    if (Number.isInteger(pinned) && pinned > 0 && pinned <= 65_535) return pinned;
+    for (const declared of [process.env.AKAN_DEV_PORT, process.env.PORT]) {
+      const pinned = Number(declared);
+      if (Number.isInteger(pinned) && pinned > 0 && pinned <= 65_535) return pinned;
+    }
     const basePort = 8282;
     const appNames = (await this.workspace.getApps()).sort((a, b) => a.localeCompare(b));
     const appIndex = Math.max(appNames.indexOf(this.name), 0);
@@ -132,6 +134,7 @@ export class AppExecutor extends SysExecutor {
       ...(await this.getDatabaseModeEnv()),
     };
     Object.assign(process.env, routeEnv);
+    if (this.hasScanInfo()) AkanWorkers.publish(await this.selectWorkers());
     if (type === "build") {
       //* `scanSync` read the route set unfiltered; drop the cache so build phases re-read it without dev-only routes.
       this.#excludeDevOnlyPages = true;

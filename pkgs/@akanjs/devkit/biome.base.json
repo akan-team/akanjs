@@ -24,9 +24,7 @@
         },
         "noArrayIndexKey": "off",
         "noShadowRestrictedNames": "off",
-        "noUnnecessaryConditions": {
-          "level": "warn"
-        }
+        "noUnnecessaryConditions": "off"
       },
       "correctness": {
         "noUnusedFunctionParameters": "off",

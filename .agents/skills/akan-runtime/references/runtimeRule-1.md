@@ -166,6 +166,9 @@ worker per web-serving replica.
   generation with `bun run akan build <appName>`.
 - **`akan start` takes several apps** — `akan start a,b`, `akan start a b`, `akan start all`, or no argument at
   all for a checkbox that remembers the last pick.
+- **An app's dev port is 8282 plus its place in the sorted app list**, so a new app folder can move it.
+  `AKAN_DEV_PORT`, else `PORT`, pins it, and several apps started together count upward from the pinned port.
+  `akan preview` and `--kill` find the server by the same rule, so they need the same value.
 - **It opens a full-screen view by default, at any app count.** A rail of apps with the processes inside each
   one — `host` for the dev host, gateway and RSC worker, plus a row per replica the gateway forwards — and the
   selected one's log beside it. `Tab` walks every row and `1`-`9` jump to that app (the rail shows each app's

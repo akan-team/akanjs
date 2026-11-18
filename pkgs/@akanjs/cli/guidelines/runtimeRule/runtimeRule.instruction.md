@@ -164,6 +164,9 @@ worker per web-serving replica.
   generation with `bun run akan build <appName>`.
 - **`akan start` takes several apps** — `akan start a,b`, `akan start a b`, `akan start all`, or no argument at
   all for a checkbox that remembers the last pick.
+- **An app's dev port is 8282 plus its place in the sorted app list**, so a new app folder can move it.
+  `AKAN_DEV_PORT`, else `PORT`, pins it, and several apps started together count upward from the pinned port.
+  `akan preview` and `--kill` find the server by the same rule, so they need the same value.
 - **It opens a full-screen view by default, at any app count.** A rail of apps with the processes inside each
   one — `host` for the dev host, gateway and RSC worker, plus a row per replica the gateway forwards — and the
   selected one's log beside it. `Tab` walks every row and `1`-`9` jump to that app (the rail shows each app's
@@ -482,7 +485,7 @@ place a developer writes them; the build turns each into a read of an environmen
 ## Worker Processes — `workers` In `akan.config.ts`
 
 Code the server must not load into its own process — a native addon that can crash or block it, a model runtime, a
-long CPU job — is a worker: an entry file the app's `akan.config.ts` names, built apart from the server and run as a
+long CPU job — is a worker: an entry file an `akan.config.ts` names, built apart from the server and run as a
 process of its own.
 
 ```ts
@@ -501,8 +504,12 @@ await worker.stop();
 ```
 
 - **The declaration is the whole contract.** A name is letters, digits, `-` and `_`; an entry is a `.ts`, `.mts`,
-  `.js` or `.mjs` path relative to the `akan.config.ts`, which only an app's takes. A bad name, an absolute path or
-  another extension stops the config load, and an entry file missing at build stops the build, each naming the key.
+  `.js` or `.mjs` path relative to the `akan.config.ts` that declares it. A bad name, an absolute path or another
+  extension stops the config load, and an entry file missing at build stops the build, each naming the key.
+- **A lib declares the workers its own code spawns**, in `libs/<lib>/akan.config.ts`, and every app that depends on
+  the lib builds and runs them with nothing repeated in the app. An app's own entry of the same name wins; two libs
+  an app depends on that name different files for one worker stop the start, test or build until the app's config
+  picks one. `akan test <lib>` runs the lib's workers and those of the libs it depends on.
 - **`akan build` writes `workers/<name>.js`**, each worker an entry of its own bundled like the server (the same
   externals, the same server env plugin), never a chunk of `server.js`. The image and a desktop app's server carry
   the folder. In a source run (`akan start`, `akan test`) there is no built file, so the worker runs from its
