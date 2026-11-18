@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { capitalize, getPageSourceFileViolation } from "akanjs/common";
 import { AkanAppConfig, AkanLibConfig, AkanWorkers } from "../akanConfig";
@@ -186,6 +187,23 @@ export class SysExecutor extends Executor {
       ),
     ];
   }
+  //? Git keeps an ignored file when a merge or checkout takes a module's sources away, so the folder outlives them.
+  async #removeLeftoverModuleDirs() {
+    const moduleDirs = [
+      ...(await this.readdir("lib")).filter((name) => !name.startsWith("__")).map((name) => `lib/${name}`),
+      ...(await this.readdir("lib/__scalar")).map((name) => `lib/__scalar/${name}`),
+    ];
+    for (const dir of moduleDirs) {
+      const entries = (await readdir(this.getPath(dir)).catch(() => [] as string[])).filter(
+        (entry) => entry !== ".DS_Store",
+      );
+      if (entries.length !== 1 || entries[0] !== "index.ts") continue;
+      await this.removeDir(dir);
+      this.logger.info(
+        `Removed ${this.type}s/${this.name}/${dir}: its generated index.ts was all that was left of the module`,
+      );
+    }
+  }
   async scan({
     refresh = false,
     write = true,
@@ -208,10 +226,11 @@ export class SysExecutor extends Executor {
     //* Locked: `writeLib` rewrites dependency-lib barrels that other dev servers regenerate and watch too.
     if (write)
       await CodegenLock.run(this.workspace.workspaceRoot, `scan:${this.name}`, async () => {
+        const libInfos = writeLib ? [...scanInfo.getLibInfos().values()] : [];
+        await Promise.all([this, ...libInfos.map((libInfo) => libInfo.exec)].map((e) => e.#removeLeftoverModuleDirs()));
         await Promise.all(this.#getScanTemplateTasks(scanInfo));
         await this.writeJson(`akan.${this.type}.json`, scanInfo.getScanResult());
         await this.#updateDependencies(scanInfo);
-        const libInfos = writeLib ? [...scanInfo.getLibInfos().values()] : [];
         await Promise.all(libInfos.flatMap((libInfo) => libInfo.exec.#getScanTemplateTasks(libInfo)));
         //? A piece is shaped by each scope's generated `lib/cnst.ts`, which a new checkout has only once the above ran.
         await Promise.all([

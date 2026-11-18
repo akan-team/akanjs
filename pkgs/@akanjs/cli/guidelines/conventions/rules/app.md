@@ -64,6 +64,7 @@ each plugin's header and diagnostic carry its full reasoning.
 - Modules are `lib/<model>`, `lib/_<service>`, `lib/__scalar/<scalar>`; their UI files are
   `<Model>.Template|Unit|Util|View|Zone.tsx`, `<Service>.Util|Zone.tsx`, `<Scalar>.Template|Unit.tsx`. A test is
   named after the one file it covers, so `<model>.<topic>.signal.test.ts` is refused like `<model>.<topic>.signal.ts`.
+  Sync removes, and names, a module folder left with only its generated `index.ts` (a merge moved its sources away).
 - `ui/`, `webkit/`, `srvkit/`, `common/`, `plugin/` and module `index.ts` barrels are generated
   (`export * from "./name";` per 1-depth entry, `export {};` when empty, so a stale one heals on sync;
   `akan create-library` starts `common/`, `srvkit/`, `webkit/`, `ui/` with that empty barrel) — never hand-edit or
