@@ -17,6 +17,7 @@ import { SignalDescriptors } from "../transforms/signalDescriptors";
 import type { AskedExports, ClientBundleTarget, ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
+import { ClientEntryGroups, type ClientEntryPart, type GroupedExport } from "./clientEntryGroups";
 import { CsrDevPaths } from "./csrDevPaths";
 import { RouteRuntimeCheck } from "./routeRuntimeCheck";
 import { type RoutePaysVerdict, RouteRuntimePays } from "./routeRuntimePays";
@@ -73,6 +74,13 @@ interface BootstrapEntries {
   originalByBuildEntry: Map<string, string>;
   //? Only for an entry built as several: the export names each of its build entries holds.
   namesByBuildEntry?: Map<string, readonly string[]>;
+  //? Only for a build entry holding several entries: each name it exports, with the entry and the name behind it.
+  membersByBuildEntry?: Map<string, ReadonlyMap<string, GroupedExport>>;
+}
+
+interface WrappedPart extends ClientEntryPart {
+  file: string;
+  split: boolean;
 }
 
 interface NarrowedBuild {
@@ -165,6 +173,7 @@ export class RouteClientBuilder {
         bootstrapEntries.originalByBuildEntry,
         referenceBundle.clientReferenceIdByAbsPath,
         this.#app.workspace.workspaceRoot,
+        bootstrapEntries.membersByBuildEntry,
       );
       if (!manifestEntry) continue;
       if (!acceptedEntries.has(manifestEntry.originalEntry)) continue;
@@ -179,17 +188,23 @@ export class RouteClientBuilder {
       if (!ssrOutput) continue;
 
       ssrModuleMap[row.id] ??= {};
-      ssrModuleMap[row.id][row.name] = { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name: row.name, async: true };
+      const { name } = manifestEntry;
+      ssrModuleMap[row.id][row.name] = { id: ssrOutput, chunks: [ssrOutput, ssrOutput], name, async: true };
     }
     for (const entry of bootstrapEntries.buildEntries) {
       const buildEntry = path.resolve(entry);
-      const originalEntry = path.resolve(bootstrapEntries.originalByBuildEntry.get(buildEntry) ?? buildEntry);
-      if (!acceptedEntries.has(originalEntry)) continue;
-      const deps = new Set<string>(clientDepsByEntry[originalEntry] ?? [originalEntry]);
-      for (const dep of referenceBundle.entryDepsByAbsPath.get(buildEntry) ?? []) deps.add(path.resolve(dep));
-      const sortedDeps = [...deps].sort();
-      clientDepsByEntry[originalEntry] = sortedDeps;
-      if (routeEntries.has(originalEntry)) for (const dep of sortedDeps) clientDeps.add(dep);
+      const grouped = bootstrapEntries.membersByBuildEntry?.get(buildEntry);
+      const originalEntries = grouped
+        ? new Set([...grouped.values()].map((member) => member.entry))
+        : [path.resolve(bootstrapEntries.originalByBuildEntry.get(buildEntry) ?? buildEntry)];
+      for (const originalEntry of originalEntries) {
+        if (!acceptedEntries.has(originalEntry)) continue;
+        const deps = new Set<string>(clientDepsByEntry[originalEntry] ?? [originalEntry]);
+        for (const dep of referenceBundle.entryDepsByAbsPath.get(buildEntry) ?? []) deps.add(path.resolve(dep));
+        const sortedDeps = [...deps].sort();
+        clientDepsByEntry[originalEntry] = sortedDeps;
+        if (routeEntries.has(originalEntry)) for (const dep of sortedDeps) clientDeps.add(dep);
+      }
     }
 
     return {
@@ -375,24 +390,31 @@ export class RouteClientBuilder {
   }
 
   //? An entry built as several answers with the ones holding a name asked, and with all of them asked for none.
-  static #buildEntriesOf({ originalByBuildEntry, namesByBuildEntry }: BootstrapEntries) {
-    const built = new Map<string, string[]>();
-    for (const [buildEntry, original] of originalByBuildEntry) built.getOrInsert(original, []).push(buildEntry);
+  static #buildEntriesOf({ originalByBuildEntry, namesByBuildEntry, membersByBuildEntry }: BootstrapEntries) {
+    const built = new Map<string, { buildEntry: string; names?: readonly string[] }[]>();
+    for (const [buildEntry, original] of originalByBuildEntry)
+      built.getOrInsert(original, []).push({ buildEntry, names: namesByBuildEntry?.get(buildEntry) });
+    for (const [buildEntry, exports] of membersByBuildEntry ?? [])
+      for (const [original, held] of Map.groupBy(exports.values(), (member) => member.entry))
+        built.getOrInsert(original, []).push({ buildEntry, names: held.map((member) => member.name) });
     return (entry: string, asked?: readonly string[] | null): string[] => {
-      const buildEntries = built.get(path.resolve(entry)) ?? [path.resolve(entry)];
-      if (!asked) return buildEntries;
-      return buildEntries.filter((buildEntry) => {
-        const names = namesByBuildEntry?.get(buildEntry);
-        return !names || names.some((name) => asked.includes(name));
-      });
+      const held = built.get(path.resolve(entry));
+      if (!held) return [path.resolve(entry)];
+      return held
+        .filter(({ names }) => !asked || !names || names.some((name) => asked.includes(name)))
+        .map(({ buildEntry }) => buildEntry);
     };
   }
 
   #check({ entries, kept, bundle, runtime: routeRuntime }: NarrowedBuild): boolean {
     const { workspaceRoot } = this.#app.workspace;
     const buildEntriesOf = RouteClientBuilder.#buildEntriesOf(entries);
+    const grouped = [...(entries.membersByBuildEntry ?? [])].flatMap(([buildEntry, exports]) => {
+      const [first] = exports.values();
+      return first ? [[buildEntry, first.entry] as const] : [];
+    });
     const check = new RouteRuntimeCheck(workspaceRoot, bundle.graph, {
-      entries: new Map([...entries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry))),
+      entries: new Map([...[...entries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry)), ...grouped]),
       wholeReaders: routeRuntime.wholeReaders,
       wholeConstantReaders: routeRuntime.wholeConstantReaders,
       routes: new Map(
@@ -491,42 +513,66 @@ export class RouteClientBuilder {
 
     const originalByBuildEntry = new Map<string, string>();
     const namesByBuildEntry = new Map<string, readonly string[]>();
+    const membersByBuildEntry = new Map<string, ReadonlyMap<string, GroupedExport>>();
     const { workspaceRoot } = this.#app.workspace;
-    const buildEntries = await Promise.all(
-      entries.map(async (entry) => {
+    const byExport = scope === "page" && this.#command === "build";
+    const read = await Promise.all(
+      entries.map(async (entry): Promise<{ whole?: string; parts: WrappedPart[] }> => {
         const absEntry = path.resolve(entry);
         const whole = narrowed?.kept.has(absEntry) ? wholeByOriginal.get(absEntry) : undefined;
         if (whole) {
           originalByBuildEntry.set(whole, absEntry);
-          return [whole];
+          return { whole, parts: [] };
         }
         const hash = Bun.hash(`${this.#app.name}\n${absEntry}`).toString(36);
         const base = path.basename(absEntry).replace(/[^A-Za-z0-9._-]/g, "_");
         const source = await Bun.file(absEntry).text();
         const exportNames = scanUseClientExports(source, absEntry, workspaceRoot);
-        const byExport = scope === "page" && this.#command === "build" && PartModules.splits(workspaceRoot, absEntry);
-        const groups = byExport ? RouteClientBuilder.#exportGroups(source, absEntry, exportNames) : [exportNames];
-        return await Promise.all(
-          groups.map(async (names, index) => {
-            const wrapperEntry = path.join(outdir, `${base}-${hash}${groups.length > 1 ? `-${index}` : ""}.tsx`);
-            await Bun.write(
-              wrapperEntry,
-              RouteClientBuilder.createStoreBootstrapEntrySource({
-                appName: this.#app.name,
-                originalEntry: absEntry,
-                exportNames: names,
-                scope,
-              }),
-            );
-            originalByBuildEntry.set(path.resolve(wrapperEntry), absEntry);
-            if (groups.length > 1) namesByBuildEntry.set(path.resolve(wrapperEntry), names);
-            return wrapperEntry;
-          }),
-        );
+        const groups =
+          byExport && PartModules.splits(workspaceRoot, absEntry)
+            ? RouteClientBuilder.#exportGroups(source, absEntry, exportNames)
+            : [exportNames];
+        const parts = groups.map((names, index) => ({
+          entry: absEntry,
+          names,
+          file: path.join(outdir, `${base}-${hash}${groups.length > 1 ? `-${index}` : ""}.tsx`),
+          split: groups.length > 1,
+        }));
+        return { parts };
       }),
     );
-
-    return { buildEntries: buildEntries.flat(), originalByBuildEntry, namesByBuildEntry };
+    const parts = read.flatMap((entry) => entry.parts);
+    const routes = byExport ? (this.#sizedEntriesByRoute ?? this.#entriesByRoute) : undefined;
+    const planned = routes
+      ? ClientEntryGroups.plan(parts, ClientEntryGroups.loadedBy(routes, this.#askedByRoute))
+      : parts.map((part) => [part]);
+    const wrappers = await Promise.all(
+      planned.map(async (group) => {
+        const [only] = group;
+        if (group.length === 1 && only) {
+          await Bun.write(
+            only.file,
+            RouteClientBuilder.createStoreBootstrapEntrySource({
+              appName: this.#app.name,
+              originalEntry: only.entry,
+              exportNames: [...only.names],
+              scope,
+            }),
+          );
+          originalByBuildEntry.set(path.resolve(only.file), only.entry);
+          if (only.split) namesByBuildEntry.set(path.resolve(only.file), only.names);
+          return only.file;
+        }
+        const exports = ClientEntryGroups.exportsOf(group);
+        const held = [...exports.values()].map(({ entry, name }) => `${entry}#${name}`).join("\n");
+        const file = path.join(outdir, `group-${Bun.hash(`${this.#app.name}\n${held}`).toString(36)}.tsx`);
+        await Bun.write(file, ClientEntryGroups.source(this.#app.name, exports, scope));
+        membersByBuildEntry.set(path.resolve(file), exports);
+        return file;
+      }),
+    );
+    const kept = read.flatMap(({ whole }) => (whole ? [whole] : []));
+    return { buildEntries: [...kept, ...wrappers], originalByBuildEntry, namesByBuildEntry, membersByBuildEntry };
   }
 
   //? Names one part of the file holds share a build entry. The parts are read from the file as written, and a bundle
@@ -644,15 +690,20 @@ export class RouteClientBuilder {
     originalByBuildEntry: Map<string, string>,
     clientReferenceIdByBuildEntry: Map<string, string> = new Map(),
     workspaceRoot = process.cwd(),
+    membersByBuildEntry?: ReadonlyMap<string, ReadonlyMap<string, GroupedExport>>,
   ): { buildEntry: string; originalEntry: string; name: string; key: string } | null {
     const hashIdx = manifestKey.lastIndexOf("#");
     if (hashIdx < 0) return null;
     const buildReferenceId = manifestKey.slice(0, hashIdx);
-    const name = manifestKey.slice(hashIdx + 1);
+    const builtName = manifestKey.slice(hashIdx + 1);
     const buildEntry =
       [...clientReferenceIdByBuildEntry.entries()].find(([, referenceId]) => referenceId === buildReferenceId)?.[0] ??
       buildReferenceId;
-    const originalEntry = originalByBuildEntry.get(buildEntry) ?? buildEntry;
+    const grouped = membersByBuildEntry?.get(buildEntry);
+    const member = grouped?.get(builtName);
+    if (grouped && !member) return null;
+    const name = member?.name ?? builtName;
+    const originalEntry = member?.entry ?? originalByBuildEntry.get(buildEntry) ?? buildEntry;
     const originalReferenceId = toClientReferencePath(originalEntry, workspaceRoot);
     return { buildEntry, originalEntry, name, key: `${originalReferenceId}#${name}` };
   }
