@@ -316,6 +316,7 @@ const writeWorkspace = async ({
   appFiles = demoFiles,
   kept = false,
   moreLibs = {} as Record<string, Record<string, string>>,
+  scanned = true,
 } = {}) => {
   const created = await createTempApp(app, await realpath(os.tmpdir()));
   const temp = kept ? created : trackRoot(created);
@@ -336,7 +337,7 @@ const writeWorkspace = async ({
     for (const [file, content] of Object.entries(files)) await writeText(path.join(dir, file), content);
   }
   for (const [file, content] of Object.entries(appFiles)) await writeText(path.join(root, "apps", app, file), content);
-  await temp.app.scan();
+  if (scanned) await temp.app.scan();
   return temp;
 };
 
@@ -1587,5 +1588,75 @@ describe("a build of a three-scope workspace", () => {
       [latch]: [noticeStoreFile],
       [bell]: [`apps/${app}/lib/_bell/bell.store.ts`, noticeStoreFile],
     });
+  }, 240_000);
+});
+
+const syncScript = (root: string, appName: string) => `
+const { AppExecutor } = await import(${devkitFile("executors/appExecutor.ts")});
+const { WorkspaceExecutor } = await import(${devkitFile("executors/workspaceExecutor.ts")});
+const [root, appName] = ${JSON.stringify([root, appName])};
+await AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), appName).scan();
+console.log("{}");
+`;
+const scopeFilesOf = async (root: string) => {
+  const files = [...new Bun.Glob("{apps,libs}/**/*").scanSync({ cwd: root, dot: true })].filter(
+    (file) => !file.split("/").some((part) => part === "node_modules" || part === ".akan"),
+  );
+  return Object.fromEntries(
+    await Promise.all(files.map(async (file) => [file, await Bun.file(path.join(root, file)).text()] as const)),
+  );
+};
+
+describe("the first sync of a new checkout", () => {
+  test("writes what a second sync writes where a scope reaches a lib only through another lib, and gives each fetch piece its module's own constants", async () => {
+    const [app, base, upper, top] = ["quay", "hull", "mast", "sail"];
+    const orgFiles = kitModuleNamed("org", "Org");
+    const temp = await writeWorkspace({
+      app,
+      lib: base,
+      libFiles: stockFiles,
+      moreLibs: {
+        [upper]: {
+          "lib/option.ts": option,
+          ...orgFiles,
+          "lib/org/org.constant.ts": `import { cnst as ${base} } from "@libs/${base}";\n${orgFiles["lib/org/org.constant.ts"] ?? ""}\nexport const orgKinds = [${base}.Item.name];\n`,
+          "lib/org/org.signal.ts": (orgFiles["lib/org/org.signal.ts"] ?? "")
+            .replace(
+              'import * as srv from "../srv";',
+              'import * as cnst from "../cnst";\nimport * as srv from "../srv";',
+            )
+            .replace(
+              "orgCount: query(",
+              `orgItem: query(cnst.${base}.LightItem, { guards: [Public], mcp: false }).exec(() => null),\n  orgCount: query(`,
+            ),
+        },
+        [top]: {
+          "lib/option.ts": option,
+          ...kitModuleNamed("crate", "Crate"),
+          "ui/Orgs.tsx": `import { st } from "@libs/${upper}/client";\nexport const Orgs = () => st.use.orgCount();\n`,
+        },
+      },
+      appFiles: {
+        ...shopFilesOf(base),
+        "ui/Crates.tsx": `import { st } from "@libs/${top}/client";\nexport const Crates = () => st.use.crateCount();\n`,
+      },
+      scanned: false,
+    });
+    //? The scan result lists an app's libs in the order the file system hands their importers.
+    const manifest = `apps/${app}/akan.app.json`;
+    const libDepsOf = (files: Record<string, string>) =>
+      (JSON.parse(files[manifest] ?? "{}") as { libDeps: string[] }).libDeps.toSorted((a, b) => a.localeCompare(b));
+    //? Each in a process of its own: the scan orders libs among every lib the process has scanned, other tests' too.
+    await evaluate(temp.root, syncScript(temp.root, app), app);
+    const first = await scopeFilesOf(temp.root);
+    await evaluate(temp.root, syncScript(temp.root, app), app);
+    const second = await scopeFilesOf(temp.root);
+    expect(libDepsOf(first)).toEqual([base, upper, top]);
+    expect({ ...first, [manifest]: libDepsOf(first) }).toEqual({ ...second, [manifest]: libDepsOf(second) });
+    expect(first[`libs/${top}/lib/cnst.ts`]).toContain(`"@libs/${base}"`);
+    const wholeConstants = Object.keys(first).filter(
+      (file) => file.endsWith(".fetch.ts") && first[file]?.includes('from "../cnst"'),
+    );
+    expect(wholeConstants).toEqual([]);
   }, 240_000);
 });

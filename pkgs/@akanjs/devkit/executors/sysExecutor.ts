@@ -90,6 +90,7 @@ export class SysExecutor extends Executor {
     );
     return written;
   }
+  //? `synced` is the app or lib whose sync this is: a lib's files are written by the sync of each app mounting it.
   async #syncClientPieces(scanInfo: AppInfo | LibInfo, synced: SysExecutor): Promise<FileContent[]> {
     const pieceDir = "lib/__client";
     const modulesOf = (info: AppInfo | LibInfo): string[] => [
@@ -151,13 +152,11 @@ export class SysExecutor extends Executor {
     await Promise.all(stale.map((file) => this.remove(`${pieceDir}/${file}`)));
     return written;
   }
-  //? `synced` is the app or lib whose sync this is: a lib's files are written by the sync of each app mounting it.
-  #getScanTemplateTasks(scanInfo: AppInfo | LibInfo, synced: SysExecutor): (Promise<FileContent[]> | null)[] {
+  #getScanTemplateTasks(scanInfo: AppInfo | LibInfo): (Promise<FileContent[]> | null)[] {
     return [
       this.#seedEnvFiles(),
       this._applyTemplate({ basePath: "env", template: "env", scanInfo }),
       this._applyTemplate({ basePath: "lib", template: "lib", scanInfo }),
-      this.#syncClientPieces(scanInfo, synced),
       this._applyTemplate({ basePath: ".", template: "server.ts", scanInfo }),
       this._applyTemplate({ basePath: ".", template: "client.ts", scanInfo }),
       this.type === "lib" ? this._applyTemplate({ basePath: ".", template: "index.ts", scanInfo }) : null,
@@ -199,13 +198,16 @@ export class SysExecutor extends Executor {
     //* Locked: `writeLib` rewrites dependency-lib barrels that other dev servers regenerate and watch too.
     if (write)
       await CodegenLock.run(this.workspace.workspaceRoot, `scan:${this.name}`, async () => {
-        await Promise.all(this.#getScanTemplateTasks(scanInfo, this));
+        await Promise.all(this.#getScanTemplateTasks(scanInfo));
         await this.writeJson(`akan.${this.type}.json`, scanInfo.getScanResult());
         await this.#updateDependencies(scanInfo);
-        if (writeLib) {
-          const libInfos = [...scanInfo.getLibInfos().values()];
-          await Promise.all(libInfos.flatMap((libInfo) => libInfo.exec.#getScanTemplateTasks(libInfo, this)));
-        }
+        const libInfos = writeLib ? [...scanInfo.getLibInfos().values()] : [];
+        await Promise.all(libInfos.flatMap((libInfo) => libInfo.exec.#getScanTemplateTasks(libInfo)));
+        //? A piece is shaped by each scope's generated `lib/cnst.ts`, which a new checkout has only once the above ran.
+        await Promise.all([
+          this.#syncClientPieces(scanInfo, this),
+          ...libInfos.map((libInfo) => libInfo.exec.#syncClientPieces(libInfo, this)),
+        ]);
         await this.syncAgentsIndex(scanInfo);
       });
     this.#scanInfo = scanInfo;
