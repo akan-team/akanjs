@@ -111,6 +111,7 @@ contract. Path rules name their checks the same way.
 | JSX or a look not bound to one model | `ui/<Component>.tsx`, `ui/Recipe/<name>.ts` |
 | The color theme | semantic token values in `page/styles.css` |
 | An iOS, Android or desktop app | `native: { … }` in `akan.config.ts`; an owned plugin in `native/<id>/` |
+| URLs without `/<locale>/` (one language, or paths fixed from outside) | `i18n: { localePrefix: "as-needed" }` in `akan.config.ts` |
 | A change to the stored document shape | `akan create-migration <name> <app>` |
 
 ## Secrets
