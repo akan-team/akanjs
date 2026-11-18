@@ -34,11 +34,15 @@ export class StoreBootstrap {
     return found.every(Boolean) ? "page" : "whole";
   }
 
+  static serverSpecifiers(appName: string): string[] {
+    return [`@apps/${appName}/lib/useClient`, `@apps/${appName}/lib/st`];
+  }
+
   static importLines(appName: string, scope: ClientRuntimeScope = "whole"): string[] {
     return StoreBootstrap.#lines(
       scope === "page"
         ? [StoreBootstrap.pageRuntime, StoreBootstrap.baseDescriptors].map((file) => `@apps/${appName}/lib/${file}`)
-        : [`@apps/${appName}/lib/useClient`, `@apps/${appName}/lib/st`],
+        : StoreBootstrap.serverSpecifiers(appName),
     );
   }
 

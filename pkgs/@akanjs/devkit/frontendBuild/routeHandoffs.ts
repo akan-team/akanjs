@@ -18,6 +18,8 @@ const capitalize = (name: string) => name.charAt(0).toUpperCase() + name.slice(1
 const serverFetchSource =
   /^(?:@(?:apps|libs)\/[^/]+\/(?:server|lib\/(?:sig|useServer))|\.{1,2}\/(?:.+\/)?(?:server|sig|useServer))$/;
 const generatedFile = /^(?:apps|libs)\/[^/]+\/(?:(?:server|client)\.ts$|lib\/[^/]+\.ts$|lib\/__client\/)/;
+//? A store's actions run in the browser, so what one names is never handed over while the server renders.
+const storeFile = /\.store\.ts$/;
 const handoffName = /\b(?:init|view|edit)[A-Z]|\bget[A-Z]\w*(?:Init|View|Edit)\b|\bslice\b/;
 const handoffMember = /^(?:(?:init|view|edit)[A-Z]|get[A-Z]\w*(?:Init|View|Edit)$|slice$)/;
 
@@ -53,7 +55,7 @@ export class RouteHandoffs {
     if (known) return known;
     const read = (async (): Promise<FileRead> => {
       const fileName = this.#runtime.fileNameOf(absPath);
-      if (!fileName || generatedFile.test(fileName)) return { models: [], unread: null };
+      if (!fileName || generatedFile.test(fileName) || storeFile.test(fileName)) return { models: [], unread: null };
       const text = await Bun.file(absPath).text();
       const serverFetchLine = RouteHandoffs.#serverFetchLineOf(fileName, text);
       if (serverFetchLine)

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { tempDirs, writeText } from "../test/testHelpers";
+import { chunkBrotliBytesOf } from "./precompressArtifacts";
 import { RouteRuntimePays } from "./routeRuntimePays";
 
 const makeTempRoot = tempDirs("akan-devkit-route-pays-");
@@ -132,6 +133,11 @@ describe("which entries keep the whole runtime because per module made a page no
         ["/memo", ["Memo"]],
       ]),
     );
-    expect(Object.fromEntries(sizes)).toEqual({ "/both": 700, "/memo": 600 });
+    const served = (bytes: number) => chunkBrotliBytesOf(new TextEncoder().encode("x".repeat(bytes)));
+    expect(served(100)).toBeLessThan(100);
+    expect(Object.fromEntries(sizes)).toEqual({
+      "/both": served(100) + served(200) + served(400),
+      "/memo": served(200) + served(400),
+    });
   });
 });

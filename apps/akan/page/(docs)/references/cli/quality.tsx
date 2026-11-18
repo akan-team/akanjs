@@ -544,8 +544,8 @@ akan quality baseline`,
       {
         name: "[dictionary]",
         desc: l.trans({
-          en: "The routes listed load every text of the page dictionary. With a line number, a client file reads a key the build cannot follow: write the key out, or pick it from an object or a typed union in the same file. Without one, the file keeps the whole runtime or shows a `Signal` or `Constant` component; clear that file's `[reader]` reason first.",
-          ko: "나열된 라우트가 페이지 사전의 모든 문구를 불러옵니다. 줄 번호가 있으면 클라이언트 파일이 빌드가 따라갈 수 없는 key를 읽는 것입니다. key를 직접 적거나, 같은 파일의 객체나 타입 union에서 고릅니다. 줄 번호가 없으면 그 파일이 전체 런타임을 유지하거나 `Signal`·`Constant` 컴포넌트를 보여 주는 것이니, 그 파일의 `[reader]` 이유부터 없앱니다.",
+          en: "The routes listed load every text of the page dictionary. With a line number, a client file reads a key the build cannot follow: write the key out, or pick it from an object or a typed union in the same file, or from an `as const` `static` table of a constant class. Without one, the file keeps the whole runtime or shows a `Signal` or `Constant` component; clear that file's `[reader]` reason first.",
+          ko: "나열된 라우트가 페이지 사전의 모든 문구를 불러옵니다. 줄 번호가 있으면 클라이언트 파일이 빌드가 따라갈 수 없는 key를 읽는 것입니다. key를 직접 적거나, 같은 파일의 객체나 타입 union, 또는 constant 클래스의 `as const` `static` 표에서 고릅니다. 줄 번호가 없으면 그 파일이 전체 런타임을 유지하거나 `Signal`·`Constant` 컴포넌트를 보여 주는 것이니, 그 파일의 `[reader]` 이유부터 없앱니다.",
         }),
       },
       {
