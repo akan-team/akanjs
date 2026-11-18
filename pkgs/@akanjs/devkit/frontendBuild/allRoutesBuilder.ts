@@ -58,7 +58,7 @@ export class AllRoutesBuilder {
     this.#app.verbose(`[build-all] discovered ${seedIndex.entries.length} routes`);
     const discovery = await GraphClientEntryDiscovery.create(this.#app);
     this.#discovery = discovery;
-    const importsAs = await this.#ssrImportsAs(discovery, pageEntries);
+    const { importsAs, rendering } = await this.#ssrImportsAs(discovery, pageEntries);
     const handoffs = await this.#readHandoffs();
     const dictionary = this.#command === "build";
     const unread = new Map<string, string[]>();
@@ -70,9 +70,11 @@ export class AllRoutesBuilder {
       const routeEntries = await discovery.discover(seeds);
       for (const discovered of routeEntries) allEntries.add(discovered);
       const ssrEntries = await discovery.discover(seeds, { importsAs });
-      const serverModules = handoffs || dictionary ? await discovery.serverModules(seeds, { importsAs }) : [];
-      if (dictionary) this.#serverModulesByRoute.set(entry.routeId, serverModules);
-      const handed = await handoffs?.read(serverModules);
+      if (dictionary)
+        this.#serverModulesByRoute.set(entry.routeId, await discovery.serverModules(seeds, { importsAs }));
+      const handed = handoffs
+        ? await handoffs.read(await discovery.serverModules(seeds, { importsAs: rendering }))
+        : undefined;
       const loaded = [...new Set([...ssrEntries, ...(handed?.referenceFiles ?? [])])].sort();
       this.#ssrEntriesByRoute.set(entry.routeId, loaded);
       const besidesReferences = handed ? routeEntries.filter((file) => !ModelReference.isFile(file)) : routeEntries;
@@ -144,7 +146,12 @@ export class AllRoutesBuilder {
       if (isImplicitRootLayoutKey(key)) importsAs.set(path.resolve(moduleAbsPath), toShell);
     const system = await discovery.resolveImport(specifier, this.#app.cwdPath);
     if (system) importsAs.set(system, new Map(importsNoSsrPageRenders.map((spec) => [spec, null])));
-    return importsAs;
+    //? The root layout also imports every store so the server holds them; no route's own render runs through one.
+    const stores = StoreBootstrap.serverSpecifiers(this.#app.name).map((spec) => [spec, null] as const);
+    const rendering = new Map(importsAs);
+    for (const { key, moduleAbsPath } of pageEntries)
+      if (isImplicitRootLayoutKey(key)) rendering.set(path.resolve(moduleAbsPath), new Map([...toShell, ...stores]));
+    return { importsAs, rendering };
   }
 
   async #readHandoffs(): Promise<RouteHandoffs | null> {

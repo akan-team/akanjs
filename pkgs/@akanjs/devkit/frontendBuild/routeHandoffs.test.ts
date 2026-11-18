@@ -108,6 +108,16 @@ describe("the models a route's server modules hand to client components", () => 
     expect(read).toEqual({ referenceFiles: [], unread: null });
   });
 
+  test("do not count a store, whose actions name and pick models only in the browser", async () => {
+    const read = await readOf({
+      "apps/demo/page/board.tsx": `${client}export const Board = () => fetch.initMemoInBoard();\n`,
+      "apps/demo/lib/note/note.store.ts": `${client}export const open = (id: string) => [fetch.viewNote(id), fetch.slice.tag];\n`,
+      "apps/demo/lib/tag/tag.store.ts": `${client}export const any = (name: string) => (fetch as never)[name];\n`,
+    });
+
+    expect(read).toEqual({ referenceFiles: [referenceOf("memo")], unread: null });
+  });
+
   test("are every model once the server barrel's `fetch` is indexed, passed on or taken apart", async () => {
     const taken = 'import { fetch } from "@apps/demo/server";\n';
     const unreadOf = async (name: string, body: string) =>
