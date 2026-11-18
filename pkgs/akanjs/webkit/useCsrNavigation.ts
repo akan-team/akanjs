@@ -245,11 +245,20 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
     (kind: "push" | "replace", href: string, { scrollToTop }: RouteOptions = {}) => {
       const fromLocation = getCurrentLocation();
       const target = getLocation(href);
-      //? A replace within one route rewrites the entry it is on, so the page on screen stays mounted.
+      const cached = target.pathRoute.pageState.cache
+        ? nav.history.current.cachedLocationMap.get(target.pathRoute.path)
+        : undefined;
+      //? A replace within one route rewrites the entry it is on, so the page on screen stays mounted; a `cache` page
+      //? visited again at the same address is the location it keeps, so nothing it reads changes as it comes back.
       const toLocation =
         kind === "replace" && target.pathRoute.path === fromLocation.pathRoute.path
           ? { ...target, entryId: fromLocation.entryId }
-          : target;
+          : cached &&
+              cached.pathname === target.pathname &&
+              cached.search === target.search &&
+              cached.hash === target.hash
+            ? cached
+            : target;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
       const slides =
         CsrStack.keyOf(toLocation) !== CsrStack.keyOf(fromLocation) &&
