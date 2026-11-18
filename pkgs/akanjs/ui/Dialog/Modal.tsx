@@ -22,6 +22,26 @@ import { DialogContext } from "./Provider";
 //? A distance, not a share of the panel as a bottom sheet takes: a share of a full-screen sheet is most of the screen.
 const DISMISS_DRAG_PX = 120;
 
+interface CloseSlotProps {
+  className: string;
+  closeButton?: ReactNode | false;
+  onClose: () => void;
+}
+//? The dismissal is on the slot, not on the button inside it, so a replacement needs no wiring: a click on whatever
+//? the caller put here bubbles to exactly one handler.
+const CloseSlot = ({ className, closeButton, onClose }: CloseSlotProps) => {
+  if (closeButton === false) return null;
+  return (
+    <div className={cn("absolute right-3 z-10", className)} onClick={onClose}>
+      {closeButton ?? (
+        <button aria-label="Close" className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8")} type="button">
+          <BiX className="text-xl" />
+        </button>
+      )}
+    </div>
+  );
+};
+
 export interface ModalProps extends ModalSurfaceProps {
   className?: string;
   bodyClassName?: string;
@@ -149,21 +169,7 @@ export const Modal = ({
           aria-describedby={contentId}
           tabIndex={-1}
         >
-          {/* The dismissal is on the slot, not on the button inside it, so a replacement needs no wiring — a
-            click on whatever the caller put here bubbles to exactly one handler. */}
-          {closeButton === false ? null : (
-            <div className={cn("absolute right-3 z-10", surface.close)} onClick={() => requestClose()}>
-              {closeButton ?? (
-                <button
-                  aria-label="Close"
-                  className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8")}
-                  type="button"
-                >
-                  <BiX className="text-xl" />
-                </button>
-              )}
-            </div>
-          )}
+          <CloseSlot className={surface.close} closeButton={closeButton} onClose={() => requestClose()} />
           {presentation === "dialog" ? null : (
             <SheetHandle {...dragProps} className={cn("touch-none pt-2", surface.handle)} />
           )}
