@@ -1,5 +1,6 @@
 import { isRecord, trimSlashes } from "akanjs/common";
 import type {
+  NavbarMotion,
   PageConfig,
   PageOverlayConfig,
   PageSafeAreaConfig,
@@ -46,6 +47,7 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "topInset",
   "bottomInset",
   "overlay",
+  "navbarMotion",
   "gesture",
   "cache",
   "ssr",
@@ -59,6 +61,7 @@ const pageConfigKeys = new Set<keyof PageConfig>([
 //* `pageConfigKeys` so `mergePageConfigs` cannot leak it down the layout chain.
 const buildPageConfigKeys = new Set<keyof PageConfig>(["devOnly"]);
 const ssrRenderModes = new Set<SsrRenderMode>(["stream", "block"]);
+const navbarMotions = new Set<NavbarMotion>(["crossfade", "page"]);
 const DEFAULT_BOOLEAN_INSET = 48;
 
 const hasOwn = <Key extends PropertyKey>(value: object, key: Key) => Object.hasOwn(value, key);
@@ -78,6 +81,11 @@ export const validatePageConfig = (routeKey: string, config?: PageConfig) => {
   }
   if (pageConfig.transition !== undefined && !transitionTypes.includes(pageConfig.transition)) {
     throw new Error(`[route-convention] unsupported pageConfig.transition "${pageConfig.transition}" in ${routeKey}`);
+  }
+  if (pageConfig.navbarMotion !== undefined && !navbarMotions.has(pageConfig.navbarMotion)) {
+    throw new Error(
+      `[route-convention] pageConfig.navbarMotion in ${routeKey} must be "crossfade" or "page", not "${pageConfig.navbarMotion}".`,
+    );
   }
   if (pageConfig.ssr !== undefined && !ssrRenderModes.has(pageConfig.ssr)) {
     throw new Error(`[route-convention] unsupported pageConfig.ssr "${pageConfig.ssr}" in ${routeKey}`);
@@ -232,6 +240,7 @@ export const resolvePageState = ({
       : {}),
     ...(safeAreaEnv ? { safeAreaEnv } : {}),
     ...(overlay ? { overlay } : {}),
+    ...(config.navbarMotion ? { navbarMotion: config.navbarMotion } : {}),
     gesture: explicitKeys.gesture
       ? (config.gesture ?? false)
       : transition === "none"

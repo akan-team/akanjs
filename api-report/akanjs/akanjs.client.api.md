@@ -116,6 +116,7 @@ export interface CsrState {
         top: boolean;
         bottom: boolean;
     };
+    navbarMotion?: NavbarMotion;
     gesture: boolean;
     cache: boolean;
     ssr: SsrRenderMode;
@@ -480,6 +481,8 @@ export interface ModelsProps<M extends {
 
 export declare const Nanum_Gothic_Coding: (_data: unknown) => null;
 
+export type NavbarMotion = "crossfade" | "page";
+
 export interface NavigationAttempt {
     kind: NavigationKind;
     from: string;
@@ -519,6 +522,7 @@ export interface PageConfig {
     topInset?: ResponsiveInset | boolean | number;
     bottomInset?: ResponsiveInset | boolean | number;
     overlay?: PageOverlayConfig;
+    navbarMotion?: NavbarMotion;
     gesture?: boolean;
     cache?: boolean;
     ssr?: SsrRenderMode;

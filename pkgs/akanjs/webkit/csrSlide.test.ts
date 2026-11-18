@@ -81,6 +81,26 @@ describe("CsrSlide", () => {
     expect(played.map((entry) => entry.id)).not.toContain("pageContainer-c");
   });
 
+  test("a navbar riding its page moves with it, and the bar under is cut where the page coming in covers it", () => {
+    CsrSlide.play(frame({ topInset: 48, navbarMotion: "page" }, { topInset: 0 }), {
+      fromUnit: 400,
+      toUnit: 0,
+      duration: 350,
+    });
+
+    const of = (id: string) => played.find((entry) => entry.id === id)?.keyframes;
+    expect(of("topInsetContent-b")).toEqual([{ transform: "translateX(400px)" }, { transform: "translateX(0px)" }]);
+    expect(of("topInsetContent-a")).toEqual([
+      { opacity: "1", transform: "translateX(0px)", clipPath: "inset(0px 0px 0px 0px)" },
+      { opacity: "0.5", transform: "translateX(-80px)", clipPath: "inset(0px 320px 0px 0px)" },
+    ]);
+    expect(played.map((entry) => entry.id)).not.toContain("topInsetContainer");
+    expect(CsrSlide.partsAt(frame({ topInset: 48, navbarMotion: "page" }, { topInset: 0 }), 200)).toMatchObject({
+      "#topInsetContainer": { height: "48px" },
+      '#pageContainers > [data-page-type="prev"] .akan-page-content': { opacity: "0.75" },
+    });
+  });
+
   test("leaves a frame part alone when it rests where it started, and parts the page does not draw", () => {
     CsrSlide.play(frame({}, {}), { fromUnit: 400, toUnit: 0, duration: 350 });
 

@@ -74,6 +74,32 @@ describe("CSR.Wrapper", () => {
     frame.unmount();
   });
 
+  test("a navbar riding its page has a box and fill of its own, and the layer around it lets a tap through", () => {
+    const entryOf = (key: string, topInset: number, pageType: string, zIndex: number) => {
+      const pathRoute = {
+        path: `/:lang/${key}`,
+        pageState: { ...client.defaultPageState, topInset, navbarMotion: "page" },
+        renderRootLayouts: [],
+        renderLayouts: [],
+        renderPage: { kind: "page", render: () => null },
+      };
+      const location = { href: `/en/${key}`, pathname: `/en/${key}`, params: {}, searchParams: {}, pathRoute };
+      return { key, location, pageType, zIndex };
+    };
+    const [under, top] = [entryOf("under", 0, "prev", 1), entryOf("top", 56, "current", 2)];
+    const frame = mount(frameOf("frame", [], 1, [under, top], { location: top.location }));
+    const layer = document.getElementById("topInsetContainer");
+    const bar = document.getElementById("topInsetContent-top");
+
+    expect(layer?.className).toContain("pointer-events-none");
+    expect(layer?.className).toContain("bg-transparent");
+    expect(bar?.className).toContain("bg-background");
+    expect(bar?.className).toContain("pointer-events-auto");
+    expect(bar?.style.height).toBe("56px");
+    expect(document.getElementById("topInsetContent-under")?.style.height).toBe("0px");
+    frame.unmount();
+  });
+
   test("publishes what the current page registers for the agent, and parks the page kept under it", async () => {
     const { useAgentGate } = await import("use-agentic");
     const seen: Record<string, boolean | undefined> = {};
