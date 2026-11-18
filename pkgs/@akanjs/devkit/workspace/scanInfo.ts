@@ -283,6 +283,12 @@ class ScanInfo {
     this.#sortedLibs = null;
   }
 
+  orderLibDeps() {
+    const libIndices = LibInfo.getSortedLibIndices();
+    const indexOf = (libName: string) => libIndices.get(libName) ?? libIndices.size;
+    this.scanResult.libDeps.sort((a, b) => indexOf(a) - indexOf(b) || a.localeCompare(b));
+  }
+
   #sortedLibs: string[] | null = null;
   protected sortedLibs(libDeps: string[]) {
     if (this.#sortedLibs) return this.#sortedLibs;
@@ -413,12 +419,25 @@ export class LibInfo extends ScanInfo {
 
   static getSortedLibIndices() {
     if (LibInfo.#sortedLibIndices) return LibInfo.#sortedLibIndices;
-    LibInfo.#sortedLibIndices = new Map(
-      [...LibInfo.libInfos.entries()]
-        .sort(([_, libInfoA], [__, libInfoB]) => (libInfoA.getScanResult().libDeps.includes(libInfoB.name) ? 1 : -1))
-        .map(([libName], index) => [libName, index]),
+    const depsByLib = new Map(
+      [...LibInfo.libInfos].map(([libName, libInfo]) => [libName, libInfo.getScanResult().libDeps] as const),
     );
+    LibInfo.#sortedLibIndices = new Map(LibInfo.orderOf(depsByLib).map((libName, index) => [libName, index]));
     return LibInfo.#sortedLibIndices;
+  }
+
+  //? Lib scans finish in an order that differs from run to run, so the order comes from names and dependencies alone.
+  static orderOf(depsByLib: ReadonlyMap<string, readonly string[]>): string[] {
+    const ordered: string[] = [];
+    const placed = new Set<string>();
+    const place = (libName: string) => {
+      if (placed.has(libName) || !depsByLib.has(libName)) return;
+      placed.add(libName);
+      for (const dependency of (depsByLib.get(libName) ?? []).toSorted((a, b) => a.localeCompare(b))) place(dependency);
+      ordered.push(libName);
+    };
+    for (const libName of [...depsByLib.keys()].sort((a, b) => a.localeCompare(b))) place(libName);
+    return ordered;
   }
 
   static async fromExecutor(exec: LibExecutor, { refresh }: { refresh?: boolean } = {}) {
