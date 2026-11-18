@@ -86,7 +86,10 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       : null;
     this.#analyzer = new BarrelAnalyzer({ resolvePackage, ...(packageRoot ? { packageRoot } : {}) });
     this.#objects = packageRoot
-      ? new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(resolvePackage) })
+      ? new ObjectMemberImports({
+          resolve: ObjectMemberImports.resolverOf(resolvePackage),
+          barrels: { names: akanConfig.barrelImports, analyzer: this.#analyzer },
+        })
       : null;
   }
 
@@ -283,6 +286,8 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
         const absFile = path.resolve(file);
         this.#objectReaders.set(absFile, (this.#objectReaders.get(absFile) ?? new Set()).add(absPath));
       }
+      for (const barrel of narrowed?.barrels ?? [])
+        this.#barrelImporters.set(barrel, (this.#barrelImporters.get(barrel) ?? new Set()).add(absPath));
       return narrowed?.contents ?? null;
     } catch {
       return null;

@@ -43,7 +43,12 @@ export const createBarrelImportsPlugin = async (
     resolvePackage,
     ...(route ? { packageRoot: app.workspace.workspaceRoot } : {}),
   });
-  const objects = route ? new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(resolvePackage) }) : null;
+  const objects = route
+    ? new ObjectMemberImports({
+        resolve: ObjectMemberImports.resolverOf(resolvePackage),
+        barrels: { names: barrels, analyzer },
+      })
+    : null;
 
   return {
     name: "barrel-imports",

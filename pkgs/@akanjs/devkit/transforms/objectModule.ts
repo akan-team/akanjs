@@ -21,8 +21,10 @@ export interface ObjectShape {
    * `Doc.Zone` keys a member of an object literal written one level down (`{ Doc: { Zone } }`).
    */
   members: Map<string, ObjectMemberImport | null>;
-  /** Members the analysis cannot list (a spread, a computed key, an object copied in by name). */
+  /** Members the analysis cannot list (a spread, a computed key, a source copied in that is no imported object). */
   open: boolean;
+  /** Imported objects `Object.assign` copied in, in source order: each may hold a member the shape does not list. */
+  copied: ObjectMemberImport[];
 }
 
 export interface ObjectModuleFacts {
@@ -61,13 +63,15 @@ const ASSIGN_OPERATORS = new Set([
   ts.SyntaxKind.BarBarEqualsToken,
   ts.SyntaxKind.QuestionQuestionEqualsToken,
 ]);
+const REACT_WRAPPERS = new Set(["memo", "forwardRef", "lazy", "createContext"]);
 
 //* The rule a module meets before an importer may skip it and import the object's members instead. Every top-level
 //* statement is a declaration (an import that binds names, a type, a directive, a `const` or `function`, an `export`
 //* list) or puts a member on an object the module created above it (`X.m = v`, `Object.assign(X, …)`), and every
-//* value evaluated at load is effect-free (no call but `Object.assign` onto the module's own object). Such a module
-//* only binds names, so an importer that never reaches the object loses nothing by not running it. A re-export fails:
-//* skipping the module would skip the module it re-exports from, which nothing else loads.
+//* value evaluated at load is effect-free (no call but `Object.assign` onto the module's own object and React's
+//* `memo`, `forwardRef`, `lazy` and `createContext`). Such a module only binds names, so an importer that never
+//* reaches the object loses nothing by not running it. A re-export fails: skipping the module would skip the module
+//* it re-exports from, which nothing else loads.
 export class ObjectModule {
   static scriptKindOf(file: string): ts.ScriptKind {
     if (file.endsWith(".tsx")) return ts.ScriptKind.TSX;
@@ -272,10 +276,25 @@ export class ObjectModule {
     if (assign) this.#checkObjectAssign(assign, value);
     else if (ts.isObjectLiteralExpression(value)) this.#checkObjectLiteral(value);
     else {
-      const parts = ObjectModule.#partsOf(value);
+      const parts = this.#reactWrapped(value) ?? ObjectModule.#partsOf(value);
       if (typeof parts === "string") this.#fail(parts, value);
       else for (const part of parts) this.#checkValue(part);
     }
+  }
+
+  //? These four only wrap what they are given: none renders a component, runs a loader or reads a context at load.
+  #reactWrapped(value: ts.Expression): ts.Expression[] | null {
+    if (!ts.isCallExpression(value)) return null;
+    const callee = value.expression;
+    const { imports } = this.#collected;
+    let wrapper = ts.isIdentifier(callee) ? imports.get(callee.text) : undefined;
+    if (ts.isPropertyAccessExpression(callee) && ts.isIdentifier(callee.expression)) {
+      const react = imports.get(callee.expression.text);
+      if (react && ["default", "*"].includes(react.imported))
+        wrapper = { specifier: react.specifier, imported: callee.name.text };
+    }
+    if (wrapper?.specifier !== "react" || !REACT_WRAPPERS.has(wrapper.imported)) return null;
+    return value.arguments.map((argument) => (ts.isSpreadElement(argument) ? argument.expression : argument));
   }
 
   static #partsOf(value: ts.Expression): ts.Expression[] | ObjectModuleClause {
@@ -331,7 +350,7 @@ export class ObjectModule {
   #shapeOf(local: string): ObjectShape | null {
     const root = this.#collected.roots.get(local);
     if (!root || (!root.literal && root.edits.length === 0)) return null;
-    const shape: ObjectShape = { members: new Map(), open: false };
+    const shape: ObjectShape = { members: new Map(), open: false, copied: [] };
     if (root.literal) this.#addLiteral(shape, root.literal);
     for (const { member, value } of root.edits) {
       if (member === null) this.#addSource(shape, value);
@@ -357,7 +376,12 @@ export class ObjectModule {
     if (ts.isObjectLiteralExpression(value)) return this.#addLiteral(shape, value);
     if (ObjectModule.#isFunction(value)) return;
     const root = ts.isIdentifier(value) ? this.#collected.roots.get(value.text) : undefined;
-    if (!root || root.literal || root.edits.length > 0) ObjectModule.#cover(shape, "");
+    if (root && !root.literal && root.edits.length === 0) return;
+    const copied = ts.isIdentifier(value) && !root ? this.#collected.imports.get(value.text) : undefined;
+    if (!copied || copied.imported === "*") return ObjectModule.#cover(shape, "");
+    //? A later source wins: the copy may replace a member listed before it, and one listed after replaces the copy's.
+    for (const key of shape.members.keys()) shape.members.set(key, null);
+    shape.copied.push(copied);
   }
 
   static #isFunction(value: ts.Expression) {
