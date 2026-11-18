@@ -5,6 +5,7 @@ import type { ReactDOMAttributes } from "@use-gesture/react/dist/declarations/sr
 import { cn } from "akanjs/client";
 import { type ReactNode, useContext, useRef } from "react";
 import { sharedContext } from "../client/sharedContext";
+import { SWIPE_BACK_EDGE_PX } from "../webkit/scrollerTakesDrag";
 import { animated } from "./animated";
 
 interface DragActionContextType {
@@ -53,8 +54,12 @@ export const DragAction = ({ className, children, onClick, onLeft, onRight }: Dr
         if (!action.current) onClick?.();
         action.current = null;
       },
-      onDrag: ({ down, movement: [mx], event }) => {
+      onDrag: ({ down, movement: [mx], initial: [ix], cancel }) => {
         if (!ref.current) return;
+        if (ix <= SWIPE_BACK_EDGE_PX) {
+          cancel();
+          return;
+        }
         void api.start({
           x: down ? mx : 0,
           leftOpacity: mx > 0 && down ? mx / ref.current.clientWidth : 0,
@@ -64,8 +69,8 @@ export const DragAction = ({ className, children, onClick, onLeft, onRight }: Dr
         });
         action.current = mx > 0 ? "left" : mx < 0 ? "right" : null;
       },
-      onDragEnd: ({ movement: [mx] }) => {
-        if (!ref.current) return;
+      onDragEnd: ({ movement: [mx], initial: [ix] }) => {
+        if (!ref.current || ix <= SWIPE_BACK_EDGE_PX) return;
         void api.start({ x: 0, leftOpacity: 0, leftWidth: 0, rightOpacity: 0, rightWidth: 0 });
         if (mx > ref.current.clientWidth / 2 && onLeft) onLeft();
         if (mx < -ref.current.clientWidth / 2 && onRight) onRight();
@@ -75,7 +80,7 @@ export const DragAction = ({ className, children, onClick, onLeft, onRight }: Dr
   );
   return (
     <DragActionContext.Provider value={{ bind, x, y, leftOpacity, leftWidth, rightOpacity, rightWidth, onClick }}>
-      <div ref={ref} className={cn("relative overflow-x-hidden", className)}>
+      <div ref={ref} data-akan-drag="x" className={cn("relative overflow-x-hidden", className)}>
         {children}
       </div>
     </DragActionContext.Provider>

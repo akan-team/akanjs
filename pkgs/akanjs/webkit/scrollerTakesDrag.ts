@@ -1,5 +1,8 @@
 type DragAxis = "x" | "y";
 
+//? A drag that starts this close to the left edge is the swipe back, as UIKit's edge pan is, whatever lies under it.
+export const SWIPE_BACK_EDGE_PX = 24;
+
 const isScrollable = (overflow: string) => overflow === "auto" || overflow === "scroll";
 
 const isReversed = (style: CSSStyleDeclaration, axis: DragAxis) =>
@@ -8,6 +11,7 @@ const isReversed = (style: CSSStyleDeclaration, axis: DragAxis) =>
     : (style.flexDirection === "row-reverse") !== (style.direction === "rtl");
 
 const takes = (node: Element, style: CSSStyleDeclaration, axis: DragAxis, movement: number) => {
+  if (node.getAttribute("data-akan-drag") === axis) return true;
   if (!isScrollable(axis === "x" ? style.overflowX : style.overflowY)) return false;
   const span = axis === "x" ? node.scrollWidth - node.clientWidth : node.scrollHeight - node.clientHeight;
   if (span < 1) return false;
