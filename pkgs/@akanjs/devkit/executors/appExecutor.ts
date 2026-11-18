@@ -90,10 +90,12 @@ export class AppExecutor extends SysExecutor {
   getEnv() {
     return WorkspaceExecutor.getBaseDevEnv().env;
   }
-  /** `AKAN_DEV_PORT` pins it; the derived port moves whenever an app directory appears or disappears. */
+  /** `AKAN_DEV_PORT` pins it, else `PORT`; the derived port moves whenever an app directory appears or disappears. */
   async getDevPort() {
-    const pinned = Number(process.env.AKAN_DEV_PORT);
-    if (Number.isInteger(pinned) && pinned > 0 && pinned <= 65_535) return pinned;
+    for (const declared of [process.env.AKAN_DEV_PORT, process.env.PORT]) {
+      const pinned = Number(declared);
+      if (Number.isInteger(pinned) && pinned > 0 && pinned <= 65_535) return pinned;
+    }
     const basePort = 8282;
     const appNames = (await this.workspace.getApps()).sort((a, b) => a.localeCompare(b));
     const appIndex = Math.max(appNames.indexOf(this.name), 0);
