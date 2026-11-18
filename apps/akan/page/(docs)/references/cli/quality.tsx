@@ -544,8 +544,8 @@ akan quality baseline`,
       {
         name: "[dictionary]",
         desc: l.trans({
-          en: "The routes listed load every text of the page dictionary. With a line number, a client file reads a key the build cannot follow: write the key out, or pick it from an object or a typed union in the same file. Without one, the file keeps the whole runtime or shows a `Signal` or `Constant` component; clear that file's `[reader]` reason first.",
-          ko: "나열된 라우트가 페이지 사전의 모든 문구를 불러옵니다. 줄 번호가 있으면 클라이언트 파일이 빌드가 따라갈 수 없는 key를 읽는 것입니다. key를 직접 적거나, 같은 파일의 객체나 타입 union에서 고릅니다. 줄 번호가 없으면 그 파일이 전체 런타임을 유지하거나 `Signal`·`Constant` 컴포넌트를 보여 주는 것이니, 그 파일의 `[reader]` 이유부터 없앱니다.",
+          en: "The routes listed load every text of the page dictionary. With a line number, a client file reads a key the build cannot follow: write the key out, or pick it from an object or a typed union in the same file, or from an `as const` `static` table of a constant class. Without one, the file keeps the whole runtime or shows a `Signal` or `Constant` component; clear that file's `[reader]` reason first.",
+          ko: "나열된 라우트가 페이지 사전의 모든 문구를 불러옵니다. 줄 번호가 있으면 클라이언트 파일이 빌드가 따라갈 수 없는 key를 읽는 것입니다. key를 직접 적거나, 같은 파일의 객체나 타입 union, 또는 constant 클래스의 `as const` `static` 표에서 고릅니다. 줄 번호가 없으면 그 파일이 전체 런타임을 유지하거나 `Signal`·`Constant` 컴포넌트를 보여 주는 것이니, 그 파일의 `[reader]` 이유부터 없앱니다.",
         }),
       },
       {
@@ -559,8 +559,8 @@ akan quality baseline`,
       {
         name: ["call", "effect-statement", "effect-value", "bare-import", "reexport", "mutated-import"],
         desc: l.trans({
-          en: "Counted per app and library as object imports that load the whole object: the object's own file does more than gather its parts (it calls a function, runs a statement, imports for effect, re-exports or changes an import). Move that code into the part's file, so the object file only gathers imports.",
-          ko: "앱과 라이브러리마다 객체 전체를 불러오는 import로 셉니다. 객체 파일이 부분을 모으는 것 말고 다른 일(함수 호출, 문장 실행, 효과를 위한 import, 다시 export, import 변경)을 합니다. 그 코드를 부분 파일로 옮겨 객체 파일이 import만 모으게 합니다.",
+          en: "Counted per app and library as object imports that load the whole object: the object's own file, or the file of an object it copies in with `Object.assign`, does more than gather its parts (it calls a function other than React's `memo`, `forwardRef`, `lazy` or `createContext`, runs a statement, imports for effect, re-exports or changes an import). Move that code into the part's file, so the object file only gathers imports.",
+          ko: "앱과 라이브러리마다 객체 전체를 불러오는 import로 셉니다. 객체 파일이나, 그 객체가 `Object.assign`으로 복사해 넣은 객체의 파일이 부분을 모으는 것 말고 다른 일(React의 `memo`, `forwardRef`, `lazy`, `createContext`가 아닌 함수 호출, 문장 실행, 효과를 위한 import, 다시 export, import 변경)을 합니다. 그 코드를 부분 파일로 옮겨 객체 파일이 import만 모으게 합니다.",
         }),
       },
       {
@@ -576,8 +576,8 @@ akan quality baseline`,
           "server-boundary",
         ],
         desc: l.trans({
-          en: "Also counted as whole-object imports: the importing file uses the object as a value (passes it on, spreads it, picks a member by a computed key, renders or calls it, calls a member that may read `this`, writes to it), hides its name, names a member the object does not hold, or hands it from a server file to a client one. Name the part where it is used (`Memo.Zone.View`). `--format json` lists each import with its file, line, object and reason.",
-          ko: "역시 객체 전체를 불러오는 import로 셉니다. import하는 파일이 객체를 값으로 쓰거나(다른 곳에 넘김, 펼침, 계산된 키로 멤버 선택, 객체 자체를 렌더링하거나 호출, `this`를 읽을 수 있는 멤버 호출, 값 쓰기), 이름을 가리거나, 객체에 없는 멤버를 적거나, 서버 파일에서 클라이언트 파일로 넘깁니다. 쓰는 곳에서 부분의 이름을 적습니다(`Memo.Zone.View`). `--format json`은 각 import를 파일, 줄 번호, 객체, 이유와 함께 보여 줍니다.",
+          en: "Also counted as whole-object imports: the importing file uses the object as a value (passes it on, spreads it, picks a member by a computed key, renders or calls it, calls a member that may read `this`, writes to it), hides its name, names a member the build cannot point at a file (one the object does not hold, one declared in the object's own file, or one an object copied in after it may replace), or hands it from a server file to a client one. Name the part where it is used (`Memo.Zone.View`). `--format json` lists each import with its file, line, object and reason.",
+          ko: "역시 객체 전체를 불러오는 import로 셉니다. import하는 파일이 객체를 값으로 쓰거나(다른 곳에 넘김, 펼침, 계산된 키로 멤버 선택, 객체 자체를 렌더링하거나 호출, `this`를 읽을 수 있는 멤버 호출, 값 쓰기), 이름을 가리거나, 빌드가 파일을 짚을 수 없는 멤버(객체에 없는 멤버, 객체 파일 안에서 선언한 멤버, 뒤에 복사해 넣은 객체가 바꿀 수 있는 멤버)를 적거나, 서버 파일에서 클라이언트 파일로 넘깁니다. 쓰는 곳에서 부분의 이름을 적습니다(`Memo.Zone.View`). `--format json`은 각 import를 파일, 줄 번호, 객체, 이유와 함께 보여 줍니다.",
         }),
       },
     ];

@@ -33,6 +33,7 @@ import type {
   ApplicationBuildProgressReporter,
   ApplicationBuildResult,
 } from "./applicationBuildReporter";
+import { RouteFilesReport } from "./routeFilesReport";
 import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsBudgetStatus, type RouteJsSize } from "./routeJsBudget";
 
 export interface TypecheckOptions {
@@ -614,10 +615,15 @@ void run().catch((error) => {
   //? verify build skips writing and measures in memory instead.
   async #measureRouteJs(environment: string): Promise<RouteJsMeasure | null> {
     if (this.#budget === "off" || !this.#modulesByRoute) return null;
-    const sizes = await RouteJsBudget.measure(
+    const sizeByUrl = await RouteJsBudget.fileSizes(
       path.join(this.#app.dist.cwdPath, ".akan/artifact"),
       this.#modulesByRoute,
       { precompressed: !this.#verify },
+    );
+    const sizes = RouteJsBudget.sizesOf(this.#modulesByRoute, sizeByUrl);
+    await RouteFilesReport.write(
+      this.#app.cwdPath,
+      RouteFilesReport.build(this.#app.name, this.#modulesByRoute, sizeByUrl),
     );
     const budgetPath = path.join(this.#app.cwdPath, RouteJsBudget.fileName);
     const { summary: status, warnings } = await RouteJsBudget.check(sizes, {

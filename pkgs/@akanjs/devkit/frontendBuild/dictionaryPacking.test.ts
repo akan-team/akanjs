@@ -69,6 +69,64 @@ describe("DictionaryPacking", () => {
     expect(pack.partsByRoute).toEqual({ "/:lang/a": [0], "/:lang/b": [0] });
   });
 
+  describe("held under the whole dictionary", () => {
+    const fileOverhead = 300;
+    const servedOf = (bytesOf: (group: string) => number) => (held: readonly string[]) =>
+      fileOverhead + held.reduce((sum, group) => sum + bytesOf(group), 0);
+
+    test("a route whose files would not be smaller than the whole loads the whole file and no longer shapes the cut", () => {
+      const modules = Array.from({ length: 8 }, (_, idx) => `module${idx}`);
+      const groups = ["base", ...modules];
+      const light = new Map(modules.map((module) => [`/:lang/${module}`, ["base", module]]));
+      const routes = new Map([...light, ["/:lang/everything", groups]]);
+      const bytesOf = (group: string) => (group === "base" ? 2000 : 5000);
+      const pack = DictionaryPacking.packUnderWhole(routes, bytesOf, groups, servedOf(bytesOf));
+      const alone = DictionaryPacking.pack(routes, bytesOf, groups);
+
+      expect(pack.wholeRoutes).toEqual(["/:lang/everything"]);
+      expect(pack.partsByRoute["/:lang/everything"]).toBeUndefined();
+      expect({ parts: pack.parts, partsByRoute: pack.partsByRoute }).toEqual(
+        DictionaryPacking.pack(light, bytesOf, groups),
+      );
+      for (const module of modules) {
+        const held = (files: number[] = [], parts: string[][]) => files.flatMap((idx) => parts[idx] ?? []).sort();
+        expect(held(pack.partsByRoute[`/:lang/${module}`], pack.parts)).toEqual(["base", module]);
+        expect(held(alone.partsByRoute[`/:lang/${module}`], alone.parts).length).toBeGreaterThan(2);
+      }
+    });
+
+    test("no route left on files loads the whole or more, and all routes together load no more than before", () => {
+      const { groups, routes, bytesOf } = manyModules();
+      const served = servedOf(bytesOf);
+      const whole = served(groups);
+      const costOf = ({ parts, partsByRoute }: ReturnType<typeof DictionaryPacking.pack>) =>
+        [...routes.keys()].reduce((sum, routeId) => {
+          const files = partsByRoute[routeId];
+          const own = files?.reduce((bytes, idx) => bytes + served(parts[idx] ?? []), 0) ?? whole;
+          return sum + Math.min(own, whole);
+        }, 0);
+      const pack = DictionaryPacking.packUnderWhole(routes, bytesOf, groups, served);
+
+      expect(pack.wholeRoutes).toContain("/:lang/everything");
+      expect(Object.keys(pack.partsByRoute).length).toBe(routes.size - pack.wholeRoutes.length);
+      for (const files of Object.values(pack.partsByRoute))
+        expect(files.reduce((sum, idx) => sum + served(pack.parts[idx] ?? []), 0)).toBeLessThan(whole);
+      expect(costOf(pack)).toBeLessThanOrEqual(costOf(DictionaryPacking.pack(routes, bytesOf, groups)));
+    });
+
+    test("every route loads the whole file where each shows every group", () => {
+      const routes = new Map([
+        ["/:lang/a", ["base", "memo", "user"]],
+        ["/:lang/b", ["base", "user", "memo"]],
+      ]);
+      const bytesOf = (group: string) => (group === "base" ? 9000 : 300);
+      const pack = DictionaryPacking.packUnderWhole(routes, bytesOf, ["base", "memo", "user"], servedOf(bytesOf));
+
+      expect(pack.wholeRoutes).toEqual(["/:lang/a", "/:lang/b"]);
+      expect(pack.partsByRoute).toEqual({});
+    });
+  });
+
   test("a second route reuses the files the first one loaded where they share groups", () => {
     const routes = new Map([
       ["/:lang/memo", ["base", "memo", "user"]],

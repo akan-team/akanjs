@@ -49,7 +49,7 @@ export const createBarrelImportsPlugin = async (
     ...(route ? { packageRoot: app.workspace.workspaceRoot } : {}),
   });
   const resolve = ObjectMemberImports.resolverOf(resolvePackage);
-  const objects = route ? new ObjectMemberImports({ resolve }) : null;
+  const objects = route ? new ObjectMemberImports({ resolve, barrels: { names: barrels, analyzer } }) : null;
 
   const read = async (realPath: string): Promise<PartSource | null> => {
     const file = Bun.file(realPath);

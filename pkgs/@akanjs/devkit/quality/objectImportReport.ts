@@ -50,10 +50,13 @@ export class ObjectImportReport {
       if (cached) return cached;
       const executor = AppExecutor.from(workspace, app);
       const resolvePackage = await createTsconfigPackageResolver(executor);
+      const barrels = (await executor.getConfig()).barrelImports;
+      const analyzer = new BarrelAnalyzer({ resolvePackage, packageRoot: workspace.workspaceRoot });
+      const resolve = ObjectMemberImports.resolverOf(resolvePackage);
       const reader: ScopeReader = {
-        barrels: (await executor.getConfig()).barrelImports,
-        analyzer: new BarrelAnalyzer({ resolvePackage, packageRoot: workspace.workspaceRoot }),
-        objects: new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(resolvePackage) }),
+        barrels,
+        analyzer,
+        objects: new ObjectMemberImports({ resolve, barrels: { names: barrels, analyzer } }),
       };
       readers.set(app, reader);
       return reader;

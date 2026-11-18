@@ -112,9 +112,39 @@ describe("ObjectModule: a module an importer may skip for the members it names",
   });
 
   test("fails a call or construction evaluated at load (call)", () => {
-    const head = 'import { memo } from "react";\nimport { A } from "./A";';
-    for (const value of ["memo(A)", "new Map()", "tag`x`", "{ Text: memo(A) }", "Object.assign({}, { A: memo(A) })"])
+    const head = 'import { wrap } from "./wrap";\nimport { A } from "./A";';
+    for (const value of ["wrap(A)", "new Map()", "tag`x`", "{ Text: wrap(A) }", "Object.assign({}, { A: wrap(A) })"])
       expect(read([head, `export const X = ${value};`]).failed).toEqual({ clause: "call", line: 3 });
+  });
+
+  test("passes a call of React's memo, forwardRef, lazy or createContext, whose arguments are values like any other", () => {
+    const failedOn = (head: string, value: string, ...rest: string[]) =>
+      read([head, 'import { A } from "./A";', `const Wrapped = ${value};`, "export const X = { A, Wrapped };", ...rest])
+        .failed;
+
+    for (const name of ["memo", "forwardRef", "lazy", "createContext"])
+      expect(failedOn(`import { ${name} } from "react";`, `${name}(A)`)).toBeNull();
+    expect(failedOn('import { memo as wrap } from "react";', "wrap(A)")).toBeNull();
+    expect(failedOn('import React from "react";', "React.memo(A)")).toBeNull();
+    expect(failedOn('import * as React from "react";', "React.forwardRef<HTMLDivElement>(() => null)")).toBeNull();
+    expect(
+      failedOn('import React, { memo } from "react";', "memo(React.lazy(() => import('./A')), ...[A])"),
+    ).toBeNull();
+
+    const call = { clause: "call" as const, line: 3 };
+    expect(failedOn('import { memo } from "./memo";', "memo(A)")).toEqual(call);
+    expect(failedOn('import { memo } from "preact/compat";', "memo(A)")).toEqual(call);
+    expect(failedOn('import * as React from "./react";', "React.memo(A)")).toEqual(call);
+    expect(failedOn("const memo = (value: unknown) => value;", "memo(A)")).toEqual(call);
+    expect(failedOn('import { useMemo } from "react";', "useMemo(A)")).toEqual(call);
+    expect(failedOn('import React from "react";', "React.createElement(A)")).toEqual(call);
+    expect(failedOn('import { memo } from "react";', "new memo(A)")).toEqual(call);
+    expect(failedOn('import { memo, version } from "react";', "memo(version.trim())")).toEqual(call);
+    expect(failedOn('import { memo } from "react";', "memo((globalThis.seen = A))")?.clause).toBe("effect-value");
+    expect(failedOn('import { memo } from "react";', "memo(A)", 'Wrapped.displayName = "Wrapped";')).toEqual({
+      clause: "effect-statement",
+      line: 5,
+    });
   });
 
   test("fails a value that assigns or awaits while it is evaluated (effect-value)", () => {
@@ -180,6 +210,46 @@ describe("ObjectModule: a module an importer may skip for the members it names",
     expect(membersOf([...head, "const Plain = () => null;", "Object.assign(X, Plain);"], "X")).toEqual({
       A: { specifier: "./A", imported: "A" },
     });
+  });
+
+  test("records an imported object `Object.assign` copies in, and names no file for a member it may replace", () => {
+    const head = [
+      'import { Field } from "./Field";',
+      'import Base from "./Base";',
+      'import * as parts from "./parts";',
+      'import { A } from "./A";',
+      'import { B } from "./B";',
+    ];
+    const shapeOf = (...lines: string[]) => {
+      const shape = read([...head, ...lines]).objects.get("X");
+      return { members: Object.fromEntries(shape?.members ?? []), open: shape?.open, copied: shape?.copied };
+    };
+    const field = { specifier: "./Field", imported: "Field" };
+    const b = { specifier: "./B", imported: "B" };
+
+    expect(read([...head, "export const X = Object.assign(() => null, Field, { A });"]).failed).toBeNull();
+    expect(shapeOf("export const X = Object.assign(() => null, { A }, Field, { B });")).toEqual({
+      members: { A: null, B: b },
+      open: false,
+      copied: [field],
+    });
+    expect(shapeOf("export const X = Object.assign({}, Field, { A }, Base as object, { B });")).toEqual({
+      members: { A: null, B: b },
+      open: false,
+      copied: [field, { specifier: "./Base", imported: "default" }],
+    });
+    expect(shapeOf("export const X = { A };", "Object.assign(X, Field);", "X.B = B;")).toEqual({
+      members: { A: null, B: b },
+      open: false,
+      copied: [field],
+    });
+    expect(shapeOf("export const X = Object.assign({ A }, parts, { B });")).toEqual({
+      members: { A: null, B: b },
+      open: true,
+      copied: [],
+    });
+    expect(shapeOf("export const X = Object.assign({ A }, Field.Sub, { B });").open).toBe(true);
+    expect(shapeOf("export const X = Object.assign({}, Field, { ...parts, B });").open).toBe(true);
   });
 
   test("points a member written one level down at its file, and no deeper", () => {

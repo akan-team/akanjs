@@ -2248,22 +2248,25 @@ export default config;`}
                     <span>
                       <strong>A page loads the dictionary texts it can show.</strong> The build reads the keys each
                       route's client modules name (a written key, a template with a written module name, a key picked
-                      from a table or a typed union the file holds) and the models, enums and scalars their lists, views
-                      and forms label, then packs each language's dictionary into files so that a route loads at most
-                      four of them, besides the API description file. A route holding a key the build cannot follow,
-                      such as one read from data, or showing a <code>Signal</code> or <code>Constant</code> component,
-                      loads the whole dictionary; for a key, <code>akan build</code> warns with its file, line and
-                      reason. A key of a module the route left out still shows: its file loads and the page renders
-                      again, and development reports it once per module. A CSR build keeps the whole dictionary inline.
+                      from a table or a typed union the file holds, or from an <code>as const</code> table of written
+                      keys a constant class holds as a <code>static</code>) and the models, enums and scalars their
+                      lists, views and forms label, then packs each language's dictionary into files so that a route
+                      loads at most four of them, besides the API description file. A route holding a key the build
+                      cannot follow, such as one read from data, or showing a <code>Signal</code> or{" "}
+                      <code>Constant</code> component, loads the whole dictionary; for a key, <code>akan build</code>{" "}
+                      warns with its file, line and reason. A key of a module the route left out still shows: its file
+                      loads and the page renders again, and development reports it once per module. A CSR build keeps
+                      the whole dictionary inline.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>페이지는 보여 줄 수 있는 사전 문구만 불러옵니다.</strong> 빌드는 라우트의 클라이언트
-                      모듈이 적은 key(직접 쓴 key, 모듈 이름을 직접 쓴 템플릿, 파일이 가진 표나 타입 union에서 고른
-                      key)와 그 목록·뷰·폼이 라벨을 붙이는 모델·enum·scalar를 읽고, 언어별 사전을 라우트마다 API 설명
-                      파일 말고는 파일을 많아야 네 개 불러오도록 나눕니다. 데이터에서 읽은 key처럼 빌드가 따라갈 수 없는
-                      key를 가지거나 <code>Signal</code>·<code>Constant</code> 컴포넌트를 보여 주는 라우트는 사전 전체를
+                      모듈이 적은 key(직접 쓴 key, 모듈 이름을 직접 쓴 템플릿, 파일이 가진 표나 타입 union에서 고른 key,
+                      constant 클래스가 <code>static</code>으로 가진 <code>as const</code> key 표에서 고른 key)와 그
+                      목록·뷰·폼이 라벨을 붙이는 모델·enum·scalar를 읽고, 언어별 사전을 라우트마다 API 설명 파일 말고는
+                      파일을 많아야 네 개 불러오도록 나눕니다. 데이터에서 읽은 key처럼 빌드가 따라갈 수 없는 key를
+                      가지거나 <code>Signal</code>·<code>Constant</code> 컴포넌트를 보여 주는 라우트는 사전 전체를
                       불러오며, key의 경우 <code>akan build</code>가 파일, 줄 번호, 이유를 경고로 알려 줍니다. 라우트가
                       빠뜨린 모듈의 key도 보입니다. 그 파일을 불러온 뒤 페이지를 다시 그리고, 개발 중에는 모듈마다 한 번
                       알립니다. CSR 빌드는 사전 전체를 번들에 그대로 담습니다.
@@ -2278,10 +2281,14 @@ export default config;`}
                       <strong>A page loads only the parts of an object it names.</strong> <code>Memo.Zone.View</code>,{" "}
                       <code>&lt;Field.Text /&gt;</code> or <code>const {"{ Util }"} = Memo</code> loads that part's file
                       and not the object's other parts, when the object's file only gathers imports, as a model's
-                      generated <code>index.ts</code> does. A file that calls a function, runs a statement, re-exports
-                      or changes an import while it loads keeps the whole object, as does an object passed on, spread,
-                      written to or rendered itself, and a member called through it (<code>Obj.run()</code>) that may
-                      read <code>this</code>. <code>akan quality runtime</code> counts what stays whole by reason, and{" "}
+                      generated <code>index.ts</code> does. An object that copies another in (
+                      <code>Object.assign(Section, Field, {"{ Rich }"})</code>) loads the copied object's parts the same
+                      way, each from its own file. A file that calls a function other than React's <code>memo</code>,{" "}
+                      <code>forwardRef</code>, <code>lazy</code> or <code>createContext</code>, runs a statement,
+                      re-exports or changes an import while it loads keeps the whole object, as does a part declared in
+                      the object's own file, an object passed on, spread, written to or rendered itself, and a member
+                      called through it (<code>Obj.run()</code>) that may read <code>this</code>.{" "}
+                      <code>akan quality runtime</code> counts what stays whole by reason, and{" "}
                       <code>--format json</code> lists each import with its file, line and reason.
                     </span>
                   ),
@@ -2290,9 +2297,13 @@ export default config;`}
                       <strong>페이지는 객체에서 이름을 적은 부분만 불러옵니다.</strong> <code>Memo.Zone.View</code>,{" "}
                       <code>&lt;Field.Text /&gt;</code>, <code>const {"{ Util }"} = Memo</code>는 객체 파일이 모델의
                       생성된 <code>index.ts</code>처럼 import를 모으기만 할 때, 그 부분의 파일만 불러오고 객체의 다른
-                      부분은 불러오지 않습니다. 로드되면서 함수를 호출하거나 문장을 실행하거나 다른 모듈을 다시
-                      내보내거나 import를 바꾸는 파일은 객체 전체를 불러오며, 다른 곳에 넘기거나 펼치거나 값을 쓰거나 그
-                      자체를 렌더링한 객체, 객체를 통해 호출하는 멤버가 <code>this</code>를 읽을 수 있을 때(
+                      부분은 불러오지 않습니다. 다른 객체를 복사해 넣은 객체(
+                      <code>Object.assign(Section, Field, {"{ Rich }"})</code>)도 복사한 객체의 부분을 같은 방식으로 각
+                      부분의 파일에서 불러옵니다. 로드되면서 React의 <code>memo</code>, <code>forwardRef</code>,{" "}
+                      <code>lazy</code>, <code>createContext</code>가 아닌 함수를 호출하거나 문장을 실행하거나 다른
+                      모듈을 다시 내보내거나 import를 바꾸는 파일은 객체 전체를 불러오며, 객체 파일 안에서 선언한 부분,
+                      다른 곳에 넘기거나 펼치거나 값을 쓰거나 그 자체를 렌더링한 객체, 객체를 통해 호출하는 멤버가{" "}
+                      <code>this</code>를 읽을 수 있을 때(
                       <code>Obj.run()</code>)도 마찬가지입니다. <code>akan quality runtime</code>은 전체로 남은 import를
                       이유별로 세고, <code>--format json</code>은 각 import를 파일, 줄 번호, 이유와 함께 보여 줍니다.
                     </span>
