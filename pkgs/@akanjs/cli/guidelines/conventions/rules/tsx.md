@@ -35,6 +35,8 @@ state. Reach for the path, not the nearest file:
 - Avoid hooks. `useState` only for modal-open, tab, draft-input, and drag state, never server data; `useEffect` only
   for a genuine effect (subscribe-with-cleanup, one-shot init); `Tab` over a mode switch; zero `useState` in a
   `.Template.tsx`.
+- Never copy a prop into an input's `useState` in an effect: it erases keys typed before hydration or while a search
+  loads.
 - Forms are store-driven: `value={xForm.field}`, `onChange={st.do.setFieldOnX}` **by reference** — that emits the
   `data-akan-action` / `data-akan-state` the in-page agent, E2E selectors and browser agents read. Always `Field.*`,
   never a bare `<input>` for a model field; nested rows use `st.do.writeOnX("payments.3.name", v)` and the generated
