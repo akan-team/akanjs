@@ -596,7 +596,9 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
   usePlayOnForward(spring, routeState, { duration: 220, easing: linearEasing });
 
   const pageBind = useDrag(
-    ({ first, last, movement: [, my], initial: [, iy], cancel, event, target }) => {
+    ({ first, last, tap, movement: [, my], initial: [, iy], cancel, event, target }) => {
+      //? `filterTaps` still calls this on a tap's touchend, and a preventDefault there swallows the tap's click.
+      if (tap) return;
       if (iy > initThreshold || (first && scrollerTakesDrag(target, pageContentRef.current, "y", my))) {
         cancel();
         return;
