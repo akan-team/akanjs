@@ -1,106 +1,65 @@
 <!-- akan:generated -->
 
-# Page Rule — The Route Chain, Guards, Heads, Lib Pages
+# Page Rule — Guards In Depth, Heads, CSR Root Layouts, Lib Pages
 
-The full contract behind the `page` rule and the `akan-page` skill, which carry what a route file may be, the chain,
-typed params and search, loading, 404 and error views, Link and the router. Before changing route behavior, check
-`pkgs/akanjs/server/routeTreeBuilder.ts` and nearby routes for the expected pattern.
+What neither the `page` rule nor the `akan-page` skill says; nothing either of them says is repeated here.
 
-## The Route Chain
+## Guards On A Client Navigation
 
-- **On a web page's first render `st.use.searchParams()` is still the server's empty snapshot**, synced right after
-  hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
-- **A `Link` renders its page ahead of the click** — on hover, on keyboard focus, or as it shows with
-  `prefetch="viewport"` (production only). A page whose render has an effect one visit should cause once — a view
-  counted through `duringRender`, an expensive report — refuses with `.config({ prefetch: false })`; on a `_layout.tsx`
-  it covers every page below, and a page there opts back in with `prefetch: true`. Its guards still run for the
-  prefetch, so a redirect answers as one, and the click renders the page as usual.
+- **A page's layers wait for its guards.** The verdict is kept by what the guards read (a query only the page reads
+  keeps it) and lasts while a layer of that location is on screen. Only the page in front asks — never a parked one,
+  nor the one under it during a swipe back; back in front, a cached page included, it asks again in the background
+  while what it drew stays, and a refusal moves the router and blanks it. A guard that moves the router ends the chain
+  and the page draws nothing; a refused or failed check runs again when its layer is retried.
+- Root layouts are drawn once for every page and are not gated themselves; their guards still run in each page's
+  chain, and a legacy page under them waits too. `guard` is a stage only: a legacy module that exports one, a root
+  layout's included, fails to load and fails `akan build`.
+- **Not found.** On the server a refusal's not-found keeps only the layouts above the refusing guard, and a path no
+  page matches asks the guards of the layouts its not-found would sit under first. In a CSR bundle such a path draws
+  the deepest `.notFound()` of the layouts it sits under, or a default page, once those layouts' guards let it in, and
+  `router.notFound()` moves to `/404`, drawn the same way.
+- The page tools in MCP `tools/list` show only the screens whose guards admit the caller; a listing knows no
+  arguments, so a guard that reads one admits there and is checked again on the call.
 
-## Route Guards — `.guard()`
+## Navigation Guards
 
-- **`.guard(fn)` decides who may open a route before any of it renders.** Every chain takes it, once: a second
-  `.guard()` throws when the module loads. `fn` receives the route's typed arguments and `lang` (a layout's gets no
-  `children`) and may be `async`. It refuses by moving the router — `router.redirect(href)`, `router.notFound()` — or
-  with `getSelf({ unauthorize })`; `signedIn()` from `@libs/shared/webkit` is that last one, called inside an arrow
-  (`.guard(() => signedIn())`), because `.guard(signedIn)` would take the route's arguments as its option.
-- **A guard's second argument `{ path }` is where the visitor was going** — the in-app path with its search, as
-  `router.push` takes it (`undefined` while MCP lists the screen): `.guard((_, { path }) => signedIn({ path }))`
-  sends a refused visitor to `/signin?redirect=<path>`. Build a redirect target from it, never an admission rule —
-  CSR asks a guard again only when the route or an argument it declared moves. Hand it only to `router.push` or
-  `router.redirect`: it can be a raw `//host`, which `window.location` would follow off the site.
-- **On the server every guard of the chain runs before any layout body starts**, root layout first and before the
-  route's arguments are checked, so a redirect is a real 307 even after an awaited query, and a not-found is a 404 —
-  where a `getSelf({ unauthorize })` inside a layout body under a `.loading()` redirects late after I/O, inside the
-  stream. A query in a guard that the server refuses with 403 or 404 (an owner check) answers not-found, so the page
-  never confirms the record exists. A refusal's not-found keeps only the layouts above the refusing guard, and a path
-  no page matches asks the guards of the layouts its not-found would sit under first.
-- **On a client navigation a page's layers wait for its guards.** The verdict is kept by what the guards read (a
-  query only the page reads keeps it) and lasts while a layer of that location is on screen. Only the page in front
-  asks — never a parked one, nor the one under it during a swipe back; back in front, a cached page included, it asks
-  again in the background while what it drew stays, and a refusal moves the router and blanks it. A guard that moves
-  the router ends the chain and the page draws nothing; a refused or failed check runs again when its layer is
-  retried. Root layouts are drawn once for every page and are not gated
-  themselves; their guards still run in each page's chain, and a legacy page under them waits too. In a CSR bundle a
-  path no page matches draws the deepest `.notFound()` of the layouts it sits under, or a default page, once those
-  layouts' guards let it in, and `router.notFound()` moves to `/404`, drawn the same way. `guard` is a stage
-  only: a legacy module that exports one, a root layout's included, fails to load and fails `akan build`.
-- **MCP runs them too**: a prompt or an app tool runs its route's guards before anything else, and `prompts/list` and
-  the page tools in `tools/list` show only the screens whose guards admit the caller (a listing knows no arguments,
-  so a guard that reads one admits there and is checked again on the call).
-- **A route guard is not authorization for data.** It keeps a person off a screen and redirects early; every query
-  the screen makes is still judged by that endpoint's own `guards`. Write both: the signal guard is the gate, the
-  route guard is the courtesy that answers before the screen draws.
-- **Keeping a person on a page is `router.addNavigationGuard(guard)`, not `.guard()`.** `guard({ kind, from, to })`
-  is asked before every in-app move — `push`, `replace`, `back`, a `Link`, the browser's back and forward (`pop`), a
-  native back or swipe, the agent's `navigate` and `goBack` — with routes free of locale and basePath and `to: null`
-  for a `back`. `false`, a throw or a rejection keeps the page, `router.navigation()` rejects with
-  `NavigationRefused`, and a refused browser back is undone before the page redraws. Guards answer one at a time; a
-  move started while one decides is refused. In a component, register it with `useNavigationGuard(() => !isDirty)`
-  (`akanjs/webkit`), held only while its page is current: a page kept under the next for a swipe back stays mounted,
-  and a guard it kept would hold that page too. Redirects, `notFound()`, `setLang` and moves off the origin are not
-  asked; a closing tab is `beforeunload`'s.
+- `router.addNavigationGuard(guard)` is what `useNavigationGuard` registers. `guard({ kind, from, to })` is asked
+  before every in-app move — `push`, `replace`, `back`, a `Link`, the browser's back and forward (`pop`), a native
+  back or swipe, the agent's `navigate` and `goBack` — with routes free of locale and basePath and `to: null` for a
+  `back`. `false`, a throw or a rejection keeps the page, `router.navigation()` rejects with `NavigationRefused`, and
+  a refused browser back is undone before the page redraws. Guards answer one at a time; a move started while one
+  decides is refused.
+- `useNavigationGuard` holds its guard only while its page is current: a page kept under the next for a swipe back
+  stays mounted, and a guard it kept would hold that page too. Redirects, `notFound()`, `setLang` and moves off the
+  origin are not asked; a closing tab is `beforeunload`'s.
 
-## MCP Apps — `.app()`
+## MCP Apps
 
-- **`.app(name, description, load)` publishes one component of a page as an MCP App**: a read-only tool of that name,
-  whose arguments are the page's `.param()` and `.search()` stages, and a single-file view of its own. `load` receives
-  the page's typed arguments and `lang` and returns the element (usually a `Zone` fed by unawaited `fetch.*` fields);
-  on the web that element reaches `.render()` as the argument named `name`, so the page places it.
-- A page may declare several. A name matches `^[A-Za-z0-9_-]{1,64}$`, is a string literal (the build reads it off the
-  source), shares one namespace with every page's prompts and apps, and needs an English description. A name
+- An `.app()` name is a string literal matching `^[A-Za-z0-9_-]{1,64}$` (the build reads it off the source). A name
   `.render()` already receives (`lang`, a `.param()` / `.search()` name, another app) fails to compile and throws when
-  the module loads, as does an app named like the page's `.prompt()`.
-- **`load` may only query** (`base.error.mutationInApp` otherwise, `duringRender` or not): keep the buttons and forms
-  that write in `.render()` around the element, and gating in `.guard()`. The view runs `load` with no layout body
-  and no `.render()`: it gets the root layout's theme, fonts and framework providers through the generated
-  `McpAppRoot` and the `_overrides.tsx` over the page (one the web draws outside the root layout wraps `McpAppRoot`,
-  its toasts included), and nothing a layout body provides. The chain is the `export default` expression itself: one
-  bound to a name fails the build. Full contract: `mcpRule`.
+  the module loads, as does an app named like the page's `.prompt()`. The rest of `.app()` is `mcpRule`.
 
 ## Heads
 
 - A `.head()` that throws renders no head (warned about), so a layout's sign-in redirect still answers. Analytics is
   the app's own script, not a stage.
-- **Heads merge root first**: a deeper `.head()` replaces the `<title>`, a `<meta>` with the same `name` /
-  `property`, and a canonical / manifest / icon link, and keeps the rest — so a page states only what it changes.
-- A level that writes `og:image` or `twitter:image` drops the `og:image:*` / `twitter:image:*` tags it inherits, and a
-  `<meta name="theme-color">` a `.head()` writes replaces the root `.viewport({ themeColor })`'s. Only `.head()`
-  merges: a `<title>` or `<meta>` written inside a component renders beside the merged head, so a second `<title>`
-  can reach the document.
-- **An inline `<script>` a `.head()` writes has to be named in the page's script policy.** Every HTML response sends
-  `Content-Security-Policy-Report-Only: script-src … 'strict-dynamic'`, which 3.5.0 enforces: an inline script runs by
-  its hash or by the response's nonce, and a `<script src>` in JSX by the nonce (its host in a policy does nothing
-  under `'strict-dynamic'`). For a constant snippet call `scriptHashes("sha256-…")` in the `.head()` — the page stays
-  cacheable, and the hash is the one the browser prints in its console report. For text that differs per request, or
-  a script loaded by URL, pass `nonce={scriptNonce()}`; reading it makes the page dynamic, so no result cache keeps
-  it. Both come from `akanjs/client`, do nothing in the browser, and are too late outside a `.head()`: the header
-  leaves with the first byte. An `onclick="…"` attribute and a `javascript:` URL have no such form.
-  `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header, `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names
-  where the browser posts reports, and `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response
-  (`'wasm-unsafe-eval'` for a page that compiles WebAssembly).
-  A response names at most 32 hashes (its header stays under 2 KB, inside the 4 KB a proxy reads headers into):
-  `scriptHashes()` past that are left out with one warning per route, and a page whose cached replay would need more
-  (one per streamed boundary) is rendered each time, answering `X-Akan-Cache-Reason: script-hashes`.
+- The tags a deeper `.head()` replaces are the `<title>`, a `<meta>` with the same `name` / `property`, and a
+  canonical / manifest / icon link; it keeps the rest, so a page states only what it changes. A level that writes
+  `og:image` or `twitter:image` drops the `og:image:*` / `twitter:image:*` tags it inherits, and a
+  `<meta name="theme-color">` replaces the root `.viewport({ themeColor })`'s. Only `.head()` merges: a `<title>` or
+  `<meta>` written inside a component renders beside the merged head, so a second `<title>` can reach the document.
+- **The script policy.** Every HTML response sends `Content-Security-Policy-Report-Only: script-src …
+  'strict-dynamic'`. A `<script src>` in JSX needs `nonce={scriptNonce()}` too (its host in a policy does nothing
+  under `'strict-dynamic'`); the hash `scriptHashes()` takes is the one the browser prints in its console report; and
+  reading `scriptNonce()` makes the page dynamic, so no result cache keeps it. Both do nothing in the browser and are
+  too late outside a `.head()`: the header leaves with the first byte. An `onclick="…"` attribute and a `javascript:`
+  URL have no such form. `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header,
+  `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names where the browser posts reports, and
+  `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response (`'wasm-unsafe-eval'` for a page that
+  compiles WebAssembly). A response names at most 32 hashes (its header stays under 2 KB, inside the 4 KB a proxy
+  reads headers into): `scriptHashes()` past that are left out with one warning per route, and a page whose cached
+  replay would need more (one per streamed boundary) is rendered each time, answering
+  `X-Akan-Cache-Reason: script-hashes`.
 - **`load` and `DOMContentLoaded` can fire before client code runs.** The client entry is a module the document's
   bootstrap script adds, not a tag in the markup, so neither event waits for it. A listener for either is added only
   after checking `document.readyState` (`"complete"` for `load`, not `"loading"` for `DOMContentLoaded`) and calling
@@ -109,27 +68,22 @@ typed params and search, loading, 404 and error views, Link and the router. Befo
 
 ## A Root Layout Inside A CSR Bundle
 
-- **A CSR bundle (a native app, `?csr=true`) never shows a root layout's own markup.** Pages render into the frame,
-  and what the root layout draws around `{children}` stays in a hidden container, so its wrappers cannot stack a
-  second screen beside the frame. Its components still mount and their effects run (`<Auth.User />` works).
-- Anything a person must see from a root layout — an overlay, a gate, a banner — renders through
-  `createPortal(…, document.body)`, as `<Agent.Chat />` and the dialogs already do. A non-root `_layout.tsx` has no
-  such limit. A gate belongs in the root layout's `.guard()`, which runs in every page's chain.
+- In a native app or `?csr=true`, pages render into the frame, and what the root layout draws around `{children}`
+  stays in a hidden container, so its wrappers cannot stack a second screen beside the frame. Its components still
+  mount and their effects run (`<Auth.User />` works); `<Agent.Chat />` and the dialogs already portal. A non-root
+  `_layout.tsx` has no such limit. A gate belongs in the root layout's `.guard()`, which runs in every page's chain.
 
-## Lib Pages — `syncPageLibs`
+## Lib Pages
 
-- `libs/<lib>/page` follows the same rules and ships routes to apps that opt in with `syncPageLibs` in
-  `akan.config.ts`.
-- `akan sync` links those routes into `apps/<app>/page/(libs)/(<lib>)` — once per basePath when the app declares
-  subRoutes. The folder is generated and gitignored like `public/libs`; edit the lib source, never the link.
+- `libs/<lib>/page` follows the same rules as an app's. An app that declares subRoutes gets the link once per
+  basePath, and the folder is gitignored like `public/libs`.
 - Both path segments are route groups, so a lib route mounts at its own path (`libs/<lib>/page/login/_index.tsx`
   serves `/login`). Two synced routes that resolve to the same pattern are a sync-time error.
 
-## Build Scope And The Legacy Shape
+## `devOnly` And The Legacy Shape
 
-- `.config({ devOnly: true })` keeps a route out of `akan build` while it keeps serving under `akan start` and keeps
-  being typechecked. On a `_layout.tsx` it excludes every route under that directory too. Write it as a literal
-  `true`/`false` — the build reads it off the source without evaluating the module.
+- A `devOnly` route keeps serving under `akan start` and keeps being typechecked; on a `_layout.tsx` it excludes every
+  route under that directory too. It is a literal because the build reads it off the source without evaluating it.
 - The legacy shape — `export default async function Page` beside `pageConfig` / `head` / `Loading` exports — still
   loads and logs one deprecation warning per file at boot. Migrate with the `workspaceRecipes` recipe "Migrating
-  `page/` to the route chain"; new files are never written in it.
+  `page/` to the route chain".
