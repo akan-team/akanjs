@@ -48,6 +48,49 @@ export class DictionaryPacking {
     return { parts, partsByRoute };
   }
 
+  //? Several files compress worse than one, so a route showing nearly every text is cheaper on the whole dictionary.
+  static packUnderWhole(
+    routes: ReadonlyMap<string, readonly string[]>,
+    bytesOf: (group: string) => number,
+    groups: readonly string[],
+    servedBytesOf: (groups: readonly string[]) => number,
+    options: { bound?: number; requestBytes?: number } = {},
+  ): DictionaryPack & { wholeRoutes: string[] } {
+    const whole = servedBytesOf([...new Set(groups)].sort());
+    const served = new Map<string, number>();
+    const servedOf = (part: readonly string[]) => {
+      const key = part.join("\n");
+      const known = served.get(key) ?? servedBytesOf(part);
+      served.set(key, known);
+      return known;
+    };
+    const shownBytesOf = (routeId: string) =>
+      [...new Set(routes.get(routeId))].reduce((sum, group) => sum + bytesOf(group), 0);
+    const partial = new Map(routes);
+    let best: { pack: DictionaryPack; over: string[]; cost: number } | null = null;
+    for (;;) {
+      const pack = DictionaryPacking.pack(partial, bytesOf, groups, options);
+      const costs = Object.entries(pack.partsByRoute).map(([routeId, files]) => ({
+        routeId,
+        cost: files.reduce((sum, idx) => sum + servedOf(pack.parts[idx] ?? []), 0),
+      }));
+      const over = costs.filter(({ cost }) => cost >= whole).map(({ routeId }) => routeId);
+      const cost =
+        costs.reduce((sum, route) => sum + Math.min(route.cost, whole), 0) + (routes.size - partial.size) * whole;
+      if (!best || cost < best.cost) best = { pack, over, cost };
+      if (!over.length) break;
+      //? Half at a time, the routes showing the most first: without them the rest may come out smaller after all.
+      over.sort((a, b) => shownBytesOf(b) - shownBytesOf(a) || (a < b ? -1 : 1));
+      for (const routeId of over.slice(0, Math.ceil(over.length / 2))) partial.delete(routeId);
+    }
+    const dropped = new Set(best.over);
+    const partsByRoute = Object.fromEntries(
+      Object.entries(best.pack.partsByRoute).filter(([routeId]) => !dropped.has(routeId)),
+    );
+    const wholeRoutes = [...routes.keys()].sort().filter((routeId) => !Object.hasOwn(partsByRoute, routeId));
+    return { parts: best.pack.parts, partsByRoute, wholeRoutes };
+  }
+
   static #setsOf(parts: string[][], needs: string[][]) {
     const partOf = new Map(parts.flatMap((part, idx) => part.map((group) => [group, idx] as const)));
     return needs.map((need) => new Set(need.map((group) => partOf.get(group) as number)));

@@ -263,12 +263,20 @@ describe("DictionaryAssetBuilder", () => {
     );
 
   describe("for the routes it is handed", () => {
+    //? Texts brotli cannot fold away: with a few words per group a route's own files outweigh the whole file.
+    const long = (group: string) => ({
+      t: Array.from({ length: 80 }, (_, idx) => Bun.hash(`${group}${idx}`).toString(36)).join(" "),
+    });
     const routedDictionary = {
       en: {
-        base: { t: "Base", ok: { t: "OK" } },
-        memo: { t: "Memo", signal: { getMemo: { t: "Get Memo", desc: { t: "Reads a memo" } } } },
-        user: { t: "User" },
-        util: { t: "Util" },
+        base: { t: "Base", ok: { t: "OK" }, long: long("base") },
+        memo: {
+          t: "Memo",
+          long: long("memo"),
+          signal: { getMemo: { t: "Get Memo", desc: { t: "Reads a memo" } } },
+        },
+        user: { t: "User", long: long("user") },
+        util: { t: "Util", long: long("util") },
       },
       ko: { base: { t: "기본" }, memo: { t: "메모" } },
     };
