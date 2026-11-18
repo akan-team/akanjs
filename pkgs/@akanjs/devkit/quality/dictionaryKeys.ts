@@ -20,6 +20,8 @@ export interface DictionaryKeyRead {
   anyModule: string | null;
 }
 
+export type DictionaryStaticKeys = (className: string, member: string) => readonly string[] | null;
+
 const leadName = /^([A-Za-z_$][\w$]*)(?:\.|$)/;
 const className = /^[A-Z][A-Za-z0-9]*$/;
 const apiKey = /\.signal\.[^.\s]*\.(?:desc|arg)\b/;
@@ -35,6 +37,8 @@ const memberCalls = new Set(["field", "enum", "trans"]);
 const translatorChain = new Set(["_", "rich"]);
 const groupHead = /^[A-Za-z_$][\w$]*\./;
 const maxDepth = 24;
+const constantModule = /\.constant(?:\.ts)?$/;
+const constantsName = "cnst";
 
 const strip = (node: ts.Expression): ts.Expression =>
   ts.isParenthesizedExpression(node) ||
@@ -46,12 +50,13 @@ const strip = (node: ts.Expression): ts.Expression =>
     : node;
 
 //* Which dictionary groups a client file can show: the keys it hands `l`, `l._`, `l.rich` or `translate` must come from
-//* strings written in the file (a literal, a template with a literal group, a table or a typed union it holds).
+//* strings the file writes (a literal, a template with a literal group, a table, a typed union) or a constant's static.
 export class DictionaryKeys {
   readonly #sourceFile: ts.SourceFile;
   readonly #scope = new RuntimeLexicalScope();
   readonly #translators = new Set(["l"]);
   readonly #bindings: TranslatorBindings;
+  readonly #staticKeys: DictionaryStaticKeys | undefined;
   readonly #names = new Set<string>();
   readonly #classNames = new Set<string>();
   readonly #propNames = new Set<string>();
@@ -59,15 +64,16 @@ export class DictionaryKeys {
   #api = false;
   #anyModule: string | null = null;
 
-  private constructor(sourceFile: ts.SourceFile) {
+  private constructor(sourceFile: ts.SourceFile, staticKeys: DictionaryStaticKeys | undefined) {
     this.#sourceFile = sourceFile;
+    this.#staticKeys = staticKeys;
     this.#bindings = new TranslatorBindings(sourceFile, this.#scope, this.#translators);
   }
 
-  static read(text: string, fileName: string): DictionaryKeyRead {
+  static read(text: string, fileName: string, staticKeys?: DictionaryStaticKeys): DictionaryKeyRead {
     const kind = fileName.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
     const sourceFile = ts.createSourceFile(fileName, text, ts.ScriptTarget.Latest, true, kind);
-    return new DictionaryKeys(sourceFile).#read();
+    return new DictionaryKeys(sourceFile, staticKeys).#read();
   }
 
   #read(): DictionaryKeyRead {
@@ -284,7 +290,7 @@ export class DictionaryKeys {
       });
     if (ts.isIdentifier(node)) return this.#bindingFollows(node, depth + 1, true, names);
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
-      return !names && this.#isTable(node.expression, depth + 1);
+      return !names && (this.#isConstantTable(node) || this.#isTable(node.expression, depth + 1));
     if (!ts.isCallExpression(node)) return false;
     const callee = strip(node.expression);
     if (!ts.isPropertyAccessExpression(callee)) return false;
@@ -295,6 +301,36 @@ export class DictionaryKeys {
     if (!subsetMethods.has(method)) return false;
     const own = this.#isTable(callee.expression, depth + 1, names);
     return own && (method !== "concat" || node.arguments.every((argument) => this.#isTable(argument, depth + 1)));
+  }
+
+  #isConstantTable(node: ts.PropertyAccessExpression | ts.ElementAccessExpression): boolean {
+    if (!this.#staticKeys || !ts.isPropertyAccessExpression(node) || !ts.isIdentifier(node.name)) return false;
+    const owner = this.#constantClass(strip(node.expression));
+    const keys = owner ? this.#staticKeys(owner, node.name.text) : null;
+    for (const key of keys ?? []) this.#addText(key, key);
+    return !!keys;
+  }
+
+  //? `cnst.Memo`, `cnst.shared.Memo` through a lib's constants, or `Memo` imported from a constant file.
+  #constantClass(node: ts.Expression): string | null {
+    if (ts.isIdentifier(node)) {
+      const imported = this.#scope.resolve(node)?.parent;
+      if (!imported || !ts.isImportSpecifier(imported)) return null;
+      const from = imported.parent.parent.parent.moduleSpecifier;
+      const constant = ts.isStringLiteral(from) && constantModule.test(from.text);
+      return constant ? (imported.propertyName ?? imported.name).text : null;
+    }
+    if (!ts.isPropertyAccessExpression(node) || !className.test(node.name.text)) return null;
+    let root = strip(node.expression);
+    while (ts.isPropertyAccessExpression(root) && !className.test(root.name.text)) root = strip(root.expression);
+    const imported = ts.isIdentifier(root) ? this.#scope.resolve(root)?.parent : undefined;
+    if (!imported) return null;
+    const source = ts.isNamespaceImport(imported)
+      ? imported.name
+      : ts.isImportSpecifier(imported)
+        ? (imported.propertyName ?? imported.name)
+        : null;
+    return source?.text === constantsName ? node.name.text : null;
   }
 
   #isMapped(call: ts.CallExpression, depth: number): boolean {

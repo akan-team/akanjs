@@ -214,7 +214,9 @@ export class DictionaryRoutes {
     }
     const known = this.#reads.get(file);
     if (known?.source === source) return known;
-    const next = { source, read: DictionaryKeys.read(source, fileName) };
+    const { constants } = this.#options;
+    const staticKeys = (className: string, member: string) => constants.staticKeysOf(className, member);
+    const next = { source, read: DictionaryKeys.read(source, fileName, staticKeys) };
     this.#reads.set(file, next);
     return next;
   }

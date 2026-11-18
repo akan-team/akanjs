@@ -2248,22 +2248,25 @@ export default config;`}
                     <span>
                       <strong>A page loads the dictionary texts it can show.</strong> The build reads the keys each
                       route's client modules name (a written key, a template with a written module name, a key picked
-                      from a table or a typed union the file holds) and the models, enums and scalars their lists, views
-                      and forms label, then packs each language's dictionary into files so that a route loads at most
-                      four of them, besides the API description file. A route holding a key the build cannot follow,
-                      such as one read from data, or showing a <code>Signal</code> or <code>Constant</code> component,
-                      loads the whole dictionary; for a key, <code>akan build</code> warns with its file, line and
-                      reason. A key of a module the route left out still shows: its file loads and the page renders
-                      again, and development reports it once per module. A CSR build keeps the whole dictionary inline.
+                      from a table or a typed union the file holds, or from an <code>as const</code> table of written
+                      keys a constant class holds as a <code>static</code>) and the models, enums and scalars their
+                      lists, views and forms label, then packs each language's dictionary into files so that a route
+                      loads at most four of them, besides the API description file. A route holding a key the build
+                      cannot follow, such as one read from data, or showing a <code>Signal</code> or{" "}
+                      <code>Constant</code> component, loads the whole dictionary; for a key, <code>akan build</code>{" "}
+                      warns with its file, line and reason. A key of a module the route left out still shows: its file
+                      loads and the page renders again, and development reports it once per module. A CSR build keeps
+                      the whole dictionary inline.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>페이지는 보여 줄 수 있는 사전 문구만 불러옵니다.</strong> 빌드는 라우트의 클라이언트
-                      모듈이 적은 key(직접 쓴 key, 모듈 이름을 직접 쓴 템플릿, 파일이 가진 표나 타입 union에서 고른
-                      key)와 그 목록·뷰·폼이 라벨을 붙이는 모델·enum·scalar를 읽고, 언어별 사전을 라우트마다 API 설명
-                      파일 말고는 파일을 많아야 네 개 불러오도록 나눕니다. 데이터에서 읽은 key처럼 빌드가 따라갈 수 없는
-                      key를 가지거나 <code>Signal</code>·<code>Constant</code> 컴포넌트를 보여 주는 라우트는 사전 전체를
+                      모듈이 적은 key(직접 쓴 key, 모듈 이름을 직접 쓴 템플릿, 파일이 가진 표나 타입 union에서 고른 key,
+                      constant 클래스가 <code>static</code>으로 가진 <code>as const</code> key 표에서 고른 key)와 그
+                      목록·뷰·폼이 라벨을 붙이는 모델·enum·scalar를 읽고, 언어별 사전을 라우트마다 API 설명 파일 말고는
+                      파일을 많아야 네 개 불러오도록 나눕니다. 데이터에서 읽은 key처럼 빌드가 따라갈 수 없는 key를
+                      가지거나 <code>Signal</code>·<code>Constant</code> 컴포넌트를 보여 주는 라우트는 사전 전체를
                       불러오며, key의 경우 <code>akan build</code>가 파일, 줄 번호, 이유를 경고로 알려 줍니다. 라우트가
                       빠뜨린 모듈의 key도 보입니다. 그 파일을 불러온 뒤 페이지를 다시 그리고, 개발 중에는 모듈마다 한 번
                       알립니다. CSR 빌드는 사전 전체를 번들에 그대로 담습니다.

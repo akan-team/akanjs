@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { DictionaryKeys } from "./dictionaryKeys";
+import { DictionaryKeys, type DictionaryStaticKeys } from "./dictionaryKeys";
 
-const read = (source: string, fileName = "apps/demo/lib/memo/Memo.Unit.tsx") => DictionaryKeys.read(source, fileName);
+const read = (source: string, fileName = "apps/demo/lib/memo/Memo.Unit.tsx", staticKeys?: DictionaryStaticKeys) =>
+  DictionaryKeys.read(source, fileName, staticKeys);
 
 describe("DictionaryKeys", () => {
   test("follows a literal key, a template whose group is written, and a key chosen from a table the file holds", () => {
@@ -298,6 +299,41 @@ describe("DictionaryKeys", () => {
     const computed = [`{ key: "project.stage.open" }, { key: keyOf("done") }`, `{ key: "project.stage.open", hint }`];
     for (const table of computed)
       expect(stages("stages.map((stage) => ({ ...stage, label: l(stage.key) }))", table).unread, table).toHaveLength(2);
+  });
+
+  test("follows a key picked from a static table of a constant class, which the build reads for it", () => {
+    const tables: Record<string, string[]> = { "RunnerBot.labelKeyOf": ["runnerBot.reviewer", "task.fixer"] };
+    const staticKeys: DictionaryStaticKeys = (name, member) => tables[`${name}.${member}`] ?? null;
+    const sourceOf = (imports: string, shown: string) =>
+      `${imports}\nexport const Bot = ({ role }: { role: string }) => { const { l } = usePage(); return <>{${shown}}</>; };`;
+    const bot = (imports: string, shown: string) => read(sourceOf(imports, shown), undefined, staticKeys);
+    const fromBarrel = `import * as cnst from "../cnst";`;
+    const followed: [string, string][] = [
+      [fromBarrel, "l(cnst.RunnerBot.labelKeyOf[role])"],
+      [`import { cnst } from "@apps/demo/client";`, "l(cnst.RunnerBot.labelKeyOf[role])"],
+      [`import { cnst } from "@apps/demo/client";`, "l(cnst.shared.RunnerBot.labelKeyOf.reviewer)"],
+      [`import { RunnerBot as Bots } from "./runnerBot.constant";`, "l(Bots.labelKeyOf[role])"],
+      [fromBarrel, "Object.values(cnst.RunnerBot.labelKeyOf).map((key) => l(key))"],
+    ];
+    for (const [imports, shown] of followed) {
+      const keys = bot(imports, shown);
+      expect(keys.unread, shown).toEqual([]);
+      expect(keys.names, shown).toEqual(expect.arrayContaining(["runnerBot", "task"]));
+    }
+    const unread: [string, string][] = [
+      [fromBarrel, "l(cnst.RunnerBot.other[role])"],
+      [fromBarrel, "l(cnst.Other.labelKeyOf[role])"],
+      [fromBarrel, "l(cnst.RunnerBot[role])"],
+      [fromBarrel, "Object.keys(cnst.RunnerBot.labelKeyOf).map((name) => l(name))"],
+      [`import * as constants from "../cnst";`, "l(constants.RunnerBot.labelKeyOf[role])"],
+      [`const cnst = load();`, "l(cnst.RunnerBot.labelKeyOf[role])"],
+      [`import { RunnerBot } from "./bots";`, "l(RunnerBot.labelKeyOf[role])"],
+      [`const RunnerBot = load();`, "l(RunnerBot.labelKeyOf[role])"],
+    ];
+    for (const [imports, shown] of unread) expect(bot(imports, shown).unread, `${imports} ${shown}`).toHaveLength(1);
+    expect(read(sourceOf(fromBarrel, "l(cnst.RunnerBot.labelKeyOf[role])")).unread).toEqual([
+      { line: 2, why: "cnst.RunnerBot.labelKeyOf[role] is read from data at run time" },
+    ]);
   });
 
   test("marks a framework surface that shows the texts of any module", () => {
