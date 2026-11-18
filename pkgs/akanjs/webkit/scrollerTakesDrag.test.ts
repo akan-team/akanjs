@@ -36,6 +36,16 @@ describe("scrollerTakesDrag", () => {
     expect(scrollerTakesDrag(row, frame, "x", 40)).toBe(false);
   });
 
+  test("an element marked to take sideways drags, such as a swipeable card, takes a swipe either way", () => {
+    const frame = boxOf({});
+    const card = boxOf({});
+    card.setAttribute("data-akan-drag", "x");
+    const row = nest(frame, card, boxOf({}));
+    expect(scrollerTakesDrag(row, frame, "x", 40)).toBe(true);
+    expect(scrollerTakesDrag(row, frame, "x", -40)).toBe(true);
+    expect(scrollerTakesDrag(row, frame, "y", 40)).toBe(false);
+  });
+
   test("a sideways scroller takes a swipe only while it can still scroll that way", () => {
     const frame = boxOf({});
     const start = boxOf({ style: { overflowX: "auto" }, width: [600, 300], left: 0 });

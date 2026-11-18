@@ -14,7 +14,7 @@ import { clamp } from "akanjs/common";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { CsrSlide, type CsrSlideFrame } from "./csrSlide";
 import { isDragLift } from "./isDragLift";
-import { scrollerTakesDrag } from "./scrollerTakesDrag";
+import { SWIPE_BACK_EDGE_PX, scrollerTakesDrag } from "./scrollerTakesDrag";
 import { STACK_TRANSITION_DURATION_MS } from "./useFrameRuntime";
 
 const linearEasing = (t: number) => t;
@@ -489,7 +489,8 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         const absY = Math.abs(my);
         const isVertical = absY >= GESTURE_INTENT_THRESHOLD && absY > absX * GESTURE_AXIS_LOCK_RATIO;
         const isHorizontal = absX >= GESTURE_INTENT_THRESHOLD && absX > absY * GESTURE_AXIS_LOCK_RATIO;
-        if (isVertical || (isHorizontal && scrollerTakesDrag(target, pageContentRef.current, "x", mx))) {
+        const yields = ix > SWIPE_BACK_EDGE_PX && scrollerTakesDrag(target, pageContentRef.current, "x", mx);
+        if (isVertical || (isHorizontal && yields)) {
           gestureIntent.current = "scroll";
           void transUnit.start(transUnitRange[1], { immediate: true });
           cancel();
