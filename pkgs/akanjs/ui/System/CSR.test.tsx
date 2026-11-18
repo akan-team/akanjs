@@ -93,6 +93,8 @@ describe("CSR.Wrapper", () => {
 
     expect(layer?.className).toContain("pointer-events-none");
     expect(layer?.className).toContain("bg-transparent");
+    expect(layer?.className).toContain("overflow-visible");
+    expect(layer?.className).not.toContain("overflow-hidden");
     expect(bar?.className).toContain("bg-background");
     expect(bar?.className).toContain("pointer-events-auto");
     expect(bar?.style.height).toBe("56px");

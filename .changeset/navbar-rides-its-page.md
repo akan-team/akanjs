@@ -9,3 +9,5 @@ A page may declare `navbarMotion: "page"` in `.config()` (on a layout, for every
 - Between a page with a navbar and one without, the bar no longer folds up to nothing: the top layer keeps the taller bar's height while they move, each page's bar keeps its own height and fill, and the layer itself lets a tap through outside the bar on screen.
 
 `"crossfade"`, the default, is today's UIKit-style motion. `fade` and `scaleOut` transitions already fade the bar with its page and only stop folding its height. The web frame does not change. No upgrade step is needed: a page that declares nothing moves as before.
+
+A stack slide also moves the page right under the one sliding when the stack keeps more than one page drawn as `prev` (a tab under a page pushed on a page pushed on it). It used to move the farthest one, so the page right under jumped to where it ends.

@@ -101,6 +101,23 @@ describe("CsrSlide", () => {
     });
   });
 
+  test("moves the page right under the one sliding when the stack keeps an older page drawn under it too", () => {
+    document.getElementById("pageContainers")?.insertAdjacentHTML(
+      "afterbegin",
+      `<div id="pageContainer-z" data-page-type="prev"><div class="akan-page-content"></div></div>`,
+    );
+    document
+      .getElementById("topInsetContainer")
+      ?.insertAdjacentHTML("afterbegin", `<div id="topInsetContent-z" data-page-type="prev"></div>`);
+    CsrSlide.play(frame({ topInset: 48 }, { topInset: 48 }), { fromUnit: 400, toUnit: 0, duration: 350 });
+
+    const ids = played.map((entry) => entry.id);
+    expect(ids).toContain("pageContainer-a");
+    expect(ids).toContain("pageContainer-a > akan-page-content");
+    expect(ids).toContain("topInsetContent-a");
+    expect(ids.filter((id) => id.includes("-z"))).toEqual([]);
+  });
+
   test("leaves a frame part alone when it rests where it started, and parts the page does not draw", () => {
     CsrSlide.play(frame({}, {}), { fromUnit: 400, toUnit: 0, duration: 350 });
 

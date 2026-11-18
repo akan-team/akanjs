@@ -84,6 +84,13 @@ export class CsrSlide {
     return !!entryId && entryId === CsrSlide.#stillEntryId;
   }
 
+  //? A stack can hold more than one page marked prev, such as a tab kept drawn under a page pushed on a page pushed on
+  //? it; the frame draws them in stack order, so the page right under the one moving is the last, never the first.
+  static #partOf(selector: string) {
+    const parts = document.querySelectorAll<HTMLElement>(selector);
+    return parts.length ? parts[parts.length - 1] : null;
+  }
+
   static play(frame: CsrSlideFrame, { fromUnit, toUnit, duration, keep = false }: CsrSlidePlay): CsrSlide | null {
     if (!CsrSlide.supported || duration <= 0) return null;
     const from = CsrSlide.partsAt(frame, fromUnit);
@@ -93,7 +100,7 @@ export class CsrSlide {
     for (const [selector, start] of Object.entries(from)) {
       const end = to[selector];
       const changed = Object.keys(start).filter((property) => start[property] !== end[property]);
-      const element = changed.length ? document.querySelector<HTMLElement>(selector) : null;
+      const element = changed.length ? CsrSlide.#partOf(selector) : null;
       if (!element) continue;
       if (selector === pageSelector) page = element;
       const pick = (keyframe: Keyframe) =>

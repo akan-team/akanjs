@@ -106,7 +106,7 @@ const CSRProvider = ({
 CSR.Provider = CSRProvider;
 
 //? A navbar riding its page carries its own fill, since the layer holds the taller of two bars while they move; the
-//? layer stays clear and lets a tap through outside the bar on screen.
+//? layer stays clear, lets a tap through outside the bar on screen, and does not cut a bar that rides a sheet down.
 const chromeClassNamesOf = ({ overlay, navbarMotion }: Partial<PageState> = {}) => ({
   topSafeArea: cn(
     "akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background",
@@ -115,7 +115,7 @@ const chromeClassNamesOf = ({ overlay, navbarMotion }: Partial<PageState> = {}) 
   topInset: cn(
     "akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background",
     (overlay?.top || navbarMotion === "page") && "bg-transparent",
-    navbarMotion === "page" && "pointer-events-none",
+    navbarMotion === "page" && "pointer-events-none overflow-visible",
   ),
   bottomSafeArea: cn(
     "akan-frame-chrome fixed inset-x-0 max-w-screen bg-background",
