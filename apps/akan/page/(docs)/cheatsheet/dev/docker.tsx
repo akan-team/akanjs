@@ -46,10 +46,10 @@ export default page()
         }),
       },
       {
-        name: ["ca-certificates", "tzdata"],
+        name: ["ca-certificates", "tzdata", "tini"],
         desc: l.trans({
-          en: "The only packages installed, so declare ffmpeg or Chromium in `docker.preRuns`.",
-          ko: "설치되는 패키지는 이 둘뿐이므로, ffmpeg이나 Chromium은 `docker.preRuns`에 적습니다.",
+          en: "The only packages installed, tini as the init that reaps orphaned processes, so declare ffmpeg or Chromium in `docker.preRuns`.",
+          ko: "설치되는 패키지는 이 셋뿐이며 tini는 고아 프로세스를 회수하는 init입니다. ffmpeg이나 Chromium은 `docker.preRuns`에 적습니다.",
         }),
       },
       {
@@ -1265,15 +1265,15 @@ volumes:
                 en: (
                   <span>
                     You do not write a Dockerfile; the <code>docker</code> key in <code>akan.config.ts</code> shapes the
-                    image. The image installs only <code>ca-certificates</code> and <code>tzdata</code>, so an app that
-                    needs ffmpeg or Chromium has to say so.
+                    image. The image installs only <code>ca-certificates</code>, <code>tzdata</code> and its init,{" "}
+                    <code>tini</code>, so an app that needs ffmpeg or Chromium has to say so.
                   </span>
                 ),
                 ko: (
                   <span>
                     Dockerfile은 직접 쓰지 않습니다. <code>akan.config.ts</code>의 <code>docker</code> 키로 이미지를
-                    정합니다. 이미지가 설치하는 것은 <code>ca-certificates</code>와 <code>tzdata</code>뿐이라서,
-                    ffmpeg이나 Chromium이 필요한 앱은 직접 적어야 합니다.
+                    정합니다. 이미지가 설치하는 것은 <code>ca-certificates</code>, <code>tzdata</code>, 그리고 init인{" "}
+                    <code>tini</code>뿐이라서, ffmpeg이나 Chromium이 필요한 앱은 직접 적어야 합니다.
                   </span>
                 ),
               })}

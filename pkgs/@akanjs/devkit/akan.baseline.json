@@ -3,10 +3,9 @@
     "quality/qualityScanner.ts": 917
   },
   "akan.size.function": {
-    "frontendBuild/csrDevPatcher.ts#CsrDevPatcher.#patch": 165
+    "frontendBuild/csrDevPatcher.ts#CsrDevPatcher.#patch": 164
   },
   "akan.size.class": {
-    "akanConfig/akanConfig.ts#AkanAppConfig": 62,
     "codeAgent/agent/CodeAgent.ts#CodeAgent": 67
   }
 }

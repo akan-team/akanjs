@@ -13,6 +13,7 @@ import { AkanWorkers } from "./akanWorkers";
 import { DesktopServerConfig } from "./desktopServerConfig";
 import {
   DEFAULT_DOCKER_IMAGE,
+  DOCKER_INIT,
   DOCKER_RUN_USER,
   DOCKER_WRITE_DIRS,
   dockerImageScript,
@@ -503,7 +504,7 @@ export class AkanAppConfig implements AppConfigResult {
     const isLocal = (environment ?? this.baseDevEnv.env) === "local";
     const envLines = Object.entries(env).map(([key, value]) => `ENV ${key}=${value}`);
     return `${imageScript}${isLocal ? `\n${AkanAppConfig.localImageGuard}` : ""}
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata tini && rm -rf /var/lib/apt/lists/*
 RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
 ARG TARGETARCH
 ${preRunScripts.join("\n")}
@@ -515,7 +516,8 @@ COPY . .
 RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}
 ${envLines.join("\n")}
 USER ${DOCKER_RUN_USER}
-CMD [${command.map((c) => `"${c}"`).join(",")}]`;
+ENTRYPOINT ${JSON.stringify(DOCKER_INIT)}
+CMD ${JSON.stringify(command)}`;
   }
   static #importGeneration = 0;
   // Bun caches dynamic imports by path; a fresh query string re-evaluates the config module (its imports stay cached).

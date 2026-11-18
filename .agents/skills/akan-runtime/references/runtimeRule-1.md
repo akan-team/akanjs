@@ -39,7 +39,7 @@ const config: AppConfig = { web: false }; // api only
 - The saving is mostly the RSC worker, which is a **separate process per web-serving replica**. Measured on
   `apps/akan` at boot plus one render: 350MB across 3 processes with SSR on, 120MB across 2 with
   `AKAN_SSR=false`, and the built image goes 86MB → 6.2MB when the artifacts are left out of it too.
-- **The generated image installs `ca-certificates` and `tzdata` and nothing else.** It used to carry the whole
+- **The generated image installs `ca-certificates`, `tzdata` and its init, `tini`, and nothing else.** It used to carry the whole
   Chromium runtime, ffmpeg, `build-essential`, `python3` and `redis` in every app's image whether or not the app
   reached for any of them. An app that needs one declares it in `docker.preRuns` / `docker.postRuns`, which are
   emitted around the `bun install` — that is the migration for a `puppeteer` or `ffmpeg` app.
