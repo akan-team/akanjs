@@ -31,11 +31,16 @@ beforeAll(async () => {
   } as never);
 });
 
-const pathRouteOf = (segment: string, transition: TransitionType = "none", cache = false): PathRoute =>
+const pathRouteOf = (
+  segment: string,
+  transition: TransitionType = "none",
+  cache = false,
+  gesture = defaultPageState.gesture,
+): PathRoute =>
   ({
     path: `/:lang/${segment}`,
     pathSegments: ["/", "/:lang", `/${segment}`],
-    pageState: { ...defaultPageState, transition, cache },
+    pageState: { ...defaultPageState, transition, cache, gesture },
     renderPage: {},
     renderRootLayouts: [],
     renderLayouts: [],
@@ -224,13 +229,23 @@ interface Screen {
   transition?: TransitionType;
   guard?: () => void | Promise<void>;
   cache?: boolean;
+  gesture?: boolean;
   sync?: boolean;
   drawsAfterMs?: number;
 }
 
-const screenRouteOf = ({ segment, transition = "none", guard, cache, sync, drawsAfterMs }: Screen): PathRoute => {
+const screenRouteOf = ({
+  segment,
+  transition = "none",
+  guard,
+  cache,
+  gesture,
+  sync,
+  drawsAfterMs,
+}: Screen): PathRoute => {
   const view = () => <main>{segment}</main>;
-  if (sync) return { ...pathRouteOf(segment, transition, cache), renderPage: { kind: "page", render: view } } as never;
+  if (sync)
+    return { ...pathRouteOf(segment, transition, cache, gesture), renderPage: { kind: "page", render: view } } as never;
   const slowView = async () => {
     await new Promise((resolve) => setTimeout(resolve, drawsAfterMs));
     return view();
@@ -240,7 +255,7 @@ const screenRouteOf = ({ segment, transition = "none", guard, cache, sync, draws
     guard ? client.page().guard(guard).render(drawn).toRouteModule() : client.page().render(drawn).toRouteModule()
   ) as { default: unknown; guard?: unknown };
   return {
-    ...pathRouteOf(segment, transition, cache),
+    ...pathRouteOf(segment, transition, cache, gesture),
     renderPage: { kind: "page", isAsync: true, render: mod.default, guard: mod.guard },
   } as unknown as PathRoute;
 };
@@ -623,6 +638,25 @@ describe("useCsrValues when a page is switched in place", () => {
     expect(frame.seen.latest?.location.entryId).toBe(entryId);
     expect(play).not.toHaveBeenCalled();
     play.mockRestore();
+  });
+
+  test("a tab that does not slide, switched in place of a stack page, still swipes back as that page did", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "board", transition: "stack" },
+      { segment: "finance", gesture: false },
+    ]);
+    await act(async () => void client.router.push("/board"));
+    await elapse(600);
+    await act(async () => void client.router.replace("/finance"));
+    await drawnWithin(150);
+
+    const latest = frame.seen.latest;
+    if (!latest) throw new Error("the frame did not render");
+    expect(latest.location.pathname).toBe("/en/finance");
+    expect(CsrSlide.motionOf(latest.location)).toBe("stack");
+    expect(CsrSlide.swipesBack(latest.location)).toBe(true);
+    expect(Object.keys(latest.pageBind())).not.toHaveLength(0);
   });
 
   test("a stack page a tab that does not slide is switched to with replace changes in place", async () => {

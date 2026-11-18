@@ -194,14 +194,11 @@ const useFrameTransitionStart = ({
   const shouldPrepareFrameTransition = useCallback(
     (nextHref?: string) => {
       if (keyboardFrame.visible) return true;
-      if (!nextHref) return resolvedLocation.pathRoute.pageState.transition !== "none";
+      if (!nextHref) return CsrSlide.motionOf(resolvedLocation) !== "none";
       const nextLocation = getLocation(nextHref);
-      return (
-        resolvedLocation.pathRoute.pageState.transition !== "none" ||
-        nextLocation.pathRoute.pageState.transition !== "none"
-      );
+      return CsrSlide.motionOf(resolvedLocation) !== "none" || nextLocation.pathRoute.pageState.transition !== "none";
     },
-    [getLocation, keyboardFrame.visible, resolvedLocation.pathRoute.pageState.transition],
+    [getLocation, keyboardFrame.visible, resolvedLocation],
   );
   const startFrameTransition = useCallback(async () => {
     const snapshot = new Map(pageStateByPathRef.current);
@@ -260,7 +257,7 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
             ? cached
             : target;
       const scrollTop = pageContentRef.current?.scrollTop ?? 0;
-      const isStill = CsrSlide.holdStill(kind, fromLocation, toLocation);
+      const isStill = CsrSlide.settleMove(kind, fromLocation, toLocation);
       const slides =
         !isStill &&
         CsrStack.keyOf(toLocation) !== CsrStack.keyOf(fromLocation) &&

@@ -51,6 +51,7 @@ import {
 } from "react";
 import { NativeThemeColor } from "../../client/nativeThemeColor";
 import { readRscRoutePatch, subscribeRscRoutePatch } from "../../client/rscRoutePatch";
+import { CsrSlide } from "../../webkit/csrSlide";
 import { FrameRootVars } from "../../webkit/FrameRootVars";
 import { useTransitionStore } from "../../webkit/useTransitionStore";
 import { getFrameCssVars, isResponsiveFrame } from "./Common";
@@ -208,7 +209,8 @@ export const ClientPathWrapper = ({
   useLayoutEffect(() => {
     if (activity === "current") FrameRootVars.mirror(frameCssVars, responsiveFrame);
   }, [activity, frameCssKey, responsiveFrame]);
-  const bindProps = bind && pageType !== "pending" && pathRoute.pageState.gesture && gestureEnabled ? bind() : {};
+  const swipesBack = location ? CsrSlide.swipesBack(location) : pathRoute.pageState.gesture;
+  const bindProps = bind && pageType !== "pending" && swipesBack && gestureEnabled ? bind() : {};
   useEffect(() => {
     debugFrame("pathWrapper.mount", { path: pathRoute.path, pageType, href });
     return () => debugFrame("pathWrapper.unmount", { path: pathRoute.path, pageType, href });
