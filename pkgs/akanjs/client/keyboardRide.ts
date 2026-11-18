@@ -7,6 +7,7 @@ const END_SLACK_PX = 2;
 const GLIDE_ATTRIBUTE = "data-akan-keyboard-glide";
 
 const bottomOf = (element: HTMLElement) => element.getBoundingClientRect().bottom;
+const topOf = (element: HTMLElement) => element.getBoundingClientRect().top;
 //? A chat list laid out from its bottom (`flex-direction: column-reverse`) scrolls from 0 at its end to negative values.
 const isReversed = (scroller: HTMLElement) => getComputedStyle(scroller).flexDirection === "column-reverse";
 const isAtEnd = (scroller: HTMLElement) =>
@@ -25,10 +26,11 @@ const isInset = (rider: HTMLElement) => rider.dataset.akanKeyboardRide === "inse
  * up, since the shorter box would clip a rider still on its way, and keys going down give the taller box at once while
  * the riders start from where they were drawn. When the focused field sits in `data-akan-keyboard-overlay`, the page
  * keeps the whole screen, as a native chat screen does, so what lies under the glass keys stays drawn: the riders go
- * where the shorter box would put them and stay there. An `inset` rider (a list's content) is not carried: it takes the
- * rise as bottom padding at once, so the list still scrolls to its top, and a list resting at its end scrolls the rise
- * with the keys, and back down with them. While it does, its scroller carries `data-akan-keyboard-glide`: a list's own
- * keep-at-end logic yields to it.
+ * where the shorter box would put them and stay there. An `inset` rider (a list's content) rises as far as the rider
+ * holding the focused field and takes that rise as bottom padding at once, so the list still scrolls to its top, and a
+ * list resting at its end scrolls the rise with the keys, and back down with them. While it does, its scroller carries
+ * `data-akan-keyboard-glide`: a list's own keep-at-end logic yields to it. A list too short to scroll that far moves
+ * the rest as a transform on the keys' curve, which a short list's layer affords.
  */
 export class KeyboardRide {
   static #committed = 0;
@@ -37,6 +39,8 @@ export class KeyboardRide {
   static #timer: ReturnType<typeof setTimeout> | null = null;
   static #insets = new Map<HTMLElement, { paddingBottom: string; base: string; rise: number }>();
   static #glides = new Map<HTMLElement, number>();
+  static #carried = new Set<HTMLElement>();
+  static #caret: { field: HTMLElement; color: string } | null = null;
   static #movedAt = 0;
 
   static move(height: number, durationMs: number) {
@@ -84,9 +88,15 @@ export class KeyboardRide {
     const listsSettled = listBoxes.map(bottomOf);
     if (isHeld || isOverlay) KeyboardRide.#commit(isOverlay ? 0 : previous, scrollers);
     const laid = isHeld || isOverlay ? riders.map(bottomOf) : settled;
+    //? A list keeps its distance to the field it sits above; its own box can run on under a bar the keys cover.
+    const active = document.activeElement;
+    const lead = riders.findIndex((rider) => !!active && rider.contains(active));
+    const leadRise = lead < 0 ? null : (laid[lead] ?? 0) - (settled[lead] ?? 0);
+    //? WebKit on iOS draws the caret where a transitioned field lands, ahead of the field, until the field gets there.
+    KeyboardRide.#hideCaret(lead >= 0 && active instanceof HTMLElement ? active : null);
     lists.forEach((list, idx) => {
       const scroller = listEnds[idx] ?? null;
-      const rise = bottomOf(listBoxes[idx] ?? list) - (listsSettled[idx] ?? 0);
+      const rise = leadRise ?? bottomOf(listBoxes[idx] ?? list) - (listsSettled[idx] ?? 0);
       if (height > 0) KeyboardRide.#raiseList(list, rise, scroller, durationMs);
       else KeyboardRide.#lowerList(list, scroller, durationMs);
     });
@@ -96,8 +106,7 @@ export class KeyboardRide {
     void root.offsetHeight;
     //? The keys set off when the report arrived; the measuring above took a whole layout of the page per commit, so the
     //? riders start that far along rather than trailing the keys by it.
-    const late = Math.round(performance.now() - KeyboardRide.#movedAt);
-    const transition = `transform ${durationMs}ms ${nativeKeyboardEasing()} ${late > 0 ? -late : 0}ms`;
+    const transition = KeyboardRide.#transitionOf(durationMs);
     riders.forEach((rider, idx) => {
       rider.style.transition = transition;
       rider.style.transform = `translateY(${settled[idx] - laid[idx]}px)`;
@@ -112,7 +121,47 @@ export class KeyboardRide {
       }
       void root.offsetHeight;
       for (const rider of settling) rider.style.transition = "";
+      for (const list of KeyboardRide.#carried) list.style.transition = "";
+      KeyboardRide.#carried.clear();
+      KeyboardRide.#showCaret();
     }, durationMs);
+  }
+
+  static #hideCaret(field: HTMLElement | null) {
+    if (KeyboardRide.#caret?.field !== field) KeyboardRide.#showCaret();
+    if (!field || KeyboardRide.#caret) return;
+    KeyboardRide.#caret = { field, color: field.style.caretColor };
+    field.style.caretColor = "transparent";
+  }
+
+  static #showCaret() {
+    if (!KeyboardRide.#caret) return;
+    KeyboardRide.#caret.field.style.caretColor = KeyboardRide.#caret.color;
+    KeyboardRide.#caret = null;
+  }
+
+  static #transitionOf(durationMs: number) {
+    const late = Math.round(performance.now() - KeyboardRide.#movedAt);
+    return `transform ${durationMs}ms ${nativeKeyboardEasing()} ${late > 0 ? -late : 0}ms`;
+  }
+
+  static #drawnTopOf(list: HTMLElement) {
+    const top = topOf(list);
+    if (list.style.transform) {
+      list.style.transition = "none";
+      list.style.transform = "";
+    }
+    return top;
+  }
+
+  static #carry(list: HTMLElement, offset: number, durationMs: number) {
+    if (!(Math.abs(offset) >= 0.5) || durationMs <= 0) return;
+    list.style.transition = "none";
+    list.style.transform = `translateY(${offset}px)`;
+    void list.offsetHeight;
+    list.style.transition = KeyboardRide.#transitionOf(durationMs);
+    list.style.transform = "";
+    KeyboardRide.#carried.add(list);
   }
 
   static #commit(height: number, scrollers: HTMLElement[]) {
@@ -128,11 +177,13 @@ export class KeyboardRide {
     const held = KeyboardRide.#insets.get(list);
     const base = held?.base ?? getComputedStyle(list).paddingBottom;
     if (rise <= 0) return;
+    const drawnTop = KeyboardRide.#drawnTopOf(list);
     KeyboardRide.#insets.set(list, { paddingBottom: held?.paddingBottom ?? list.style.paddingBottom, base, rise });
     list.style.paddingBottom = `calc(${base} + ${rise}px)`;
     const outer = KeyboardRide.#scrollerOf(list);
     //? A reversed list rests on its bottom edge, so the padding lifted it at once; it goes back to where it was drawn.
     if (outer && isReversed(outer)) outer.scrollTop -= rise - (held?.rise ?? 0);
+    KeyboardRide.#carry(list, drawnTop - topOf(list), durationMs);
     if (scroller) KeyboardRide.#glide(scroller, endOf(scroller), durationMs);
   }
 
@@ -145,7 +196,11 @@ export class KeyboardRide {
       KeyboardRide.#insets.delete(list);
       if (outer && isReversed(outer)) outer.scrollTop += held.rise;
     };
-    if (!scroller) return release();
+    if (!scroller || (isReversed(scroller) && scroller.scrollHeight - scroller.clientHeight < held.rise)) {
+      const drawnTop = KeyboardRide.#drawnTopOf(list);
+      release();
+      return KeyboardRide.#carry(list, drawnTop - topOf(list), durationMs);
+    }
     const to = isReversed(scroller) ? -held.rise : Math.max(0, scroller.scrollTop - held.rise);
     KeyboardRide.#glide(scroller, to, durationMs, release);
   }

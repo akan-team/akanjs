@@ -191,6 +191,85 @@ describe("KeyboardRide", () => {
     for (const element of [overlay, scroller]) element.remove();
   });
 
+  test("a list rises as far as the rider holding the field, not by a box that runs on under a bar the keys cover", async () => {
+    const composer = document.createElement("div");
+    composer.setAttribute("data-akan-keyboard-ride", "");
+    composer.setAttribute("data-akan-keyboard-overlay", "");
+    composer.getClientRects = () => [{}] as unknown as DOMRectList;
+    composer.getBoundingClientRect = () => {
+      const shift = Number.parseFloat(composer.style.transform.replace("translateY(", "")) || 0;
+      return { bottom: (coverOf() > 0 ? screenBottom - coverOf() : screenBottom - 100) + shift } as DOMRect;
+    };
+    const field = document.createElement("textarea");
+    composer.append(field);
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    scroller.getBoundingClientRect = () => ({ bottom: screenBottom - coverOf() }) as DOMRect;
+    const list = riderOf("inset");
+    scroller.append(list);
+    document.body.append(scroller, composer);
+    field.focus();
+
+    KeyboardRide.move(300, 20);
+    expect(composer.style.transform).toBe("translateY(-200px)");
+    expect(list.style.paddingBottom).toContain("+ 200px");
+    expect(field.style.caretColor).toBe("transparent");
+    await wait(40);
+    expect(field.style.caretColor).toBe("");
+    KeyboardRide.move(0, 20);
+    await wait(40);
+    expect(list.style.paddingBottom).toBe("");
+    for (const element of [composer, scroller]) element.remove();
+  });
+
+  test("a list too short to scroll the rise rides the rest as a transform, up with the keys and down with them", async () => {
+    const overlay = document.createElement("div");
+    overlay.setAttribute("data-akan-keyboard-overlay", "");
+    const field = document.createElement("textarea");
+    overlay.append(field);
+    const scroller = document.createElement("div");
+    scroller.style.overflowY = "auto";
+    scroller.style.display = "flex";
+    scroller.style.flexDirection = "column-reverse";
+    scroller.getBoundingClientRect = () => ({ bottom: screenBottom - coverOf() }) as DOMRect;
+    const list = riderOf("inset");
+    scroller.append(list);
+    document.body.append(scroller, overlay);
+    field.focus();
+    const riseOf = () => Number.parseFloat(list.style.paddingBottom.split("+ ").at(1) ?? "") || 0;
+    let scrollTop = 0;
+    const scrollHeightOf = () => Math.max(400, 200 + riseOf());
+    Object.defineProperty(scroller, "scrollHeight", { get: scrollHeightOf, configurable: true });
+    Object.defineProperty(scroller, "clientHeight", { value: 400, configurable: true });
+    Object.defineProperty(scroller, "scrollTop", {
+      get: () => scrollTop,
+      set: (value: number) => {
+        scrollTop = Math.min(0, Math.max(value, -(scrollHeightOf() - 400)));
+      },
+      configurable: true,
+    });
+    list.getBoundingClientRect = () => {
+      const shift = Number.parseFloat(list.style.transform.replace("translateY(", "")) || 0;
+      return { top: screenBottom - 200 - riseOf() - scrollTop + shift } as DOMRect;
+    };
+    const upHistory = styleHistoryOf(list);
+
+    KeyboardRide.move(300, 20);
+    expect(upHistory()).toContain("translateY(200px)");
+    expect(list.style.transform).toBe("");
+    await wait(80);
+    expect(scrollTop).toBe(0);
+    expect(list.getBoundingClientRect().top).toBe(300);
+
+    const downHistory = styleHistoryOf(list);
+    KeyboardRide.move(0, 20);
+    expect(list.style.paddingBottom).toBe("");
+    expect(downHistory()).toContain("translateY(-300px)");
+    expect(list.getBoundingClientRect().top).toBe(600);
+    await wait(40);
+    for (const element of [overlay, scroller]) element.remove();
+  });
+
   test("riders start as far along as the measuring took, so they keep pace with keys that set off before it", async () => {
     const rider = riderOf();
     const measure = rider.getBoundingClientRect;
