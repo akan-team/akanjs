@@ -11,6 +11,7 @@ import {
 } from "akanjs/common";
 import { closeAppOpenedTab } from "./appOpenedTab";
 import { CsrLocation, csrLocation } from "./csrLocation";
+import { CsrRuntimeParams } from "./csrRuntimeParams";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
 import { type NavigationAttempt, type NavigationGuard, NavigationGuards, NavigationRefused } from "./navigationGuards";
@@ -129,7 +130,6 @@ export const getRequestRoutePath = (lang: string): string | undefined => {
 };
 
 const shouldExposeBasePath = () => getEnv().operationMode === "local";
-const CSR_RUNTIME_SEARCH_PARAMS = ["csr", "akanMobileTarget", "akanMobileBasePath", "akanMobileIndexPath"] as const;
 
 const normalizeRoutePath = (path: string | undefined) => {
   const normalized = path?.trim();
@@ -305,14 +305,14 @@ class Router {
       push: (href: string, routeOptions) => {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
         this.postPathChange({ path, pathname, hash });
-        return options.router.push(this.#withCsrRuntimeSearchParams(fullHref), routeOptions);
+        return options.router.push(CsrRuntimeParams.carry(fullHref), routeOptions);
       },
       replace: (href: string, routeOptions) => {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
         this.postPathChange({ path, pathname, hash });
         // for avoiding set state while rendering in redirect
         setTimeout(() => {
-          options.router.replace(this.#withCsrRuntimeSearchParams(fullHref), routeOptions);
+          options.router.replace(CsrRuntimeParams.carry(fullHref), routeOptions);
         }, 0);
       },
       back: (routeOptions) => {
@@ -450,21 +450,6 @@ class Router {
   }
   #getNavigationPathInfo(href: string) {
     return this.#getPathInfo(href, shouldExposeBasePath() ? this.#prefix : "");
-  }
-  #withCsrRuntimeSearchParams(href: string) {
-    const currentSearch = new URLSearchParams(csrLocation.search);
-    if (currentSearch.get("csr") !== "true" || Href.hasWebScheme(href)) return href;
-
-    const [hrefWithoutHash, hash = ""] = href.split("#");
-    const [pathname, search = ""] = hrefWithoutHash.split("?");
-    const nextSearch = new URLSearchParams(search);
-    for (const param of CSR_RUNTIME_SEARCH_PARAMS) {
-      if (nextSearch.has(param)) continue;
-      const value = currentSearch.get(param);
-      if (value !== null) nextSearch.set(param, value);
-    }
-    const query = nextSearch.toString();
-    return `${pathname}${query ? `?${query}` : ""}${hash ? `#${hash}` : ""}`;
   }
   #getVisiblePathInfo(href: string, lang = this.#lang) {
     return getPathInfo(href, lang, shouldExposeBasePath() ? this.#prefix : "", this.#localePrefix());
@@ -663,6 +648,23 @@ class Router {
     }
     if (closeAppOpenedTab()) return undefined as never;
     this.replace(fallbackHref, routeOptions);
+    return undefined as never;
+  }
+  /**
+   * Leaves a state of the page a `push` opened — a record in `?id=`, a sheet: steps back when the entry under this one
+   * is `href`, and rewrites this entry to `href` otherwise. A CSR stack rewrites a push that keeps the pathname rather
+   * than stacking it, and a visitor may have opened this address directly, so `back()` alone would leave the page.
+   */
+  backTo(href: string, routeOptions?: RouteOptions) {
+    if (getEnv().side === "server") throw new Error("backTo is only available in client side");
+    this.#checkInitialized();
+    const { from } = csrLocation.entry();
+    const isUnder =
+      from !== undefined &&
+      this.canGoBack() &&
+      CsrRuntimeParams.sameRoute(this.#routeShown(from), Router.#routeHref(this.#getPathInfo(href)));
+    if (isUnder) this.back(routeOptions);
+    else this.replace(href, routeOptions);
     return undefined as never;
   }
   back(routeOptions?: RouteOptions) {

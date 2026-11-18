@@ -72,6 +72,9 @@ File names, stages, the `.render()` order and what a route file must never do ar
   locale under `i18n.localePrefix: "as-needed"`. It renders an `<a>` and takes its attributes; `activeClassName`
   marks the current one.
 - From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.
+- A page state a push opens in the query (a record in `?id=`): close it with `router.backTo(href)`, never
+  `router.back()` or a `renderMode` branch. A CSR or native stack rewrites a push that keeps the pathname rather than
+  stacking it, and the address may be opened directly.
 - A client filter kept in the URL without reloading the page: ``router.replace(`/books?q=${q}`, { shallow: true,
   scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`. Shallow
   holds only while the path stays the same; a server `.search()` sees the value at the next full navigation.

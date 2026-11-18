@@ -1031,6 +1031,86 @@ describe("router", () => {
   });
 });
 
+describe("router backTo", () => {
+  const stackRouter = async (type: "ssr" | "csr", calls: unknown[]) => {
+    const { router } = await import("./router");
+    const { csrLocation } = await import("./csrLocation");
+    const pathOf = (href: string) => href.split("?")[0];
+    const instance: RouterInstance = {
+      ...recordingRouter(calls),
+      //? As the CSR stack does: a push that keeps the pathname rewrites the entry on screen.
+      push: (href) => {
+        if (type === "csr" && pathOf(href) === pathOf(csrLocation.href)) csrLocation.replace({ akanEntryId: 1 }, href);
+        else csrLocation.push(null, href);
+      },
+      replace: (href) => {
+        calls.push(["replace", href]);
+        csrLocation.replace(null, href);
+      },
+      back: () => {
+        calls.push(["back"]);
+        csrLocation.back();
+      },
+    };
+    if (type === "csr") router.init({ type, lang: "en", router: { ...instance, canGoBack: () => true } });
+    else router.init({ type, side: "client", lang: "en", router: instance });
+    return router;
+  };
+
+  test("steps back from a state a push stacked, as the browser's back does", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle, at } = installSessionHistory("/en/board");
+    const calls: unknown[] = [];
+    const router = await stackRouter("ssr", calls);
+
+    router.push("/board?ticketId=1");
+    router.backTo("/board");
+    await settle();
+
+    expect(calls).toEqual([["back"]]);
+    expect(at()).toBe("/en/board");
+  });
+
+  test("rewrites the entry where the page under it is another one, or none", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle, at } = installSessionHistory("/en/board?ticketId=1");
+    const calls: unknown[] = [];
+    const router = await stackRouter("ssr", calls);
+
+    router.backTo("/board");
+    await settle();
+    expect(calls).toEqual([["replace", "/en/board"]]);
+
+    router.push("/board/archive?ticketId=2");
+    router.backTo("/board/archive");
+    await settle();
+    expect(calls.at(-1)).toEqual(["replace", "/en/board/archive"]);
+    expect(at()).toBe("/en/board/archive");
+  });
+
+  test("rewrites the entry a CSR stack kept for a push on one pathname, and still steps back to the page under it", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle, at } = installSessionHistory("/en/home");
+    const calls: unknown[] = [];
+    const router = await stackRouter("csr", calls);
+
+    router.push("/board");
+    router.push("/board?ticketId=1");
+    router.backTo("/board");
+    await settle();
+    expect(calls).toEqual([["replace", "/en/board"]]);
+    expect(at()).toBe("/en/board");
+
+    router.backTo("/home");
+    await settle();
+    expect(calls.at(-1)).toEqual(["back"]);
+    expect(at()).toBe("/en/home");
+  });
+});
+
 describe("router navigation guards", () => {
   const ssrRouter = async (calls: unknown[], shell = { backMovesNothing: false }) => {
     const { router } = await import("./router");
