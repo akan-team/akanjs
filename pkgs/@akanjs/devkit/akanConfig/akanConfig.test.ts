@@ -260,7 +260,7 @@ describe("AkanAppConfig", () => {
       .map(([key, value]) => `ENV ${key}=${value}`)
       .join("\n");
     expect(config.dockerfile).toContain(
-      `COPY . .\n${writeDirsStep}\n${envBlock}\nUSER 1000:1000\nCMD ["bun","main.js"]`,
+      `COPY . .\n${writeDirsStep}\n${envBlock}\nUSER 1000:1000\nENTRYPOINT ["tini","-s","--"]\nCMD ["bun","main.js"]`,
     );
   });
 
@@ -276,10 +276,10 @@ describe("AkanAppConfig", () => {
   });
 
   test("writes the Dockerfile instructions it wrote before its env came from getProductionEnv", () => {
-    //? 9adfb95c's output for this config, less the blank lines its empty interpolations left, its floating tag and root.
+    //? 9adfb95c's output for this config, less the blank lines its empty interpolations left, its floating tag and root, plus the init.
     const before = [
       `FROM ${DEFAULT_DOCKER_IMAGE}`,
-      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*",
+      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata tini && rm -rf /var/lib/apt/lists/*",
       "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
       "ARG TARGETARCH",
       "",
@@ -305,6 +305,7 @@ describe("AkanAppConfig", () => {
       "ENV AKAN_LOG_TO_FILE=0",
       "",
       "USER 1000:1000",
+      'ENTRYPOINT ["tini","-s","--"]',
       'CMD ["bun","main.js"]',
     ];
     const lines = (text: string) => text.split("\n").filter((line) => line !== "");
@@ -318,11 +319,11 @@ describe("AkanAppConfig", () => {
     ).toThrow("the native apps ship that bundle");
   });
 
-  test("installs only ca-certificates and tzdata in the default image", () => {
+  test("installs only ca-certificates, tzdata and the init in the default image", () => {
     const config = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv);
 
     expect(config.dockerfile).toContain(
-      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*",
+      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata tini && rm -rf /var/lib/apt/lists/*",
     );
     // The Chromium/ffmpeg toolchain moved to per-app `preRuns`; keeping it here paid for it in every image.
     for (const dropped of ["libnss3", "ffmpeg", "build-essential", "redis", "xdg-utils"])
@@ -348,7 +349,7 @@ describe("AkanAppConfig", () => {
     const userAt = instructions.indexOf("USER 1000:1000");
 
     expect(instructions.filter((line) => line.startsWith("USER "))).toEqual(["USER 1000:1000"]);
-    expect(instructions.slice(userAt + 1)).toEqual(['CMD ["bun","main.js"]']);
+    expect(instructions.slice(userAt + 1)).toEqual(['ENTRYPOINT ["tini","-s","--"]', 'CMD ["bun","main.js"]']);
     for (const rootStep of ["apt-get update", "apt-get install -y ffmpeg", "bun install", "echo after"])
       expect(instructions.findIndex((line) => line.includes(rootStep))).toBeLessThan(userAt);
     expect(instructions.filter((line) => line.includes("--chown"))).toEqual([]);

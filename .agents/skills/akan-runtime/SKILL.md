@@ -74,6 +74,6 @@ server in a test, native targets and updates).
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
 - `.agents/skills/akan-runtime/references/runtimeRule-1.md` — Web Surfaces — Building And Serving Without SSR/CSR · Route Prefixes — Where The API Is Mounted · The Process Model — Gateway And Solo · The Dev Server And Local Runs — `akan start`
-- `.agents/skills/akan-runtime/references/runtimeRule-2.md` — Logging — Records, Request Context And Live Tail · The Generated Image — `docker` In `akan.config.ts` · Server Env Secrets — Read From The Process Env · Worker Processes — `workers` In `akan.config.ts`
+- `.agents/skills/akan-runtime/references/runtimeRule-2.md` — Logging — Records, Request Context And Live Tail · The Generated Image — `docker` In `akan.config.ts` · An Image On A Device — A LAN Host With No Domain · Server Env Secrets — Read From The Process Env · Worker Processes — `workers` In `akan.config.ts`
 - `.agents/skills/akan-runtime/references/runtimeRule-3.md` — Native Apps — The `native` Section · A Desktop App's Server — `bin` And `trustedDependencies`
 - `.agents/skills/akan-runtime/references/runtimeRule-4.md` — Database Modes — `database` In `akan.config.ts` · Operations — Snapshots, Restore And The `/_akan/ops` Channel · Shipped Assets — `assets` In `akan.config.ts` · The Build Pipeline — `pipeline` In `akan.config.ts`

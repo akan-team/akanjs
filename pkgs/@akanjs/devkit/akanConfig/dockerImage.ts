@@ -9,6 +9,8 @@ export const BUN_IMAGE_PIN = {
 export const DEFAULT_DOCKER_IMAGE = `oven/bun:${BUN_IMAGE_PIN.version}-slim@${BUN_IMAGE_PIN.digest}`;
 //? oven/bun's `bun` user, numeric so a kubelet can check `runAsNonRoot` without reading the image's passwd file.
 export const DOCKER_RUN_USER = "1000:1000";
+//? Bun as PID 1 never waits for a process re-parented to it, which stays defunct; `-s` reaps under another init too.
+export const DOCKER_INIT = ["tini", "-s", "--"];
 //? The directories the server writes, its code staying read-only; an empty named volume mounted on one takes its owner.
 export const DOCKER_WRITE_DIRS = [
   "/workspace/sqlite",

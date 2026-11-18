@@ -2413,14 +2413,16 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    The generated image installs <code>ca-certificates</code> and <code>tzdata</code> and nothing else,
-                    so <code>ffmpeg</code>, a headless browser or a native toolchain goes into <code>preRuns</code>:
+                    The generated image installs <code>ca-certificates</code>, <code>tzdata</code> and its init,{" "}
+                    <code>tini</code>, and nothing else, so <code>ffmpeg</code>, a headless browser or a native
+                    toolchain goes into <code>preRuns</code>:
                   </span>
                 ),
                 ko: (
                   <span>
-                    생성되는 이미지는 <code>ca-certificates</code>와 <code>tzdata</code>만 설치하므로,{" "}
-                    <code>ffmpeg</code>, 헤드리스 브라우저, 네이티브 툴체인은 <code>preRuns</code>에 적습니다:
+                    생성되는 이미지는 <code>ca-certificates</code>, <code>tzdata</code>, 그리고 init인 <code>tini</code>
+                    만 설치하므로, <code>ffmpeg</code>, 헤드리스 브라우저, 네이티브 툴체인은 <code>preRuns</code>에
+                    적습니다:
                   </span>
                 ),
               })}
@@ -2487,14 +2489,14 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <code>FROM</code> the image, then <code>ca-certificates</code>, <code>tzdata</code> and the
-                      Asia/Seoul timezone.
+                      <code>FROM</code> the image, then <code>ca-certificates</code>, <code>tzdata</code>,{" "}
+                      <code>tini</code> and the Asia/Seoul timezone.
                     </span>
                   ),
                   ko: (
                     <span>
-                      이미지로 <code>FROM</code>한 뒤 <code>ca-certificates</code>, <code>tzdata</code>, Asia/Seoul
-                      타임존을 설정합니다.
+                      이미지로 <code>FROM</code>한 뒤 <code>ca-certificates</code>, <code>tzdata</code>,{" "}
+                      <code>tini</code>, Asia/Seoul 타임존을 설정합니다.
                     </span>
                   ),
                 })}

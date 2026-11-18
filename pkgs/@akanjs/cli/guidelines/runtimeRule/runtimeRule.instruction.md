@@ -37,7 +37,7 @@ const config: AppConfig = { web: false }; // api only
 - The saving is mostly the RSC worker, which is a **separate process per web-serving replica**. Measured on
   `apps/akan` at boot plus one render: 350MB across 3 processes with SSR on, 120MB across 2 with
   `AKAN_SSR=false`, and the built image goes 86MB → 6.2MB when the artifacts are left out of it too.
-- **The generated image installs `ca-certificates` and `tzdata` and nothing else.** It used to carry the whole
+- **The generated image installs `ca-certificates`, `tzdata` and its init, `tini`, and nothing else.** It used to carry the whole
   Chromium runtime, ffmpeg, `build-essential`, `python3` and `redis` in every app's image whether or not the app
   reached for any of them. An app that needs one declares it in `docker.preRuns` / `docker.postRuns`, which are
   emitted around the `bun install` — that is the migration for a `puppeteer` or `ffmpeg` app.
@@ -338,6 +338,16 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   makes for the server to write needs `chown 1000:1000`. An empty named volume takes the owner of the directory it
   mounts over; one a root image already wrote is owned by root, so the server stops at boot with
   `directoryNotWritable`, naming the directory and the `chown -R 1000:1000` that fixes it.
+- **The server starts under an init**: the entrypoint is `tini -s --` and `command` is what it runs, so `bun` is
+  not PID 1. A process whose parent dies first (the `ffmpeg` of a killed `sh -c '… | ffmpeg'`) is handed to PID 1,
+  and Bun never waits for a child it did not start: each one stayed `<defunct>` for the container's life. tini reaps
+  them, passes every signal on to the server and exits with its code, and `-s` keeps that true under
+  `docker run --init` or a shared process namespace. `docker run <image> bun main.js ops …` runs under it as well.
+  A Dockerfile written whole brings its own init.
+- **A device node needs its group beside `--device`.** The server is uid 1000 with no other group, and a node such
+  as `/dev/video0` is `root:video 660` on the host: `docker run --device /dev/video0 --group-add "$(stat -c %g
+  /dev/video0)"`, the host's numeric gid, since the number behind `video` or `render` differs between systems. In a
+  pod it is `securityContext.supplementalGroups`.
 - **The base image is pinned by digest**, `oven/bun:<bun>-slim@sha256:…`, the multi-arch index's, so amd64 and
   arm64 build from the same release; a test holds the tag to the Bun version the workspace's `package.json` pins.
 - **The image installs the versions the workspace locked.** `akan build` writes a `bun.lock` beside the image's
@@ -356,6 +366,45 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   change in dev. Keep a lib's steps to what its runtime genuinely requires.
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
+
+## An Image On A Device — A LAN Host With No Domain
+
+A board reached by IP on a private network runs the image a cloud deployment does: built for a real environment,
+told it is an edge, with its data on volumes.
+
+```sh
+AKAN_PUBLIC_REPO_NAME=<repo> AKAN_PUBLIC_SERVE_DOMAIN=<site>.internal akan build <app> --env main
+docker build -t <app> dist/apps/<app>   # on the device, or with --platform linux/arm64 where it is built
+docker run -d --restart unless-stopped -p 80:8282 --env-file /etc/<app>.env \
+  -e AKAN_PUBLIC_OPERATION_MODE=edge -v <app>-sqlite:/workspace/sqlite -v <app>-local:/workspace/local <app>
+```
+
+- **Build for the environment, not `local`.** A `local` build's Dockerfile stops without
+  `--build-arg AKAN_ALLOW_LOCAL_IMAGE=1`, because that server runs without endpoint rate limits and on local
+  defaults; `AKAN_RATE_LIMIT=on` restores the budgets in an image built that way anyway. `--env main` bundles
+  `env/env.server.main.ts`.
+- **The serve domain is a name, not a host the device must answer.** A build for any environment but `local` stops
+  until `AKAN_PUBLIC_REPO_NAME` and `AKAN_PUBLIC_SERVE_DOMAIN` are set, in the workspace `.env` or the shell. The
+  domain only forms `<app>-<env>.<serveDomain>`: the host a CSR bundle (a native app, a `?csr=true` page) calls
+  over HTTPS. A server-rendered page calls the origin it was loaded from, so a browser on `http://192.168.0.20`
+  never resolves it, and a deployed server answers every `Host`. With no domain, give it one nothing resolves
+  (`<site>.internal`); a native app that must reach the device is built with
+  `AKAN_PUBLIC_SERVER_URL=http://<device>:<port>`.
+- **`AKAN_PUBLIC_OPERATION_MODE=edge`** replaces the image's `cloud`: `/mcp` stays off unless `AKAN_MCP=true`, and a
+  module that lists `operationMode: ["edge"]` mounts. `akan build --profile edge` also bundles
+  `env/env.server.main.edge.ts`, which may hold no secret, in place of `env/env.server.main.ts`.
+- **Database mode `single` needs no Redis and no setting** when it is the only mode declared; with several,
+  `-e AKAN_DATABASE_MODE=single`.
+- **Secrets come from the env file**, kept outside the image: whatever `akan secret-env <app> --env main` lists,
+  and `JWT_SECRET` for an app on `libs/util`, whose boot stops with `jwtSecretRequired` outside operation mode
+  `local`.
+- **Two directories hold the data**: `/workspace/sqlite` (the database, the cache and queue files, snapshots) and
+  `/workspace/local` (uploads). `/workspace/data` is writable for the app's own files. A named volume takes uid
+  1000 from the image; a host directory bound in needs `chown 1000:1000`.
+- **Plain HTTP keeps no browser session.** Outside operation mode `local` the session cookie is `Secure` and named
+  `__Host-…`, which a browser accepts over HTTPS only: an app people sign in to from a browser needs TLS in front
+  of the device.
+- A camera or an accelerator is a device node: `--device` with its group, as the image section says.
 
 ## Server Env Secrets — Read From The Process Env
 
