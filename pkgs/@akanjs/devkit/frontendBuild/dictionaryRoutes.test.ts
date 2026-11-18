@@ -35,6 +35,22 @@ export class User extends via(UserInput, (field) => ({})) {}
     "apps/demo/lib/__scalar/address/address.constant.ts",
     `export class Address extends via((field) => ({ city: field(String) })) {}`,
   );
+  constants.add(
+    "apps/demo/lib/runnerBot/runnerBot.constant.ts",
+    `export class RunnerBot extends via((field) => ({ name: field(String) })) {
+  static readonly labelKeyOf = { reviewer: "runnerBot.reviewer", fixer: "task.fixer" } as const;
+  static stageKeys = ["project.stage.open", "project.stage.done"] as const satisfies readonly string[];
+  static loose = { reviewer: "runnerBot.reviewer" };
+  static typed: Record<string, string> = { reviewer: "runnerBot.reviewer" } as const;
+  static called = { reviewer: "runnerBot.reviewer", fixer: keyOf("fixer") } as const;
+  static computed = { reviewer: "runnerBot.reviewer", [fixer]: "runnerBot.fixer" } as const;
+  static spread = [...RunnerBotRole.values, "runnerBot.fixer"] as const;
+  static nested = { reviewer: { label: "runnerBot.reviewer" } } as const;
+  static get made() { return { reviewer: "runnerBot.reviewer" } as const; }
+  held = { reviewer: "runnerBot.reviewer" } as const;
+}
+`,
+  );
   return constants;
 };
 
@@ -150,6 +166,55 @@ describe("DictionaryRoutes", () => {
     expect(routes.read({ entries, serverModules: [abs("apps/demo/page/Explorer.tsx")] }).whole).toEqual({
       file: "apps/demo/page/Explorer.tsx",
       why: "Signal from akanjs/ui shows the texts of any module its data names",
+    });
+  });
+
+  test("a constant class's static table gives its written keys only when every entry is one", () => {
+    const constants = constantsOf();
+    expect(constants.staticKeysOf("RunnerBot", "labelKeyOf")).toEqual(["runnerBot.reviewer", "task.fixer"]);
+    expect(constants.staticKeysOf("RunnerBot", "stageKeys")).toEqual(["project.stage.open", "project.stage.done"]);
+    for (const member of ["loose", "typed", "called", "computed", "spread", "nested", "made", "held", "missing"])
+      expect(constants.staticKeysOf("RunnerBot", member), member).toBeNull();
+    expect(constants.staticKeysOf("Missing", "labelKeyOf")).toBeNull();
+
+    constants.add(
+      "libs/shared/lib/runnerBot/runnerBot.constant.ts",
+      `export class RunnerBot {
+  static readonly labelKeyOf = { planner: "runnerBot.planner", fixer: "task.fixer" } as const;
+  static stageKeys = load();
+}
+`,
+    );
+    expect(constants.staticKeysOf("RunnerBot", "labelKeyOf")).toEqual([
+      "runnerBot.reviewer",
+      "task.fixer",
+      "runnerBot.planner",
+    ]);
+    expect(constants.staticKeysOf("RunnerBot", "stageKeys")).toBeNull();
+
+    constants.add("libs/util/lib/runnerBot/runnerBot.constant.ts", `export class RunnerBot extends BaseBot {}`);
+    expect(constants.staticKeysOf("RunnerBot", "labelKeyOf")).toBeNull();
+  });
+
+  test("a route picking a key from a constant class's static table shows the groups its keys name", async () => {
+    const page = (table: string) =>
+      [
+        `import { cnst } from "@apps/demo/client";`,
+        `export const Page = ({ role }: { role: string }) => <>{l(cnst.RunnerBot.${table}[role])}</>;`,
+      ].join("\n");
+    const { root, abs } = await workspace({
+      "apps/demo/page/Bots.tsx": page("labelKeyOf"),
+      "apps/demo/page/Loose.tsx": page("loose"),
+    });
+    const routes = reader(root, {});
+
+    const read = routes.read({ entries: [abs("apps/demo/page/Bots.tsx")] });
+    expect(read.whole).toBeNull();
+    expect(read.groups).toEqual(["base", "runnerBot", "task"]);
+    expect(routes.read({ entries: [abs("apps/demo/page/Loose.tsx")] }).whole).toEqual({
+      file: "apps/demo/page/Loose.tsx",
+      line: 2,
+      why: "cnst.RunnerBot.loose[role] is read from data at run time",
     });
   });
 
