@@ -72,6 +72,21 @@ const mountCsr = (path: string, transition?: TransitionType, cached: string[] = 
 };
 
 describe("useCsrValues", () => {
+  test("a cache page visited again at the same address comes back as the entry it keeps, so nothing on it changes", () => {
+    const { seen, unmount } = mountCsr("/en/a", "none", ["a", "b"]);
+    const router = seen.first?.router;
+    if (!router) throw new Error("the frame did not render");
+    const kept = seen.latest?.location.entryId;
+    act(() => void router.replace("/en/b"));
+    expect(seen.latest?.location.pathname).toBe("/en/b");
+    act(() => void router.replace("/en/a"));
+    expect(seen.latest?.location.entryId).toBe(kept);
+    act(() => void router.replace("/en/b"));
+    act(() => void router.replace("/en/a?tab=2"));
+    expect(seen.latest?.location.entryId).not.toBe(kept);
+    unmount();
+  });
+
   test("the router handed out at mount keeps moving the stack it now holds", () => {
     const { seen, unmount } = mountCsr("/en/a");
     const router = seen.first?.router;
