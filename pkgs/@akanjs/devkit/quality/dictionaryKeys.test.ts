@@ -153,6 +153,82 @@ describe("DictionaryKeys", () => {
     expect(understood.unread).toEqual([]);
   });
 
+  test("does not take a parameter or a local named l that holds a plain value for the translator", () => {
+    const uses = [
+      "return values.map((l) => l.trim());",
+      "return rows.map((l) => l.id);",
+      "return values.map((l) => format(l));",
+      "return rows.toSorted((l, r) => l.order - r.order);",
+      "return values.reduce((sum, l) => sum + count(l), 0);",
+      "return rows.map(([l, r]) => join(l, r));",
+      "const l = line.length; return pad(l);",
+      "const l = line + ' '; return [l, line];",
+      "let l = 0; l += line.length; l = l * 2; return pad(l);",
+      "for (const l of values) send(l); return null;",
+      "for (const l in rows) send(l); return null;",
+      "for (let l = 0; l < 3; l++) send(l); return null;",
+      "const pad = (l: number) => fill(l); return pad(2);",
+      "setRows((l) => l.filter(Boolean)); return null;",
+      "const l = rows.at(0); return l.id ?? l[0];",
+      "function width(l) { return l.length; } return width(line);",
+    ];
+    for (const use of uses) {
+      const keys = read(`export const A = ({ values, rows, line }) => { ${use} };`);
+      expect(keys.unread, use).toEqual([]);
+    }
+  });
+
+  test("reads the translator beside a name that shadows it, and each use by the binding it reaches", () => {
+    const keys = read(`
+      export const Lines = ({ lines }: { lines: string[] }) => {
+        const { l } = usePage();
+        const widths = lines.map((l) => l.length);
+        return <>{l("memo.title")}{lines.map((l) => <li>{l}</li>)}{widths}</>;
+      };
+    `);
+    expect(keys.unread).toEqual([]);
+    expect(keys.names).toContain("memo");
+    const handedOn = read(
+      [
+        `export const Lines = ({ lines }: { lines: string[] }) => {`,
+        `  const { l: t } = usePage();`,
+        `  const trimmed = lines.map((t) => t.trim());`,
+        `  return <>{format(t, trimmed)}</>;`,
+        `};`,
+      ].join("\n"),
+    );
+    expect(handedOn.unread).toEqual([{ line: 4, why: "t passes the translator on" }]);
+  });
+
+  test("still takes a parameter or a local for the translator when it may be one", () => {
+    const uses = [
+      "const labelOf = (l: Translator, name: string) => l(name);",
+      "const headOf = (l: Translator) => dictText(l, 'memo.title');",
+      "const headOf = (l) => dictText(l, 'memo.title');",
+      "function headOf(l) { return dictText(l, 'memo.title'); }",
+      "withPage((l) => l(name));",
+      "withPage((l) => dictText(l, 'memo.title'));",
+      "translators.map((l) => l(name));",
+      "translators.forEach((l) => l._(name));",
+      "translators.forEach((l) => l['rich'](name));",
+      "translators.forEach((l) => l.call(null, name));",
+      "wrappers.reduce((l, wrap) => wrap(l), translator);",
+      "const l = pick(); helper(l);",
+      "const l = page.l; helper(l);",
+      "let l = 0; l = pick(); helper(l);",
+      "let l = 0; ({ l } = page); helper(l);",
+      "let l = 0; [l] = translators; helper(l);",
+      "translators.map((l) => { l ??= pick(); return helper(l); });",
+      "const { l } = page; helper(l.id);",
+      "for (const l of translators) l(name);",
+      "setRows((l) => [...l, name]);",
+    ];
+    for (const use of uses) {
+      const keys = read(`export const A = ({ name, page, translators, wrappers }) => { ${use} return null; };`);
+      expect(keys.unread.length, use).toBeGreaterThan(0);
+    }
+  });
+
   test("marks a framework surface that shows the texts of any module", () => {
     expect(read(`import { Signal } from "akanjs/ui";`).anyModule).toContain("Signal from akanjs/ui");
     expect(read(`import { Field } from "akanjs/ui/Constant";`).anyModule).toContain("Constant from akanjs/ui/Constant");

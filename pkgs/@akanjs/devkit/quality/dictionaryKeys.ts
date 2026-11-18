@@ -1,5 +1,6 @@
 import ts from "typescript";
 import { RuntimeLexicalScope } from "./runtimeLexicalScope";
+import { TranslatorBindings } from "./translatorBindings";
 
 export interface DictionaryKeyUnread {
   line: number;
@@ -50,6 +51,7 @@ export class DictionaryKeys {
   readonly #sourceFile: ts.SourceFile;
   readonly #scope = new RuntimeLexicalScope();
   readonly #translators = new Set(["l"]);
+  readonly #bindings: TranslatorBindings;
   readonly #names = new Set<string>();
   readonly #classNames = new Set<string>();
   readonly #propNames = new Set<string>();
@@ -59,6 +61,7 @@ export class DictionaryKeys {
 
   private constructor(sourceFile: ts.SourceFile) {
     this.#sourceFile = sourceFile;
+    this.#bindings = new TranslatorBindings(sourceFile, this.#scope, this.#translators);
   }
 
   static read(text: string, fileName: string): DictionaryKeyRead {
@@ -181,7 +184,7 @@ export class DictionaryKeys {
   }
 
   #isTranslator(node: ts.Expression): boolean {
-    if (ts.isIdentifier(node)) return this.#translators.has(node.text);
+    if (ts.isIdentifier(node)) return this.#translators.has(node.text) && !this.#bindings.isOther(node);
     if (!ts.isPropertyAccessExpression(node)) return false;
     const name = node.name.text;
     if (name === "l") return true;
