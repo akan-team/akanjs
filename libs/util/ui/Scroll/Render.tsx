@@ -105,7 +105,7 @@ export const Render = ({
           !rendered && preClassName,
           rendered && postClassName,
         )}
-        style={{ scrollMarginTop: "100px" }}
+        style={{ scrollMarginTop: "var(--scroll-anchor-offset, 100px)" }}
       >
         {/* {children} */}
         {children}
