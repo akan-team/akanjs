@@ -30,8 +30,8 @@ import { useBroadcastSyncNavigation } from "./useSyncNavigation";
 
 //? A page switched in place (`transition: "none"`, a tab bar's tab) is drawn out of sight first and swapped in once its
 //? layers are drawn: swapped at once, it showed each async layer's loading fallback for a frame or more, a flash on
-//? every first visit. A sliding page waits the same way, or an empty shell slid in and its content popped in after.
-//? A page slower than this comes in with its fallbacks, as before.
+//? every first visit. A page slower than this swaps in with its fallbacks, as before. A sliding page does not wait:
+//? held for its data, a tap paused before anything moved and, slower than this, still slid in with its fallbacks.
 const PAGE_DRAWN_TIMEOUT_MS = 300;
 
 interface ForwardCommit {
@@ -146,11 +146,7 @@ const commitWhenFrameReady = ({
       pendingFrameSlots: latestPendingFrameSlots.current,
       elapsedMs,
     });
-    const isDrawn =
-      !CsrPageReadiness.drawsLater(toLocation) ||
-      CsrPageReadiness.isDrawn(toLocation.entryId) ||
-      elapsedMs >= PAGE_DRAWN_TIMEOUT_MS;
-    if (isFrameReady && isDrawn) {
+    if (isFrameReady) {
       void commitNavigation(elapsedMs >= PENDING_FRAME_READY_TIMEOUT_MS);
       return;
     }
