@@ -207,6 +207,7 @@ export class Device {
     if (isPageKeyboardAvoidance())
       void import("./keyboardRide").then(({ KeyboardRide }) => {
         Device.#keyboardRide = KeyboardRide;
+        KeyboardRide.watchFocus();
       });
     let currentHeight = 0;
     const emitKeyboardHeight = (event: string, height: number) => {

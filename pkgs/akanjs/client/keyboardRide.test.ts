@@ -270,6 +270,49 @@ describe("KeyboardRide", () => {
     for (const element of [overlay, scroller]) element.remove();
   });
 
+  test("a field taking focus is measured with the keys' last height, so their report moves its rider without a layout", async () => {
+    KeyboardRide.watchFocus();
+    const coversSeen: number[] = [];
+    const composer = document.createElement("div");
+    composer.setAttribute("data-akan-keyboard-ride", "");
+    composer.setAttribute("data-akan-keyboard-overlay", "");
+    composer.getClientRects = () => [{}] as unknown as DOMRectList;
+    composer.getBoundingClientRect = () => {
+      coversSeen.push(coverOf());
+      const shift = Number.parseFloat(composer.style.transform.replace("translateY(", "")) || 0;
+      return { bottom: (coverOf() > 0 ? screenBottom - coverOf() : screenBottom - 100) + shift } as DOMRect;
+    };
+    const field = document.createElement("textarea");
+    composer.append(field);
+    const warm = riderOf();
+    const warmField = document.createElement("textarea");
+    warm.setAttribute("data-akan-keyboard-overlay", "");
+    warm.append(warmField);
+    warmField.focus();
+    KeyboardRide.move(300, 20);
+    await wait(40);
+    KeyboardRide.move(0, 20);
+    await wait(40);
+    warm.remove();
+    document.body.append(composer);
+
+    coversSeen.length = 0;
+    field.focus();
+    await wait(10);
+    expect(coversSeen).toContain(300);
+    expect(coverOf()).toBe(0);
+    expect(document.documentElement.hasAttribute("data-akan-keyboard")).toBe(false);
+
+    coversSeen.length = 0;
+    KeyboardRide.move(300, 20);
+    expect(coversSeen).not.toContain(300);
+    expect(composer.style.transform).toBe("translateY(-200px)");
+    await wait(40);
+    KeyboardRide.move(0, 20);
+    await wait(40);
+    composer.remove();
+  });
+
   test("riders start as far along as the measuring took, so they keep pace with keys that set off before it", async () => {
     const rider = riderOf();
     const measure = rider.getBoundingClientRect;
