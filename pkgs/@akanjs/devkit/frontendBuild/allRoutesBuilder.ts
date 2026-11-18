@@ -12,7 +12,7 @@ import type { App } from "../commandDecorators";
 import { type RouteRuntimeDictionaryFallback, RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
-import type { ClientEntryDiscovery } from "./clientBuildTypes";
+import type { AskedExports, ClientEntryDiscovery } from "./clientBuildTypes";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { DictionaryRoutes } from "./dictionaryRoutes";
 import { type BuildRouteClientResult, RouteClientBuilder } from "./routeClientBuilder";
@@ -41,6 +41,7 @@ export class AllRoutesBuilder {
   #routeIds: string[] = [];
   #ssrEntriesByRoute = new Map<string, string[]>();
   #entriesByRoute = new Map<string, string[]>();
+  #askedByRoute = new Map<string, AskedExports>();
   #serverModulesByRoute = new Map<string, string[]>();
   #externalsByChunkUrl: Record<string, string[]> = {};
   #discovery: ClientEntryDiscovery | null = null;
@@ -70,7 +71,9 @@ export class AllRoutesBuilder {
       const routeEntries = await discovery.discover(seeds);
       for (const discovered of routeEntries) allEntries.add(discovered);
       const serverModules = handoffs || dictionary ? await discovery.serverModules(seeds, { importsAs }) : undefined;
-      const ssrEntries = await discovery.discoverRendered(seeds, { importsAs, serverModules });
+      const asked = await discovery.discoverAsked(seeds, { importsAs, serverModules });
+      const ssrEntries = [...asked.keys()].sort();
+      this.#askedByRoute.set(entry.routeId, asked);
       if (dictionary && serverModules) this.#serverModulesByRoute.set(entry.routeId, serverModules);
       const handed = serverModules ? await handoffs?.read(serverModules) : undefined;
       const loaded = [...new Set([...ssrEntries, ...(handed?.referenceFiles ?? [])])].sort();
@@ -160,6 +163,7 @@ export class AllRoutesBuilder {
     const preloads = new RouteModulePreloads({
       runtimeChunks,
       entriesByRoute: this.#ssrEntriesByRoute,
+      askedByRoute: this.#askedByRoute,
       clientManifest: this.#merged.clientManifest,
       externalsByChunkUrl: this.#externalsByChunkUrl,
       workspaceRoot: this.#app.workspace.workspaceRoot,
@@ -202,6 +206,7 @@ export class AllRoutesBuilder {
       command: this.#command,
       entriesByRoute: this.#entriesByRoute,
       sizedEntriesByRoute: this.#ssrEntriesByRoute,
+      askedByRoute: this.#askedByRoute,
     }).build();
     this.#app.verbose(`[build-all] bundled ${delta.newEntries.length} entries (${Date.now() - started}ms)`);
     return delta;

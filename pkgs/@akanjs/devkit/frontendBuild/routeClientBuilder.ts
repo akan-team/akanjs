@@ -6,13 +6,15 @@ import { type ClientRuntimeScope, StoreBootstrap } from "../artifact/storeBootst
 import type { App } from "../commandDecorators";
 import { type RouteRuntimeBuildReport, RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { createBarrelImportsPlugin } from "../transforms/barrelImportsPlugin";
+import { ModuleParts } from "../transforms/moduleParts";
 import { loaderFor } from "../transforms/moduleSyntax";
+import { PartModules } from "../transforms/partModules";
 import { ReactIconImports } from "../transforms/reactIconImports";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import type { RouteRuntimeBundle } from "../transforms/routeRuntimeGraph";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
 import { SignalDescriptors } from "../transforms/signalDescriptors";
-import type { ClientBundleTarget, ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
+import type { AskedExports, ClientBundleTarget, ClientEntryDiscovery, ClientModuleImport } from "./clientBuildTypes";
 import { ClientEntriesBundler } from "./clientEntriesBundler";
 import { GraphClientEntryDiscovery } from "./clientEntryDiscovery";
 import { CsrDevPaths } from "./csrDevPaths";
@@ -47,6 +49,8 @@ export interface BuildRouteClientOptions {
   entriesByRoute?: ReadonlyMap<string, readonly string[]>;
   /** The entries each route loads first, which its size is measured over. Defaults to `entriesByRoute`. */
   sizedEntriesByRoute?: ReadonlyMap<string, readonly string[]>;
+  /** The exports each route asks of an entry it loads first; an entry left out, or null, is asked for all of them. */
+  askedByRoute?: ReadonlyMap<string, AskedExports>;
 }
 
 export interface BuildRouteClientResult {
@@ -67,6 +71,8 @@ export interface BuildRouteClientResult {
 interface BootstrapEntries {
   buildEntries: string[];
   originalByBuildEntry: Map<string, string>;
+  //? Only for an entry built as several: the export names each of its build entries holds.
+  namesByBuildEntry?: Map<string, readonly string[]>;
 }
 
 interface NarrowedBuild {
@@ -94,6 +100,8 @@ export class RouteClientBuilder {
   #browser: "chunks" | "registry";
   #entriesByRoute?: ReadonlyMap<string, readonly string[]>;
   #sizedEntriesByRoute?: ReadonlyMap<string, readonly string[]>;
+  #askedByRoute?: ReadonlyMap<string, AskedExports>;
+  readonly #parts = new Map<string, ModuleParts | null>();
 
   constructor(options: BuildRouteClientOptions) {
     this.#app = options.app;
@@ -106,6 +114,7 @@ export class RouteClientBuilder {
     this.#browser = options.browser ?? (this.#command === "start" ? "registry" : "chunks");
     this.#entriesByRoute = options.entriesByRoute;
     this.#sizedEntriesByRoute = options.sizedEntriesByRoute;
+    this.#askedByRoute = options.askedByRoute;
   }
 
   async build(): Promise<BuildRouteClientResult> {
@@ -176,7 +185,7 @@ export class RouteClientBuilder {
       const buildEntry = path.resolve(entry);
       const originalEntry = path.resolve(bootstrapEntries.originalByBuildEntry.get(buildEntry) ?? buildEntry);
       if (!acceptedEntries.has(originalEntry)) continue;
-      const deps = new Set<string>([originalEntry]);
+      const deps = new Set<string>(clientDepsByEntry[originalEntry] ?? [originalEntry]);
       for (const dep of referenceBundle.entryDepsByAbsPath.get(buildEntry) ?? []) deps.add(path.resolve(dep));
       const sortedDeps = [...deps].sort();
       clientDepsByEntry[originalEntry] = sortedDeps;
@@ -355,21 +364,33 @@ export class RouteClientBuilder {
     return path.join(this.#command === "build" ? this.#app.dist.cwdPath : this.#app.cwdPath, ".akan/artifact");
   }
 
-  #sizedBuildEntries({ originalByBuildEntry }: BootstrapEntries): Map<string, string[]> {
-    const buildEntryOf = new Map([...originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]));
+  #sizedBuildEntries(entries: BootstrapEntries): Map<string, string[]> {
+    const buildEntriesOf = RouteClientBuilder.#buildEntriesOf(entries);
     return new Map(
-      [...(this.#sizedEntriesByRoute ?? this.#entriesByRoute ?? [])].map(([route, held]) => [
-        route,
-        held.map((entry) => buildEntryOf.get(path.resolve(entry)) ?? path.resolve(entry)),
-      ]),
+      [...(this.#sizedEntriesByRoute ?? this.#entriesByRoute ?? [])].map(([route, held]) => {
+        const asked = this.#askedByRoute?.get(route);
+        return [route, held.flatMap((entry) => buildEntriesOf(entry, asked?.get(path.resolve(entry))))];
+      }),
     );
+  }
+
+  //? An entry built as several answers with the ones holding a name asked, and with all of them asked for none.
+  static #buildEntriesOf({ originalByBuildEntry, namesByBuildEntry }: BootstrapEntries) {
+    const built = new Map<string, string[]>();
+    for (const [buildEntry, original] of originalByBuildEntry) built.getOrInsert(original, []).push(buildEntry);
+    return (entry: string, asked?: readonly string[] | null): string[] => {
+      const buildEntries = built.get(path.resolve(entry)) ?? [path.resolve(entry)];
+      if (!asked) return buildEntries;
+      return buildEntries.filter((buildEntry) => {
+        const names = namesByBuildEntry?.get(buildEntry);
+        return !names || names.some((name) => asked.includes(name));
+      });
+    };
   }
 
   #check({ entries, kept, bundle, runtime: routeRuntime }: NarrowedBuild): boolean {
     const { workspaceRoot } = this.#app.workspace;
-    const buildEntryOf = new Map(
-      [...entries.originalByBuildEntry].map(([buildEntry, original]) => [original, buildEntry]),
-    );
+    const buildEntriesOf = RouteClientBuilder.#buildEntriesOf(entries);
     const check = new RouteRuntimeCheck(workspaceRoot, bundle.graph, {
       entries: new Map([...entries.originalByBuildEntry].filter(([, entry]) => !kept.has(entry))),
       wholeReaders: routeRuntime.wholeReaders,
@@ -377,7 +398,7 @@ export class RouteClientBuilder {
       routes: new Map(
         [...(this.#entriesByRoute ?? [])].map(([route, held]) => [
           route,
-          held.map((entry) => buildEntryOf.get(path.resolve(entry)) ?? path.resolve(entry)),
+          held.flatMap((entry) => buildEntriesOf(entry)),
         ]),
       ),
     });
@@ -419,6 +440,7 @@ export class RouteClientBuilder {
           ),
           external: vendorFiles.specifiers,
           routeRuntime,
+          ...(this.#command === "build" ? { parts: this.#parts } : {}),
         }),
       ],
       external: vendorFiles.specifiers,
@@ -468,37 +490,53 @@ export class RouteClientBuilder {
     await mkdir(outdir, { recursive: true });
 
     const originalByBuildEntry = new Map<string, string>();
+    const namesByBuildEntry = new Map<string, readonly string[]>();
+    const { workspaceRoot } = this.#app.workspace;
     const buildEntries = await Promise.all(
       entries.map(async (entry) => {
         const absEntry = path.resolve(entry);
         const whole = narrowed?.kept.has(absEntry) ? wholeByOriginal.get(absEntry) : undefined;
         if (whole) {
           originalByBuildEntry.set(whole, absEntry);
-          return whole;
+          return [whole];
         }
         const hash = Bun.hash(`${this.#app.name}\n${absEntry}`).toString(36);
         const base = path.basename(absEntry).replace(/[^A-Za-z0-9._-]/g, "_");
-        const wrapperEntry = path.join(outdir, `${base}-${hash}.tsx`);
-        const exportNames = await this.#scanExportNames(absEntry);
-        await Bun.write(
-          wrapperEntry,
-          RouteClientBuilder.createStoreBootstrapEntrySource({
-            appName: this.#app.name,
-            originalEntry: absEntry,
-            exportNames,
-            scope,
+        const source = await Bun.file(absEntry).text();
+        const exportNames = scanUseClientExports(source, absEntry, workspaceRoot);
+        const byExport = scope === "page" && this.#command === "build" && PartModules.splits(workspaceRoot, absEntry);
+        const groups = byExport ? RouteClientBuilder.#exportGroups(source, absEntry, exportNames) : [exportNames];
+        return await Promise.all(
+          groups.map(async (names, index) => {
+            const wrapperEntry = path.join(outdir, `${base}-${hash}${groups.length > 1 ? `-${index}` : ""}.tsx`);
+            await Bun.write(
+              wrapperEntry,
+              RouteClientBuilder.createStoreBootstrapEntrySource({
+                appName: this.#app.name,
+                originalEntry: absEntry,
+                exportNames: names,
+                scope,
+              }),
+            );
+            originalByBuildEntry.set(path.resolve(wrapperEntry), absEntry);
+            if (groups.length > 1) namesByBuildEntry.set(path.resolve(wrapperEntry), names);
+            return wrapperEntry;
           }),
         );
-        originalByBuildEntry.set(path.resolve(wrapperEntry), absEntry);
-        return wrapperEntry;
       }),
     );
 
-    return { buildEntries, originalByBuildEntry };
+    return { buildEntries: buildEntries.flat(), originalByBuildEntry, namesByBuildEntry };
   }
 
-  async #scanExportNames(absEntry: string): Promise<string[]> {
-    return scanUseClientExports(await Bun.file(absEntry).text(), absEntry, this.#app.workspace.workspaceRoot);
+  //? Names one part of the file holds share a build entry. The parts are read from the file as written, and a bundle
+  //? may place a name elsewhere after its rewrites: then a build entry only loads more than the names it holds need.
+  static #exportGroups(source: string, absEntry: string, names: string[]): string[][] {
+    const parts = names.length > 0 ? ModuleParts.read(source, absEntry) : null;
+    if (!parts) return [names];
+    const groups = new Map<string, string[]>();
+    for (const name of names) groups.getOrInsert(parts.partOf(name) ?? "", []).push(name);
+    return [...groups.values()];
   }
 
   static normalizeNamedDefaultFunctionForFastRefresh(

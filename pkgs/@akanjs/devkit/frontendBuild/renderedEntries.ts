@@ -31,6 +31,12 @@ interface AskAnswer {
 
 type ImportsAs = NonNullable<DiscoverOptions["importsAs"]>;
 
+interface RenderedWalk {
+  serverModules: string[];
+  within: string[];
+  importsAs?: ImportsAs;
+}
+
 /**
  * The client entries a route can render. A server module asked for one export gives only what that export's
  * declaration reaches, and every server module the route evaluates gives what its top-level statements reach.
@@ -50,29 +56,38 @@ export class RenderedEntries {
     this.#swappedAnswers = new WeakMap();
   }
 
-  async of(
+  async of(seeds: string[], options: RenderedWalk): Promise<string[]> {
+    return [...(await this.asked(seeds, options)).keys()].sort();
+  }
+
+  //* The same entries with the export names the route's server modules ask of each: null where one asks for them all.
+  async asked(
     seeds: string[],
-    { serverModules, within, importsAs }: { serverModules: string[]; within: string[]; importsAs?: ImportsAs },
-  ): Promise<string[]> {
+    { serverModules, within, importsAs }: RenderedWalk,
+  ): Promise<Map<string, string[] | null>> {
     const answers = importsAs ? this.#answersUnder(importsAs) : this.#answers;
     const reachable = new Set(within);
-    const entries = new Set<string>();
-    const asked = new Set<string>();
+    const entries = new Map<string, string[] | null>();
+    const seen = new Set<string>();
     const whole = new Set<string>();
     const queue = seeds.map((seed) => RenderedEntries.#ask(path.resolve(seed), "whole"));
     for (const file of serverModules) queue.push(RenderedEntries.#ask(file, "always"));
     for (const ask of queue) {
-      if (asked.has(ask.key) || whole.has(ask.file)) continue;
-      asked.add(ask.key);
+      if (seen.has(ask.key) || whole.has(ask.file)) continue;
+      seen.add(ask.key);
       const answer = answers.get(ask.key) ?? (await this.#answer(ask, answers, importsAs));
       if (answer.isEntry) {
-        if (ask.how !== "always" && reachable.has(ask.file)) entries.add(ask.file);
+        if (ask.how === "always" || !reachable.has(ask.file)) continue;
+        const names = entries.get(ask.file);
+        if (ask.how === "whole") entries.set(ask.file, null);
+        else if (names === undefined) entries.set(ask.file, [ask.name]);
+        else if (names && !names.includes(ask.name)) names.push(ask.name);
         continue;
       }
       if (answer.whole) whole.add(ask.file);
-      for (const next of answer.next) if (!asked.has(next.key) && !whole.has(next.file)) queue.push(next);
+      for (const next of answer.next) if (!seen.has(next.key) && !whole.has(next.file)) queue.push(next);
     }
-    return [...entries].sort();
+    return entries;
   }
 
   #answersUnder(importsAs: ImportsAs): Map<string, AskAnswer> {

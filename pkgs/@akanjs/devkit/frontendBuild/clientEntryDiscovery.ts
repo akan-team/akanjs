@@ -115,9 +115,17 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     seeds: string[],
     { importsAs, serverModules }: DiscoverOptions & { serverModules?: string[] } = {},
   ): Promise<string[]> {
+    return [...(await this.discoverAsked(seeds, { importsAs, serverModules })).keys()].sort();
+  }
+
+  //? The same entries, each with the export names asked of it: null for all of them.
+  async discoverAsked(
+    seeds: string[],
+    { importsAs, serverModules }: DiscoverOptions & { serverModules?: string[] } = {},
+  ): Promise<Map<string, string[] | null>> {
     const within = await this.discover(seeds, { importsAs });
-    if (!this.#rendered) return within;
-    return await this.#rendered.of(seeds, {
+    if (!this.#rendered) return new Map(within.map((entry) => [entry, null]));
+    return await this.#rendered.asked(seeds, {
       serverModules: serverModules ?? (await this.serverModules(seeds, { importsAs })),
       within,
       importsAs,

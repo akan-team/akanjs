@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import type { SsrManifest, SsrManifestEntry } from "akanjs/server";
 import type { BunPlugin } from "bun";
+import { ModuleParts } from "../transforms/moduleParts";
 import { scanUseClientExports, toClientReferencePath } from "../transforms/rscUseClientTransform";
 import { bundleConditions, bundleDefine } from "./bundleDefine";
 import {
@@ -10,6 +11,7 @@ import {
   CLIENT_BUNDLE_NAMING,
   type ClientBundleGraph,
   type ClientBundleTarget,
+  type ClientLinkedInput,
   type ClientManifest,
   type ClientModuleImport,
   type MetafileInput,
@@ -118,20 +120,26 @@ export class ClientEntriesBundler {
       return abs;
     };
     const importsByModule = new Map<string, ClientModuleImport[]>();
-    for (const [input, { imports = [] }] of Object.entries(this.#metafileInputs))
-      importsByModule.set(
-        absOf(input),
-        imports
-          .filter((imported) => !imported.external)
-          .map((imported) => ({ path: absOf(imported.path), lazy: imported.kind === "dynamic-import" })),
-      );
+    const linkedByInput = new Map<string, ClientLinkedInput>();
+    for (const [input, { imports = [] }] of Object.entries(this.#metafileInputs)) {
+      const module = absOf(input);
+      const own = imports
+        .filter((imported) => !imported.external)
+        .map((imported) => ({ path: absOf(imported.path), lazy: imported.kind === "dynamic-import" }))
+        .filter((imported) => imported.path !== module);
+      linkedByInput.set(input, { module, imports: own, chunks: [] });
+      const held = importsByModule.getOrInsert(module, []);
+      for (const imported of own)
+        if (!held.some((known) => known.path === imported.path && known.lazy === imported.lazy)) held.push(imported);
+    }
     const chunksByModule = new Map<string, string[]>();
     const importsByChunk = new Map<string, string[]>();
     for (const [chunk, info] of this.#metafileOutputsByAbs) {
       if (!chunk.endsWith(".js")) continue;
       for (const input of Object.keys(info.inputs ?? {})) {
-        const module = absOf(input);
-        chunksByModule.set(module, [...(chunksByModule.get(module) ?? []), chunk]);
+        const chunks = chunksByModule.getOrInsert(absOf(input), []);
+        if (!chunks.includes(chunk)) chunks.push(chunk);
+        linkedByInput.get(input)?.chunks.push(chunk);
       }
       importsByChunk.set(
         chunk,
@@ -140,7 +148,7 @@ export class ClientEntriesBundler {
           .map((imported) => this.#absFromOutdir(imported.path)),
       );
     }
-    return { importsByModule, chunksByModule, importsByChunk };
+    return { importsByModule, chunksByModule, importsByChunk, linked: [...linkedByInput.values()] };
   }
 
   async #createOpaqueEntryAliases(): Promise<OpaqueEntryAliases> {
@@ -271,7 +279,9 @@ export class ClientEntriesBundler {
     return path.isAbsolute(p) ? p : path.resolve(this.#outdir, p);
   }
 
-  #absFromEntryPoint(p: string): string {
+  //? A file taken apart by export is linked as several inputs, each named by the file's path and its part.
+  #absFromEntryPoint(input: string): string {
+    const p = input.replace(ModuleParts.specifier, "");
     if (path.isAbsolute(p)) return path.resolve(p);
     const candidates = [path.resolve(process.cwd(), p), path.resolve(this.#app.cwdPath, p)];
     return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];

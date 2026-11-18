@@ -119,9 +119,16 @@ export class RouteRuntimeCheck {
 
   #unordered(): string[] {
     const failures: string[] = [];
-    for (const [module, chunks] of this.#graph.chunksByModule)
-      for (const piece of this.#staticImportsOf(module)) {
-        if (!this.#isPiece(piece)) continue;
+    const linked =
+      this.#graph.linked ??
+      [...this.#graph.chunksByModule].map(([module, chunks]) => ({
+        module,
+        chunks,
+        imports: this.#graph.importsByModule.get(module) ?? [],
+      }));
+    for (const { module, chunks, imports } of linked)
+      for (const { path: piece, lazy } of imports) {
+        if (lazy || !this.#isPiece(piece)) continue;
         const holdersOf = this.#loadedFirstFor(piece).map((first) => this.#graph.chunksByModule.get(first) ?? []);
         const unlinked = chunks.find((chunk) =>
           holdersOf.some((holders) => !holders.some((holder) => this.#reachedBy(chunk).has(holder))),
