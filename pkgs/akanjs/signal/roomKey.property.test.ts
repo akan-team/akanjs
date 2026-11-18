@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { Any, Int } from "akanjs/base";
-import { InputParser } from "akanjs/constant";
+import { InputParser, serialize } from "akanjs/constant";
 import { websocketBinaryFrameContract, websocketRoomContract } from "../common/websocketContract";
 import type { ArgInfo } from "./endpointInfo";
 import { RoomKey } from "./roomKey";
@@ -99,8 +99,8 @@ class Gen {
   }
 }
 
-const argOf = (name: string, argRef: unknown, arrDepth = 0): ArgInfo =>
-  ({ type: "room", name, argRef, arrDepth }) as ArgInfo;
+const argOf = (name: string, argRef: unknown, arrDepth = 0, nullable = false): ArgInfo =>
+  ({ type: "room", name, argRef, arrDepth, option: { nullable } }) as ArgInfo;
 
 interface Signature {
   args: ArgInfo[];
@@ -112,7 +112,7 @@ const signatures: Record<string, Signature> = {
   chat: { args: [argOf("channel", String)], values: (gen) => [gen.string()] },
   pair: { args: [argOf("left", String), argOf("right", String)], values: (gen) => [gen.string(), gen.string()] },
   maybe: {
-    args: [argOf("first", String), argOf("second", String)],
+    args: [argOf("first", String), argOf("second", String, 0, true)],
     values: (gen) => [gen.string(), gen.chance(0.3) ? null : gen.string()],
   },
   mixed: {
@@ -123,7 +123,7 @@ const signatures: Record<string, Signature> = {
     args: [argOf("tags", String, 1)],
     values: (gen) => [Array.from({ length: gen.int(4) }, () => gen.string())],
   },
-  json: { args: [argOf("filter", Any)], values: (gen) => [gen.json(false)] },
+  json: { args: [argOf("filter", Any, 0, true)], values: (gen) => [gen.json(false)] },
 };
 const stringKeys = ["ping", "chat", "pair", "maybe"];
 const keys = Object.keys(signatures);
@@ -202,19 +202,16 @@ const mutationsOf = (roomId: string) =>
     `${roomId}::`,
   ].filter((mutated) => mutated !== roomId);
 
-const holdsEmptyString = (value: unknown): boolean =>
-  value === "" ||
-  (Array.isArray(value) && value.some(holdsEmptyString)) ||
-  (!!value && typeof value === "object" && Object.values(value).some(holdsEmptyString));
-
 const publisherMissesSubscriber = (tuple: Tuple) => {
   const args = signatures[tuple.key].args;
-  const received = args.map((arg, idx) =>
-    InputParser.parse(arg.argRef as never, arg.arrDepth, JSON.parse(JSON.stringify(tuple.values[idx]) ?? "null"), {
+  const received = args.map((arg, idx) => {
+    const nullable = arg.option?.nullable;
+    const sent = serialize(arg.argRef as never, arg.arrDepth, tuple.values[idx], "input", { nullable });
+    return InputParser.parse(arg.argRef as never, arg.arrDepth, JSON.parse(JSON.stringify(sent) ?? "null"), {
       key: arg.name,
-      nullable: arg.name === "second" || arg.argRef === Any,
-    }),
-  );
+      nullable,
+    });
+  });
   const published = RoomKey.idOfPublished(tuple.key, args, tuple.values);
   const subscribed = RoomKey.idOf(tuple.key, args, received);
   return published === subscribed ? null : { published, subscribed };
@@ -334,17 +331,11 @@ describe("room ids, generated from a fixed seed", () => {
     );
   });
 
-  test("a publisher's room id is the room its subscriber joined with the same values off the wire, empty strings aside", () => {
-    forAll("publisher meets subscriber", tupleOf, (tuple) =>
-      holdsEmptyString(tuple.values) ? null : publisherMissesSubscriber(tuple),
-    );
-  });
-
-  test.todo('finding: a publisher\'s room id for a required String argument "" is "~" while its subscriber joined ""', () => {
+  test("a publisher's room id is the room its subscriber joined once the client serialized the same values, empty strings included", () => {
     forAll("publisher meets subscriber", tupleOf, publisherMissesSubscriber);
   });
 
-  test.todo('finding: canonicalJson drops an own "__proto__" key, so {"__proto__": x, ...rest} and {...rest} share an Any room and a live room digest', () => {
+  test('an own "__proto__" key is part of an Any room id and of a live room digest', () => {
     const tokens = new Map<string, string>();
     const liveIds = new Map<string, string>();
     forAll(
