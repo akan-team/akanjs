@@ -31,6 +31,7 @@ export class ApplicationBuildReporter {
   static create(): ApplicationBuildProgressReporter {
     return {
       phaseDone: (phase) => Logger.rawLog(ApplicationBuildReporter.formatPhaseLine(phase)),
+      phaseFail: (phase) => Logger.rawLog(`✗ ${phase.label} failed`, undefined, "error"),
     };
   }
 

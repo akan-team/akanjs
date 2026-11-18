@@ -67,6 +67,8 @@ export interface BuildRouteClientResult {
   externalsByChunkUrl?: Record<string, string[]>;
   /** The imports of every module the browser loads, or in registry mode of the SSR bundle standing in for it. */
   clientGraph?: ReadonlyMap<string, readonly ClientModuleImport[]>;
+  /** Chunks mode, where the build narrowed any route: what `RouteRuntimeReport.file` now holds. */
+  runtimeReport?: RouteRuntimeBuildReport;
 }
 
 interface BootstrapEntries {
@@ -217,6 +219,7 @@ export class RouteClientBuilder {
       ...(registry ? { registryEntries: [...acceptedEntries].sort() } : {}),
       ...(browserBundle ? { externalsByChunkUrl: Object.fromEntries(browserBundle.externalsByChunkUrl) } : {}),
       clientGraph: referenceBundle.graph.importsByModule,
+      ...(trusted?.report ? { runtimeReport: trusted.report } : {}),
     };
   }
 
@@ -302,7 +305,6 @@ export class RouteClientBuilder {
 
   async #say(report: RouteRuntimeBuildReport) {
     await RouteRuntimeReport.write(this.#app.cwdPath, report);
-    this.#app.log(`[client-runtime] ${RouteRuntimeReport.summary(report)}`);
     for (const route of report.notSmaller) this.#app.verbose(`[client-runtime] not smaller per module: ${route}`);
     for (const route of report.refused ?? [])
       this.#app.verbose(`[client-runtime] larger with the whole runtime here: ${route}`);

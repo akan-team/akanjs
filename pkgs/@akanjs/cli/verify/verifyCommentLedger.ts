@@ -32,7 +32,7 @@ export class VerifyCommentLedger {
       await VerifyCommentLedger.#write(root, { head, seen: next }).catch(() => undefined);
     const [first] = fresh;
     if (first) first.fix = VerifyComments.fix;
-    return kept.length ? [...fresh, VerifyCommentLedger.#summary(kept)] : fresh;
+    return fresh.length && kept.length ? [...fresh, VerifyCommentLedger.#summary(kept)] : fresh;
   }
 
   static #summary(kept: VerifyDiagnostic[]): VerifyDiagnostic {

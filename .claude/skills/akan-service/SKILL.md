@@ -17,9 +17,8 @@ dictionary is a `serviceDictionary`.
 - Read the module's `*.abstract.md` **before** changing it — it states the invariants the code cannot show.
   Update it when an invariant, workflow, or public behaviour changes; not for formatting or imports.
 - Keep the public surface in the signal layer and the decisions in the service.
-- Service methods stay a few lines: load → chain → `return await ….save()`. Write `return await` explicitly
-  in tail position. Side effects belong in `_preUpdate` / `_postCreate`, not inline. Fire-and-forget is
-  explicitly `void`-ed.
+- Service methods stay a few lines: load → chain → `return await ….save()`. Side effects belong in
+  `_preUpdate` / `_postCreate`, not inline. Fire-and-forget is explicitly `void`-ed.
 - Return `null` / `false` for "not allowed" or "not found" and let the signal decide whether that is an
   error.
 - `serve(name, { serverMode: "batch" }, …)` mounts the module, endpoints included, only in a `batch` or `all`
@@ -73,7 +72,7 @@ export class OpenlibraryService extends serve("openlibrary" as const, ({ plug })
   }
 }
 
-// lib/_openlibrary/openlibrary.signal.ts — Any answers plain JSON; nullable lets it answer null for "not found"
+// lib/_openlibrary/openlibrary.signal.ts — Any answers plain JSON
 import { Any } from "akanjs/base";
 import { endpoint, internal, Public } from "akanjs/signal";
 
@@ -105,8 +104,11 @@ The page calls it as `await fetch.book(id)` (`fetch` from `@apps/<app>/client`) 
 `common/`, or return a scalar (`akan create-scalar`) for a typed wire shape. A query that answers `null` without
 `nullable: true` fails the render, naming the endpoint.
 
-Full detail: `get_guideline` with `modelService`. The exact signatures of serve, adapt, endpoint and
-serviceDictionary, and every import path, are in the `akanApi-*` references below.
+The adapter turns every failure into `null`, a not-found page. One the page must show as an error throws
+`new Err("<app>.error.<key>")`, `Err` from `"../lib/dict"` and the key in `lib/_<app>/<app>.dictionary.ts`'s
+`.error({})`; `new Error` fails the build (`no-throw-raw-error`).
+
+The signatures of serve, adapt, endpoint and serviceDictionary, and every import path: the `akanApi-*` references.
 
 ## References
 

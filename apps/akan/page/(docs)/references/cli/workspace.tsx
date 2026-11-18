@@ -208,8 +208,8 @@ export default page()
       {
         name: "akan.comment.added",
         desc: l.trans({
-          en: "A warning per code comment added since the last commit, so each one gets a second look. A later run counts the ones already reported on one `akan.comment.kept` line, and `--comments` lists them again. `--lint-only` skips it.",
-          ko: "마지막 커밋 뒤 추가된 코드 주석마다 경고를 하나씩 내, 한 번 더 살펴보게 합니다. 이미 보고한 주석은 다음 실행부터 `akan.comment.kept` 한 줄로 세고, `--comments`로 다시 나열합니다. `--lint-only`는 건너뜁니다.",
+          en: "A warning per code comment added since the last commit, so each one gets a second look. A later run leaves out the ones already reported, counting them on one `akan.comment.kept` line only beside a new one, and `--comments` lists them again. `--lint-only` skips it.",
+          ko: "마지막 커밋 뒤 추가된 코드 주석마다 경고를 하나씩 내, 한 번 더 살펴보게 합니다. 이미 보고한 주석은 다음 실행부터 빼고, 새 주석이 함께 나올 때만 `akan.comment.kept` 한 줄로 셉니다. `--comments`로 다시 나열합니다. `--lint-only`는 건너뜁니다.",
         }),
       },
       {
