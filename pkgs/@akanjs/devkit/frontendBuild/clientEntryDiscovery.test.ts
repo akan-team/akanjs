@@ -326,6 +326,24 @@ describe("GraphClientEntryDiscovery", () => {
       expect(await discovery.discoverRendered([file("all.tsx")])).toEqual(whole);
     });
 
+    test("a second route asking the same export gets the same answer, and a saved file is read again", async () => {
+      const file = await tempDir();
+      await writeView(file);
+      await Bun.write(file("stats.tsx"), 'import { Stats } from "./Memo.View";\nexport default Stats;\n');
+      await Bun.write(file("board.tsx"), 'import { Stats } from "./Memo.View";\nexport default () => <Stats />;\n');
+      const discovery = byExport();
+
+      expect(await discovery.discoverRendered([file("stats.tsx")])).toEqual([file("ui/Chart.tsx")]);
+      expect(await discovery.discoverRendered([file("board.tsx")])).toEqual([file("ui/Chart.tsx")]);
+
+      await Bun.write(
+        file("Memo.View.tsx"),
+        'import { Panel } from "./ui/Panel";\nexport const Stats = () => <Panel />;\n',
+      );
+      discovery.invalidate([file("Memo.View.tsx")]);
+      expect(await discovery.discoverRendered([file("board.tsx")])).toEqual([file("ui/Panel.tsx")]);
+    });
+
     test("without the setting, a route reaches what the whole server file imports", async () => {
       const file = await tempDir();
       await writeView(file);

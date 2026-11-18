@@ -4,9 +4,10 @@ import { SOURCE_EXTS } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
-import { ExportReach, type ReachedImport } from "../transforms/exportReach";
+import { ExportReach } from "../transforms/exportReach";
 import { ObjectMemberImports } from "../transforms/objectMemberImports";
 import type { AkanConfig, ClientEntryDiscovery, DiscoverOptions, ScannedImport } from "./clientBuildTypes";
+import { RenderedEntries, type RenderedFile } from "./renderedEntries";
 
 const USE_CLIENT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
 const EXPORT_STAR_RE = /^\s*export\s*\*/m;
@@ -17,18 +18,7 @@ const AKANJS_NODE_MODULE_RE = /[\\/]node_modules[\\/]akanjs[\\/]/;
 const NON_SOURCE_EXT_RE = /\.(css|scss|sass|less|json|svg|png|jpe?g|webp|gif|avif|ico|woff2?|ttf|otf|mp3|mp4|wav)$/i;
 type PackageResolver = Awaited<ReturnType<typeof createTsconfigPackageResolver>>;
 
-interface FileFacts {
-  isClientEntry: boolean;
-  imports: ScannedImport[];
-  /** Only where the discovery reads by export; null for a module whose exports cannot be read. */
-  reach?: ExportReach | null;
-}
-
-interface ExportAsk {
-  file: string;
-  name: string;
-  how: "whole" | "always" | "named" | "starred";
-}
+type FileFacts = RenderedFile;
 
 interface Lookup<T> {
   epoch: number;
@@ -77,7 +67,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   //? Bumped by every invalidation: a walk that began before one computed from facts it may have read stale, so it
   //? answers its caller but caches nothing (a registry check walks this instance beside the slow lane's route builds).
   #epoch = 0;
-  #byExport: boolean;
+  #rendered: RenderedEntries | null;
 
   constructor(
     akanConfig: Pick<AkanConfig, "barrelImports">,
@@ -86,7 +76,14 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   ) {
     this.#akanConfig = akanConfig;
     this.#resolvePackage = resolvePackage;
-    this.#byExport = byExport;
+    this.#rendered = byExport
+      ? new RenderedEntries({
+          fileOf: async (file) => (shouldSkipNodeModule(file) ? null : await this.#facts(file)),
+          resolve: async (spec, fromDir) =>
+            NON_SOURCE_EXT_RE.test(spec) ? null : await this.#resolveSpecifier(spec, fromDir),
+          epoch: () => this.#epoch,
+        })
+      : null;
     this.#analyzer = new BarrelAnalyzer({ resolvePackage, ...(packageRoot ? { packageRoot } : {}) });
     this.#objects = packageRoot
       ? new ObjectMemberImports({ resolve: ObjectMemberImports.resolverOf(resolvePackage) })
@@ -113,58 +110,12 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     return Array.from(entries).sort();
   }
 
-  //* The entries a route can render. A server module asked for one export gives only what that export's declaration
-  //* reaches, and every server module the route evaluates gives what its top-level statements reach. A client module
-  //* is one entry whatever is asked of it. Without `byExport`, and never beyond it, this is what `discover` answers.
+  //? Without `byExport`, and never beyond it, this is what `discover` answers.
   async discoverRendered(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
     const within = await this.discover(seeds, { importsAs });
-    if (!this.#byExport) return within;
-    const reachable = new Set(within);
-    const entries = new Set<string>();
-    const asked = new Set<string>();
-    const whole = new Set<string>();
-    const queue: ExportAsk[] = seeds.map((seed) => ({ file: path.resolve(seed), name: "", how: "whole" }));
-    for (const file of await this.serverModules(seeds, { importsAs })) queue.push({ file, name: "", how: "always" });
-    for (const ask of queue) {
-      const key = `${ask.file}\0${ask.how}\0${ask.name}`;
-      if (asked.has(key) || whole.has(ask.file) || shouldSkipNodeModule(ask.file)) continue;
-      asked.add(key);
-      const facts = await this.#facts(ask.file);
-      if (!facts) continue;
-      if (facts.isClientEntry) {
-        if (ask.how !== "always" && reachable.has(ask.file)) entries.add(ask.file);
-        continue;
-      }
-      const reached = GraphClientEntryDiscovery.#reachedBy(ask, facts);
-      if (reached.whole) whole.add(ask.file);
-      const swaps = importsAs?.get(ask.file);
-      for (const { specifier, names } of reached.imports) {
-        const swapped = swaps?.get(specifier);
-        const spec = swapped === undefined ? specifier : swapped;
-        if (!spec || NON_SOURCE_EXT_RE.test(spec)) continue;
-        const resolved = await this.#resolveSpecifier(spec, path.dirname(ask.file));
-        if (!resolved) continue;
-        const file = path.resolve(resolved);
-        if (names === null) queue.push({ file, name: "", how: "whole" });
-        else for (const name of names) queue.push({ file, name, how: reached.starred ? "starred" : "named" });
-      }
-    }
-    return [...entries].sort();
-  }
-
-  //? A name asked through `export *` that the target does not hold is another target's, so it reaches nothing here.
-  static #reachedBy(
-    { name, how }: ExportAsk,
-    { reach, imports }: FileFacts,
-  ): { imports: ReachedImport[]; whole?: boolean; starred?: boolean } {
-    if (!reach) return { imports: imports.map((imported) => ({ specifier: imported.path, names: null })), whole: true };
-    if (how === "whole") return { imports: reach.whole(), whole: true };
-    if (how === "always") return { imports: reach.always() };
-    const reached = reach.of(name);
-    if (reached.known) return { imports: reached.imports };
-    if (reached.stars.length > 0)
-      return { imports: reached.stars.map((specifier) => ({ specifier, names: [name] })), starred: true };
-    return how === "starred" ? { imports: [] } : { imports: reach.whole(), whole: true };
+    if (!this.#rendered) return within;
+    const serverModules = await this.serverModules(seeds, { importsAs });
+    return await this.#rendered.of(seeds, { serverModules, within, importsAs });
   }
 
   async serverModules(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
@@ -213,6 +164,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     // Reachable-entry results are transitive, so a changed child invalidates every ancestor.
     this.#reachableEntriesCache.clear();
     this.#swappedEntriesCaches = new WeakMap();
+    this.#rendered?.forget();
     for (const [barrel, before] of this.#analyzer.forget(files))
       if (!this.#reread.has(barrel)) this.#reread.set(barrel, before);
     this.#forgetObjects(files);
@@ -289,7 +241,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
         if (USE_CLIENT_RE.test(content)) return { isClientEntry: !this.#exportsOnlyHooks(content), imports: [] };
         const rewritten = await this.#rewrite(content, absPath);
         const imports = this.#scanImports(rewritten);
-        return this.#byExport
+        return this.#rendered
           ? { isClientEntry: false, imports, reach: ExportReach.read(rewritten, absPath) }
           : { isClientEntry: false, imports };
       })();
