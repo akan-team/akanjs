@@ -14,12 +14,33 @@ import { buttonRecipe } from "../Button";
 import { OverlayPortalProvider, overlayZ, useOverlayLayerProps, useOverlayPortal } from "../overlayLayer";
 import { SheetHandle } from "../SheetHandle";
 import { useDismissDrag } from "../useDismissDrag";
+import { useLeave } from "../useLeave";
 
 import { isSheetNow, type ModalSurfaceProps, modalSurfaceOf } from "./modalSurface";
 import { DialogContext } from "./Provider";
 
 //? A distance, not a share of the panel as a bottom sheet takes: a share of a full-screen sheet is most of the screen.
 const DISMISS_DRAG_PX = 120;
+
+interface CloseSlotProps {
+  className: string;
+  closeButton?: ReactNode | false;
+  onClose: () => void;
+}
+//? The dismissal is on the slot, not on the button inside it, so a replacement needs no wiring: a click on whatever
+//? the caller put here bubbles to exactly one handler.
+const CloseSlot = ({ className, closeButton, onClose }: CloseSlotProps) => {
+  if (closeButton === false) return null;
+  return (
+    <div className={cn("absolute right-3 z-10", className)} onClick={onClose}>
+      {closeButton ?? (
+        <button aria-label="Close" className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8")} type="button">
+          <BiX className="text-xl" />
+        </button>
+      )}
+    </div>
+  );
+};
 
 export interface ModalProps extends ModalSurfaceProps {
   className?: string;
@@ -53,6 +74,7 @@ export const Modal = ({
   const isActive = open && isCurrentPage;
   const [root, setRoot] = useState<HTMLDivElement | null>(null);
   const [dragY, setDragY] = useState(0);
+  const { drawn, leaving } = useLeave(open, ref);
   const surface = modalSurfaceOf(presentation, placement);
   //? Where the iOS shell no longer pans to a focused field, the dialog itself ends at the keys.
   const { keyboardHeight } = useVisualViewportFrame();
@@ -64,9 +86,10 @@ export const Modal = ({
     : null;
 
   const requestClose = useCallback(() => {
-    if (confirmClose && !window.confirm(l("base.confirmClose"))) return;
+    if (confirmClose && !window.confirm(l("base.confirmClose"))) return false;
     setOpen(false);
     onCancel?.();
+    return true;
   }, [confirmClose, l, onCancel, setOpen]);
 
   const dismissDrag = useDismissDrag({
@@ -74,9 +97,9 @@ export const Modal = ({
     flickSpeed: 0.5,
     enabled: () => isSheetNow(presentation, placement),
     onDrag: (y) => setDragY(Math.max(0, y)),
+    //? A dismissing drag keeps its offset, so the leave animation carries the panel on from where the finger let go.
     onRelease: ({ dismiss }) => {
-      setDragY(0);
-      if (dismiss) requestClose();
+      if (!dismiss || !requestClose()) setDragY(0);
     },
     gesture: { axis: "y", filterTaps: true },
   });
@@ -106,13 +129,21 @@ export const Modal = ({
     };
   }, [registerDismiss]);
 
-  if (!open || !portalElement) return null;
+  useEffect(() => {
+    if (!drawn) setDragY(0);
+  }, [drawn]);
+
+  if (!drawn || !portalElement) return null;
 
   return createPortal(
     <div
       {...overlayLayerProps}
       ref={setRoot}
-      className={cn("fixed inset-0 flex bg-black/40", surface.root)}
+      data-leaving={leaving ? "" : undefined}
+      className={cn(
+        "fixed inset-0 flex bg-black/40 transition-[background-color] duration-200 data-leaving:pointer-events-none data-leaving:bg-transparent",
+        surface.root,
+      )}
       style={{ zIndex: overlayZ.modal, visibility: isCurrentPage ? undefined : "hidden", ...keyboardInset }}
       onClick={(event) => {
         if (event.target !== event.currentTarget) return;
@@ -123,6 +154,7 @@ export const Modal = ({
       <OverlayPortalProvider value={root}>
         <div
           ref={ref}
+          data-leaving={leaving ? "" : undefined}
           // Focused on open so tabbing starts inside, but it is no control, so it draws no focus ring.
           className={cn(
             "relative flex w-full flex-col overflow-hidden bg-card text-card-foreground shadow-lg outline-none",
@@ -137,21 +169,7 @@ export const Modal = ({
           aria-describedby={contentId}
           tabIndex={-1}
         >
-          {/* The dismissal is on the slot, not on the button inside it, so a replacement needs no wiring — a
-            click on whatever the caller put here bubbles to exactly one handler. */}
-          {closeButton === false ? null : (
-            <div className={cn("absolute right-3 z-10", surface.close)} onClick={() => requestClose()}>
-              {closeButton ?? (
-                <button
-                  aria-label="Close"
-                  className={buttonRecipe({ variant: "ghost", size: "icon" }, "size-8")}
-                  type="button"
-                >
-                  <BiX className="text-xl" />
-                </button>
-              )}
-            </div>
-          )}
+          <CloseSlot className={surface.close} closeButton={closeButton} onClose={() => requestClose()} />
           {presentation === "dialog" ? null : (
             <SheetHandle {...dragProps} className={cn("touch-none pt-2", surface.handle)} />
           )}

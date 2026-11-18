@@ -621,6 +621,23 @@ describe("useCsrValues when a page is switched in place", () => {
     play.mockRestore();
   });
 
+  test("a push that changes only the query of the page on screen redraws it in place: one back leaves it", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }, { segment: "detail", transition: "stack" }]);
+    await act(async () => void client.router.push("/detail"));
+    await elapse(600);
+    const entryId = frame.seen.latest?.location.entryId;
+    const play = spyOn(CsrSlide, "play");
+
+    await act(async () => void client.router.push("/detail?ticketId=1"));
+    await drawnWithin(150);
+
+    expect(frame.stack()).toEqual(["/en/home", "/en/detail"]);
+    expect(frame.seen.latest?.location.search).toBe("ticketId=1");
+    expect(frame.seen.latest?.location.entryId).toBe(entryId);
+    expect(play).not.toHaveBeenCalled();
+    play.mockRestore();
+  });
+
   test("a move made while another page slides in is not drawn ahead: the slide's end would drop its page", async () => {
     const frame = mountFrame("/en/home", [
       { segment: "home" },

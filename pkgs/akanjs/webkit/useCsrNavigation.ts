@@ -242,9 +242,12 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
   }, [clearPendingSlots]);
   const broadcastSyncNavigation = useBroadcastSyncNavigation(refs);
   const runForwardNavigation = useCallback(
-    (kind: "push" | "replace", href: string, { scrollToTop }: RouteOptions = {}) => {
+    (requested: "push" | "replace", href: string, { scrollToTop }: RouteOptions = {}) => {
       const fromLocation = getCurrentLocation();
       const target = getLocation(href);
+      //? A push that changes only the query or hash of the page on screen is that page in another state (a filter, a
+      //? day, an open record), not a screen to stack: it rewrites the entry as a replace does, so one back leaves it.
+      const kind = requested === "push" && target.pathname === fromLocation.pathname ? "replace" : requested;
       const cached = target.pathRoute.pageState.cache
         ? nav.history.current.cachedLocationMap.get(target.pathRoute.path)
         : undefined;
