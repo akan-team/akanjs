@@ -120,7 +120,7 @@ const TextAreaField = ({
         }}
         disabled={disabled}
         rows={rows}
-        className={cn("h-full w-full")}
+        className="mb-0 h-full w-full"
         inputClassName={cn("w-full focus:border-primary", inputClassName)}
         validate={lengthValidator(l, minlength, maxlength, validate)}
         onPressEnter={onPressEnter}
@@ -165,7 +165,7 @@ export const Email = ({
           onChange(transform(value));
         }}
         disabled={disabled}
-        className={cn("w-full", "")}
+        className="mb-0 w-full"
         inputClassName={cn("w-full focus:border-primary", inputClassName)}
         inputStyleType={inputStyleType}
         validate={lengthValidator(l, minlength, maxlength, validate)}
