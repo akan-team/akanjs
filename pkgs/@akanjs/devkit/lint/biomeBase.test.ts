@@ -31,6 +31,27 @@ export const always = (n: number) => {
 };
 `;
 
+const fieldProbe = `export class Pump {
+  #isBusy = false;
+  static isOrphaned = false;
+  async run(frames: number[]) {
+    for (const frame of frames) {
+      if (Pump.isOrphaned) return;
+      if (this.#isBusy) continue;
+      void this.#infer(frame);
+    }
+  }
+  async #infer(frame: number) {
+    this.#isBusy = true;
+    await Promise.resolve(frame);
+    this.#isBusy = false;
+  }
+}
+export const orphan = () => {
+  Pump.isOrphaned = true;
+};
+`;
+
 const tempDirs: string[] = [];
 
 afterAll(async () => {
@@ -48,14 +69,14 @@ const runBiome = (args: string[], cwd: string) =>
     proc.on("close", () => resolve(stdout || stderr));
   });
 
-const lintWorkspace = async (files: string[], probe = hookProbe) => {
+const lintWorkspace = async (files: string[], probe = hookProbe, config: object = { extends: [biomeBaseConfig] }) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "biome-base-"));
   tempDirs.push(dir);
   //? The base config names its plugins as `./node_modules/@akanjs/devkit/…`, resolved from the extending config's
   //? folder. A junction needs no privilege on Windows, and the type is ignored elsewhere.
   await mkdir(path.join(dir, "node_modules", "@akanjs"), { recursive: true });
   await symlink(devkitDir, path.join(dir, "node_modules", "@akanjs", "devkit"), "junction");
-  await writeFile(path.join(dir, "biome.json"), JSON.stringify({ extends: [biomeBaseConfig] }));
+  await writeFile(path.join(dir, "biome.json"), JSON.stringify(config));
   for (const file of files) {
     await mkdir(path.dirname(path.join(dir, file)), { recursive: true });
     await writeFile(path.join(dir, file), probe);
@@ -87,11 +108,18 @@ describe("biome.base.json", () => {
     ]);
   });
 
-  test("warns on an always-true condition but not on a null check of RegExp.exec", async () => {
-    const diagnostics = await lintWorkspace(["apps/demo/common/idOf.ts"], execProbe);
-    const unnecessary = diagnostics
-      .filter((diagnostic) => diagnostic.category === "lint/suspicious/noUnnecessaryConditions")
-      .map((diagnostic) => `${diagnostic.location?.start?.line} ${diagnostic.severity}`);
-    expect(unnecessary).toEqual(["8 warning"]);
+  test("leaves a check on a field another method assigns alone, which Biome reads as its first literal", async () => {
+    const ruleOnly = { linter: { rules: { recommended: false, suspicious: { noUnnecessaryConditions: "warn" } } } };
+    const unnecessary = async (probe: string, config?: object) =>
+      (await lintWorkspace(["apps/demo/common/probe.ts"], probe, config))
+        .filter((diagnostic) => diagnostic.category === "lint/suspicious/noUnnecessaryConditions")
+        .map((diagnostic) => `${diagnostic.location?.start?.line} ${diagnostic.severity}`);
+
+    expect(await unnecessary(fieldProbe)).toEqual([]);
+    expect(await unnecessary(execProbe)).toEqual([]);
+
+    //? Pins biomejs/biome#11174, open in 2.6.8: once the first list is empty, the base config can turn the rule back on.
+    expect(await unnecessary(fieldProbe, ruleOnly)).toEqual(["6 warning", "7 warning"]);
+    expect(await unnecessary(execProbe, ruleOnly)).toEqual(["8 warning"]);
   });
 });

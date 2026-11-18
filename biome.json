@@ -44,6 +44,7 @@
         "noConfusingVoidType": "error",
         "noFocusedTests": "error",
         "noTemplateCurlyInString": "error",
+        "noUnnecessaryConditions": "warn",
         "useArraySortCompare": "error"
       }
     }
