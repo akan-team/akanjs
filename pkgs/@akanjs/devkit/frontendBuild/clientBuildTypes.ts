@@ -86,6 +86,17 @@ export interface ClientBundleGraph {
   chunksByModule: Map<string, string[]>;
   /** Static imports only: a chunk loaded by `import()` runs after the chunk asking for it. */
   importsByChunk: Map<string, string[]>;
+  /** What the bundler placed on its own: a file taken apart by export is several, held together in the maps above. */
+  linked?: ClientLinkedInput[];
+}
+
+/** By client entry, the export names asked of it; null for all of them. */
+export type AskedExports = ReadonlyMap<string, readonly string[] | null>;
+
+export interface ClientLinkedInput {
+  module: string;
+  imports: ClientModuleImport[];
+  chunks: string[];
 }
 
 export interface ClientModuleImport {

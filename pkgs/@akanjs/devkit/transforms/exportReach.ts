@@ -245,6 +245,10 @@ export class ExportReach {
     );
   }
 
+  static namesReadBy(root: ts.Node): Set<string> {
+    return new Set(ExportReach.#unitOf(root).reads.keys());
+  }
+
   static #unitOf(root: ts.Node): Unit {
     const unit: Unit = { reads: new Map(), dynamic: [] };
     const read = (name: string, member: string | null) => {

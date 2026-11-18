@@ -326,6 +326,26 @@ describe("GraphClientEntryDiscovery", () => {
       expect(await discovery.discoverRendered([file("all.tsx")])).toEqual(whole);
     });
 
+    test("each entry comes with the exports the route's server files ask of it, and with none named when one asks for the file", async () => {
+      const file = await tempDir();
+      const pair = file("ui/Pair.tsx");
+      await Bun.write(pair, `${client("A")}export const B = () => null;\nexport const C = () => null;\n`);
+      await Bun.write(file("a.tsx"), 'import { A } from "./ui/Pair";\nexport default () => <A />;\n');
+      await Bun.write(
+        file("ab.tsx"),
+        'import { A } from "./ui/Pair";\nimport { B as Bee } from "./ui/Pair";\nexport default () => [A, Bee];\n',
+      );
+      await Bun.write(file("all.tsx"), 'import * as Pair from "./ui/Pair";\nexport default () => Pair;\n');
+      const discovery = byExport();
+
+      expect(await discovery.discoverAsked([file("a.tsx")])).toEqual(new Map([[pair, ["A"]]]));
+      expect(await discovery.discoverAsked([file("ab.tsx")])).toEqual(new Map([[pair, ["A", "B"]]]));
+      expect(await discovery.discoverAsked([file("all.tsx")])).toEqual(new Map([[pair, null]]));
+      expect(await discovery.discoverAsked([file("a.tsx"), file("all.tsx")])).toEqual(new Map([[pair, null]]));
+      const whole = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+      expect(await whole.discoverAsked([file("a.tsx")])).toEqual(new Map([[pair, null]]));
+    });
+
     test("a second route asking the same export gets the same answer, and a saved file is read again", async () => {
       const file = await tempDir();
       await writeView(file);
