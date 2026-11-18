@@ -96,8 +96,14 @@ async function assertScanConvention(exec: AppExecutor | LibExecutor, libRoot: { 
     }
 
   //* A lib has no `getPageKeys`, so its own route files are validated here.
-  if (exec.type === "lib")
+  if (exec.type === "lib") {
     for (const { relativePath, reason } of await exec.getPageConventionViolations()) addViolation(relativePath, reason);
+    if (await exec.exists(AppInfo.migrationDir))
+      addViolation(
+        AppInfo.migrationDir,
+        "a lib's migrations are never run; a migration goes in the script/migration of the app whose database it changes",
+      );
+  }
 
   for (const filename of libRoot.files)
     if (!isAllowedLibFacetRootFile(filename))

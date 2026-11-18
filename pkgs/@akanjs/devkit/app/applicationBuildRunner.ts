@@ -352,7 +352,6 @@ export class ApplicationBuildRunner {
         "../../page/**/*.ts",
         "../../page/**/*.tsx",
         ...libPageIncludes,
-        ...(options.tests ? ["../../script/**/*.ts"] : []),
         "../../../../pkgs/akanjs/*/types/**/*.d.ts",
       ],
       options,

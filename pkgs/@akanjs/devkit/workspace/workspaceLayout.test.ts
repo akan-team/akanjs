@@ -62,6 +62,10 @@ describe("lib root layout allowlist", () => {
     }
   });
 
+  test("admits a lib's own tooling folder, which nothing runs or ships", () => {
+    expect(libRootAllowedDirs.has("script")).toBe(true);
+  });
+
   test("rejects a lib root entry no facet owns", () => {
     expect(libRootAllowedFiles.has("helper.ts")).toBe(false);
     expect(libRootAllowedDirs.has("base")).toBe(false);
@@ -71,7 +75,7 @@ describe("lib root layout allowlist", () => {
     for (const filename of ["main.ts", "akan.app.json"]) {
       expect(libRootAllowedFiles.has(filename)).toBe(false);
     }
-    for (const dirname of [".akan", "script", "secrets"]) {
+    for (const dirname of [".akan", "secrets"]) {
       expect(libRootAllowedDirs.has(dirname)).toBe(false);
     }
   });
