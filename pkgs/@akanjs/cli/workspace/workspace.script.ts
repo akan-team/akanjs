@@ -143,13 +143,17 @@ export class WorkspaceScript extends script("workspace", [
     const options = { fix, maxDiagnostics };
     await Promise.all(appNames.map((appName) => this.applicationScript.sync(AppExecutor.from(workspace, appName))));
     await Promise.all(libNames.map((libName) => this.libraryScript.syncLibrary(LibExecutor.from(workspace, libName))));
-    await Promise.all([
-      ...appNames.map((appName) => this.workspaceRunner.lint(AppExecutor.from(workspace, appName), workspace, options)),
-      ...libNames.map((libName) => this.workspaceRunner.lint(LibExecutor.from(workspace, libName), workspace, options)),
-      ...pkgNames
-        .filter((pkgName) => pkgName !== "contract") // ! contract는 우선 무시
-        .map((pkgName) => this.workspaceRunner.lint(PkgExecutor.from(workspace, pkgName), workspace, options)),
-    ]);
+    await this.workspaceRunner.lintMany(
+      [
+        ...appNames.map((appName) => AppExecutor.from(workspace, appName)),
+        ...libNames.map((libName) => LibExecutor.from(workspace, libName)),
+        ...pkgNames
+          .filter((pkgName) => pkgName !== "contract") // ! contract는 우선 무시
+          .map((pkgName) => PkgExecutor.from(workspace, pkgName)),
+      ],
+      workspace,
+      options,
+    );
   }
   async syncAll(workspace: Workspace) {
     const [appNames, libNames] = await workspace.getExecs();
