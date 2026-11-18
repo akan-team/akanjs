@@ -102,10 +102,12 @@ describe("CsrSlide", () => {
   });
 
   test("moves the page right under the one sliding when the stack keeps an older page drawn under it too", () => {
-    document.getElementById("pageContainers")?.insertAdjacentHTML(
-      "afterbegin",
-      `<div id="pageContainer-z" data-page-type="prev"><div class="akan-page-content"></div></div>`,
-    );
+    document
+      .getElementById("pageContainers")
+      ?.insertAdjacentHTML(
+        "afterbegin",
+        `<div id="pageContainer-z" data-page-type="prev"><div class="akan-page-content"></div></div>`,
+      );
     document
       .getElementById("topInsetContainer")
       ?.insertAdjacentHTML("afterbegin", `<div id="topInsetContent-z" data-page-type="prev"></div>`);
