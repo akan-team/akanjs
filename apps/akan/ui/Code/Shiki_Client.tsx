@@ -1,30 +1,25 @@
 "use client";
-import { Loading } from "akanjs/ui";
-import { useFetch } from "akanjs/webkit";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { GoFold, GoUnfold } from "react-icons/go";
 
-interface Shiki_ClientProps {
-  className?: string;
-  htmlPromise: Promise<string>;
-  focusLines?: [number, number][];
-}
-
-interface LineData {
+export interface LineData {
   lineNum: number;
   html: string;
   className: string;
 }
 
-interface Segment {
+export interface Segment {
   type: "visible" | "hidden";
   lines: LineData[];
   startLine: number;
 }
 
-const isLineInFocus = (lineNum: number, ranges: [number, number][]) => {
-  return ranges.some(([start, end]) => lineNum >= start && lineNum <= end);
-};
+interface Shiki_ClientProps {
+  className?: string;
+  preClass: string;
+  codeClass: string;
+  segments: Segment[];
+}
 
 interface CollapsedSectionProps {
   sectionId: string;
@@ -56,8 +51,7 @@ const CollapsedSection = ({ sectionId, lines, isExpanded, onToggle }: CollapsedS
   );
 };
 
-export const Shiki_Client = ({ className, htmlPromise, focusLines }: Shiki_ClientProps) => {
-  const { fulfilled, value } = useFetch(htmlPromise);
+export const Shiki_Client = ({ className, preClass, codeClass, segments }: Shiki_ClientProps) => {
   const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
 
   const toggleSection = (section: string) => {
@@ -68,65 +62,6 @@ export const Shiki_Client = ({ className, htmlPromise, focusLines }: Shiki_Clien
       return next;
     });
   };
-
-  const { preClass, codeClass, segments } = useMemo(() => {
-    if (!value) return { preClass: "", codeClass: "", segments: [] };
-
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(value, "text/html");
-    const pre = doc.querySelector("pre");
-    const code = doc.querySelector("code");
-
-    if (!code) return { preClass: "", codeClass: "", segments: [] };
-
-    const preClass = pre?.className ?? "";
-    const codeClass = code.className;
-
-    if (!focusLines || focusLines.length === 0) {
-      // No focus lines - return all lines as visible
-      const lines = Array.from(code.querySelectorAll(".line[data-line]"));
-      const lineData: LineData[] = lines.map((line) => ({
-        lineNum: parseInt(line.getAttribute("data-line") ?? "0"),
-        html: line.innerHTML,
-        className: line.className,
-      }));
-      return {
-        preClass,
-        codeClass,
-        segments: [{ type: "visible" as const, lines: lineData, startLine: 1 }],
-      };
-    }
-
-    const lines = Array.from(code.querySelectorAll(".line[data-line]"));
-    if (lines.length === 0) return { preClass, codeClass, segments: [] };
-
-    // Build segments: groups of consecutive visible or hidden lines
-    const segments: Segment[] = [];
-    let currentSegment: Segment | null = null;
-
-    lines.forEach((line) => {
-      const lineNum = parseInt(line.getAttribute("data-line") ?? "0");
-      const isVisible = isLineInFocus(lineNum, focusLines);
-      const type = isVisible ? "visible" : "hidden";
-      const lineData: LineData = { lineNum, html: line.innerHTML, className: line.className };
-
-      if (currentSegment?.type !== type) {
-        currentSegment = { type, lines: [lineData], startLine: lineNum };
-        segments.push(currentSegment);
-      } else currentSegment.lines.push(lineData);
-    });
-
-    return { preClass, codeClass, segments };
-  }, [value, focusLines]);
-
-  if (!fulfilled)
-    return (
-      <pre className={className}>
-        <code>
-          <Loading.Skeleton active />
-        </code>
-      </pre>
-    );
 
   return (
     <div className={className}>
