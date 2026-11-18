@@ -638,6 +638,26 @@ describe("useCsrValues when a page is switched in place", () => {
     play.mockRestore();
   });
 
+  test("a stack page a tab that does not slide is switched to with replace changes in place", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "board", transition: "stack" },
+      { segment: "finance" },
+    ]);
+    await act(async () => void client.router.push("/board"));
+    await elapse(600);
+    await act(async () => void client.router.replace("/finance"));
+    await drawnWithin(150);
+    const play = spyOn(CsrSlide, "play");
+
+    await act(async () => void client.router.replace("/board"));
+    await drawnWithin(150);
+
+    expect(frame.stack()).toEqual(["/en/home", "/en/board"]);
+    expect(play).not.toHaveBeenCalled();
+    play.mockRestore();
+  });
+
   test("a move made while another page slides in is not drawn ahead: the slide's end would drop its page", async () => {
     const frame = mountFrame("/en/home", [
       { segment: "home" },
