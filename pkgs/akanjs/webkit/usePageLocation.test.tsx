@@ -150,4 +150,54 @@ describe("usePageLocation", () => {
     expect(readerRenders).toBe(before);
     unmount();
   });
+
+  test("a page cached off screen and brought back leaves its readers alone until what they read changes", async () => {
+    const locationOf = (href: string) =>
+      ({
+        href: `http://localhost/en/home${href}`,
+        pathname: "/en/home",
+        search: href,
+        params: { lang: "en" },
+        searchParams: {},
+        hash: "",
+        entryId: "e1",
+        pathRoute: { ...pathRoute },
+      }) as unknown as Location;
+    const pathRoute = {
+      path: "/home",
+      pathSegments: ["home"],
+      renderPage: { render: () => null },
+      pageState: {},
+      renderRootLayouts: [],
+      renderLayouts: [],
+    };
+    let readerRenders = 0;
+    const Reader = memo(() => {
+      readerRenders += 1;
+      usePathCtx();
+      return null;
+    });
+    let show: (next: { location: Location; isCached: boolean }) => void = () => undefined;
+    const Frame = () => {
+      const [state, setState] = useState({ location: locationOf(""), isCached: false });
+      show = setState;
+      return (
+        <ClientPathWrapper
+          location={state.location}
+          pageType={state.isCached ? "cached" : "current"}
+          activity={state.isCached ? "hidden" : "current"}
+        >
+          <Reader />
+        </ClientPathWrapper>
+      );
+    };
+    const { unmount } = await mountAsync(<Frame />);
+    const before = readerRenders;
+    await act(async () => show({ location: locationOf(""), isCached: true }));
+    await act(async () => show({ location: locationOf(""), isCached: false }));
+    expect(readerRenders).toBe(before);
+    await act(async () => show({ location: locationOf("?peek=ticket:1"), isCached: false }));
+    expect(readerRenders).toBe(before + 1);
+    unmount();
+  });
 });
