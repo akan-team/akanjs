@@ -7,7 +7,8 @@ import {
   ObjectImportEdits,
   type ObjectMemberUse,
 } from "./objectImportEdits";
-import { ObjectModule, type ObjectModuleClause, type ObjectModuleFacts, type ObjectShape } from "./objectModule";
+import { type ObjectBarrels, type ObjectLookupRead, ObjectMemberLookup, type ObjectSource } from "./objectMemberLookup";
+import { ObjectModule, type ObjectModuleClause } from "./objectModule";
 import { ObjectModuleAnalyzer, resolveModuleFile } from "./objectModuleAnalyzer";
 import { hasUseClientDirective } from "./rscUseClientTransform";
 
@@ -42,14 +43,17 @@ export interface ObjectMemberRewrite {
   clientImporter: boolean;
   narrowed: ObjectImportNarrowed[];
   kept: ObjectImportKept[];
-  /** The object modules the answer read and the member files whose exports it consulted. */
+  /** The object modules the answer read, copied ones included, and the member files whose exports it consulted. */
   read: string[];
+  /** The barrels whose export map said where a copied object is declared. */
+  barrels: string[];
 }
 
 export interface ObjectMemberImportsOptions {
   resolve: (specifier: string, importer: string) => Promise<string | null>;
   specifierOf?: (file: string, importer: string) => string;
   keepLines?: boolean;
+  barrels?: ObjectBarrels;
 }
 
 const ASSIGN_OPERATOR_FIRST = ts.SyntaxKind.FirstAssignment;
@@ -66,18 +70,25 @@ const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 export class ObjectMemberImports {
   static readonly keyPrefix = "object:";
   readonly #modules: ObjectModuleAnalyzer;
+  readonly #lookup: ObjectMemberLookup;
   readonly #resolve: ObjectMemberImportsOptions["resolve"];
   readonly #specifierOf: NonNullable<ObjectMemberImportsOptions["specifierOf"]>;
   readonly #keepLines: boolean;
 
   constructor(
-    { resolve, specifierOf = ObjectMemberImports.absoluteSpecifier, keepLines = false }: ObjectMemberImportsOptions,
+    {
+      resolve,
+      specifierOf = ObjectMemberImports.absoluteSpecifier,
+      keepLines = false,
+      barrels,
+    }: ObjectMemberImportsOptions,
     modules = new ObjectModuleAnalyzer(),
   ) {
     this.#resolve = resolve;
     this.#specifierOf = specifierOf;
     this.#keepLines = keepLines;
     this.#modules = modules;
+    this.#lookup = new ObjectMemberLookup(modules, resolve, barrels);
   }
 
   get modules() {
@@ -129,31 +140,40 @@ export class ObjectMemberImports {
     );
     const candidates = ObjectMemberImports.#importsOf(sourceFile, locals);
     if (candidates.size === 0) return null;
-    const read = new Set<string>();
-    const facts = new Map<Candidate, { facts: ObjectModuleFacts; shape: ObjectShape }>();
+    const read: ObjectLookupRead = { files: new Set(), barrels: new Set() };
+    const sources = new Map<Candidate, ObjectSource>();
     for (const candidate of candidates.values()) {
       const specifier = (candidate.declaration.moduleSpecifier as ts.StringLiteral).text;
       const file = await this.#resolve(specifier, importer);
       if (!file) continue;
-      const moduleFacts = await this.#modules.facts(file);
-      const shape = moduleFacts?.objects.get(candidate.imported);
-      if (!moduleFacts || !shape || ![...shape.members.values()].some(Boolean)) continue;
+      const facts = await this.#modules.facts(file);
+      const shape = facts?.objects.get(candidate.imported);
+      if (!facts || !shape) continue;
+      const objectSource = { file, object: candidate.imported, facts, shape };
+      if (!(await this.#lookup.namesFile(objectSource, read))) continue;
       candidate.file = file;
-      read.add(file);
-      facts.set(candidate, { facts: moduleFacts, shape });
+      read.files.add(file);
+      sources.set(candidate, objectSource);
     }
-    if (facts.size === 0) return null;
-    ObjectMemberImports.#classifyUses(sourceFile, new Map([...facts.keys()].map((c) => [c.local, c])));
+    if (sources.size === 0) return null;
+    ObjectMemberImports.#classifyUses(sourceFile, new Map([...sources.keys()].map((c) => [c.local, c])));
     const clientImporter = hasUseClientDirective(source);
-    const result: ObjectMemberRewrite = { contents: null, clientImporter, narrowed: [], kept: [], read: [] };
+    const result: ObjectMemberRewrite = {
+      contents: null,
+      clientImporter,
+      narrowed: [],
+      kept: [],
+      read: [],
+      barrels: [],
+    };
     const plan = new ObjectImportEdits(source, sourceFile, this.#keepLines);
-    for (const [candidate, { facts: moduleFacts, shape }] of facts) {
-      const file = candidate.file ?? "";
+    for (const [candidate, objectSource] of sources) {
+      const { file, facts } = objectSource;
       const lineOf = (node: ts.Node) => sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
       const keep = (reason: ObjectKeepReason, node: ts.Node) =>
         result.kept.push({ object: candidate.imported, file, line: lineOf(node), reason });
-      if (moduleFacts.failed) {
-        keep(moduleFacts.failed.clause, candidate.element);
+      if (facts.failed) {
+        keep(facts.failed.clause, candidate.element);
         continue;
       }
       if (candidate.shadowed) {
@@ -164,7 +184,7 @@ export class ObjectMemberImports {
         keep(candidate.keep.reason, candidate.keep.node);
         continue;
       }
-      const targets = await this.#targetsOf(candidate, moduleFacts, shape, importer, clientImporter, read);
+      const targets = await this.#targetsOf(candidate, objectSource, importer, clientImporter, read);
       if ("reason" in targets) {
         keep(targets.reason, targets.node);
         continue;
@@ -176,64 +196,80 @@ export class ObjectMemberImports {
         members: [...new Set(targets.map(({ written }) => written))].sort(),
       });
     }
-    result.read = [...read];
+    result.read = [...read.files];
+    result.barrels = [...read.barrels];
     result.contents = plan.apply();
     return result;
   }
 
   async fingerprint(file: string, object: string, members: string[], clientImporter: boolean): Promise<string> {
-    const moduleFacts = await this.#modules.facts(file);
-    const shape = moduleFacts?.objects.get(object);
+    const facts = await this.#modules.facts(file);
+    const shape = facts?.objects.get(object);
+    const read: ObjectLookupRead = { files: new Set(), barrels: new Set() };
     const targets = await Promise.all(
       members.map(async (member) => {
-        if (!moduleFacts || !shape) return null;
+        if (!facts || !shape) return null;
         const called = member.endsWith("()");
         const memberPath = (called ? member.slice(0, -2) : member).split(".");
-        const target = await this.#targetOf(file, moduleFacts, shape, memberPath, file, clientImporter, new Set());
+        const target = await this.#targetOf({ file, object, facts, shape }, memberPath, file, clientImporter, read);
         return await this.#calledTargetOf(target, memberPath, called);
       }),
     );
-    return Bun.hash(JSON.stringify([moduleFacts?.failed ?? null, targets])).toString(36);
+    return Bun.hash(JSON.stringify([facts?.failed ?? null, targets])).toString(36);
   }
 
   async filesOf(file: string): Promise<string[]> {
-    const moduleFacts = await this.#modules.facts(file);
-    const files = new Set([file]);
-    for (const shape of moduleFacts?.objects.values() ?? [])
-      for (const member of shape.members.values()) {
-        if (!member || !ObjectMemberImports.#isPathSpecifier(member.specifier)) continue;
-        const resolved = await resolveModuleFile(file, member.specifier);
-        if (resolved) files.add(resolved);
-      }
-    return [...files];
+    const { modules, barrelFiles } = await this.#lookup.reach(file);
+    return [...new Set([...(await this.#memberFilesOf(modules)), ...barrelFiles])];
   }
 
+  //? A barrel moves a fingerprint only by where it declares a copied object: the links hold that, not its exports.
   async digest(file: string): Promise<string> {
-    const moduleFacts = await this.#modules.facts(file);
-    const objects = [...(moduleFacts?.objects ?? [])].map(([name, shape]) => [
-      name,
-      shape.open,
-      [...shape.members].map(([key, member]) => [key, member?.specifier ?? null, member?.imported ?? null]),
-    ]);
+    const { modules, links } = await this.#lookup.reach(file);
+    const facts = await Promise.all(
+      modules.map(async (module) => {
+        const moduleFacts = await this.#modules.facts(module);
+        const objects = [...(moduleFacts?.objects ?? [])].map(([name, shape]) => [
+          name,
+          shape.open,
+          [...shape.members].map(([key, member]) => [key, member?.specifier ?? null, member?.imported ?? null]),
+          shape.copied.map(({ specifier, imported }) => [specifier, imported]),
+        ]);
+        return [moduleFacts?.useClient, moduleFacts?.failed, objects];
+      }),
+    );
     const exports = await Promise.all(
-      (await this.filesOf(file)).map(async (member) => {
+      (await this.#memberFilesOf(modules)).map(async (member) => {
         const scanned = await this.#modules.exportsOf(member);
         const thisFree = [...(await this.#modules.thisFreeOf(member))].sort();
         return [member, scanned ? [[...scanned.names].sort(), scanned.star, scanned.useClient, thisFree] : null];
       }),
     );
-    return Bun.hash(JSON.stringify([moduleFacts?.useClient, moduleFacts?.failed, objects, exports])).toString(36);
+    return Bun.hash(JSON.stringify([facts, links, exports])).toString(36);
+  }
+
+  async #memberFilesOf(modules: string[]): Promise<string[]> {
+    const files = new Set<string>();
+    for (const file of modules) {
+      files.add(file);
+      const facts = await this.#modules.facts(file);
+      for (const shape of facts?.objects.values() ?? [])
+        for (const member of shape.members.values()) {
+          if (!member || !ObjectMemberImports.#isPathSpecifier(member.specifier)) continue;
+          const resolved = await resolveModuleFile(file, member.specifier);
+          if (resolved) files.add(resolved);
+        }
+    }
+    return [...files];
   }
 
   async #targetsOf(
     candidate: Candidate,
-    moduleFacts: ObjectModuleFacts,
-    shape: ObjectShape,
+    source: ObjectSource,
     importer: string,
     clientImporter: boolean,
-    read: Set<string>,
+    read: ObjectLookupRead,
   ): Promise<ObjectMemberUse[] | { reason: ObjectKeepReason; node: ts.Node }> {
-    const file = candidate.file ?? "";
     const targets: ObjectMemberUse[] = [];
     const uses = [
       ...candidate.paths,
@@ -242,7 +278,7 @@ export class ObjectMemberImports {
       ),
     ];
     for (const use of uses) {
-      const found = await this.#targetOf(file, moduleFacts, shape, use.path, importer, clientImporter, read);
+      const found = await this.#targetOf(source, use.path, importer, clientImporter, read);
       const target = await this.#calledTargetOf(found, use.path, use.called);
       const node = use.nodes[0] ?? candidate.element;
       if (typeof target === "string") return { reason: target, node };
@@ -268,27 +304,25 @@ export class ObjectMemberImports {
   }
 
   async #targetOf(
-    file: string,
-    moduleFacts: ObjectModuleFacts,
-    shape: ObjectShape,
+    source: ObjectSource,
     memberPath: string[],
     importer: string,
     clientImporter: boolean,
-    read: Set<string>,
+    read: ObjectLookupRead,
   ): Promise<MemberTarget | ObjectKeepReason> {
-    const [name, inner] = memberPath;
-    const nested = inner === undefined ? undefined : shape.members.get(`${name}.${inner}`);
-    const member = nested ?? (name === undefined ? undefined : shape.members.get(name));
-    if (!member) return "unresolved-member";
+    const owner = await this.#lookup.find(source, memberPath, read);
+    if (typeof owner === "string") return owner;
+    const { member, nested } = owner;
+    const inner = memberPath[1];
     const bare = ObjectMemberImports.#isPathSpecifier(member.specifier) ? null : member.specifier;
     const target = bare
-      ? ObjectMemberImports.#sameBareTarget(bare, file, importer)
-      : await resolveModuleFile(file, member.specifier);
+      ? ObjectMemberImports.#sameBareTarget(bare, owner.file, importer)
+      : await resolveModuleFile(owner.file, member.specifier);
     if (!target) return "unresolved-member";
     const exports = await this.#modules.exportsOf(target);
     if (!exports) return "unresolved-member";
-    read.add(target);
-    if (moduleFacts.useClient && !clientImporter && !exports.useClient) return "server-boundary";
+    read.files.add(target);
+    if (owner.useClient && !clientImporter && !exports.useClient) return "server-boundary";
     if (nested) return { file: target, bare, imported: member.imported, depth: 2 };
     if (member.imported !== "*") return { file: target, bare, imported: member.imported, depth: 1 };
     if (inner !== undefined && exports.names.has(inner)) return { file: target, bare, imported: inner, depth: 2 };

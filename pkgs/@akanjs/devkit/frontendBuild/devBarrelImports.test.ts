@@ -75,6 +75,60 @@ describe("DevBarrelImports", () => {
     expect(await round().fingerprint(key, ["@server", "Zone.View"])).not.toBe(hash ?? "");
   });
 
+  test("narrows a part of the object a wrapper copies in from a barrel, and stamps the wrapper with that object's files and the barrel's", async () => {
+    const root = await realpath(await makeTempRoot());
+    const file = (name: string) => path.join(root, name);
+    const fieldIndex = (text: string) =>
+      `import { Text } from "./${text}";\nexport const Field = Object.assign(() => null, { Text });\n`;
+    await write(file("ui/index.ts"), 'export * from "./Field";\n');
+    await write(file("ui/Field/index.tsx"), fieldIndex("Text"));
+    for (const text of ["Text", "TextNext"])
+      await write(file(`ui/Field/${text}.tsx`), '"use client";\nexport const Text = () => null;\n');
+    await write(
+      file("wrap/Field.tsx"),
+      [
+        'import { memo } from "react";',
+        'import { Field as BaseField } from "@demo/ui";',
+        "const Rich = memo(() => null);",
+        "export const Field = Object.assign(() => null, BaseField, { Rich });",
+      ].join("\n"),
+    );
+    const importer = file("page/_index.tsx");
+    const page = 'import { Field } from "../wrap/Field";\nexport const Page = () => <Field.Text />;\n';
+    const key = `object:${file("wrap/Field.tsx")}#Field`;
+    const round = () =>
+      new DevBarrelImports(
+        ["@demo/ui"],
+        async (pkgName) => {
+          const entry = { "@demo/ui": "ui/index.ts", "@demo/ui/Field": "ui/Field/index.tsx" }[pkgName];
+          return entry ? { pkgName, entryFile: file(entry), pkgDir: file("ui") } : null;
+        },
+        { packageRoot: root },
+      );
+    const stamp = async () => (await round().stamps([key], (id) => path.relative(root, id)))[key];
+
+    const rewrite = await round().rewrite(page, importer);
+    const before = await stamp();
+
+    expect(rewrite?.contents).toBe(
+      'import { Text as Field$Text } from "../ui/Field/Text.tsx";\nexport const Page = () => <Field$Text />;\n',
+    );
+    expect(rewrite?.narrowed[key]?.names).toEqual(["@server", "Text"]);
+    expect(Object.keys(before?.read ?? {}).sort()).toEqual([
+      "ui",
+      "ui/Field",
+      "ui/Field/Text.tsx",
+      "ui/Field/index.tsx",
+      "ui/index.ts",
+      "wrap",
+      "wrap/Field.tsx",
+    ]);
+
+    await write(file("ui/Field/index.tsx"), fieldIndex("TextNext"));
+    expect((await stamp())?.digest).not.toBe(before?.digest ?? "");
+    expect(await round().fingerprint(key, ["@server", "Text"])).not.toBe(rewrite?.narrowed[key]?.hash ?? "");
+  });
+
   test("hashes a part called through the object with whether it reads `this`, so a save that makes it read one moves both", async () => {
     const root = await realpath(await makeTempRoot());
     const file = (name: string) => path.join(root, name);

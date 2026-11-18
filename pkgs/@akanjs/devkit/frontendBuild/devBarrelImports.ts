@@ -51,6 +51,7 @@ export class DevBarrelImports {
           specifierOf: (file, importer) =>
             DevBarrelImports.#relativeFile(CsrDevPaths.realpath(file), path.dirname(CsrDevPaths.realpath(importer))),
           keepLines: true,
+          barrels: { names: this.#barrels, analyzer: this.#analyzer },
         })
       : null;
   }

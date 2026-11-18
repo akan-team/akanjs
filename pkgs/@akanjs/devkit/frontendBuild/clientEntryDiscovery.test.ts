@@ -283,4 +283,59 @@ describe("GraphClientEntryDiscovery", () => {
     route.invalidate([file("lib/memo/index.ts")]);
     expect(await route.discover([file("S.tsx")])).toEqual([file("lib/memo/Memo.Panel.tsx")]);
   });
+
+  test("a page naming a part of the object a wrapper copies in reaches that part's file and none of the wrapper's own, until the copied object or its barrel moves it", async () => {
+    const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), "akan-discovery-")));
+    dirs.push(dir);
+    const file = (name: string) => path.join(dir, name);
+    const client = (name: string) => `"use client";\nexport const ${name} = () => null;\n`;
+    const fieldIndex = (text: string) =>
+      `import { Text } from "./${text}";\nexport const Field = Object.assign(() => null, { Text });\n`;
+    const wrapper = [
+      'import { memo } from "react";',
+      'import { Field as BaseField } from "@demo/ui";',
+      'import { Editor } from "./Editor";',
+      "const Rich = memo(() => <Editor />);",
+      "export const Field = Object.assign(() => null, BaseField, { Rich });",
+    ].join("\n");
+    const pageOf = (wrap: string, member: string) =>
+      `import { Field } from "./wrap/${wrap}";\nexport const Page = () => <Field.${member} />;\n`;
+    await Bun.write(file("ui/index.ts"), 'export * from "./Field";\n');
+    await Bun.write(file("ui/Field/index.tsx"), fieldIndex("Text"));
+    await Bun.write(file("ui/FieldNext/index.tsx"), fieldIndex("TextLast"));
+    for (const text of ["Field/Text", "Field/TextNext", "FieldNext/TextLast"])
+      await Bun.write(file(`ui/${text}.tsx`), client("Text"));
+    await Bun.write(file("wrap/Field.tsx"), wrapper);
+    await Bun.write(file("wrap/ClientField.tsx"), `"use client";\n${wrapper}`);
+    await Bun.write(file("wrap/Editor.tsx"), client("Editor"));
+    await Bun.write(file("Text.tsx"), pageOf("Field", "Text"));
+    await Bun.write(file("Rich.tsx"), pageOf("Field", "Rich"));
+    await Bun.write(file("ClientText.tsx"), pageOf("ClientField", "Text"));
+    await Bun.write(file("ClientRich.tsx"), pageOf("ClientField", "Rich"));
+    const entries: Record<string, string> = {
+      "@demo/ui": "ui/index.ts",
+      "@demo/ui/Field": "ui/Field/index.tsx",
+      "@demo/ui/FieldNext": "ui/FieldNext/index.tsx",
+    };
+    const resolvePackage = async (pkgName: string) => {
+      const entry = entries[pkgName];
+      return entry ? { pkgName, entryFile: file(entry), pkgDir: file("ui") } : null;
+    };
+    const route = new GraphClientEntryDiscovery({ barrelImports: ["@demo/ui"] }, resolvePackage as never, {
+      packageRoot: dir,
+    });
+
+    expect(await route.discover([file("Text.tsx")])).toEqual([file("ui/Field/Text.tsx")]);
+    expect(await route.discover([file("Rich.tsx")])).toEqual([file("ui/Field/Text.tsx"), file("wrap/Editor.tsx")]);
+    expect(await route.discover([file("ClientText.tsx")])).toEqual([file("ui/Field/Text.tsx")]);
+    expect(await route.discover([file("ClientRich.tsx")])).toEqual([file("wrap/ClientField.tsx")]);
+
+    await Bun.write(file("ui/Field/index.tsx"), fieldIndex("TextNext"));
+    route.invalidate([file("ui/Field/index.tsx")]);
+    expect(await route.discover([file("Text.tsx")])).toEqual([file("ui/Field/TextNext.tsx")]);
+
+    await Bun.write(file("ui/index.ts"), 'export * from "./FieldNext";\n');
+    route.invalidate([file("ui/index.ts")]);
+    expect(await route.discover([file("Text.tsx")])).toEqual([file("ui/FieldNext/TextLast.tsx")]);
+  });
 });
