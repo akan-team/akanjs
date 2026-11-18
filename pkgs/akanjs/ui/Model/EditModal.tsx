@@ -279,7 +279,7 @@ export default function EditModal<Full extends { id: string }>({
       ? null
       : renderTitle
         ? typeof renderTitle === "string"
-          ? `${l(`${modelName}.modelName` as "base.success")}${renderTitle === "default" ? "" : ` - ${(modelForm as DynamicRecord)[renderTitle] ?? l("base.new")}`}`
+          ? `${l(`${modelName}.modelName` as "base.success")}${renderTitle === "default" ? "" : ` - ${(modelForm as DynamicRecord)[renderTitle] || l("base.new")}`}`
           : renderTitle(modelForm)
         : null;
   };
@@ -321,7 +321,7 @@ export default function EditModal<Full extends { id: string }>({
               return (
                 <Button
                   {...agentAttrs(submitModel)}
-                  className={cn("mt-4 w-full gap-2", submitClassName)}
+                  className={cn("w-full gap-2", type !== "modal" && "mt-4", submitClassName)}
                   disabled={isBlocked}
                   onClick={async (e, { onError }) => {
                     await handleSubmit({ onError });
@@ -335,7 +335,7 @@ export default function EditModal<Full extends { id: string }>({
                 </Button>
               );
             },
-    [disabled, modelFormId],
+    [disabled, modelFormId, type],
   );
   const editProps = { type, slice, className, draftBarClassName, checkSubmit, edit, modal, loadingWrapper };
   if (type === "modal")

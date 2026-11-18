@@ -24,21 +24,21 @@ const presentationClassNames: { [presentation in ModalPresentation]: SurfaceClas
   dialog: {
     root: "items-center justify-center p-4",
     panel: "max-h-full max-w-2xl rounded-box border border-border",
-    close: "top-3",
+    close: "top-2.25",
     handle: "hidden",
   },
   sheet: {
     root: "items-stretch justify-stretch p-0",
     panel:
       "h-full max-h-full max-w-none rounded-none border-0 pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))] pb-[max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))]",
-    close: "top-[calc(max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))+0.75rem)]",
+    close: "top-[calc(max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))+1.3125rem)]",
     handle: "flex",
   },
   auto: {
     root: "items-stretch p-0 md:items-center md:justify-center md:p-4",
     panel:
       "h-full max-h-full rounded-none border-0 pt-[max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))] pb-[max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))] md:h-auto md:max-w-2xl md:rounded-box md:border md:border-border md:pt-0 md:pb-0",
-    close: "top-[calc(max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))+0.75rem)] md:top-3",
+    close: "top-[calc(max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))+1.3125rem)] md:top-2.25",
     handle: "flex md:hidden",
   },
 } as const;
@@ -52,13 +52,16 @@ const placementClassNames: { [placement in ModalPlacement]: Pick<SurfaceClassNam
   },
 } as const;
 
+// A side sheet hides its handle from `md`, so its close button rises to the title row there.
+const sideSheetClose = "md:top-[calc(max(var(--akan-top-safe-area,0px),env(safe-area-inset-top,0px))+0.5625rem)]";
+
 export const modalSurfaceOf = (presentation: ModalPresentation, placement: ModalPlacement) => {
   const shape = presentationClassNames[presentation];
   const side = placementClassNames[placement];
   return {
     root: [shape.root, side.root],
     panel: [shape.panel, side.panel],
-    close: shape.close,
+    close: presentation === "sheet" && placement === "right" ? `${shape.close} ${sideSheetClose}` : shape.close,
     handle: [shape.handle, side.handle],
   };
 };

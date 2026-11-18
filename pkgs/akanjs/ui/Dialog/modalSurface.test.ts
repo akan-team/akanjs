@@ -35,4 +35,12 @@ describe("modalSurfaceOf", () => {
     expect(panel.join(" ")).toContain("pb-[max(var(--akan-bottom-safe-area,0px),env(safe-area-inset-bottom,0px))]");
     expect(close).toContain("var(--akan-top-safe-area,0px)");
   });
+
+  test("the close button sits on the title row, below the grab handle wherever one shows", () => {
+    expect(modalSurfaceOf("dialog", "center").close).toBe("top-2.25");
+    expect(modalSurfaceOf("sheet", "center").close).toContain("+1.3125rem)]");
+    expect(modalSurfaceOf("auto", "center").close).toContain("md:top-2.25");
+    expect(modalSurfaceOf("sheet", "right").close).toContain("md:top-[calc(");
+    expect(modalSurfaceOf("auto", "right").close).not.toContain("md:top-[calc(");
+  });
 });
