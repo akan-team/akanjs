@@ -88,6 +88,9 @@ plans workflows in `plan` mode, and in `apply` mode — the mode `mcp-install` r
 validation and the repair tools. An agent changes code through the workflows, so it follows the workspace's rules
 instead of routing around them. `akan code` is a terminal agent built on the same rules, workflows and skills.
 
+An agent that has just created a workspace reads that workspace's `AGENTS.md`, the rules in `.claude/rules/akan/`
+and the skills in `.agents/skills/`; this package's `guidelines/` folder is only their source.
+
 ## Exit Codes
 
 | Exit | `code` | Meaning |
