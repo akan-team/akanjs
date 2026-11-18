@@ -33,12 +33,28 @@ export default page()
    arrive typed: `ID` / `String` → string, `Int` / `Float` → number, `Boolean`, `Date` → Dayjs, an `enumOf` class →
    its union, `[T]` → array. A path value the type refuses answers not-found, and a search value that fails is
    dropped. `lang` reaches every stage and is never declared.
-3. Gate with `.guard(() => signedIn())` on the `_layout.tsx`, and repeat a stricter guard on a page that needs more.
-   `.guard((_, { path }) => signedIn({ path }))` sends a refused visitor to `/signin?redirect=<path>`.
+3. Gate in the `_layout.tsx`'s `.guard()` (below).
 4. In `.render()`: `usePage()`, then fetch, then return.
 5. Re-skin an `akanjs/ui` component for a subtree with `_overrides.tsx`:
    `export default override({ Slot: AppComponent })`, no logic. Nested ones merge slot by slot, the closest winning;
    `componentRule` lists the slots.
+
+## Guards
+
+- `.guard(fn)` runs before any of the route renders, once per chain (a second throws when the module loads). `fn`
+  may be `async` and gets the typed arguments and `lang` (a layout's without `children`), then `{ path }`. It refuses
+  with `router.redirect(href)`, `router.notFound()` or `getSelf({ unauthorize })`. Call `signedIn()` inside an arrow:
+  `.guard(signedIn)` would take the route's arguments as its option.
+- `path` is where the visitor was going, in-app with its search (`undefined` while MCP lists the screen):
+  `.guard((_, { path }) => signedIn({ path }))` sends a refused visitor to `/signin?redirect=<path>`. It is a
+  redirect target, never an admission rule (CSR asks a guard again only when the route or an argument it declared
+  moves), handed only to `router.push` / `router.redirect`: a raw `//host` in it would take `window.location` off
+  the site.
+- On the server every guard of the chain runs, root layout first, before any layout body and before the arguments
+  are checked, so a not-found is a 404 even after an awaited query. A guard's query the server refuses with 403 or
+  404 (an owner check) answers not-found, so the page never confirms the record exists.
+- Keeping a person on a page (an unsaved form) is `useNavigationGuard(() => !isDirty)` from `akanjs/webkit`, not
+  `.guard()`.
 
 ## API at a glance
 
@@ -60,19 +76,24 @@ export default page()
 - A client filter kept in the URL without reloading the page: ``router.replace(`/books?q=${q}`, { shallow: true,
   scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`. Shallow
   holds only while the path stays the same; a server `.search()` sees the value at the next full navigation.
+- On a web page's first render `st.use.searchParams()` is still the server's empty snapshot, synced right after
+  hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
+- A `Link` renders its page ahead of the click, guards included: on hover, on keyboard focus, or as it shows with
+  `prefetch="viewport"` (production only). A page whose render should happen once per visit (a view counted through
+  `duringRender`, an expensive report) sets `.config({ prefetch: false })`; on a `_layout.tsx` it covers every page
+  below, and a page there opts back in with `prefetch: true`.
 
 What a route file must never do — write while rendering, hooks, a second export — is the `page` rule, loaded with
-any `page/` file.
-
-Full detail: `get_guideline` with `pageRule` (guards in depth, heads, MCP apps, CSR root layouts, lib pages), or
-`ssrRule` for what may render on the server. Every stage's signature, the router's methods, Link's props and every
-import path are in the `akanApi-*` references below.
+any `page/` file. `pageRule` holds what neither says: client-navigation and navigation guards, head merging, the
+script policy, CSR root layouts, lib pages, `devOnly`, the legacy shape. `ssrRule`: what may render on the server;
+`akan-mcp`: `.prompt()` and `.app()`. Stage signatures, router methods, Link props and import paths are in the
+`akanApi-*` references below.
 
 ## References
 
 The full guidelines, split where each part fits one read; `akan guideline show <name>` prints the same text.
 
-- `.agents/skills/akan-page/references/pageRule.md` — The Route Chain · Route Guards — `.guard()` · MCP Apps — `.app()` · Heads · A Root Layout Inside A CSR Bundle · …
+- `.agents/skills/akan-page/references/pageRule.md` — Guards On A Client Navigation · Navigation Guards · MCP Apps · Heads · A Root Layout Inside A CSR Bundle · …
 - `.agents/skills/akan-page/references/akanApi-imports.md` — Imports (`akanjs/*`, `@apps/<app>/client`, `../cnst`, `../dict`, `../srv`, layer barrels)
 - `.agents/skills/akan-page/references/akanApi-routes.md` — Routes (`page/`): `page`, `layout`, `rootLayout`, `RouteBaseArgs`, `router`, `RouteOptions`, `Link`, `CommonLinkProps`, `usePageLocation`, Route stages
 - `.agents/skills/akan-page/references/akanApi-app-config.md` — App config (`akan.config.ts`): `AppConfig`, `AppConfigInput`, `AkanWebOption`, `AkanI18nConfig`

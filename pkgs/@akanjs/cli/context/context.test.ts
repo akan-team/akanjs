@@ -1073,7 +1073,8 @@ describe("AgentRunner", () => {
     expect(agents).toContain("## Where Code Goes");
     expect(agents).toMatch(/<!-- akan:agent:version \S+ -->/);
     // The block indexes the path rules and skills instead of inlining them.
-    expect(agents).toContain("| `{apps,libs}/**/page/**` | `.claude/rules/akan/page.md` |");
+    expect(agents).toContain("a rule file in `.claude/rules/akan/`");
+    expect(agents).toContain("| `{apps,libs}/**/page/**` | `page.md` |");
     expect(agents).toContain("`akan-page`");
     expect(agents).not.toContain("## Akan Page Routing");
     expect(agents).not.toContain("<%= appName %>");

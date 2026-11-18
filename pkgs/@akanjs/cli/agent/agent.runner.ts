@@ -93,12 +93,12 @@ ${renderRecipeEntries(recipes)}`;
 
 const renderPathRules = (rules: { name: string; paths: string[] }[]) => `## Path Rules
 
-Each area's full contract is a rule file. Claude Code and Cursor load it when a matching file is touched; any other
-agent reads it before editing a match.
+Each area's full contract is a rule file in \`${AgentAssets.ruleDir}/\`. Claude Code and Cursor load it when a
+matching file is touched; any other agent reads it before editing a match.
 
 | Files | Rule |
 |---|---|
-${rules.map((rule) => `| ${rule.paths.map((glob) => `\`${glob}\``).join(", ")} | \`${AgentAssets.rulePath(rule.name)}\` |`).join("\n")}
+${rules.map((rule) => `| ${rule.paths.map((glob) => `\`${glob}\``).join(", ")} | \`${rule.name}.md\` |`).join("\n")}
 
 Skills in \`.claude/skills/\` and \`.agents/skills/\` carry procedures and the full guidelines:
 ${Object.keys(AgentAssets.skillReferences)
