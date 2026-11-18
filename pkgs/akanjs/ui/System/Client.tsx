@@ -54,6 +54,7 @@ import { readRscRoutePatch, subscribeRscRoutePatch } from "../../client/rscRoute
 import { FrameRootVars } from "../../webkit/FrameRootVars";
 import { useTransitionStore } from "../../webkit/useTransitionStore";
 import { getFrameCssVars, isResponsiveFrame } from "./Common";
+import { isSamePathValue } from "./isSamePathValue";
 import { Messages } from "./Messages";
 import { Reconnect } from "./Reconnect";
 
@@ -187,12 +188,13 @@ export const ClientPathWrapper = ({
     renderLayouts: [],
   };
   const csr = useCsr();
+  const isPending = pageType === "pending";
   const registerFrameSlot = useCallback(
     (slot: Parameters<NonNullable<typeof csr.registerFrameSlot>>[1]) =>
       typeof csr.registerFrameSlot === "function"
-        ? csr.registerFrameSlot(pathRoute.path, slot, pageType === "pending" ? "pending" : "active")
+        ? csr.registerFrameSlot(pathRoute.path, slot, isPending ? "pending" : "active")
         : () => undefined,
-    [csr.registerFrameSlot, pathRoute.path, pageType],
+    [csr.registerFrameSlot, pathRoute.path, isPending],
   );
 
   const [gestureEnabled, setGestureEnabled] = useState(true);
@@ -211,28 +213,52 @@ export const ClientPathWrapper = ({
     debugFrame("pathWrapper.mount", { path: pathRoute.path, pageType, href });
     return () => debugFrame("pathWrapper.unmount", { path: pathRoute.path, pageType, href });
   }, []);
+  //? Every `usePage()` reads this, so a value made anew on each frame render (the keys moving, a slide) redrew every
+  //? component of the page, and an async section restarted its load; it changes only with what it holds.
+  const pathValue = useMemo(
+    () => ({
+      pageType,
+      pageKey,
+      location: {
+        href,
+        hash,
+        pathname,
+        params,
+        searchParams,
+        search,
+        pathRoute,
+        ...(location?.entryId ? { entryId: location.entryId } : {}),
+      },
+      followsRouter: !location,
+      prefix,
+      gestureEnabled,
+      setGestureEnabled,
+      registerFrameSlot,
+    }),
+    [
+      pageType,
+      pageKey,
+      href,
+      hash,
+      pathname,
+      params,
+      searchParams,
+      search,
+      pathRoute,
+      location?.entryId,
+      !location,
+      prefix,
+      gestureEnabled,
+      registerFrameSlot,
+    ],
+  );
+  //? React draws a hidden or reappearing tree again without deferring, so a context change as a page is cached or comes
+  //? back drops every inline `Load.Stream` under it to its fallback: an off-screen page keeps the value it was shown
+  //? with, and gets a new one only when something its readers use changed.
+  const shownValue = useRef(pathValue);
+  if (activity !== "hidden" && !isSamePathValue(shownValue.current, pathValue)) shownValue.current = pathValue;
   return (
-    <pathContext.Provider
-      value={{
-        pageType,
-        pageKey,
-        location: {
-          href,
-          hash,
-          pathname,
-          params,
-          searchParams,
-          search,
-          pathRoute,
-          ...(location?.entryId ? { entryId: location.entryId } : {}),
-        },
-        followsRouter: !location,
-        prefix,
-        gestureEnabled,
-        setGestureEnabled,
-        registerFrameSlot,
-      }}
-    >
+    <pathContext.Provider value={shownValue.current}>
       <pageActivityContext.Provider value={pageActivity}>
         <Frame
           {...bindProps}
