@@ -130,8 +130,8 @@ export const Modal = ({
   }, [registerDismiss]);
 
   useEffect(() => {
-    if (!drawn) setDragY(0);
-  }, [drawn]);
+    if (!leaving) setDragY(0);
+  }, [leaving]);
 
   if (!drawn || !portalElement) return null;
 
