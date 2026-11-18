@@ -26,6 +26,9 @@ import { usePageActivity } from "./usePageActivity";
 const layerChildContext = createContext<ReactNode>(null);
 const LayerOutlet = () => useContext(layerChildContext);
 const layerOutlet = <LayerOutlet />;
+//? A render reads params and search, never the output above it, so a fresh layer starts the async ones under it at once.
+//? Scoped to the run that started them, so a layer mounted again later never takes a run from an earlier visit.
+const prestartContext = createContext<Map<number, RenderedRoute> | null>(null);
 
 interface RenderedRoute {
   render: RouteRender["render"];
@@ -43,6 +46,10 @@ interface RenderedRoute {
   /** Asked after the layer's last run was refused, so it draws nothing until its own answer arrives. */
   afterRefusal: boolean;
   refreshEpoch: number;
+  /** Started ahead of its layer: its failure is logged only once a layer has taken it. */
+  owned: boolean;
+  onFailure: (() => void) | null;
+  prestartedBelow: Map<number, RenderedRoute> | null;
 }
 
 interface RenderLayerProps {
@@ -54,13 +61,8 @@ interface RenderLayerProps {
 }
 export const RenderLayer = memo((props: RenderLayerProps) => {
   const { renders, index, params, searchParams, leaf = null } = props;
-  const isLast = index >= renders.length - 1;
-  const children = isLast ? (
-    leaf
-  ) : (
-    <RenderLayer renders={renders} index={index + 1} params={params} searchParams={searchParams} leaf={leaf} />
-  );
   const routeRender = renders[index];
+  const inherited = useContext(prestartContext);
   const isAsyncRender = CsrPageReadiness.isAsync(routeRender);
   const renderedRef = useRef<RenderedRoute | null>(null);
   const [, setFailures] = useState(0);
@@ -124,13 +126,7 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   const drawnPropsRef = useRef<Pick<RenderLayerProps, "params" | "searchParams"> | null>(null);
   if (isSyncAdmitted) drawnPropsRef.current = { params, searchParams };
   if (routeRender && (mayAsk || !guarded) && (isAsyncRender || (guarded && !isSyncAdmitted))) {
-    const argsKey = isAsyncRender
-      ? RouteDefinition.renderArgsKey(
-          routeRender.render,
-          { params, searchParams },
-          { isPage: routeRender.kind === "page", paramNames: routeRender.paramNames },
-        )
-      : (guardKey ?? "");
+    const argsKey = isAsyncRender ? argsKeyOf(routeRender, params, searchParams) : (guardKey ?? "");
     const rendered = renderedRef.current;
     const returned = activity === "current" && !onScreenRef.current;
     if (
@@ -144,55 +140,28 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
         refresh,
       })
     ) {
-      const redirectsBefore = router.redirectCount();
-      const layer = `${routeRender.kind ?? "layout"} ${index} of ${path}`;
-      let refusedAt: string | null = null;
-      let admittedKey: string | null = null;
-      const draw = () =>
-        isAsyncRender
-          ? Translator.renderAt(
-              renderPath,
-              () => routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
-            )
-          : true;
-      const result = reportFailure(
-        guarded
-          ? CsrGuards.of(guarded).then((admitted) => {
-              if (admitted) admittedKey = guardKey;
-              else refusedAt = locationId;
-              return admitted ? draw() : null;
-            })
-          : draw(),
-        layer,
-      );
-      const next: RenderedRoute = {
-        render: routeRender.render,
-        argsKey,
-        result,
-        record: isThenable(result) ? CsrFrameDump.track(layer, result as Promise<ReactNode>) : null,
-        redirected: false,
-        refusedAt: null,
-        admittedKey: null,
-        failure: null,
-        afterRefusal: !!rendered?.refusedAt,
-        refreshEpoch: refresh.epoch,
+      const input: LayerRunInput = {
+        ...{ routeRender, index, params, searchParams, argsKey, isAsyncRender },
+        ...{ guarded, guardKey, locationId, renderPath, path, refreshEpoch: refresh.epoch },
       };
-      if (isThenable(result))
-        (result as Promise<ReactNode>).then(
-          () => {
-            next.refusedAt = refusedAt;
-            next.admittedKey = admittedKey;
-            next.redirected = !!refusedAt || router.redirectCount() !== redirectsBefore;
-          },
-          (error: unknown) => {
-            if (router.redirectCount() !== redirectsBefore || renderedRef.current !== next) return;
-            next.failure = { error };
-            setFailures((count) => count + 1);
-          },
-        );
+      const next = takePrestart(inherited, input) ?? startRun(input, true);
+      next.afterRefusal = !!rendered?.refusedAt;
+      next.onFailure = () => {
+        if (renderedRef.current === next) setFailures((count) => count + 1);
+      };
+      if (!rendered) next.prestartedBelow = prestartBelow(renders, input, inherited);
       renderedRef.current = next;
     }
   }
+  const handedDown = renderedRef.current?.prestartedBelow ?? inherited;
+  const children =
+    index >= renders.length - 1 ? (
+      leaf
+    ) : (
+      <prestartContext.Provider value={handedDown}>
+        <RenderLayer renders={renders} index={index + 1} params={params} searchParams={searchParams} leaf={leaf} />
+      </prestartContext.Provider>
+    );
   const { value, fulfilled } = useFetch(renderedRef.current?.result ?? null, { keepPrevious: true });
   const record = renderedRef.current?.record ?? null;
   if (record && fulfilled) record.delivered = true;
@@ -226,6 +195,119 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
   return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
 });
+
+interface LayerRunInput {
+  routeRender: RouteRender;
+  index: number;
+  params: Record<string, string>;
+  searchParams: Record<string, string | string[]>;
+  argsKey: string;
+  isAsyncRender: boolean;
+  guarded: Parameters<typeof CsrGuards.of>[0] | null;
+  guardKey: string | null;
+  locationId: string | null;
+  renderPath: string | undefined;
+  path: string;
+  refreshEpoch: number;
+}
+
+function argsKeyOf(
+  routeRender: RouteRender,
+  params: Record<string, string>,
+  searchParams: Record<string, string | string[]>,
+): string {
+  return RouteDefinition.renderArgsKey(
+    routeRender.render,
+    { params, searchParams },
+    { isPage: routeRender.kind === "page", paramNames: routeRender.paramNames },
+  );
+}
+
+function startRun(input: LayerRunInput, owned: boolean): RenderedRoute {
+  const { routeRender, index, params, searchParams, isAsyncRender, guarded, guardKey, locationId } = input;
+  const redirectsBefore = router.redirectCount();
+  const layer = `${routeRender.kind ?? "layout"} ${index} of ${input.path}`;
+  let refusedAt: string | null = null;
+  let admittedKey: string | null = null;
+  const draw = () =>
+    isAsyncRender
+      ? Translator.renderAt(
+          input.renderPath,
+          () => routeRender.render({ children: layerOutlet, params, searchParams } as never) ?? null,
+        )
+      : true;
+  const result = traceRender(
+    guarded
+      ? CsrGuards.of(guarded).then((admitted) => {
+          if (admitted) admittedKey = guardKey;
+          else refusedAt = locationId;
+          return admitted ? draw() : null;
+        })
+      : draw(),
+    layer,
+  );
+  const run: RenderedRoute = {
+    render: routeRender.render,
+    argsKey: input.argsKey,
+    result,
+    record: isThenable(result) ? CsrFrameDump.track(layer, result as Promise<ReactNode>) : null,
+    redirected: false,
+    refusedAt: null,
+    admittedKey: null,
+    failure: null,
+    afterRefusal: false,
+    refreshEpoch: input.refreshEpoch,
+    owned,
+    onFailure: null,
+    prestartedBelow: null,
+  };
+  if (isThenable(result))
+    (result as Promise<ReactNode>).then(
+      () => {
+        run.refusedAt = refusedAt;
+        run.admittedKey = admittedKey;
+        run.redirected = !!refusedAt || router.redirectCount() !== redirectsBefore;
+      },
+      (error: unknown) => {
+        //? useFetch drops a rejection, so a render that throws would leave its layer blank with nothing in the console.
+        if (run.owned)
+          Logger.error(
+            `render of ${layer} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
+          );
+        if (router.redirectCount() !== redirectsBefore) return;
+        run.failure = { error };
+        run.onFailure?.();
+      },
+    );
+  return run;
+}
+
+//? One that settled refused, redirected or failed is left: the layer asks again, as it would have mounted on its own.
+function takePrestart(inherited: Map<number, RenderedRoute> | null, input: LayerRunInput): RenderedRoute | null {
+  const run = inherited?.get(input.index);
+  if (!run) return null;
+  inherited?.delete(input.index);
+  const isSame =
+    run.render === input.routeRender.render && run.argsKey === input.argsKey && run.refreshEpoch === input.refreshEpoch;
+  if (!isSame || run.refusedAt || run.redirected || run.failure) return null;
+  run.owned = true;
+  return run;
+}
+
+function prestartBelow(
+  renders: RouteRender[],
+  input: LayerRunInput,
+  inherited: Map<number, RenderedRoute> | null,
+): Map<number, RenderedRoute> | null {
+  const below = new Map(inherited);
+  for (let index = input.index + 1; index < renders.length; index++) {
+    const routeRender = renders[index];
+    if (!routeRender || !CsrPageReadiness.isAsync(routeRender) || below.has(index)) continue;
+    const argsKey = argsKeyOf(routeRender, input.params, input.searchParams);
+    below.set(index, startRun({ ...input, routeRender, index, argsKey, isAsyncRender: true }, false));
+  }
+  return below.size ? below : inherited;
+}
 
 //? A refused location draws nothing of what it refused, whatever the layer drew for another, nor while it is asked again.
 function isRefusedAt(rendered: RenderedRoute | null, locationId: string | null, fulfilled: boolean): boolean {
@@ -266,18 +348,13 @@ function mustRerun(rendered: RenderedRoute | null, run: LayerRun): boolean {
   return run.locationId === null || run.refresh.locationId === run.locationId;
 }
 
-//? useFetch drops a rejection, so a render that throws would leave its layer blank with nothing in the console.
-function reportFailure(result: ReactNode | Promise<ReactNode>, layer: string): ReactNode | Promise<ReactNode> {
+function traceRender(result: ReactNode | Promise<ReactNode>, layer: string): ReactNode | Promise<ReactNode> {
   if (!isThenable(result)) return result;
   debugFrame("layer.render", { layer });
   (result as Promise<ReactNode>).then(
     () => debugFrame("layer.settle", { layer }),
-    (error: unknown) => {
-      debugFrame("layer.fail", { layer, message: error instanceof Error ? error.message : String(error) });
-      Logger.error(
-        `render of ${layer} failed: ${error instanceof Error ? (error.stack ?? error.message) : String(error)}`,
-      );
-    },
+    (error: unknown) =>
+      debugFrame("layer.fail", { layer, message: error instanceof Error ? error.message : String(error) }),
   );
   return result;
 }

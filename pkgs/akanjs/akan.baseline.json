@@ -1,6 +1,6 @@
 {
   "akan.size.file": {
-    "fetch/client/fetchClient.ts": 968,
+    "fetch/client/fetchClient.ts": 947,
     "server/di/diLifecycle.ts": 822,
     "server/resolver/signal.resolver.ts": 889,
     "signal/signalContext.ts": 976,
@@ -9,19 +9,17 @@
   "akan.size.function": {
     "server/hmr/csrDevRuntime.ts#installCsrDevRuntime": 612,
     "server/ssrFromRscRenderer.tsx#interleaveRscScriptsWithHtml": 156,
-    "ui/BottomSheet.tsx#BottomSheet": 154,
     "ui/Data/RefPicker.tsx#RefPicker": 169,
-    "ui/Dialog/LegacyModal.tsx#LegacyModal": 210,
+    "ui/Dialog/LegacyModal.tsx#LegacyModal": 209,
     "ui/Load/Units.tsx#Render": 215,
     "ui/Menu.tsx#DefaultMenu": 171,
     "ui/Model/EditModal.tsx#EditModal": 243,
-    "ui/Select.tsx#DefaultSelect": 352,
-    "webkit/RenderLayer.tsx#RenderLayer": 174
+    "ui/Select.tsx#DefaultSelect": 352
   },
   "akan.size.class": {
     "client/router.ts#Router": 69,
     "common/Logger.ts#Logger": 65,
-    "fetch/client/fetchClient.ts#FetchClient": 72,
+    "fetch/client/fetchClient.ts#FetchClient": 71,
     "fetch/client/wsClient.ts#WsClient": 64,
     "signal/signalContext.ts#SignalContext": 71,
     "store/storeInstance.ts#StoreInstance": 68
