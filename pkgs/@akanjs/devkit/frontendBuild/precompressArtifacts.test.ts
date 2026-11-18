@@ -39,4 +39,26 @@ describe("precompressArtifacts", () => {
     expect(await readFile(`${chunkPath}.br`)).toEqual(brotliAt(await readFile(chunkPath), 9));
     expect(await Bun.file(`${dictPath}.gz`).exists()).toBe(true);
   });
+
+  test("compresses a chunk under 1 KB too, and writes no sidecar that would be larger than its file", async () => {
+    const distPath = await tempRoot();
+    const artifactDir = path.join(distPath, ".akan/artifact");
+    const stubPath = path.join(artifactDir, "client/stub.js");
+    const tinyPath = path.join(artifactDir, "client/tiny.js");
+    await mkdir(path.dirname(stubPath), { recursive: true });
+    await writeFile(
+      stubPath,
+      'import{a as memoStore,b as memoList}from"./chunks/abc.js";export{memoStore,memoList};\n'.repeat(4),
+    );
+    await writeFile(tinyPath, "x");
+    const app = { dist: { cwdPath: distPath }, verbose: () => undefined } as unknown as App;
+
+    expect((await precompressArtifacts(app)).files).toBe(1);
+    const stubBytes = await readFile(stubPath);
+    expect(stubBytes.byteLength).toBeLessThan(1024);
+    expect(await readFile(`${stubPath}.br`)).toEqual(brotliAt(stubBytes, 9));
+    expect((await readFile(`${stubPath}.gz`)).byteLength).toBeLessThan(stubBytes.byteLength);
+    expect(await Bun.file(`${tinyPath}.br`).exists()).toBe(false);
+    expect(await Bun.file(`${tinyPath}.gz`).exists()).toBe(false);
+  });
 });

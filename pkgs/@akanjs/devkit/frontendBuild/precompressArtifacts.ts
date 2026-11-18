@@ -5,7 +5,6 @@ import type { App } from "../commandDecorators";
 import { FontPruner } from "./fontPruner";
 
 const COMPRESSIBLE_EXTS = new Set([".css", ".html", ".js", ".json", ".svg"]);
-const MIN_COMPRESS_BYTES = 1024;
 // Brotli 11 is ~100x slower than gzip: worth it for the one CSS asset per basePath and one dictionary per locale, not
 // for hundreds of JS chunks.
 const MAX_BROTLI_QUALITY = 11;
@@ -59,11 +58,17 @@ async function precompressRoot(
     const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
     const gz = Bun.gzipSync(buffer, { level: GZIP_LEVEL });
     const br = brotliCompress(buffer, brotliQuality ?? brotliQualityOf(path.extname(filePath).toLowerCase()));
-    await Promise.all([Bun.write(`${filePath}.gz`, gz), Bun.write(`${filePath}.br`, br)]);
+    //? No 1 KB floor, unlike a response compressed as it is sent: serving a sidecar costs nothing per request.
+    const smaller = [
+      { ext: ".gz", encoded: gz },
+      { ext: ".br", encoded: br },
+    ].filter(({ encoded }) => encoded.byteLength < bytes.byteLength);
+    if (smaller.length === 0) continue;
+    await Promise.all(smaller.map(({ ext, encoded }) => Bun.write(`${filePath}${ext}`, encoded)));
     result.files += 1;
     result.inputBytes += bytes.byteLength;
-    result.outputBytes += gz.byteLength;
-    result.brotliBytes += br.byteLength;
+    result.outputBytes += Math.min(gz.byteLength, bytes.byteLength);
+    result.brotliBytes += Math.min(br.byteLength, bytes.byteLength);
   }
 }
 
@@ -73,14 +78,12 @@ export async function servedBrotliBytesOf(artifactDir: string, filePath: string)
   const bytes = await Bun.file(filePath).bytes();
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   const quality = ROOT_BROTLI_QUALITY[root] ?? brotliQualityOf(path.extname(filePath).toLowerCase());
-  return brotliCompress(buffer, quality).byteLength;
+  return Math.min(bytes.byteLength, brotliCompress(buffer, quality).byteLength);
 }
 
 export function chunkBrotliBytesOf(bytes: Uint8Array): number {
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-  return bytes.byteLength < MIN_COMPRESS_BYTES
-    ? bytes.byteLength
-    : brotliCompress(buffer, brotliQualityOf(".js")).byteLength;
+  return Math.min(bytes.byteLength, brotliCompress(buffer, brotliQualityOf(".js")).byteLength);
 }
 
 function brotliQualityOf(ext: string): number {
@@ -99,7 +102,5 @@ function brotliCompress(buffer: ArrayBuffer, quality: number): Buffer {
 async function shouldPrecompress(filePath: string): Promise<boolean> {
   if (filePath.endsWith(".gz") || filePath.endsWith(".br")) return false;
   if (!COMPRESSIBLE_EXTS.has(path.extname(filePath).toLowerCase())) return false;
-  const file = Bun.file(filePath);
-  if (!(await file.exists())) return false;
-  return file.size >= MIN_COMPRESS_BYTES;
+  return Bun.file(filePath).exists();
 }
