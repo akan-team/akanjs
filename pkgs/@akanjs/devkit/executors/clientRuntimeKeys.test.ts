@@ -316,6 +316,7 @@ const writeWorkspace = async ({
   appFiles = demoFiles,
   kept = false,
   moreLibs = {} as Record<string, Record<string, string>>,
+  scanned = true,
 } = {}) => {
   const created = await createTempApp(app, await realpath(os.tmpdir()));
   const temp = kept ? created : trackRoot(created);
@@ -336,7 +337,7 @@ const writeWorkspace = async ({
     for (const [file, content] of Object.entries(files)) await writeText(path.join(dir, file), content);
   }
   for (const [file, content] of Object.entries(appFiles)) await writeText(path.join(root, "apps", app, file), content);
-  await temp.app.scan();
+  if (scanned) await temp.app.scan();
   return temp;
 };
 
@@ -1608,7 +1609,7 @@ const scopeFilesOf = async (root: string) => {
 
 describe("the first sync of a new checkout", () => {
   test("writes what a second sync writes where a scope reaches a lib only through another lib, and gives each fetch piece its module's own constants", async () => {
-    const [app, base, upper, top] = ["quay", "keel", "mast", "sail"];
+    const [app, base, upper, top] = ["quay", "hull", "mast", "sail"];
     const orgFiles = kitModuleNamed("org", "Org");
     const temp = await writeWorkspace({
       app,
@@ -1639,11 +1640,14 @@ describe("the first sync of a new checkout", () => {
         ...shopFilesOf(base),
         "ui/Crates.tsx": `import { st } from "@libs/${top}/client";\nexport const Crates = () => st.use.crateCount();\n`,
       },
+      scanned: false,
     });
-    //? The scan result lists an app's libs in the order the file system hands their importers, beside the process's env.
+    //? The scan result lists an app's libs in the order the file system hands their importers.
     const manifest = `apps/${app}/akan.app.json`;
     const libDepsOf = (files: Record<string, string>) =>
       (JSON.parse(files[manifest] ?? "{}") as { libDeps: string[] }).libDeps.toSorted((a, b) => a.localeCompare(b));
+    //? Each in a process of its own: the scan orders libs among every lib the process has scanned, other tests' too.
+    await evaluate(temp.root, syncScript(temp.root, app), app);
     const first = await scopeFilesOf(temp.root);
     await evaluate(temp.root, syncScript(temp.root, app), app);
     const second = await scopeFilesOf(temp.root);
