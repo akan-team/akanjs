@@ -18,6 +18,7 @@ import {
 import { isNativeApp, openExternalUrl } from "akanjs/client/native";
 import { useCallback, useMemo, useState } from "react";
 import { CsrRefresh } from "./csrRefresh";
+import { CsrSlide } from "./csrSlide";
 import { NativeNavigation } from "./nativeNavigation";
 import { useCsrKeyboard } from "./useCsrKeyboard";
 import { type CsrLocationState, useCsrLocationState } from "./useCsrLocationState";
@@ -95,7 +96,7 @@ const useCsrRouter = ({
         //? Sent before the animation, so the screens following this one play their back alongside it, not after it.
         broadcastSyncNavigation("back", getSyncRouteHref(targetLocation));
         if (shouldPrepareFrameTransition()) await startFrameTransition();
-        await playBack(location.pathRoute.pageState.transition);
+        await playBack(CsrSlide.motionOf(location));
         const scrollTop = pageContentRef.current?.scrollTop ?? 0;
         setHistoryBack({ type: "back", location, scrollTop, scrollToTop });
         settle(getPrevLocation());
@@ -144,7 +145,7 @@ const useCsrRouter = ({
       } else {
         const location = getCurrentLocation();
         if (shouldPrepareFrameTransition(href)) await startFrameTransition();
-        if (!isUaAnimated) await playBack(location.pathRoute.pageState.transition);
+        if (!isUaAnimated) await playBack(CsrSlide.motionOf(location));
         setHistoryBack({ type: "popBack", location, scrollTop });
         settle(getPrevLocation());
       }
@@ -248,7 +249,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     keyboardFrame.animationDuration,
     keyboardFrame.animationEasing,
   ]);
-  const csrTransition = useCsrTransitionMap[resolvedLocation.pathRoute.pageState.transition];
+  const csrTransition = useCsrTransitionMap[CsrSlide.motionOf(resolvedLocation)];
   const page: PageTransition | null =
     contentResizeStyle && csrTransition.page
       ? { ...csrTransition.page, contentStyle: { ...csrTransition.page.contentStyle, ...contentResizeStyle } }

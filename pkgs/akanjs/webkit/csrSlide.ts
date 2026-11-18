@@ -50,13 +50,35 @@ export class CsrSlide {
   static #stillEntryId: string | null = null;
   //? A replace moves as the page it replaces does: a tab that does not slide, switched to one that does, is still a
   //? tab switch and changes in place. Every transition hook of the page it lands on reads the entry kept here.
-  static holdStill(kind: "push" | "replace", from: Location, to: Location) {
+  static settleMove(kind: "push" | "replace", from: Location, to: Location) {
     const isStill =
       kind === "replace" &&
       from.pathRoute.pageState.transition === "none" &&
       to.pathRoute.pageState.transition !== "none";
     CsrSlide.#stillEntryId = isStill ? (to.entryId ?? null) : null;
+    //? A tab that does not slide, switched in place of a page pushed on, takes that page's motion over: it swipes back
+    //? and leaves as the screen it replaced would, while a tab switch itself stays in place.
+    if (kind === "replace" && to.entryId && to.pathRoute.pageState.transition === "none") {
+      const motion = CsrSlide.#motionAt(from);
+      if (motion.transition === "none") CsrSlide.#motions.delete(to.entryId);
+      else CsrSlide.#motions.set(to.entryId, motion);
+    }
     return isStill;
+  }
+
+  static readonly #motions = new Map<string, Pick<FramePageState, "transition" | "gesture">>();
+  static #motionAt({ entryId, pathRoute: { pageState } }: Location) {
+    return (
+      (entryId && CsrSlide.#motions.get(entryId)) || { transition: pageState.transition, gesture: pageState.gesture }
+    );
+  }
+  /** How an entry moves: its own page's transition, or that of the page it took the place of. */
+  static motionOf(location: Location) {
+    return CsrSlide.#motionAt(location).transition;
+  }
+  /** Whether an entry swipes back: its own page's `gesture`, or that of the page it took the place of. */
+  static swipesBack(location: Location) {
+    return CsrSlide.#motionAt(location).gesture;
   }
   static isStill(entryId: string | undefined) {
     return !!entryId && entryId === CsrSlide.#stillEntryId;

@@ -27,6 +27,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { AgentActivity } from "use-agentic";
+import { CsrSlide } from "../../webkit/csrSlide";
 import { NativeSplash } from "../../webkit/nativeSplash";
 import { NativeUpdates } from "../../webkit/nativeUpdates";
 import { RenderLayer } from "../../webkit/RenderLayer";
@@ -465,7 +466,7 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
   //? its page ahead is no such transition: woken for that wait, the page under would run every effect it has again.
   const isLeftInPlace =
     pageType === "prev" &&
-    currentLocation.pathRoute.pageState.transition === "none" &&
+    CsrSlide.motionOf(currentLocation) === "none" &&
     (csr.phase === "idle" || csr.pendingLocation?.pathRoute.pageState.transition === "none");
   const activity: PageActivity =
     pageType === "cached" || (pageType === "prev" && csr.isBackgrounded) || isLeftInPlace ? "hidden" : pageType;
@@ -501,7 +502,7 @@ const CSRPageContainer = ({ entry, prefix, layoutStyle }: CSRPageContainerProps)
               pageType === "current" && "relative isolate overflow-x-hidden bg-background shadow-inner",
               (pageType === "prev" || pageType === "pending") &&
                 "pointer-events-none isolate h-screen w-screen overflow-hidden",
-              pathRoute.pageState.gesture && pageClassName,
+              CsrSlide.swipesBack(location) && pageClassName,
             )}
             style={page?.contentStyle}
             pageType={pageType}

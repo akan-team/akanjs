@@ -2,6 +2,7 @@
 import { router as clientRouter, getAuthToken, type UseCsrTransition } from "akanjs/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CsrStack } from "./CsrStack";
+import { CsrSlide } from "./csrSlide";
 import { type NativeBackProgress, NativeNavigation } from "./nativeNavigation";
 import { NativeUpdates } from "./nativeUpdates";
 import type { CsrKeyboard } from "./useCsrKeyboard";
@@ -66,7 +67,7 @@ export const useCsrStackLifecycle = ({
   backFollow.current = csrTransition;
   const followBack = useCallback(({ phase, progress }: NativeBackProgress) => {
     const { transUnit, transUnitRange } = backFollow.current;
-    const transition = getCurrentLocation().pathRoute.pageState.transition;
+    const transition = CsrSlide.motionOf(getCurrentLocation());
     if (transition === "none" || history.current.idx === 0 || nativeBackStateRef.current.keyboardVisible) return;
     const [hidden, shown] = transUnitRange;
     if (phase === "cancelled") {
