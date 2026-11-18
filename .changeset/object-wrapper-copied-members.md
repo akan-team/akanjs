@@ -9,6 +9,6 @@ A page that names a part through a workspace's own wrapper of an object loads th
 - What still keeps the whole object: a part declared in the wrapper's own file (`Field.Rich` above), a part the wrapper lists before the object it copies in (`Object.assign(Section, { File }, AkanField)`, where the copied object may replace `File`), a copied object whose own file does not qualify, and a namespace import copied in (`import * as parts`). `akan quality runtime` counts these as before, the first two as `unresolved-member` and a copied object's file by its own reason (`call`, `effect-statement`, …).
 - A member reached from a server file past a `"use client"` wrapper or a `"use client"` copied object is narrowed only when the member's own file is `"use client"`, as with an object imported directly.
 
-On the app this was measured on, the files a route loaded only through such a wrapper weighed about 23 KB (brotli) on the median route and up to 119 KB on light ones.
+Measured on a real workspace's largest app (236 routes, JavaScript as served with brotli), whose own `Field` wrapper every route reaches: the lightest route went from 465.8 KB to 363.8 KB, the median of the 126 routes outside its signed-in area from 604.5 KB to 503.7 KB, and all routes together from 174,557 KB to 162,476 KB (−6.9%). The 110 signed-in routes, which use most of the wrapper's parts, moved little: median 894.1 KB to 882.5 KB.
 
 No upgrade step.
