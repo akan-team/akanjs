@@ -753,7 +753,13 @@ describe("MCP over a booted container", () => {
       await routes["/serverResolverTestItem/serverResolverTestItem/:serverResolverTestItemId"].GET(request);
     expect(response.status).toBe(404);
     const body = (await response.json()) as Record<string, unknown>;
-    expect(Object.keys(body).sort()).toEqual(["error", "path", "statusCode", "timestamp", "traceId"]);
+    expect(Object.keys(body).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "error",
+      "path",
+      "statusCode",
+      "timestamp",
+      "traceId",
+    ]);
     expect(body).toMatchObject({ error: "base.error.documentNotFound", statusCode: 404 });
     expect(body.traceId).toMatch(/^[0-9a-f]{32}$/);
   });

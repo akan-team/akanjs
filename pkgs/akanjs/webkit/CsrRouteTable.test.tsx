@@ -108,7 +108,10 @@ describe("CsrRouteTable lays out a page as the SSR route tree does", () => {
       { basePaths: ["admin", "shop"], current: "admin" },
     );
     expect(csr).toEqual(ssr);
-    expect(Object.keys(csr).sort()).toEqual(["/:lang/admin/settings", "/:lang/admin/users"]);
+    expect(Object.keys(csr).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "/:lang/admin/settings",
+      "/:lang/admin/users",
+    ]);
     expect(csr["/:lang/admin/settings"]).toEqual({ root: ["admin-root"], layouts: ["settings"] });
   });
 

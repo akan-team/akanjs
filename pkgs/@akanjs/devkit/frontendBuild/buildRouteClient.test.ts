@@ -298,7 +298,10 @@ describe("route client store bootstrap", () => {
     expect(first.newEntries).toEqual([entryA, entryB]);
     expect(first.discoveredEntries).toEqual([entryA]);
     expect(first.clientDeps).not.toContain(entryB);
-    expect(Object.keys(first.clientDepsByEntry ?? {}).sort()).toEqual([entryA, entryB]);
+    expect(Object.keys(first.clientDepsByEntry ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      entryA,
+      entryB,
+    ]);
     expect(second.newEntries).toEqual([]);
     expect(second.discoveredEntries).toEqual([entryB]);
     expect(Object.keys(second.manifestDelta)).toEqual([]);
@@ -823,7 +826,12 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
               )
             ).join("\n");
           const idOf = (name: string) => manifestDelta[`apps/demo/ui/Pair.tsx#${name}`]?.id;
-          return { rows: Object.keys(manifestDelta).sort(), idOf, a: await loadedBy("/a"), b: await loadedBy("/b") };
+          return {
+            rows: Object.keys(manifestDelta).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+            idOf,
+            a: await loadedBy("/a"),
+            b: await loadedBy("/b"),
+          };
         };
 
         const built = await buildAs("build");
@@ -875,7 +883,12 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
             return (loaded[row?.name ?? ""] as () => string)();
           };
           const onServer = (key: string) => ssrManifestDelta.moduleMap[rowOf(key)?.id ?? ""]?.[rowOf(key)?.name ?? ""];
-          return { rows: Object.keys(manifestDelta).sort(), rowOf, answered, onServer };
+          return {
+            rows: Object.keys(manifestDelta).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+            rowOf,
+            answered,
+            onServer,
+          };
         };
         const keys = ["One.tsx#default", "Solo.tsx#Solo", "Two.tsx#default"];
 

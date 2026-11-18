@@ -358,7 +358,7 @@ describe("installCsrDevRuntime", () => {
     const cjs = { named: 2 };
     const wrapped = harness.api.toESM(cjs, 1) as Record<string, unknown>;
     expect(wrapped.default).toBe(cjs);
-    expect(Object.keys(wrapped).sort()).toEqual(["default", "named"]);
+    expect(Object.keys(wrapped).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["default", "named"]);
   });
 
   test("reExport skips default and the __esModule marker", () => {

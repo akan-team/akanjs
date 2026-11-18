@@ -92,7 +92,7 @@ describe("DevtoolsRouter gating", () => {
 
   test("registers all seven routes in local and none otherwise", () => {
     const localRoutes = new DevtoolsRouter(makeContext("local")).createRoutes() ?? {};
-    expect(Object.keys(localRoutes).sort()).toEqual([
+    expect(Object.keys(localRoutes).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "/_akan/constant",
       "/_akan/deps",
       "/_akan/devtools",

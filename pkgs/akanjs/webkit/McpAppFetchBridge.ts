@@ -101,7 +101,7 @@ export class McpAppFetchBridge implements FetchBridge {
   static #callKey(key: string, args: Record<string, unknown>) {
     const sorted = Object.keys(args)
       .filter((name) => args[name] !== undefined && args[name] !== null)
-      .sort()
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .map((name) => [name, args[name]]);
     return `${key}:${JSON.stringify(sorted)}`;
   }

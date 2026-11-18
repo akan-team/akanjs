@@ -74,7 +74,11 @@ describe("DesktopServerStage", () => {
 
     const { dependencies } = DesktopServerStage.packageJson(config, built);
 
-    expect(Object.keys(dependencies ?? {}).sort()).toEqual(["@external/runtime", "react", "react-dom"]);
+    expect(Object.keys(dependencies ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "@external/runtime",
+      "react",
+      "react-dom",
+    ]);
     for (const driver of drivers) expect(Object.keys(built.dependencies ?? {})).toContain(driver);
   });
 
@@ -176,7 +180,10 @@ describe("DesktopServerStage", () => {
 
     expect(spawned).toEqual([[process.execPath, ["install", "--production", "--prefer-offline"], { cwd: stage.dir }]]);
     const installed = (await Bun.file(path.join(stage.dir, "package.json")).json()) as PackageJson;
-    expect(Object.keys(installed.dependencies ?? {}).sort()).toEqual(["react", "react-dom"]);
+    expect(Object.keys(installed.dependencies ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "react",
+      "react-dom",
+    ]);
   });
 
   test("an omitted package another dependency still installs stops the stage, naming who needs it", async () => {

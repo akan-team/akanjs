@@ -66,7 +66,8 @@ describe("statement metrics", () => {
       "akan_db_statements_total",
     ]);
     for (const family of families)
-      for (const sample of family.samples) expect(Object.keys(sample.labels).sort()).toEqual(["model", "op"]);
+      for (const sample of family.samples)
+        expect(Object.keys(sample.labels).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["model", "op"]);
     const [update] = statementMetrics.top(50).filter((stat) => stat.op === "updateMany");
     const rows = sampleOf(
       families.find((family) => family.name === "akan_db_statement_rows_total"),

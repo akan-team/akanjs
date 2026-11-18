@@ -71,7 +71,6 @@ export class DocCorpus extends adapt("docCorpus" as const, () => ({})) {
   }
 
   static #captured(pattern: RegExp, source: string) {
-    // biome-ignore lint/suspicious/noUnnecessaryConditions: `exec` returns null when nothing matches, which is the ordinary case here — a page with no `Source:` line is what tells `#parse` the file is not one of ours.
     return pattern.exec(source)?.[1]?.trim() ?? "";
   }
 

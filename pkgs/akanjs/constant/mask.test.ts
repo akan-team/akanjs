@@ -41,7 +41,7 @@ const fileValue = {
 describe("mask", () => {
   test("drops a visual field, which the page renders and no answer is made from", () => {
     const masked = mask(MaskFileLight, fileValue) as Record<string, unknown>;
-    expect(Object.keys(masked).sort()).toEqual(["filename", "url"]);
+    expect(Object.keys(masked).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["filename", "url"]);
   });
 
   test("drops it under a relation too, since that is where a blur placeholder actually rides", () => {
@@ -51,8 +51,8 @@ describe("mask", () => {
       token: "tok_live_x",
       image: fileValue,
     }) as { title: string; image: Record<string, unknown> };
-    expect(Object.keys(masked).sort()).toEqual(["image", "title"]);
-    expect(Object.keys(masked.image).sort()).toEqual(["filename", "size", "url"]);
+    expect(Object.keys(masked).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["image", "title"]);
+    expect(Object.keys(masked.image).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["filename", "size", "url"]);
   });
 
   test("masks every item of an array by the same model", () => {

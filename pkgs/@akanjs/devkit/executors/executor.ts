@@ -149,20 +149,28 @@ export class Executor {
     const readPath = this.getPath(dirPath);
     try {
       const glob = new Bun.Glob("*");
-      return Array.from(glob.scanSync({ cwd: readPath, onlyFiles: false })).sort();
+      return Array.from(glob.scanSync({ cwd: readPath, onlyFiles: false })).sort((a, b) =>
+        a < b ? -1 : a > b ? 1 : 0,
+      );
     } catch {
       return [];
     }
   }
   async getAllFiles(pattern = "**/*", { cwd }: { cwd?: string } = {}): Promise<string[]> {
     const glob = new Bun.Glob(pattern);
-    return Array.from(glob.scanSync({ cwd: cwd ?? this.cwdPath, onlyFiles: true })).sort();
+    return Array.from(glob.scanSync({ cwd: cwd ?? this.cwdPath, onlyFiles: true })).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
   }
   async getFilesAndDirs(dirPath: string): Promise<{ files: string[]; dirs: string[] }> {
     const fullDirPath = this.getPath(dirPath);
     const glob = new Bun.Glob("*");
-    const files = Array.from(glob.scanSync({ cwd: fullDirPath, onlyFiles: true })).sort();
-    const allEntries = Array.from(glob.scanSync({ cwd: fullDirPath, onlyFiles: false })).sort();
+    const files = Array.from(glob.scanSync({ cwd: fullDirPath, onlyFiles: true })).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
+    const allEntries = Array.from(glob.scanSync({ cwd: fullDirPath, onlyFiles: false })).sort((a, b) =>
+      a < b ? -1 : a > b ? 1 : 0,
+    );
     const dirs = allEntries.filter((entry) => !files.includes(entry));
     return { files, dirs };
   }

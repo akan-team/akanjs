@@ -519,10 +519,17 @@ describe("signal class factories and composition", () => {
     ) {}
 
     expect(MainEndpoint.baseName).toBe("signalTestItem");
-    expect(Object.keys(MainEndpoint[ENDPOINT_META]).sort()).toEqual(["getTitle", "ping", "publish"]);
+    expect(Object.keys(MainEndpoint[ENDPOINT_META]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "getTitle",
+      "ping",
+      "publish",
+    ]);
     expect(MainEndpoint[ENDPOINT_META].getTitle?.args[0]?.name).toBe("id");
     expect(MainEndpoint[ENDPOINT_META].publish?.type).toBe("pubsub");
-    expect(Object.keys(MainEndpoint.srv.srvMap).sort()).toEqual(["signalTestAuxService", "signalTestItemService"]);
+    expect(Object.keys(MainEndpoint.srv.srvMap).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "signalTestAuxService",
+      "signalTestItemService",
+    ]);
     const mainInjects = MainEndpoint[INJECT_META] as Record<string, { type: string }>;
     expect(mainInjects.signalTestItemService?.type).toBe("service");
     expect(mainInjects.signalTestAuxService?.type).toBe("service");
@@ -542,7 +549,10 @@ describe("signal class factories and composition", () => {
           .body("data", String)
           .exec((data) => data),
       })) {}
-      expect(Object.keys(QueryBodyEndpoint[ENDPOINT_META]).sort()).toEqual(["lookup", "save"]);
+      expect(Object.keys(QueryBodyEndpoint[ENDPOINT_META]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+        "lookup",
+        "save",
+      ]);
       const warnings = entries.map((entry) => entry.message).filter((message) => message.includes("never arrives"));
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain("signalTestAux.lookup");
@@ -566,10 +576,17 @@ describe("signal class factories and composition", () => {
     ) {}
 
     expect(MainInternal.refName).toBe("signalTestItemInternal");
-    expect(Object.keys(MainInternal[INTERNAL_META]).sort()).toEqual(["auxProcess", "hourly", "resolveLabel"]);
+    expect(Object.keys(MainInternal[INTERNAL_META]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "auxProcess",
+      "hourly",
+      "resolveLabel",
+    ]);
     expect(MainInternal[INTERNAL_META].hourly?.signalOption.scheduleType).toBe("cron");
     expect(MainInternal[INTERNAL_META].auxProcess?.type).toBe("process");
-    expect(Object.keys(MainInternal.srv.srvMap).sort()).toEqual(["signalTestAuxService", "signalTestItemService"]);
+    expect(Object.keys(MainInternal.srv.srvMap).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "signalTestAuxService",
+      "signalTestItemService",
+    ]);
     expect((MainInternal[INJECT_META] as unknown as Record<string, { type: string }>).schedule?.type).toBe("plug");
     expect((MainInternal[INJECT_META] as unknown as Record<string, { type: string }>).queue?.type).toBe("plug");
   });
@@ -596,12 +613,19 @@ describe("signal class factories and composition", () => {
       LibSlice,
     ) {}
 
-    expect(Object.keys(MainSlice[SLICE_META]).sort()).toEqual(["", "byOwner", "libOwner"]);
+    expect(Object.keys(MainSlice[SLICE_META]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "",
+      "byOwner",
+      "libOwner",
+    ]);
     expect(MainSlice[SLICE_META][""]?.args.map((arg) => arg.name)).toEqual(["queryKey", "args"]);
     expect(MainSlice[SLICE_META][""]?.args.every((arg) => arg.option?.nullable)).toBe(true);
     expect(MainSlice.getGuards.map((guard) => guard.name)).toEqual(["Public", "None"]);
     expect(MainSlice.cruGuards.map((guard) => guard.name)).toEqual(["TestAdmin"]);
-    expect(Object.keys(MainSlice.srv.srvMap).sort()).toEqual(["signalTestAuxService", "signalTestItemService"]);
+    expect(Object.keys(MainSlice.srv.srvMap).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "signalTestAuxService",
+      "signalTestItemService",
+    ]);
     expect(() => slice(ServiceModel.from(SignalTestAuxService), {}, () => ({}))).toThrow("cnst and db are required");
   });
 
@@ -638,7 +662,11 @@ describe("signal class factories and composition", () => {
     expect(resolveRoot("byOwner", ["507f1f77bcf86cd799439011"])).toEqual({ ownerId: "507f1f77bcf86cd799439011" });
     expect(AppSlice[SLICE_META][""]?.signalOption.guards?.map((guard) => guard.name)).toEqual(["TestAdmin"]);
     expect(AppSlice[SLICE_META].inOwner?.execFn).toBe(appInOwner);
-    expect(Object.keys(AppSlice[SLICE_META]).sort()).toEqual(["", "inOwner", "libOnly"]);
+    expect(Object.keys(AppSlice[SLICE_META]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "",
+      "inOwner",
+      "libOnly",
+    ]);
   });
 });
 
@@ -940,7 +968,7 @@ describe("signal serialization and registry", () => {
     expect(lib.serializedSignal.origin).toEqual(["shared"]);
     const merged = FetchClient.from(lib, app).serializedSignal.signalTestAux;
     expect(merged?.origin).toEqual(["shared", "sceny"]);
-    expect(Object.keys(merged?.endpoint ?? {}).sort()).toEqual(["ping", "pong"]);
+    expect(Object.keys(merged?.endpoint ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["ping", "pong"]);
   });
 
   test("serverSignal exposes only pubsub endpoints and process internals", () => {

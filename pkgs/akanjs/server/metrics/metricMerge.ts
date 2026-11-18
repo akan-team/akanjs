@@ -5,7 +5,7 @@ type HistogramFamily = Extract<AkanMetricFamily, { type: "histogram" }>;
 
 const keyOf = (labels: Record<string, string>) =>
   Object.keys(labels)
-    .sort()
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
     .map((name) => `${name}\u0000${labels[name]}`)
     .join("\u0001");
 

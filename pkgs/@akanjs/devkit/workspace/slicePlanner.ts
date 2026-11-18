@@ -98,7 +98,7 @@ export class SlicePlanner {
     } as PackageJson;
     const pruned = Object.keys({ ...rootPackageJson.dependencies, ...rootPackageJson.devDependencies })
       .filter((name) => !keep.has(name))
-      .sort();
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     return { packageJson, pruned, warnings: [] as string[] };
   }
 

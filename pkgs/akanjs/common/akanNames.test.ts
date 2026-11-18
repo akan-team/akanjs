@@ -150,7 +150,7 @@ const compileFixture = () => {
       .getPropertiesOfType(checker.getDeclaredTypeOfSymbol(symbol))
       .map(({ name }) => name)
       .filter(derived)
-      .sort();
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   };
   return { diagnostics, propertiesOf };
 };

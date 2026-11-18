@@ -32,7 +32,7 @@ export function requestedDistribution(
 ): Distribution {
   const unused = Object.keys(env)
     .filter((name) => SIGNING_ENV.test(name) && env[name]?.trim())
-    .sort();
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   if (!sign && !notarize) return { notice: null, unused };
   if (platform !== "macos" && platform !== "windows")
     throw new CliError(`--sign and --notarize are for a macOS or Windows app, not ${platform}`);

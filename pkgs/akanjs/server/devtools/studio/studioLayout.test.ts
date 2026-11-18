@@ -113,7 +113,7 @@ describe("StudioLayout", () => {
   test("draws the ERD with each referenced type to the right of the model that names it", () => {
     const scene = StudioLayout.erd(graph, null);
     const boxes = boxesOf(scene);
-    expect(Object.keys(boxes).sort()).toEqual([
+    expect(Object.keys(boxes).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "enum:apps/demo:MemoStatus",
       "model:apps/demo:folder",
       "model:apps/demo:memo",
@@ -134,7 +134,7 @@ describe("StudioLayout", () => {
 
   test("scopes the ERD to a module's types and their direct relations", () => {
     expect(Object.keys(boxesOf(StudioLayout.erd(graph, "folder")))).toEqual(["model:apps/demo:folder"]);
-    expect(Object.keys(boxesOf(StudioLayout.erd(graph, "file"))).sort()).toEqual([
+    expect(Object.keys(boxesOf(StudioLayout.erd(graph, "file"))).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "model:apps/demo:memo",
       "model:libs/shared:file",
     ]);

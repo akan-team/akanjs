@@ -230,7 +230,9 @@ const describeDriver = (kind: SqlDriverKind) => {
       const docs = await docsOf(table);
       expect(docs.a2).toEqual({ name: "Jane", profile: { tier: "gold" } });
       expect(docs.a1).toEqual({ name: "Kenny", org: "chosen by a person" });
-      expect(Object.keys(docs).sort()).toEqual(["a1", "a2", "a4", edited ?? ""].sort());
+      expect(Object.keys(docs).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(
+        ["a1", "a2", "a4", edited ?? ""].sort(),
+      );
       expect(await table.get("a4")).toMatchObject({ removedAt: null });
       expect([kept, inserted].every((id) => !(id && id in docs))).toBe(true);
 

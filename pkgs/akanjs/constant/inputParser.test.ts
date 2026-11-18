@@ -87,7 +87,15 @@ describe("InputParser", () => {
   test("parses a model input to its declared types, drops unknown keys and leaves defaulted fields absent", () => {
     const parsed = parse(body({ role: "admin", removedAt: null })) as Record<string, unknown>;
 
-    expect(Object.keys(parsed).sort()).toEqual(["at", "name", "point", "prices", "status", "tags", "target"]);
+    expect(Object.keys(parsed).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "at",
+      "name",
+      "point",
+      "prices",
+      "status",
+      "tags",
+      "target",
+    ]);
     expect(dayjs.isDayjs(parsed.at)).toBe(true);
     expect(parsed.target).toBe(targetId);
     expect(parsed.point).toEqual({ x: 1, z: 5, label: null });

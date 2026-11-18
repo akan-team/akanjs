@@ -350,7 +350,7 @@ describe("CsrDevPatcher", () => {
       await Bun.write(file("ui/C.tsx"), 'export const C = () => "c2";\n');
       expect(changedIds(await patcher.update([file("ui/C.tsx")]))).toEqual(["apps/demo/ui/C.tsx"]);
       const graph = (await bundler.writer.readJson<CsrDevGraph>("graph.json")) as CsrDevGraph;
-      expect(Object.keys(graph.modules).sort()).toEqual([
+      expect(Object.keys(graph.modules).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
         "apps/demo/entry.ts",
         "apps/demo/ui/C.tsx",
         "apps/demo/ui/I.tsx",

@@ -85,7 +85,7 @@ afterAll(() => {
 describe("shell calls", () => {
   test("an op an engine answers fails with TIMEOUT past its deadline, others wait, and a late answer is dropped", async () => {
     const { createShellCalls, SHELL_DEADLINES } = await import("../src/host.ts");
-    expect(Object.keys(SHELL_DEADLINES).sort()).toEqual([
+    expect(Object.keys(SHELL_DEADLINES).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "externalView.cdp",
       "externalView.evaluate",
       "keychain.delete",

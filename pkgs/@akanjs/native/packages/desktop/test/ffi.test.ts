@@ -14,7 +14,7 @@ test("ffi.ts binds exactly the library's C ABI", () => {
   const exported = [...text.matchAll(/#\[no_mangle\]\s*pub (?:unsafe )?extern "C" fn (akan_native_\w+)/g)]
     .map((m) => m[1]!)
     .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  expect(Object.keys(SYMBOLS).sort()).toEqual(exported);
+  expect(Object.keys(SYMBOLS).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(exported);
   const abi = Number(/pub const ABI: u32 = (\d+);/.exec(text)?.[1]);
   expect(abi >>> 16).toBe(ABI_MAJOR);
 });

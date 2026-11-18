@@ -110,7 +110,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       const walk: DiscoveryWalk = { visiting: new Set(), partial: new Set(), memo: new Map(), importsAs, reachable };
       for (const entry of await this.#discoverFromFile(seed, walk)) entries.add(entry);
     }
-    return Array.from(entries).sort();
+    return Array.from(entries).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   //? Without `byExport`, and never beyond it, this is what `discover` answers.

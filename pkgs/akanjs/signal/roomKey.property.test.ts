@@ -143,7 +143,7 @@ const identityOf = (value: unknown): unknown => {
   if (Array.isArray(value)) return value.map(identityOf);
   if (value && typeof value === "object")
     return Object.keys(value)
-      .sort()
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .map((key) => [key, identityOf((value as Record<string, unknown>)[key])]);
   return value;
 };

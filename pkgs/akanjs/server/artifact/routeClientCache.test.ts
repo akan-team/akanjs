@@ -219,8 +219,12 @@ describe("RouteClientCache", () => {
     });
 
     const snapshot = cache.snapshot();
-    expect(Object.keys(snapshot.clientManifest).sort()).toEqual(["/repo/Other.tsx#default"]);
-    expect(Object.keys(snapshot.ssrManifest.moduleMap).sort()).toEqual(["/_akan/client/other.js"]);
+    expect(Object.keys(snapshot.clientManifest).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "/repo/Other.tsx#default",
+    ]);
+    expect(Object.keys(snapshot.ssrManifest.moduleMap).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "/_akan/client/other.js",
+    ]);
     expect(snapshot.knownEntries).toEqual(new Set(["/repo/Other.tsx"]));
   });
 
