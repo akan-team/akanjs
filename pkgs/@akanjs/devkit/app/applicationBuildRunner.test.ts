@@ -730,6 +730,47 @@ console.info(new SampleService().name);
     }
   });
 
+  test("main.js sets the build's env before a package the bundle leaves outside loads", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    await Promise.all(["main.ts", "server.ts"].map((file) => writeFile(path.join(root, "apps", "portal", file), "")));
+    const app = AppExecutor.from(workspace, "portal");
+    app.prepareCommand = async () => ({ env: {} });
+    const bundle = spyOn(Bun, "build").mockImplementation(
+      async () => ({ success: true, outputs: [], logs: [] }) as unknown as Bun.BuildOutput,
+    );
+    try {
+      await new ApplicationBuildRunner(app, { verify: true }).build();
+      const configs = bundle.mock.calls.map(([config]) => config);
+      const envModule = configs.find(({ entrypoints }) =>
+        entrypoints.some((entry) => entry.endsWith("loadBuildEnv.ts")),
+      );
+      const main = configs.find(({ entrypoints }) => entrypoints.some((entry) => entry.endsWith("main.ts")));
+      bundle.mockRestore();
+      if (!envModule || !main) throw new Error("the build made no env module or no main bundle");
+      const { entry: mainBundle } = main.naming as { entry: string };
+      await Bun.build(envModule);
+      const dist = app.dist.cwdPath;
+      await mkdir(path.join(dist, "node_modules", "probe"), { recursive: true });
+      await writeFile(path.join(dist, "node_modules", "probe", "index.js"), "module.exports = process.env.NODE_ENV;\n");
+      await writeFile(path.join(dist, "akan.env.json"), '{ "NODE_ENV": "production" }\n');
+      await writeFile(path.join(dist, mainBundle), 'import mode from "probe";\nconsole.log(mode);\n');
+      const { NODE_ENV: _mode, ...env } = process.env;
+      const proc = Bun.spawnSync([process.execPath, "main.js"], { cwd: dist, env, stdout: "pipe", stderr: "pipe" });
+
+      expect(proc.stderr.toString()).toBe("");
+      expect(proc.stdout.toString()).toBe("production\n");
+    } finally {
+      bundle.mockRestore();
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("a verify build writes to dist/verify/<app> and leaves the full build in dist/apps/<app> as it was", async () => {
     const { root, workspace } = await createTempApp("portal");
     const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
