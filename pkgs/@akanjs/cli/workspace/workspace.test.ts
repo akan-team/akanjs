@@ -1020,6 +1020,23 @@ describe("WorkspaceRunner.commitWorkspace", () => {
 });
 
 describe("Scan convention validation", () => {
+  test("takes a lib's script folder, and refuses a migration in it", async () => {
+    const { root, workspace } = track(await createTempApp("demo"));
+    const libDir = path.join(root, "libs", "edge");
+    await writeJson(path.join(libDir, "tsconfig.json"), {});
+    await writeJson(path.join(libDir, "package.json"), { name: "edge", version: "1.0.0", dependencies: {} });
+    await writeText(path.join(libDir, "akan.config.ts"), "export default {};\n");
+    await writeText(path.join(libDir, "lib", "__scalar", ".gitkeep"), "");
+    await writeText(path.join(libDir, "script", "rknn", "convert.py"), "print('convert')\n");
+
+    await LibExecutor.from(workspace, "edge").scan({ write: false, refresh: true });
+
+    await writeText(path.join(libDir, "script", "migration", "202611180000_addField.ts"), "export default {};\n");
+    await expect(LibExecutor.from(workspace, "edge").scan({ write: false, refresh: true })).rejects.toThrow(
+      "libs/edge/script/migration: a lib's migrations are never run",
+    );
+  });
+
   test("rejects files that do not follow the <module>.<type>.(ts|tsx) convention", async () => {
     const { app } = track(await createTempApp("demo"));
 

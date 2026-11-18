@@ -54,7 +54,8 @@ each plugin's header and diagnostic carry its full reasoning.
   is refused as a leftover (native projects live under `dist/native/<app>/<target>`).
 - Lib root files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.baseline.json`, `akan.config.ts`, `akan.lib.json`,
   `client.ts`, `index.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`;
-  folders: the app's minus `.akan`, `script`, `secrets` (no `main.ts` either — a lib is never booted).
+  folders: the app's minus `.akan`, `secrets` (no `main.ts` either — a lib is never booted). A lib's `script/` is
+  asset tooling nothing runs or ships (`private/` ships in every image); a `script/migration` there is refused.
 - The allowlists' one source is `pkgs/@akanjs/devkit/workspace/workspaceLayout.ts`, read by `akan sync` (error), `akan doctor`
   and `akan quality scan` — add an entry there and mirror it here.
 - `apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md` carry a generated `## Recipes In Scope` block between the

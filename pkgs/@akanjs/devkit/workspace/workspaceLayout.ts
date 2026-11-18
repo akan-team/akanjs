@@ -38,6 +38,7 @@ export const appRootAllowedDirs = new Set([
 ]);
 
 // A library is never booted or packaged as an app, so the run/mobile entries are out; it is published, so README stays.
+// Its `script/` holds the tooling that makes its own assets, which nothing runs or ships.
 export const libRootAllowedFiles = new Set([
   "AGENTS.md",
   "CLAUDE.md",
@@ -63,6 +64,7 @@ export const libRootAllowedDirs = new Set([
   "plugin",
   "private",
   "public",
+  "script",
   "srvkit",
   "ui",
   "webkit",

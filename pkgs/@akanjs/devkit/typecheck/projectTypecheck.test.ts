@@ -20,14 +20,16 @@ const project = async () => {
 };
 
 describe("ProjectTypecheck", () => {
-  test("checks a test nothing imports only when asked, and leaves .akan out", async () => {
+  test("checks a test or a script file nothing imports only when asked, and leaves .akan out", async () => {
     const { root, dir } = await project();
+    await write(path.join(dir, "script/rknn/convert.ts"), 'export const port: number = "8282";\n');
     const typecheck = new ProjectTypecheck(dir, root, { ...process.env });
 
     await typecheck.run(["../../server.ts"]);
     const error = await typecheck.run(["../../server.ts"], { tests: true }).catch((e: Error) => e);
     expect(error).toBeInstanceOf(Error);
     expect((error as Error).message).toContain("lib/user/user.signal.test.ts");
+    expect((error as Error).message).toContain("script/rknn/convert.ts");
     expect((error as Error).message).not.toContain("old.test.ts");
   }, 60_000);
 

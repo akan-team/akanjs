@@ -13,10 +13,10 @@ export interface ProjectTypecheckOptions {
   report?: "pretty" | "records";
 }
 
-//* tsc checks what the entries import, and nothing imports a test, so a test is checked only when it is included by
-//* name. Each mode keeps a tsconfig and an incremental cache of its own, so one never invalidates the other.
+//* tsc checks what the entries import, and nothing imports a test or a `script/` file, so each is checked only when
+//* it is included by name. Each mode keeps a tsconfig and an incremental cache of its own, so one never invalidates the other.
 export class ProjectTypecheck {
-  static readonly #testIncludes = ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx"];
+  static readonly #testIncludes = ["**/*.test.ts", "**/*.test.tsx", "**/*.spec.ts", "**/*.spec.tsx", "script/**/*.ts"];
   static readonly #excludes = [".akan/**", "node_modules/**", "local/**"];
 
   constructor(
