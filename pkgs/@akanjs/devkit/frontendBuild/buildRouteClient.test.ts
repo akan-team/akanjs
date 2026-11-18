@@ -744,6 +744,71 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
         const report = await Bun.file(path.join(appDir, RouteRuntimeReport.file)).json();
         expect(report).toMatchObject({ perModule: ["/draft", "/board"], notSmaller: [], refused: ["/board"] });
       }, 30_000);
+
+      test("a production build answers each export of a client file from its own entry, so a route asking one loads no import of the other; under start the file is one entry", async () => {
+        const { root, appDir, app, file, warnings } = await describedFixture();
+        for (const name of ["a", "b"])
+          await write(file(`heavy-${name}`), `export const heavy = { mark: "heavy-${name}-marker" };\n`);
+        const pair = file("Pair");
+        await write(
+          pair,
+          '"use client";\nimport { heavy as a } from "./heavy-a";\nimport { heavy as b } from "./heavy-b";\nexport const A = () => a.mark;\nexport const B = () => b.mark;\n',
+        );
+        const entriesByRoute = new Map([
+          ["/a", [pair]],
+          ["/b", [pair]],
+        ]);
+        const askedByRoute = new Map([
+          ["/a", new Map([[pair, ["A"]]])],
+          ["/b", new Map([[pair, ["B"]]])],
+        ]);
+        const buildAs = async (command: "build" | "start") => {
+          const { manifestDelta } = await new RouteClientBuilder({
+            app,
+            seeds: [],
+            entries: [pair],
+            artifact: {} as never,
+            browser: "chunks",
+            command,
+            entriesByRoute,
+            askedByRoute,
+          }).build();
+          const artifact = path.join(
+            command === "build" ? path.join(root, "dist/apps/demo") : appDir,
+            ".akan/artifact",
+          );
+          const sized = new RouteModulePreloads({
+            runtimeChunks: { runtime: [], vendors: {} },
+            entriesByRoute,
+            askedByRoute,
+            clientManifest: manifestDelta,
+            externalsByChunkUrl: {},
+            workspaceRoot: root,
+          }).modulesByRoute();
+          const loadedBy = async (route: string) =>
+            (
+              await Promise.all(
+                (sized[route] ?? []).map((url) => Bun.file(path.join(artifact, url.replace(/^\/_akan\//, ""))).text()),
+              )
+            ).join("\n");
+          const idOf = (name: string) => manifestDelta[`apps/demo/ui/Pair.tsx#${name}`]?.id;
+          return { rows: Object.keys(manifestDelta).sort(), idOf, a: await loadedBy("/a"), b: await loadedBy("/b") };
+        };
+
+        const built = await buildAs("build");
+        expect(built.rows).toEqual(["apps/demo/ui/Pair.tsx#A", "apps/demo/ui/Pair.tsx#B"]);
+        expect(built.idOf("A")).not.toBe(built.idOf("B"));
+        expect(built.a).toContain("heavy-a-marker");
+        expect(built.a).not.toContain("heavy-b-marker");
+        expect(built.b).toContain("heavy-b-marker");
+        expect(built.b).not.toContain("heavy-a-marker");
+
+        const started = await buildAs("start");
+        expect(started.rows).toEqual(built.rows);
+        expect(started.idOf("A")).toBe(started.idOf("B"));
+        for (const marker of ["heavy-a-marker", "heavy-b-marker"]) expect(started.a).toContain(marker);
+        expect(warnings).toEqual([]);
+      }, 30_000);
     });
 
     test("the files a route is sized by hold the store piece of the module its client code names, and no assembled runtime", async () => {

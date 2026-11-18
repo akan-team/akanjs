@@ -72,6 +72,29 @@ describe("what a build loading per module checks in its own output", () => {
     expect(failuresOf({ imports: lazy, chunks: apart })).toEqual([]);
   });
 
+  test("a file bundled in parts is checked part by part: only the chunk of the part importing a piece has to reach it", () => {
+    const graph = graphOf({
+      imports: { [card]: [storePiece], [storePiece]: [] },
+      chunks: { [card]: ["/out/naming.js", "/out/plain.js"], [storePiece]: ["/out/piece.js"] },
+      chunkImports: { "/out/naming.js": ["/out/piece.js"] },
+    });
+    const part = (id: string) => `${abs(card)}?akan-part=${id}`;
+    const linked = [
+      { module: part("p0"), imports: [{ path: abs(storePiece), lazy: false }], chunks: ["/out/naming.js"] },
+      { module: part("p1"), imports: [], chunks: ["/out/plain.js"] },
+      { module: abs(storePiece), imports: [], chunks: ["/out/piece.js"] },
+    ];
+
+    expect(new RouteRuntimeCheck(root, graph, null).failures).toHaveLength(1);
+    expect(new RouteRuntimeCheck(root, { ...graph, linked }, null).failures).toEqual([]);
+    const misplaced = linked.map((input) =>
+      input.module === part("p0") ? { ...input, chunks: ["/out/plain.js"] } : input,
+    );
+    expect(new RouteRuntimeCheck(root, { ...graph, linked: misplaced }, null).failures).toEqual([
+      "apps/demo/ui/Card.tsx?akan-part=p0 needs apps/demo/lib/__client/memo.st.ts loaded first, but its chunk plain.js does not import the chunk holding that piece",
+    ]);
+  });
+
   test("no store file is imported back by a runtime piece that a file it imports loads", () => {
     const helper = "apps/demo/webkit/relabel.ts";
     const cycle = { [storeFile]: [helper], [helper]: [storePiece], [storePiece]: [storeFile] };
