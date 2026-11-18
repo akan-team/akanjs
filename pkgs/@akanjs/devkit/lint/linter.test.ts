@@ -82,17 +82,22 @@ describe("parseBiomeReport", () => {
 });
 
 describe("Linter", () => {
-  test.skipIf(!hasBiome || process.platform === "win32")("runs Biome where no node is on PATH", async () => {
-    const pathBefore = process.env.PATH;
-    process.env.PATH = path.join(tmpdir(), "akan-path-without-node");
-    try {
-      const { results, errors } = await new Linter(import.meta.dir).lintFile(path.join(import.meta.dir, "linter.ts"));
-      expect(results).toHaveLength(1);
-      expect(errors).toEqual([]);
-    } finally {
-      process.env.PATH = pathBefore;
-    }
-  });
+  //? Biome 2.5.15 scans the whole repository before it lints the file: about 6 s on a 4-core Linux runner.
+  test.skipIf(!hasBiome || process.platform === "win32")(
+    "runs Biome where no node is on PATH",
+    async () => {
+      const pathBefore = process.env.PATH;
+      process.env.PATH = path.join(tmpdir(), "akan-path-without-node");
+      try {
+        const { results, errors } = await new Linter(import.meta.dir).lintFile(path.join(import.meta.dir, "linter.ts"));
+        expect(results).toHaveLength(1);
+        expect(errors).toEqual([]);
+      } finally {
+        process.env.PATH = pathBefore;
+      }
+    },
+    30_000,
+  );
 
   test("splits path arguments into batches that stay under the command-line budget", () => {
     const args = Array.from({ length: 10 }, (_, idx) => `apps/demo/lib/file${idx}.ts`);

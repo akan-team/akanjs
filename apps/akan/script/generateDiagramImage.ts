@@ -203,7 +203,7 @@ const run = async () => {
     console.error(problems.join("\n"));
     process.exit(1);
   }
-  const known = Object.keys(prompts).sort();
+  const known = Object.keys(prompts).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const knownList = known.map((id) => `  ${id.padEnd(30)} ${prompts[id].where}`).join("\n");
 
   const targets = options.all ? known : options.ids;

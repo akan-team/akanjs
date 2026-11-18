@@ -327,7 +327,7 @@ describe("McpDocument", () => {
 
   test("says why every candidate it kept out was kept out, instead of dropping it silently", () => {
     const refusals = Object.fromEntries(new McpDocument(signal()).refusals.map(({ key, reason }) => [key, reason]));
-    expect(Object.keys(refusals).sort()).toEqual([
+    expect(Object.keys(refusals).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "importMcpPost",
       "lightMcpPost",
       "mcpPostInsightPersonSlice",

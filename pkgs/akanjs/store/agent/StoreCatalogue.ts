@@ -47,7 +47,7 @@ export class StoreCatalogue {
     const state = this.#instance.get();
     const declared = StoreCatalogue.#declaredStateModels();
     const entries = Object.keys(state)
-      .sort()
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .map((key): [string, SerializedStoreState] => {
         const role = this.#instance.sliceStateRoles.get(key);
         const model = role

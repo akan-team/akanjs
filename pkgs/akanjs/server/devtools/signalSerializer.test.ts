@@ -37,7 +37,7 @@ describe("SignalSerializer", () => {
 
   test("keeps declared endpoints separate from framework-generated ones", () => {
     const signal = data.signals[fixtureRefName];
-    expect(Object.keys(signal.endpoint).sort()).toEqual([
+    expect(Object.keys(signal.endpoint).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "echoMessage",
       "getTitle",
       "guardedRoomFeed",
@@ -48,7 +48,7 @@ describe("SignalSerializer", () => {
     ]);
     expect(Object.keys(signal.generated.crud)).toContain(`create${"ServerResolverTestItem"}`);
     expect(Object.keys(signal.generated.crud)).toContain(fixtureRefName);
-    expect(Object.keys(signal.generated.slice).sort()).toEqual([
+    expect(Object.keys(signal.generated.slice).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       `${fixtureRefName}Insight`,
       `${fixtureRefName}InsightInCategory`,
       `${fixtureRefName}List`,
@@ -98,7 +98,11 @@ describe("SignalSerializer", () => {
 
   test("surfaces internals, which SerializedSignal omits entirely", () => {
     const internal = data.signals[fixtureRefName].internal;
-    expect(Object.keys(internal).sort()).toEqual(["boot", "cleanup", "processItem"]);
+    expect(Object.keys(internal).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "boot",
+      "cleanup",
+      "processItem",
+    ]);
     expect(internal.boot).toMatchObject({ type: "init", enabled: true, scheduledHere: true });
     expect(internal.processItem).toMatchObject({ type: "process", scheduledHere: true });
     expect(internal.processItem.args).toEqual([{ type: "msg", refName: "ID", name: "itemId" }]);
@@ -106,7 +110,10 @@ describe("SignalSerializer", () => {
   });
 
   test("collects the slice definitions and the distinct guard names", () => {
-    expect(Object.keys(data.signals[fixtureRefName].slice).sort()).toEqual(["", "inCategory"]);
+    expect(Object.keys(data.signals[fixtureRefName].slice).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "",
+      "inCategory",
+    ]);
     expect(data.guards).toContain("Public");
   });
 

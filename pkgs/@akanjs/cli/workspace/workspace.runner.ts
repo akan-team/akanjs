@@ -293,24 +293,34 @@ export class WorkspaceRunner extends runner("workspace") {
     return null;
   }
 
-  async lint(
-    exec: Exec,
+  async lint(exec: Exec, workspace: Workspace, options: { fix?: boolean; maxDiagnostics?: number } = {}) {
+    await this.lintMany([exec], workspace, options);
+  }
+
+  //? One Biome run covers every target: each run scans the whole workspace for its type-aware rules, about 1.6 GB
+  //? apiece on Biome 2.5.15, so a run per target in parallel ran a 16 GB CI runner out of memory.
+  async lintMany(
+    execs: Exec[],
     workspace: Workspace,
     { fix = true, maxDiagnostics = defaultMaxDiagnostics }: { fix?: boolean; maxDiagnostics?: number } = {},
   ) {
     const configPath = await WorkspaceRunner.resolveBiomeConfigPath(workspace);
     await BiomeCheck.run({
       root: workspace.workspaceRoot,
-      target: exec.cwdPath,
+      targets: execs.map((exec) => exec.cwdPath),
       configPath,
       write: fix,
       maxDiagnostics,
       print: (text) => Logger.rawLog(text),
     });
-    await this.#enforceStyleContract(exec);
-    await this.#enforceRecipeGate(exec);
-    await this.#enforceAgentsIndex(exec);
-    await this.#enforceMaintainability(exec, fix);
+    await Promise.all(
+      execs.map(async (exec) => {
+        await this.#enforceStyleContract(exec);
+        await this.#enforceRecipeGate(exec);
+        await this.#enforceAgentsIndex(exec);
+        await this.#enforceMaintainability(exec, fix);
+      }),
+    );
   }
 
   /** The gates `lint` stops at one by one, run to the end so a caller can report every breach at once. */

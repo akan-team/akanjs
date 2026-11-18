@@ -4,7 +4,7 @@ import { WithheldEnvFile } from "./withheldEnvFile";
 
 export interface BiomeCheckOptions {
   root: string;
-  target: string;
+  targets: string[];
   configPath: string | null;
   write: boolean;
   //? 0 shows every diagnostic.
@@ -20,7 +20,7 @@ export class BiomeCheck {
   // biome-ignore lint/suspicious/noControlCharactersInRegex: an ANSI colour sequence starts with the escape character
   static readonly #colour = /\u001b\[[0-9;]*m/g;
 
-  static async run({ root, target, configPath, write, maxDiagnostics, print }: BiomeCheckOptions) {
+  static async run({ root, targets, configPath, write, maxDiagnostics, print }: BiomeCheckOptions) {
     const [biome, ...biomeArgs] = Linter.biomeCommand(root);
     //? Pinned: without it a malformed biome.json makes Biome fall back to discovery and name the wrong file.
     const config = configPath ? ["--config-path", configPath] : [];
@@ -34,7 +34,7 @@ export class BiomeCheck {
         "--max-diagnostics=none",
         "--no-errors-on-unmatched",
         ...config,
-        target,
+        ...targets,
       ],
       { cwd: root, stdout: "pipe", stderr: "pipe" },
     );

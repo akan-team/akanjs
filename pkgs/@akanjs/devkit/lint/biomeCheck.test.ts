@@ -27,11 +27,14 @@ const workspace = async () => {
   return root;
 };
 
-const run = async (root: string, options: { write: boolean; maxDiagnostics: number }) => {
+const run = async (
+  root: string,
+  { targets = ["apps/demo"], ...options }: { write: boolean; maxDiagnostics: number; targets?: string[] },
+) => {
   const printed: string[] = [];
   const error = await BiomeCheck.run({
     root,
-    target: path.join(root, "apps/demo"),
+    targets: targets.map((target) => path.join(root, target)),
     configPath: path.join(root, "biome.json"),
     print: (text) => printed.push(text),
     ...options,
@@ -74,6 +77,20 @@ describe.skipIf(!hasBiome)("BiomeCheck", () => {
     expect(capped.output).toContain("not shown");
     expect(capped.output).not.toContain("export const card: any");
     expect(capped.error).not.toBeNull();
+  }, 60_000);
+
+  test("checks every target it is given in one run", async () => {
+    const root = await workspace();
+    await writeText(path.join(root, "apps/demo/env/env.server.main.ts"), "export const env = {};\n");
+    await writeText(path.join(root, "libs/shared/ui/badge.ts"), "export const badge: any = 1;\n");
+    const { output, error } = await run(root, {
+      write: false,
+      maxDiagnostics: 0,
+      targets: ["apps/demo", "libs/shared"],
+    });
+    expect(output).toContain("export const card: any = 1;");
+    expect(output).toContain("export const badge: any = 1;");
+    expect(error?.message).toBe("Lint found 2 errors.");
   }, 60_000);
 
   test("explains a biome.json Biome cannot read, in Biome's own words", async () => {

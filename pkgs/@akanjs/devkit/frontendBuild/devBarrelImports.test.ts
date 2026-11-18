@@ -52,7 +52,7 @@ describe("DevBarrelImports", () => {
     expect(Object.keys(server?.narrowed ?? {})).toEqual([key]);
     expect(server?.narrowed[key]?.names).toEqual(["@server", "Zone.View"]);
     expect(client?.narrowed[key]?.names).toEqual(["@client", "Zone.View"]);
-    expect(Object.keys((await stamp())?.read ?? {}).sort()).toEqual([
+    expect(Object.keys((await stamp())?.read ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "lib/memo",
       "lib/memo/Memo.Template.tsx",
       "lib/memo/Memo.Zone.tsx",
@@ -114,7 +114,7 @@ describe("DevBarrelImports", () => {
       'import { Text as Field$Text } from "../ui/Field/Text.tsx";\nexport const Page = () => <Field$Text />;\n',
     );
     expect(rewrite?.narrowed[key]?.names).toEqual(["@server", "Text"]);
-    expect(Object.keys(before?.read ?? {}).sort()).toEqual([
+    expect(Object.keys(before?.read ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "ui",
       "ui/Field",
       "ui/Field/Text.tsx",

@@ -27,7 +27,7 @@ export class NativePublicEnv {
     return Object.fromEntries(
       Object.keys(env)
         .filter((key) => key.startsWith("AKAN_PUBLIC_") && !NativePublicEnv.derivedKeys.includes(key))
-        .sort()
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
         .map((key) => [key, String(env[key])]),
     );
   }

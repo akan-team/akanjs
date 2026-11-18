@@ -401,14 +401,13 @@ describe("WorkspaceScript", () => {
     ) as WorkspaceExecutor;
     script.applicationScript.sync = (async (target: unknown) => recorder.record("sync", target)) as never;
     script.libraryScript.syncLibrary = (async (target: unknown) => recorder.record("syncLibrary", target)) as never;
-    script.workspaceRunner.lint = async (...args: unknown[]) => recorder.record("lint", ...args);
+    script.workspaceRunner.lintMany = async (...args: unknown[]) => recorder.record("lintMany", ...args);
 
     await script.lintAll(workspace, { fix: false });
 
-    expect(recorder.names()).toEqual(["sync", "syncLibrary", "lint", "lint", "lint"]);
-    expect(
-      recorder.calls.filter((call) => call.name === "lint").map((call) => (call.args[0] as { name: string }).name),
-    ).toEqual(["app", "lib", "pkg"]);
+    expect(recorder.names()).toEqual(["sync", "syncLibrary", "lintMany"]);
+    const execs = (recorder.calls.find((call) => call.name === "lintMany")?.args[0] ?? []) as { name: string }[];
+    expect(execs.map((exec) => exec.name)).toEqual(["app", "lib", "pkg"]);
   });
 
   test("machine-keygen prints only the public key, and claims mode 600 only where the mode holds", async () => {
@@ -841,7 +840,7 @@ describe("WorkspaceRunner", () => {
       await runner.lint(exec as never, workspace as never, { fix: true });
       expect(run).toHaveBeenLastCalledWith(
         expect.objectContaining({
-          target: "/workspace/apps/demo",
+          targets: ["/workspace/apps/demo"],
           write: true,
           maxDiagnostics: defaultMaxDiagnostics,
           configPath: null,
@@ -867,7 +866,7 @@ describe("WorkspaceRunner", () => {
       await runner.lint({ cwdPath: `${root}/apps/demo` } as never, workspace as never, { fix: false });
 
       expect(run).toHaveBeenCalledWith(
-        expect.objectContaining({ root, target: `${root}/apps/demo`, configPath: path.join(root, "biome.jsonc") }),
+        expect.objectContaining({ root, targets: [`${root}/apps/demo`], configPath: path.join(root, "biome.jsonc") }),
       );
     } finally {
       run.mockRestore();

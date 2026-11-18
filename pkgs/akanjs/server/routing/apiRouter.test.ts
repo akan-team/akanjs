@@ -460,7 +460,12 @@ describe("ApiRouter.buildWebsocketHandlers", () => {
     await handlers.message?.(ws, JSON.stringify({ key: "item", data: [] }));
 
     const frame = JSON.parse(sent[0] ?? "{}") as Record<string, unknown>;
-    expect(Object.keys(frame).sort()).toEqual(["error", "key", "statusCode", "timestamp"]);
+    expect(Object.keys(frame).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "error",
+      "key",
+      "statusCode",
+      "timestamp",
+    ]);
     expect(frame).toMatchObject({ error: "base.error.documentNotFound", statusCode: 404, key: "item" });
     expect(loggerErrors).toEqual([]);
   });

@@ -118,7 +118,7 @@ describe("UiOverride", () => {
       <div data-slot="default-empty">{description}</div>
     )) as AkanUiOverrides["Empty"]);
     const manifest = override({ Modal: BrandModal, Empty: BrandEmpty });
-    expect(Object.keys(manifest).sort()).toEqual(["Empty", "Modal"]);
+    expect(Object.keys(manifest).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["Empty", "Modal"]);
 
     const html = await renderToText(
       <UiOverrideProvider value={manifest}>

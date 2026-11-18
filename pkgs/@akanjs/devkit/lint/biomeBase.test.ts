@@ -25,6 +25,10 @@ const execProbe = `export const idOf = (url: string) => {
   return match ? Number(match[1]) : 0;
 };
 export const idOfChained = (url: string) => Number(/\\/(\\d+)\\/?$/.exec(url)?.[1] ?? 0);
+export const always = (n: number) => {
+  const label = "x";
+  return label ? n : 0;
+};
 `;
 
 const tempDirs: string[] = [];
@@ -44,14 +48,14 @@ const runBiome = (args: string[], cwd: string) =>
     proc.on("close", () => resolve(stdout || stderr));
   });
 
-const lintWorkspace = async (files: string[], probe = hookProbe, config: object = { extends: [biomeBaseConfig] }) => {
+const lintWorkspace = async (files: string[], probe = hookProbe) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), "biome-base-"));
   tempDirs.push(dir);
   //? The base config names its plugins as `./node_modules/@akanjs/devkit/…`, resolved from the extending config's
   //? folder. A junction needs no privilege on Windows, and the type is ignored elsewhere.
   await mkdir(path.join(dir, "node_modules", "@akanjs"), { recursive: true });
   await symlink(devkitDir, path.join(dir, "node_modules", "@akanjs", "devkit"), "junction");
-  await writeFile(path.join(dir, "biome.json"), JSON.stringify(config));
+  await writeFile(path.join(dir, "biome.json"), JSON.stringify({ extends: [biomeBaseConfig] }));
   for (const file of files) {
     await mkdir(path.dirname(path.join(dir, file)), { recursive: true });
     await writeFile(path.join(dir, file), probe);
@@ -83,16 +87,11 @@ describe("biome.base.json", () => {
     ]);
   });
 
-  test("leaves a null check on RegExp.exec alone, which Biome reads as never null", async () => {
-    const unnecessary = (diagnostics: Awaited<ReturnType<typeof lintWorkspace>>) =>
-      diagnostics.filter((diagnostic) => diagnostic.category === "lint/suspicious/noUnnecessaryConditions").length;
-
-    expect(unnecessary(await lintWorkspace(["apps/demo/common/idOf.ts"], execProbe))).toBe(0);
-
-    //? Pins the Biome 2.5.14 misreading: once this is 0, the base config can turn the rule back on.
-    const ruleOnly = {
-      linter: { rules: { recommended: false, suspicious: { noUnnecessaryConditions: "warn" } } },
-    };
-    expect(unnecessary(await lintWorkspace(["apps/demo/common/idOf.ts"], execProbe, ruleOnly))).toBe(2);
+  test("warns on an always-true condition but not on a null check of RegExp.exec", async () => {
+    const diagnostics = await lintWorkspace(["apps/demo/common/idOf.ts"], execProbe);
+    const unnecessary = diagnostics
+      .filter((diagnostic) => diagnostic.category === "lint/suspicious/noUnnecessaryConditions")
+      .map((diagnostic) => `${diagnostic.location?.start?.line} ${diagnostic.severity}`);
+    expect(unnecessary).toEqual(["8 warning"]);
   });
 });

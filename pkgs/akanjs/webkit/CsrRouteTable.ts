@@ -352,7 +352,7 @@ export class CsrRouteTable {
   }
 
   static #keysOf(context: CsrRouteContext) {
-    return Object.keys(context).sort();
+    return Object.keys(context).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   }
 
   static #paramNamesOf(pattern: string) {

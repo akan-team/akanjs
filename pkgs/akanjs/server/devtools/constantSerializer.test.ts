@@ -18,7 +18,13 @@ describe("ConstantSerializer", () => {
       light: "LightServerResolverTestItem",
       insight: "ServerResolverTestItemInsight",
     });
-    expect(Object.keys(model.views).sort()).toEqual(["full", "input", "insight", "light", "object"]);
+    expect(Object.keys(model.views).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "full",
+      "input",
+      "insight",
+      "light",
+      "object",
+    ]);
   });
 
   test("classifies primitive, enum-free scalar, relation, and resolve fields", () => {
@@ -59,7 +65,11 @@ describe("ConstantSerializer", () => {
   test("serializes the filter query args and sort keys", () => {
     const filter = serialize().models[refName].filter;
     expect(filter).toBeDefined();
-    expect(Object.keys(filter?.query ?? {}).sort()).toEqual(["any", "byOwner", "inCategory"]);
+    expect(Object.keys(filter?.query ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "any",
+      "byOwner",
+      "inCategory",
+    ]);
     expect(filter?.query.inCategory).toEqual([
       { name: "category", type: { kind: "primitive", refName: "String" }, arrDepth: 0, nullable: false },
       { name: "includeRemoved", type: { kind: "primitive", refName: "Boolean" }, arrDepth: 0, nullable: true },

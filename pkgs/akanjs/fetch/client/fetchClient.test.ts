@@ -298,7 +298,10 @@ describe("FetchClient.build onto a base client", () => {
     expect(later.fetch).toBe(base.fetch);
     expect(typeof base.fetch.countGizmos).toBe("function");
     expect("gizmoListInShop" in base.fetch.instance.handler).toBe(true);
-    expect(Object.keys(base.fetch.slice).sort()).toEqual(["gizmo", "gizmoInShop"]);
+    expect(Object.keys(base.fetch.slice).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "gizmo",
+      "gizmoInShop",
+    ]);
     expect(laterSig.gizmo.fetch).toBe(base.fetch);
     expect(laterSig.gizmo.slices.map(({ sliceName }) => sliceName)).toEqual(["gizmo", "gizmoInShop"]);
   });

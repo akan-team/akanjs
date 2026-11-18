@@ -360,7 +360,7 @@ describe.skipIf(!enabled)("dev HMR latency (minimal)", () => {
     report.consecutive = {
       latencies,
       median: median(latencies),
-      shown: Object.keys(seen).sort(),
+      shown: Object.keys(seen).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
       settledAfterLastSave: (seen.c9 ?? 0) - (writtenAt.at(-1) ?? 0),
     };
     expect(await harness().reloaded()).toBe(false);

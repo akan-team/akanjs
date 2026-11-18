@@ -82,7 +82,7 @@ const checkAkan = async (workspace: string, logFile: string | null): Promise<Con
 
   const forbiddenDependencies = Object.keys(packages)
     .filter((pkg) => FORBIDDEN_AKAN_PACKAGES.includes(pkg))
-    .sort();
+    .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   for (const pkg of forbiddenDependencies) {
     violations.push(
       violation("forbidden-dependency", `Akan stack should not add ${pkg}`, "package.json", `Installed ${pkg}`),

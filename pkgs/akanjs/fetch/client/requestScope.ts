@@ -16,7 +16,10 @@ export const makeRequestQueryCacheKey = (
     url,
     headers: Object.entries(headers).sort(([a], [b]) => a.localeCompare(b)),
     timeout: budget.timeout ?? DEFAULT_TIMEOUT_MS,
-    retry: JSON.stringify(budget.retry, Object.keys(budget.retry).sort()),
+    retry: JSON.stringify(
+      budget.retry,
+      Object.keys(budget.retry).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    ),
   });
 };
 export const deepCopy = <T>(value: T): T => {

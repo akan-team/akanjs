@@ -61,7 +61,7 @@ export class DraftStore {
     // Dropped as JSON.stringify drops them, so a form hashes like the record it was stored as and read back from.
     const entries = Object.keys(source)
       .filter((key) => !["undefined", "function", "symbol"].includes(typeof source[key]))
-      .sort()
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .map((key) => `${JSON.stringify(key)}:${DraftStore.#stableStringify(source[key])}`);
     return `{${entries.join(",")}}`;
   }
@@ -76,7 +76,7 @@ export class DraftStore {
     const source = value as Record<string, unknown>;
     if (depth > 0 && typeof source.id === "string") return source.id;
     const entries = Object.keys(source)
-      .sort()
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .map((key) => [key, DraftStore.#canonicalSeed(source[key], depth + 1)] as const)
       .filter(([, item]) => item !== undefined);
     return Object.fromEntries(entries);

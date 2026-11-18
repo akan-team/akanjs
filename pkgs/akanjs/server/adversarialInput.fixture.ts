@@ -144,7 +144,7 @@ export const describeValue = (value: unknown): string => {
     if (Array.isArray(item)) return item.map(walk);
     const proto = Object.getPrototypeOf(item);
     const tag = proto === Object.prototype ? "" : proto === null ? "<null-proto>" : `<${proto?.constructor?.name}>`;
-    const own = Object.getOwnPropertyNames(item).sort();
+    const own = Object.getOwnPropertyNames(item).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     return { ...(tag ? { "<proto>": tag } : {}), "<own>": own.map((key) => [key, walk((item as never)[key])]) };
   };
   return JSON.stringify(walk(value));

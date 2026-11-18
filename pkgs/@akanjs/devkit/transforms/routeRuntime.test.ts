@@ -514,7 +514,7 @@ describe("a build planned over the bundle that loads the whole runtime everywher
       routes: ["/read"],
     });
     expect([...target.keep([uiFile("Side")], { ...measured, route: "/side" })].sort()).toEqual(
-      Object.keys(files).sort(),
+      Object.keys(files).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     );
   });
 
@@ -534,7 +534,7 @@ describe("a build planned over the bundle that loads the whole runtime everywher
     ]);
     expect(mixed.target.takenFromPieces(`${root}/apps/demo/lib/st.ts`)).toBeNull();
     const everyWhole = plan({ files, entries, routes: { "/run": [uiFile("Run"), uiFile("Card")] } });
-    expect(everyWhole.kept).toEqual(entries.sort());
+    expect(everyWhole.kept).toEqual(entries.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
     expect(everyWhole.target.takenFromPieces(whole)).toBeNull();
   });
 

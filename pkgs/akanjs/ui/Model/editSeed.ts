@@ -21,7 +21,7 @@ export class EditSeed {
     const source = value as Record<string, unknown>;
     const entries = Object.keys(source)
       .filter((key) => source[key] !== undefined)
-      .sort()
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       .map((key) => `${JSON.stringify(key)}:${EditSeed.#stableStringify(source[key])}`);
     return `{${entries.join(",")}}`;
   }

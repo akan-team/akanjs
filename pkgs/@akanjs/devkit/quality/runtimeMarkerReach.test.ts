@@ -17,7 +17,7 @@ const framework = {
 const pinsOf = (files: Record<string, string>) => {
   const all: Record<string, string> = { ...framework, ...files };
   const reach = new RuntimeMarkerReach(root, (absPath) => all[absPath.slice(root.length + 1)] ?? null);
-  return reach.pinsOf(Object.keys(files).sort());
+  return reach.pinsOf(Object.keys(files).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
 };
 const relationChain = [
   "akanjs/ui/Field/index.tsx",

@@ -26,9 +26,9 @@ import {
 } from "@akanjs/devkit/mobile";
 import { AppInfo } from "@akanjs/devkit/workspace/scanInfo";
 import { SlicePlanner } from "@akanjs/devkit/workspace/slicePlanner";
-import type { ServerPolicy } from "@akanjs/native/api";
 import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
+import { type CarriedServer, carriedServerOf } from "./carriedServer";
 import type { InterruptTeardown } from "./interruptTeardown";
 import { reportsNoTestFile, testTargetOf } from "./testTarget";
 
@@ -45,12 +45,6 @@ export interface LogsOptions {
   json?: boolean;
   follow?: boolean;
   runtimeDir?: string | null;
-}
-interface CarriedServer extends ServerPolicy {
-  omit: string[];
-  profile?: string;
-  modules: string[];
-  env?: Record<string, string>;
 }
 
 export interface MobileTargetOptions {
@@ -697,37 +691,8 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
   static carriesServer({ config }: ResolvedMobileTarget, platform: NativePlatform = NativeApp.desktopPlatform()) {
     return platform !== "ios" && platform !== "android" && !!config.desktop?.server;
   }
-  //? One build stages one server, so the targets that carry it must agree on how: its packages, env profile and modules.
   static carriedServer(targets: ResolvedMobileTarget[], platform: NativePlatform): CarriedServer {
-    const carrying = targets.filter((target) => ApplicationRunner.carriesServer(target, platform));
-    const servers = carrying.map(({ config }): CarriedServer => {
-      const server = config.desktop?.server;
-      if (typeof server !== "object") return { omit: [], modules: [] };
-      const { omit = [], modules = [], profile, env, restart, watchdog } = server;
-      const { intervalMs, failures } = typeof watchdog === "object" ? watchdog : {};
-      return {
-        omit,
-        modules,
-        ...(profile ? { profile } : {}),
-        ...(env ? { env } : {}),
-        ...(restart !== undefined ? { restart } : {}),
-        ...(intervalMs && failures ? { watchdog: { intervalMs, failures } } : {}),
-      };
-    });
-    const [first = { omit: [], modules: [] }, ...rest] = servers;
-    const agree = (what: string, of: (server: CarriedServer) => string) => {
-      if (rest.every((server) => of(server) === of(first))) return;
-      throw new Error(
-        `The targets that carry the server ${what} (${carrying.map(({ name }, idx) => `${name}: ${(servers[idx] && of(servers[idx])) || "none"}`).join("; ")}); build them one --target at a time.`,
-      );
-    };
-    agree("omit different packages", ({ omit }) => omit.join(", "));
-    agree("name different env profiles", ({ profile }) => profile ?? "");
-    agree("mount different modules", ({ modules }) => modules.join(", "));
-    agree("set a different env", ({ env }) => (env ? JSON.stringify(env, Object.keys(env).sort()) : ""));
-    agree("restart differently", ({ restart }) => String(restart ?? ""));
-    agree("watch it differently", ({ watchdog }) => (watchdog ? JSON.stringify(watchdog) : ""));
-    return first;
+    return carriedServerOf(targets.filter((target) => ApplicationRunner.carriesServer(target, platform)));
   }
   //* The server's packages, the web build, then the server once for every target that carries it: one dist for all.
   async #stageMobile(

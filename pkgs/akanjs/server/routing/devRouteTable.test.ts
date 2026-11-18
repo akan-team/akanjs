@@ -198,7 +198,7 @@ describe("the route table a server registers", () => {
   test("keeps every dev route off a tunnel except the module registries a shared dev page loads", async () => {
     const table = await serverTable({ NODE_ENV: "development" });
     const shared = devSurfaceKeys(table).filter((key) => !DevSurfaces.refusedThroughTunnel(pathOf(key)));
-    expect(shared.sort()).toEqual(["/_akan/csr-dev/*", "/_akan/ssr-dev/*"]);
+    expect(shared.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(["/_akan/csr-dev/*", "/_akan/ssr-dev/*"]);
   });
 
   test("on a deployed server opens devtools to the debug-header secret only, and no other dev route", async () => {

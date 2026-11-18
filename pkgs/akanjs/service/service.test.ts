@@ -1020,7 +1020,10 @@ describe("ServiceModel generated methods", () => {
 
     expect(base.srv).toBe(BaseSrv);
     expect(Object.keys(base.srvMap)).toEqual(["baseSrvService"]);
-    expect(Object.keys(merged.srvMap).sort()).toEqual(["baseSrvService", "otherSrvService"]);
+    expect(Object.keys(merged.srvMap).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "baseSrvService",
+      "otherSrvService",
+    ]);
     expect(model.cnst).toBe(testItemConstant);
     expect(model.db).toBe(testItemDatabase);
   });

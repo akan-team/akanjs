@@ -102,7 +102,7 @@ export function nativeApi(
     platform,
     plugins,
     acl: acl ?? null,
-    permissions: Object.keys(project.config.permissions).sort(),
+    permissions: Object.keys(project.config.permissions).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
     deepLinks: [...project.config.deepLinks.schemes].sort(),
   };
 }

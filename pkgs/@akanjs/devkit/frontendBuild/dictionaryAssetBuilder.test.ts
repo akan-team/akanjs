@@ -322,7 +322,12 @@ describe("DictionaryAssetBuilder", () => {
             expect(merged[group]).toEqual(page.default[group]);
           expect(merged.util).toBeUndefined();
         }
-        expect(Object.keys(table.default).sort()).toEqual(["base", "memo", "user", "util"]);
+        expect(Object.keys(table.default).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+          "base",
+          "memo",
+          "user",
+          "util",
+        ]);
         expect(built.routes?.["/:lang/memo"]).not.toContain(table.default.util);
         expect(built.routes?.["/:lang/user"]).not.toContain(table.default.util);
       }

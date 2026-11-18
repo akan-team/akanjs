@@ -534,7 +534,11 @@ describe("ObjectMemberImports on an object that copies an imported one in", () =
     });
 
     const inputs = Object.keys(built.metafile?.inputs ?? {}).map((input) => path.relative(root, path.resolve(input)));
-    expect(inputs.sort()).toEqual(["page/_index.tsx", "ui/Field/Text.tsx", "wrap/Label.tsx"]);
+    expect(inputs.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "page/_index.tsx",
+      "ui/Field/Text.tsx",
+      "wrap/Label.tsx",
+    ]);
   });
 });
 

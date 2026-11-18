@@ -64,7 +64,9 @@ describe("from", () => {
     // @ts-expect-error a sort key no filter in the chain declares
     const unknownSortKeys: AppSortKey[] = ["c"];
 
-    expect(Object.keys(getFilterMeta(AppSortFilter).sort).sort()).toEqual([...sortKeys].sort());
+    expect(Object.keys(getFilterMeta(AppSortFilter).sort).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(
+      [...sortKeys].sort(),
+    );
     expect(Object.keys(getFilterMeta(AppSortFilter).sort)).not.toContain(unknownSortKeys[0]);
     expect(getFilterMeta(RedeclaringSortFilter).sort.a).toEqual({ x: -1 });
   });

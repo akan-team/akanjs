@@ -429,7 +429,11 @@ describe("by, from, into, and DatabaseRegistry", () => {
   test("builds and merges filter metadata", () => {
     const filterMeta = getFilterMeta(DocumentTestFilter);
 
-    expect(Object.keys(filterMeta.query).sort()).toEqual(["any", "byOwner", "byTitle"]);
+    expect(Object.keys(filterMeta.query).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "any",
+      "byOwner",
+      "byTitle",
+    ]);
     expect(filterMeta.query.byTitle.argNames).toEqual(["title", "archived"]);
     expect(filterMeta.query.byTitle.args).toEqual([
       { name: "title", argRef: String, option: undefined },
@@ -602,7 +606,11 @@ describe("by, from, into, and DatabaseRegistry", () => {
     expect((DocumentTestModel as typeof DocumentTestModel & { modelKind: () => string }).modelKind()).toBe(
       "document-test-model",
     );
-    expect(Object.keys(getLoaderInfos(DocumentTestModel)).sort()).toEqual(["byOwner", "byOwnerTitle", "byTags"]);
+    expect(Object.keys(getLoaderInfos(DocumentTestModel)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "byOwner",
+      "byOwnerTitle",
+      "byTags",
+    ]);
     expect(DocumentTestModel[LOADER_META].byOwner).toMatchObject({
       type: "field",
       field: "ownerId",

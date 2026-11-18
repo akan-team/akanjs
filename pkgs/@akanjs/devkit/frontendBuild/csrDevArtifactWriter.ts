@@ -110,7 +110,7 @@ export class CsrDevArtifactWriter {
   async writeVendor(graph: CsrDevGraph): Promise<string> {
     const ids = Object.keys(graph.modules)
       .filter((id) => graph.modules[id]?.vendor)
-      .sort();
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const stubs = new Set(Object.values(graph.modules).flatMap((module) => module.deps.filter(CsrDevPaths.isStub)));
     const lines = [await this.#helperDefinitions(graph, ids), ...(await this.#defineLines(ids))];
     for (const stub of [...stubs].sort()) {
@@ -138,7 +138,7 @@ export class CsrDevArtifactWriter {
   ): Promise<void> {
     const ids = Object.keys(graph.modules)
       .filter((id) => !graph.modules[id]?.vendor)
-      .sort();
+      .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
     const lines = await this.#defineLines(ids, code);
     const blocks = ids.map((id, index) => [id, lines[index] ?? ""] as [string, string]);
     const start = this.#library

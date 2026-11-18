@@ -1747,7 +1747,9 @@ describe("SignalResolver declaration contracts", () => {
           const path = FetchClient.makeHttpUrl(key, serialized, signal.prefix, new Map());
           return [path, serialized.globalPrefix === false ? { globalPrefix: false as const } : undefined] as const;
         });
-      expect(clientRoutes.map(([path]) => path).sort()).toEqual(Object.keys(resolved.routes ?? {}).sort());
+      expect(clientRoutes.map(([path]) => path).sort()).toEqual(
+        Object.keys(resolved.routes ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+      );
       for (const [path, option] of clientRoutes) expect(resolved.routeOptions?.[path]).toEqual(option);
     }
   });
@@ -1761,7 +1763,7 @@ describe("SignalResolver declaration contracts", () => {
       middleware: new Map([["serverResolverTestMiddleware", ServerResolverTestMiddleware]]),
     });
 
-    expect(Object.keys(resolved.routes ?? {}).sort()).toEqual([
+    expect(Object.keys(resolved.routes ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "/getTitle/:id",
       "/serverResolverTestItem/updateTitle/:id",
     ]);
@@ -1826,7 +1828,10 @@ describe("SignalResolver declaration contracts", () => {
       writeRow: builder.mutation(String, { guards: [Public], prefix: false, path: "rest/v1/item" }).exec(() => "write"),
     })) {}
     const resolved = resolveWith(SharedPathEndpoint, new SharedPathEndpoint());
-    expect(Object.keys(resolved.routes?.["/rest/v1/item"] ?? {}).sort()).toEqual(["GET", "POST"]);
+    expect(Object.keys(resolved.routes?.["/rest/v1/item"] ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "GET",
+      "POST",
+    ]);
 
     class DoubledPathEndpoint extends endpoint(serverResolverTestServiceModel, (builder) => ({
       readRow: builder.query(String, { guards: [Public], prefix: false, path: "rest/v1/item" }).exec(() => "read"),
@@ -1847,14 +1852,20 @@ describe("SignalResolver declaration contracts", () => {
         .exec(() => "patch"),
     })) {}
     const resolved = resolveWith(VerbEndpoint, new VerbEndpoint());
-    expect(Object.keys(resolved.routes?.["/rest/v1/item"] ?? {}).sort()).toEqual(["PATCH", "POST"]);
+    expect(Object.keys(resolved.routes?.["/rest/v1/item"] ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "PATCH",
+      "POST",
+    ]);
   });
 
   test("folds two endpoint classes into one table and refuses a path both of them serve", () => {
     const table = {} as NonNullable<ReturnType<typeof SignalResolver.resolveEndpoint>["routes"]>;
     SignalResolver.mergeHttpRoutes(table, { "/rest/v1/item": { GET: () => new Response("read") } });
     SignalResolver.mergeHttpRoutes(table, { "/rest/v1/item": { POST: () => new Response("write") } });
-    expect(Object.keys(table["/rest/v1/item"] ?? {}).sort()).toEqual(["GET", "POST"]);
+    expect(Object.keys(table["/rest/v1/item"] ?? {}).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
+      "GET",
+      "POST",
+    ]);
     expect(() =>
       SignalResolver.mergeHttpRoutes(table, { "/rest/v1/item": { POST: () => new Response("write") } }),
     ).toThrow("Route conflict: POST /rest/v1/item is declared more than once");
@@ -3108,7 +3119,9 @@ describe("SignalResolver declaration contracts", () => {
     expect(cruOff.keys).not.toEqual(expect.arrayContaining(generated(["create"])));
     expect(cruOff.keys.filter((key) => /^(create|update|remove)/.test(key))).toEqual([]);
     expect(cruOff.crud).toEqual({ create: false, update: false, remove: false });
-    expect(cruOff.synthesized.sort()).toEqual(generated(["get", "light"]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)));
+    expect(cruOff.synthesized.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual(
+      generated(["get", "light"]).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)),
+    );
 
     const createOff = resolve({ root: Public, get: Public, cru: Public, create: false });
     expect(createOff.keys).toEqual(expect.arrayContaining(generated(["update", "remove"])));
@@ -3204,7 +3217,7 @@ describe("SignalResolver declaration contracts", () => {
     const SliceEndpoint = SignalResolver.resolveSlice(ServerResolverTestSlice);
     const endpointMeta = SliceEndpoint[ENDPOINT_META];
 
-    expect(Object.keys(endpointMeta).sort()).toEqual([
+    expect(Object.keys(endpointMeta).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))).toEqual([
       "createServerResolverTestItem",
       "lightServerResolverTestItem",
       "removeServerResolverTestItem",

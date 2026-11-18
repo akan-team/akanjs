@@ -75,7 +75,7 @@ const canonicalOf = (value: unknown, holding: Set<object>): unknown => {
     if (Array.isArray(value)) return value.map((item) => canonicalOf(item, holding) ?? null);
     //? No prototype: on a plain object, assigning an own `__proto__` key sets the prototype and the key is lost.
     const record: Record<string, unknown> = Object.create(null);
-    for (const key of Object.keys(value).sort()) {
+    for (const key of Object.keys(value).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
       const item = canonicalOf((value as Record<string, unknown>)[key], holding);
       if (item !== undefined) record[key] = item;
     }
