@@ -58,7 +58,7 @@ export class RouteJsBudget {
   static readonly #relativeSlack = 0.01;
   static readonly #absoluteSlack = 4096;
 
-  //? A file under 1 KB has no `.br` sidecar (precompressArtifacts skips it), so it is served, and counted, raw.
+  //? A file brotli does not shrink has no `.br` sidecar (precompressArtifacts writes none), so it is served, and counted, raw.
   static async measure(
     artifactDir: string,
     modulesByRoute: Record<string, string[]>,
