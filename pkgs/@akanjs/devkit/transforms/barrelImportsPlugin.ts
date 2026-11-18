@@ -4,8 +4,10 @@ import ts from "typescript";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap, type PackageEntry } from "./barrelAnalyzer";
+import { ModuleParts } from "./moduleParts";
 import { loaderFor, type NamedItem } from "./moduleSyntax";
 import { ObjectMemberImports } from "./objectMemberImports";
+import { PartModules, type PartSource } from "./partModules";
 import type { RouteRuntime } from "./routeRuntime";
 
 export interface BarrelImportsPluginOptions {
@@ -21,6 +23,8 @@ export interface BarrelImportsPluginOptions {
   modelRuntime?: string;
   /** Gives each client module the runtime pieces of the modules it names, in a build loading only the page runtime. */
   routeRuntime?: RouteRuntime | null;
+  /** Takes each workspace file apart by export, so a chunk holds the exports asked for; holds the parts read so far. */
+  parts?: Map<string, ModuleParts | null>;
 }
 
 export const createBarrelImportsPlugin = async (
@@ -32,6 +36,7 @@ export const createBarrelImportsPlugin = async (
     barrels: only,
     modelRuntime,
     routeRuntime,
+    parts,
   }: BarrelImportsPluginOptions = {},
 ): Promise<BunPlugin> => {
   const barrels = [...new Set(only ?? (await app.getConfig()).barrelImports)].filter(
@@ -43,59 +48,70 @@ export const createBarrelImportsPlugin = async (
     resolvePackage,
     ...(route ? { packageRoot: app.workspace.workspaceRoot } : {}),
   });
-  const objects = route
-    ? new ObjectMemberImports({
-        resolve: ObjectMemberImports.resolverOf(resolvePackage),
-        barrels: { names: barrels, analyzer },
-      })
-    : null;
+  const resolve = ObjectMemberImports.resolverOf(resolvePackage);
+  const objects = route ? new ObjectMemberImports({ resolve, barrels: { names: barrels, analyzer } }) : null;
+
+  const read = async (realPath: string): Promise<PartSource | null> => {
+    const file = Bun.file(realPath);
+    //? A build's `files` entry has no copy on disk: Bun loads it itself.
+    if (!(await file.exists())) return null;
+    if (modelRuntime !== undefined && StoreBootstrap.modelRuntimeFilter.test(realPath))
+      return { source: modelRuntime, settled: true };
+    const whole = routeRuntime?.redirectOf(realPath);
+    if (whole) return { source: whole, settled: true };
+    let source = await file.text();
+    if (skipPath(realPath)) return { source, settled: true };
+
+    // Bun's macro evaluator races when a rewritten module holds `with { type: "macro" }` imports while another
+    // macro host evaluates (a macro identifier ends up undefined), so macro hosts keep their barrel imports.
+    const macroHost = MACRO_ATTR_RE.test(source);
+    if (!macroHost) {
+      const routed = routeRuntime?.transform(source, realPath);
+      if (routed) source = routed.source;
+      const rewritten =
+        barrels.length > 0
+          ? await rewriteBarrelImports(source, barrels, analyzer, {
+              perModule: routed?.perModule,
+              reexports: route,
+            })
+          : null;
+      if (rewritten !== null) source = rewritten;
+      const narrowed = await objects?.rewrite(source, realPath);
+      if (narrowed?.contents) source = narrowed.contents;
+    }
+
+    if (pipeAfter) {
+      const piped = await pipeAfter(source, { path: realPath });
+      if (piped !== null) source = piped;
+    }
+
+    return { source, settled: macroHost };
+  };
+  const partModules =
+    parts && route
+      ? new PartModules({ workspaceRoot: app.workspace.workspaceRoot, resolve, read, cache: parts })
+      : null;
 
   return {
     name: "barrel-imports",
     setup(build) {
+      if (partModules) build.onResolve({ filter: ModuleParts.specifier }, ({ path: asked }) => ({ path: asked }));
       // node_modules/akanjs stays in: framework `"use client"` modules still need RSC stubbing in generated workspaces.
       // The optional `?v=N` tail matches HMR cache-busted paths; it is stripped before reading.
       build.onLoad(
         {
           filter:
-            /^(?:(?!.*[\\/]node_modules[\\/]).*|.*[\\/]node_modules[\\/]akanjs[\\/].*)\.(tsx|ts|jsx|js)(\?v=\d+)?$/,
+            /^(?:(?!.*[\\/]node_modules[\\/]).*|.*[\\/]node_modules[\\/]akanjs[\\/].*)\.(tsx|ts|jsx|js)(\?v=\d+|\?akan-part=[\w$]+)?$/,
         },
         async (args) => {
           const realPath = args.path.replace(/\?v=\d+$/, "");
-          const loader = loaderFor(realPath);
-          const file = Bun.file(realPath);
-          //? A build's `files` entry has no copy on disk: Bun loads it itself.
-          if (!(await file.exists())) return undefined;
-          if (modelRuntime !== undefined && StoreBootstrap.modelRuntimeFilter.test(realPath))
-            return { contents: modelRuntime, loader };
-          const whole = routeRuntime?.redirectOf(realPath);
-          if (whole) return { contents: whole, loader };
-          let source = await file.text();
-          if (skipPath(realPath)) return { contents: source, loader };
-
-          // Bun's macro evaluator races when a rewritten module holds `with { type: "macro" }` imports while another
-          // macro host evaluates (a macro identifier ends up undefined), so macro hosts keep their barrel imports.
-          if (!MACRO_ATTR_RE.test(source)) {
-            const routed = routeRuntime?.transform(source, realPath);
-            if (routed) source = routed.source;
-            const rewritten =
-              barrels.length > 0
-                ? await rewriteBarrelImports(source, barrels, analyzer, {
-                    perModule: routed?.perModule,
-                    reexports: route,
-                  })
-                : null;
-            if (rewritten !== null) source = rewritten;
-            const narrowed = await objects?.rewrite(source, realPath);
-            if (narrowed?.contents) source = narrowed.contents;
+          const loader = loaderFor(PartModules.fileOf(realPath));
+          if (partModules) {
+            const contents = await partModules.load(realPath);
+            return contents === null ? undefined : { contents, loader };
           }
-
-          if (pipeAfter) {
-            const piped = await pipeAfter(source, { path: realPath });
-            if (piped !== null) source = piped;
-          }
-
-          return { contents: source, loader };
+          const loaded = await read(realPath);
+          return loaded ? { contents: loaded.source, loader } : undefined;
         },
       );
     },

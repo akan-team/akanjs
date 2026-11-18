@@ -56,4 +56,36 @@ describe("RouteModulePreloads", () => {
       ],
     });
   });
+
+  test("a route asking an entry for some exports lists the chunks of those alone, and of them all when it asks for the file", () => {
+    const pair = entry("Pair");
+    const byExport = new RouteModulePreloads({
+      runtimeChunks: { runtime: [], vendors: {} },
+      entriesByRoute: new Map([
+        ["/a", [pair]],
+        ["/b", [pair]],
+        ["/whole", [pair]],
+        ["/unasked", [pair]],
+      ]),
+      askedByRoute: new Map<string, Map<string, string[] | null>>([
+        ["/a", new Map([[pair, ["A"]]])],
+        ["/b", new Map([[pair, ["B", "Missing"]]])],
+        ["/whole", new Map([[pair, null]])],
+      ]),
+      clientManifest: {
+        "apps/demo/ui/Pair.tsx#A": { ...row("/_akan/client/a.js", "/_akan/client/chunks/s.js"), name: "A" },
+        "apps/demo/ui/Pair.tsx#B": { ...row("/_akan/client/b.js", "/_akan/client/chunks/s.js"), name: "B" },
+      },
+      externalsByChunkUrl: {},
+      workspaceRoot: root,
+    });
+    const both = ["/_akan/client/a.js", "/_akan/client/chunks/s.js", "/_akan/client/b.js"];
+
+    expect(byExport.modulesByRoute()).toEqual({
+      "/a": ["/_akan/client/a.js", "/_akan/client/chunks/s.js"],
+      "/b": ["/_akan/client/b.js", "/_akan/client/chunks/s.js"],
+      "/whole": both,
+      "/unasked": both,
+    });
+  });
 });
