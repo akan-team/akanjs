@@ -216,7 +216,8 @@ export class ApiRouter {
             ws.send(JSON.stringify(websocketHeartbeatContract.makeAck()));
             return;
           }
-          const wsRoute = wsRoutes[msg.key];
+          //? Security: an own key only, or a frame keyed `constructor` or `valueOf` finds `Object.prototype`'s member.
+          const wsRoute = Object.hasOwn(wsRoutes, msg.key) ? wsRoutes[msg.key] : undefined;
           if (!wsRoute) {
             //? A client bundle older or newer than the server names routes this one lacks: kept visible in the log.
             logger.warn(`WebSocket route "${msg.key}" is not registered`);
@@ -224,6 +225,8 @@ export class ApiRouter {
               statusCode: 404,
             });
           }
+          if (!Array.isArray(msg.data))
+            throw new AkanError("invalidMessage", "Message data is not an array", { statusCode: 400 });
           const eventType =
             typeof msg.subscribe === "boolean" ? (msg.subscribe ? "subscribe" : "unsubscribe") : "message";
           const call = () => wsRoute(ws, msg.data, eventType, { since: msg.since });

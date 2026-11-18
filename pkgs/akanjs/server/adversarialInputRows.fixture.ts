@@ -169,7 +169,6 @@ const prototypeName = (name: string): EnvelopeRow => ({
   why: "a route table that is a plain object answers inherited names",
   wire: { ws: `{"key":"${name}","data":[${validFrameData}]}`, mcp: mcpCallText(name, "{}") },
   refusal: { ws: routeNotFound, mcp: unknownTool },
-  finding: `a WebSocket frame keyed "${name}" resolves Object.prototype's ${name} as its route instead of answering 404 routeNotFound`,
 });
 
 export const envelopeRows: EnvelopeRow[] = [
@@ -212,8 +211,6 @@ export const envelopeRows: EnvelopeRow[] = [
       ws: { status: 400, code: "invalidMessage" },
       mcp: { status: 400, code: null },
     },
-    finding:
-      "an MCP POST whose JSON body is null throws out of the route handler instead of answering a JSON-RPC error",
   },
   {
     title: "arguments that are an array of the values",
@@ -226,21 +223,18 @@ export const envelopeRows: EnvelopeRow[] = [
     why: "a string has indexes, so a positional reader takes its characters as arguments",
     wire: { ws: `{"key":"probeSend","data":"alpha"}`, mcp: mcpCallText("probeWrite", `"alpha"`) },
     refusal: { ws: { status: 400, code: "invalidMessage" }, mcp: { status: 400, code: "invalidArgument" } },
-    finding: "a WebSocket frame whose data is a string has its characters read as the positional arguments",
   },
   {
     title: "frame arguments that are null",
     why: "null is where an array is read",
     wire: { ws: `{"key":"probeSend","data":null}` },
     refusal: { ws: { status: 400, code: "invalidMessage" } },
-    finding: "a WebSocket frame whose data is null fails with a 500 and an error log instead of a 400",
   },
   {
     title: "frame arguments left out",
     why: "undefined is where an array is read",
     wire: { ws: `{"key":"probeSend"}` },
     refusal: { ws: { status: 400, code: "invalidMessage" } },
-    finding: "a WebSocket frame with no data fails with a 500 and an error log instead of a 400",
   },
   {
     title: "an endpoint name nobody registered",
