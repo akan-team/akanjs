@@ -409,8 +409,10 @@ export class AppExecutor extends SysExecutor {
     })) as AppInfo;
     if (write) await this.syncAssets(scanInfo.getScanResult().libDeps);
     //* `scan` read the routes off the page tree this sync may be about to change, so re-read them.
-    if (write && (await this.syncPages(scanInfo.getScanResult().libDeps)))
+    if (write && (await this.syncPages(scanInfo.getScanResult().libDeps))) {
       scanInfo.setRoutes(await this.getPageKeys({ refresh: true }));
+      await this.writeJson("akan.app.json", scanInfo.getScanResult());
+    }
     if (write) await this.#runPluginSyncAssets();
     return scanInfo;
   }

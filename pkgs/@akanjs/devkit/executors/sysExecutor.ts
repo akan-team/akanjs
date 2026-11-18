@@ -195,6 +195,7 @@ export class SysExecutor extends Executor {
         : await LibInfo.fromExecutor(this as unknown as LibExecutor, {
             refresh,
           });
+    scanInfo.orderLibDeps();
     //* Locked: `writeLib` rewrites dependency-lib barrels that other dev servers regenerate and watch too.
     if (write)
       await CodegenLock.run(this.workspace.workspaceRoot, `scan:${this.name}`, async () => {

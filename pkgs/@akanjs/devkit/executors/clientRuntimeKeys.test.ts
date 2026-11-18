@@ -1591,11 +1591,11 @@ describe("a build of a three-scope workspace", () => {
   }, 240_000);
 });
 
-const syncScript = (root: string, appName: string) => `
+const syncScript = (root: string, appName: string, method: "scan" | "scanSync" = "scan") => `
 const { AppExecutor } = await import(${devkitFile("executors/appExecutor.ts")});
 const { WorkspaceExecutor } = await import(${devkitFile("executors/workspaceExecutor.ts")});
 const [root, appName] = ${JSON.stringify([root, appName])};
-await AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), appName).scan();
+await AppExecutor.from(new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" }), appName).${method}();
 console.log("{}");
 `;
 const scopeFilesOf = async (root: string) => {
@@ -1642,21 +1642,49 @@ describe("the first sync of a new checkout", () => {
       },
       scanned: false,
     });
-    //? The scan result lists an app's libs in the order the file system hands their importers.
-    const manifest = `apps/${app}/akan.app.json`;
     const libDepsOf = (files: Record<string, string>) =>
-      (JSON.parse(files[manifest] ?? "{}") as { libDeps: string[] }).libDeps.toSorted((a, b) => a.localeCompare(b));
+      (JSON.parse(files[`apps/${app}/akan.app.json`] ?? "{}") as { libDeps: string[] }).libDeps;
     //? Each in a process of its own: the scan orders libs among every lib the process has scanned, other tests' too.
     await evaluate(temp.root, syncScript(temp.root, app), app);
     const first = await scopeFilesOf(temp.root);
     await evaluate(temp.root, syncScript(temp.root, app), app);
     const second = await scopeFilesOf(temp.root);
     expect(libDepsOf(first)).toEqual([base, upper, top]);
-    expect({ ...first, [manifest]: libDepsOf(first) }).toEqual({ ...second, [manifest]: libDepsOf(second) });
+    expect(first).toEqual(second);
     expect(first[`libs/${top}/lib/cnst.ts`]).toContain(`"@libs/${base}"`);
     const wholeConstants = Object.keys(first).filter(
       (file) => file.endsWith(".fetch.ts") && first[file]?.includes('from "../cnst"'),
     );
     expect(wholeConstants).toEqual([]);
+  }, 240_000);
+
+  test("records the routes of the lib pages it links, and lists a lib after the libs it depends on", async () => {
+    const [app, base, upper] = ["pier", "zinc", "amber"];
+    const temp = await writeWorkspace({
+      app,
+      lib: base,
+      libFiles: stockFiles,
+      moreLibs: {
+        [upper]: {
+          "lib/option.ts": option,
+          ...kitModuleNamed("org", "Org"),
+          "ui/Items.tsx": `import { st } from "@libs/${base}/client";\nexport const Items = () => st.use.itemCount();\n`,
+          "page/about/_index.tsx": "export default function Page() {\n  return null;\n}\n",
+        },
+      },
+      appFiles: {
+        ...shopFilesOf(base),
+        "akan.config.ts": "export default { syncPageLibs: true };\n",
+        "ui/Orgs.tsx": `import { st } from "@libs/${upper}/client";\nexport const Orgs = () => st.use.orgCount();\n`,
+      },
+      scanned: false,
+    });
+    await evaluate(temp.root, syncScript(temp.root, app, "scanSync"), app);
+    const manifest = JSON.parse(await Bun.file(path.join(temp.root, "apps", app, "akan.app.json")).text()) as {
+      libDeps: string[];
+      routes: string[];
+    };
+    expect(manifest.libDeps).toEqual([base, upper]);
+    expect(manifest.routes).toContain(`./(libs)/(${upper})/about/_index.tsx`);
   }, 240_000);
 });
