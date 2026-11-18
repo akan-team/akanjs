@@ -9,7 +9,11 @@ import {
 import { computeRouteSeedIndex, type RouteSeedIndex } from "../artifact/routeSeedIndex";
 import { StoreBootstrap } from "../artifact/storeBootstrap";
 import type { App } from "../commandDecorators";
-import { type RouteRuntimeDictionaryFallback, RouteRuntimeReport } from "../quality/routeRuntimeReport";
+import {
+  type RouteRuntimeBuildReport,
+  type RouteRuntimeDictionaryFallback,
+  RouteRuntimeReport,
+} from "../quality/routeRuntimeReport";
 import { ModelReference } from "../transforms/modelReference";
 import { RouteRuntime } from "../transforms/routeRuntime";
 import type { AskedExports, ClientEntryDiscovery } from "./clientBuildTypes";
@@ -26,6 +30,7 @@ export interface BuildAllRoutesResult {
   seedIndex: RouteSeedIndex;
   /** A production build: the dictionary groups each route can show; a route left out loads every group. */
   dictionaryRoutes?: Map<string, string[]>;
+  runtimeReport?: RouteRuntimeBuildReport;
 }
 
 export class AllRoutesBuilder {
@@ -110,7 +115,13 @@ export class AllRoutesBuilder {
       `[build-all] wrote ${manifestPath} routes=${this.#routeIds.length} entries=${this.#merged.knownEntries.length}`,
     );
 
-    return { manifest, manifestPath, seedIndex, ...(dictionaryRoutes ? { dictionaryRoutes } : {}) };
+    return {
+      manifest,
+      manifestPath,
+      seedIndex,
+      ...(dictionaryRoutes ? { dictionaryRoutes } : {}),
+      ...(delta.runtimeReport ? { runtimeReport: delta.runtimeReport } : {}),
+    };
   }
 
   async #readDictionaryRoutes(importsByModule: NonNullable<BuildRouteClientResult["clientGraph"]>) {

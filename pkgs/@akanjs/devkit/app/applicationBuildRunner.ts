@@ -11,6 +11,7 @@ import type { App } from "../commandDecorators";
 import { parseEnvFile, WorkspaceExecutor } from "../executors";
 import {
   AllRoutesBuilder,
+  type BuildAllRoutesResult,
   CsrArtifactBuilder,
   FontPruner,
   NARROWABLE_VENDOR_SPECIFIERS,
@@ -19,6 +20,7 @@ import {
   VendorImportScanner,
 } from "../frontendBuild";
 import { ServerBundleSecrets } from "../mobile/serverBundleSecrets";
+import { RouteRuntimeReport } from "../quality/routeRuntimeReport";
 import { SecretEnvDeclaration, type SecretEnvDeclared } from "../transforms/secretEnvDeclaration";
 import { SecretEnvFile } from "../transforms/secretEnvFile";
 import { ServerEnvEvaluationError } from "../transforms/serverEnvEvaluationError";
@@ -28,10 +30,11 @@ import { ProjectTypecheck } from "../typecheck/projectTypecheck";
 import { Spinner } from "../util/spinner";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AppBin } from "./appBin";
-import type {
-  ApplicationBuildPhaseResult,
-  ApplicationBuildProgressReporter,
-  ApplicationBuildResult,
+import {
+  type ApplicationBuildPhaseResult,
+  type ApplicationBuildProgressReporter,
+  ApplicationBuildReporter,
+  type ApplicationBuildResult,
 } from "./applicationBuildReporter";
 import { RouteFilesReport } from "./routeFilesReport";
 import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsBudgetStatus, type RouteJsSize } from "./routeJsBudget";
@@ -183,7 +186,9 @@ export class ApplicationBuildRunner {
 
   async build({ spinner = false }: BuildOptions = {}): Promise<BuildResult> {
     // serial build is needed because of Bun.build is unstable for parallel build
-    this.#spinner = spinner;
+    //? ora writes to stderr, and to a file or a pipe it prints each phase twice, the end line in colour.
+    this.#spinner = spinner && process.stderr.isTTY;
+    if (spinner && !this.#spinner) this.#reporter ??= ApplicationBuildReporter.create();
     if (this.#verify) this.#app.useVerifyDist();
     const { web, assets, baseDevEnv } = await this.#app.getConfig();
     const environment = this.#environment ?? baseDevEnv.env;
@@ -207,7 +212,7 @@ export class ApplicationBuildRunner {
       async () => (web.ssr ? await this.#buildSsr() : null),
       (result) =>
         result
-          ? `${result.allRoutes.manifest.routeIds.length} routes, ${result.allRoutes.manifest.knownEntries.length} entries`
+          ? ApplicationBuildRunner.#ssrSummary(result.allRoutes)
           : web.ssr
             ? "skipped"
             : "disabled by akan.config.ts web.ssr",
@@ -352,6 +357,11 @@ export class ApplicationBuildRunner {
       ],
       options,
     );
+  }
+
+  static #ssrSummary({ manifest, runtimeReport }: BuildAllRoutesResult) {
+    const built = `${manifest.routeIds.length} routes, ${manifest.knownEntries.length} entries`;
+    return runtimeReport ? `${built}; ${RouteRuntimeReport.summary(runtimeReport)}` : built;
   }
 
   async #runPhase<T>(

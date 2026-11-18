@@ -105,3 +105,20 @@ describe("ApplicationBuildReporter.printSummary", () => {
     );
   });
 });
+
+describe("ApplicationBuildReporter.create", () => {
+  const rawLog = spyOn(Logger, "rawLog").mockImplementation(() => undefined);
+  afterEach(() => rawLog.mockClear());
+
+  test("prints one uncoloured line per finished phase and nothing when one starts, and a failed one to stderr", () => {
+    const reporter = ApplicationBuildReporter.create();
+    reporter.phaseStart?.({ id: "ssr", label: "Building SSR route artifacts" });
+    reporter.phaseDone?.({ id: "ssr", label: "Building SSR route artifacts", durationMs: 3_100, summary: "2 routes" });
+    reporter.phaseFail?.({ id: "csr", label: "Building CSR assets" }, new Error("boom"));
+
+    expect(rawLog.mock.calls).toEqual([
+      ["✓ Building SSR route artifacts: 2 routes (3.1s)"],
+      ["✗ Building CSR assets failed", undefined, "error"],
+    ]);
+  });
+});

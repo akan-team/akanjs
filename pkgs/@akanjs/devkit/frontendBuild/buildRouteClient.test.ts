@@ -661,13 +661,14 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
             await load(route);
             return seenNow();
           };
-          return { browser: await bundledText(clientOut), run, load, seenNow };
+          const summary = result.runtimeReport ? RouteRuntimeReport.summary(result.runtimeReport) : null;
+          return { browser: await bundledText(clientOut), run, load, seenNow, summary };
         };
         return { ...fixture, file, buildRoutes };
       };
       const timesIn = (text: string, marker: string) => text.split(marker).length - 1;
       const mixed =
-        "[client-runtime] 1 route loads per module, 0 keep the whole runtime because per module would not be smaller, 1 keeps it for a reason `akan quality runtime` names";
+        "1 route loads per module, 0 keep the whole runtime because per module would not be smaller, 1 keeps it for a reason `akan quality runtime` names";
 
       test("a route with an entry keeping the whole runtime and a narrowed entry sharing a file holds each module's descriptors once, and runs them once", async () => {
         const { file, buildRoutes, warnings, said } = await describedFixture();
@@ -678,12 +679,13 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
           '"use client";\nimport { shared } from "./Shared";\nexport const Draft = () => [shared, "draft-ui-marker"];\n',
         );
 
-        const { browser, run } = await buildRoutes({
+        const { browser, run, summary } = await buildRoutes({
           "/pick": [file("Pick"), file("Draft")],
           "/draft": [file("Draft")],
         });
 
-        expect(said).toEqual([mixed]);
+        expect(summary).toBe(mixed);
+        expect(said).toEqual([]);
         expect(warnings).toEqual([]);
         for (const marker of ["draft-descriptor-ref", "tally-descriptor-ref"]) expect(timesIn(browser, marker)).toBe(1);
         expect(await run("/pick")).toEqual(["piece:draft", "whole:tally"]);
@@ -702,11 +704,12 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
           '"use client";\nimport { shared } from "./Shared";\nexport const Draft = () => [shared, "draft-ui-marker"];\nexport const ask = () => import("./Later");\n',
         );
 
-        const { browser, load, seenNow } = await buildRoutes({ "/draft": [file("Draft")] });
+        const { browser, load, seenNow, summary } = await buildRoutes({ "/draft": [file("Draft")] });
 
-        expect(said).toEqual([
-          "[client-runtime] 1 route loads per module, 0 keep the whole runtime because per module would not be smaller",
-        ]);
+        expect(summary).toBe(
+          "1 route loads per module, 0 keep the whole runtime because per module would not be smaller",
+        );
+        expect(said).toEqual([]);
         expect(warnings).toEqual([]);
         for (const marker of ["draft-descriptor-ref", "tally-descriptor-ref"]) expect(timesIn(browser, marker)).toBe(1);
         const { ask } = (await load("/draft")) as { ask: () => Promise<unknown> };
@@ -726,12 +729,13 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
         await write(file("Pick"), picking);
         await write(file("Plain"), '"use client";\nexport const Plain = () => "plain-ui-marker";\n');
 
-        const { browser } = await buildRoutes({
+        const { browser, summary } = await buildRoutes({
           "/pick": [file("Pick"), reference],
           "/plain": [file("Plain"), reference],
         });
 
-        expect(said).toEqual([mixed]);
+        expect(summary).toBe(mixed);
+        expect(said).toEqual([]);
         expect(warnings).toEqual([]);
         expect(browser).toContain("piece:draft.st");
         expect(timesIn(browser, "draft-descriptor-ref")).toBe(1);
@@ -741,11 +745,12 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
         const { appDir, file, buildRoutes, warnings, said } = await describedFixture({ whole: 0, draft: 600 });
         await write(file("Draft"), `"use client";\n${namingDraft}`);
 
-        const { browser, run } = await buildRoutes({ "/draft": [file("Draft")] });
+        const { browser, run, summary } = await buildRoutes({ "/draft": [file("Draft")] });
 
-        expect(said).toEqual([
-          "[client-runtime] 0 routes load per module, 1 keeps the whole runtime because per module would not be smaller",
-        ]);
+        expect(summary).toBe(
+          "0 routes load per module, 1 keeps the whole runtime because per module would not be smaller",
+        );
+        expect(said).toEqual([]);
         expect(warnings).toEqual([]);
         expect(browser).toContain("shared-marker");
         expect(browser).not.toContain("piece:draft.st");
@@ -767,11 +772,12 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
           '"use client";\nimport { st } from "@apps/demo/client";\nimport { shared } from "./Shared";\nexport const Board = () => [shared, st.use.tallyCount(), "board-marker"];\n',
         );
 
-        const { browser } = await buildRoutes({ "/draft": [file("Draft")], "/board": [file("Board")] });
+        const { browser, summary } = await buildRoutes({ "/draft": [file("Draft")], "/board": [file("Board")] });
 
-        expect(said).toEqual([
-          "[client-runtime] 2 routes load per module, 0 keep the whole runtime because per module would not be smaller",
-        ]);
+        expect(summary).toBe(
+          "2 routes load per module, 0 keep the whole runtime because per module would not be smaller",
+        );
+        expect(said).toEqual([]);
         expect(warnings).toEqual([]);
         for (const marker of ["piece:draft.st", "piece:tally.st", "board-marker"]) expect(browser).toContain(marker);
         expect(browser).not.toContain("store-marker");
