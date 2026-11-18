@@ -483,33 +483,20 @@ describe("useCsrValues while a page slides in", () => {
     expect(frame.seen.latest?.prevLocation?.pathname).toBe("/en/home");
   });
 
-  test("a page that draws later slides in only once it is drawn", async () => {
+  test("a page that draws later slides in at once with its fallback, and its content lands in place", async () => {
     const frame = mountFrame("/en/home", [
       { segment: "home" },
-      { segment: "detail", transition: "stack", drawsAfterMs: 200 },
+      { segment: "detail", transition: "stack", drawsAfterMs: 300 },
     ]);
 
     await act(async () => void client.router.push("/detail"));
     await drawnWithin(150);
-    expect(frame.seen.latest?.location.pathname).toBe("/en/home");
-    expect(frame.seen.latest?.phase).toBe("preparing");
-
-    await drawnWithin(200);
     expect(frame.seen.latest?.location.pathname).toBe("/en/detail");
-    expect(frame.container.textContent).toContain("detail");
-  });
-
-  test("a page slower than the wait slides in with its fallback", async () => {
-    const frame = mountFrame("/en/home", [
-      { segment: "home" },
-      { segment: "detail", transition: "stack", drawsAfterMs: 1000 },
-    ]);
-
-    await act(async () => void client.router.push("/detail"));
-    await drawnWithin(400);
-
-    expect(frame.seen.latest?.location.pathname).toBe("/en/detail");
+    expect(frame.seen.latest?.phase).toBe("transitioning");
     expect(frame.container.textContent).not.toContain("detail");
+
+    await drawnWithin(300);
+    expect(frame.container.textContent).toContain("detail");
   });
 
   test("a push made while one page slides in runs once it has, instead of being dropped", async () => {

@@ -1,5 +1,5 @@
 import "../test/registerDom";
-import { afterEach, beforeAll, describe, expect, test } from "bun:test";
+import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import {
   layout,
   type PageActivity,
@@ -10,6 +10,7 @@ import {
   router,
   Translator,
 } from "akanjs/client";
+import { Logger } from "akanjs/common";
 import { Activity, act, type ReactNode, StrictMode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { CsrRefresh } from "./csrRefresh";
@@ -933,5 +934,69 @@ describe("RenderLayer", () => {
     await act(async () => container.querySelector("button")?.click());
     await settle();
     expect(container.textContent).toBe("feed 3");
+  });
+
+  test("starts the async layers under a loading one at once, and each runs once as it mounts", async () => {
+    routerOf();
+    const started: string[] = [];
+    const releases = new Map<string, () => void>();
+    const levelOf = (name: string, kind: "layout" | "page"): RouteRender => ({
+      kind,
+      isAsync: true,
+      render: (async ({ children }: { children: ReactNode }) => {
+        started.push(name);
+        await new Promise<void>((resolve) => releases.set(name, resolve));
+        return kind === "page" ? <p>{name}</p> : <section>{children}</section>;
+      }) as RouteRender["render"],
+    });
+    const org = levelOf("org", "layout");
+    const workspace = levelOf("workspace", "layout");
+    const chat = levelOf("chat", "page");
+    const pathRoute = { path: "/chat", renderRootLayouts: [], renderLayouts: [org, workspace], renderPage: chat };
+    const { container, show } = stackOf([org, workspace, chat], pathRoute);
+
+    await show({});
+    expect(started).toEqual(["org", "workspace", "chat"]);
+
+    await act(async () => releases.get("chat")?.());
+    await act(async () => releases.get("workspace")?.());
+    await act(async () => releases.get("org")?.());
+    await settle();
+    expect(container.innerHTML).toBe("<section><section><p>chat</p></section></section>");
+    expect(started).toEqual(["org", "workspace", "chat"]);
+  });
+
+  test("renders a layer again once it mounts when the run started ahead of it failed, logging only the one it shows", async () => {
+    routerOf();
+    const logged = spyOn(Logger, "error").mockImplementation(() => undefined);
+    let releaseShell: (() => void) | null = null;
+    let calls = 0;
+    const shell = layoutOf(async ({ children }) => {
+      await new Promise<void>((resolve) => (releaseShell = resolve));
+      return <main>{children}</main>;
+    }, true);
+    const inbox: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: (async () => {
+        calls += 1;
+        if (calls === 1) throw new UnreachableErr();
+        return <p>inbox</p>;
+      }) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/inbox", renderRootLayouts: [], renderLayouts: [shell], renderPage: inbox };
+    const { container, show } = stackOf([shell, inbox], pathRoute);
+    try {
+      await show({});
+      expect(calls).toBe(1);
+
+      await act(async () => releaseShell?.());
+      await settle();
+      expect(calls).toBe(2);
+      expect(container.textContent).toBe("inbox");
+      expect(logged).not.toHaveBeenCalled();
+    } finally {
+      logged.mockRestore();
+    }
   });
 });
