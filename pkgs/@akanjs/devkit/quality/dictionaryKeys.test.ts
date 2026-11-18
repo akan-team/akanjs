@@ -229,6 +229,77 @@ describe("DictionaryKeys", () => {
     }
   });
 
+  test("follows a key held in a variable that may be null, undefined or false", () => {
+    const note = (declared: string, shown = "noteKey ? <p>{l(noteKey)}</p> : null") =>
+      read(`
+        export const Note = ({ denied, outside, fallback }: { denied: boolean; outside: boolean; fallback: string }) => {
+          const { l } = usePage();
+          ${declared}
+          return ${shown};
+        };
+      `);
+    const held = [
+      `const noteKey = denied ? "weather.locationDenied" : outside ? "weather.locationOutside" : null;`,
+      `const noteKey = denied ? "weather.locationDenied" : undefined;`,
+      `const noteKey = !outside && (denied ? "weather.locationDenied" : false);`,
+    ];
+    for (const declared of held) {
+      const keys = note(declared);
+      expect(keys.unread, declared).toEqual([]);
+      expect(keys.names, declared).toContain("weather");
+    }
+    const unknown = [
+      `const noteKey = denied ? "weather.locationDenied" : outside ? fallback : null;`,
+      `let noteKey: string | null = null; if (denied) noteKey = "weather.locationDenied"; else if (outside) noteKey = fallback;`,
+      `let noteKey: string | null = "weather.locationDenied"; noteKey = fallback;`,
+    ];
+    for (const declared of unknown) expect(note(declared).unread, declared).toHaveLength(1);
+  });
+
+  test("follows a key read from a table the file maps into another table", () => {
+    const stages = (
+      mapped: string,
+      table = `{ key: "project.stage.open", icon: BiBox }, { key: "task.stage.done", icon: BiCheck }`,
+    ) =>
+      read(`
+        const stages = [${table}] as const;
+        export const Stages = ({ counts, decorate }: { counts: number[]; decorate: (stage: object) => { key: string } }) => {
+          const { l } = usePage();
+          const items = ${mapped};
+          return <>{items.map((item) => <Tab key={item.key} title={l(item.key)} />)}</>;
+        };
+      `);
+    const tables = [
+      "stages.map((stage) => ({ ...stage, label: l(stage.key) }))",
+      "stages.map((stage) => ({ ...stage, label: l._(stage.key), hint: l.trans({ en: 'a', ko: 'b' }), open: true }))",
+      "stages.map((stage) => { return { key: stage.key, count: 0 }; })",
+      "stages.filter((stage) => stage.icon).map(function (stage) { return { ...stage }; })",
+      "stages.map((stage) => ({ ...stage, label: l(stage.key) })).map((stage) => ({ ...stage, on: false }))",
+    ];
+    for (const mapped of tables) {
+      const keys = stages(mapped);
+      expect(keys.unread, mapped).toEqual([]);
+      expect(keys.names, mapped).toEqual(expect.arrayContaining(["project", "task"]));
+    }
+    const picked = read(`
+      const stages = [{ key: "project.stage.open" }, { key: "task.stage.done" }] as const;
+      export const Stages = () => { const { l } = usePage(); return stages.map((stage) => stage.key).map((key) => l(key)); };
+    `);
+    expect(picked.unread).toEqual([]);
+    const unknown = [
+      "stages.map((stage) => ({ ...stage, key: rename(stage.key) }))",
+      "stages.map((stage, idx) => ({ ...stage, key: counts[idx] }))",
+      "stages.map((stage) => { if (stage.icon) return decorate(stage); return { ...stage }; })",
+      "stages.map((stage) => ({ ...stage, ...decorate(stage) }))",
+      "stages.map(decorate)",
+      "counts.map(() => decorate({}))",
+    ];
+    for (const mapped of unknown) expect(stages(mapped).unread, mapped).toHaveLength(1);
+    const computed = [`{ key: "project.stage.open" }, { key: keyOf("done") }`, `{ key: "project.stage.open", hint }`];
+    for (const table of computed)
+      expect(stages("stages.map((stage) => ({ ...stage, label: l(stage.key) }))", table).unread, table).toHaveLength(2);
+  });
+
   test("marks a framework surface that shows the texts of any module", () => {
     expect(read(`import { Signal } from "akanjs/ui";`).anyModule).toContain("Signal from akanjs/ui");
     expect(read(`import { Field } from "akanjs/ui/Constant";`).anyModule).toContain("Constant from akanjs/ui/Constant");

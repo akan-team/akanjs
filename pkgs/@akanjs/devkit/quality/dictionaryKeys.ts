@@ -34,7 +34,7 @@ const objectReaders = new Set(["keys", "values", "entries"]);
 const memberCalls = new Set(["field", "enum", "trans"]);
 const translatorChain = new Set(["_", "rich"]);
 const groupHead = /^[A-Za-z_$][\w$]*\./;
-const maxDepth = 16;
+const maxDepth = 24;
 
 const strip = (node: ts.Expression): ts.Expression =>
   ts.isParenthesizedExpression(node) ||
@@ -235,7 +235,7 @@ export class DictionaryKeys {
     if (depth > maxDepth) return false;
     const next = (inner: ts.Expression) => this.#follows(inner, depth + 1);
     const node = strip(expression);
-    if (ts.isStringLiteralLike(node)) return true;
+    if (ts.isStringLiteralLike(node) || DictionaryKeys.#isNoKey(node)) return true;
     if (ts.isTemplateExpression(node)) {
       if (node.head.text.includes(".")) return true;
       const [first] = node.templateSpans;
@@ -257,6 +257,12 @@ export class DictionaryKeys {
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node))
       return this.#isTable(node.expression, depth + 1);
     return false;
+  }
+
+  static #isNoKey(node: ts.Expression): boolean {
+    const { kind } = node;
+    if (kind === ts.SyntaxKind.NullKeyword || kind === ts.SyntaxKind.FalseKeyword) return true;
+    return ts.isIdentifier(node) && node.text === "undefined";
   }
 
   //? With `names`, the property names are the keys: each one is added to the groups, and a name that is not written fails.
@@ -285,9 +291,36 @@ export class DictionaryKeys {
     const method = callee.name.text;
     if (ts.isIdentifier(callee.expression) && callee.expression.text === "Object" && objectReaders.has(method))
       return !!node.arguments[0] && this.#isTable(node.arguments[0], depth + 1, method !== "values");
+    if (method === "map") return !names && this.#isMapped(node, depth);
     if (!subsetMethods.has(method)) return false;
     const own = this.#isTable(callee.expression, depth + 1, names);
     return own && (method !== "concat" || node.arguments.every((argument) => this.#isTable(argument, depth + 1)));
+  }
+
+  #isMapped(call: ts.CallExpression, depth: number): boolean {
+    const [callback] = call.arguments;
+    if (!callback || !(ts.isArrowFunction(callback) || ts.isFunctionExpression(callback))) return false;
+    const returned = ts.isBlock(callback.body) ? DictionaryKeys.#returnsOf(callback.body) : [callback.body];
+    return returned.length > 0 && returned.every((value) => !!value && this.#isValue(value, depth + 1));
+  }
+
+  static #returnsOf(block: ts.Block): (ts.Expression | undefined)[] {
+    const returned: (ts.Expression | undefined)[] = [];
+    const visit = (node: ts.Node) => {
+      if (ts.isFunctionLike(node)) return;
+      if (ts.isReturnStatement(node)) returned.push(node.expression);
+      else ts.forEachChild(node, visit);
+    };
+    ts.forEachChild(block, visit);
+    return returned;
+  }
+
+  #isTranslated(node: ts.Expression): boolean {
+    if (!ts.isCallExpression(node)) return false;
+    const callee = strip(node.expression);
+    if (this.#isTranslator(callee)) return true;
+    if (!ts.isPropertyAccessExpression(callee) || !memberCalls.has(callee.name.text)) return false;
+    return this.#isTranslator(strip(callee.expression));
   }
 
   #addPropertyName(property: ts.ObjectLiteralElementLike): boolean {
@@ -317,7 +350,8 @@ export class DictionaryKeys {
       ts.isJsxElement(node) ||
       ts.isJsxSelfClosingElement(node) ||
       ts.isJsxFragment(node) ||
-      (ts.isIdentifier(node) && (node.text === "undefined" || className.test(node.text)))
+      (ts.isIdentifier(node) && (node.text === "undefined" || className.test(node.text))) ||
+      this.#isTranslated(node)
     )
       return true;
     return this.#follows(node, depth) || this.#isTable(node, depth);
