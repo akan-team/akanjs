@@ -3,7 +3,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { AkanPlugin, AkanSyncContext } from "akanjs";
 import { isRouteSourceFile, parseRouteModuleKey, validatePageSourceFile, validateSubRoutePageKey } from "akanjs/common";
-import { AkanAppConfig, decreaseBuildNum, increaseBuildNum } from "../akanConfig";
+import { AkanAppConfig, AkanWorkers, decreaseBuildNum, increaseBuildNum } from "../akanConfig";
 import type { RouteSourceInfo } from "../app/routeSourceValidator";
 import { getRootBoundarySegments, isRootBoundarySegments } from "../artifact/implicitRootLayout";
 import { FileSys } from "../util/fileSys";
@@ -132,6 +132,7 @@ export class AppExecutor extends SysExecutor {
       ...(await this.getDatabaseModeEnv()),
     };
     Object.assign(process.env, routeEnv);
+    if (this.hasScanInfo()) AkanWorkers.publish(await this.selectWorkers());
     if (type === "build") {
       //* `scanSync` read the route set unfiltered; drop the cache so build phases re-read it without dev-only routes.
       this.#excludeDevOnlyPages = true;

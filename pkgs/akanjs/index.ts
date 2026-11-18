@@ -494,6 +494,8 @@ export interface LibConfigResult {
   trustedDependencies: string[];
   /** Carried by the desktop app of every app that depends on this lib; an app's own entry of the same name wins. */
   bin: AkanBinConfig;
+  /** Built and spawned by name in every app that depends on this lib; an app's own entry of the same name wins. */
+  workers: AkanWorkersConfig;
   /** Image steps every app that mounts this lib inherits, unless that app declares a whole Dockerfile. */
   docker: LibDockerConfig;
   /** Which of this lib's own public fonts every app that mounts it must keep. */

@@ -464,6 +464,7 @@ export interface LibConfigResult {
     externalLibs: string[];
     trustedDependencies: string[];
     bin: AkanBinConfig;
+    workers: AkanWorkersConfig;
     docker: LibDockerConfig;
     assets: LibAssetsConfig;
 }
