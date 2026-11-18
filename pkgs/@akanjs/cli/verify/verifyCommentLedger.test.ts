@@ -36,7 +36,7 @@ const settle = async (root: string, files: string[], repeat = false) =>
   );
 
 describe("VerifyCommentLedger", () => {
-  test("lists a comment the first time and counts it on one line from then on, wherever it moves", async () => {
+  test("lists a comment the first time and says nothing of it from then on, wherever it moves", async () => {
     const root = await repo({ "a.ts": "export const a = 1;\n", "b.ts": "export const b = 1;\n" });
     await writeText(path.join(root, "a.ts"), "// why a\nexport const a = 1;\n// tail\n");
     await writeText(path.join(root, "b.ts"), "// why b\nexport const b = 1;\n");
@@ -47,15 +47,17 @@ describe("VerifyCommentLedger", () => {
       "a.ts:3 akan.comment.added // tail ",
       "b.ts:1 akan.comment.added // why b ",
     ]);
-    const kept =
-      "- akan.comment.kept 3 comments added since the last commit, reported by an earlier run, are still in 2 files; akan verify --comments lists them ";
-    expect(await settle(root, files)).toEqual([kept]);
+    expect(await settle(root, files)).toEqual([]);
 
     await writeText(path.join(root, "a.ts"), "export const zero = 0;\n// why a\nexport const a = 1;\n// tail\n");
-    expect(await settle(root, files)).toEqual([kept]);
-    expect(await settle(root, ["a.ts"])).toEqual([
-      "- akan.comment.kept 2 comments added since the last commit, reported by an earlier run, are still in 1 file; akan verify --comments lists them ",
+    expect(await settle(root, files)).toEqual([]);
+
+    await writeText(path.join(root, "b.ts"), "// why b\nexport const b = 1;\n// more\n");
+    expect(await settle(root, files)).toEqual([
+      "b.ts:3 akan.comment.added // more fix",
+      "- akan.comment.kept 3 comments added since the last commit, reported by an earlier run, are still in 2 files; akan verify --comments lists them ",
     ]);
+    expect(await settle(root, ["a.ts"])).toEqual([]);
   });
 
   test("lists a new or reworded comment beside the count, and everything again when asked to repeat", async () => {
@@ -85,7 +87,7 @@ describe("VerifyCommentLedger", () => {
     await settle(root, ["a.ts", "b.ts"]);
 
     await writeText(path.join(root, "a.ts"), "export const a = 1;\n");
-    expect(await settle(root, ["a.ts", "b.ts"])).toHaveLength(1);
+    expect(await settle(root, ["a.ts", "b.ts"])).toEqual([]);
     await writeText(path.join(root, "a.ts"), "// why a\nexport const a = 1;\n");
     expect((await settle(root, ["a.ts", "b.ts"]))[0]).toBe("a.ts:1 akan.comment.added // why a fix");
 
@@ -99,6 +101,6 @@ describe("VerifyCommentLedger", () => {
     await writeText(path.join(root, "a.ts"), "// why a\nexport const a = 1;\n");
     await writeText(path.join(root, VerifyCommentLedger.file), "not json");
     expect(await settle(root, ["a.ts"])).toEqual(["a.ts:1 akan.comment.added // why a fix"]);
-    expect(await settle(root, ["a.ts"])).toHaveLength(1);
+    expect(await settle(root, ["a.ts"])).toEqual([]);
   });
 });

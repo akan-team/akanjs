@@ -71,7 +71,7 @@ describe("VerifyPipeline", () => {
     expect(fixed.steps.find((step) => step.name === "typecheck")?.status).toBe("pass");
   }, 60_000);
 
-  test("lists an added comment on the first run and counts it on one line on the next, unless asked to repeat", async () => {
+  test("lists an added comment on the first run and not on the next, unless asked to repeat", async () => {
     const { root, workspace } = await brokenPackage();
     const file = path.join(root, "pkgs/@sample/tool/index.ts");
     await writeText(file, "export const port: number = 8282;\n");
@@ -99,9 +99,7 @@ describe("VerifyPipeline", () => {
     const listed = `pkgs/@sample/tool/index.ts:1:1 warning akan.comment.added // the port fix: ${VerifyComments.fix}`;
 
     expect(await linesOf(false)).toEqual([listed]);
-    expect(await linesOf(false)).toEqual([
-      "- warning akan.comment.kept 1 comment added since the last commit, reported by an earlier run, is still in 1 file; akan verify --comments lists them",
-    ]);
+    expect(await linesOf(false)).toEqual([]);
     expect(await linesOf()).toEqual([listed]);
   }, 60_000);
 
