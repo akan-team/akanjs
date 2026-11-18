@@ -67,6 +67,37 @@ describe("Load.Stream", () => {
     await unmount();
   });
 
+  test("in a CSR bundle a fresh promise for a drawn value keeps it on screen until the promise settles", async () => {
+    const renderEnv = process.env.AKAN_PUBLIC_RENDER_ENV;
+    process.env.AKAN_PUBLIC_RENDER_ENV = "csr";
+    try {
+      const draw = (of: Promise<{ label: string }>) => (
+        <Stream of={of} fallback={<span>pending</span>}>
+          {(value) => <span>{value.label}</span>}
+        </Stream>
+      );
+      const { container, rerender, flush, unmount } = await mountAsync(draw(Promise.resolve({ label: "first" })));
+      await flush();
+      expect(container.textContent).toBe("first");
+      let settle!: (value: { label: string }) => void;
+      await rerender(
+        draw(
+          new Promise<{ label: string }>((resolve) => {
+            settle = resolve;
+          }),
+        ),
+      );
+      expect(container.textContent).toBe("first");
+      settle({ label: "second" });
+      await flush();
+      expect(container.textContent).toBe("second");
+      await unmount();
+    } finally {
+      if (renderEnv === undefined) delete process.env.AKAN_PUBLIC_RENDER_ENV;
+      else process.env.AKAN_PUBLIC_RENDER_ENV = renderEnv;
+    }
+  });
+
   test("renders nothing while pending when the fallback is null", async () => {
     const { container, unmount } = await mountAsync(
       <Stream of={new Promise<{ label: string }>(() => undefined)} fallback={null}>

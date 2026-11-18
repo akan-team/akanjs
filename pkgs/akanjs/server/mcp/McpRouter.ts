@@ -267,6 +267,8 @@ export class McpRouter {
     } catch {
       return McpRouter.#error(null, McpErrorCode.parse, "Invalid JSON body.", { status: 400 });
     }
+    if (body === null)
+      return McpRouter.#error(null, McpErrorCode.invalidRequest, "A JSON-RPC request is an object.", { status: 400 });
     const id = body.id ?? null;
     const method = body.method;
     if (typeof method !== "string")

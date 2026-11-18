@@ -26,10 +26,15 @@ const runAll = async (row: AdversarialRow) => {
   return outcomes;
 };
 
-const expectAgreement = (row: AdversarialRow, outcomes: Record<Transport, Outcome>) => {
+const expectAgreement = async (row: AdversarialRow, outcomes: Record<Transport, Outcome>) => {
   for (const outcome of Object.values(outcomes)) expectSafe(outcome);
   const agreeing = transports.filter((transport) => transport !== row.byDesign?.transport);
-  if (row.byDesign) {
+  if (row.byDesign && "readAs" in row.byDesign) {
+    const { transport, readAs } = row.byDesign;
+    const asWritten = await harness.run(transport, readAs);
+    expect(asWritten.received).not.toBeNull();
+    expect({ transport, received: outcomes[transport].received }).toEqual({ transport, received: asWritten.received });
+  } else if (row.byDesign) {
     const refused = outcomes[row.byDesign.transport];
     expect({ status: refused.status, code: refused.code, received: refused.received }).toEqual({
       status: 400,

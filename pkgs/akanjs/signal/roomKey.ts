@@ -26,15 +26,12 @@ export class RoomKey {
 
   static #asReceived(arg: ArgInfo, value: unknown): unknown {
     try {
+      const nullable = arg.option?.nullable;
       const sent = serialize(arg.argRef as ConstantModelRef | PrimitiveScalar, arg.arrDepth, value, "input", {
-        nullable: true,
+        nullable,
       });
       const wire: unknown = JSON.parse(JSON.stringify(sent) ?? "null");
-      return InputParser.parse(arg.argRef as Cls, arg.arrDepth, wire, {
-        key: arg.name,
-        nullable: true,
-        enum: arg.enum,
-      });
+      return InputParser.parse(arg.argRef as Cls, arg.arrDepth, wire, { key: arg.name, nullable, enum: arg.enum });
     } catch {
       return value;
     }

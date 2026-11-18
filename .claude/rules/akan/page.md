@@ -9,8 +9,8 @@ paths:
 
 # Akan Page Routing
 
-Steps, typed values, loading and error views, Link and the router: the `akan-page` skill. Full contract — guards,
-apps, heads, CSR root layouts, lib pages, `devOnly`: `pageRule`.
+Steps, guards, typed values, loading and error views, Link and the router: the `akan-page` skill. The rest of the
+contract — client-navigation guards, heads, CSR root layouts, lib pages, `devOnly`: `pageRule`.
 
 - `page/` holds `.tsx` route modules only: `<routeName>.tsx` or `_index.tsx`, `_layout.tsx`, `_overrides.tsx` — no
   other `_*.tsx`, helpers, `.ts` / `.js` files, or uppercase filenames. `[id]` is a dynamic segment, `(group)` a

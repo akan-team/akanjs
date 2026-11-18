@@ -14,11 +14,17 @@ export interface ByDesignRefusal {
   reason: string;
 }
 
+export interface ByDesignReading {
+  transport: Transport;
+  readAs: WireEntry[];
+  reason: string;
+}
+
 export interface AdversarialRow {
   title: string;
   why: string;
   entries: WireEntry[];
-  byDesign?: ByDesignRefusal;
+  byDesign?: ByDesignRefusal | ByDesignReading;
   finding?: string;
 }
 
@@ -80,11 +86,14 @@ export const adversarialRows: AdversarialRow[] = [
   row("an array where a String is declared", "String coercion would flatten it", { name: `["alpha"]` }),
   row("an object where a String is declared", "String coercion would print [object Object]", { name: `{"a":1}` }),
   {
-    ...row("a bare string where [String] is declared", "one transport may lift it into an array, another not", {
+    ...row("a bare string where [String] is declared", "a handler typed for a list must never get a string", {
       tags: `"a"`,
     }),
-    finding:
-      "a bare string for a [String] argument reaches the HTTP and WebSocket handler as a string, while MCP lifts it to an array",
+    byDesign: {
+      transport: "mcp",
+      readAs: row("", "", { tags: `["a"]` }).entries,
+      reason: "MCP lifts a lone value into a one-item array, since models send a bare value for an array",
+    },
   },
   row("nested arrays where [String] is declared", "the element parser sees an array", { tags: `[["a"]]` }),
   row("non-strings inside [String]", "each element is coerced or refused", { tags: `[1,{"x":1},null]` }),
@@ -169,7 +178,6 @@ const prototypeName = (name: string): EnvelopeRow => ({
   why: "a route table that is a plain object answers inherited names",
   wire: { ws: `{"key":"${name}","data":[${validFrameData}]}`, mcp: mcpCallText(name, "{}") },
   refusal: { ws: routeNotFound, mcp: unknownTool },
-  finding: `a WebSocket frame keyed "${name}" resolves Object.prototype's ${name} as its route instead of answering 404 routeNotFound`,
 });
 
 export const envelopeRows: EnvelopeRow[] = [
@@ -212,8 +220,6 @@ export const envelopeRows: EnvelopeRow[] = [
       ws: { status: 400, code: "invalidMessage" },
       mcp: { status: 400, code: null },
     },
-    finding:
-      "an MCP POST whose JSON body is null throws out of the route handler instead of answering a JSON-RPC error",
   },
   {
     title: "arguments that are an array of the values",
@@ -226,21 +232,18 @@ export const envelopeRows: EnvelopeRow[] = [
     why: "a string has indexes, so a positional reader takes its characters as arguments",
     wire: { ws: `{"key":"probeSend","data":"alpha"}`, mcp: mcpCallText("probeWrite", `"alpha"`) },
     refusal: { ws: { status: 400, code: "invalidMessage" }, mcp: { status: 400, code: "invalidArgument" } },
-    finding: "a WebSocket frame whose data is a string has its characters read as the positional arguments",
   },
   {
     title: "frame arguments that are null",
     why: "null is where an array is read",
     wire: { ws: `{"key":"probeSend","data":null}` },
     refusal: { ws: { status: 400, code: "invalidMessage" } },
-    finding: "a WebSocket frame whose data is null fails with a 500 and an error log instead of a 400",
   },
   {
     title: "frame arguments left out",
     why: "undefined is where an array is read",
     wire: { ws: `{"key":"probeSend"}` },
     refusal: { ws: { status: 400, code: "invalidMessage" } },
-    finding: "a WebSocket frame with no data fails with a 500 and an error log instead of a 400",
   },
   {
     title: "an endpoint name nobody registered",

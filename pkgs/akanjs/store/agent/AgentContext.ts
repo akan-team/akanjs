@@ -1,5 +1,5 @@
 import { STATE_DERIVED_META } from "akanjs/base";
-import type { ContextBlock, PublishedResource, PublishedScope, SurfaceView } from "use-agentic";
+import type { ContextBlock, PublishedResource, PublishedScope, ResourceDiff, SurfaceView } from "use-agentic";
 import { InlineToken } from "../../common/inlineToken";
 import type { StoreInstance } from "../storeInstance";
 import { StoreRegistry } from "../storeRegistry";
@@ -22,6 +22,18 @@ export class AgentContext {
   /** A pathname as the route block carries it: a segment of free text, or one past twelve words, reads `…`. */
   static routePath(pathname: string): string {
     return AgentInline.path(pathname);
+  }
+
+  //? Security: a change report follows the screen block's rule, or one write hands the model the free text it left out.
+  static reported(view: SurfaceView): SurfaceView {
+    return {
+      snapshot: () => view.snapshot(),
+      tool: (name) => view.tool(name),
+      call: (name, args) => view.call(name, args),
+      read: (name) => view.read(name),
+      diffSince: (before) => AgentContext.#changes(view.diffSince(before), view.snapshot().scopes),
+      subscribe: (listener) => view.subscribe(listener),
+    };
   }
 
   readonly #instance: StoreInstance;
@@ -86,19 +98,33 @@ export class AgentContext {
         if (!rows.whole) labelled = false;
         return { ...resource, value: rows.value };
       }
-      const { value, error, ...named } = resource;
-      const inline = AgentInline.value(value);
-      const failed = error !== undefined && !InlineToken.is(error);
-      if (!inline.whole || failed) valued = false;
-      return {
-        ...named,
-        ...(inline.value !== undefined ? { value: inline.value } : {}),
-        ...(error !== undefined && !failed ? { error } : {}),
-        ...(inline.whole && !failed ? {} : { withheld: true }),
-      };
+      const inlined = AgentContext.#inlined(resource);
+      if (inlined.withheld) valued = false;
+      return inlined;
     });
     const notes = [...(labelled ? [] : [AgentContext.screenNote]), ...(valued ? [] : [AgentContext.resourceNote])];
     return [{ kind: "screen", scopes: shown, resources: listed, ...(notes.length ? { note: notes.join(" ") } : {}) }];
+  }
+
+  static #changes(diffs: ResourceDiff[], scopes: PublishedScope[]): ResourceDiff[] {
+    const lists = new Set(scopes.map((scope) => `${scope.path}.items`));
+    return diffs.map((diff) => {
+      const rows = lists.has(diff.name) ? AgentContext.#rowsOf(diff.value) : null;
+      if (!rows) return AgentContext.#inlined(diff);
+      return { ...diff, value: rows.value, ...(rows.whole ? {} : { withheld: true }) };
+    });
+  }
+
+  static #inlined<Named extends { name: string; value?: unknown; error?: string }>(resource: Named) {
+    const { value, error, ...named } = resource;
+    const inline = AgentInline.value(value);
+    const failed = error !== undefined && !InlineToken.is(error);
+    return {
+      ...named,
+      ...(inline.value !== undefined ? { value: inline.value } : {}),
+      ...(error !== undefined && !failed ? { error } : {}),
+      ...(inline.whole && !failed ? {} : { withheld: true }),
+    };
   }
 
   static #rowsOf(value: unknown): { value: unknown; whole: boolean } | null {

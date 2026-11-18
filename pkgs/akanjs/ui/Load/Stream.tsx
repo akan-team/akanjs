@@ -2,6 +2,7 @@ import type { PromiseOrObject } from "akanjs/base";
 import { isThenable } from "akanjs/common";
 import { type ReactNode, Suspense, type Usable, use } from "react";
 import { StreamBoundary, type StreamError } from "./StreamBoundary";
+import { StreamDeferred } from "./StreamDeferred";
 
 interface StreamProps<Value> {
   of: PromiseOrObject<Value>;
@@ -33,6 +34,14 @@ const resetKeyOf = (thenable: object) => {
 // A resolved value renders in the SSR shell with no boundary; a thenable gets its own boundary and `use()`, so the
 // server streams it (an effect would commit a skeleton). No `"use client"`: `use()` works in both graphs.
 export default function Stream<Value>({ of, fallback = null, error, children }: StreamProps<Value>) {
+  //? A CSR bundle draws server views as client components, so a context change draws them again with a fresh promise
+  //? for the same read; what was drawn stays until that promise settles instead of dropping to the fallback.
+  if (isThenable(of) && process.env.AKAN_PUBLIC_RENDER_ENV === "csr")
+    return (
+      <StreamDeferred of={of as PromiseLike<Value>} fallback={fallback} error={error} keyOf={resetKeyOf}>
+        {children}
+      </StreamDeferred>
+    );
   return isThenable(of) ? (
     <StreamBoundary resetKey={resetKeyOf(of)} error={error}>
       <Suspense fallback={fallback}>

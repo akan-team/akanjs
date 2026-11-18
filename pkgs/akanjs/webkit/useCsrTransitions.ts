@@ -14,6 +14,7 @@ import { clamp } from "akanjs/common";
 import { type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { CsrSlide, type CsrSlideFrame } from "./csrSlide";
 import { isDragLift } from "./isDragLift";
+import { scrollerTakesDrag } from "./scrollerTakesDrag";
 import { STACK_TRANSITION_DURATION_MS } from "./useFrameRuntime";
 
 const linearEasing = (t: number) => t;
@@ -472,7 +473,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
   const dragOriginRef = useRef(0);
 
   const pageBind = useDrag(
-    ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel, event }) => {
+    ({ first, last, movement: [mx, my], velocity: [vx], direction: [dx], initial: [ix], cancel, event, target }) => {
       if (first) {
         gestureIntent.current = "pending";
         stackBackConfigRef.current = null;
@@ -486,13 +487,15 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
       if (gestureIntent.current === "pending") {
         const absX = Math.abs(mx);
         const absY = Math.abs(my);
-        if (absY >= GESTURE_INTENT_THRESHOLD && absY > absX * GESTURE_AXIS_LOCK_RATIO) {
+        const isVertical = absY >= GESTURE_INTENT_THRESHOLD && absY > absX * GESTURE_AXIS_LOCK_RATIO;
+        const isHorizontal = absX >= GESTURE_INTENT_THRESHOLD && absX > absY * GESTURE_AXIS_LOCK_RATIO;
+        if (isVertical || (isHorizontal && scrollerTakesDrag(target, pageContentRef.current, "x", mx))) {
           gestureIntent.current = "scroll";
           void transUnit.start(transUnitRange[1], { immediate: true });
           cancel();
           return;
         }
-        if (absX < GESTURE_INTENT_THRESHOLD || absX <= absY * GESTURE_AXIS_LOCK_RATIO) return;
+        if (!isHorizontal) return;
         gestureIntent.current = "gesture";
         dragOriginRef.current = holdSlide();
         lockPageScroll();
@@ -502,6 +505,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         cancel();
         return;
       }
+      if (event.cancelable) event.preventDefault();
       const unit = dragOriginRef.current + mx;
       if (unit < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
       else if (unit > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
@@ -525,7 +529,8 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
       }
     },
     //? Captured, the drag ends when the element under the finger leaves the DOM; the window keeps it to the lift.
-    { filterTaps: true, pointer: { capture: false } },
+    //? Touch, not pointer, events: a scroller that starts panning cancels the pointer but keeps sending touchmove.
+    { filterTaps: true, pointer: { touch: true, capture: false }, eventOptions: { passive: false } },
   );
 
   return {
@@ -576,7 +581,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
 };
 
 const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
-  const { clientHeight, location, prevLocation, onBack } = routeState;
+  const { clientHeight, location, prevLocation, onBack, pageContentRef } = routeState;
   const spring = useSlideSpring(clientHeight);
   const { transUnit, transUnitRange, transProgress } = spring;
   const initThreshold = useMemo(() => Math.floor(clientHeight / 3), [clientHeight]);
@@ -591,11 +596,12 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
   usePlayOnForward(spring, routeState, { duration: 220, easing: linearEasing });
 
   const pageBind = useDrag(
-    ({ first, last, movement: [, my], initial: [, iy], cancel, event }) => {
-      if (iy > initThreshold) {
+    ({ first, last, movement: [, my], initial: [, iy], cancel, event, target }) => {
+      if (iy > initThreshold || (first && scrollerTakesDrag(target, pageContentRef.current, "y", my))) {
         cancel();
         return;
       }
+      if (event.cancelable) event.preventDefault();
       if (first) void Device.getDevice().hideKeyboard();
       if (my < transUnitRange[1]) void transUnit.start(transUnitRange[1], { immediate: true });
       else if (my > transUnitRange[0]) void transUnit.start(transUnitRange[0], { immediate: true });
@@ -608,7 +614,13 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
       clientRouter.back();
       void clientRouter.navigation().catch(() => transUnit.start(transUnitRange[1]));
     },
-    { axis: "y", filterTaps: true, threshold: 10, pointer: { capture: false } },
+    {
+      axis: "y",
+      filterTaps: true,
+      threshold: 10,
+      pointer: { touch: true, capture: false },
+      eventOptions: { passive: false },
+    },
   );
 
   return {

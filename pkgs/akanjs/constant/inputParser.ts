@@ -56,11 +56,19 @@ export class InputParser {
       throw new InvalidInputError(key, null);
     }
     if (PrimitiveRegistry.has(argRef)) {
+      InputParser.#requireArrays(value, arrDepth, key);
       const parsed = deserialize(argRef, arrDepth, value, option);
       RequestValue.admit(parsed, key);
       return parsed;
     }
     return InputParser.#walk(value, arrDepth, key, (item, path) => InputParser.#value(argRef, item, path));
+  }
+
+  //? `deserialize` parses a lone value as one item and hands it back unwrapped, so a handler would get a string as its list.
+  static #requireArrays(value: unknown, arrDepth: number, path: string) {
+    if (!arrDepth) return;
+    if (!Array.isArray(value)) throw new InvalidInputError(path, "array");
+    for (const [idx, item] of value.entries()) InputParser.#requireArrays(item, arrDepth - 1, `${path}.${idx}`);
   }
 
   static #walk(value: unknown, arrDepth: number, path: string, parse: Parse): unknown {

@@ -2774,6 +2774,7 @@ interface ResourceDiff {
     value?: unknown;
     error?: string;
     removed?: boolean;
+    withheld?: boolean;
 }
 
 interface ResourceEntry {
