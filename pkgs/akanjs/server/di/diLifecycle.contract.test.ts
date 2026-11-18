@@ -272,7 +272,13 @@ describe("DiLifecycle declaration-to-runtime contract", () => {
     const lifecycle = new DiLifecycle({ env: makeSqliteEnv(tmp) }, lib);
 
     try {
-      await expect(lifecycle.initializeAll()).resolves.toBeDefined();
+      const { routes } = await lifecycle.initializeAll();
+      const unmounted = Object.entries((routes ?? {}) as Record<string, Record<string, () => Response>>)
+        .filter(([path]) => path.startsWith("/serverResolverTestItem"))
+        .flatMap(([, methods]) => Object.values(methods));
+      const answers = await Promise.all(unmounted.map(async (handler) => (await handler().json()) as { code: string }));
+      expect(answers.length).toBeGreaterThan(0);
+      expect(answers.every((answer) => answer.code === "moduleNotMounted")).toBe(true);
       expect(lifecycle.registry.adaptorCls.has("serverResolverTestItemModel")).toBe(false);
       expect(lifecycle.live.adaptor.has("serverResolverTestItemModel")).toBe(false);
       expect(lifecycle.registry.serviceCls.has("serverResolverTestItem")).toBe(false);
@@ -787,6 +793,44 @@ describe("DiLifecycle module selection", () => {
       expect(lifecycle.modules.database.has("diRelationHolder")).toBe(true);
       expect(lifecycle.modules.database.has("diRelationTarget")).toBe(true);
     });
+  });
+
+  test("mounts a module enableModules names whatever its operation mode or enabled says, and what waited on it", async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+    class GateOffService extends serve("gateOff" as const, { enabled: false }, () => ({})) {}
+    class GateWaitingService extends serve("gateWaiting" as const, ({ service }) => ({
+      gateOffService: service<InstanceType<typeof GateOffService>>(),
+    })) {}
+    const gateLib = libOf("enableModulesTest", new AkanOption(), {
+      services: [serviceModule(GateOffService), serviceModule(GateWaitingService)],
+    });
+
+    await inOperationMode("cloud", async () => {
+      const lifecycle = new DiLifecycle({ env: {}, enableModules: ["gateOff", "@edge"] }, buildModeLib(), gateLib);
+      await expect(lifecycle.initializeAll()).resolves.toBeDefined();
+      expect(lifecycle.registry.serviceCls.has("gateOff")).toBe(true);
+      expect(lifecycle.registry.serviceCls.has("gateWaiting")).toBe(true);
+      expect(lifecycle.registry.serviceCls.has("modeEdge")).toBe(true);
+      expect(lifecycle.disabledModules.size).toBe(0);
+    });
+  });
+
+  test("keeps a module enableModules names out when disableModules names it too", async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+
+    const lifecycle = new DiLifecycle(
+      { env: {}, enableModules: ["modeEdge"], disableModules: ["modeEdge"] },
+      buildModeLib(),
+    );
+    expect(lifecycle.disabledModules.get("modeEdge")).toBe('named by the "disableModules" option');
+  });
+
+  test("refuses an enabled module name no lib registered", async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+
+    expect(() => new DiLifecycle({ env: {}, enableModules: ["selectionTypo"] }, buildSelectionLib())).toThrow(
+      '[DI:enableModules] unknown module "selectionTypo"',
+    );
   });
 
   test("refuses a disabled module name no lib registered", async () => {

@@ -19,7 +19,10 @@ export interface SignalTestContext<Fetch = FetchProxy> {
   terminate: () => Promise<void>;
 }
 
-export type SignalTestOptions = Pick<TestServerOptions, "storage" | "workerId" | "port" | "serverMode">;
+export type SignalTestOptions = Pick<
+  TestServerOptions,
+  "storage" | "workerId" | "port" | "serverMode" | "enableModules"
+>;
 
 type SignalServerModule = {
   env?: BackendEnv;

@@ -28,6 +28,8 @@ paths:
   (`libs/shared/srvkit/guards.signal.test.ts`), never the `lib/` root; `akan sync` refuses all three shapes. Only
   `akan verify` and `akan typecheck <app-or-lib>` typecheck tests (`bun:test` types included) and the `script/`
   files nothing imports.
+- A module its `serve()` gates (`enabled`, `operationMode`) answers 404 `moduleNotMounted` in a signal test: mount it
+  with `configureSignalTest({ enableModules: ["<module>"] })` (or `"@edge"`) atop the file, never through `process.env`.
 - Delete an export only tests reference together with its test (`akan quality scan` reports
   `akan.global.test-only-export` in an app's `common/`, `webkit/`, `srvkit/`, `ui/`).
 - Import `UserAgent` / `AdminAgent` from `lib/user/user.signal.spec.ts`, the one place agent types are re-typed.

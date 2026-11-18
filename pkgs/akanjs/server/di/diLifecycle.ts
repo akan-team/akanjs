@@ -1,4 +1,4 @@
-import { AkanError, type BackendEnv, DatabaseModes, getEnv, INTERNAL_META } from "akanjs/base";
+import { type BackendEnv, DatabaseModes, INTERNAL_META } from "akanjs/base";
 import { Logger } from "akanjs/common";
 import { ConstantRegistry } from "akanjs/constant";
 import { FetchClient } from "akanjs/fetch";
@@ -29,7 +29,9 @@ import { createDefaultAkanOption } from "../akanOption";
 import { MachineAccount } from "../machine/machineAccount";
 import type { WebProxyRegistration } from "../proxy";
 import { CascadeRunner, DatabaseResolver, ServiceResolver, SignalResolver } from "../resolver";
+import { UnmountedRoutes } from "../resolver/unmountedRoutes";
 import type { SignalRoutes, WebsocketRoutes } from "../types";
+import { ModuleSelection } from "./moduleSelection";
 import {
   collectPredefinedDependencies,
   getPredefinedAdaptor,
@@ -40,9 +42,6 @@ import { collectAdaptors, resolveAdaptorHierarchy, resolveServiceHierarchy } fro
 import {
   assertUniqueRegistrations,
   type DiModuleCandidate,
-  getModuleCascadeRefNames,
-  getModuleDependencyRefNames,
-  getModuleRelationRefNames,
   isDestroyableUse,
   normalizeAdaptorRefName,
   normalizeServiceRefName,
@@ -56,6 +55,7 @@ import {
 export interface DiLifecycleProps {
   env: BackendEnv;
   modules?: string[];
+  enableModules?: string[];
   disableModules?: string[];
   disableLibs?: string[];
 }
@@ -77,6 +77,7 @@ export class DiLifecycle {
   readonly #middleware = new Map<string, MiddlewareCls>();
   readonly webProxies: WebProxyRegistration[] = [];
   readonly disabledModules = new Map<string, string>();
+  readonly #unmounted: DiModuleCandidate[] = [];
   readonly initTimings = new Map<string, number>();
   readonly #predefinedAdaptor;
   readonly #cascade = new CascadeRunner();
@@ -105,7 +106,10 @@ export class DiLifecycle {
     return !names.some((name) => process.env[name] === "false" || process.env[name] === "0");
   }
 
-  constructor({ env, modules = [], disableModules = [], disableLibs = [] }: DiLifecycleProps, ...libs: AkanLib[]) {
+  constructor(
+    { env, modules = [], enableModules = [], disableModules = [], disableLibs = [] }: DiLifecycleProps,
+    ...libs: AkanLib[]
+  ) {
     //? A disabled lib's constants still register on import, and an app disables a lib to step around its clash.
     ConstantRegistry.assertConsistentRefNames(disableLibs);
     this.#env = env;
@@ -162,20 +166,26 @@ export class DiLifecycle {
     });
     //? Last, so it runs innermost: it reads the account the libs' middlewares resolved and owns `account.machine`.
     this.#middleware.set(MachineAccount.refName, MachineAccount);
-    const disabledModules = this.#resolveDisabledModules({
-      databaseCandidates,
-      serviceCandidates,
-      modules,
-      disableModules,
-      disableLibs,
+    const candidates = new Map<string, DiModuleCandidate>([...databaseCandidates, ...serviceCandidates]);
+    new ModuleSelection({
+      candidates,
       moduleLibs,
-    });
+      libNames: libs.map((lib) => lib.name),
+      builtinRefNames: [...this.#service.keys()],
+      logger: this.logger,
+    })
+      .disabledReasons({ modules, enableModules, disableModules, disableLibs })
+      .forEach((reason, refName) => {
+        this.disabledModules.set(refName, reason);
+        const candidate = candidates.get(refName);
+        if (candidate) this.#unmounted.push(candidate);
+      });
     databaseCandidates.forEach(({ refName, module }) => {
-      if (disabledModules.has(refName)) return;
+      if (this.disabledModules.has(refName)) return;
       this.#database.set(refName, module as DatabaseModule);
     });
     serviceCandidates.forEach(({ refName, module }) => {
-      if (disabledModules.has(refName)) return;
+      if (this.disabledModules.has(refName)) return;
       this.#service.set(refName, module as ServiceModule);
     });
     if (frameworkAgent && this.#service.get("agent") !== frameworkAgent)
@@ -213,182 +223,6 @@ export class DiLifecycle {
     assertUniqueRegistrations("adaptor", adaptorRegistrations);
   }
 
-  #resolveDisabledModules({
-    databaseCandidates,
-    serviceCandidates,
-    modules,
-    disableModules,
-    disableLibs,
-    moduleLibs,
-  }: {
-    databaseCandidates: Map<string, DiModuleCandidate>;
-    serviceCandidates: Map<string, DiModuleCandidate>;
-    modules: string[];
-    disableModules: string[];
-    disableLibs: string[];
-    moduleLibs: Map<string, string>;
-  }) {
-    const candidates = new Map<string, DiModuleCandidate>([...databaseCandidates, ...serviceCandidates]);
-    const disabledReasons = new Map<string, string>();
-
-    const { operationMode } = getEnv();
-    candidates.forEach(({ refName, module }) => {
-      const modes = module.service.srv.operationMode;
-      if (modes && !modes.includes(operationMode))
-        disabledReasons.set(refName, `operationMode "${operationMode}" is not in [${modes.join(", ")}]`);
-      else if (!module.service.srv.enabled) disabledReasons.set(refName, "service disabled");
-    });
-
-    // Applied over the enabled set rather than beside it: naming a module the workspace disabled does not enable it.
-    const selected = this.#resolveSelectedModules(
-      candidates,
-      DiLifecycle.#expandSelectors(modules, candidates, "modules"),
-    );
-    if (selected) {
-      candidates.forEach(({ refName }) => {
-        if (!selected.has(refName) && !disabledReasons.has(refName))
-          disabledReasons.set(refName, 'not named by the "modules" option');
-      });
-    }
-
-    const excluded = this.#resolveExcludedModules({
-      candidates,
-      disableModules: DiLifecycle.#expandSelectors(disableModules, candidates, "disableModules"),
-      disableLibs,
-      moduleLibs,
-    });
-    // Last, so it wins over a selection: `modules` says what a process is for, the exclusions what it must not run.
-    excluded.forEach((reason, refName) => {
-      if (!disabledReasons.has(refName)) disabledReasons.set(refName, reason);
-    });
-    const excludedClosure = new Set(excluded.keys());
-
-    let changed = true;
-    while (changed) {
-      changed = false;
-      candidates.forEach(({ refName, module }) => {
-        if (disabledReasons.has(refName)) return;
-        const reached = [
-          ...[...getModuleDependencyRefNames(module)].map((target) => ["depends on", target] as const),
-          ...[...getModuleRelationRefNames(module)].map((target) => ["relates to", target] as const),
-        ];
-        for (const [link, dependencyRefName] of reached) {
-          if (dependencyRefName === refName) continue;
-          const dependencyReason = disabledReasons.get(dependencyRefName);
-          if (!dependencyReason) continue;
-          disabledReasons.set(refName, `${link} disabled module "${dependencyRefName}"`);
-          if (excludedClosure.has(dependencyRefName)) excludedClosure.add(refName);
-          changed = true;
-          break;
-        }
-      });
-    }
-
-    disabledReasons.forEach((reason, refName) => {
-      this.disabledModules.set(refName, reason);
-      this.logger.verbose(`Skipping disabled module "${refName}": ${reason}`);
-    });
-    const cascaded = [...excludedClosure]
-      .filter((refName) => !excluded.has(refName))
-      .sort((a, b) => a.localeCompare(b));
-    if (cascaded.length) {
-      const option = [disableModules.length && "disableModules", disableLibs.length && "disableLibs"]
-        .filter(Boolean)
-        .join("/");
-      this.logger.info(`${option} also dropped ${cascaded.length} dependent module(s): ${cascaded.join(", ")}`);
-    }
-    return new Set(disabledReasons.keys());
-  }
-
-  // Unknown names throw: a typo here would keep a module running silently.
-  #resolveExcludedModules({
-    candidates,
-    disableModules,
-    disableLibs,
-    moduleLibs,
-  }: {
-    candidates: Map<string, DiModuleCandidate>;
-    disableModules: string[];
-    disableLibs: string[];
-    moduleLibs: Map<string, string>;
-  }) {
-    const excluded = new Map<string, string>();
-    if (disableModules.length) {
-      const known = new Set([...candidates.keys(), ...this.#service.keys()]);
-      DiLifecycle.#assertKnown(disableModules, known, "[DI:disableModules] unknown module", "Registered");
-      disableModules.forEach((refName) => {
-        if (candidates.has(refName)) excluded.set(refName, 'named by the "disableModules" option');
-      });
-    }
-    if (disableLibs.length) {
-      // Every mounted lib counts: one carrying only scalars or an `option.ts` is a legitimate name.
-      const known = new Set(this.#libs.map((lib) => lib.name));
-      DiLifecycle.#assertKnown(disableLibs, known, "[DI:disableLibs] unknown lib", "Mounted");
-      const excludedLibs = new Set(disableLibs);
-      moduleLibs.forEach((libName, refName) => {
-        if (!excludedLibs.has(libName) || !candidates.has(refName) || excluded.has(refName)) return;
-        excluded.set(refName, `in lib "${libName}", named by the "disableLibs" option`);
-      });
-    }
-    return excluded;
-  }
-
-  // Unknown names throw: a typo would otherwise boot with the module silently missing.
-  #resolveSelectedModules(candidates: Map<string, DiModuleCandidate>, modules: string[]) {
-    if (!modules.length) return null;
-    const known = new Set([...candidates.keys(), ...this.#service.keys()]);
-    DiLifecycle.#assertKnown(modules, known, "[DI:modules] unknown module", "Registered");
-    const selected = new Set<string>();
-    const pending = modules.filter((refName) => candidates.has(refName));
-    while (pending.length) {
-      const refName = pending.pop();
-      if (!refName || selected.has(refName)) continue;
-      selected.add(refName);
-      const candidate = candidates.get(refName);
-      if (!candidate) continue;
-      const dependencies = [
-        ...getModuleDependencyRefNames(candidate.module),
-        ...getModuleCascadeRefNames(candidate.module),
-        ...getModuleRelationRefNames(candidate.module),
-      ];
-      for (const dependency of dependencies) if (candidates.has(dependency)) pending.push(dependency);
-    }
-    const mounted = [...selected].sort((a, b) => a.localeCompare(b)).join(", ");
-    this.logger.debug(`Mounting ${selected.size} of ${candidates.size} module(s): ${mounted}`);
-    return selected;
-  }
-
-  //* `@<operationMode>` names every module whose serve() lists that mode, so a new one joins without editing a list.
-  static #expandSelectors(names: string[], candidates: Map<string, DiModuleCandidate>, option: string) {
-    return [
-      ...new Set(
-        names.flatMap((name) => {
-          if (!name.startsWith("@")) return [name];
-          const mode = name.slice(1);
-          const tagged = [...candidates.values()]
-            .filter(({ module }) => module.service.srv.operationMode?.includes(mode))
-            .map(({ refName }) => refName);
-          if (!tagged.length)
-            throw new AkanError(
-              "invalidConfig",
-              `[DI:${option}] "${name}" names no module: no serve() in this app or its libs lists operationMode "${mode}".`,
-            );
-          return tagged;
-        }),
-      ),
-    ];
-  }
-
-  static #assertKnown(names: string[], known: Set<string>, unknownLabel: string, knownLabel: string) {
-    const unknown = names.filter((name) => !known.has(name));
-    if (!unknown.length) return;
-    const listed = [...known].sort((a, b) => a.localeCompare(b)).join(", ");
-    throw new AkanError(
-      "invalidConfig",
-      `${unknownLabel} ${unknown.map((name) => `"${name}"`).join(", ")}. ${knownLabel}: ${listed}`,
-    );
-  }
-
   // Unwinds on failure: stage siblings that succeeded are live, and a retrying caller would accumulate them.
   async initializeAll(): Promise<SignalRoutes> {
     try {
@@ -421,6 +255,7 @@ export class DiLifecycle {
     const routes: SignalRoutes["routes"] = {};
     SignalResolver.mergeHttpRoutes(routes, sliceRoutes);
     SignalResolver.mergeHttpRoutes(routes, endpointRoutes);
+    UnmountedRoutes.answer(routes, this.#unmounted, this.disabledModules);
     return {
       routes,
       wsRoutes: { ...sliceWsRoutes, ...endpointWsRoutes },
