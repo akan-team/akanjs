@@ -963,6 +963,7 @@ describe("Workspace and app executor environment contracts", () => {
       process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
       process.env.AKAN_PUBLIC_ENV = "local";
       process.env.PORT_OFFSET = "0";
+      delete process.env.PORT;
       await writeJson(path.join(root, "package.json"), rootPackageJson());
       for (const name of names) {
         await mkdir(path.join(root, "apps", name), { recursive: true });
@@ -1001,6 +1002,26 @@ describe("Workspace and app executor environment contracts", () => {
       await writeFile(path.join(workspace.workspaceRoot, "apps/pin-a/akan.config.ts"), "export default {};\n");
 
       expect(await app.getDevPort()).toBe(12345);
+    });
+
+    test("PORT pins it as it does a built server, and AKAN_DEV_PORT outranks it", async () => {
+      const workspace = await makeWorkspaceWithApps(["env-a", "env-b"]);
+      const app = AppExecutor.from(workspace, "env-b");
+      delete process.env.AKAN_DEV_PORT;
+      process.env.PORT = "28284";
+      try {
+        expect(await app.getDevPort()).toBe(28284);
+        expect((await app.prepareCommand("start")).env.PORT).toBe("28284");
+
+        process.env.AKAN_DEV_PORT = "12345";
+        expect(await app.getDevPort()).toBe(12345);
+
+        process.env.AKAN_DEV_PORT = "nope";
+        expect(await app.getDevPort()).toBe(28284);
+      } finally {
+        delete process.env.PORT;
+        delete process.env.AKAN_DEV_PORT;
+      }
     });
 
     test("ignores an unusable AKAN_DEV_PORT rather than binding a nonsense port", async () => {
@@ -1160,6 +1181,7 @@ describe("Workspace and app executor environment contracts", () => {
     process.env.AKAN_PUBLIC_REPO_NAME = "repo";
     process.env.AKAN_PUBLIC_SERVE_DOMAIN = "example.com";
     process.env.AKAN_PUBLIC_ENV = "local";
+    for (const key of ["PORT", "AKAN_DEV_PORT"]) delete process.env[key];
 
     await writeJson(path.join(root, "package.json"), rootPackageJson());
     for (const appName of ["minimal", "akan"]) {
