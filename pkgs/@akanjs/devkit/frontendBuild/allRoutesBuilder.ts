@@ -56,7 +56,7 @@ export class AllRoutesBuilder {
     const pageEntries = await resolveSsrPageEntriesForApp(this.#app, pageKeys);
     const seedIndex = computeRouteSeedIndex(pageEntries);
     this.#app.verbose(`[build-all] discovered ${seedIndex.entries.length} routes`);
-    const discovery = await GraphClientEntryDiscovery.create(this.#app);
+    const discovery = await GraphClientEntryDiscovery.create(this.#app, { byExport: this.#command === "build" });
     this.#discovery = discovery;
     const importsAs = await this.#ssrImportsAs(discovery, pageEntries);
     const handoffs = await this.#readHandoffs();
@@ -69,7 +69,7 @@ export class AllRoutesBuilder {
       const seeds = Array.from(new Set([...seedIndex.globalLayoutFiles, ...entry.seeds]));
       const routeEntries = await discovery.discover(seeds);
       for (const discovered of routeEntries) allEntries.add(discovered);
-      const ssrEntries = await discovery.discover(seeds, { importsAs });
+      const ssrEntries = await discovery.discoverRendered(seeds, { importsAs });
       const serverModules = handoffs || dictionary ? await discovery.serverModules(seeds, { importsAs }) : [];
       if (dictionary) this.#serverModulesByRoute.set(entry.routeId, serverModules);
       const handed = await handoffs?.read(serverModules);

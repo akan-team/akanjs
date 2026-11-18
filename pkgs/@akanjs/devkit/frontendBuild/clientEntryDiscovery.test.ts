@@ -283,4 +283,124 @@ describe("GraphClientEntryDiscovery", () => {
     route.invalidate([file("lib/memo/index.ts")]);
     expect(await route.discover([file("S.tsx")])).toEqual([file("lib/memo/Memo.Panel.tsx")]);
   });
+
+  describe("read by export", () => {
+    const byExport = () =>
+      new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never, { byExport: true });
+    const client = (name: string) => `"use client";\nexport const ${name} = () => null;\n`;
+    const writeView = async (file: (name: string) => string) => {
+      for (const name of ["Remove", "Chart", "Editor", "Panel", "Badge"])
+        await Bun.write(file(`ui/${name}.tsx`), client(name));
+      await Bun.write(
+        file("Memo.View.tsx"),
+        [
+          'import { Badge } from "./ui/Badge";',
+          'import { Chart } from "./ui/Chart";',
+          'import { Remove } from "./ui/Remove";',
+          "const Title = () => <Badge />;",
+          "export const General = () => [<Title />, <Remove />];",
+          "export const Stats = () => <Chart />;",
+          'export const Rich = async () => (await import("./ui/Editor")).Editor;',
+          "",
+        ].join("\n"),
+      );
+    };
+
+    test("a route reaches the client files of the export its page names, not of the whole server file", async () => {
+      const file = await tempDir();
+      await writeView(file);
+      await Bun.write(file("general.tsx"), 'import { General } from "./Memo.View";\nexport default General;\n');
+      await Bun.write(file("stats.tsx"), 'import { Stats as S } from "./Memo.View";\nexport default () => <S />;\n');
+      await Bun.write(file("rich.tsx"), 'import * as View from "./Memo.View";\nexport default View.Rich;\n');
+      await Bun.write(file("all.tsx"), 'import * as View from "./Memo.View";\nexport default () => View;\n');
+      const discovery = byExport();
+      const whole = ["Badge", "Chart", "Editor", "Remove"].map((name) => file(`ui/${name}.tsx`));
+
+      expect(await discovery.discover([file("general.tsx")])).toEqual(whole);
+      expect(await discovery.discoverRendered([file("general.tsx")])).toEqual([
+        file("ui/Badge.tsx"),
+        file("ui/Remove.tsx"),
+      ]);
+      expect(await discovery.discoverRendered([file("stats.tsx")])).toEqual([file("ui/Chart.tsx")]);
+      expect(await discovery.discoverRendered([file("rich.tsx")])).toEqual([file("ui/Editor.tsx")]);
+      expect(await discovery.discoverRendered([file("all.tsx")])).toEqual(whole);
+    });
+
+    test("without the setting, a route reaches what the whole server file imports", async () => {
+      const file = await tempDir();
+      await writeView(file);
+      await Bun.write(file("stats.tsx"), 'import { Stats } from "./Memo.View";\nexport default Stats;\n');
+      const discovery = new GraphClientEntryDiscovery({ barrelImports: [] }, (async () => null) as never);
+
+      expect(await discovery.discoverRendered([file("stats.tsx")])).toEqual(
+        ["Badge", "Chart", "Editor", "Remove"].map((name) => file(`ui/${name}.tsx`)),
+      );
+    });
+
+    test("a client file registered by a top-level statement is reached by every route evaluating the module", async () => {
+      const file = await tempDir();
+      await writeView(file);
+      await Bun.write(file("registry.ts"), "export const parts: unknown[] = [];\n");
+      await Bun.write(
+        file("Memo.Zone.tsx"),
+        [
+          'import { parts } from "./registry";',
+          'import { Chart } from "./ui/Chart";',
+          'import { Panel } from "./ui/Panel";',
+          "parts.push(Panel);",
+          "export const Stats = () => <Chart />;",
+          "export const Plain = () => null;",
+          "",
+        ].join("\n"),
+      );
+      await Bun.write(file("plain.tsx"), 'import { Plain } from "./Memo.Zone";\nexport default Plain;\n');
+
+      expect(await byExport().discoverRendered([file("plain.tsx")])).toEqual([file("ui/Panel.tsx")]);
+    });
+
+    test("a name asked through `export *` is followed into the file that holds it, and an unknown name takes the whole file", async () => {
+      const file = await tempDir();
+      await writeView(file);
+      await Bun.write(file("index.ts"), 'export * from "./Memo.View";\nexport * from "./other";\n');
+      await Bun.write(file("other.tsx"), 'import { Panel } from "./ui/Panel";\nexport const Side = () => <Panel />;\n');
+      await Bun.write(
+        file("legacy.js"),
+        'const { Panel } = require("./ui/Panel");\nmodule.exports = { Old: Panel };\n',
+      );
+      await Bun.write(file("stats.tsx"), 'import { Stats } from "./index";\nexport default Stats;\n');
+      await Bun.write(file("old.tsx"), 'import { Old } from "./legacy";\nexport default Old;\n');
+      const discovery = byExport();
+
+      expect(await discovery.discoverRendered([file("stats.tsx")])).toEqual([file("ui/Chart.tsx")]);
+      expect(await discovery.discoverRendered([file("old.tsx")])).toEqual([file("ui/Panel.tsx")]);
+    });
+
+    test("an import swapped or dropped for the walk is swapped or dropped by export too", async () => {
+      const file = await tempDir();
+      await writeView(file);
+      await Bun.write(
+        file("Shell.tsx"),
+        'import { Panel } from "./ui/Panel";\nexport const General = () => <Panel />;\n',
+      );
+      await Bun.write(
+        file("page.tsx"),
+        'import { General } from "./Memo.View";\nimport { Chart } from "./ui/Chart";\nexport default () => [<General />, <Chart />];\n',
+      );
+      const discovery = byExport();
+      const importsAs = new Map([
+        [
+          file("page.tsx"),
+          new Map<string, string | null>([
+            ["./Memo.View", "./Shell"],
+            ["./ui/Chart", null],
+          ]),
+        ],
+      ]);
+
+      expect(await discovery.discoverRendered([file("page.tsx")], { importsAs })).toEqual([file("ui/Panel.tsx")]);
+      expect(await discovery.discoverRendered([file("page.tsx")])).toEqual(
+        ["Badge", "Chart", "Remove"].map((name) => file(`ui/${name}.tsx`)),
+      );
+    });
+  });
 });
