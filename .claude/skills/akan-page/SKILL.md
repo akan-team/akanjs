@@ -27,15 +27,14 @@ export default page()
 
 ## Steps
 
-1. Place the file: `<route>.tsx` or `<dir>/_index.tsx` serves the path, `_layout.tsx` nests a layout (`layout()`;
-   the root one is `rootLayout()`), `[id]` is a dynamic segment, `(group)` groups without a segment.
-2. Name every `[x]` segment with `.param("x", Type)` and read a query key only with `.search("k", Type)`. Values
-   arrive typed: `ID` / `String` → string, `Int` / `Float` → number, `Boolean`, `Date` → Dayjs, an `enumOf` class →
-   its union, `[T]` → array. A path value the type refuses answers not-found, and a search value that fails is
-   dropped. `lang` reaches every stage and is never declared.
-3. Gate in the `_layout.tsx`'s `.guard()` (below).
-4. In `.render()`: `usePage()`, then fetch, then return.
-5. Re-skin an `akanjs/ui` component for a subtree with `_overrides.tsx`:
+File names, stages, the `.render()` order and what a route file must never do are the `page` rule, loaded with any
+`page/` file.
+
+1. `.param()` / `.search()` values arrive typed: `ID` / `String` → string, `Int` / `Float` → number, `Boolean`,
+   `Date` → Dayjs, an `enumOf` class → its union, `[T]` → array. A path value the type refuses answers not-found,
+   and a search value that fails is dropped.
+2. Gate in the `_layout.tsx`'s `.guard()` (below).
+3. Re-skin an `akanjs/ui` component for a subtree with `_overrides.tsx`:
    `export default override({ Slot: AppComponent })`, no logic. Nested ones merge slot by slot, the closest winning;
    `componentRule` lists the slots.
 
@@ -83,11 +82,9 @@ export default page()
   `duringRender`, an expensive report) sets `.config({ prefetch: false })`; on a `_layout.tsx` it covers every page
   below, and a page there opts back in with `prefetch: true`.
 
-What a route file must never do — write while rendering, hooks, a second export — is the `page` rule, loaded with
-any `page/` file. `pageRule` holds what neither says: client-navigation and navigation guards, head merging, the
-script policy, CSR root layouts, lib pages, `devOnly`, the legacy shape. `ssrRule`: what may render on the server;
-`akan-mcp`: `.prompt()` and `.app()`. Stage signatures, router methods, Link props and import paths are in the
-`akanApi-*` references below.
+`pageRule` holds what neither this skill nor the `page` rule says: client-navigation and navigation guards, head
+merging, the script policy, CSR root layouts, lib pages, `devOnly`, the legacy shape. `ssrRule`: what may render on
+the server; `akan-mcp`: `.prompt()` and `.app()`.
 
 ## References
 
