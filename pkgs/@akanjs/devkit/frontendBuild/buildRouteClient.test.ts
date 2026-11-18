@@ -141,6 +141,37 @@ describe("route client store bootstrap", () => {
     });
   });
 
+  test("remaps a name a build entry holding several entries exports back to the entry and the name behind it", () => {
+    const group = "/repo/apps/akan/.akan/generated/client-entry-bootstrap-route/group-1.tsx";
+    const reference = "apps/akan/.akan/generated/client-entry-bootstrap-route/group-1.tsx";
+    const members = new Map([
+      [
+        group,
+        new Map([
+          ["g0", { entry: "/repo/apps/akan/ui/One.tsx", name: "default" }],
+          ["g1", { entry: "/repo/apps/akan/ui/Two.tsx", name: "default" }],
+        ]),
+      ],
+    ]);
+    const remap = (name: string) =>
+      RouteClientBuilder.resolveOriginalManifestEntry(
+        `${reference}#${name}`,
+        new Map(),
+        new Map([[group, reference]]),
+        "/repo",
+        members,
+      );
+
+    expect(remap("g1")).toEqual({
+      buildEntry: group,
+      originalEntry: "/repo/apps/akan/ui/Two.tsx",
+      name: "default",
+      key: "apps/akan/ui/Two.tsx#default",
+    });
+    expect(remap("g0")?.key).toBe("apps/akan/ui/One.tsx#default");
+    expect(remap("g2")).toBeNull();
+  });
+
   test("emits browser chunks and assets with hash-only names", () => {
     expect(CLIENT_BUNDLE_NAMING).toEqual({
       entry: "[name]-[hash].[ext]",
@@ -807,6 +838,61 @@ export const getSerializedSignalOf = (name: string) => (name === "base" ? {} : {
         expect(started.rows).toEqual(built.rows);
         expect(started.idOf("A")).toBe(started.idOf("B"));
         for (const marker of ["heavy-a-marker", "heavy-b-marker"]) expect(started.a).toContain(marker);
+        expect(warnings).toEqual([]);
+      }, 30_000);
+
+      test("a production build answers the entries the same routes load from one entry, each still found by its own name, and keeps apart an entry other routes load; under start each entry is its own", async () => {
+        const { root, appDir, app, file, warnings } = await describedFixture();
+        for (const name of ["One", "Two"])
+          await write(file(name), `"use client";\nexport default () => "${name.toLowerCase()}-marker";\n`);
+        await write(file("Solo"), '"use client";\nexport const Solo = () => "solo-marker";\n');
+        const [one, two, solo] = [file("One"), file("Two"), file("Solo")];
+        const entriesByRoute = new Map([
+          ["/pair", [one, two]],
+          ["/all", [two, solo, one]],
+        ]);
+        const state = globalThis as { $RefreshReg$?: unknown; $RefreshSig$?: unknown };
+        state.$RefreshReg$ ??= () => undefined;
+        state.$RefreshSig$ ??= () => (type: unknown) => type;
+        const buildAs = async (command: "build" | "start") => {
+          const { manifestDelta, ssrManifestDelta } = await new RouteClientBuilder({
+            app,
+            seeds: [],
+            entries: [one, two, solo],
+            artifact: {} as never,
+            browser: "chunks",
+            command,
+            entriesByRoute,
+          }).build();
+          const artifact = path.join(
+            command === "build" ? path.join(root, "dist/apps/demo") : appDir,
+            ".akan/artifact",
+          );
+          const rowOf = (key: string) => manifestDelta[`apps/demo/ui/${key}`];
+          const answered = async (key: string) => {
+            const row = rowOf(key);
+            const loaded = await import(path.join(artifact, (row?.id ?? "").replace(/^\/_akan\//, "")));
+            return (loaded[row?.name ?? ""] as () => string)();
+          };
+          const onServer = (key: string) => ssrManifestDelta.moduleMap[rowOf(key)?.id ?? ""]?.[rowOf(key)?.name ?? ""];
+          return { rows: Object.keys(manifestDelta).sort(), rowOf, answered, onServer };
+        };
+        const keys = ["One.tsx#default", "Solo.tsx#Solo", "Two.tsx#default"];
+
+        const built = await buildAs("build");
+        expect(built.rows).toEqual(keys.map((key) => `apps/demo/ui/${key}`));
+        expect(built.rowOf("One.tsx#default")?.id).toBe(built.rowOf("Two.tsx#default")?.id ?? "");
+        expect(built.rowOf("Solo.tsx#Solo")?.id).not.toBe(built.rowOf("One.tsx#default")?.id);
+        expect(keys.map((key) => built.rowOf(key)?.name)).toEqual(["g0", "Solo", "g1"]);
+        expect(await Promise.all(keys.map(built.answered))).toEqual(["one-marker", "solo-marker", "two-marker"]);
+        expect(keys.map((key) => built.onServer(key)?.name)).toEqual(["default", "Solo", "default"]);
+        expect(built.onServer("One.tsx#default")?.id).not.toBe(built.onServer("Two.tsx#default")?.id);
+
+        const started = await buildAs("start");
+        expect(started.rows).toEqual(built.rows);
+        expect(started.rowOf("One.tsx#default")?.id).not.toBe(started.rowOf("Two.tsx#default")?.id);
+        expect(keys.map((key) => started.rowOf(key)?.name)).toEqual(["default", "Solo", "default"]);
+        expect(await Promise.all(keys.map(started.answered))).toEqual(["one-marker", "solo-marker", "two-marker"]);
         expect(warnings).toEqual([]);
       }, 30_000);
     });
