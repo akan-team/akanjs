@@ -11,6 +11,8 @@ export interface RouteJsSize {
   brotliBytes: number;
 }
 
+export type RouteJsFileSizes = Map<string, { raw: number; brotli: number }>;
+
 export interface RouteJsOverage {
   routeId: string;
   brotliBytes: number;
@@ -58,13 +60,13 @@ export class RouteJsBudget {
   static readonly #relativeSlack = 0.01;
   static readonly #absoluteSlack = 4096;
 
-  //? A file under 1 KB has no `.br` sidecar (precompressArtifacts skips it), so it is served, and counted, raw.
-  static async measure(
+  //? A file brotli does not shrink has no `.br` sidecar (precompressArtifacts writes none), so it is served, and counted, raw.
+  static async fileSizes(
     artifactDir: string,
     modulesByRoute: Record<string, string[]>,
     { precompressed = true }: { precompressed?: boolean } = {},
-  ): Promise<RouteJsSize[]> {
-    const sizeByUrl = new Map<string, { raw: number; brotli: number }>();
+  ): Promise<RouteJsFileSizes> {
+    const sizeByUrl: RouteJsFileSizes = new Map();
     const sizeOf = async (url: string) => {
       const file = path.join(artifactDir, url.replace(/^\/_akan\//, ""));
       const raw = Bun.file(file).size;
@@ -73,6 +75,10 @@ export class RouteJsBudget {
       return { raw, brotli: (await sidecar.exists()) ? sidecar.size : raw };
     };
     for (const url of new Set(Object.values(modulesByRoute).flat())) sizeByUrl.set(url, await sizeOf(url));
+    return sizeByUrl;
+  }
+
+  static sizesOf(modulesByRoute: Record<string, string[]>, sizeByUrl: RouteJsFileSizes): RouteJsSize[] {
     return Object.entries(modulesByRoute)
       .map(([routeId, urls]) => ({
         routeId,
@@ -81,6 +87,14 @@ export class RouteJsBudget {
         brotliBytes: urls.reduce((total, url) => total + (sizeByUrl.get(url)?.brotli ?? 0), 0),
       }))
       .sort((a, b) => b.brotliBytes - a.brotliBytes || RouteJsBudget.#byCodeUnit(a.routeId, b.routeId));
+  }
+
+  static async measure(
+    artifactDir: string,
+    modulesByRoute: Record<string, string[]>,
+    options: { precompressed?: boolean } = {},
+  ): Promise<RouteJsSize[]> {
+    return RouteJsBudget.sizesOf(modulesByRoute, await RouteJsBudget.fileSizes(artifactDir, modulesByRoute, options));
   }
 
   static modeOf({ checkBudget = false, updateBudget = false, raiseBudget = false }: RouteJsBudgetFlags) {

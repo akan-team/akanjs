@@ -4,8 +4,10 @@ import { SOURCE_EXTS } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
 import { BarrelAnalyzer, type BarrelExportMap } from "../transforms/barrelAnalyzer";
 import { createTsconfigPackageResolver, rewriteBarrelImports } from "../transforms/barrelImportsPlugin";
+import { ExportReach } from "../transforms/exportReach";
 import { ObjectMemberImports } from "../transforms/objectMemberImports";
 import type { AkanConfig, ClientEntryDiscovery, DiscoverOptions, ScannedImport } from "./clientBuildTypes";
+import { RenderedEntries, type RenderedFile } from "./renderedEntries";
 
 const USE_CLIENT_RE = /^\s*(?:\/\*[^*]*\*+(?:[^/*][^*]*\*+)*\/\s*|\/\/[^\n]*\n\s*)*["']use client["']/;
 const EXPORT_STAR_RE = /^\s*export\s*\*/m;
@@ -16,10 +18,7 @@ const AKANJS_NODE_MODULE_RE = /[\\/]node_modules[\\/]akanjs[\\/]/;
 const NON_SOURCE_EXT_RE = /\.(css|scss|sass|less|json|svg|png|jpe?g|webp|gif|avif|ico|woff2?|ttf|otf|mp3|mp4|wav)$/i;
 type PackageResolver = Awaited<ReturnType<typeof createTsconfigPackageResolver>>;
 
-interface FileFacts {
-  isClientEntry: boolean;
-  imports: ScannedImport[];
-}
+type FileFacts = RenderedFile;
 
 interface Lookup<T> {
   epoch: number;
@@ -68,14 +67,23 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   //? Bumped by every invalidation: a walk that began before one computed from facts it may have read stale, so it
   //? answers its caller but caches nothing (a registry check walks this instance beside the slow lane's route builds).
   #epoch = 0;
+  #rendered: RenderedEntries | null;
 
   constructor(
     akanConfig: Pick<AkanConfig, "barrelImports">,
     resolvePackage: PackageResolver,
-    { packageRoot }: { packageRoot?: string } = {},
+    { packageRoot, byExport = false }: { packageRoot?: string; byExport?: boolean } = {},
   ) {
     this.#akanConfig = akanConfig;
     this.#resolvePackage = resolvePackage;
+    this.#rendered = byExport
+      ? new RenderedEntries({
+          fileOf: async (file) => (shouldSkipNodeModule(file) ? null : await this.#facts(file)),
+          resolve: async (spec, fromDir) =>
+            NON_SOURCE_EXT_RE.test(spec) ? null : await this.#resolveSpecifier(spec, fromDir),
+          epoch: () => this.#epoch,
+        })
+      : null;
     this.#analyzer = new BarrelAnalyzer({ resolvePackage, ...(packageRoot ? { packageRoot } : {}) });
     this.#objects = packageRoot
       ? new ObjectMemberImports({
@@ -86,9 +94,10 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   }
 
   //? An app narrows as its bundles do, so discovery reaches the member files they load.
-  static async create(app: App): Promise<GraphClientEntryDiscovery> {
+  static async create(app: App, { byExport = false } = {}): Promise<GraphClientEntryDiscovery> {
     return new GraphClientEntryDiscovery(await app.getConfig(), await createTsconfigPackageResolver(app), {
       packageRoot: app.workspace.workspaceRoot,
+      byExport,
     });
   }
 
@@ -102,6 +111,20 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
       for (const entry of await this.#discoverFromFile(seed, walk)) entries.add(entry);
     }
     return Array.from(entries).sort();
+  }
+
+  //? Without `byExport`, and never beyond it, this is what `discover` answers.
+  async discoverRendered(
+    seeds: string[],
+    { importsAs, serverModules }: DiscoverOptions & { serverModules?: string[] } = {},
+  ): Promise<string[]> {
+    const within = await this.discover(seeds, { importsAs });
+    if (!this.#rendered) return within;
+    return await this.#rendered.of(seeds, {
+      serverModules: serverModules ?? (await this.serverModules(seeds, { importsAs })),
+      within,
+      importsAs,
+    });
   }
 
   async serverModules(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
@@ -150,6 +173,7 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
     // Reachable-entry results are transitive, so a changed child invalidates every ancestor.
     this.#reachableEntriesCache.clear();
     this.#swappedEntriesCaches = new WeakMap();
+    this.#rendered?.forget();
     for (const [barrel, before] of this.#analyzer.forget(files))
       if (!this.#reread.has(barrel)) this.#reread.set(barrel, before);
     this.#forgetObjects(files);
@@ -224,7 +248,11 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
         if (content === null) return null;
         this.#readFiles.add(absPath);
         if (USE_CLIENT_RE.test(content)) return { isClientEntry: !this.#exportsOnlyHooks(content), imports: [] };
-        return { isClientEntry: false, imports: this.#scanImports(await this.#rewrite(content, absPath)) };
+        const rewritten = await this.#rewrite(content, absPath);
+        const imports = this.#scanImports(rewritten);
+        return this.#rendered
+          ? { isClientEntry: false, imports, reach: ExportReach.read(rewritten, absPath) }
+          : { isClientEntry: false, imports };
       })();
       this.#factsCache.set(absPath, cached);
     }

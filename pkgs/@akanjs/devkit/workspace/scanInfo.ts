@@ -275,6 +275,14 @@ class ScanInfo {
     return [...this.scalar.keys()];
   }
 
+  protected takeLibDeps(libNames: Iterable<string>) {
+    const known = new Set([this.name, ...this.scanResult.libDeps]);
+    const added = [...new Set(libNames)].filter((libName) => !known.has(libName));
+    if (!added.length) return;
+    this.scanResult.libDeps.push(...added);
+    this.#sortedLibs = null;
+  }
+
   #sortedLibs: string[] | null = null;
   protected sortedLibs(libDeps: string[]) {
     if (this.#sortedLibs) return this.#sortedLibs;
@@ -332,6 +340,7 @@ export class AppInfo extends ScanInfo {
       AppInfo.scanMigrations(exec),
     ]);
     const appInfo = new AppInfo(exec, scanResult as AppScanResult, libDeps, migrations);
+    appInfo.takeLibDeps(libDeps);
     AppInfo.appInfos.set(exec.name, appInfo);
     return appInfo;
   }
@@ -429,8 +438,23 @@ export class LibInfo extends ScanInfo {
     );
     const libInfo = new LibInfo(exec, scanResult as LibScanResult);
     LibInfo.libInfos.set(exec.name, libInfo);
+    LibInfo.#closeDependencies();
     LibInfo.#sortedLibIndices = null;
     return libInfo;
+  }
+
+  //? A scope's generated files import the libs of its libs, so its own imports name them only from a second scan on.
+  static #closeDependencies() {
+    const reachOf = (libInfo: LibInfo, reached = new Set<string>()) => {
+      for (const libName of libInfo.scanResult.libDeps) {
+        if (reached.has(libName)) continue;
+        reached.add(libName);
+        const dependency = LibInfo.libInfos.get(libName);
+        if (dependency) reachOf(dependency, reached);
+      }
+      return reached;
+    };
+    for (const libInfo of LibInfo.libInfos.values()) libInfo.takeLibDeps(reachOf(libInfo));
   }
 
   constructor(exec: LibExecutor, scanResult: LibScanResult) {
