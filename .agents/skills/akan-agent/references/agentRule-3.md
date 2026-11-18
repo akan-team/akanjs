@@ -172,7 +172,8 @@
   `st.useState` or `useAgentResource` follow the rule too.** `readScreen` of the zone leads with a label left out.
   A published value rides as a token, a number, a boolean, an ISO timestamp or a list of those; an object keeps
   up to twelve such fields and twelve words of values. A resource with anything left out is marked `withheld`, and
-  `readState(name)` answers it whole as page content, so the next change asks first. **There is no
+  `readState(name)` answers it whole as page content, so the next change asks first. The `changes` a tool result
+  carries after a write follow the same rule, entry by entry. **There is no
   store-level exposure declaration**: a store class says nothing about agents, and `st.use.x({ agent: false })` is
   how the component that subscribes a value keeps it off the surface. Base-store plumbing does the same at the
   call site — `st.use.path({ agent: false })`, `st.use.tryJwt({ agent: false })` — so routing and the caller's

@@ -53,6 +53,7 @@ export declare class AgentContext {
     static readonly resourceNote = "A resource marked `withheld` holds free text. Call readState with the resource's name to read all of it.";
     static of(): AgentContext;
     static routePath(pathname: string): string;
+    static reported(view: SurfaceView): SurfaceView;
     constructor(instance: StoreInstance, bridge: AgentBridge);
     blocks(surface: SurfaceView, view?: string[]): ContextBlock[];
 }
@@ -1314,6 +1315,7 @@ interface ResourceDiff {
     value?: unknown;
     error?: string;
     removed?: boolean;
+    withheld?: boolean;
 }
 
 interface ResourceEntry {
