@@ -248,7 +248,7 @@ export class StoreSurfaceSource implements SurfaceSource {
     return {
       name: "readState",
       description:
-        "Read one store state key of this page, or one resource by its name. Keys are listed in the state context block and in `withheld` of the route block; a resource the screen block marks `withheld` is read by its name.",
+        "Read one store state key of this page, or one resource by its name. Keys are listed in the state context block and in `withheld` of the route block; a resource the screen block or a tool result's `changes` marks `withheld` is read by its name.",
       parameters: {
         type: "object",
         properties: { key: { type: "string" } },

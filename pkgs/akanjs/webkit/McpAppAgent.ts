@@ -36,7 +36,7 @@ export class McpAppAgent {
   constructor(bridge: McpAppBridge, surface = ensureStoreSurface().surface, approvals = McpAppApprovals.shared) {
     this.#bridge = bridge;
     this.#surface = surface;
-    this.#runner = new ToolRunner(surface, {
+    this.#runner = new ToolRunner(AgentContext.reported(surface), {
       approve: (request, signal) => McpAppAgent.#ask(approvals, request, signal),
       ...(AgentConfirm.policy.afterScreenRead ? {} : { askAfterUntrusted: false }),
       settle: () => ScreenSettle.wait(),

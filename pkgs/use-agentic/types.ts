@@ -151,6 +151,8 @@ export interface ResourceDiff {
   value?: unknown;
   error?: string;
   removed?: boolean;
+  /** Set by a host that reports less than the whole value, so the model reads the rest through a tool. */
+  withheld?: boolean;
 }
 
 export type ChatRole = "user" | "assistant" | "tool";
