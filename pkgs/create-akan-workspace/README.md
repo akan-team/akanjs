@@ -8,14 +8,14 @@ Create a new [Akan.js](https://akanjs.com) workspace with one command.
 bunx create-akan-workspace@latest
 ```
 
-On a host with only Node and npm, run it through npx, which installs nothing global
-([details](#with-only-node-and-npm)):
+On a host with only Node and npm, run it through npx. It puts nothing on `PATH`; the `akan` CLI goes to Bun's
+global folder (`~/.bun` by default) ([details](#with-only-node-and-npm)):
 
 ```bash
 npx -y bun@1.4.4 x create-akan-workspace@latest
 ```
 
-It installs the `akan` CLI (`@akanjs/cli`, at this package's own version) globally, then runs
+It installs the `akan` CLI (`@akanjs/cli`, at this package's own version) with `bun install -g`, then runs
 `akan create-workspace`, which:
 
 1. asks for a workspace name and an app name, unless you passed them,
@@ -53,9 +53,9 @@ The creator needs Bun, and npx can supply it for the one run. Pass the names so 
 npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false
 ```
 
-That Bun is not on `PATH` afterwards, so the creator lists `bun` in the workspace's `dependencies` and writes two
-package scripts. Build with `npm run build`, start the build with `PORT=3000 npm start`, and run any other command as
-`npx akan …`.
+That Bun is not on `PATH` afterwards, nor is the `akan` it installed, so the creator lists `bun` in the workspace's
+`dependencies` and writes two package scripts. Build with `npm run build`, start the build with
+`PORT=3000 npm start`, and run any other command as `npx akan …`.
 
 ```json
 "build": "akan build <app>",

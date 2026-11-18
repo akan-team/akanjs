@@ -8,14 +8,14 @@
 bunx create-akan-workspace@latest
 ```
 
-Node와 npm만 있는 호스트에서는 npx로 실행하세요. 전역에 아무것도 설치하지 않습니다
-([자세히](#node와-npm만-있을-때)).
+Node와 npm만 있는 호스트에서는 npx로 실행하세요. `PATH`에는 아무것도 더하지 않고, `akan` CLI는 Bun의 전역
+폴더(기본 `~/.bun`)에 설치합니다([자세히](#node와-npm만-있을-때)).
 
 ```bash
 npx -y bun@1.4.4 x create-akan-workspace@latest
 ```
 
-이 패키지와 같은 버전의 `akan` CLI(`@akanjs/cli`)를 전역으로 설치한 뒤 `akan create-workspace`를 실행합니다.
+이 패키지와 같은 버전의 `akan` CLI(`@akanjs/cli`)를 `bun install -g`로 설치한 뒤 `akan create-workspace`를 실행합니다.
 이 명령은 다음을 합니다.
 
 1. 워크스페이스 이름과 앱 이름을 묻습니다. 미리 넘겼다면 묻지 않습니다.
@@ -52,7 +52,8 @@ bunx create-akan-workspace@latest my-company --app web
 npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false
 ```
 
-그 Bun은 이후 `PATH`에 없으므로 생성기가 워크스페이스의 `dependencies`에 `bun`을 넣고 package script 두 개를 씁니다.
+그 Bun도, 그 Bun으로 설치한 `akan`도 이후 `PATH`에 없으므로 생성기가 워크스페이스의 `dependencies`에 `bun`을 넣고
+package script 두 개를 씁니다.
 `npm run build`로 빌드하고, `PORT=3000 npm start`로 빌드를 띄우고, 다른 명령은 `npx akan …`으로 실행하세요.
 
 ```json
