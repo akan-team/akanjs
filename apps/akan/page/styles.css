@@ -129,6 +129,7 @@
   --akanjs-notice-bar: 0rem;
   --akanjs-header-inset: calc(var(--akanjs-header-stack) + var(--akanjs-notice-bar));
   --akanjs-header-offset: calc(var(--akanjs-header-bar) + var(--akanjs-header-inset));
+  --scroll-anchor-offset: calc(var(--akanjs-header-offset) + 1.25rem);
 }
 
 html:has([data-akanjs-notice]) {
