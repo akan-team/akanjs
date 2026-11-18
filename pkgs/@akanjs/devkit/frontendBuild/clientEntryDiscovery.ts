@@ -111,11 +111,17 @@ export class GraphClientEntryDiscovery implements ClientEntryDiscovery {
   }
 
   //? Without `byExport`, and never beyond it, this is what `discover` answers.
-  async discoverRendered(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {
+  async discoverRendered(
+    seeds: string[],
+    { importsAs, serverModules }: DiscoverOptions & { serverModules?: string[] } = {},
+  ): Promise<string[]> {
     const within = await this.discover(seeds, { importsAs });
     if (!this.#rendered) return within;
-    const serverModules = await this.serverModules(seeds, { importsAs });
-    return await this.#rendered.of(seeds, { serverModules, within, importsAs });
+    return await this.#rendered.of(seeds, {
+      serverModules: serverModules ?? (await this.serverModules(seeds, { importsAs })),
+      within,
+      importsAs,
+    });
   }
 
   async serverModules(seeds: string[], { importsAs }: DiscoverOptions = {}): Promise<string[]> {

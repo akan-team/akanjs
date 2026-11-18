@@ -69,10 +69,10 @@ export class AllRoutesBuilder {
       const seeds = Array.from(new Set([...seedIndex.globalLayoutFiles, ...entry.seeds]));
       const routeEntries = await discovery.discover(seeds);
       for (const discovered of routeEntries) allEntries.add(discovered);
-      const ssrEntries = await discovery.discoverRendered(seeds, { importsAs });
-      const serverModules = handoffs || dictionary ? await discovery.serverModules(seeds, { importsAs }) : [];
-      if (dictionary) this.#serverModulesByRoute.set(entry.routeId, serverModules);
-      const handed = await handoffs?.read(serverModules);
+      const serverModules = handoffs || dictionary ? await discovery.serverModules(seeds, { importsAs }) : undefined;
+      const ssrEntries = await discovery.discoverRendered(seeds, { importsAs, serverModules });
+      if (dictionary && serverModules) this.#serverModulesByRoute.set(entry.routeId, serverModules);
+      const handed = serverModules ? await handoffs?.read(serverModules) : undefined;
       const loaded = [...new Set([...ssrEntries, ...(handed?.referenceFiles ?? [])])].sort();
       this.#ssrEntriesByRoute.set(entry.routeId, loaded);
       const besidesReferences = handed ? routeEntries.filter((file) => !ModelReference.isFile(file)) : routeEntries;
