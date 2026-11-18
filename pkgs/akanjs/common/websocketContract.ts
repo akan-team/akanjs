@@ -73,7 +73,8 @@ const canonicalOf = (value: unknown, holding: Set<object>): unknown => {
     if (value instanceof Set) return { "%set": [...value].map((item) => canonicalOf(item, holding)) };
     if (value instanceof RegExp) return { "%regexp": [value.source, value.flags] };
     if (Array.isArray(value)) return value.map((item) => canonicalOf(item, holding) ?? null);
-    const record: Record<string, unknown> = {};
+    //? No prototype: on a plain object, assigning an own `__proto__` key sets the prototype and the key is lost.
+    const record: Record<string, unknown> = Object.create(null);
     for (const key of Object.keys(value).sort()) {
       const item = canonicalOf((value as Record<string, unknown>)[key], holding);
       if (item !== undefined) record[key] = item;
