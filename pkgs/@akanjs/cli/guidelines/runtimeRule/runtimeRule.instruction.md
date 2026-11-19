@@ -333,13 +333,15 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
   before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
   and before the app files are copied. An `image` object picks each leg's base by `TARGETARCH`.
-- **`installRuns` are chained onto `bun install` in one `RUN`**, so what a step deletes from `node_modules` is in no
-  layer: prune a package that ships every platform's binary there. An `rm` in `postRuns` is a later layer.
+- **`installRuns` are chained onto `bun install` in one `RUN`**, each in its own subshell, so what a step deletes
+  from `node_modules` is in no layer: prune a package that ships every platform's binary there. An `rm` in
+  `postRuns` is a later layer.
 - **`crossBuild: true` installs on the build machine for the target** (`buildx --platform linux/arm64` on amd64,
   where Bun under QEMU crashes): a `FROM --platform=$BUILDPLATFORM` stage runs `bun install --os linux --cpu
   <target>` and `installRuns`, and the target's stage copies its `/workspace` and runs `apt-get`, `preRuns` and
-  `postRuns`. A dependency's lifecycle script then runs on the build machine's CPU. It needs BuildKit, and a string
-  `image` published for the build machine too.
+  `postRuns`. A dependency's lifecycle script then runs on the build machine's CPU, where `preRuns` never ran, so
+  one that downloads or compiles a native binary gets the build machine's. It needs BuildKit (an `image` object
+  does too), and a string `image` published for the build machine.
 - **`akan build` writes a `.dockerignore`**: `sqlite`, `local`, `runtime`, `data`, `.akan/artifact/image-cache` and
   `node_modules`, so the database a build run by hand wrote beside `main.js` stays out of `COPY . .`.
 - **The server runs as `USER 1000:1000`, oven/bun's `bun` user, and owns only the directories it writes.** The

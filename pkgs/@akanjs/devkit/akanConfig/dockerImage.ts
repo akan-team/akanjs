@@ -56,8 +56,9 @@ const dockerInstallScripts = (
   lockfile: boolean,
 ) => {
   const install = `bun install --production${lockfile ? " --frozen-lockfile" : ""}${crossBuild ? ` ${DOCKER_INSTALL_TARGET}` : ""}`;
+  //? In a subshell each: a step ending in `|| true` would otherwise forgive a failed `bun install` before it.
   const steps = installRuns.flatMap((run) =>
-    typeof run === "string" ? [run] : Object.entries(run).map(([arch, script]) => archGuard(arch, script)),
+    typeof run === "string" ? [`( ${run} )`] : Object.entries(run).map(([arch, script]) => archGuard(arch, script)),
   );
   return [
     "WORKDIR /workspace",

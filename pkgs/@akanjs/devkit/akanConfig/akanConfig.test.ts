@@ -364,7 +364,14 @@ describe("AkanAppConfig", () => {
       app,
       ["vision"],
       packageJson,
-      { docker: { installRuns: ["rm -rf node_modules/a/win32", { arm64: "rm -rf node_modules/a/linux/x64" }] } },
+      {
+        docker: {
+          installRuns: [
+            "find node_modules -name '*.map' -delete || true",
+            { arm64: "rm -rf node_modules/a/linux/x64" },
+          ],
+        },
+      },
       baseDevEnv,
       [],
       { externalLibs: [], docker: { preRuns: [], installRuns: ["rm -rf node_modules/a/darwin"], postRuns: [] } },
@@ -373,8 +380,8 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfile).toContain(
       [
         "RUN bun install --production --frozen-lockfile \\",
-        "  && rm -rf node_modules/a/darwin \\",
-        "  && rm -rf node_modules/a/win32 \\",
+        "  && ( rm -rf node_modules/a/darwin ) \\",
+        "  && ( find node_modules -name '*.map' -delete || true ) \\",
         '  && if [ "$TARGETARCH" = "arm64" ]; then     rm -rf node_modules/a/linux/x64;   fi',
         "COPY . .",
       ].join("\n"),
@@ -392,7 +399,7 @@ describe("AkanAppConfig", () => {
       "WORKDIR /workspace",
       "COPY ./package.json ./bun.lock ./",
       'RUN bun install --production --frozen-lockfile --os linux --cpu "$(echo "$TARGETARCH" | sed s/amd64/x64/)" \\',
-      "  && echo prune",
+      "  && ( echo prune )",
     ]);
     expect(lines.slice(target).filter((line) => line.includes("bun install"))).toEqual([]);
     expect(lines.slice(lines.indexOf("RUN echo pre"), lines.indexOf("COPY . .") + 1)).toEqual([
