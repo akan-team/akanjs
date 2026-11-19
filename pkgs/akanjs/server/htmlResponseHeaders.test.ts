@@ -655,13 +655,12 @@ describe("HTML response classes", () => {
 
   test("a page whose replay would name more hashes than a response does skips the cache, says why, and is warned about once", async () => {
     await withEnv(production, async () => {
-      const { get, cache, logger } = documentsOf(true);
+      const { get, logger } = documentsOf(true);
       const warn = spyOn(logger, "warn").mockImplementation(() => undefined);
       const before = RouteCacheTally.snapshot().html.bypass["script-hashes"];
       const first = await get("/en/boundaries");
       const firstHtml = await first.text();
       const nonce = /'nonce-([^']+)'/.exec(first.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "")?.[1] ?? "";
-      await stored(cache, 1);
       const second = await get("/en/boundaries");
       const secondHtml = await second.text();
       const third = await get("/en/boundaries?from=another-url");
@@ -687,6 +686,32 @@ describe("HTML response classes", () => {
       expect(RouteCacheTally.snapshot().html.bypass["script-hashes"] - before).toBeGreaterThanOrEqual(2);
       expect(warnings).toHaveLength(1);
       expect(warnings[0]).toContain(`a response names ${MAX_RESPONSE_SCRIPT_HASHES}`);
+    });
+  }, 30_000);
+
+  test("a page rendered for each request says so, and why, from its second response until the cache is cleared", async () => {
+    await withEnv(production, async () => {
+      const { get, cache } = documentsOf(true);
+      const before = RouteCacheTally.snapshot().html.bypass["dynamic-request-api"];
+      const first = await get("/en/nonced");
+      await first.text();
+      const second = await get("/en/nonced");
+      await second.text();
+      const otherUrl = await get("/en/nonced?from=another-url");
+      await otherUrl.text();
+      cache.invalidate();
+      const cleared = await get("/en/nonced");
+      await cleared.text();
+
+      expect([first.headers.get("X-Akan-Cache"), first.headers.get("X-Akan-Cache-Reason")]).toEqual(["MISS", null]);
+      expect([second.headers.get("X-Akan-Cache"), second.headers.get("X-Akan-Cache-Reason")]).toEqual([
+        "BYPASS",
+        "dynamic-request-api",
+      ]);
+      expect(otherUrl.headers.get("X-Akan-Cache")).toBe("MISS");
+      expect(cleared.headers.get("X-Akan-Cache")).toBe("MISS");
+      expect(cache.metrics().httpHtmlCacheEntries).toBe(0);
+      expect(RouteCacheTally.snapshot().html.bypass["dynamic-request-api"] - before).toBe(1);
     });
   }, 30_000);
 

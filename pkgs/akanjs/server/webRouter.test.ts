@@ -2499,7 +2499,7 @@ describe("WebRouter full SSR cache orchestration", () => {
     );
   });
 
-  test("does not store full SSR HTML when worker cache state is uncacheable", async () => {
+  test("does not store full SSR HTML when worker cache state is uncacheable, and says why from the next response", async () => {
     const fakeWorker = createFakeRscWorker(() => ({
       cacheState: { cacheable: false, reason: "dynamic-request-api" },
     }));
@@ -2511,12 +2511,34 @@ describe("WebRouter full SSR cache orchestration", () => {
         await expect(first.text()).resolves.toContain("/docs/dynamic:render-1");
 
         const second = await fullSsr(new Request("https://example.test/docs/dynamic"));
-        expect(second.headers.get("X-Akan-Cache")).toBe("MISS");
+        expect(second.headers.get("X-Akan-Cache")).toBe("BYPASS");
+        expect(second.headers.get("X-Akan-Cache-Reason")).toBe("dynamic-request-api");
         await expect(second.text()).resolves.toContain("/docs/dynamic:render-2");
         expect(fakeWorker.renderCalls).toHaveLength(2);
       },
       { worker: fakeWorker },
     );
+  });
+
+  test("a render that was cancelled or failed leaves the next request a plain miss", async () => {
+    for (const reason of ["cancelled", "error", "missing-cache-state"]) {
+      const fakeWorker = createFakeRscWorker(() => ({ cacheState: { cacheable: false, reason } }));
+
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          const first = await fullSsr(new Request("https://example.test/docs/transient"));
+          await first.text();
+          const second = await fullSsr(new Request("https://example.test/docs/transient"));
+          await second.text();
+
+          expect([second.headers.get("X-Akan-Cache"), second.headers.get("X-Akan-Cache-Reason")]).toEqual([
+            "MISS",
+            null,
+          ]);
+        },
+        { worker: fakeWorker },
+      );
+    }
   });
 
   test("answers a redirect known before the response starts with a real one", async () => {
@@ -2630,7 +2652,8 @@ describe("WebRouter full SSR cache orchestration", () => {
         await expect(first.text()).resolves.toContain("/docs/redirect:render-1");
 
         const second = await fullSsr(new Request("https://example.test/docs/redirect"));
-        expect(second.headers.get("X-Akan-Cache")).toBe("MISS");
+        expect(second.headers.get("X-Akan-Cache")).toBe("BYPASS");
+        expect(second.headers.get("X-Akan-Cache-Reason")).toBe("render-redirect");
         await expect(second.text()).resolves.toContain("/docs/redirect:render-2");
         expect(fakeWorker.renderCalls).toHaveLength(2);
       },
