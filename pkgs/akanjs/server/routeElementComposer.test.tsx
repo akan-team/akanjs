@@ -131,6 +131,13 @@ describe("RouteElementComposer navigation keying", () => {
     expect(el.key).toBeNull();
   });
 
+  test("keys by path, so a query-only navigation keeps the page drawn", () => {
+    const keyOf = (href: string) => composePage(pending, RouteElementComposer.navKeyOf(new URL(href))).key;
+
+    expect(keyOf("http://localhost/loadingtest/bbb?peek=board:1")).toBe(keyOf("http://localhost/loadingtest/bbb"));
+    expect(keyOf("http://localhost/loadingtest/aaa?peek=board:1")).not.toBe(keyOf("http://localhost/loadingtest/bbb"));
+  });
+
   test("does not key when navKey is absent", () => {
     const el = composePage(pending);
 

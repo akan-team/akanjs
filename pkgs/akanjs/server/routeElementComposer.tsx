@@ -119,6 +119,11 @@ export class RouteElementComposer {
     });
   }
 
+  //? Path only: keyed by its query too, a page remounted behind its `.loading()` on a query-only move (a peek, a sheet).
+  static navKeyOf(url: URL): string {
+    return url.pathname;
+  }
+
   static compose({
     pathRoute,
     params,
