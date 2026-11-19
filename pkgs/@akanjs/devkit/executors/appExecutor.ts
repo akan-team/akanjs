@@ -322,7 +322,15 @@ export class AppExecutor extends SysExecutor {
   async syncPages(libDeps: string[]): Promise<boolean> {
     const akanConfig = await this.getConfig();
     const parents = AppExecutor.#pageLibParents(akanConfig.basePaths);
-    const libs = await this.#resolvePageLibs(akanConfig.syncPageLibs, libDeps);
+    const libsOf = new Map<string, string[]>();
+    for (const parent of parents)
+      libsOf.set(
+        parent,
+        await this.#resolvePageLibs(
+          akanConfig.routePageLibs.get(parent.slice(0, -1)) ?? akanConfig.syncPageLibs,
+          libDeps,
+        ),
+      );
     //* Not `getPageRoots`: it drops links whose target is gone, exactly the ones a sync must clean up.
     const linked = (
       await Promise.all(
@@ -333,7 +341,9 @@ export class AppExecutor extends SysExecutor {
         }),
       )
     ).flat();
-    const wanted = parents.flatMap((parent) => libs.map((lib) => `${parent}${AppExecutor.#pageLibsDir}/(${lib})/`));
+    const wanted = [...libsOf].flatMap(([parent, libs]) =>
+      libs.map((lib) => `${parent}${AppExecutor.#pageLibsDir}/(${lib})/`),
+    );
     //* A copy — the Windows fallback when a junction is refused — does not follow its lib, so only links are current.
     const isLink = async (key: string) =>
       (await lstat(`${this.cwdPath}/page/${key.slice(0, -1)}`).catch(() => null))?.isSymbolicLink() ?? false;
@@ -342,8 +352,8 @@ export class AppExecutor extends SysExecutor {
     await Promise.all(
       parents.map((parent) => this.removeDir(`${this.cwdPath}/page/${parent}${AppExecutor.#pageLibsDir}`)),
     );
-    for (const parent of parents) {
-      if (!libs.length) break;
+    for (const [parent, libs] of libsOf) {
+      if (!libs.length) continue;
       const libsDir = `${this.cwdPath}/page/${parent}${AppExecutor.#pageLibsDir}`;
       await this.mkdir(libsDir);
       await Promise.all(
