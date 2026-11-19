@@ -216,6 +216,12 @@ export class ApplicationBuildRunner {
             ? "skipped"
             : "disabled by akan.config.ts web.ssr",
     );
+    const leftOut = ServerEnvProfile.leftOutNotice(
+      this.#profile ?? "",
+      this.#app.workspace.workspaceRoot,
+      this.#libEnvsLeftOut,
+    );
+    if (leftOut) this.#app.logger.warn(leftOut);
     if (this.#verify) {
       const routeJs = await this.#runBudgetPhase(environment);
       await this.#app.dist.writeJson("akan.build.json", { profile: "verify", builtAt: new Date().toISOString() });
@@ -455,7 +461,7 @@ export class ApplicationBuildRunner {
   }
 
   #serverEnv: BunPlugin | null = null;
-  #warnedLibEnvs = new Set<string>();
+  #libEnvsLeftOut = new Map<string, string[]>();
   //? One plugin for every server-side bundle of the build: the backend, the RSC worker and the SSR route bundle.
   #serverEnvPlugin(baseEnv: string, branches: Iterable<string>): BunPlugin {
     this.#serverEnv ??= createServerEnvPlugin({
@@ -465,12 +471,7 @@ export class ApplicationBuildRunner {
       profile: this.#profile,
       secrets: this.#secretEnv,
       onLibEnv: (file, { profileFile, stripped }) => {
-        if (profileFile || !stripped.length || this.#warnedLibEnvs.has(file)) return;
-        this.#warnedLibEnvs.add(file);
-        const lib = path.relative(this.#app.workspace.workspaceRoot, file);
-        this.#app.logger.warn(
-          `${lib}: the "${this.#profile}" build leaves out ${stripped.join(", ")}. Give the lib ${path.basename(ServerEnvProfile.profileFileOf(file, this.#profile ?? ""))} to say what this profile runs with.`,
-        );
+        if (!profileFile && stripped.length) this.#libEnvsLeftOut.set(file, stripped);
       },
     });
     return this.#serverEnv;
