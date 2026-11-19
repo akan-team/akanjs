@@ -24,7 +24,11 @@ export const DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES = 2 * 1024 * 1024;
 /** Well above any sensible TTL: this only has to reclaim a cache nobody is reading, not track expiry closely. */
 const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
 
-const emptyBody: EncodedBody = { bytes: new Uint8Array(0), encodings: {}, byteLength: 0 };
+//? A route rendered for each request holds one skip per URL: kept in the pages' cache they would push pages out.
+const HTML_STORE_SKIP_MAX_ENTRIES = 1000;
+//? Only what the page's own render decided is held. A cancelled or failed render says nothing of the next one, and
+//? holding it would let one visitor's closed tab switch the cache off for everyone asking for that URL.
+const HELD_SKIP_REASONS = ["dynamic-request-api", "render-not-found", "render-redirect", "late-redirect"];
 
 interface HtmlCacheStreamOptions {
   shouldCache?: () => boolean | Promise<boolean>;
@@ -102,13 +106,18 @@ export interface CachedHtmlPage {
   scriptHashes: string[];
 }
 
-interface CachedHtmlResult extends CachedHtmlPage {
-  //* Held in place of a page whose replay would name too many hashes: its requests skip the cache until this expires.
-  unstored?: true;
+interface HtmlCacheMetadata {
   pathname: string;
   routeId?: string;
   tags?: string[];
   queryForm: RouteCacheQueryForm;
+}
+
+interface CachedHtmlResult extends CachedHtmlPage, HtmlCacheMetadata {}
+
+//* Held in place of a page no replay can answer: its requests skip the cache, saying why, until this expires.
+interface HtmlStoreSkip extends HtmlCacheMetadata {
+  reason: string;
 }
 
 //? The host learns a route's query form only from its render, so it looks a page up under both its query's keys.
@@ -140,6 +149,9 @@ export class HtmlResultCache {
       sweepIntervalMs: ROUTE_CACHE_SWEEP_INTERVAL_MS,
     },
   );
+  readonly #skips = new LruTtlCache<HtmlStoreSkip>(HTML_STORE_SKIP_MAX_ENTRIES, {
+    sweepIntervalMs: ROUTE_CACHE_SWEEP_INTERVAL_MS,
+  });
   readonly #prodMode: boolean;
   readonly #devRegistry: boolean;
   #hits = 0;
@@ -181,17 +193,18 @@ export class HtmlResultCache {
       return decision;
     }
     const entry = { ...decision.entry, exactKey: createRouteCacheKey({ request: req, url, theme, variant }) };
-    if (this.#lookup(entry)?.unstored) {
+    const skip = HtmlResultCache.#lookup(this.#skips, entry);
+    if (skip) {
       this.#bypass += 1;
-      RouteCacheTally.bypass("html", "script-hashes");
-      return { entry: null, reason: "script-hashes" };
+      RouteCacheTally.bypass("html", skip.reason);
+      return { entry: null, reason: skip.reason };
     }
     return { entry };
   }
 
   get(entry: HtmlCacheEntry): CachedHtmlPage | null {
-    const cached = this.#lookup(entry);
-    if (!cached || cached.unstored) {
+    const cached = HtmlResultCache.#lookup(this.#cache, entry);
+    if (!cached) {
       this.#misses += 1;
       return null;
     }
@@ -210,29 +223,33 @@ export class HtmlResultCache {
   }
 
   //? An exact route's render of the canonical URL sits under the canonical key too, and answers only that URL.
-  #lookup({ key, exactKey }: HtmlCacheEntry): CachedHtmlResult | null {
-    const canonical = this.#cache.get(key);
+  static #lookup<T extends HtmlCacheMetadata>(cache: LruTtlCache<T>, { key, exactKey }: HtmlCacheEntry): T | null {
+    const canonical = cache.get(key);
     if (canonical && (canonical.queryForm === "canonical" || key === exactKey)) return canonical;
-    return key === exactKey ? null : this.#cache.get(exactKey);
+    return key === exactKey ? null : cache.get(exactKey);
+  }
+
+  static #skipReason(
+    control: SsrLateControl | null,
+    workerState: RouteCacheRenderState,
+    { policy, dynamicUsage }: AkanRequestStore,
+  ): string {
+    if (!workerState.cacheable && workerState.reason) return workerState.reason;
+    const hostReason = shouldStoreRouteCache({ policy, dynamicUsage }).reason;
+    if (hostReason) return hostReason;
+    return control ? `render-${control.type}` : "store-skip";
   }
 
   storeWhileStreaming(htmlStream: ReadableStream<Uint8Array>, input: HtmlStoreInput): ReadableStream<Uint8Array> {
     const { entry, pathname, hostRequestStore, logger } = input;
     let htmlStoreTtl = entry.ttl;
     let htmlStoreKey = entry.exactKey;
-    let htmlCacheMetadata: Omit<CachedHtmlResult, keyof CachedHtmlPage> = { pathname, queryForm: "exact" };
+    let htmlCacheMetadata: HtmlCacheMetadata = { pathname, queryForm: "exact" };
+    let skipReason = "store-skip";
     const shouldCacheHtml = Promise.all([input.lateControl, input.cacheState]).then(([control, cacheState]) => {
       const queryForm = cacheState.queryForm ?? "exact";
       //? The host learns how a route is keyed only from its render, so a miss is counted here rather than at lookup.
       RouteCacheTally.lookup("html", false, HtmlResultCache.#lookupReason(entry, queryForm));
-      const storeTtl = resolveHtmlRouteCacheStoreTtl({
-        baseTtl: entry.ttl,
-        workerCacheState: cacheState,
-        hostRequestStore,
-        lateControl: control,
-      });
-      if (storeTtl === null) return false;
-      htmlStoreTtl = storeTtl;
       htmlStoreKey = queryForm === "canonical" ? entry.key : entry.exactKey;
       htmlCacheMetadata = {
         pathname,
@@ -240,6 +257,17 @@ export class HtmlResultCache {
         tags: cacheState.tags,
         queryForm,
       };
+      const storeTtl = resolveHtmlRouteCacheStoreTtl({
+        baseTtl: entry.ttl,
+        workerCacheState: cacheState,
+        hostRequestStore,
+        lateControl: control,
+      });
+      if (storeTtl === null) {
+        skipReason = HtmlResultCache.#skipReason(control, cacheState, hostRequestStore);
+        return false;
+      }
+      htmlStoreTtl = storeTtl;
       return true;
     });
     return cacheHtmlWhileStreaming(
@@ -247,8 +275,7 @@ export class HtmlResultCache {
       (bytes) => {
         const scriptHashes = HtmlResultCache.#scriptHashesOf(bytes, input.scripts);
         if (scriptHashes.length > MAX_RESPONSE_SCRIPT_HASHES) {
-          const unstored = { body: emptyBody, scriptHashes: [], unstored: true as const, ...htmlCacheMetadata };
-          this.#cache.set(htmlStoreKey, unstored, htmlStoreTtl);
+          this.#skips.set(htmlStoreKey, { reason: "script-hashes", ...htmlCacheMetadata }, htmlStoreTtl);
           const route = htmlCacheMetadata.routeId ?? "unknown";
           if (ScriptPolicy.firstReport("replay", route))
             logger.warn(
@@ -267,7 +294,10 @@ export class HtmlResultCache {
           parsePositiveInt(process.env.AKAN_HTML_RESULT_CACHE_MAX_BODY_BYTES) ??
           DEFAULT_HTML_RESULT_CACHE_MAX_BODY_BYTES,
         onSkip: (reason) => {
-          logger.verbose(`html cache store skipped pathname=${pathname} reason=${reason}`);
+          const why = reason === "store-skip" ? skipReason : reason;
+          if (HELD_SKIP_REASONS.includes(why))
+            this.#skips.set(htmlStoreKey, { reason: why, ...htmlCacheMetadata }, entry.ttl);
+          logger.verbose(`html cache store skipped pathname=${pathname} reason=${why}`);
         },
       },
     );
@@ -277,17 +307,12 @@ export class HtmlResultCache {
     const payload = typeof invalidation === "string" ? { reason: invalidation } : invalidation;
     if (!hasRouteCacheInvalidationScope(payload)) {
       this.#cache.clear();
+      this.#skips.clear();
     } else if (payload) {
-      this.#cache.invalidate((_key, value) =>
-        shouldInvalidateRouteCacheEntry(
-          {
-            pathname: value.pathname,
-            routeId: value.routeId,
-            tags: value.tags,
-          },
-          payload,
-        ),
-      );
+      const matches = (_key: string, { pathname, routeId, tags }: HtmlCacheMetadata) =>
+        shouldInvalidateRouteCacheEntry({ pathname, routeId, tags }, payload);
+      this.#cache.invalidate(matches);
+      this.#skips.invalidate(matches);
     }
   }
 
@@ -303,5 +328,6 @@ export class HtmlResultCache {
 
   dispose() {
     this.#cache.dispose();
+    this.#skips.dispose();
   }
 }

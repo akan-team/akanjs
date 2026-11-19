@@ -732,8 +732,8 @@ keys() · entries() · forEach(fn)`,
             <Docs.SubSubTitle>{l.trans({ en: "What the key holds", ko: "key에 들어가는 것" })}</Docs.SubSubTitle>
             <div>
               {l.trans({
-                en: "The origin, the base path, the locale the URL resolved to, the path, the query and the theme cookie, plus a crawler flag for HTML. The browser's `Accept-Language` is not in it: visitors asking for one locale's page share its entry. A page that reads a request header or cookie with `headers()` or `cookies()` is rendered for each request and never stored.",
-                ko: "origin, base path, URL이 가리키는 locale, 경로, 쿼리, theme 쿠키이고, HTML에는 크롤러 여부가 더해집니다. 브라우저의 `Accept-Language`는 들어가지 않으므로 같은 locale 페이지를 요청한 방문자는 한 항목을 함께 씁니다. `headers()`나 `cookies()`로 요청 헤더나 쿠키를 읽는 페이지는 요청마다 렌더하고 저장하지 않습니다.",
+                en: "The origin, the base path, the locale the URL resolved to, the path, the query and the theme cookie, plus a crawler flag for HTML. The browser's `Accept-Language` is not in it: visitors asking for one locale's page share its entry. A page that reads a request header or cookie with `headers()` or `cookies()` is rendered for each request and never stored. So is a page whose render calls `fetch.*`, because the call carries the visitor's session and address to the endpoint: pass `{ forwardVisitor: false }` to a call whose endpoint answers every caller alike and the page is stored. Either page answers `MISS` once and from then on `BYPASS` with `X-Akan-Cache-Reason: dynamic-request-api`.",
+                ko: "origin, base path, URL이 가리키는 locale, 경로, 쿼리, theme 쿠키이고, HTML에는 크롤러 여부가 더해집니다. 브라우저의 `Accept-Language`는 들어가지 않으므로 같은 locale 페이지를 요청한 방문자는 한 항목을 함께 씁니다. `headers()`나 `cookies()`로 요청 헤더나 쿠키를 읽는 페이지는 요청마다 렌더하고 저장하지 않습니다. 렌더 중에 `fetch.*`를 부르는 페이지도 같습니다. 그 호출이 방문자의 세션과 주소를 endpoint로 넘기기 때문입니다. 모든 호출자에게 같은 답을 주는 endpoint라면 호출에 `{ forwardVisitor: false }`를 넘기면 페이지가 저장됩니다. 두 경우 모두 첫 응답은 `MISS`, 그 뒤로는 `BYPASS`와 `X-Akan-Cache-Reason: dynamic-request-api`입니다.",
               })}
             </div>
             <Docs.SubSubTitle>{l.trans({ en: "The query in the key", ko: "key 속의 쿼리" })}</Docs.SubSubTitle>
