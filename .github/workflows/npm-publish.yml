@@ -82,9 +82,33 @@ jobs:
             npm publish "$tarball" --tag "$tag" --provenance
           done
 
+  # npm has served a release's packages up to an hour apart, and an install that pins them all fails until the last
+  # one is there. The tag below is the sign that every package of the version installs.
+  served:
+    name: Wait until the registry serves every package
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-packs
+      - name: Poll the version and the tarball of each package
+        run: |
+          version=$(jq -r .version publish.json)
+          for tarball in $(jq -r '.tarballs[]' publish.json); do
+            name=$(tar -xzOf "$tarball" package/package.json | jq -r .name)
+            until url=$(curl -fsS "https://registry.npmjs.org/$name/$version" | jq -er .dist.tarball) &&
+              curl -fsSI -o /dev/null "$url"; do
+              echo "$name@$version is not served yet"
+              sleep 60
+            done
+            echo "$name@$version is served"
+          done
+
   tag:
     name: Tag the published commit
-    needs: [pack, publish]
+    needs: [pack, publish, served]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:

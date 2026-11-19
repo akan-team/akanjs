@@ -654,6 +654,7 @@ class Router {
    * Leaves a state of the page a `push` opened — a record in `?id=`, a sheet: steps back when the entry under this one
    * is `href`, and rewrites this entry to `href` otherwise. A CSR stack rewrites a push that keeps the pathname rather
    * than stacking it, and a visitor may have opened this address directly, so `back()` alone would leave the page.
+   * Only the one entry under this one is looked at, and the rewrite keeps the scroll unless `scrollToTop` is set.
    */
   backTo(href: string, routeOptions?: RouteOptions) {
     if (getEnv().side === "server") throw new Error("backTo is only available in client side");
@@ -664,7 +665,7 @@ class Router {
       this.canGoBack() &&
       CsrRuntimeParams.sameRoute(this.#routeShown(from), Router.#routeHref(this.#getPathInfo(href)));
     if (isUnder) this.back(routeOptions);
-    else this.replace(href, routeOptions);
+    else this.replace(href, { scrollToTop: false, ...routeOptions });
     return undefined as never;
   }
   back(routeOptions?: RouteOptions) {

@@ -1032,7 +1032,7 @@ describe("router", () => {
 });
 
 describe("router backTo", () => {
-  const stackRouter = async (type: "ssr" | "csr", calls: unknown[]) => {
+  const stackRouter = async (type: "ssr" | "csr", calls: unknown[], replaceOptions: unknown[] = []) => {
     const { router } = await import("./router");
     const { csrLocation } = await import("./csrLocation");
     const pathOf = (href: string) => href.split("?")[0];
@@ -1043,8 +1043,9 @@ describe("router backTo", () => {
         if (type === "csr" && pathOf(href) === pathOf(csrLocation.href)) csrLocation.replace({ akanEntryId: 1 }, href);
         else csrLocation.push(null, href);
       },
-      replace: (href) => {
+      replace: (href, routeOptions) => {
         calls.push(["replace", href]);
+        replaceOptions.push(routeOptions);
         csrLocation.replace(null, href);
       },
       back: () => {
@@ -1088,6 +1089,20 @@ describe("router backTo", () => {
     await settle();
     expect(calls.at(-1)).toEqual(["replace", "/en/board/archive"]);
     expect(at()).toBe("/en/board/archive");
+  });
+
+  test("keeps the scroll where it rewrites the entry, unless the caller asks for the top", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle } = installSessionHistory("/en/board?ticketId=1");
+    const replaceOptions: unknown[] = [];
+    const router = await stackRouter("ssr", [], replaceOptions);
+
+    router.backTo("/board");
+    router.backTo("/board", { scrollToTop: true });
+    await settle();
+
+    expect(replaceOptions).toEqual([{ scrollToTop: false }, { scrollToTop: true }]);
   });
 
   test("rewrites the entry a CSR stack kept for a push on one pathname, and still steps back to the page under it", async () => {

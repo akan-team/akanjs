@@ -1,31 +1,34 @@
 ---
 name: akan-ui
-description: "Build Akan pages and components: the server-by-default rule, the Unit/View vs Template/Zone/Util split, forms, and what never to hand-roll."
+description: "A module's components: the Unit/View vs Template/Zone/Util split, forms, and what never to hand-roll. A page or a model-free ui/ component needs only the ssr, style and tsx rules."
 ---
 
 <!-- akan:generated -->
 
 # Akan UI
 
-A new View / Unit / Template / Zone / Util for an existing module comes from the `create-ui` workflow (the
-`akan-scaffold` skill). Edit the scaffolded component instead of authoring one from scratch.
+A page, or a `ui/` component bound to no model, needs nothing more from here: the `ssr`, `style` and `tsx` rules
+loaded with the file are its contract. The rest is for a module's own components, lists and forms.
 
-## The boundary is mechanical, not a judgement call
+**Server is the default and `"use client"` is a cost you justify per component.** A component earns the
+directive only by using a hook, a JSX event handler, the store, a browser global, or a client-only package.
+Rendering markup, reading a param, calling `l()`, and mapping over data are all server work.
+
+Four moves that keep markup on the server: wrap the interaction and render `children` untouched; split a
+compound component so only the provider holds state; fetch in the route and pass the result into a `Zone` as
+an `init` prop; push the boundary down to the leaf that needs it.
+
+## A module's components
+
+A new View / Unit / Template / Zone / Util for an existing module comes from the `create-ui` workflow (the
+`akan-scaffold` skill). Edit the scaffolded component instead of authoring one from scratch. The boundary is
+mechanical by role, not a judgement call:
 
 | role | side | directive |
 | --- | --- | --- |
 | `<Model>.Unit.tsx`, `<Model>.View.tsx` | server | never `"use client"` |
 | `<Model>.Template.tsx`, `<Model>.Zone.tsx`, `<Model>.Util.tsx` | client | `"use client"` on line 1 |
 | `page/**` | server | never |
-
-**Server is the default and `"use client"` is a cost you justify per component.** A component earns the
-directive only by using a hook, a JSX event handler, the store, a browser global, or a client-only package.
-Rendering markup, reading a param, calling `l()`, and mapping over data are all server work. Measure with
-`akan quality ssr`; treat 50% server share as the floor and a falling share as a regression.
-
-Four moves that keep markup on the server: wrap the interaction and render `children` untouched; split a
-compound component so only the provider holds state; fetch in the route and pass the result into a `Zone` as
-an `init` prop; push the boundary down to the leaf that needs it.
 
 ## Never hand-roll these
 
@@ -46,11 +49,6 @@ an `init` prop; push the boundary down to the leaf that needs it.
 
 Conditional render is `cond ? <X/> : null`. **Never `{cond && <X/>}`** — in a `className` context it renders
 the literal string `"false"`.
-
-## Classes
-
-Class order and the colour vocabulary are the `style` rule. Reach for `cn` only for a conditional or to merge an
-incoming `className`, and merge the caller last.
 
 ## Forms
 

@@ -74,8 +74,9 @@ File names, stages, the `.render()` order and what a route file must never do ar
   `router.back()` or a `renderMode` branch. A CSR or native stack rewrites a push that keeps the pathname rather than
   stacking it, and the address may be opened directly.
 - A client filter kept in the URL without reloading the page: ``router.replace(`/books?q=${q}`, { shallow: true,
-  scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`. Shallow
-  holds only while the path stays the same; a server `.search()` sees the value at the next full navigation.
+  scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`, which
+  follows the replace and the back and forward buttons. Shallow holds only while the path stays the same; a server
+  `.search()` sees the value at the next full navigation.
 - On a web page's first render `st.use.searchParams()` is still the server's empty snapshot, synced right after
   hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
 - A `Link` renders its page ahead of the click, guards included: on hover, on keyboard focus, or as it shows with
