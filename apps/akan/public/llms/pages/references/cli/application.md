@@ -62,6 +62,8 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - build: Build the app for production into `dist/apps/<app>`.
 
+  - secret-env: List the secret variables a built server reads, or write them for its deployment.
+
 - Native
 
   - start-ios, start-android: Run the app on a simulator, an emulator or a connected device.
@@ -140,7 +142,7 @@ Run the dev server, SSR frontend and backend together. Name apps space- or comma
 
 - memory budget: `AKAN_MEMORY_LIMIT` lowers the memory `--concurrency` is derived from.
 
-- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. `--share` hides it.
+- Akan Studio: `/_akan/studio` on the dev URL draws the ERD, request paths, Change Map and framework map, linked to source, and the running server's DI graph and jobs. It answers localhost, IP addresses and the app's own hosts only, and `--share` hides it.
 
 `akan dbup [--mode <mode>]`
 
@@ -248,7 +250,7 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 - --endpoint (String): Endpoint globs, comma-separated: `mutation:*`, `query:userList`.
 
-- --trace (String): One request's traceId; collects every line that request wrote.
+- --trace (String): One request's traceId, or the id its caller sent, as sent; collects every line that request wrote.
 
 - --child (String): Replica indexes, comma-separated.
 
@@ -330,7 +332,7 @@ Prepare an app, library or package, then run its tests with `bun test --isolate`
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 
-`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>]`
+`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>] [--inline-secrets <boolean>]`
 
 Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.
 
@@ -350,13 +352,35 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - --raise-budget (Boolean, default false): Rewrite the app's `akan.budget.json` at what every route measures now, raising the entries of the routes that grew, and name them. Run it in the change that grows a route on purpose, and commit the file with it. Pass one of the three budget flags at most.
 
+- --inline-secrets (Boolean, default false): Keep the server env's secret values in the build, as before 3.4.0, for a deployment that does not set their variables yet. A variable that is set still wins. Nothing about a secret stops this build: when the env file cannot be loaded it warns and bundles the env files as written. Version 3.5.0 removes the flag.
+
 - alias: `akan b` runs this command.
+
+- server env secrets: The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path: `security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` from `JWT_SECRET`, an array holding a secret from one JSON variable. `akan.env.json` and the Dockerfile list the names in `AKAN_ENV_NAMES`, the build prints them, and a server started without one warns by name, and the framework does not stop for it though whatever reads the value may (3.5.0 will refuse to start). A secret the env file computes or imports stops the build before it writes anything, whatever its length: write the string at the key, or `process.env.<NAME>` there, which the build leaves as that read and never moves. A secret string that another key of the env or the app's code holds as well stops the build when it is long and mixed, and is a warning when it is short or plain. The build loads the env file to list the secrets, with the shell's variables only when the file cannot load without them; a file that throws as it loads stops the build with the error's class and line. No message prints a value. A `--profile` build and a desktop or mobile build bundle their env files as written. See `secret-env`.
 
 - lib defaults: With `--profile`, a lib that has no profile file of its own ships its defaults with every secret-named value left out, and the build names what it left out.
 
 - web surfaces: The SSR and CSR steps follow `web` in `akan.config.ts`; a surface turned off is skipped.
 
 - route JS budget: The build measures the JavaScript each server route loads: the runtime, every client module statically reachable from its page and layouts, and their vendors; the root layout's `System` counts as the SSR shell a server page renders, not the CSR or MCP App shells. It counts the brotli bytes served and prints the largest routes. A route more than the larger of 1% and 4KB over its `routeJsBrotliKB` entry in `akan.budget.json` is an overage; the slack absorbs the public env values a build inlines, so a budget recorded for one `--env` holds for another. A plain build, `--quiet` included, and `akan verify` warn of an overage, a route with no entry or an unreadable file and never fail on one; `--check-budget` fails on them, naming them all at once, and on an app with no file. Record the file with `--update-budget`, which also adds a new route, and commit it. To raise an entry, run `--raise-budget`, or edit the entry by hand, in the change that grows the route. A mobile or desktop build skips the step.
+
+`akan secret-env <app> [--env <env>] [--out <file>] [--format <k8s|dotenv>] [--name <name>] [--force <boolean>]`
+
+List the environment variables a build of the app reads its server env secrets from. With `--out`, write their values from the env file to a file for the deployment.
+
+- --env (String, local | debug | develop | main): The environment whose server env is read. Without it, `AKAN_PUBLIC_ENV` of the shell, or of the workspace `.env`.
+
+- --out (String): Write the values to this file, readable by its user alone. A path under `dist/`, a path git would track and an existing file are refused. Without it only names are printed.
+
+- --format (String, default k8s, k8s | dotenv): `k8s` writes a Kubernetes `Secret` with base64 `data`. `dotenv` writes `NAME=value` lines that Bun's loader (`bun --env-file`) reads back unchanged.
+
+- --name (String, default <app>-env): `metadata.name` of the Kubernetes Secret.
+
+- --force (Boolean, default false): Replace the `--out` file when it exists.
+
+- listing: One row per variable: its name, its kind (`string`, `json` for an array, `multiline` for a value with line breaks), whether the shell sets it, and its key in the env file. It never prints a value. A secret the env file computes or imports is named below the table as one `akan build` stops at. A key the env file reads from `process.env` itself is not listed: it is the developer's own variable.
+
+- deploying: Kubernetes: apply the file in the app's namespace and name the Secret in the container's `envFrom`. Docker: pass each variable with `-e`; `docker run --env-file` reads each line as written, so it carries no quoted or multi-line value. A host: `bun --env-file=<file> main.js`. The file holds the secrets, so delete it once it is applied.
 
 `akan start-ios <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--team <team>] [--write <boolean>]`
 
@@ -866,6 +890,15 @@ akan build myapp --profile edge
 akan build myapp --check-budget
 akan build myapp --update-budget
 akan build myapp --raise-budget
+akan build myapp --inline-secrets
+```
+
+### secret-env
+
+```bash
+akan secret-env myapp --env main
+akan secret-env myapp --env main --out local/myapp-main.yaml --name myapp-env
+akan secret-env myapp --env main --format dotenv --out local/myapp-main.env
 ```
 
 ### start-ios

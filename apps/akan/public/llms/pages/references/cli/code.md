@@ -89,6 +89,8 @@ Runs the Akan coding agent. Pass a prompt for one run, or leave it off to open t
 
 - --interactive (Boolean, default false, flag: -i): Opens the full-screen session even when a prompt is given, and sends that prompt first.
 
+- --no-ask (Boolean, default false, local profile): Runs this session without asking before a shell command or a network request, and says so in one line at start. The same as `--no-ask-commands --no-ask-network`.
+
 - API key: Set `<PROVIDER>_API_KEY` in the workspace `.env` or your shell, e.g. `DEEPSEEK_API_KEY`.
 
 - resume id: When a full-screen session with a conversation closes, it prints `akan code --resume <id>`.
@@ -115,7 +117,7 @@ Saved
 
 - Waits for your answer (await)
 
-  - local: The default. Everything is on, and nothing asks for approval.
+  - local: The default. Everything is on, and a shell command waits for your approval: `y` once, `a` for the rest of the session (`--no-ask` turns asking off).
 
   - review: A reviewer: only `read`, `ls`, `grep` and `find`, no `AGENTS.md`, sessions in memory.
 
@@ -133,7 +135,9 @@ Off
 
 **Every profile carries the Akan tools and skills.** `review` gets only the Akan tools that change nothing.
 
-**`web` asks before `write` and `edit` only.** `bash` never waits for approval.
+**`web` asks before `write` and `edit` only.** `bash` never waits for approval there. `local` is the reverse: it asks before `bash` and never before a file write.
+
+**`a` stops asking about one command for the session.** It remembers the program, and the sub-command for tools like `git` and `bun`, so allowing `git status` leaves `git diff` asked about; a line of several commands runs unasked only once each is allowed. `/allowed` lists them and `/allowed clear` forgets them, and nothing is kept after the session. A networking command, a command that sends something out (`git push`, `npm publish`, `docker push`, `gh api`), `rm`, a command that runs another (`sudo`, `xargs`, `sh`, `source`), a variable set in front of a command other than a few like `CI=1` and a line that writes a file with `>` are asked about every time.
 
 **MCP servers come from two files.** `~/.akan/code/mcp.json` is yours and `.akan/code/mcp.json` is the checkout's; on a shared name the workspace entry wins.
 

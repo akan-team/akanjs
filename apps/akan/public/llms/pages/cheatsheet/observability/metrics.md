@@ -11,6 +11,9 @@
 - Health And Metrics (#overview)
 - Check Health (#health)
 - Check Metrics (#metrics)
+- Scrape With Prometheus (#prometheus)
+- Find Slow Statements (#statements)
+- Dashboard And Alerts (#dashboard)
 - How To Read (#read)
 - Memory Logs (#memory-log)
 - Troubleshooting Order (#checklist)
@@ -31,7 +34,9 @@ What it answers
 
 - GET /_akan/app/health: **Is it alive?** Whether each replica is up and ready to take requests.
 
-- GET /_akan/app/metrics: **How busy is it?** Requests in flight, WebSocket load, memory and the render queue.
+- GET /_akan/app/metrics: **How busy is it?** Requests in flight, calls and errors per endpoint, WebSocket load, memory and the render queue.
+
+- GET /_akan/app/statements: **Which query is slow?** The SQL statements that took the most time, with the model call and the endpoint that sent each.
 
 - akan logs <app>: **Why?** Which endpoint, queue or render path produced those numbers.
 
@@ -151,6 +156,98 @@ Has a value
 
 null, 0 or absent
 
+Scrape With Prometheus
+
+The same route answers a Prometheus scrape, behind the same token. Every endpoint and page call is counted and timed with tracing off, so request rate, error rate and latency per endpoint need no setup. `Accept: application/openmetrics-text`, which Prometheus sends, gets OpenMetrics 1.0; `text/plain` alone gets the 0.0.4 text. `*/*`, `application/json` or no Accept keeps the JSON above, whose `metricFamilies` carries the same series.
+
+Series
+
+- akan_endpoint_requests_total, akan_endpoint_request_duration_seconds: Calls and their latency per endpoint over HTTP, websocket and MCP, labelled `endpoint` (`query:getUser`, as a trace names it) and `status_class` (`2xx` to `5xx`).
+
+- akan_page_requests_total, akan_page_request_duration_seconds: Page documents and RSC payloads per `route` id (`/:lang/blog`), timed to the start of the response; a path no route matches counts as `unmatched`.
+
+- akan_route_cache_lookups_total: Route cache lookups by `cache` (`rsc` in the render worker, `html` in the web server) and `outcome`: a `hit` or `miss` whose `reason` is `requested-query` or `rewritten-query`, or a `bypass` whose `reason` says why the request skipped the cache, such as `request-not-public`.
+
+- akan_rsc_workers, akan_rsc_workers_ready: RSC workers the app runs, and those ready to render; fewer ready than running means pages wait or fail.
+
+- akan_rsc_renders_pending, akan_rsc_sends_queued, akan_rsc_worker_resident_memory_bytes: The worker's render queue, its unsent messages and its memory, sampled like the JSON fields.
+
+- akan_rsc_renders_in_flight, akan_rsc_render_queue_depth, akan_rsc_renders_abandoned, akan_rsc_render_queue_wait_seconds, akan_rsc_render_refusals_total: Renders the worker is running, a replayed stored page not among them, and renders waiting for a slot. With `AKAN_RSC_WORKER_MAX_CONCURRENCY` set, also the renders still running after their slot came back (their client left, or they held it too long), how long each render waited, and by `reason` the renders answered 503 (`queue-full`, `wait-timeout`) and the slots taken back (`hold-timeout`).
+
+- akan_rsc_worker_restarts_total, akan_rsc_worker_recycles_total: Worker restarts after it exited or hung, and planned swaps at a memory limit.
+
+- akan_db_statements_total, akan_db_statement_seconds_total, akan_db_statement_wait_seconds_total, akan_db_statement_rows_total, akan_db_statement_duration_seconds: Each SQL statement's runs, run time, wait for the write turn or a pool connection, rows returned or changed, and latency (16 buckets, 0.1 ms to 10 s), labelled `model` and `op` only, so the series count follows the app's models, not its statements; the per-statement detail is in Find Slow Statements below.
+
+- akan_live_rooms: Live-query rooms a process holds, one per room id however many sockets share it. A room sockets on two replicas share counts once on each, so behind a gateway the sum is rooms held per process, not distinct rooms; the gateway's `rooms` counts distinct pubsub rooms.
+
+- akan_room_replay_bytes, akan_pubsub_buffered_messages: Frame bytes kept to send a reconnecting socket what it missed (at most 64 MiB a process), and publishes waiting for the Redis link (at most 10,000); one total each, next to `rooms`.
+
+- akan_build_info, process_start_time_seconds: The akanjs release and app name as labels, and when the answering process started; a new start time means its counters began again.
+
+**Labels stay bounded.** A series is labelled only by endpoint, route id, status class, a statement's model and op, and the process `role`, never a URL, user, account, query or value. A label takes at most 2,000 values and counts the rest as `other`. Request latency has 12 buckets from 1 ms to 10 s.
+
+**Behind a gateway, one scrape covers every replica.** Each replica reports its own counts and the gateway adds counters and buckets; it never averages a percentile, so take one with `histogram_quantile` over the sum. The sum is as fresh as each replica's last report, every `AKAN_MEMORY_LOG_INTERVAL_MS`; set it to your scrape interval.
+
+**A restart starts a replica's counters from zero.** The gateway keeps the counts it had, so its sum never drops; a solo process restarts with the pod, which `process_start_time_seconds` shows and `rate()` already handles.
+
+Find Slow Statements
+
+Every SQL statement the SQLite or Postgres driver sends is timed where it is sent, the one place the `db:` spans, these counts and the slow-statement log all read. Each is known by its **fingerprint**, 12 hex characters hashed from its normalized text: every literal is `?`, and a placeholder list, an `IN (…)` list or repeated `VALUES` rows collapse to one, so `LIMIT 10` and `LIMIT 20`, or three ids and thirty, are one statement. Strings of every form, numbers, comments and JSON field paths are replaced too, so two filters that differ only by field share one entry. Only the name is normalized; the text sent is unchanged.
+
+`/_akan/app/statements` answers behind the metrics token with the 20 statements that took the most time in all and the 20 slowest at p95, each with its text, the model call that sent it, its wait and rows, and the endpoints that sent it most:
+
+**Model and op name the call.** A statement a model call sends is named after it (`memo.count`, `memo.updateMany`); one sent elsewhere, such as a `find` chain or a raw query, by its table and verb (`memo.select`). `sentBy` lists up to 3 endpoints, slices or jobs by time, and `none` outside a request.
+
+**Wait is counted apart from run time.** `waitMs` is the time spent waiting for the SQLite write turn or a Postgres pool connection; a transaction's wait shows on its `BEGIN`. A high wait with a short run means writes queue behind each other, not a slow query. SQLite's own busy wait inside one statement counts as run time.
+
+**The table stays bounded.** A process keeps 500 statements, letting the cheapest go first, and 16 senders each. Behind a gateway each replica sends its costliest 50 with every report, every `AKAN_MEMORY_LOG_INTERVAL_MS`, and the gateway adds them up by fingerprint.
+
+**The report is not a counter.** `count`, `totalMs` and the other sums cover the statements each process lists now, since that process started or since it last admitted the statement again after dropping it; `sinceMs` is that span, and behind a gateway the oldest replica's. A statement dropped from the table or from a replica's top 50 takes its counts with it, so a sum can fall, and a restarted replica starts over. Use the `akan_db_statement*` series, which only grow, for rates and trends.
+
+**No value leaves the driver.** The series carry only model and op; the report and both logs add the normalized text and the fingerprint, never a bound value, id or user data.
+
+Slow-statement log
+
+A statement whose wait and run reach `AKAN_LOG_SLOW_STATEMENT_MS` writes one `SlowStatement` warning, at most once a minute per fingerprint; the next one carries `suppressed`, the lines held back meanwhile. Its attrs are `fingerprint`, `model`, `op`, `ms`, `waitMs`, `rows`, `sentBy` and the request's `traceId`:
+
+- AKAN_LOG_SLOW_STATEMENT_MS (number (ms) | off, default 200): A statement whose wait and run add up to this writes one `SlowStatement` warning; `off` or `0` turns the log off.
+
+- AKAN_QUERY_PLAN_IGNORE (fingerprint,… | all, default unset): Fingerprints whose full scan or sort is deliberate, which the local query-plan check leaves alone; `all` turns the check off.
+
+Query-plan check
+
+In the local dev runtime only, the first time a fingerprint runs and again after an index or table changes, the server asks the database how it ran the statement (`EXPLAIN QUERY PLAN` on SQLite, `EXPLAIN` on Postgres) once it has answered, and warns once as `QueryPlan` when it reads every row of the table or sorts in a temporary table:
+
+It leaves alone a table under 1,000 rows (asked again as the statement keeps running), an insert, a `count` with no filter, a migration, a table no model owns, the full-text search tables and an in-memory SQLite database. To accept a deliberate scan, list its fingerprint in `AKAN_QUERY_PLAN_IGNORE`; `all` turns the check off.
+
+Dashboard And Alerts
+
+The chart in `infra/app` marks the pod for scraping once a branch asks for it. It is off by default, because a built server answers the route 401 until the scraper holds the token. Keep the token in a Secret under the key `AKAN_STATUS_TOKEN`, and name only the Secret in the values file; the chart refuses to render `scrape` without `tokenSecret`:
+
+The pod then carries `prometheus.io/scrape`, `/path` and `/port`, and reads `AKAN_STATUS_TOKEN` from that Secret. The annotations do nothing on their own: a Prometheus pod job keeps annotated pods and sends the same token as a bearer from a file, here a copy of the Secret mounted into Prometheus's own namespace. With the Prometheus Operator, a `PodMonitor` in the app's namespace names the Secret in `authorization.credentials` instead.
+
+Dashboard
+
+Import `infra/monitoring/akan-dashboard.json` into Grafana and pick a Prometheus data source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, the route caches' hit ratio and bypasses, p50/p95/p99 over every endpoint, the RSC workers running and ready, their queue, memory, restarts and recycles, and the build each process runs. The job, endpoint and route pickers narrow every panel.
+
+Alerts
+
+`infra/monitoring/akan-rules.yaml` is a Prometheus rules file; wrap its `groups` in a `PrometheusRule` for the Operator. The thresholds are conservative, so tighten them once you know your traffic:
+
+Alert
+
+Fires when
+
+Look at
+
+- AkanEndpointErrorRatioHigh — More than 5% of an endpoint's calls answer 5xx for 15 minutes, at six calls a minute or more. — `akan logs` for that endpoint; a 4xx is the caller's and never counts.
+
+- AkanPageErrorRatioHigh — The same, for a route's documents and RSC payloads. — The render path in the logs, and the RSC worker panels.
+
+- AkanEndpointLatencyHigh · AkanPageLatencyHigh — The 95th percentile stays above 2.5 s for 15 minutes, at six calls a minute or more. — `eventLoopLagP99Ms` and the render queue first, then `AKAN_TRACE=1` for that endpoint's steps.
+
+- AkanRscWorkerUnavailable — warning: a process runs more RSC workers than are ready for 10 minutes; critical: none is ready for 3. — `rscWorkerStatus` and the restarts in health; frequent recycles point at render memory.
+
 How To Read
 
 One snapshot rarely tells the story. Take a few samples a minute apart, and read each number against the question it answers.
@@ -183,7 +280,7 @@ When one metrics response cannot pin down a memory problem, log every sample and
 
 Set these in the environment the server starts with: the workspace `.env` locally, or the container env in a deployment:
 
-- AKAN_MEMORY_LOG ("1", default off): Logs one `memory role=…` line per process on every sample.
+- AKAN_MEMORY_LOG ("1", default off): Logs one `memory role=…` line per process on every sample, and adds the JSC heap walk (`jscHeapSizeBytes`, `jscObjectCount`, …) to each.
 
 - AKAN_MEMORY_LOG_INTERVAL_MS (number (ms), default 60000): Sample interval for these lines and for the numbers in `/_akan/app/metrics`.
 
@@ -195,6 +292,8 @@ Each sample then prints one line per process. Pick those lines out of the runnin
 
 **`elLag` is mean/p99/max.** It is event-loop lag in milliseconds since the previous sample.
 
+**`rscFirstRenderMemory` names the routes that grew the RSC worker most.** In `/_akan/app/metrics`, next to the last render's fields, it lists per route what its first render added to `rss`, `heapUsed`, `external` and `arrayBuffers`, and the modules it loaded: largest first, at most 20 routes. Renders running at the same time share one delta, so read it on a quiet replica. It costs two memory reads per route's first render, and one check per render while `AKAN_MEMORY_LOG` is off.
+
 **The gateway's own line is at verbose.** That is below the default `info`, so set `AKAN_PUBLIC_LOG_LEVEL=verbose` to see it in the console.
 
 **Turn `AKAN_MEMORY_GC_ON_REPORT` off once you are done.** The forced GC pauses the process on every sample, even when `AKAN_MEMORY_LOG` is off.
@@ -205,7 +304,9 @@ Go from the cheapest question to the most detailed one, and stop as soon as you 
 
 **Open health.** If a replica is not `ready` or shows `unhealthy`, fix startup first; `lastErrorMessage` and `lastRestartReason` say why.
 
-**Open metrics.** Check `activeRequests`, `activeWebSockets`, `rooms`, memory and `eventLoopLagP99Ms`.
+**Open metrics.** Check `activeRequests`, `activeWebSockets`, `rooms`, memory and `eventLoopLagP99Ms`, and which endpoint answers `5xx` or slowly in the `akan_endpoint_*` series.
+
+**If an endpoint is slow, open statements.** The top of `/_akan/app/statements` names the statement, its model call and the endpoint that sent it; a high `waitMs` means writes queue behind each other.
 
 **If memory keeps growing,** turn on memory logs and compare several samples.
 
@@ -286,6 +387,100 @@ curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/m
     }
   ]
 }
+```
+
+### Terminal
+
+```bash
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" -H "Accept: application/openmetrics-text" localhost:8282/_akan/app/metrics
+# HELP akan_endpoint_requests Endpoint calls answered, over HTTP, websocket or MCP, by status class.
+# TYPE akan_endpoint_requests counter
+akan_endpoint_requests_total{role="all",endpoint="query:benchPing",status_class="2xx"} 5
+# TYPE akan_endpoint_request_duration_seconds histogram
+akan_endpoint_request_duration_seconds_bucket{role="all",endpoint="query:benchPing",le="0.001"} 4
+akan_endpoint_request_duration_seconds_bucket{role="all",endpoint="query:benchPing",le="+Inf"} 5
+akan_endpoint_request_duration_seconds_sum{role="all",endpoint="query:benchPing"} 0.0019
+akan_endpoint_request_duration_seconds_count{role="all",endpoint="query:benchPing"} 5
+akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
+# EOF
+```
+
+### Terminal
+
+```bash
+curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/statements
+{
+  "byTotalTime": [
+    {
+      "fingerprint": "b37549d5817e",
+      "text": "SELECT count(*) as count FROM \"memo\" WHERE ((\"removedAt\" IS NULL) AND (json_extract(\"_doc\", '$.ownerId') = ?))",
+      "model": "memo",
+      "op": "count",
+      "count": 1240,
+      "totalMs": 3120.4,
+      "meanMs": 2.516,
+      "p95Ms": 8.75,
+      "waitMs": 0,
+      "rows": 1240,
+      "sinceMs": 86400000,
+      "sentBy": [{ "endpoint": "query:memoListByOwner", "count": 1240, "totalMs": 3120.4 }]
+    }
+  ],
+  "byP95": [ … ]
+}
+```
+
+### Terminal
+
+```bash
+akan logs <app> --grep SlowStatement
+# memo.count statement b37549d5817e took 412.3ms (waited 0ms, 1 rows), sent by query:memoListByOwner: SELECT count(*) as count FROM "memo" WHERE (("removedAt" IS NULL) AND (json_extract("_doc", '$.ownerId') = ?))
+```
+
+### Terminal
+
+```bash
+# memo.count statement b37549d5817e, sent by query:memoListByOwner, reads every row of "memo": SELECT count(*) as count FROM "memo" WHERE … [plan: SCAN memo]. Add an index the filter and sort can use, or list b37549d5817e in AKAN_QUERY_PLAN_IGNORE to accept it.
+```
+
+### infra/app/values/<appName>-values.yaml
+
+```yaml
+# kubectl -n <appName>-main create secret generic <appName>-status --from-literal=AKAN_STATUS_TOKEN="$(openssl rand -hex 32)"
+main:
+  metrics:
+    scrape: true
+    tokenSecret: <appName>-status
+```
+
+### prometheus.yml
+
+```yaml
+scrape_configs:
+  - job_name: <appName>
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [<appName>-main]
+    authorization:
+      type: Bearer
+      credentials_file: /etc/prometheus/secrets/<appName>-status/AKAN_STATUS_TOKEN
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+        regex: "true"
+        action: keep
+      - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+        target_label: __metrics_path__
+      - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+        target_label: __address__
+      - source_labels: [__meta_kubernetes_namespace]
+        target_label: namespace
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+rule_files:
+  - akan-rules.yaml
 ```
 
 ### .env

@@ -15,6 +15,7 @@
 - Use Data (#use-data)
 - Client Handling (#client-handling)
 - Response Shape (#response-shape)
+- Report Errors (#report-errors)
 - Tips (#tips)
 
 ## Content
@@ -173,6 +174,76 @@ What the caller gets
 
 **Debugging a deployed build.** Set `AKAN_ERROR_DETAIL=1` to put the real message back into the response.
 
+Report Errors
+
+A 500 lands in the server log, but a team usually wants it in an error tracker too, along with the errors that happen only in a user's browser. `option.setErrorReporter` hands each error to your function, and `option.setClientReport` makes pages send what their browser hit.
+
+**Once, after the response.** Each error reaches the reporter at most once, after the answer has left. A reporter that throws or rejects is logged once and changes nothing else. Before a crashed process exits, it waits up to 2 seconds for the reporter.
+
+**Never a 4xx.** An `Err` the user can fix is an answer, not a fault, so it never reaches the reporter.
+
+**Where it runs.** In the server that answers: the solo server, or each replica. A render error in the RSC worker is carried to its server and reported there. The gateway loads no `option.ts`, so its own failures stay in its log.
+
+**A bounded number a minute.** One server process hands the reporter at most 600 errors a minute, at most 10 of them uncaught exceptions and unhandled rejections, and at most 3 render errors of one request. It logs one line when it starts skipping and drops the rest. Await what the reporter sends: a send it does not await, failing, comes back as an unhandled rejection of the process and counts toward those 10.
+
+**One fault can arrive more than once.** Reports of one request share its `traceId`, so group by it. An endpoint that answers 5xx while a page renders arrives as `server`, with its `endpoint`, and as `render`, with the page's `routeId` and `digest`. A server error streamed into a page arrives as `render`, and when the browser re-renders that part of the page, also as a `client` report of kind `recoverable` with the same `traceId`.
+
+What the reporter gets
+
+The first argument is a real `Error` with its `cause` chain; a thrown value that is not one arrives wrapped, with the value as its `cause`. The second is the context:
+
+- source: `server` for a 5xx answer, `render` for a page that failed to render, `process` for an uncaught exception or unhandled rejection, `client` for a browser report.
+
+- traceId: The request id the response named as `x-request-id`. For a browser report, the id of the document the tab loaded, which a later in-app navigation keeps.
+
+- endpoint: `<type>:<key>` of the endpoint that answered 5xx, such as `query:orderTotal`.
+
+- routeId: The route pattern, such as `/:lang/orders/:orderId`, never the URL with its values.
+
+- accountId: The signed-in account's id on a `server` report whose request had one. Null on a `render` report, since rendering a page runs no guard, and on a browser report, which carries no cookies.
+
+- digest: The id a deployed build shows the browser for a render error, also on the server's log line.
+
+Errors from the browser
+
+With `setClientReport`, each page view the sample draws sends its React root's uncaught, caught and recoverable errors, `window.onerror` and unhandled rejections to `/_akan/client-report`, at most five a page view. A page loads the sending code only on its first error. Without the option the route does not exist and pages send nothing. The server gives each such page view an id in the page's `Server-Timing` header, the request id with a signature, and takes a report only with that id: for 30 to 60 minutes after the page was served, and five times.
+
+A native app's page is bundled into the app and loaded from `app://localhost` (iOS, macOS, Linux) or `https://app.localhost` (Android, Windows), so no page view gave it an id. At its first `window.onerror` or unhandled rejection, which covers React's uncaught and recoverable errors and a failed native plugin call, it asks `GET /_akan/client-report` on the app's server. The server answers only a shell origin, counts the ask against `perAddress`, draws it against `sampleRate` by the ask's own request id, and returns a signed id that the page uses as a page view's, asking again after 30 minutes, or after a minute when the ask did not reach the server. A page with no id sends nothing.
+
+- sampleRate (number, default 1): The share of page views, from 0 to 1, that send their errors, drawn from each page view's request id.
+
+- perAddress (number, default 10): Requests one address may send the route a minute, kept or not. An IPv6 address counts as its /64.
+
+- perServer (number, default 120): Reports one server process hands the reporter a minute from all addresses together.
+
+The reporter gets a `BrowserError`, with `source: "client"`, whose `data` holds:
+
+- kind: `uncaught`, `caught` or `recoverable` from React, `error` from `window.onerror`, `rejection` from an unhandled rejection.
+
+- name, message, stack: What the browser's `Error` held, cleaned as below and cut to 100, 1,000 and 4,000 characters.
+
+- routeId, digest: The page's route pattern, and the digest when the browser's error carried one. Dropped unless each has its expected shape.
+
+- buildId, userAgent: Added by the server: the build it runs, and the request's `User-Agent` cut to 300 characters.
+
+- shell: `ios`, `android`, `macos`, `windows` or `linux` when a native app's page sent it, taken only from a shell origin; `null` for a page a browser opened. The server logs such a report as `Native <shell> page error` instead of `Browser error`.
+
+What the server drops
+
+**Reports it did not ask for.** It keeps only a `text/plain` POST from the app's own origin or a native app's shell origin, of 8 KB or less, carrying the id the server gave that page view, within the limits above. It checks in that order, and only a report with such an id counts toward `perServer`. Every request, kept or not, gets the same empty 204.
+
+**Terminal escapes and control characters.** They are removed, and a line break in `name` or `message` is written as `\n`.
+
+**Query strings, addresses and credentials.** In the name, message and stack, a URL or a path loses its query string and fragment and keeps its line and column, an email address becomes `[email]`, a `Bearer …` value and a JWT become `[redacted]`, and the characters that reorder how a line displays are removed. The page does this before it sends, and the server again before the reporter or the log sees the text.
+
+**An id another deployment signed.** An operator may set the secret `AKAN_CLIENT_REPORT_KEY` to 32 characters or more, and every server that holds it takes an id any of them gave; a gateway passes it to its replicas unchanged, and a shorter value is ignored with one warning. Without it, the replicas behind one gateway share a key the gateway makes at start, so a report is taken by any of them and by no other gateway's; a server run alone uses its own key, so only the process that served the page takes its reports, and none after a restart. The app name and the environment are signed in either way. Set the key, the same on each, when more than one gateway or pod answers for the app.
+
+**What the limits leave.** Each server process counts on its own, so N replicas take up to N times `perServer` and five reports per id each. Visitors behind one address share its `perAddress`. `perServer` is one budget for everyone who loaded a page: once a minute's worth is taken, later reports that minute are dropped, never queued.
+
+**What leaves the browser.** The id the server gave the page view, the route pattern, and the error's name, message, stack and digest, cleaned as above. No cookies, no referrer and no account. The cleaning knows a few shapes, not meanings: a message still holds whatever else the code put into it, such as a value a user typed, so keep personal data out of error messages, and name the service in your privacy notice when your reporter forwards to one.
+
+**Pages that send nothing.** The browser reads the request id from the page's `Server-Timing` header, which it shows a script only over HTTPS and on `localhost`. A page served with a `Cache-Control` that lets a shared cache reuse it (`AKAN_HTML_CACHE_CONTROL` set to `public, max-age=…` or `off`) carries no id, since a stored copy would give one page view's id to the next visitor; the default `no-cache` and a signed-in page's `private, no-cache` do carry it. The CSR bundle a native app loads sends none. A tab open for longer than the 30 to 60 minutes its id is taken for sends reports the server drops, until it loads a document again. The page reads its id once, when the document loads: after an in-app navigation a report still carries that first id, with the route pattern of the page the user is on.
+
 Tips
 
 **Name keys by domain and reason.** For example `order.error.notDraft`, `order.error.stockNotEnough`, `user.error.wrongPassword`.
@@ -318,6 +389,38 @@ export const AddItem = ({ className, orderId, productId }: AddItemProps) => {
   "path": "/addItemToOrder",
   "timestamp": "2026-05-25T00:00:00.000Z"
 }
+```
+
+### apps/myapp/srvkit/errorTracker.ts
+
+```ts
+import { BrowserError, type ErrorReporter } from "akanjs/signal";
+
+export const errorTracker: ErrorReporter = async (error, context) => {
+  const ingestUrl = process.env.ERROR_TRACKER_URL;
+  if (!ingestUrl) return;
+  await fetch(ingestUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      ...context,
+      name: error.name,
+      message: error.message,
+      stack: error.stack,
+      browser: error instanceof BrowserError ? error.data : null,
+    }),
+  });
+};
+```
+
+### apps/myapp/lib/option.ts
+
+```ts
+import { errorTracker } from "../srvkit";
+
+export const option = new AkanOption<ModulesOptions>()
+  .setErrorReporter(errorTracker)
+  .setClientReport({ sampleRate: 0.25 });
 ```
 
 ## Agent Notes

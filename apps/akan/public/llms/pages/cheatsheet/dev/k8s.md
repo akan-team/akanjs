@@ -65,7 +65,7 @@ TLS, one host per subRoute and domain
 
 Values
 
-There is no single `values.yaml`: Helm reads four files in order, and a later file overrides an earlier one. An app's own file usually holds just its name and production domains.
+Helm starts from the chart's own `infra/app/values.yaml`, then reads four files in order, and a later file overrides an earlier one. An app's own file usually holds just its name and production domains.
 
 File
 
@@ -81,9 +81,13 @@ What it holds
 
 Both `*-secret.yaml` files stay out of git. `bun run downloadSecret` fetches every file listed in `infra/master/jenkins/getSecrets.sh`, so add a new app's file there.
 
+Server env secrets
+
+The image holds the names of the server env's secrets, not their values. Before each release the Jenkins deploy stage writes them from the branch's env file as a Secret, applies it, and deletes the file; the chart reads the Secret a branch names in `app.secretName` through `envFrom`.
+
 Deploy command
 
-The Jenkins deploy stage runs these two commands from `infra/` for each app:
+The Jenkins deploy stage then runs these two commands from `infra/` for each app:
 
 **The `-f` order is the priority.** A later file overrides every key it repeats.
 
@@ -116,6 +120,18 @@ A key tagged `_common-secret.yaml` is set there once for every app.
 - image.tag (string, default <branch>-live): Write it only to pin one specific build.
 
 - readinessPath (string, default /_akan/app/health): The readiness probe's path. Set `/_akan/app/ready` once the image's akanjs serves it; an older image answers it 404.
+
+- podSecurityContext (object, default uid 1000, fsGroup 1000): The pod's `securityContext`: it runs as uid and gid 1000 (`runAsNonRoot`), its volumes are handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp is `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it; the block left out or `null` keeps these defaults. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }` with `securityContext: { capabilities: null }` and `volumePermissions: { enabled: false }` runs it as root.
+
+- securityContext (object, default no escalation, no capabilities): The container's `securityContext`: `allowPrivilegeEscalation: false` and every capability dropped. The root filesystem stays writable, because the server writes `/workspace/runtime`, `/workspace/.akan` and `/tmp` inside the image. `capabilities: null` gives the container the runtime's default capabilities; the block left out or `null` keeps these defaults.
+
+- volumePermissions.enabled (boolean, default true): Single mode: before the app starts, an init container from the app's image runs as root with only `CHOWN`, `FOWNER` and `DAC_READ_SEARCH` and hands every file on the `sqlite-data` claim to `podSecurityContext`'s `runAsUser:runAsGroup`, so a claim a root image wrote stays writable where `fsGroup` does not reach (hostPath, NFS, some CSI drivers). Once ownership is right it changes nothing. A cluster's `sharedClaim` is never touched. An image without `sh` and `find` needs `false`.
+
+- ingress.proxyBodySize (string, default 128m): The largest request body the Ingress passes on, the server's own upload limit. Raise it together with `AKAN_MAX_UPLOAD_BODY`; `"0"` passes any size.
+
+- ingress.cors.enabled (boolean, default false): Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`. Only fonts carry `Access-Control-Allow-Origin: *`, so a page elsewhere cannot `fetch` a public file or draw an `/_akan/image` on a canvas. `true` has ingress-nginx answer every preflight and add `Access-Control-Allow-Origin: *` to every response instead.
+
+**Some images still need root.** The pod runs as uid 1000. An image built with akanjs 3.2 or earlier, a rollback to one through `image.tag` included, a declared `docker` Dockerfile string that runs the server as root, or a custom `docker.image` whose files uid 1000 cannot read, needs these lines in the app's values file.
 
 Per-branch keys
 
@@ -221,6 +237,22 @@ Related pages
 
 ## Code Examples
 
+### infra/app/values/myapp-values.yaml
+
+```yaml
+main:
+  app:
+    secretName: app-env
+```
+
+### Terminal
+
+```bash
+akan secret-env myapp --env main --format k8s --name app-env --out local/myapp-secret-env.yaml
+kubectl apply -f local/myapp-secret-env.yaml -n myapp-main
+rm local/myapp-secret-env.yaml
+```
+
 ### Terminal
 
 ```bash
@@ -251,6 +283,14 @@ main:
         memory: 4G
         cpu: "4"
       storage: 5Gi
+```
+
+### app/values/myapp-values.yaml
+
+```yaml
+podSecurityContext: { runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }
+securityContext: { capabilities: null }
+volumePermissions: { enabled: false }
 ```
 
 ### Terminal

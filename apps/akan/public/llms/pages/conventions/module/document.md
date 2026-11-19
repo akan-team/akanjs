@@ -323,6 +323,8 @@ For as long as the process runs, up to the 10,000 keys used most recently.
 
 **A write through the model drops kept keys.** A create, a `save()`, an update or a remove drops that document's keys, and a write by query such as `updateMany` drops every kept key of the model, once it commits, so a model that is often written by query gets little from `cache`. Another instance keeps its own keys, so there a changed document is still answered in its old shape until the key expires.
 
+**Do not keep a loader whose answer decides access.** With more than one instance, a membership or a role removed on one is still answered on the others until the key expires, and under `cache: true` until they restart. Leave such a loader at the default, and where several instances run give a short time rather than `true`.
+
 **A transaction reads past the cache.** A load inside `this.transaction()` always asks the database, so it sees its own writes, and what it reads is not kept, since it may be rolled back.
 
 **A failed load is never kept.** The next `load()` for that key asks the database again.

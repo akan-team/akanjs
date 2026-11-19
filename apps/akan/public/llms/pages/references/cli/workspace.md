@@ -99,7 +99,7 @@ Create a new workspace and its first app in one go. It runs these steps in order
 
 - create-akan-workspace: `bunx create-akan-workspace` installs the matching `@akanjs/cli` globally, then runs this command.
 
-`akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>]`
+`akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>] [--comments]`
 
 Check a change in one run: sync, lint with fixes, typecheck, a build of each changed app's server and SSR routes, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.
 
@@ -115,6 +115,8 @@ Check a change in one run: sync, lint with fixes, typecheck, a build of each cha
 
 - --format (String, default text, text | json): `json` prints the whole result as one JSON line.
 
+- --comments (Boolean, default false): List every comment added since the last commit, the ones an earlier run reported included.
+
 - output: One `verify ok` line on a pass; on a failure, `file:line:col CODE message` per problem.
 
 - fixed N files: Lint rewrote those files on disk, so read them again before the next edit.
@@ -123,7 +125,7 @@ Check a change in one run: sync, lint with fixes, typecheck, a build of each cha
 
 - warnings: Print after the errors and never fail the run, the SSR check's included.
 
-- akan.comment.added: A warning per code comment added since the last commit, so each one gets a second look. `--lint-only` skips it.
+- akan.comment.added: A warning per code comment added since the last commit, so each one gets a second look. A later run leaves out the ones already reported, counting them on one `akan.comment.kept` line only beside a new one, and `--comments` lists them again. `--lint-only` skips it.
 
 - build: Skipped while lint or typecheck reports an error. It writes to `dist/verify/<app>`, so a build in `dist/apps/<app>` stays as `akan build` left it.
 

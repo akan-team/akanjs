@@ -162,7 +162,7 @@ Tool
 
 - readScreen: Reads the rendered screen as compact text.
 
-- readState: Reads one store key the screen subscribed, masked by its model.
+- readState: Reads one store key the screen subscribed, masked by its model, the route's `pathname`, `params` or `searchParams`, or a value published with `st.expose` or `st.useState` by its name. The turn's context carries only ids, enum members, numbers and booleans; longer text is read here.
 
 - highlight: Scrolls one thing into view and flashes it, to show the user where it is.
 
@@ -299,6 +299,8 @@ The component that draws a field already holds its value. It is also the only th
 **`path` names the field.** It is a dotted path into the document, so two fields of one document are two separate references.
 
 In the composer
+
+**A mention counts as a page read.** The record a pointer names reaches the model as page content, since its title and value are whatever its author wrote. So the first change after a message with a mention shows the approval card, as after `readScreen`.
 
 **Pointers read as names.** Where sources are declared, a Lexical editor loaded as its own chunk shows each pointer as the name it points at, not as the raw `@[label](mention:…)` token.
 

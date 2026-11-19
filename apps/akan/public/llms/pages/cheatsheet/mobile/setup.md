@@ -332,6 +332,8 @@ An app nobody attends
 
 A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "reload"` reloads a crashed page and relaunches the app, and `desktop.window` opens it fullscreen without a taskbar button. `desktop.screenCapture: "auto"` shares the screen on Windows without the picker, for every media request, so leave it off in an app that uses a camera or a microphone. With `"reload"` its pages also open nothing outside the window: no print or file dialog, no share sheet, no download on Windows, no link handed to the OS, and on macOS no text service such as Search With Google in the right-click menu. The app's own `opener` and `file-picker` plugin calls still work, so open what it needs through them.
 
+A third-party page on such a screen, a scoreboard or a menu board, is an `external-view`. It opens only the origins `desktop.externalView.allowOrigins` lists, and none without it; a view's own `allowOrigins` narrow within them. Running script in it (`evaluate`, `initScript`) and typing into it (`sendKey`) are off until `evaluate` and `sendKey` turn them on. While a view is open, opening its id again never adds an origin; once closed, the id opens again for any origins the config lists, with the same browser profile, which belongs to the id.
+
 Updates
 
 An installed app updates itself from releases you sign. `akan update-keygen` prints the public key for `native.updates`, and `akan publish-update` writes a release to `dist/native/<app>/<target>/updates` for you to upload to `updates.url`. A phone runs a new web bundle from its next start. A desktop app downloads a release in the background and installs it as it quits; to install one now, the app applies it:
@@ -573,6 +575,15 @@ await NativeSecret.remove("llm.apiKey");
 native: {
   desktop: { recovery: "reload", window: { fullscreen: true, skipTaskbar: true }, screenCapture: "auto" },
   android: { autoplay: true },
+},
+```
+
+### apps/board/akan.config.ts
+
+```ts
+native: {
+  plugins: ["external-view"],
+  desktop: { externalView: { allowOrigins: ["https://board.example"], evaluate: true, sendKey: true } },
 },
 ```
 
