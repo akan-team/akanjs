@@ -190,6 +190,18 @@ describe("frameConfig", () => {
     expect(mergePageConfigs([{ prefetch: false }, { prefetch: true }]).prefetch).toBe(true);
   });
 
+  test("takes pageConfig.navbarMotion from a layout down, and leaves it out of a page that declares none", () => {
+    expect(() => validatePageConfig("bad.tsx", { navbarMotion: "slide" as never })).toThrow(
+      'pageConfig.navbarMotion in bad.tsx must be "crossfade" or "page", not "slide".',
+    );
+    expect(() => validatePageConfig("ok.tsx", { navbarMotion: "page" })).not.toThrow();
+    const resolve = (configChain: { navbarMotion?: "crossfade" | "page" }[]) =>
+      resolvePageState({ configChain, path: "/a/b", platform: "ios", deviceSafeArea: { top: 0, bottom: 0 } });
+    expect(resolve([{ navbarMotion: "page" }, {}]).navbarMotion).toBe("page");
+    expect(resolve([{ navbarMotion: "page" }, { navbarMotion: "crossfade" }]).navbarMotion).toBe("crossfade");
+    expect(resolve([{}])).not.toHaveProperty("navbarMotion");
+  });
+
   test("takes pageConfig.canonicalQuery as a boolean that a layout hands down", () => {
     expect(() => validatePageConfig("bad.tsx", { canonicalQuery: "no" as never })).toThrow(
       "pageConfig.canonicalQuery in bad.tsx must be a boolean.",

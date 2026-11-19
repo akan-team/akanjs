@@ -75,6 +75,7 @@ export {
   type LayoutRender,
   type Location,
   type LocationState,
+  type NavbarMotion,
   type NavigationIntent,
   type PageActivity,
   type PageActivityState,

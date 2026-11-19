@@ -314,6 +314,8 @@ PageConfig
 
 - overlay (boolean | "top" | "bottom", default false): Runs the page under that side's safe area and inset, for a translucent bar; scrollers pad by `--akan-overlay-*`.
 
+- navbarMotion ("crossfade" | "page", default "crossfade"): In the app, `page` moves the navbar with its page on every transition, for a bar with no fill of its own; `crossfade` keeps one bar and crossfades.
+
 - gesture (boolean, default on for nested routes on iOS): Allows swipe-back.
 
 - cache (boolean, default true for top-level routes): In the app shell, keeps the page's last render to show again on return.

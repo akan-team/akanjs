@@ -84,6 +84,13 @@ export class CsrSlide {
     return !!entryId && entryId === CsrSlide.#stillEntryId;
   }
 
+  //? A stack can hold more than one page marked prev, such as a tab kept drawn under a page pushed on a page pushed on
+  //? it; the frame draws them in stack order, so the page right under the one moving is the last, never the first.
+  static #partOf(selector: string) {
+    const parts = document.querySelectorAll<HTMLElement>(selector);
+    return parts.length ? parts[parts.length - 1] : null;
+  }
+
   static play(frame: CsrSlideFrame, { fromUnit, toUnit, duration, keep = false }: CsrSlidePlay): CsrSlide | null {
     if (!CsrSlide.supported || duration <= 0) return null;
     const from = CsrSlide.partsAt(frame, fromUnit);
@@ -93,7 +100,7 @@ export class CsrSlide {
     for (const [selector, start] of Object.entries(from)) {
       const end = to[selector];
       const changed = Object.keys(start).filter((property) => start[property] !== end[property]);
-      const element = changed.length ? document.querySelector<HTMLElement>(selector) : null;
+      const element = changed.length ? CsrSlide.#partOf(selector) : null;
       if (!element) continue;
       if (selector === pageSelector) page = element;
       const pick = (keyframe: Keyframe) =>
@@ -109,36 +116,59 @@ export class CsrSlide {
     return animations.length ? new CsrSlide(animations, page) : null;
   }
 
+  //? A bar riding its page is cut where the page sliding in covers the page under, or a bar with no fill of its own
+  //? would show over it: that page's bar sits a fifth of the way back, (unit - width) / 5, and its page shows on
+  //? [0, unit], so the bar keeps width - unit + (unit - width) / 5 = 4/5 (width - unit) clipped off its right side.
+  static underBarClip(width: number, unit: number) {
+    return `inset(0px ${px(((width - unit) * 4) / 5)} 0px 0px)`;
+  }
+
   /** What each part's style is with the page `unit` px from its place: 0 shown, the frame's width gone right. */
   static partsAt({ width, height, pageState, prevPageState }: CsrSlideFrame, unit: number): Record<string, Keyframe> {
     const progress = width > 0 ? (width - unit) / width : 1;
     const between = (prev: number, next: number) => px(lerp(prev, next, progress));
     const prevOffset = px((unit - width) / 5);
     const bottomInsetTop = (state: FramePageState) => height - state.bottomInset - state.bottomSafeArea;
+    const ridesPage = pageState.navbarMotion === "page";
+    const barHeight = px(Math.max(prevPageState.topInset, pageState.topInset));
+    const bars: Record<string, Keyframe> = ridesPage
+      ? {
+          [shown("#topInsetContainer")]: { transform: `translateX(${px(unit)})` },
+          [under("#topInsetContainer")]: {
+            opacity: `${1 - progress / 2}`,
+            transform: `translateX(${prevOffset})`,
+            clipPath: CsrSlide.underBarClip(width, unit),
+          },
+          [shown("#topLeftActionContainer")]: { transform: `translateX(${px(unit)})` },
+          [under("#topLeftActionContainer")]: { opacity: `${1 - progress}`, transform: `translateX(${prevOffset})` },
+        }
+      : {
+          [shown("#topInsetContainer")]: {
+            opacity: `${progress}`,
+            transform: `translateX(${px((width / 5) * (1 - progress))})`,
+          },
+          [under("#topInsetContainer")]: {
+            opacity: `${1 - progress}`,
+            transform: `translateX(${px((-width / 5) * progress)})`,
+          },
+          [shown("#topLeftActionContainer")]: { opacity: `${progress}` },
+          [under("#topLeftActionContainer")]: { opacity: `${1 - progress}` },
+        };
     return {
       [pageSelector]: { transform: `translateX(${px(unit)})` },
       [under("#pageContainers")]: { transform: `translateX(${prevOffset})` },
       [`${under("#pageContainers")} .akan-page-content`]: { opacity: `${1 - progress / 2}` },
-      [shown("#topInsetContainer")]: {
-        opacity: `${progress}`,
-        transform: `translateX(${px((width / 5) * (1 - progress))})`,
-      },
-      [under("#topInsetContainer")]: {
-        opacity: `${1 - progress}`,
-        transform: `translateX(${px((-width / 5) * progress)})`,
-      },
-      [shown("#topLeftActionContainer")]: { opacity: `${progress}` },
-      [under("#topLeftActionContainer")]: { opacity: `${1 - progress}` },
+      ...bars,
       [shown("#bottomInsetContainer")]: { opacity: `${progress}`, transform: `translateX(${px(unit)})` },
       [under("#bottomInsetContainer")]: { opacity: `${1 - progress}`, transform: `translateX(${prevOffset})` },
       "#topInsetContainer": {
         top: between(prevPageState.topSafeArea, pageState.topSafeArea),
-        height: between(prevPageState.topInset, pageState.topInset),
+        height: ridesPage ? barHeight : between(prevPageState.topInset, pageState.topInset),
       },
       "#topLeftActionContainer": {
         top: between(prevPageState.topSafeArea, pageState.topSafeArea),
-        height: between(prevPageState.topInset, pageState.topInset),
-        minWidth: between(prevPageState.topInset, pageState.topInset),
+        height: ridesPage ? barHeight : between(prevPageState.topInset, pageState.topInset),
+        minWidth: ridesPage ? barHeight : between(prevPageState.topInset, pageState.topInset),
       },
       "#bottomInsetContainer": {
         top: between(bottomInsetTop(prevPageState), bottomInsetTop(pageState)),

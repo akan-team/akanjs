@@ -118,9 +118,15 @@ const tweenedSafeAreas = (
   },
 });
 
+const ridesPage = (pageState: FramePageState) => pageState.navbarMotion === "page";
+
+//? A navbar riding its page keeps the taller of the two bars' heights, so neither is cut while it moves, where a
+//? crossfading one folds from one height to the other.
 const tweenedTopInset = (progress: Progress, pageState: FramePageState, prevPageState: FramePageState) => ({
   top: tween(progress, prevPageState.topSafeArea, pageState.topSafeArea),
-  height: tween(progress, prevPageState.topInset, pageState.topInset),
+  height: ridesPage(pageState)
+    ? Math.max(prevPageState.topInset, pageState.topInset)
+    : tween(progress, prevPageState.topInset, pageState.topInset),
 });
 
 const tweenedBottomInset = (
@@ -434,6 +440,47 @@ const useStackSlide = (
   return holdSlide;
 };
 
+const stackNavbarStyle = (
+  { transUnit, transProgress }: ReturnType<typeof useSlideSpring>,
+  clientWidth: number,
+  pageState: FramePageState,
+  prevPageState: FramePageState,
+) => ({
+  topInset: {
+    containerStyle: tweenedTopInset(transProgress, pageState, prevPageState),
+    ...(ridesPage(pageState)
+      ? {
+          contentStyle: { translateX: transUnit },
+          prevContentStyle: {
+            translateX: transUnit.to((unit) => (unit - clientWidth) / 5),
+            opacity: transProgress.to((progress) => 1 - progress / 2),
+            clipPath: transUnit.to((unit) => CsrSlide.underBarClip(clientWidth, unit)),
+          },
+        }
+      : {
+          contentStyle: { ...fadeIn(transProgress), translateX: tween(transProgress, clientWidth / 5, 0) },
+          prevContentStyle: { ...fadeOut(transProgress), translateX: tween(transProgress, 0, -clientWidth / 5) },
+        }),
+  },
+  topLeftAction: {
+    containerStyle: {
+      ...tweenedTopInset(transProgress, pageState, prevPageState),
+      minWidth: ridesPage(pageState)
+        ? Math.max(prevPageState.topInset, pageState.topInset)
+        : tween(transProgress, prevPageState.topInset, pageState.topInset),
+    },
+    ...(ridesPage(pageState)
+      ? {
+          contentStyle: { translateX: transUnit },
+          prevContentStyle: {
+            translateX: transUnit.to((unit) => (unit - clientWidth) / 5),
+            ...fadeOut(transProgress),
+          },
+        }
+      : { contentStyle: fadeIn(transProgress), prevContentStyle: fadeOut(transProgress) }),
+  },
+});
+
 const useStackTrans = (routeState: RouteState): UseCsrTransition => {
   const { clientWidth, clientHeight, location, prevLocation, pageContentRef } = routeState;
   const spring = useSlideSpring(clientWidth);
@@ -552,19 +599,7 @@ const useStackTrans = (routeState: RouteState): UseCsrTransition => {
         opacity: transProgress.to((progress) => 1 - progress / 2),
       },
     },
-    topInset: {
-      containerStyle: tweenedTopInset(transProgress, pageState, prevPageState),
-      contentStyle: { ...fadeIn(transProgress), translateX: tween(transProgress, clientWidth / 5, 0) },
-      prevContentStyle: { ...fadeOut(transProgress), translateX: tween(transProgress, 0, -clientWidth / 5) },
-    },
-    topLeftAction: {
-      containerStyle: {
-        ...tweenedTopInset(transProgress, pageState, prevPageState),
-        minWidth: tween(transProgress, prevPageState.topInset, pageState.topInset),
-      },
-      contentStyle: fadeIn(transProgress),
-      prevContentStyle: fadeOut(transProgress),
-    },
+    ...stackNavbarStyle(spring, clientWidth, pageState, prevPageState),
     bottomInset: {
       containerStyle: tweenedBottomInset(transProgress, clientHeight, pageState, prevPageState),
       contentStyle: { height: pageState.bottomInset, translateX: transUnit, ...fadeIn(transProgress) },
@@ -643,12 +678,27 @@ const useBottomUpTrans = (routeState: RouteState): UseCsrTransition => {
     },
     topInset: {
       containerStyle: tweenedTopInset(transProgress, pageState, prevPageState),
-      contentStyle: fadeIn(transProgress),
-      prevContentStyle: fadeOut(transProgress),
+      ...(ridesPage(pageState)
+        ? {
+            contentStyle: { translateY: transUnit },
+            //? The sheet rising covers the bar under from its bottom edge up: cut what lies below the sheet's top.
+            prevContentStyle: {
+              opacity: transProgress.to((progress) => 1 - progress / 2),
+              clipPath: transUnit.to((unit) => {
+                const covered = clamp(
+                  prevPageState.topSafeArea + prevPageState.topInset - unit,
+                  0,
+                  prevPageState.topInset,
+                );
+                return `inset(0px 0px ${covered}px 0px)`;
+              }),
+            },
+          }
+        : { contentStyle: fadeIn(transProgress), prevContentStyle: fadeOut(transProgress) }),
     },
     topLeftAction: {
       containerStyle: tweenedTopInset(transProgress, pageState, prevPageState),
-      contentStyle: fadeIn(transProgress),
+      contentStyle: ridesPage(pageState) ? { translateY: transUnit } : fadeIn(transProgress),
       prevContentStyle: fadeOut(transProgress),
     },
     bottomInset: {

@@ -105,14 +105,17 @@ const CSRProvider = ({
 };
 CSR.Provider = CSRProvider;
 
-const chromeClassNamesOf = (overlay?: PageState["overlay"]) => ({
+//? A navbar riding its page carries its own fill, since the layer holds the taller of two bars while they move; the
+//? layer stays clear, lets a tap through outside the bar on screen, and does not cut a bar that rides a sheet down.
+const chromeClassNamesOf = ({ overlay, navbarMotion }: Partial<PageState> = {}) => ({
   topSafeArea: cn(
     "akan-frame-chrome fixed inset-x-0 top-0 max-w-screen bg-background",
     overlay?.top && "pointer-events-none",
   ),
   topInset: cn(
     "akan-frame-chrome fixed inset-x-0 isolate max-w-screen overflow-hidden bg-background",
-    overlay?.top && "bg-transparent",
+    (overlay?.top || navbarMotion === "page") && "bg-transparent",
+    navbarMotion === "page" && "pointer-events-none overflow-visible",
   ),
   bottomSafeArea: cn(
     "akan-frame-chrome fixed inset-x-0 max-w-screen bg-background",
@@ -157,7 +160,7 @@ const CSRWrapper = ({
   } = useCsr();
   const csrLoaded = st.use.csrLoaded({ agent: false });
   const { router: reactRouter, history, location } = useCsr();
-  const chrome = chromeClassNamesOf(location?.pathRoute?.pageState?.overlay);
+  const chrome = chromeClassNamesOf(location?.pathRoute?.pageState);
   useEffect(() => {
     debugFrame("csrWrapper.mount", { appName, layoutStyle, pathCount: pathRoutes.length });
     if (layoutStyle === "mobile") {
@@ -344,9 +347,10 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
               ? slotInset?.prevContentStyle
               : undefined;
         const id = `${slot}Content-${key}`;
-        const { topInset: topHeight, bottomInset: bottomHeight } = location.pathRoute.pageState;
+        const { topInset: topHeight, bottomInset: bottomHeight, navbarMotion, overlay } = location.pathRoute.pageState;
         const collapsed = slot !== "keyboardInset" && (slot === "bottomInset" ? bottomHeight : topHeight) <= 0;
         const hidden = pageType !== "current" || collapsed;
+        const ownBar = navbarMotion === "page" && (slot === "topInset" || slot === "topLeftAction");
         return (
           <animated.div
             key={id}
@@ -365,10 +369,13 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
                 (pageType === "prev" && (slot === "bottomInset" || slot === "keyboardInset"))) &&
                 "pointer-events-none",
               pageType === "pending" && "pointer-events-none absolute opacity-0",
+              ownBar && slot === "topInset" && !overlay?.top && "bg-background",
+              ownBar && pageType === "current" && "pointer-events-auto",
             )}
             style={
               {
                 ...getFrameCssVars(location.pathRoute.pageState, { cssResolved: false }),
+                ...(ownBar ? { top: 0, height: topHeight } : {}),
                 ...(style ?? {}),
                 zIndex: pageType === "pending" ? -1 : zIndex,
                 ...(pageType === "pending" ? { opacity: 0 } : {}),

@@ -646,6 +646,15 @@ export default page()
         }),
       },
       {
+        key: "navbarMotion",
+        type: '"crossfade" | "page"',
+        default: '"crossfade"',
+        desc: l.trans({
+          en: "In the app, `page` moves the navbar with its page on every transition, for a bar with no fill of its own; `crossfade` keeps one bar and crossfades.",
+          ko: "앱에서 `page`는 전환마다 navbar를 자기 페이지와 함께 움직여, 배경 없는 바에 맞습니다. `crossfade`는 바 하나를 두고 겹쳐 바꿉니다.",
+        }),
+      },
+      {
         key: "gesture",
         type: "boolean",
         default: l.trans({ en: "on for nested routes on iOS", ko: "iOS의 하위 route에서만 켜짐" }),

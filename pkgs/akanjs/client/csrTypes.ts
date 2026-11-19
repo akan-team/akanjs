@@ -21,6 +21,9 @@ export type PageSafeAreaConfig =
     };
 /** The sides whose chrome the page runs under instead of below. */
 export type PageOverlayConfig = boolean | "top" | "bottom";
+
+/** How a page's navbar moves when it transitions; see `PageConfig.navbarMotion`. */
+export type NavbarMotion = "crossfade" | "page";
 /** `"stream"` flushes the shell (`Loading` included) then streams; a redirect in suspended content becomes a client one.
  * `"block"` buffers the whole document, so an error in slow content can still render a clean error page. */
 export type SsrRenderMode = "stream" | "block";
@@ -42,6 +45,13 @@ export interface PageConfig {
    * and an overlaid side's safe area defaults to transparent.
    */
   overlay?: PageOverlayConfig;
+  /**
+   * How the navbar (`Layout.Navbar`'s top inset and its back button) moves when this page transitions.
+   * `"crossfade"`, the default, keeps one bar in place and crossfades the two pages' bars, as UIKit's does; between a
+   * page with a bar and one without, the bar's height folds away. `"page"` moves each bar with its page, as a part of
+   * the page, for a bar that is the page's own surface (translucent, or with no fill of its own).
+   */
+  navbarMotion?: NavbarMotion;
   gesture?: boolean;
   cache?: boolean;
   /** Initial full-document SSR strategy. Defaults to `"stream"`. */
@@ -77,6 +87,8 @@ export interface CsrState {
   /** Web only: the sides whose safe area `env(safe-area-inset-*)` measures, since a browser tells script nothing. */
   safeAreaEnv?: { top: boolean; bottom: boolean };
   overlay?: { top: boolean; bottom: boolean };
+  /** Set when the page declares one; left out, the navbar crossfades. */
+  navbarMotion?: NavbarMotion;
   gesture: boolean;
   cache: boolean;
   ssr: SsrRenderMode;
