@@ -190,7 +190,7 @@ Tool
 
 - readScreen(section?, images?): Reads the rendered screen as compact text.
 
-- readState(key): Reads one store key, masked by its model.
+- readState(key): Reads one store key, masked by its model, or one published value by its name. Free text, search params included, is read here, not carried in the turn's context.
 
 - highlight(target): Scrolls one thing into view and flashes it, to show the user where it is.
 

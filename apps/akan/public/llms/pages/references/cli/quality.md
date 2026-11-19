@@ -11,6 +11,7 @@
 - Quality CLI (#quality-cli)
 - What Scan Reports (#scan-scopes)
 - Rules By Scope (#scan-rules)
+- What Keeps A Page Whole (#runtime-reasons)
 - Server Render Share (#server-share)
 
 ## Content
@@ -45,9 +46,9 @@ Term
 
 `akan quality [action] [--format <text|json>]`
 
-Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.
+Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.`runtime` counts, per app and library, the client files that read `st`, `fetch` or `sig` only by names a module answers, notes each file that ties itself to its scope's whole client runtime, and prints what the last `akan build` of each app decided: the routes loading per module, and for every other the file, line and rule that keeps it whole.
 
-- action (String, default scan, scan | ssr | baseline): `scan` reports everything, `ssr` the render balance alone; `baseline` writes `akan.baseline.json`.
+- action (String, default scan, scan | ssr | runtime | baseline): `scan` reports everything, `ssr` the render balance alone, `runtime` how client files read the client runtime; `baseline` writes `akan.baseline.json`.
 
 - --format (String, default text, text | json): Short form `-f`; `json` prints the whole result for tools, each warning's `fix` included.
 
@@ -145,6 +146,12 @@ Fires when
 
 - akan.layout.module-ui-file: A `.tsx` in a module folder whose name is not an allowed role, such as `OrderCard.tsx`.
 
+- akan.runtime.whole-scope: `akan quality runtime` only, as a note: a client file reads `st`, `fetch` or `sig` by a computed key nothing asserts as a name, or hands it on or re-exports it, so a page that loads the file loads its scope's whole client runtime. The file works as it is, and the note says what would make the read visible where there is a usual answer: assert the key as a name, name the endpoint, read the names where the object is.
+
+- akan.runtime.whole-constants: `akan quality runtime` only, as a note: a client file passes `cnst` on, spreads it, walks its keys or picks a member by a computed key, so a page that loads the file registers the constants of every model its scope reaches. Name the member (`cnst.Memo`) or destructure it (`const { MemoStatus } = cnst`).
+
+- akan.runtime.framework-marker: `akan quality runtime` only, as a note: a file imports a framework component that reads models by name (a relation `Field`, `Load`, `Model`, `Data`, `Signal`, `Constant.Doc`), so each page listed loads the whole client runtime. The note shows the imports from that file to the component.
+
 - akan.ssr.*: The six render-balance rules, listed in the next section.
 
 What Each Module File May Declare
@@ -172,6 +179,38 @@ What The Duplicate Checks Skip
 **Expected name repeats are exempt.** Files in `ui/` and `page/`, and module files, may reuse a name. An `enumOf` class in a `.constant.ts` may not.
 
 **Short bodies are not compared.** A body counts as a duplicate only at 80 characters or more, with whitespace collapsed.
+
+What Keeps A Page Whole
+
+`akan quality runtime` answers which client files make a page load every module's runtime, why, and which routes that holds. Run it after `akan build <app>`: the build keeps what it decided per app, and the report prints it as one line per reason, `[rule] file:line message`, then the entries and routes it holds and how the file is reached. `--format json` carries every entry and route. Each rule it can print, and what to change in app code:
+
+Means, and what to change
+
+- [reader]: A file the entry imports reads `st`, `fetch`, `sig` or `cnst` by a name picked at run time, hands the object on or re-exports it; the line names the file, the line and the read. Write the name out, assert the key as a name (`name as "memoList"`), or read the names in the file that holds the object. A `Load`, `Model`, `Data`, `Signal` or `Constant.Doc` component needs every module by design, so its pages stay whole.
+
+- [store-side]: A store file imports the entry, and the stores the entry's code names cannot be told; the reason in parentheses is the read to fix, as for `[reader]`. Moving the component out of the store file's imports also clears it.
+
+- [lazy]: The entry loads another file with `import()`, and that file keeps the whole runtime. Fix the file it names, which has its own line in the report.
+
+- [asked]: Only files that keep the whole runtime load the entry with `import()`. Nothing to change in the entry: it loads per module once those files do.
+
+- [majority]: More pages that keep the whole runtime hold the entry than pages loading per module, which would carry its pieces on top of the whole runtime. It is usually a shared layout part: clear the reasons of the pages that hold it and the entry follows.
+
+- [unheld]: No page loading per module holds the entry, so narrowing it would help no page. Nothing to change.
+
+- [not-smaller]: The build measured the route both ways and per module was not smaller; the line carries both sizes. Nothing is wrong: the route keeps the whole runtime because that is the smaller page.
+
+- [reference]: The comparison build in which every entry keeps the whole runtime, which the build measures each page against. It appears only when a report is written from that build; nothing to change.
+
+- [dictionary]: The routes listed load every text of the page dictionary. With a line number, a client file reads a key the build cannot follow: write the key out, or pick it from an object or a typed union in the same file, or from an `as const` `static` table of a constant class. Without one, the file keeps the whole runtime or shows a `Signal` or `Constant` component; clear that file's `[reader]` reason first.
+
+- akan.runtime.whole-scope, akan.runtime.whole-constants, akan.runtime.framework-marker: Notes read from source, without a build: a file that would keep its scope's whole runtime, a file that keeps every constant (name `cnst.<Name>` or destructure `const { … } = cnst`), and, for an app no build has reported on, the pages that import a framework component reading models by name. The build's lines above say what the last build did; where the two differ, the build is right.
+
+- call, effect-statement, effect-value, bare-import, reexport, mutated-import: Counted per app and library as object imports that load the whole object: the object's own file, or the file of an object it copies in with `Object.assign`, does more than gather its parts (it calls a function other than React's `memo`, `forwardRef`, `lazy` or `createContext`, runs a statement, imports for effect, re-exports or changes an import). Move that code into the part's file, so the object file only gathers imports.
+
+- passed-on, spread, computed-member, rendered-or-called, method-call, written, shadowed, unresolved-member, server-boundary: Also counted as whole-object imports: the importing file uses the object as a value (passes it on, spreads it, picks a member by a computed key, renders or calls it, calls a member that may read `this`, writes to it), hides its name, names a member the build cannot point at a file (one the object does not hold, one declared in the object's own file, or one an object copied in after it may replace), or hands it from a server file to a client one. Name the part where it is used (`Memo.Zone.View`). `--format json` lists each import with its file, line, object and reason.
+
+**Keeping a page whole on purpose.** No setting does it; one client file that exports the store does. A page that renders `<WholeRuntime />` keeps the whole runtime, and rendered in the root layout, `page/_layout.tsx`, it keeps every page whole. The report then names the file under `[reader]` with the routes it holds, so the choice stays visible. A page kept whole loads more, so a route past its budget needs `akan build <app> --raise-budget`.
 
 Server Render Share
 
@@ -238,6 +277,7 @@ akan quality
 akan quality scan
 akan quality ssr
 akan quality ssr --format json
+akan quality runtime
 akan quality baseline
 ```
 
@@ -270,6 +310,17 @@ Suggested quality rules:
 
   - Keep generated scanSync index files out of hand-written changes; generated indexes should only contain one-depth export statements.
   - ...
+```
+
+### apps/<app>/ui/WholeRuntime.tsx
+
+```tsx
+"use client";
+import { st } from "@apps/<app>/client";
+
+export const wholeRuntime = st;
+
+export const WholeRuntime = () => null;
 ```
 
 ### Terminal

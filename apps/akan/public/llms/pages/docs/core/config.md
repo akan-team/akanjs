@@ -54,7 +54,7 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - pipeline (AppPipelineConfig, default build → docker → deploy): The stages Akan Cloud runs to build and deploy this app, in order.
 
-- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
 - database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
 
@@ -62,7 +62,9 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - trustedDependencies (string[], default []): Packages whose install scripts bun install --production runs, in the image and in a desktop app's server.
 
-- bin (Record<string, { [platform]: AkanBinSource }>, default {}): Executables every desktop build carries, per platform, first on its PATH; the image ignores it.
+- bin (Record<string, { [platform]: AkanBinSource }>, default {}): Executables every desktop build and the image carry, per platform, first on PATH.
+
+- workers (Record<string, string>, default {}): Entry files akan build bundles apart from the server; AppWorker.spawn(name) runs one as a process of its own. A lib's config takes it too, for every app that depends on the lib.
 
 - barrelImports (string[], default akanjs + workspace): Barrel paths Akan flattens while scanning and bundling.
 
@@ -98,7 +100,7 @@ File
 
 - env.client.*: Public-safe values for client code, such as map keys, site keys, or feature switches.
 
-- env.server.*: Server-only values: server options, connection settings, private service configuration.
+- env.server.*: Server-only values: server options, connection settings, private service configuration. `akan build` leaves the secret ones out of the image; the deployed server reads each from an environment variable (`akan secret-env <app>` lists them).
 
 - local, testing, debug, develop, main: Suffixes chosen by AKAN_PUBLIC_ENV: your machine, tests, two shared stages, production.
 
@@ -180,7 +182,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - icon (string | { image, backgroundColor? }): A square PNG relative to the app folder, or it with the color behind its transparent areas.
 
-- splash (string | { image?, backgroundColor?, autoHide?, timeout? }): A PNG shown centered at launch, or the launch screen's image, color and when it hides.
+- splash (string | { image?, backgroundColor?, autoHide?, timeout? }): A PNG shown centered at launch, or the launch screen's image, color and when it hides. The splash stays until the first page is drawn, loading fallbacks gone; autoHide: true hides it as soon as the document loads instead.
 
 - backgroundColor (string | { light, dark }, default white / black): What a window and an external view show before their page paints, and the splash's default color.
 
@@ -262,6 +264,12 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - desktop.publisher (string, default the app name): Windows: who publishes the app, as the installed app's Publisher and its executable's company name.
 
+- desktop.externalView.allowOrigins (string[], default []): The exact origins (scheme://host[:port], no path or wildcard) an external-view may be opened for; a view's own allowOrigins narrow within them. With none, no view opens.
+
+- desktop.externalView.evaluate (boolean, default false): Lets a page run script in an external view: evaluate and open's initScript.
+
+- desktop.externalView.sendKey (boolean, default false): Lets a page type into an external view with sendKey.
+
 - targets (Record<string, AkanNativeSettings>, default { default: {} }): Several native apps from one Akan app; each takes the fields above, without targets.
 
 Firebase app registration and the stores must use the same appId.
@@ -296,7 +304,7 @@ The rest of the config is for the build system and the production image. Most ap
 
 - trustedDependencies (string[], default []): Packages allowed to run their install scripts, for an addon that builds itself at install.
 
-- bin (Record<string, { [platform]: AkanBinSource }>, default {}): { url, sha256, file? } or { path, file? } per platform, carried in a desktop app and put first on its PATH.
+- bin (Record<string, { [platform]: AkanBinSource }>, default {}): { url, sha256, file? } or { path, file? } per platform, carried in a desktop app and, for Linux, the image, first on PATH.
 
 - optimizeImports (string[], default built-in list): Extra packages the client build imports by exact file, so an icon set does not ship whole.
 
@@ -308,17 +316,25 @@ The rest of the config is for the build system and the production image. Most ap
 
 - assets.keepFonts (string[], default []): Font globs kept whatever the scan concludes, such as a URL assembled at runtime.
 
-- syncPageLibs (string[] | boolean, default false): true mounts every dependency lib with a page folder, an array only those; false unlinks all.
+- syncPageLibs (string[] | boolean, default false): true mounts every dependency lib with a page folder, an array only those; false unlinks all. A `routes` entry with a basePath can set its own.
 
 - plugins (AkanPlugin[], default []): Read live by the CLI for runtime packages, native project setup, and public/ assets.
 
-- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild.
 
-A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
+A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns, docker.installRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
 
 **One image, several deployments.** With `["single", "cluster"]` the same image runs an edge site and a cloud cluster, and each deployment names its mode with `AKAN_DATABASE_MODE`.
 
-**A desktop app carries its own executables.** It gets none of the image's `docker` steps, so `bin` puts ffmpeg, or anything else its server or a native plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and in a plugin's `ctx.binDir`. Carry a static LGPL build: a `--enable-nonfree` build may not be redistributed.
+**The server runs as the image's bun user, uid 1000, and owns only what it writes.** apt-get, preRuns, bun install and postRuns still run as root, and the app files, `node_modules` included, stay root's and read-only to the server. bun owns `/workspace/sqlite`, `/workspace/local`, `/workspace/runtime`, `/workspace/data` and `/workspace/.akan/artifact/image-cache`. A directory a postRuns step makes for the server to write needs `chown 1000:1000`.
+
+**installRuns prune what the image never loads.** They run in the same layer as `bun install`, so a file a step deletes from `node_modules` is in no layer. Use them for a package that ships every platform's binary; an `rm` in postRuns is a later layer and leaves the image as large.
+
+**crossBuild builds for another architecture without emulating Bun.** For `docker buildx build --platform linux/arm64` on an amd64 host, a stage on the build machine's own architecture runs `bun install --os linux --cpu <target>`, and the target's stage copies the result and runs only apt-get, preRuns and postRuns. A dependency's lifecycle script then runs on the build machine's CPU, and the build needs BuildKit.
+
+**The build writes a .dockerignore.** A build started by hand in `dist/apps/<app>` writes its database beside `main.js`, so `sqlite`, `local`, `runtime`, `data`, the image cache and `node_modules` stay out of the image.
+
+**A desktop app carries its own executables.** It gets none of the image's `docker` steps, so `bin` puts ffmpeg, or anything else its server or a native plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and in a plugin's `ctx.binDir`. The image carries the `linux-x64` and `linux-arm64` entries the same way, first on its PATH. Carry a static LGPL build: a `--enable-nonfree` build may not be redistributed.
 
 A docker written as a string is the whole Dockerfile, taken verbatim. Nothing is merged into it — including the preRuns and postRuns your libraries declared, which are silently dropped rather than silently unapplied.
 
@@ -744,8 +760,10 @@ const config: AppConfig = {
   docker: {
     image: { amd64: "oven/bun:amd64", arm64: "oven/bun:arm64" },
     preRuns: ["apt-get install -y ffmpeg"],
+    installRuns: ["rm -rf node_modules/onnxruntime-node/bin/napi-v6/darwin"],
     postRuns: ["echo after"],
     command: ["bun", "main.js"],
+    crossBuild: true,
   },
 };
 ```

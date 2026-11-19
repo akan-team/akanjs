@@ -22,6 +22,7 @@
 - externalLibs (#external-libs)
 - barrelImports (#barrel-imports)
 - optimizeImports (#optimize-imports)
+- What A Page Loads (#client-runtime)
 - docker (#docker)
 - Library Config Fields (#library-config-fields)
 
@@ -307,6 +308,8 @@ To serve only the routes of `libs/shared`:
 
 **One path, one route.** Two synced routes may not resolve to the same path.
 
+**A route can choose its own.** With several `basePath` routes, every one mounts the libraries above. A route that sets `syncPageLibs` itself mounts only what it names: `{ basePath: "edge", domains: {}, syncPageLibs: false }` serves no library route under `/edge`.
+
 externalLibs
 
 `externalLibs` keeps a package out of the bundle and installs it as a real dependency of the production build. Native and runtime-sensitive packages need this; plain TypeScript helpers do not:
@@ -347,13 +350,41 @@ optimizeImports
 
 **Keep your own barrels clean.** One file per export makes the result easy to predict.
 
+What A Page Loads
+
+No field sets what the browser code of a server-rendered page loads: every app loads per route. A page loads the page runtime (`usePage`, `msg`, `Err`) and then the stores, endpoint descriptors, constants and dictionary texts of the modules its client code names or the server hands it. A file that picks a name at run time loads every module's, and `akan quality runtime` names each such file, its line and the routes it holds; its reference page shows the one file that keeps a page, or every page, on the whole runtime on purpose.
+
+**What a client module brings.** A client module that imports `fetch` or `st` from the app's or a lib's `client` barrel brings the descriptors and stores of only the modules it names (`st.use.memoList()`, `fetch.memo(id)`). A module that picks a name at run time (`st.do[name]`), or a `Load`, `Model` or `Data` component on the page, brings the app's whole runtime.
+
+**A name counts as written in these indirect forms too.** A cast hides nothing: `(st.use as Loose).memoList()`, `st.get() as Wide`, `!` and `satisfies` are read as the name after them, and so is `const get = st.get` called later. A computed key asserted as a name is read as that name, directly (`st.slice[sliceName as "memo"]`) or through a `const` (`const key = name as "memoList"`, then `const { [key]: list } = this.get()`): asserting a key as a name tells the build the value is that name or one owned by the same module, and a union of names counts as each of them. A name built from a slice the function is handed, such as `st.use[`queryArgsOf${capitalize(slice.sliceName)}`]`, loads nothing of its own when `slice` is a parameter or prop typed `SliceMeta` and the name is put together with `capitalize` of `akanjs/common`, a template or `+`: the slice arrived with its model, from `fetch` or `st.slice` in a client file or from the server. A slice a server component writes by hand, or a deep copy of one, brings no model; in a client file, write its names out (`{ refName: "memo", sliceName: "memoInBoard" }`) and the file loads that model. State handed to a function of the same file (`MemoStore.announce(this.get())`) is read where that function reads it. A key nothing asserts and a runtime object handed to another file still keep the whole runtime, and the note of `akan quality runtime` says what to write instead.
+
+**Only the browser code of server-rendered pages changes.** Server rendering, a CSR build and a native app still load everything.
+
+**A route behaves the same in development.** The development server loads what a production page loads, so a name a route misses shows while you work: reading a store key the page has not loaded fails with the name of the module whose store declares it.
+
+**Read a store only where a module names it.** A store's state, persisted keys included, appears when its code loads, so `st.get()` of a store no client module on the route names has no value there.
+
+**An extended lib store loads as the app's.** A lib module naming a store the app extends loads the app's store, with the actions, state and slices the app adds.
+
+**Endpoint descriptions load where a page shows them.** Each language's dictionary file, which every page loads, leaves out the `.desc` and `.arg` texts of signals; a second file brings them to a page that shows the API explorer or whose client components name such a key. The server, MCP and a CSR build keep the whole dictionary, and the build prints both sizes per language.
+
+**A page loads the dictionary texts it can show.** The build reads the keys each route's client modules name (a written key, a template with a written module name, a key picked from a table or a typed union the file holds, or from an `as const` table of written keys a constant class holds as a `static`) and the models, enums and scalars their lists, views and forms label, then packs each language's dictionary into files so that a route loads at most four of them, besides the API description file. A route holding a key the build cannot follow, such as one read from data, or showing a `Signal` or `Constant` component, loads the whole dictionary; for a key, `akan build` warns with its file, line and reason. A key of a module the route left out still shows: its file loads and the page renders again, and development reports it once per module. A CSR build keeps the whole dictionary inline.
+
+**A page loads only the parts of an object it names.** `Memo.Zone.View`, `<Field.Text />` or `const { Util } = Memo` loads that part's file and not the object's other parts, when the object's file only gathers imports, as a model's generated `index.ts` does. An object that copies another in (`Object.assign(Section, Field, { Rich })`) loads the copied object's parts the same way, each from its own file. A file that calls a function other than React's `memo`, `forwardRef`, `lazy` or `createContext`, runs a statement, re-exports or changes an import while it loads keeps the whole object, as does a part declared in the object's own file, an object passed on, spread, written to or rendered itself, and a member called through it (`Obj.run()`) that may read `this`. `akan quality runtime` counts what stays whole by reason, and `--format json` lists each import with its file, line and reason.
+
+**A part a page does not name does not run there.** Its file's top-level code no longer runs on that page, so a part file that registers something when it loads must be named by the page that needs it, or the registration moved to where it is used.
+
+**The production build checks its own loading order.** When a chunk would run before the chunk of a module piece it needs, or a store file would be defined through a piece that imports it back, `akan build` warns once, naming the two source files, builds every page on the whole runtime instead and succeeds; the warning is a bug in akan to report. The development server serves each module on its own and checks nothing, so the production build is the guard: build before you ship a change to which module a client file names. A page that needs every module keeps the whole runtime, and `akan quality runtime` lists which component brings it there.
+
+**A page registers the constants of the models it names.** `cnst.Memo`, `cnst.MemoStatus`, a lib's `cnst.util.File` or `const { MemoStatus } = cnst` loads that model's registration piece, `lib/__client/memo.cnst.ts`, and the pieces of the models its constant file names, so a page reading one enum no longer loads every model. A file that passes `cnst` on, spreads it, calls `Object.keys(cnst)`, picks a member with a computed key or names something `cnst` does not hand out keeps every constant, and so does a framework component that walks every model, such as the API explorer. `akan quality runtime` names each file that keeps every constant, with its reason.
+
 docker
 
 `docker` shapes the production image that `akan build` writes. Declare it only when the image needs a system package or a different start command.
 
-The generated image installs `ca-certificates` and `tzdata` and nothing else, so `ffmpeg`, a headless browser or a native toolchain goes into `preRuns`:
+The generated image installs `ca-certificates`, `tzdata` and its init, `tini`, and nothing else, so `ffmpeg`, a headless browser or a native toolchain goes into `preRuns`:
 
-- image (string | { amd64?, arm64? }, default oven/bun:1.4.4-slim): The base image. The object form picks one per architecture.
+- image (string | { amd64?, arm64? }, default oven/bun:1.4.4-slim@sha256:…): The base image. The object form picks one per architecture.
 
 - preRuns ((string | { amd64?, arm64? })[], default []): Steps run before `bun install --production`, so native builds find their tools.
 
@@ -363,7 +394,7 @@ The generated image installs `ca-certificates` and `tzdata` and nothing else, so
 
 Order of the generated Dockerfile
 
-`FROM` the image, then `ca-certificates`, `tzdata` and the Asia/Seoul timezone.
+`FROM` the image, then `ca-certificates`, `tzdata`, `tini` and the Asia/Seoul timezone.
 
 `preRuns`: the libraries' steps first, then the app's.
 
@@ -371,7 +402,7 @@ Copy `package.json` and `bun.lock`, then run `bun install --production --frozen-
 
 `postRuns`, in the same order.
 
-Copy the app files, set `PORT`, `NODE_ENV`, the `AKAN_PUBLIC_*` values and `AKAN_LOG_TO_FILE=0`, then `CMD`.
+Copy the app files, give uid 1000 the directories the server writes, set `PORT`, `NODE_ENV`, the `AKAN_PUBLIC_*` values and `AKAN_LOG_TO_FILE=0`, then `USER 1000:1000` and `CMD`.
 
 **Start with apt-get update.** The base step clears the apt package lists, so each install in `preRuns` refreshes them first.
 
@@ -663,11 +694,11 @@ const config: AppConfig = {
     "RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata ffmpeg imagemagick",
     "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
     "ARG TARGETARCH",
-    "RUN mkdir -p /workspace",
     "WORKDIR /workspace",
     "COPY ./package.json ./bun.lock ./",
     "RUN bun install --production --frozen-lockfile",
     "COPY . .",
+    "RUN mkdir -p /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache && chown 1000:1000 /workspace/sqlite /workspace/local /workspace/runtime /workspace/data /workspace/.akan/artifact/image-cache",
     "ENV PORT=8282",
     "ENV NODE_ENV=production",
     "ENV AKAN_PUBLIC_REPO_NAME=akanjs",
@@ -680,6 +711,7 @@ const config: AppConfig = {
     "ENV AKAN_PUBLIC_WS_PREFIX=/ws",
     "ENV AKAN_PUBLIC_OPERATION_MODE=cloud",
     "ENV AKAN_LOG_TO_FILE=0",
+    "USER 1000:1000",
     'CMD ["bun","main.js"]',
   ].join("\n"),
 };

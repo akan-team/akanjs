@@ -16,6 +16,7 @@
 - Live Tail (#live-tail)
 - Request Line & Flight Recorder (#request-line)
 - Collection: NDJSON stdout (#collection)
+- Export: OpenTelemetry (#otlp-export)
 - The SSE Stream (#log-stream)
 - Operational Checklist (#operational-checklist)
 
@@ -37,7 +38,7 @@ Term
 
 - LogRecord: What one Logger call becomes: level, logger name, process and, inside a request, its trace.
 
-- traceId: An id shared by every line one request writes, such as `m8x1k2-a9f3c1`.
+- traceId: An id shared by every line one request writes, in the gateway, the replica and the RSC worker alike: 32 hex digits such as `0af7651916cd43dd8448eb211c80319c`. The response carries it as `x-request-id`, and a failed call's body as `traceId`.
 
 - sink: A receiver registered with `Logger.addSink`, such as the rotating file or the hub.
 
@@ -58,6 +59,8 @@ Field
 - role, replicaIdx, pid: Which process wrote it. role is gateway, all, federation, batch or rsc-worker.
 
 - traceId, endpoint, origin: Filled only inside a request, such as `mutation:refundPayment` arriving over `http`.
+
+- link: Present when the request was handed an id it did not take: its caller's, or for a job the enqueuing trace's.
 
 - attrs: Structured key=value data attached with `Logger.emit`.
 
@@ -223,7 +226,7 @@ The same filters inside akan console
 
 - --endpoint (string): Endpoint globs, comma-separated: `mutation:*`, `query:userList`.
 
-- --trace (string): One request's traceId.
+- --trace (string): One request's traceId, or an id it linked: the one its caller sent, as sent.
 
 - --child (string): Replica indexes, comma-separated.
 
@@ -247,7 +250,7 @@ The same filters inside akan console
 
 - Bounded Ring — The hub owner keeps 2,000 records or 4MB (`AKAN_LOG_BUFFER`, `AKAN_LOG_BUFFER_MB`). More than 20 identical lines a second fold into one "suppressed" line there and in the log file; request lines never fold, and the ndjson stdout gets every record.
 
-- Lines Without Context — Gateway-internal lines, the scheduler's own started/finished lines and unauthenticated primitive GET queries on the fast path carry no traceId or endpoint. `AKAN_LOG_CONTEXT=0` turns request context off everywhere.
+- Lines Without Context — Gateway lines written outside a request, the scheduler's own started/finished lines and unauthenticated primitive GET queries on the fast path carry no traceId or endpoint. `AKAN_LOG_CONTEXT=0` turns the endpoint context off everywhere; the gateway and the replica still write the request's id.
 
 Request Line & Flight Recorder
 
@@ -267,7 +270,11 @@ What the request line carries
 
 - userId: The caller's account id, once the call knows who is asking.
 
-- db, dbMs, cacheHit: Query count, query time and cache hit ratio, only under `AKAN_TRACE=1`.
+- link: An id the call was handed but did not take: the `traceparent` or `x-request-id` a caller sent, or for a queued job the trace that enqueued it. Every record of the call carries it as `link` too.
+
+- queueMs: On a page's line, how long its render waited for a render slot under `AKAN_RSC_WORKER_MAX_CONCURRENCY`; absent when it did not wait. With `AKAN_TRACE=1` the wait is also the span `renderQueue`.
+
+- db, dbMs, cacheHit: SQL statements sent, their time with any wait, and the cache hit ratio, only under `AKAN_TRACE=1`. A statement slower than `AKAN_LOG_SLOW_STATEMENT_MS` writes its own `SlowStatement` line with this call's `traceId` (see Metrics, Find Slow Statements).
 
 - err: The first line of the error message, cut at 200 characters.
 
@@ -281,15 +288,19 @@ Settings
 
 - AKAN_LOG_FLIGHT_MAX (number, default 65536): Records held at once across calls (1,024 calls at 64 each); past it a call runs unrecorded.
 
-- AKAN_LOG_DEBUG_HEADER (string, default unset): Secret for `x-akan-debug`, which lowers one request to trace. Unset, it works only in local.
+- AKAN_LOG_DEBUG_HEADER (string, default unset): Secret for `x-akan-debug`, which lowers one request to trace, records its spans and answers with `Server-Timing`. Unset, it works only in local. With `AKAN_DEVTOOLS=true` it also opens devtools and Studio outside local.
 
-- AKAN_TRACE (1, default off): Adds db and cache figures to the request line, and per-stage spans to metrics.
+- AKAN_TRACE (1, default off): Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per SQL statement sent among them (the first 32 of a request; `db` and `dbMs` count them all, `BEGIN` and `COMMIT` included, without a span), or per model call for a store that sends none through the SQLite or Postgres driver.
 
 One request at trace in production
 
 Send the secret in `x-akan-debug`, and that request alone is logged at trace:
 
 that request alone is logged at trace, its lines marked debug=true
+
+**The id on a response is the server's own.** A request that arrives with a W3C `traceparent`, or else an `x-request-id` that is a UUID or 32 hex digits, gets a fresh id and keeps the caller's as `link`, on every record it writes. `akan logs --trace` matches `link` too and takes the id as the caller sent it, so a caller's own id still finds its request. Only the gateway's hop to its replica carries an id over. `AKAN_TRACE_ADOPT=trusted-proxies` lets a proxy that `AKAN_TRUSTED_PROXIES` lists by address choose the id; turn it on only when that proxy overwrites or strips both headers.
+
+**The id follows what the request starts.** A page's render in the RSC worker, the `fetch` calls a server makes to this app or to a `clone({ origin })`, and every frame of a websocket (under its handshake's id) write the same `traceId`. A queued job gets an id of its own and names the enqueuing one as `link`.
 
 **Promoted lines pass every floor.** A `flight=true` or `debug=true` record was asked for below the level, so a forwarder's floor, the stdout level and `--level` let it through.
 
@@ -329,7 +340,63 @@ A docker-compose service that ships ndjson looks like this:
 
 On Kubernetes, a node agent such as Fluent Bit strips the CRI wrapper and parses the JSON:
 
-**Keep traceId and userId as JSON fields, not Loki labels.** Labels must stay low-cardinality (app, env, role, level); pick ids at query time with `{app="myapp"} | json | traceId="m8x1k2-a9f3c1"`.
+**Keep traceId and userId as JSON fields, not Loki labels.** Labels must stay low-cardinality (app, env, role, level); pick ids at query time with `{app="myapp"} | json | traceId="0af7651916cd43dd8448eb211c80319c"`.
+
+Export: OpenTelemetry
+
+Set an OTLP endpoint and every process sends its spans, and its log lines once you ask for them, to an OpenTelemetry collector over OTLP/HTTP with JSON bodies. It needs no package. With no endpoint set, nothing is created, and a request pays one branch.
+
+- OTEL_EXPORTER_OTLP_ENDPOINT (URL, default unset): The collector's OTLP/HTTP base, such as `http://otel-collector:4318`; `/v1/traces` is appended, and `/v1/logs` once `OTEL_LOGS_EXPORTER=otlp` asks for logs. Unset, along with the two below, means no export.
+
+- OTEL_EXPORTER_OTLP_TRACES_ENDPOINT (URL, default unset): The full URL for spans, used as given. Set alone, only spans are exported.
+
+- OTEL_EXPORTER_OTLP_LOGS_ENDPOINT (URL, default unset): The full URL for log records. Set alone, only logs are exported.
+
+- OTEL_EXPORTER_OTLP_HEADERS (name=value,…, default unset): Headers on every export request, percent-encoded; `_TRACES_` and `_LOGS_` forms add to it. The values are credentials and are never logged; a malformed list is ignored with a warning that names only the variable.
+
+- OTEL_SERVICE_NAME (string, default AKAN_PUBLIC_APP_NAME): `service.name`. Else `service.name` in `OTEL_RESOURCE_ATTRIBUTES`, else the app name.
+
+- OTEL_RESOURCE_ATTRIBUTES (key=value,…, default unset): Extra resource attributes. Akan adds `akan.process.role`, `akan.replica.index`, `service.version` from `AKAN_BUILD_ID`, `deployment.environment.name`, `host.name` and `process.pid`.
+
+- OTEL_TRACES_SAMPLER (always_on | always_off | traceidratio | parentbased_…, default parentbased_always_on): The head sampler. Any other value is logged once and exports no spans.
+
+- OTEL_TRACES_SAMPLER_ARG (0 – 1, default 1.0): The ratio for `traceidratio`, read from the trace id, so every process agrees on it.
+
+- OTEL_LOGS_EXPORTER (otlp | none, default unset): Logs go only with `otlp` here or `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` set; unlike the OpenTelemetry default, the generic endpoint alone sends spans only, since a line's text is sent as written. `none` keeps them home. `OTEL_TRACES_EXPORTER=none` turns spans off.
+
+- OTEL_EXPORTER_OTLP_PROTOCOL (http/json, default http/json): `http/protobuf` still sends JSON, with a warning; `grpc` exports nothing.
+
+- OTEL_EXPORTER_OTLP_TIMEOUT (ms, default 10000): One export request, retries included; `_TRACES_` and `_LOGS_` forms override it.
+
+- OTEL_BSP_* / OTEL_BLRP_* (number, default 2048 · 512 · 5000 / 1000): `MAX_QUEUE_SIZE`, `MAX_EXPORT_BATCH_SIZE` and `SCHEDULE_DELAY` (ms) for spans and for logs.
+
+- OTEL_SDK_DISABLED (true, default off): Turns all of it off, whatever else is set.
+
+What each process sends
+
+Role
+
+- gateway: One server span per proxied request, named by its method (`GET`) because the gateway does not match routes, and its own log lines.
+
+- all, federation, batch: A server span named after the route pattern it matched, a span per endpoint call such as `query:getUser`, a client span per database call, and its log lines. Each stage of a call (guards, handler, serialize) is a span of its own only under `AKAN_TRACE=1` or a passed `x-akan-debug`. A job is a trace of its own, linked to the one that enqueued it.
+
+- rsc-worker: The page render span, a child of its replica's server span, and its own log lines. It flushes on SIGTERM and when its replica goes away.
+
+**Sampling is decided once, at the first hop.** The process a request reaches first over TCP — the gateway, or a replica running without one — decides, and the sampled flag of `traceparent` carries the decision to the replica and on to the RSC worker. A caller's `traceparent` counts only when `AKAN_TRACE_ADOPT` trusts the sender; a `parentbased_` sampler then follows its flag. An untrusted caller's trace is linked from the first span, with its span id when a `traceparent` named one; an `x-request-id` names none, so it goes as the `akan.trace.link` attribute.
+
+**`AKAN_TRACE` and `x-akan-debug` are separate switches.** `AKAN_TRACE=1` records spans for every call into this app's own metrics and request line. The exporter records a sampled call's own span and its database spans and sends them out, without joining that aggregate; the per-stage spans come only with `AKAN_TRACE=1`. `x-akan-debug` lowers one request to trace and answers with `Server-Timing`; it does not change the sampling decision. Any of the three works without the others.
+
+**What stays out.** Span attributes carry the method, the route pattern, the status and the error type: never a URL with its query, a header value, SQL text or the caller's user id. A failure's exception event carries its error code, not its message, which may quote user input.
+
+**Log records are opt-in.** A record carries the line's message as its body, its severity, its attrs, the logger's name and context, the endpoint and origin, a link it was handed, and its trace and span id when written inside a request. Attrs naming a secret are `[redacted]` when the record is made, before any sink sees them; nothing else is. The message text, and an error's message and stack where the line carries them, go as written, on this sink as on every other. The floor is the console level the process booted with.
+
+**Never in a request's way.** Spans and records go into a bounded queue that sends a batch when it holds 512, once the call that filled it has returned, or on a timer, with at most two requests in flight. A full queue drops its oldest item and counts it. 429, 502, 503, 504 and an unreachable collector are retried with backoff until the timeout; any other status drops the batch. A failing collector is reported at most once a minute, by host only. The exporter's own requests are not traced, and its own warnings are not exported.
+
+**On the way out,** each process sends what is queued once, without retries, for at most 1.5 s, and a replica under the gateway takes less once its shutdown has used up the gateway's wait. Whatever is unsent by then is dropped and counted in a last warning. An RSC worker still running 3 s after it was stopped, as one stuck in a render, is killed.
+
+**What it costs** is the sampled share. On `apps/minimal` behind a gateway with one replica, at 16 concurrent clients on a laptop, three 8 s runs each, an endpoint that only returns a constant served a median 38.3k requests a second with export off (36.6k to 38.5k over six runs), 38.1k at a ratio of 0.01 (37.8k to 38.4k) and 28.9k at 1.0 (28.7k to 29.4k), with p50 going from 0.40 to 0.40 to 0.47 ms. A page replayed from the render cache went from 14.4k a second (14.2k to 14.6k) to 14.6k at 0.01 and 13.1k at 1.0 (13.0k to 13.3k), p50 1.02 to 1.01 to 1.12 ms. A ratio of 0.01 is therefore within noise, and 1.0 costs about a quarter of this endpoint's throughput and under a tenth of a cached page's; a page that renders spends far more per request than the export does.
+
+**JSON bodies only.** A collector that accepts only protobuf will not work; the OpenTelemetry Collector's `otlp` receiver accepts both. Bodies are not compressed.
 
 The SSE Stream
 
@@ -486,6 +553,7 @@ akan:myapp> .tail off
 curl -X POST -H "x-akan-debug: <secret>" \
      https://api.example.com/api/refundPayment/ord_1
 # that request alone is logged at trace, its lines marked debug=true
+# Server-Timing: total;dur=12.4, guards;dur=0.3, handler;dur=11.2, db;desc="order.findOne";dur=9.8
 ```
 
 ### docker-compose.yml
@@ -515,6 +583,19 @@ services:
     key_name      log
     parser        json
     reserve_data  true
+```
+
+### docker-compose.yml
+
+```yaml
+services:
+  app:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+      OTEL_EXPORTER_OTLP_HEADERS: authorization=Bearer%20<token>
+      OTEL_LOGS_EXPORTER: otlp
+      OTEL_TRACES_SAMPLER: parentbased_traceidratio
+      OTEL_TRACES_SAMPLER_ARG: "0.05"
 ```
 
 ### Terminal

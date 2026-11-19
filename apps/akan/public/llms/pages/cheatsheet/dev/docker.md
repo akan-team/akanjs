@@ -36,7 +36,7 @@ What it means for you
 
 - AKAN_LOG_TO_FILE=0: File logging is off, so collect stdout or set it to 1 and mount a log volume.
 
-- ca-certificates, tzdata: The only packages installed, so declare ffmpeg or Chromium in `docker.preRuns`.
+- ca-certificates, tzdata, tini: The only packages installed, tini as the init that reaps orphaned processes, so declare ffmpeg or Chromium in `docker.preRuns`.
 
 - console.js: It ships next to `main.js`, so you open an operator console with `docker exec`.
 
@@ -268,9 +268,9 @@ An API-only container with one request-serving replica:
 
 Customize The Image
 
-You do not write a Dockerfile; the `docker` key in `akan.config.ts` shapes the image. The image installs only `ca-certificates` and `tzdata`, so an app that needs ffmpeg or Chromium has to say so.
+You do not write a Dockerfile; the `docker` key in `akan.config.ts` shapes the image. The image installs only `ca-certificates`, `tzdata` and its init, `tini`, so an app that needs ffmpeg or Chromium has to say so.
 
-- image (string | { amd64?, arm64? }, default oven/bun:1.4.4-slim): The base image. The object form picks one per architecture; a missing one uses the default.
+- image (string | { amd64?, arm64? }, default oven/bun:1.4.4-slim@sha256:…): The base image. The object form picks one per architecture; a missing one uses the default.
 
 - preRuns ((string | { amd64?, arm64? })[], default []): Commands run before `bun install`, such as a system package a native dependency needs.
 

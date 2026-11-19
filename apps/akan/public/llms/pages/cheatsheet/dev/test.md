@@ -109,6 +109,8 @@ The test server uses an in-memory SQLite database by default. It keeps requests 
 
 - port (number, default 38080 + worker id): The port the test server listens on.
 
+- enableModules (string[], default []): Modules to mount whatever their `serve()` says with `enabled` or `operationMode`, with the gated modules they depend on. `"@edge"` names every module that lists that mode.
+
 **Call it before any fixture runs.** Once the test server has started, `configureSignalTest` throws.
 
 What To Test
