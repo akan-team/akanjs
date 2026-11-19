@@ -4,6 +4,7 @@ import type { CacheDatabase } from "akanjs/document";
 
 import { Err } from "../lib/dict";
 import { hashPassword, isPasswordMatch } from "./bcrypt";
+import { emitSecuritySignal } from "./securitySignalHook";
 
 export type SignTokenPurpose = "signin" | "password";
 export type EmailCodePurpose = "accountId" | "address";
@@ -13,8 +14,10 @@ export class SignChallenge {
   static readonly maxSigninFails = 10;
   static readonly maxAccountSigninFails = 50;
   readonly #cache: CacheDatabase;
-  constructor(cache: CacheDatabase) {
+  readonly #subject: "user" | "admin";
+  constructor(cache: CacheDatabase, subject: "user" | "admin" = "user") {
     this.#cache = cache;
+    this.#subject = subject;
   }
   // Only the hash is kept and the first use consumes it; a sign-in token and a password token never stand in for each other.
   async setSignToken(userId: string, purpose: SignTokenPurpose, expireAt = dayjs().add(10, "minute")) {
@@ -43,8 +46,19 @@ export class SignChallenge {
   }
   async failSignin(accountId: string, ip: string | null) {
     const expireAt = dayjs().add(15, "minute");
-    await this.#cache.incr("signinFails", SignChallenge.#signinCallerKeyOf(accountId, ip), 1, { expireAt });
-    await this.#cache.incr("accountSigninFails", hashToken(accountId), 1, { expireAt });
+    const callerFails = await this.#cache.incr("signinFails", SignChallenge.#signinCallerKeyOf(accountId, ip), 1, {
+      expireAt,
+    });
+    const accountFails = await this.#cache.incr("accountSigninFails", hashToken(accountId), 1, { expireAt });
+    const isAccountLocked = accountFails === SignChallenge.maxAccountSigninFails;
+    if (isAccountLocked || callerFails === SignChallenge.maxSigninFails)
+      emitSecuritySignal({
+        kind: "signinLocked",
+        subject: this.#subject,
+        accountId,
+        ip,
+        scope: isAccountLocked ? "account" : "caller",
+      });
   }
   async clearSigninFailures(accountId: string, ip: string | null) {
     await this.#cache.delete("signinFails", SignChallenge.#signinCallerKeyOf(accountId, ip));

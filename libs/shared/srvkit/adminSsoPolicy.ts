@@ -8,9 +8,10 @@
  * 가 같은 이유로 이 모양이다). 판정은 로그인 시점에 읽히므로 부팅 순서와 무관하다.
  */
 export interface AdminSsoPolicy {
-  canSignup: (accountId: string) => boolean | Promise<boolean>;
+  canSignup: (accountId: string, ssoType: string) => boolean | Promise<boolean>;
   /** 이미 있는 관리자가 이 공급자로 로그인해도 되는지. 비우면 아무도 안 된다. */
   canSignin?: (accountId: string, ssoType: string) => boolean | Promise<boolean>;
+  canPasswordSignin?: (accountId: string) => boolean | Promise<boolean>;
   /** 새로 만든 관리자가 받는 등급. 비우면 로그인은 되지만 아무것도 못 한다(가드가 전부 막는다). */
   roles?: string[];
 }

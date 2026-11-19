@@ -110,12 +110,25 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
       options,
     );
     const admin = await this.adminModel.getAdmin(session.subjectId);
+    if (await this.isSigninClosed(admin.accountId)) {
+      this.logger.warn(`Ended the sessions of admin ${admin.id}: the sign-in policy no longer admits the account`);
+      await this.adminModel.revokeRefreshSessions(admin.id);
+      throw new Err("shared.error.revokedRefreshToken");
+    }
     const me = this._makeMe(admin);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryUserIdentity(account, readSelf)), me, meSid: session.id },
       { sid: session.id, jti: crypto.randomUUID(), expiresAt: WebSession.accessTokenExpiresAt() },
     );
     return { ...accessToken, refreshToken: nextRefreshToken.refreshToken };
+  }
+  private async isSigninClosed(accountId: string) {
+    const { canPasswordSignin, canSignin } = adminSsoPolicy();
+    if (!canPasswordSignin || (await canPasswordSignin(accountId)) !== false) return false;
+    if (!canSignin) return true;
+    for (const ssoType of cnst.SsoType.values.filter(isAdminSsoTypeAllowed))
+      if ((await canSignin(accountId, ssoType)) === true) return false;
+    return true;
   }
   //? Security: signed to the expiry the caller's token already had, so an admin session's end buys the user no time.
   async dropAdminIdentity(account?: Account, readSelf?: (userId: string) => Promise<Self | null>) {
@@ -148,6 +161,8 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
       throw new Err("admin.error.passwordNotMatched");
   }
   async signinAdmin(accountId: string, password: string, ip: string | null = null, account?: Account) {
+    if ((await adminSsoPolicy().canPasswordSignin?.(accountId)) === false)
+      throw new Err("admin.error.passwordSigninClosed");
     const challenge = this.adminModel.signChallenge;
     if (await challenge.isSigninLocked(accountId, ip)) throw new Err("admin.error.tooManySigninAttempts");
     const adminSecret = await this.adminModel.findAdminSecret(accountId);
@@ -190,20 +205,21 @@ export class AdminService extends serve(db.admin, ({ use, service, memory, signa
     const existing = await this.adminModel.findByAccountId(accountId);
     if (existing && !(await adminSsoPolicy().canSignin?.(accountId, ssoType)))
       throw new Err("admin.error.adminSsoNotAllowed");
-    const admin = existing ?? (await this._signupSsoAdmin(accountId));
+    const admin = existing ?? (await this._signupSsoAdmin(accountId, ssoType));
     void admin.updateAccess().save();
     this._notifyAccess({ accountId: admin.accountId, method: "sso" });
     return await this._issueAdminToken(admin, account);
   }
 
-  private async _signupSsoAdmin(accountId: string) {
+  private async _signupSsoAdmin(accountId: string, ssoType: cnst.SsoType["value"]) {
     const policy = adminSsoPolicy();
-    if (!(await policy.canSignup(accountId))) throw new Err("admin.error.adminSsoNotAllowed");
+    if (!(await policy.canSignup(accountId, ssoType))) throw new Err("admin.error.adminSsoNotAllowed");
     const admin = await this.adminModel.createAdmin({ accountId } as db.AdminInput);
     const roles = policy.roles ?? [];
     return roles.length ? await admin.set({ roles: roles as cnst.AdminRole["value"][] }).save() : admin;
   }
-  async runInsight(sql: string, limit?: number | null) {
+  async runInsight(sql: string, limit?: number | null, me?: Me, ip: string | null = null) {
+    if (me) await adminAccessHook().onSql?.({ adminId: me.id, accountId: me.accountId, sql, limit: limit ?? null, ip });
     return await new InsightQuery(this.database).run(sql, { limit: limit ?? undefined });
   }
   async addRole(adminId: string, role: cnst.AdminRole["value"]) {

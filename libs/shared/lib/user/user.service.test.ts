@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
-import { RevokedSessions, refreshRotationGraceMs, rotateRefreshSession } from "@libs/shared/srvkit";
+import {
+  RevokedSessions,
+  refreshRotationGraceMs,
+  rotateRefreshSession,
+  type SecuritySignal,
+  SigninClient,
+  setSecuritySignalHook,
+} from "@libs/shared/srvkit";
 import { dayjs } from "akanjs/base";
 import { CacheDatabase } from "akanjs/document";
 import { ConformanceEnv } from "akanjs/test";
@@ -119,14 +126,152 @@ for (const kind of ConformanceEnv.cacheKinds("user refresh token")) {
       expect(rotated.id).toBe(issued.id);
     });
   });
+
+  describe(`UserService sign-in sessions on the ${kind} cache`, () => {
+    const chromeOnMac =
+      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36";
+    let opened: Awaited<ReturnType<typeof ConformanceEnv.openCache>>;
+    let service: UserService;
+    let signals: SecuritySignal[];
+    let revokedIds: Set<string>;
+    const callerFrom = (ip: string, userAgent = chromeOnMac, origin?: string) => {
+      const account = { appName: "shared", environment: "testing" };
+      SigninClient.remember(account, new Headers({ "user-agent": userAgent, ...(origin ? { origin } : {}) }), ip);
+      return account as never;
+    };
+    const signinFrom = async (ip: string, userAgent?: string, origin?: string) =>
+      await service._issueUserToken(user, callerFrom(ip, userAgent, origin));
+    const settle = async () => await new Promise((resolve) => setTimeout(resolve, 0));
+    beforeEach(async () => {
+      opened = await ConformanceEnv.openCache(kind);
+      service = serviceOn(new CacheDatabase("user", opened.cache));
+      Object.defineProperty(service.userModel, "keepDeviceTokens", { value: async () => true });
+      signals = [];
+      revokedIds = new Set();
+      setSecuritySignalHook({ onSignal: (signal) => void signals.push(signal) });
+      RevokedSessions.use(
+        async (sessionId) => revokedIds.has(sessionId),
+        async (sessionId) => void revokedIds.add(sessionId),
+      );
+    });
+    afterEach(async () => {
+      setSecuritySignalHook({});
+      RevokedSessions.use(null);
+      await opened.close();
+    });
+
+    test("records each sign-in's device and network, and tells a new device apart from a repeat", async () => {
+      await service._issueUserToken(user, callerFrom("203.0.113.7"), undefined, { isSignup: true });
+      await signinFrom("203.0.113.99");
+      await signinFrom("198.51.100.4", undefined, "app://localhost");
+      await settle();
+      const sessions = await service.listSigninSessions(user.id);
+      const devices = sessions.map(({ kind, network }) => ({ kind, network: network ?? "" }));
+      expect(devices.sort((a, b) => a.network.localeCompare(b.network))).toEqual([
+        { kind: "native", network: "198.51.100.0/24" },
+        { kind: "browser", network: "203.0.113.0/24" },
+        { kind: "browser", network: "203.0.113.0/24" },
+      ]);
+      expect(sessions.every((session) => session.userAgent === chromeOnMac && !!session.createdAt)).toBe(true);
+      expect(JSON.stringify(sessions)).not.toContain("203.0.113.7");
+      expect(signals).toEqual([
+        expect.objectContaining({
+          kind: "newDeviceSignin",
+          subjectId: user.id,
+          device: expect.objectContaining({ kind: "native", network: "198.51.100.0/24" }),
+        }),
+      ]);
+    });
+
+    test("never reads an operator's sign-in-as or a CLI approval's browser as the member's device", async () => {
+      Object.defineProperty(service.userModel, "getUser", { value: async () => user });
+      await service._issueUserToken(user, callerFrom("203.0.113.7"), undefined, { isSignup: true });
+      await service.getAccessTokenByAdmin(user.id);
+      await service._issueUserToken(user, callerFrom("203.0.113.7"), undefined, { kind: "cli" });
+      await signinFrom("203.0.113.8");
+      await settle();
+      const sessions = await service.listSigninSessions(user.id);
+      expect(sessions.map(({ kind }) => kind ?? "").sort((a, b) => a.localeCompare(b))).toEqual([
+        "browser",
+        "browser",
+        "cli",
+        "signinAs",
+      ]);
+      const cli = sessions.find(({ kind }) => kind === "cli");
+      expect([cli?.userAgent, cli?.network]).toEqual([undefined, undefined]);
+      expect(signals.map((signal) => signal.kind === "newDeviceSignin" && signal.device.kind)).toEqual(["cli"]);
+    });
+
+    test("an account whose live sessions predate device records reads no sign-in as new", async () => {
+      await service.userModel.createRefreshSession(user.id, "hash:legacy", dayjs().add(30, "day").toDate());
+      await signinFrom("192.0.2.1");
+      await settle();
+      expect(signals).toEqual([]);
+    });
+
+    test("a session from before device records takes the refreshing device's, so a later sign-in can read as new", async () => {
+      await service.userModel.createRefreshSession(user.id, "hash:legacy", dayjs().add(30, "day").toDate());
+      await service.refreshUserToken("legacy", callerFrom("203.0.113.7"));
+      expect(await service.listSigninSessions(user.id)).toEqual([
+        expect.objectContaining({ kind: "browser", userAgent: chromeOnMac, network: "203.0.113.0/24" }),
+      ]);
+      await signinFrom("203.0.113.9");
+      await signinFrom("198.51.100.4", undefined, "app://localhost");
+      await settle();
+      expect(signals.map((signal) => signal.kind === "newDeviceSignin" && signal.device.kind)).toEqual(["native"]);
+    });
+
+    test("signs one session out with its access tokens, or every other one, keeping connected apps", async () => {
+      const current = await signinFrom("203.0.113.7");
+      const other = await signinFrom("198.51.100.4");
+      await service.userModel.createRefreshSession(user.id, "hash:legacy", dayjs().add(30, "day").toDate());
+      const app = await service.userModel.createRefreshSession(
+        user.id,
+        "hash:app",
+        dayjs().add(30, "day").toDate(),
+        "Claude Code",
+        "dcr_claude",
+      );
+      const idOf = async (refreshToken: string) =>
+        (await service.listSigninSessions(user.id)).find(
+          (session) => session.refreshTokenHash === `hash:${refreshToken}`,
+        )?.id ?? "";
+      const [currentId, otherId, legacyId] = [
+        await idOf(refreshTokenOf(current)),
+        await idOf(refreshTokenOf(other)),
+        await idOf("legacy"),
+      ];
+      const byId = (a: string, b: string) => a.localeCompare(b);
+      expect((await service.listSigninSessions(user.id)).map(({ id }) => id).sort(byId)).toEqual(
+        [currentId, otherId, legacyId].sort(byId),
+      );
+      expect(await service.revokeSigninSession(user.id, legacyId)).toBe(true);
+      expect(await service.revokeSigninSession(user.id, legacyId)).toBe(false);
+      expect(await service.revokeSigninSession(user.id, app.id)).toBe(false);
+      expect(await service.revokeSigninSession("u2", otherId)).toBe(false);
+      expect(await RevokedSessions.has(legacyId)).toBe(true);
+      expect(await RevokedSessions.has(otherId)).toBe(false);
+      expect(await service.revokeOtherSigninSessions(user.id, currentId)).toBe(1);
+      expect(await RevokedSessions.has(otherId)).toBe(true);
+      await expect(service.refreshUserToken(refreshTokenOf(other))).rejects.toThrow("shared.error.revokedRefreshToken");
+      expect((await service.listSigninSessions(user.id)).map(({ id }) => id)).toEqual([currentId]);
+      expect(await RevokedSessions.has(currentId)).toBe(false);
+      expect(await RevokedSessions.has(app.id)).toBe(false);
+      const renewed = await service.refreshUserToken(refreshTokenOf(current));
+      const [head] = await service.listSigninSessions(user.id);
+      expect(head).toMatchObject({ id: currentId, refreshTokenHash: `hash:${refreshTokenOf(renewed)}` });
+      expect(head?.lastUsedAt).toBeTruthy();
+    });
+  });
 }
 
 describe("UserService push devices", () => {
-  const deviceOf = (token: string, deviceId?: string): db.DeviceToken => ({
+  const deviceOf = (token: string, deviceId?: string, sessionId?: string): db.DeviceToken => ({
     token,
     provider: "apns",
     platform: "ios",
     deviceId,
+    sessionId,
     updatedAt: dayjs(),
   });
   //? A row stored in memory the way the table stores it: `pickById` answers what the last `updateOne` wrote.
@@ -205,6 +350,54 @@ describe("UserService push devices", () => {
     const { service, tokensOf } = pushServiceOn([deviceOf("phone-token", "phone"), deviceOf("tablet-token", "tablet")]);
     await service.signoutUser({ self: { id: user.id } } as never, "phone");
     expect(await tokensOf()).toEqual(["tablet-token"]);
+  });
+
+  test("a token is filed under the session that registered it, whatever session the client names", async () => {
+    const { service } = pushServiceOn([]);
+    const account = { self: { id: user.id }, sid: "s-token", selfSid: "s-self" } as never;
+    await service.addNotiDeviceTokenOfUser(user.id, deviceOf("phone-token", "phone", "s-forged"), account);
+    await service.addNotiDeviceTokenOfUser(user.id, deviceOf("tablet-token", "tablet", "s-forged"));
+    const stored = (await service.userModel.getNotiInfo(user.id))?.deviceTokens ?? [];
+    expect(stored.map(({ token, sessionId }) => [token, sessionId ?? null])).toEqual([
+      ["phone-token", "s-self"],
+      ["tablet-token", null],
+    ]);
+  });
+
+  test("signing a session out remotely drops the push tokens it registered", async () => {
+    const { service, tokensOf } = pushServiceOn([
+      deviceOf("stolen", "attacker", "s-stolen"),
+      deviceOf("own", "phone", "s-own"),
+      deviceOf("unlabelled", "tablet"),
+    ]);
+    const expiresAt = dayjs().add(1, "day").toISOString();
+    Object.defineProperty(service.userModel, "listRefreshSessions", {
+      value: async () => [
+        { id: "s-stolen", expiresAt },
+        { id: "s-own", expiresAt },
+      ],
+    });
+    expect(await service.revokeSigninSession(user.id, "s-stolen")).toBe(true);
+    expect(await tokensOf()).toEqual(["own", "unlabelled"]);
+  });
+
+  test("signing out everywhere else keeps this session's tokens and this installation's unlabelled one", async () => {
+    const devices = [
+      deviceOf("stolen", "attacker", "s-stolen"),
+      deviceOf("own", "phone", "s-own"),
+      deviceOf("own-unlabelled", "browser"),
+      deviceOf("other-unlabelled", "tablet"),
+      deviceOf("stale", "laptop", "s-expired"),
+    ];
+    for (const [pushDeviceId, kept] of [
+      ["browser", ["own", "own-unlabelled"]],
+      [null, ["own"]],
+    ] as const) {
+      const { service, tokensOf } = pushServiceOn(devices);
+      Object.defineProperty(service.userModel, "revokeRefreshSessionsBut", { value: async () => ["s-stolen"] });
+      expect(await service.revokeOtherSigninSessions(user.id, "s-own", pushDeviceId)).toBe(1);
+      expect(await tokensOf()).toEqual([...kept]);
+    }
   });
 
   test("dead tokens of several owners leave in one write, each owner keeping its live devices", async () => {

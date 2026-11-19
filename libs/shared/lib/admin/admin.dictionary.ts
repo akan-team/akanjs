@@ -107,6 +107,10 @@ export const dictionary = modelDictionary(["en", "ko"])
       "Too many failed sign-ins. Try again in 15 minutes",
       "로그인 실패가 너무 많습니다. 15분 후에 다시 시도해 주세요.",
     ],
+    passwordSigninClosed: [
+      "Password sign-in is closed here — sign in with SSO.",
+      "여기서는 비밀번호 로그인을 받지 않습니다 — SSO로 로그인하세요.",
+    ],
     noAdminAccount: ["No admin account", "관리자 계정이 없습니다"],
     adminSsoNotAllowed: [
       "This account cannot sign in — ask an administrator to register it.",

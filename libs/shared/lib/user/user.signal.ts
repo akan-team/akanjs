@@ -478,8 +478,9 @@ export class UserEndpoint extends endpoint(srv.user.with(srv.util.security, srv.
   addNotiDeviceTokenOfSelf: mutation(Boolean, { guards: [User], mcp: false })
     .body("deviceToken", cnst.DeviceToken)
     .with(Self)
-    .exec(async function (deviceToken, self) {
-      return await this.userService.addNotiDeviceTokenOfUser(self.id, deviceToken);
+    .with(Account)
+    .exec(async function (deviceToken, self, account) {
+      return await this.userService.addNotiDeviceTokenOfUser(self.id, deviceToken, account);
     }),
   subNotiDeviceTokenOfSelf: mutation(Boolean, { guards: [User], mcp: false })
     .body("notiDeviceToken", String)

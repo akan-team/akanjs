@@ -7,7 +7,12 @@
   `resetRootAdmin: true`일 때만 설정값으로 되돌리고, 그 밖에는 콘솔에서 바꾼 값이 재부팅 뒤에도 남는다.
 - 비밀번호 로그인은 없는 계정과 틀린 비밀번호에 같은 `admin.error.invalidCredentials`로 답하고, 없는 계정에도 bcrypt
   검증을 한 번 치른다. 실패는 `adminCache`에 계정·IP별로 세어 user 로그인과 같은 기준으로 잠근다(`tooManySigninAttempts`).
-- SSO는 있는 관리자면 `canSignin(accountId, ssoType)`, 없으면 `canSignup`이 허락해야 하며, 정책이 없으면 아무도 못
+- 앱의 SSO 정책이 `canPasswordSignin`으로 거절하면 비밀번호 로그인은 자격 증명을 보기 전에
+  `admin.error.passwordSigninClosed`로 끝난다. 정하지 않은 앱은 그대로 받는다.
+- 같은 정책이 비밀번호를 닫았고 `canSignin(accountId, "google")`도 허락하지 않는 관리자는 다음 refresh에서 모든 refresh
+  session이 폐기되고 `shared.error.revokedRefreshToken`(재사용이 아니다)으로 끝난다. 정책이 바뀌기 전에 연 세션이
+  쓰이는 동안 계속 사는 것을 막는다. `canPasswordSignin`을 정하지 않은 앱은 그대로다.
+- SSO는 있는 관리자면 `canSignin(accountId, ssoType)`, 없으면 `canSignup(accountId, ssoType)`이 허락해야 하며, 정책이 없으면 아무도 못
   들어온다. 이메일 검증을 보장하지 않는 naver·facebook은 정책과 무관하게 관리자 경로에서 거부한다.
 - 본인 비밀번호를 바꿀 때는 현재 비밀번호를 요구한다. 자격 증명·역할·SQL 엔드포인트는 `Person`으로 에이전트 호출을 막는다.
 - 비밀번호 변경, 관리자 삭제, 역할 회수 시 연결된 refresh session을 폐기하고, 그 세션에서 나온 access token도 거부한다.
