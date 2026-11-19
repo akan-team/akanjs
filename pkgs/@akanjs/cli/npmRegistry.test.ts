@@ -59,6 +59,7 @@ describe("getServedReleasePeers", () => {
   const registryServing = (
     tarballs: string[],
     versions = ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"],
+    listed = versions,
   ) =>
     Bun.serve({
       port: 0,
@@ -68,6 +69,12 @@ describe("getServedReleasePeers", () => {
         if (pathname.endsWith(".tgz"))
           return new Response(null, {
             status: tarballs.some((name) => pathname.startsWith(`/${name}/-/`)) ? 200 : 404,
+          });
+        if (versions.some((candidate) => pathname === `/${candidate}`))
+          return Response.json({
+            versions: listed.includes(pathname.slice(1))
+              ? { "3.3.0-rc.8": {}, "3.3.0-rc.9": {} }
+              : { "3.3.0-rc.8": {} },
           });
         const name = versions.find((candidate) => pathname === `/${candidate}/3.3.0-rc.9`);
         if (!name) return new Response("{}", { status: 404 });
@@ -97,6 +104,18 @@ describe("getServedReleasePeers", () => {
     try {
       await expect(getServedReleasePeers("3.3.0-rc.9", `http://localhost:${registry.port}`)).rejects.toThrow(
         "does not serve @akanjs/cli@3.3.0-rc.9, @akanjs/language@3.3.0-rc.9 yet",
+      );
+    } finally {
+      await registry.stop(true);
+    }
+  });
+
+  test("names a package whose document does not list the version yet, though the version itself answers", async () => {
+    const all = ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"];
+    const registry = registryServing(all, all, ["akanjs", "@akanjs/devkit", "@akanjs/language"]);
+    try {
+      await expect(getServedReleasePeers("3.3.0-rc.9", `http://localhost:${registry.port}`)).rejects.toThrow(
+        "does not serve @akanjs/cli@3.3.0-rc.9 yet",
       );
     } finally {
       await registry.stop(true);

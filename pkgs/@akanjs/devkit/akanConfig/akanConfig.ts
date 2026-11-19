@@ -417,6 +417,11 @@ export class AkanAppConfig implements AppConfigResult {
           throw new Error(
             `A route in apps/${this.app.name}/akan.config.ts sets syncPageLibs without a basePath: only a basePath has lib pages of its own, so set the app's syncPageLibs.`,
           );
+        const earlier = this.routePageLibs.get(basePath);
+        if (earlier !== undefined && JSON.stringify(earlier) !== JSON.stringify(route.syncPageLibs))
+          throw new Error(
+            `Two routes in apps/${this.app.name}/akan.config.ts share basePath "${basePath}" and set different syncPageLibs: a basePath mounts one set of lib pages, so set it on one of them.`,
+          );
         this.routePageLibs.set(basePath, route.syncPageLibs);
       }
       const domains = basePath !== null ? this.subRoutes.getOrInsert(basePath, new Set()) : this.domains;

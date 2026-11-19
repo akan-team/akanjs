@@ -5,7 +5,8 @@
     "checkMs": 4510
   },
   "bundle-size": {
-    "main.js": 219011,
+    "main.js": 58,
+    "main.bundle.js": 219011,
     "server.js": 482513,
     "rscWorker.js": 332433,
     "console-runtime.js": 77079,
