@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import { existsSync } from "node:fs";
-import { lstat, mkdir, readFile, readlink, rm, stat, utimes, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readFile, readlink, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { AkanAppConfig } from "../akanConfig";
 import { DevGeneratedIndexSync } from "../frontendBuild/devGeneratedIndexSync";
@@ -1627,6 +1627,51 @@ describe("SysExecutor scan", () => {
       expect([...content.matchAll(/\.\.\.(\w+)Option/g)].map(([, lib]) => lib)).toEqual(libs);
     },
   );
+
+  test("removes a module folder holding only its generated index.ts, names it, and keeps every other folder", async () => {
+    const leftoverOf = (Model: string, types: string[]) =>
+      `${types.map((type) => `import * as ${type} from "./${Model}.${type}";`).join("\n")}\n\nexport const ${Model} = { ${types.join(", ")} };\n`;
+    const leftover = leftoverOf("Person", ["Template", "Unit", "Util", "View", "Zone"]);
+    const { lib, libDir } = await createScannableLib("leftovermodules", {
+      files: {
+        "lib/person/index.ts": leftover,
+        "lib/_camera/index.ts": leftoverOf("Camera", ["Util", "Zone"]),
+        "lib/__scalar/address/index.ts": leftoverOf("Address", ["Unit"]),
+        "lib/_kept/index.ts": leftover,
+        "lib/_kept/kept.service.ts": "export const kept = 1;\n",
+        "lib/noted/index.ts": leftover,
+        "lib/noted/.gitkeep": "",
+        "lib/_written/index.ts": 'export const written = "by hand";\n',
+        "lib/_reexport/index.ts": 'export * from "./person.constant";\n',
+      },
+    });
+    await mkdir(path.join(libDir, "lib", "empty"));
+    const linked = path.join(libDir, "..", "leftovermodules-linked");
+    await mkdir(linked);
+    await writeFile(path.join(linked, "index.ts"), leftover);
+    await symlink(linked, path.join(libDir, "lib", "_linked"));
+    const info = spyOn(lib.logger, "info").mockImplementation(() => undefined);
+
+    await lib.scan();
+
+    for (const dir of ["lib/person", "lib/_camera", "lib/__scalar/address"])
+      expect(existsSync(path.join(libDir, dir))).toBe(false);
+    for (const kept of [
+      "lib/_kept/kept.service.ts",
+      "lib/noted/.gitkeep",
+      "lib/empty",
+      "lib/__scalar",
+      "lib/_written/index.ts",
+      "lib/_reexport/index.ts",
+      "lib/_linked/index.ts",
+    ])
+      expect(existsSync(path.join(libDir, kept))).toBe(true);
+    expect(info.mock.calls.map(([message]) => message).sort()).toEqual([
+      "Removed libs/leftovermodules/lib/__scalar/address: its generated index.ts was all that was left of the module",
+      "Removed libs/leftovermodules/lib/_camera: its generated index.ts was all that was left of the module",
+      "Removed libs/leftovermodules/lib/person: its generated index.ts was all that was left of the module",
+    ]);
+  });
 
   test("refuses a hand-written ui/index.tsx beside the generated barrel, naming the file and the fix", async () => {
     const { lib } = await createScannableLib("shadowedbarrel", {
