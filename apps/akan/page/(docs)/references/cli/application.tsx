@@ -1138,7 +1138,7 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
       {
         name: "preview",
         signature:
-          "akan preview <app> [paths] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]",
+          "akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]",
         desc: l.trans({
           en: "Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.",
           ko: "앱 개발 서버의 페이지를 헤드리스 브라우저로 열어 페이지마다 판정 한 줄을 출력합니다. 상태 코드, 제목, 잡히지 않은 오류, 페이지를 여는 동안 서버가 남긴 오류, 콘솔 오류, 레이아웃 이상이 담깁니다. 실행 중인 `akan start`가 있으면 그대로 쓰고, 없으면 띄웠다가 끝나면 내립니다. 실패한 페이지가 있으면 1로 끝납니다.",
@@ -1148,8 +1148,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             name: "paths",
             type: "String",
             desc: l.trans({
-              en: "Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`; `--csr` prints a note naming them. `/mcp` answers only `POST`, so preview cannot check it (it fails with 405). A full URL (`http://localhost:<port>/oauth/token`) opens its path and query the same way, always on the app's dev server, with a note when it names another server, for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at a server route's path, under the same locale rule, and `/en` and `/en/` open once.",
-              ko: "쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. 서버가 로케일 밖에서 답하는 경로는 로케일 없이 적은 그대로 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, API prefix 아래 경로, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, 서버가 직접 내주는 파일(`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`), `public/`의 파일이 그렇습니다. `--csr`을 주면 이 경로들을 안내 문구로 알려 줍니다. `/mcp`는 `POST`에만 답하므로 미리보기로는 확인할 수 없습니다(405로 실패합니다). 전체 URL(`http://localhost:<port>/oauth/token`)은 경로와 쿼리를 같은 방식으로 열되 항상 앱의 개발 서버에서 열고, 다른 서버를 가리키면 안내 문구를 남깁니다. API prefix 밖에 마운트된 엔드포인트에 쓰세요. `--changed`가 찾은 페이지는 서버 경로와 겹쳐도 페이지로 열고, 같은 로케일 규칙을 따르며, `/en`과 `/en/`은 한 번만 엽니다.",
+              en: "Page paths, space- or comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`; `--csr` prints a note naming them. `/mcp` answers only `POST`, so preview cannot check it (it fails with 405). A full URL (`http://localhost:<port>/oauth/token`) opens its path and query the same way, always on the app's dev server, with a note when it names another server, for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at a server route's path, under the same locale rule, and `/en` and `/en/` open once.",
+              ko: "공백이나 쉼표로 구분한 페이지 경로입니다. 로케일이 없으면 기본 로케일을 붙이고, 비우면 `/`를 엽니다. 서버가 로케일 밖에서 답하는 경로는 로케일 없이 적은 그대로 엽니다. Studio(`/_akan/studio?view=runtime`) 같은 `/_akan` 경로, API prefix 아래 경로, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, 서버가 직접 내주는 파일(`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`), `public/`의 파일이 그렇습니다. `--csr`을 주면 이 경로들을 안내 문구로 알려 줍니다. `/mcp`는 `POST`에만 답하므로 미리보기로는 확인할 수 없습니다(405로 실패합니다). 전체 URL(`http://localhost:<port>/oauth/token`)은 경로와 쿼리를 같은 방식으로 열되 항상 앱의 개발 서버에서 열고, 다른 서버를 가리키면 안내 문구를 남깁니다. API prefix 밖에 마운트된 엔드포인트에 쓰세요. `--changed`가 찾은 페이지는 서버 경로와 겹쳐도 페이지로 열고, 같은 로케일 규칙을 따르며, `/en`과 `/en/`은 한 번만 엽니다.",
             }),
           },
           {
@@ -1351,7 +1351,7 @@ akan typecheck myapp --clean true --incremental false`,
       },
       {
         name: "test",
-        signature: "akan test <app|lib|pkg> [files] [--write <boolean>]",
+        signature: "akan test <app|lib|pkg> [files...] [--write <boolean>]",
         desc: l.trans({
           en: "Prepare an app, library or package, then run its tests with `bun test --isolate` in that folder.",
           ko: "앱, 라이브러리, 패키지를 준비한 뒤 그 폴더에서 `bun test --isolate`로 테스트를 실행합니다.",
@@ -1362,8 +1362,8 @@ akan typecheck myapp --clean true --incremental false`,
             type: "String",
             required: "no",
             desc: l.trans({
-              en: "Comma-separated test files or folders inside the target, written from the target or the workspace root. Leave it out to run every test.",
-              ko: "대상 안의 테스트 파일이나 폴더를 쉼표로 구분해 적습니다. 경로는 대상 기준이나 워크스페이스 루트 기준으로 씁니다. 빼면 모든 테스트를 실행합니다.",
+              en: "Test files or folders inside the target, space- or comma-separated, each written from the target or the workspace root. Leave it out to run every test. A file of another target is refused, with the command that runs it.",
+              ko: "대상 안의 테스트 파일이나 폴더를 공백이나 쉼표로 구분해 적습니다. 경로는 대상 기준이나 워크스페이스 루트 기준으로 씁니다. 빼면 모든 테스트를 실행합니다. 다른 대상의 파일은 거부하고, 그 파일을 실행하는 명령을 알려 줍니다.",
             }),
           },
         ],

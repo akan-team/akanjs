@@ -270,7 +270,7 @@ describe("ApplicationCommand", () => {
     ]);
   });
 
-  test("test takes the target, then an optional comma-separated file list, then its options", async () => {
+  test("test takes the target, then a file list that takes the rest of the line, then its options", async () => {
     expect(getArgMetas(ApplicationCommand, "test")[0].map((arg) => [arg.idx, arg.type])).toEqual([
       [0, "Exec"],
       [1, "Argument"],
@@ -279,6 +279,10 @@ describe("ApplicationCommand", () => {
       [4, "Option"],
       [5, "Option"],
     ]);
+    expect(getArgMetas(ApplicationCommand, "test")[0][1]).toMatchObject({
+      name: "files",
+      argsOption: { multiple: true },
+    });
 
     const command = CommandContainer.get(ApplicationCommand);
     const calls: unknown[] = [];
@@ -286,8 +290,8 @@ describe("ApplicationCommand", () => {
       calls.push(args);
     };
     const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "test")?.handler;
-    await handler?.call(command, { name: "demo" }, "lib/a/a.test.ts, lib/b/b.test.ts,", false, false, 1, null);
-    await handler?.call(command, { name: "demo" }, null, true, true, 2, "local/junit/demo.xml");
+    await handler?.call(command, { name: "demo" }, ["lib/a/a.test.ts", "lib/b/b.test.ts"], false, false, 1, null);
+    await handler?.call(command, { name: "demo" }, [], true, true, 2, "local/junit/demo.xml");
     expect(calls).toEqual([
       [
         { name: "demo" },
@@ -697,6 +701,40 @@ describe("ApplicationScript", () => {
       "spinner.succeed",
       "runner.test",
     ]);
+  });
+
+  test("takes a test path from the target or the root, and names the target that runs a file outside it", async () => {
+    const { applicationRunner } = CommandContainer.get(ApplicationScript);
+    const { root } = track(await createTempPackage());
+    const workspace = { workspaceRoot: root };
+    const lib = Object.setPrototypeOf(
+      createFakeExecutor("shared", { type: "lib", workspace, cwdPath: path.join(root, "libs", "shared") }),
+      LibExecutor.prototype,
+    ) as LibExecutor;
+    for (const file of [
+      "libs/shared/a.test.ts",
+      "apps/demo/srvkit/b.test.ts",
+      "pkgs/@sample/kit/c.test.ts",
+      "d.test.ts",
+    ])
+      await Bun.write(path.join(root, file), "");
+
+    expect(applicationRunner.resolveTestPaths(lib, ["a.test.ts", "libs/shared/a.test.ts"])).toEqual([
+      "./a.test.ts",
+      "./a.test.ts",
+    ]);
+    expect(() => applicationRunner.resolveTestPaths(lib, ["apps/demo/srvkit/b.test.ts"])).toThrow(
+      "apps/demo/srvkit/b.test.ts is outside libs/shared: akan test shared runs its own tests only, so run it as `akan test demo apps/demo/srvkit/b.test.ts`",
+    );
+    expect(() => applicationRunner.resolveTestPaths(lib, ["pkgs/@sample/kit/c.test.ts"])).toThrow(
+      "run it as `akan test @sample/kit pkgs/@sample/kit/c.test.ts`",
+    );
+    expect(() => applicationRunner.resolveTestPaths(lib, ["d.test.ts"])).toThrow(
+      /^d\.test\.ts is outside libs\/shared: akan test shared runs its own tests only$/,
+    );
+    expect(() => applicationRunner.resolveTestPaths(lib, ["missing.test.ts"])).toThrow(
+      "missing.test.ts names no file or folder in libs/shared",
+    );
   });
 
   test("with coverage, has bun write lcov under local/coverage at the target's own path", async () => {

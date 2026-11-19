@@ -42,12 +42,6 @@ const startEnvOption = {
   desc: "backend environment of a --release build; a dev build follows `akan start`, which keeps its own",
   default: "local",
 } as const;
-const listOf = (value: string | null) =>
-  (value ?? "")
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter(Boolean);
-
 type ApplicationBuilderContext = CommandBuilderContext<[typeof ApplicationScript]>;
 
 const workspaceTargets = ({ public: target }: ApplicationBuilderContext) => ({
@@ -131,9 +125,9 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
   })
     .with(App)
     .arg("paths", String, {
-      desc: "page paths, comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, /mcp, the server's own files, public/ files), which opens as written; a full URL opens its path on the dev server (default: /)",
-      example: "/board,/board/new",
-      nullable: true,
+      desc: "page paths, space- or comma-separated; the default locale is added when missing, except to a path the server answers outside a locale (/_akan, the API prefix, /__csr, /__rsc, /.well-known, /openapi.json, /mcp, the server's own files, public/ files), which opens as written; a full URL opens its path on the dev server (default: /)",
+      example: "/board /board/new",
+      multiple: true,
     })
     .option("changed", Boolean, {
       flag: "C",
@@ -156,7 +150,7 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .exec(async function (app, paths, changed, csr, engine, screenshot, desktop, keep, timeout, format) {
       await this.applicationScript.preview(app, {
-        paths: listOf(paths),
+        paths,
         changed,
         csr,
         engine: engine === "webkit" || engine === "chrome" ? engine : null,
@@ -337,9 +331,9 @@ const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => (
   test: target({ desc: "Prepare and test an app, library, or package", readOnly: ({ write }) => write === false })
     .with(Exec)
     .arg("files", String, {
-      desc: "test files or folders to run, relative to the target or the workspace root, comma-separated (default: all)",
+      desc: "the target's test files or folders to run, each written from the target or from the workspace root, space- or comma-separated (default: all)",
       example: "lib/user/user.signal.test.ts",
-      nullable: true,
+      multiple: true,
     })
     .option("write", Boolean, writeOption)
     .option("coverage", Boolean, { desc: "measure coverage; lcov goes under local/coverage/<target>", default: false })
@@ -349,7 +343,7 @@ const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => (
     })
     .option("junit", String, { desc: "also write a JUnit XML report to this path", nullable: true })
     .exec(async function (exec, files, write, coverage, parallel, junit) {
-      await this.applicationScript.test(exec, { write, files: listOf(files), coverage, parallel, junit });
+      await this.applicationScript.test(exec, { write, files, coverage, parallel, junit });
     }),
 });
 

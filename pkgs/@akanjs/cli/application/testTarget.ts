@@ -27,6 +27,13 @@ export const testTargetOf = (exec: Exec) => {
   return { root, target: path.relative(root, exec.cwdPath).split(path.sep).join("/") };
 };
 
+export const testOwnerOf = (fromRoot: string) => {
+  const [kind, first = "", second = ""] = fromRoot.split("/");
+  if (kind === "apps" || kind === "libs") return first || null;
+  if (kind !== "pkgs") return null;
+  return (first.startsWith("@") ? second && `${first}/${second}` : first) || null;
+};
+
 export const signalTestEnv = async (exec: AppExecutor | LibExecutor) => {
   //? The spawned `bun test` inherits `process.env`, where the config's load left every workspace lib's workers.
   if (exec.hasScanInfo()) AkanWorkers.publish(await exec.selectWorkers());
