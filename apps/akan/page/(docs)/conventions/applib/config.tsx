@@ -1753,6 +1753,26 @@ export default config;`}
                   ),
                 })}
               </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      <strong>A route can choose its own.</strong> With several <code>basePath</code> routes, every one
+                      mounts the libraries above. A route that sets <code>syncPageLibs</code> itself mounts only what it
+                      names: <code>{'{ basePath: "edge", domains: {}, syncPageLibs: false }'}</code> serves no library
+                      route under <code>/edge</code>.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      <strong>라우트마다 따로 정할 수 있습니다.</strong> <code>basePath</code> 라우트가 여러 개면 모두
+                      위 라이브러리를 마운트합니다. 라우트에 <code>syncPageLibs</code>를 직접 적으면 그 라우트는 적은
+                      것만 마운트합니다. <code>{'{ basePath: "edge", domains: {}, syncPageLibs: false }'}</code>는{" "}
+                      <code>/edge</code> 아래에 라이브러리 라우트를 두지 않습니다.
+                    </span>
+                  ),
+                })}
+              </li>
             </ul>
           </Docs.Description>
         </Scroll.Slide>

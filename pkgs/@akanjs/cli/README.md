@@ -142,7 +142,8 @@ artifact is built last and is not overwritten by the root `akan` bootstrap scrip
 
 Release candidates publish from CI: each push to the `rc` branch runs the CI suite, then publishes the next
 `<version>-rc.N` of the version the pending changesets will release, with npm provenance, and tags that commit
-`v<version>-rc.N`. Stable releases stay manual: `bun run changeset:version`, commit and push it to `main`, then
+`v<version>-rc.N` once the registry serves every package of it: npm can show them up to an hour apart, so the tag,
+not the publish step, says the version installs. Stable releases stay manual: `bun run changeset:version`, commit and push it to `main`, then
 `akan deploy-akan --registry npm`. Once npm has the packages, `deploy-akan` asks CI to release the editor extension
 from that commit; if the commit is not on `main` yet, it prints the `gh workflow run` command to run after pushing.
 The `npm-publish` environment admits only `rc`, so whoever can push to `rc` can publish an rc: restrict pushes to

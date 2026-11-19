@@ -74,7 +74,8 @@ What neither the `page` rule nor the `akan-page` skill says; nothing either of t
 ## Lib Pages
 
 - `libs/<lib>/page` follows the same rules as an app's. An app that declares subRoutes gets the link once per
-  basePath, and the folder is gitignored like `public/libs`.
+  basePath, and the folder is gitignored like `public/libs`. A `routes` entry's own `syncPageLibs` (`false`, or an
+  array of libs) replaces the app's for its basePath.
 - Both path segments are route groups, so a lib route mounts at its own path (`libs/<lib>/page/login/_index.tsx`
   serves `/login`). Two synced routes that resolve to the same pattern are a sync-time error.
 

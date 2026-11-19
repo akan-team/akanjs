@@ -240,6 +240,7 @@ export interface AkanPluginNativeConfig {
 export interface AkanRouteConfig {
     basePath?: string;
     domains: AkanRouteDomains;
+    syncPageLibs?: boolean | string[];
 }
 
 export interface AkanRouteDomains {

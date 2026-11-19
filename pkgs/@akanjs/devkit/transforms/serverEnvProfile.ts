@@ -416,6 +416,15 @@ export class ServerEnvProfile {
     };
   }
 
+  static leftOutNotice(profile: string, workspaceRoot: string, leftOut: ReadonlyMap<string, string[]>) {
+    const files = [...leftOut.keys()].sort();
+    if (!files.length) return null;
+    const named = files.map(
+      (file) => `${path.relative(workspaceRoot, file).replaceAll("\\", "/")} (${leftOut.get(file)?.join(", ")})`,
+    );
+    return `The "${profile}" build leaves out the secret-named defaults of ${files.length} lib env file${files.length === 1 ? "" : "s"}: ${named.join(", ")}. A lib's ${path.basename(ServerEnvProfile.profileFileOf(files[0], profile))} says what this profile runs with.`;
+  }
+
   static async #underProfile(
     envFile: string,
     profile: string,

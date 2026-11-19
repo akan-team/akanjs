@@ -66,3 +66,26 @@ export async function getPublishedPeerDependencies(
   if (!res.ok) throw new Error(`Failed to fetch ${packageName}@${version} metadata from ${registry} (${res.status})`);
   return ((await res.json()) as { peerDependencies?: Record<string, string> }).peerDependencies ?? {};
 }
+
+export const akanReleasePackages = ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"] as const;
+
+//? npm has served a release's packages up to an hour apart (@akanjs/cli after the rest, 3.3.0-rc.42 and rc.43), and an
+//? install that pins them all fails until the last one is there.
+export async function getServedReleasePeers(version: string, registryUrl?: string): Promise<Record<string, string>> {
+  const registry = getNpmRegistryUrl(registryUrl);
+  const served = await Promise.all(
+    akanReleasePackages.map(async (name) => {
+      const res = await fetch(`${packageUrl(registry, name)}/${encodeURIComponent(version)}`);
+      if (res.status === 404) return false;
+      if (!res.ok) throw new Error(`Failed to fetch ${name}@${version} metadata from ${registry} (${res.status})`);
+      const tarball = ((await res.json()) as { dist?: { tarball?: string } }).dist?.tarball;
+      return !!tarball && (await fetch(tarball, { method: "HEAD" })).ok;
+    }),
+  );
+  const missing = akanReleasePackages.filter((_, idx) => !served[idx]).map((name) => `${name}@${version}`);
+  if (missing.length)
+    throw new Error(
+      `akanjs@${version} is published, but ${registry} does not serve ${missing.join(", ")} yet: a release's packages can appear up to an hour apart. Nothing was changed; run the update again once they are there.`,
+    );
+  return await getPublishedPeerDependencies("akanjs", version, registry);
+}
