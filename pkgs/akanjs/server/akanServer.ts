@@ -52,6 +52,8 @@ export interface AkanServerOptions {
   mcp?: boolean | McpServerOption;
   /** Boot only these modules and what they reach; omitted or empty mounts every enabled module. */
   modules?: string[];
+  /** Mount these whatever their `enabled` or `operationMode` says: how a test server reaches a gated module. */
+  enableModules?: string[];
   /** Mount all but these and whatever reaches them; applied after `modules`, so one named by both stays out. */
   disableModules?: string[];
   /** Like `disableModules`, by owning lib, so it does not drift as the lib gains modules. */
@@ -209,7 +211,13 @@ export class AkanServer {
     this.disableModules = options?.disableModules ?? ServerConfig.envList("AKAN_DISABLE_MODULES") ?? [];
     this.disableLibs = options?.disableLibs ?? ServerConfig.envList("AKAN_DISABLE_LIBS") ?? [];
     this.#di = new DiLifecycle(
-      { env: this.env, modules: this.modules, disableModules: this.disableModules, disableLibs: this.disableLibs },
+      {
+        env: this.env,
+        modules: this.modules,
+        enableModules: options?.enableModules,
+        disableModules: this.disableModules,
+        disableLibs: this.disableLibs,
+      },
       ...libs,
     );
     const webRouter = () => this.#webRouter;
