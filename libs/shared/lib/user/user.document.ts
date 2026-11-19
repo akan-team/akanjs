@@ -2,11 +2,15 @@ import {
   CacheLock,
   createRefreshSession,
   hashPassword,
+  listRefreshSessions,
+  type RefreshSession,
   type RotateRefreshSessionOptions,
   revokeRefreshSessionBySid,
   revokeRefreshSessions,
+  revokeRefreshSessionsBut,
   rotateRefreshSession,
   SignChallenge,
+  type SigninDevice,
 } from "@libs/shared/srvkit";
 import { randomString } from "@libs/util/common";
 import { type Dayjs, dayjs } from "akanjs/base";
@@ -160,6 +164,7 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     expiresAt: Date,
     userAgent?: string,
     clientId?: string,
+    { kind, network }: Pick<SigninDevice, "kind" | "network"> = {},
   ) {
     return await createRefreshSession(this.userCache, {
       subject: "user",
@@ -168,13 +173,18 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
       expiresAt,
       userAgent,
       clientId,
+      kind,
+      network,
     });
+  }
+  async listRefreshSessions(userId: string) {
+    return await listRefreshSessions(this.userCache, "user", userId);
   }
   async rotateRefreshSession(
     refreshTokenHash: string,
     nextRefreshTokenHash: string,
     nextExpiresAt: Date,
-    options: Pick<RotateRefreshSessionOptions, "graceMs" | "reuseRevokes"> = {},
+    options: Pick<RotateRefreshSessionOptions, "graceMs" | "reuseRevokes" | "device"> = {},
   ) {
     return await rotateRefreshSession(this.userCache, refreshTokenHash, nextRefreshTokenHash, nextExpiresAt, options);
   }
@@ -183,6 +193,9 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   }
   async revokeRefreshSessions(userId: string) {
     await revokeRefreshSessions(this.userCache, "user", userId);
+  }
+  async revokeRefreshSessionsBut(userId: string, isKept: (session: RefreshSession) => boolean) {
+    return await revokeRefreshSessionsBut(this.userCache, "user", userId, isKept);
   }
   async getAccountId<Throw extends boolean = true>(
     userId: string,
@@ -370,17 +383,17 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
     );
   }
   // The same token, or a new token from the same installation, replaces the entry it had.
-  async addNotiDeviceToken(userId: string, { token, provider, platform, deviceId }: db.DeviceToken) {
+  async addNotiDeviceToken(userId: string, { token, provider, platform, deviceId, sessionId }: db.DeviceToken) {
     return await this.notiInfoLock.hold([userId], async () => {
       const notiInfo = await this.getNotiInfo(userId);
       const others = (notiInfo?.deviceTokens ?? []).filter(
         (each) => each.token !== token && !(deviceId && each.deviceId === deviceId),
       );
-      const registered: db.DeviceToken = { token, provider, platform, deviceId, updatedAt: dayjs() };
+      const registered: db.DeviceToken = { token, provider, platform, deviceId, sessionId, updatedAt: dayjs() };
       return await this.writeNotiInfo(userId, { deviceTokens: [...others, registered] });
     });
   }
-  private async keepDeviceTokens(userId: string, keep: (deviceToken: db.DeviceToken) => boolean) {
+  async keepDeviceTokens(userId: string, keep: (deviceToken: db.DeviceToken) => boolean) {
     return await this.notiInfoLock.hold([userId], async () => {
       const notiInfo = await this.getNotiInfo(userId);
       return await this.writeNotiInfo(userId, { deviceTokens: (notiInfo?.deviceTokens ?? []).filter(keep) });

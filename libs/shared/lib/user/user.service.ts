@@ -2,11 +2,15 @@ import type { Me, Self } from "@libs/shared/common";
 import {
   type AuthTokenMeta,
   browserRefreshGraceMs,
+  emitSecuritySignal,
   PageSession,
+  type RefreshSession,
+  type RefreshSessionKind,
   type RenewedSession,
   RevokedSessions,
   type RotateRefreshSessionOptions,
   type SessionRefreshTokens,
+  SigninClient,
   SignupToken,
   WebSession,
 } from "@libs/shared/srvkit";
@@ -26,6 +30,12 @@ const summaryCounterOf = {
   dormant: "dormantUser",
   restricted: "restrictedUser",
 } as const;
+
+//? A named kind means the request is not the device's (a CLI approved in a browser, an operator's "sign in as").
+interface SessionIssueOption {
+  kind?: RefreshSessionKind;
+  isSignup?: boolean;
+}
 
 export class UserService extends serve(db.user, ({ use, service }) => ({
   adminService: service<srv.AdminService>(),
@@ -68,14 +78,35 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     const current = await this.adminService.findMe(me.id);
     return current ? { me: current, meSid } : {};
   }
-  async _issueUserToken(user: db.User, account?: Account, userAgent?: string): Promise<db.util.AccessToken> {
+  async _issueUserToken(
+    user: db.User,
+    account?: Account,
+    userAgent?: string,
+    { kind, isSignup }: SessionIssueOption = {},
+  ): Promise<db.util.AccessToken> {
+    const client = kind ? { kind } : SigninClient.of(account);
+    const device = { ...client, ...(userAgent ? { userAgent } : {}) };
+    const isNewDevice =
+      !isSignup &&
+      device.kind !== "signinAs" &&
+      SigninClient.isNewAmong(device, await this.userModel.listRefreshSessions(user.id));
     const { refreshToken, refreshTokenHash, refreshTokenExpiresAt } = this.securityService.createRefreshToken();
     const session = await this.userModel.createRefreshSession(
       user.id,
       refreshTokenHash,
       refreshTokenExpiresAt,
-      userAgent,
+      device.userAgent,
+      undefined,
+      device,
     );
+    if (isNewDevice)
+      emitSecuritySignal({
+        kind: "newDeviceSignin",
+        subject: "user",
+        subjectId: user.id,
+        sessionId: session.id,
+        device,
+      });
     const self = await this.makeSelf(user);
     const accessToken = await this.securityService.signAccessToken(
       { ...(await this._carryAdminIdentity(account)), self, selfSid: session.id },
@@ -83,17 +114,42 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
     );
     return { ...accessToken, refreshToken };
   }
+  async listSigninSessions(userId: string) {
+    const heads = new Map<string, RefreshSession>();
+    for (const session of await this.userModel.listRefreshSessions(userId)) {
+      if (session.clientId) continue;
+      const known = heads.get(session.id);
+      if (!known || dayjs(known.expiresAt).isBefore(dayjs(session.expiresAt))) heads.set(session.id, session);
+    }
+    return [...heads.values()];
+  }
+  async revokeSigninSession(userId: string, sessionId: string) {
+    if (!(await this.listSigninSessions(userId)).some((session) => session.id === sessionId)) return false;
+    await this.userModel.revokeRefreshSession(userId, sessionId);
+    await this.userModel.keepDeviceTokens(userId, (each) => each.sessionId !== sessionId);
+    return true;
+  }
+  async revokeOtherSigninSessions(userId: string, keptSessionId: string, pushDeviceId: string | null = null) {
+    const revokedIds = await this.userModel.revokeRefreshSessionsBut(
+      userId,
+      (session) => !!session.clientId || session.id === keptSessionId,
+    );
+    await this.userModel.keepDeviceTokens(userId, (each) =>
+      each.sessionId ? each.sessionId === keptSessionId : !!pushDeviceId && each.deviceId === pushDeviceId,
+    );
+    return revokedIds.length;
+  }
   async refreshUserToken(
     refreshToken: string,
     account?: Account,
-    options: Pick<RotateRefreshSessionOptions, "graceMs" | "reuseRevokes"> = {},
+    options: Pick<RotateRefreshSessionOptions, "graceMs" | "reuseRevokes" | "device"> = {},
   ): Promise<db.util.AccessToken> {
     const nextRefreshToken = this.securityService.createRefreshToken();
     const session = await this.userModel.rotateRefreshSession(
       this.securityService.hashRefreshToken(refreshToken),
       nextRefreshToken.refreshTokenHash,
       nextRefreshToken.refreshTokenExpiresAt,
-      options,
+      { device: SigninClient.of(account), ...options },
     );
     const user = await this._assertSignable(await this.getUser(session.subjectId));
     const self = await this.makeSelf(user);
@@ -264,7 +320,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
       await this.summaryService.moveValue("prepareUser", "activeUser");
       return activated;
     });
-    return await this._issueUserToken(user, account);
+    return await this._issueUserToken(user, account, undefined, { isSignup: true });
   }
   async activateUserByAdmin(userId: string) {
     const user = await this.getPrepareUser(userId);
@@ -358,7 +414,7 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   }
   async getAccessTokenByAdmin(userId: string) {
     const user = await this.userModel.getUser(userId);
-    return await this._issueUserToken(user);
+    return await this._issueUserToken(user, undefined, undefined, { kind: "signinAs" });
   }
   async getEncourageInfo(userId: string) {
     return await this.userModel.getEncourageInfo(userId);
@@ -405,9 +461,10 @@ export class UserService extends serve(db.user, ({ use, service }) => ({
   async listActiveUserIds({ skip, limit }: { skip: number; limit: number }) {
     return await this.userModel.listIdsByStatuses(["active"], { skip, limit, sort: "oldest" });
   }
-  async addNotiDeviceTokenOfUser(userId: string, deviceToken: db.DeviceToken) {
+  async addNotiDeviceTokenOfUser(userId: string, deviceToken: db.DeviceToken, account?: Account) {
     const user = await this.getUser(userId);
-    return await this.userModel.addNotiDeviceToken(user.id, deviceToken);
+    const { selfSid, sid } = (account ?? {}) as AuthTokenMeta;
+    return await this.userModel.addNotiDeviceToken(user.id, { ...deviceToken, sessionId: selfSid ?? sid });
   }
   async subNotiDeviceTokenOfUser(userId: string, notiDeviceToken: string) {
     const user = await this.getUser(userId);

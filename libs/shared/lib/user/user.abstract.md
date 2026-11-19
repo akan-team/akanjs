@@ -108,5 +108,15 @@
 - 로그인은 access token과 refresh session을 발급한다. 세션 쿠키는 서버가 HttpOnly로 내리고(`SessionCookie`), 페이지는
   서명 없는 claims 쿠키로 만료를 읽는다. `getAccessTokenByAdmin`은 토큰을 본문으로만 돌려주고 쿠키를 건드리지 않는다.
 - 관리자는 역할, 제한, 계정 정보, 프로필 상태를 조정할 수 있다.
+- 로그인 세션은 기기 종류(`kind`), user agent, 네트워크 대역(IPv4 /24, IPv6 /48, 전체 주소는 저장하지 않는다)과 마지막
+  갱신 시각을 함께 남긴다. 이 기록 전 세션은 셋이 없어 알 수 없는 기기로 보이고, 그런 세션이 하나라도 살아 있으면 어떤 로그인도
+  새 기기로 치지 않는다. 가입 직후 첫 세션과 관리자의 대리 로그인(`signinAs`)은 새 기기 신호(`newDeviceSignin`)를 내지 않는다.
+  세션 목록과 원격 로그아웃은 OAuth 연결 앱 세션을 건드리지 않는다. 기기 기록 전 세션은 refresh될 때 그 요청의 기기를
+  기록하므로 쓰이는 대로 사라진다.
+- 푸시 토큰은 등록한 요청의 세션 id(`sessionId`)를 함께 남긴다. 세션 하나를 원격으로 로그아웃하면 그 세션의 토큰을, 다른
+  기기 모두 로그아웃은 지금 세션의 토큰과 지금 기기(`pushDeviceId`)의 세션 없는 옛 토큰만 남기고 지운다.
+- refresh는 회전할 때 소유자 목록에서 이전 항목을 지운다. 폐기는 lineage id에 표시를 남긴 뒤 목록을 다시 훑고, refresh는
+  새 항목을 목록에 넣은 뒤 그 표시를 확인하므로 동시에 돈 refresh가 로그아웃을 피하지 못한다. 그 표시가 목록에서 빠진
+  이전 토큰도 폐기된 것으로 거절한다.
 
 prepare -> active -> dormant -> active, active|dormant -> restricted -> active

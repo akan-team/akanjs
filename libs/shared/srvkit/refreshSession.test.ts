@@ -8,10 +8,40 @@ import {
   listRefreshSessions,
   refreshRotationGraceMs,
   revokeRefreshSessionBySid,
+  revokeRefreshSessions,
+  revokeRefreshSessionsBut,
   rotateRefreshSession,
 } from "./refreshSession";
+import { RevokedSessions } from "./revokedSessions";
+import { type SecuritySignal, setSecuritySignalHook } from "./securitySignalHook";
 
 const expiresAt = () => dayjs().add(30, "day").toDate();
+
+const pauseListing = (cache: CacheDatabase, refreshTokenHash: string) => {
+  let reach: () => void = () => undefined;
+  let release: () => void = () => undefined;
+  const reached = new Promise<void>((resolve) => {
+    reach = resolve;
+  });
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const paused = new Proxy(cache, {
+    get(target, property) {
+      if (property === "hset")
+        return async (...args: Parameters<CacheDatabase["hset"]>) => {
+          if (args[2] === refreshTokenHash) {
+            reach();
+            await released;
+          }
+          return await target.hset(...args);
+        };
+      const value = Reflect.get(target, property) as unknown;
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  });
+  return { paused, reached, release };
+};
 
 // Every case runs on the real cache adaptors: an in-memory Map hands objects back by reference, which is what hid
 // [A-1] (`local/database-modes/03-single-instance-assumptions.md`).
@@ -97,6 +127,37 @@ for (const kind of ConformanceEnv.cacheKinds("refresh session")) {
       );
       // … and the other grant — another client, the browser — still rotates.
       expect((await rotateRefreshSession(cache, "g0", "g1", expiresAt())).refreshTokenHash).toBe("g1");
+    });
+
+    test("names the OAuth client of a reused lineage in the signal, and none for a first-party one", async () => {
+      const signals: SecuritySignal[] = [];
+      setSecuritySignalHook({ onSignal: (signal) => void signals.push(signal) });
+      try {
+        for (const [prefix, clientId] of [
+          ["c", undefined],
+          ["o", "dcr_claude"],
+        ] as const) {
+          await createRefreshSession(cache, {
+            subject: "user",
+            subjectId: "u1",
+            refreshTokenHash: `${prefix}0`,
+            expiresAt: expiresAt(),
+            ...(clientId ? { clientId } : {}),
+          });
+          const option = { reuseRevokes: "lineage", ...(clientId ? { clientId } : {}) } as const;
+          await rotateRefreshSession(cache, `${prefix}0`, `${prefix}1`, expiresAt(), option);
+          await expect(rotateRefreshSession(cache, `${prefix}0`, `${prefix}2`, expiresAt(), option)).rejects.toThrow(
+            "shared.error.refreshTokenReuseDetected",
+          );
+        }
+        await Bun.sleep(0);
+        expect(signals).toEqual([
+          { kind: "refreshReuse", subject: "user", subjectId: "u1", revokes: "lineage" },
+          { kind: "refreshReuse", subject: "user", subjectId: "u1", revokes: "lineage", clientId: "dcr_claude" },
+        ]);
+      } finally {
+        setSecuritySignalHook({});
+      }
     });
 
     test("stays strictly single-use unless a grace window is asked for", async () => {
@@ -317,6 +378,162 @@ for (const kind of ConformanceEnv.cacheKinds("refresh session")) {
       expect(live.map((session) => session.refreshTokenHash).sort((a, b) => a.localeCompare(b))).toEqual(
         hashes.filter((hash) => hash !== "h3"),
       );
+    });
+
+    test("keeps the device through a rotation and stamps when the session was last used", async () => {
+      const issued = await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "d0",
+        expiresAt: expiresAt(),
+        userAgent: "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)",
+        kind: "native",
+        network: "203.0.113.0/24",
+      });
+      expect(issued.lastUsedAt).toBeUndefined();
+      const now = dayjs().add(1, "hour");
+      const rotated = await rotateRefreshSession(cache, "d0", "d1", expiresAt(), { now });
+      expect(rotated).toMatchObject({
+        id: issued.id,
+        kind: "native",
+        network: "203.0.113.0/24",
+        userAgent: issued.userAgent,
+        createdAt: issued.createdAt,
+        lastUsedAt: now.toISOString(),
+      });
+    });
+
+    test("revokes every session but the kept ones, a session from before devices included, with their tokens", async () => {
+      const marked = new Set<string>();
+      RevokedSessions.use(null, async (sessionId) => void marked.add(sessionId));
+      try {
+        const current = await createRefreshSession(cache, {
+          subject: "user",
+          subjectId: "u1",
+          refreshTokenHash: "c0",
+          expiresAt: expiresAt(),
+          kind: "browser",
+        });
+        await cache.set("refreshSessionByTokenHash", "old", {
+          id: "old-id",
+          subject: "user",
+          subjectId: "u1",
+          refreshTokenHash: "old",
+          expiresAt: dayjs().add(1, "day").toISOString(),
+        });
+        await cache.hset("refreshSessionHashes", "user:u1", "old", 1, { expireAt: dayjs().add(1, "day") });
+        const app = await createRefreshSession(cache, {
+          subject: "user",
+          subjectId: "u1",
+          refreshTokenHash: "a0",
+          expiresAt: expiresAt(),
+          clientId: "dcr_claude",
+        });
+        const stranger = await createRefreshSession(cache, {
+          subject: "user",
+          subjectId: "u2",
+          refreshTokenHash: "s0",
+          expiresAt: expiresAt(),
+        });
+        const isKept = (session: { id: string; clientId?: string }) => !!session.clientId || session.id === current.id;
+        expect(await revokeRefreshSessionsBut(cache, "user", "u1", isKept)).toEqual(["old-id"]);
+        expect([...marked]).toEqual(["old-id"]);
+        await expect(rotateRefreshSession(cache, "old", "old1", expiresAt())).rejects.toThrow(
+          "shared.error.revokedRefreshToken",
+        );
+        expect((await listRefreshSessions(cache, "user", "u1")).map((session) => session.id).sort()).toEqual(
+          [current.id, app.id].sort(),
+        );
+        expect((await listRefreshSessions(cache, "user", "u2")).map((session) => session.id)).toEqual([stranger.id]);
+        expect(await revokeRefreshSessionsBut(cache, "user", "u1", isKept)).toEqual([]);
+      } finally {
+        RevokedSessions.use(null);
+      }
+    });
+
+    for (const [name, revoke] of [
+      ["every session", async (_id: string) => await revokeRefreshSessions(cache, "user", "u1")],
+      ["every other session", async (_id: string) => await revokeRefreshSessionsBut(cache, "user", "u1", () => false)],
+      ["the one session", async (id: string) => await revokeRefreshSessionBySid(cache, "user", "u1", id)],
+    ] as const)
+      test(`signing out ${name} while a refresh is between its new entry and the owner's list ends it`, async () => {
+        const session = await createRefreshSession(cache, {
+          subject: "user",
+          subjectId: "u1",
+          refreshTokenHash: "h0",
+          expiresAt: expiresAt(),
+        });
+        const { paused, reached, release } = pauseListing(cache, "h1");
+        const refresh = rotateRefreshSession(paused, "h0", "h1", expiresAt());
+        await reached;
+        await revoke(session.id);
+        release();
+        await expect(refresh).rejects.toThrow("shared.error.revokedRefreshToken");
+        await expect(rotateRefreshSession(cache, "h1", "h2", expiresAt())).rejects.toThrow(
+          "shared.error.revokedRefreshToken",
+        );
+        expect(await listRefreshSessions(cache, "user", "u1")).toEqual([]);
+      });
+
+    test("a refresh replaces its entry in the owner's list, and a token rotated away still sets off reuse", async () => {
+      await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "h0",
+        expiresAt: expiresAt(),
+      });
+      for (let idx = 0; idx < 20; idx++) await rotateRefreshSession(cache, `h${idx}`, `h${idx + 1}`, expiresAt());
+      expect(await cache.hkeys("refreshSessionHashes", "user:u1")).toEqual(["h20"]);
+      await expect(rotateRefreshSession(cache, "h3", "x1", expiresAt())).rejects.toThrow(
+        "shared.error.refreshTokenReuseDetected",
+      );
+      await expect(rotateRefreshSession(cache, "h20", "h21", expiresAt())).rejects.toThrow(
+        "shared.error.revokedRefreshToken",
+      );
+    });
+
+    test("a token rotated away from a session signed out since is refused as revoked, not read as a reuse", async () => {
+      const session = await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "h0",
+        expiresAt: expiresAt(),
+      });
+      const other = await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "g0",
+        expiresAt: expiresAt(),
+      });
+      await rotateRefreshSession(cache, "h0", "h1", expiresAt());
+      await revokeRefreshSessionBySid(cache, "user", "u1", session.id);
+      await expect(rotateRefreshSession(cache, "h0", "h2", expiresAt())).rejects.toThrow(
+        "shared.error.revokedRefreshToken",
+      );
+      expect((await listRefreshSessions(cache, "user", "u1")).map(({ id }) => id)).toEqual([other.id]);
+    });
+
+    test("a session from before devices were recorded takes the refreshing request's; others keep their own", async () => {
+      const phone = { kind: "native", userAgent: "ZiPR/1.0 (iPhone)", network: "198.51.100.0/24" } as const;
+      await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "l0",
+        expiresAt: expiresAt(),
+        userAgent: "Mozilla/5.0 (Old)",
+      });
+      expect(await rotateRefreshSession(cache, "l0", "l1", expiresAt(), { device: phone })).toMatchObject(phone);
+      const laptop = { kind: "browser", userAgent: "Mozilla/5.0 (Macintosh)", network: "203.0.113.0/24" } as const;
+      expect(await rotateRefreshSession(cache, "l1", "l2", expiresAt(), { device: laptop })).toMatchObject(phone);
+      await createRefreshSession(cache, {
+        subject: "user",
+        subjectId: "u1",
+        refreshTokenHash: "a0",
+        expiresAt: expiresAt(),
+        clientId: "dcr_claude",
+      });
+      const app = await rotateRefreshSession(cache, "a0", "a1", expiresAt(), { clientId: "dcr_claude", device: phone });
+      expect([app.kind, app.network]).toEqual([undefined, undefined]);
     });
 
     test("still finds sessions an earlier version listed as one array value", async () => {

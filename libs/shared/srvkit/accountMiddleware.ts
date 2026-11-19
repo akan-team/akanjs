@@ -11,6 +11,7 @@ import { isAgentToken } from "./agentCall";
 import { isOauthServerClientId } from "./oauthClientRecord";
 import type { OAuthStaticClient } from "./oauthServer";
 import { RevokedSessions } from "./revokedSessions";
+import { SigninClient } from "./signinClient";
 import { WebSession } from "./webSession";
 
 type ScopedAccount = AccessAccount & AuthTokenMeta & { self?: unknown; me?: unknown; exp?: number };
@@ -92,8 +93,14 @@ export class AccountMiddleware implements Middleware {
           : await resolve();
       const live = account.tokenType === "access" ? await AccountMiddleware.withoutRevoked(account) : null;
       if (live) AccountMiddleware.#assertOnShelf(context, live, oauthClients, offShelfEndpoints);
+      const caller = live ?? ({ appName, environment } as Account);
+      try {
+        SigninClient.remember(caller, req.headers, context.getClientIp());
+      } catch {
+        //? The device only labels a session: a request whose address cannot be read must still authenticate.
+      }
       Object.assign(req, {
-        account: live ?? ({ appName, environment } as Account),
+        account: caller,
         userAgent: req.headers?.get("user-agent") ?? undefined,
       });
       return await WebSession.answering(context.transport === "http" ? (req as Request) : undefined, next);

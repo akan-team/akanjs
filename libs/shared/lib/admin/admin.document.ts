@@ -73,7 +73,7 @@ export class AdminModel extends into(Admin, AdminFilter, cnst.admin, ({ byField 
     return adminSecret as { id: string; roles: cnst.AdminRole["value"][]; password?: string };
   }
   get signChallenge() {
-    return new SignChallenge(this.adminCache);
+    return new SignChallenge(this.adminCache, "admin");
   }
   async createRefreshSession(
     adminId: string,

@@ -78,7 +78,9 @@ export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, 
     guards: [Public],
     mcp: false,
     rateLimit: { calls: 20 },
-    errors: { 400: ["admin.error.invalidCredentials", "admin.error.tooManySigninAttempts"] },
+    errors: {
+      400: ["admin.error.invalidCredentials", "admin.error.tooManySigninAttempts", "admin.error.passwordSigninClosed"],
+    },
   })
     .body("accountId", String)
     .body("password", String)
@@ -126,8 +128,10 @@ export class AdminEndpoint extends endpoint(srv.admin.with(srv.user), ({ query, 
   runAdminSql: mutation(cnst.InsightRows, { guards: [SuperAdmin, Person], mcp: false })
     .body("sql", String, { example: 'SELECT COUNT(*) AS total FROM "user"' })
     .body("limit", Int, { nullable: true })
-    .exec(async function (sql, limit) {
-      return await this.adminService.runInsight(sql, limit);
+    .with(Me)
+    .with(Ip, { nullable: true })
+    .exec(async function (sql, limit, me, ip) {
+      return await this.adminService.runInsight(sql, limit, me, ip);
     }),
   addAdminRole: mutation(cnst.Admin, { guards: [AdminGuard, Person], mcp: false })
     .body("adminId", ID)

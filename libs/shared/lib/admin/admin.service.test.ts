@@ -5,8 +5,10 @@ import {
   isBcryptHash,
   isPasswordMatch,
   rotateRefreshSession,
+  type SecuritySignal,
   SignChallenge,
   setAdminSsoPolicy,
+  setSecuritySignalHook,
   WebSession,
 } from "@libs/shared/srvkit";
 import { accessTokenSeconds } from "@libs/util/common";
@@ -177,6 +179,75 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
       const browserToken = crypto.randomUUID();
       await adminModel.createRefreshSession(admin.id, `hash:${browserToken}`, expiresAt());
       expect((await service.refreshAdminToken(browserToken)).refreshToken).toBeTruthy();
+    });
+
+    test("once the policy closes password sign-in to the admin, the next refresh ends all its sessions", async () => {
+      const [console, laptop] = [crypto.randomUUID(), crypto.randomUUID()];
+      for (const token of [console, laptop])
+        await adminModel.createRefreshSession(admin.id, `hash:${token}`, expiresAt());
+      const signals: SecuritySignal[] = [];
+      setSecuritySignalHook({ onSignal: (signal) => void signals.push(signal) });
+      setAdminSsoPolicy({ canSignup: () => false, canPasswordSignin: () => false });
+      try {
+        const grace = { graceMs: browserRefreshGraceMs };
+        for (let presentation = 0; presentation < 2; presentation++)
+          await expect(service.refreshAdminToken(console, undefined, undefined, grace)).rejects.toThrow(
+            "shared.error.revokedRefreshToken",
+          );
+        await expect(service.refreshAdminToken(laptop)).rejects.toThrow("shared.error.revokedRefreshToken");
+        expect(signals).toEqual([]);
+      } finally {
+        setAdminSsoPolicy({ canSignup: () => false });
+        setSecuritySignalHook({});
+      }
+    });
+
+    test("an admin the policy still admits by Google, or a policy that keeps passwords open, refreshes on", async () => {
+      for (const policy of [
+        { canPasswordSignin: () => false, canSignin: (accountId: string, ssoType: string) => ssoType === "google" },
+        { canPasswordSignin: () => true },
+      ]) {
+        const token = crypto.randomUUID();
+        await adminModel.createRefreshSession(admin.id, `hash:${token}`, expiresAt());
+        setAdminSsoPolicy({ canSignup: () => false, ...policy });
+        try {
+          expect((await service.refreshAdminToken(token)).refreshToken).toBeTruthy();
+        } finally {
+          setAdminSsoPolicy({ canSignup: () => false });
+        }
+      }
+    });
+
+    test("an admin the policy admits by any SSO provider an admin may use refreshes on, and by none is signed out", async () => {
+      const asked: string[] = [];
+      const cases = [
+        { admits: "github", isOpen: true },
+        { admits: "kakao", isOpen: true },
+        { admits: "naver", isOpen: false },
+        { admits: "", isOpen: false },
+      ];
+      for (const { admits, isOpen } of cases) {
+        const token = crypto.randomUUID();
+        await adminModel.createRefreshSession(admin.id, `hash:${token}`, expiresAt());
+        setAdminSsoPolicy({
+          canSignup: () => false,
+          canPasswordSignin: () => false,
+          canSignin: (_accountId, ssoType) => {
+            asked.push(ssoType);
+            return ssoType === admits;
+          },
+        });
+        try {
+          const refreshed = service.refreshAdminToken(token);
+          if (isOpen) expect((await refreshed).refreshToken).toBeTruthy();
+          else await expect(refreshed).rejects.toThrow("shared.error.revokedRefreshToken");
+        } finally {
+          setAdminSsoPolicy({ canSignup: () => false });
+        }
+      }
+      expect(asked).not.toContain("naver");
+      expect(asked).not.toContain("facebook");
+      expect(asked).toContain("apple");
     });
 
     test("a page load's renewal answers a token used twice within its window, and past the window it reads as reuse", async () => {
@@ -380,6 +451,30 @@ for (const kind of ConformanceEnv.cacheKinds("admin sign-in")) {
       expect(row.passwordSets).toBe(1);
       expect(isBcryptHash(row.password ?? "")).toBe(true);
       expect(await isPasswordMatch(legacy, row.password ?? "")).toBe(true);
+    });
+
+    test("a policy that closes password sign-in refuses the right password before it is checked", async () => {
+      const row = rows[0] as FakeAdmin;
+      setAdminSsoPolicy({ canSignup: () => false, canPasswordSignin: () => false });
+      try {
+        await expect(service.signinAdmin(row.accountId, password)).rejects.toThrow("admin.error.passwordSigninClosed");
+      } finally {
+        setAdminSsoPolicy({ canSignup: () => false });
+      }
+      expect((await service.signinAdmin(row.accountId, password)).refreshToken).toBeTruthy();
+    });
+
+    test("SSO sign-up hands the policy the provider and creates the admin with the policy's roles", async () => {
+      const accountId = `${crypto.randomUUID()}@admin.test`;
+      setAdminSsoPolicy({ canSignup: (_accountId, ssoType) => ssoType === "google", roles: ["admin"] });
+      try {
+        await expect(service.ssoSigninAdmin(accountId, "kakao")).rejects.toThrow("admin.error.adminSsoNotAllowed");
+        expect(rows.some((row) => row.accountId === accountId)).toBe(false);
+        expect((await service.ssoSigninAdmin(accountId, "google")).refreshToken).toBeTruthy();
+        expect(rows.find((row) => row.accountId === accountId)?.roles).toEqual(["admin"]);
+      } finally {
+        setAdminSsoPolicy({ canSignup: () => false });
+      }
     });
 
     test("SSO signs an existing admin in only when the policy allows that provider", async () => {

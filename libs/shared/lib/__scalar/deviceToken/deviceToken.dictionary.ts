@@ -12,6 +12,10 @@ export const dictionary = scalarDictionary(["en", "ko"])
     provider: t(["Provider", "발송 경로"]).desc(["The service the push goes through", "푸시가 거쳐 가는 서비스"]),
     platform: t(["Platform", "플랫폼"]).desc(["The platform of the device", "기기의 플랫폼"]),
     deviceId: t(["Device ID", "기기 ID"]).desc(["The installation the token belongs to", "토큰이 속한 설치본"]),
+    sessionId: t(["Session ID", "세션 ID"]).desc([
+      "The sign-in session that registered the token",
+      "토큰을 등록한 로그인 세션",
+    ]),
     updatedAt: t(["Updated At", "갱신 시각"]).desc([
       "When the device last registered the token",
       "기기가 토큰을 마지막으로 등록한 시각",

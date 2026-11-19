@@ -3,6 +3,8 @@ import { Logger } from "akanjs/common";
 
 import { Err } from "../lib/dict";
 import { RevokedSessions } from "./revokedSessions";
+import { emitSecuritySignal } from "./securitySignalHook";
+import type { SigninDevice } from "./signinClient";
 
 interface RefreshSessionCache {
   get(namespace: string, key: string): Promise<unknown>;
@@ -26,7 +28,10 @@ interface RefreshSessionCache {
     option?: { expireAt?: ReturnType<typeof dayjs> },
   ): Promise<unknown>;
   hkeys(namespace: string, key: string): Promise<string[]>;
+  hdelete(namespace: string, key: string, subKey: string): Promise<unknown>;
 }
+
+export type RefreshSessionKind = "browser" | "native" | "cli" | "signinAs";
 
 export interface RefreshSession {
   id: string;
@@ -42,6 +47,10 @@ export interface RefreshSession {
   clientId?: string;
   /** Absent on sessions written before it was recorded. */
   createdAt?: string;
+  kind?: RefreshSessionKind;
+  //? An IPv4 /24 or IPv6 /48 prefix: the full address is never kept. Absent, like `kind`, on older sessions.
+  network?: string;
+  lastUsedAt?: string;
 }
 
 interface CreateRefreshSessionInput {
@@ -51,6 +60,8 @@ interface CreateRefreshSessionInput {
   expiresAt: Date;
   userAgent?: string;
   clientId?: string;
+  kind?: RefreshSessionKind;
+  network?: string;
 }
 
 const logger = new Logger("RefreshSession");
@@ -58,6 +69,7 @@ const logger = new Logger("RefreshSession");
 const sessionNamespace = "refreshSessionByTokenHash";
 const claimNamespace = "refreshSessionClaimByTokenHash";
 const ownerNamespace = "refreshSessionHashes";
+const revokedLineageNamespace = "refreshSessionRevokedById";
 
 const getOwnerKey = (subject: RefreshSession["subject"], subjectId: string) => `${subject}:${subjectId}`;
 
@@ -89,6 +101,59 @@ const getOwnerSessionHashes = async (
   return [...new Set([...hashes, ...(Array.isArray(listed) ? (listed as string[]) : [])])];
 };
 
+const loadOwnerSessions = async (cache: RefreshSessionCache, subject: RefreshSession["subject"], subjectId: string) => {
+  const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
+  const sessions = await Promise.all(sessionHashes.map(async (sessionHash) => await getSession(cache, sessionHash)));
+  return sessions.filter((session): session is RefreshSession => !!session);
+};
+
+const isLineageRevoked = async (cache: RefreshSessionCache, sessionId: string) =>
+  !!(await cache.get(revokedLineageNamespace, sessionId));
+
+//? Outlives the lineage's newest entry: a rotation drops the superseded one from the list, so only this refuses it.
+const markLineagesRevoked = async (cache: RefreshSessionCache, sessionIds: string[], sessions: RefreshSession[]) => {
+  const now = dayjs();
+  await Promise.all(
+    sessionIds.map(async (sessionId) => {
+      const expireAt = sessions
+        .filter((session) => session.id === sessionId)
+        .reduce(
+          (latest, session) => (dayjs(session.expiresAt).isAfter(latest) ? dayjs(session.expiresAt) : latest),
+          now.add(RevokedSessions.deniedSeconds, "second"),
+        );
+      await cache.set(revokedLineageNamespace, sessionId, { revokedAt: now.toISOString() }, { expireAt });
+    }),
+  );
+  await RevokedSessions.markRevoked(sessionIds);
+};
+
+//? A rotation the first pass missed is listed before the second pass, or else finds the mark once it is listed.
+const revokeLineagesWhere = async (
+  cache: RefreshSessionCache,
+  subject: RefreshSession["subject"],
+  subjectId: string,
+  isRevoked: (session: RefreshSession) => boolean,
+  knownIds: string[] = [],
+) => {
+  const seen = (await loadOwnerSessions(cache, subject, subjectId)).filter(
+    (session) => !session.revokedAt && isRevoked(session),
+  );
+  const markedIds = [...new Set([...knownIds, ...seen.map((session) => session.id)])];
+  await markLineagesRevoked(cache, markedIds, seen);
+  const current = await loadOwnerSessions(cache, subject, subjectId);
+  const revokedIds = new Set<string>();
+  await Promise.all(
+    current.map(async (session) => {
+      if (session.revokedAt || !isRevoked(session)) return;
+      await setSession(cache, { ...session, revokedAt: dayjs().toISOString() });
+      revokedIds.add(session.id);
+    }),
+  );
+  const lateIds = [...revokedIds].filter((sessionId) => !markedIds.includes(sessionId));
+  if (lateIds.length) await markLineagesRevoked(cache, lateIds, current);
+  return [...revokedIds];
+};
+
 export const createRefreshSession = async (cache: RefreshSessionCache, input: CreateRefreshSessionInput) => {
   const session: RefreshSession = {
     id: crypto.randomUUID(),
@@ -99,6 +164,8 @@ export const createRefreshSession = async (cache: RefreshSessionCache, input: Cr
     userAgent: input.userAgent,
     clientId: input.clientId,
     createdAt: dayjs().toISOString(),
+    kind: input.kind,
+    network: input.network,
   };
   await setSession(cache, session);
   await addOwnerSessionHash(cache, session);
@@ -119,11 +186,9 @@ export const listRefreshSessions = async (
   subjectId: string,
   now = dayjs(),
 ) => {
-  const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
-  const sessions = await Promise.all(sessionHashes.map(async (sessionHash) => await getSession(cache, sessionHash)));
+  const sessions = await loadOwnerSessions(cache, subject, subjectId);
   return sessions.filter(
-    (session): session is RefreshSession =>
-      !!session && !session.revokedAt && !session.replacedBy && !dayjs(session.expiresAt).isBefore(now),
+    (session) => !session.revokedAt && !session.replacedBy && !dayjs(session.expiresAt).isBefore(now),
   );
 };
 
@@ -155,6 +220,7 @@ export interface RotateRefreshSessionOptions {
    * without `aud` / `client_id`, and `Person` would read the model as the account's owner.
    */
   clientId?: string;
+  device?: SigninDevice;
 }
 
 export const rotateRefreshSession = async (
@@ -162,7 +228,7 @@ export const rotateRefreshSession = async (
   refreshTokenHash: string,
   nextRefreshTokenHash: string,
   nextExpiresAt: Date,
-  { graceMs = 0, now = dayjs(), reuseRevokes = "account", clientId }: RotateRefreshSessionOptions = {},
+  { graceMs = 0, now = dayjs(), reuseRevokes = "account", clientId, device }: RotateRefreshSessionOptions = {},
 ) => {
   const session = await getSession(cache, refreshTokenHash);
   if (!session) throw new Err("shared.error.invalidRefreshToken");
@@ -174,7 +240,8 @@ export const rotateRefreshSession = async (
     );
     throw new Err("shared.error.invalidRefreshToken");
   }
-  if (session.revokedAt) throw new Err("shared.error.revokedRefreshToken");
+  if (session.revokedAt || (await isLineageRevoked(cache, session.id)))
+    throw new Err("shared.error.revokedRefreshToken");
   if (dayjs(session.expiresAt).isBefore(now)) throw new Err("shared.error.expiredRefreshToken");
   // With no window no clock is read: a presentation whose `now` is earlier than the claim it lost is still a reuse.
   const isPastGrace = (rotatedAt: string) => graceMs <= 0 || now.diff(dayjs(rotatedAt)) >= graceMs;
@@ -182,20 +249,38 @@ export const rotateRefreshSession = async (
     if (reuseRevokes === "lineage")
       await revokeRefreshSessionBySid(cache, session.subject, session.subjectId, session.id);
     else await revokeRefreshSessions(cache, session.subject, session.subjectId);
+    emitSecuritySignal({
+      kind: "refreshReuse",
+      subject: session.subject,
+      subjectId: session.subjectId,
+      revokes: reuseRevokes,
+      ...(session.clientId ? { clientId: session.clientId } : {}),
+    });
     return new Err("shared.error.refreshTokenReuseDetected");
   };
   if (session.rotatedAt && isPastGrace(session.rotatedAt)) throw await reuseDetected();
 
+  //? Recording it here retires the legacy session, which otherwise keeps every sign-in from reading as a new device.
+  const recorded =
+    session.kind || session.clientId || !device?.kind
+      ? {}
+      : { kind: device.kind, userAgent: device.userAgent ?? session.userAgent, network: device.network };
   const nextSession = {
     ...session,
+    ...recorded,
     refreshTokenHash: nextRefreshTokenHash,
     expiresAt: nextExpiresAt.toISOString(),
+    lastUsedAt: now.toISOString(),
   };
   delete nextSession.rotatedAt;
   delete nextSession.replacedBy;
   // Listed before the claim, so the revocation a presentation that loses the claim sets off reaches this one too.
   await setSession(cache, nextSession);
   await addOwnerSessionHash(cache, nextSession);
+  if (await isLineageRevoked(cache, session.id)) {
+    await setSession(cache, { ...nextSession, revokedAt: now.toISOString() });
+    throw new Err("shared.error.revokedRefreshToken");
+  }
 
   // Two presentations can both read `rotatedAt` unset before either writes it; only one can take the claim.
   const claimed = await cache.setIfAbsent(claimNamespace, refreshTokenHash, now.toISOString(), {
@@ -207,6 +292,7 @@ export const rotateRefreshSession = async (
   if (!rotatedAt || (!claimed && isPastGrace(rotatedAt))) throw await reuseDetected();
 
   await setSession(cache, { ...session, rotatedAt, replacedBy: nextRefreshTokenHash });
+  await cache.hdelete(ownerNamespace, getOwnerKey(session.subject, session.subjectId), refreshTokenHash);
   return nextSession;
 };
 
@@ -217,15 +303,7 @@ export const revokeRefreshSessionBySid = async (
   sessionId?: string,
 ) => {
   if (!sessionId) return;
-  const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
-  await Promise.all(
-    sessionHashes.map(async (sessionHash) => {
-      const session = await getSession(cache, sessionHash);
-      if (session?.id !== sessionId || session.revokedAt) return;
-      await setSession(cache, { ...session, revokedAt: dayjs().toISOString() });
-    }),
-  );
-  await RevokedSessions.markRevoked([sessionId]);
+  await revokeLineagesWhere(cache, subject, subjectId, (session) => session.id === sessionId, [sessionId]);
 };
 
 export const revokeRefreshSessions = async (
@@ -233,15 +311,12 @@ export const revokeRefreshSessions = async (
   subject: RefreshSession["subject"],
   subjectId: string,
 ) => {
-  const sessionHashes = await getOwnerSessionHashes(cache, subject, subjectId);
-  const revokedIds = new Set<string>();
-  await Promise.all(
-    sessionHashes.map(async (sessionHash) => {
-      const session = await getSession(cache, sessionHash);
-      if (!session || session.revokedAt) return;
-      await setSession(cache, { ...session, revokedAt: dayjs().toISOString() });
-      revokedIds.add(session.id);
-    }),
-  );
-  await RevokedSessions.markRevoked([...revokedIds]);
+  await revokeLineagesWhere(cache, subject, subjectId, () => true);
 };
+
+export const revokeRefreshSessionsBut = async (
+  cache: RefreshSessionCache,
+  subject: RefreshSession["subject"],
+  subjectId: string,
+  isKept: (session: RefreshSession) => boolean,
+) => await revokeLineagesWhere(cache, subject, subjectId, (session) => !isKept(session));

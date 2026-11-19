@@ -8,6 +8,7 @@ import type { ModulesOptions } from "../lib/option";
 import { AccountMiddleware } from "./accountMiddleware";
 import { Every } from "./guards";
 import { RevokedSessions } from "./revokedSessions";
+import { SigninClient } from "./signinClient";
 import { WebSession } from "./webSession";
 
 process.env.AKAN_PUBLIC_APP_NAME ??= "shared";
@@ -29,6 +30,7 @@ const frame = async (socket: { headers: Headers; cookies: Bun.CookieMap; account
   const context = {
     transport: "websocket",
     getWebSocketContext: () => ({ ws: { data: socket } }),
+    getClientIp: () => null,
   } as unknown as SignalContext;
   await (await new AccountMiddleware().use(env))(context, async () => undefined);
   return socket.account as { me?: { id: string } };
@@ -36,7 +38,11 @@ const frame = async (socket: { headers: Headers; cookies: Bun.CookieMap; account
 
 const httpCall = async (headers: Record<string, string>) => {
   const req = new Request("https://app.example.com/api/user/me", { headers }) as Request & { account?: unknown };
-  const context = { transport: "http", getHttpContext: () => ({ req }) } as unknown as SignalContext;
+  const context = {
+    transport: "http",
+    getHttpContext: () => ({ req }),
+    getClientIp: () => "203.0.113.7",
+  } as unknown as SignalContext;
   await (await new AccountMiddleware().use(env))(context, async () => undefined);
   return req.account as { me?: { id: string } };
 };
@@ -60,6 +66,7 @@ const oauthCall = async (
     key,
     endpointInfo: { signalOption },
     getHttpContext: () => ({ req }),
+    getClientIp: () => null,
   } as unknown as SignalContext;
   await (await new AccountMiddleware().use(callEnv))(context, async () => undefined);
   return (req as Request & { account?: { self?: { id: string } } }).account;
@@ -123,6 +130,15 @@ describe("AccountMiddleware", () => {
 
     socket.headers.set("authorization", await accessToken("mine"));
     expect((await frame(socket)).me?.id).toBe("mine");
+  });
+
+  test("leaves the caller's device beside the account it resolved, signed in or not, for a sign-in to record", async () => {
+    const userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148";
+    const anonymous = await httpCall({ "user-agent": userAgent, origin: "app://localhost" });
+    expect(SigninClient.of(anonymous)).toEqual({ kind: "native", userAgent, network: "203.0.113.0/24" });
+    const signedIn = await httpCall({ authorization: await accessToken("device"), "user-agent": userAgent });
+    expect(signedIn.me?.id).toBe("device");
+    expect(SigninClient.of(signedIn)).toMatchObject({ kind: "browser", network: "203.0.113.0/24" });
   });
 
   test("an Authorization header outranks the cookies, duplicated or not", async () => {

@@ -10,5 +10,6 @@ export class DeviceToken extends via((field) => ({
   provider: field(PushProvider, { default: "fcm" }),
   platform: field(DevicePlatform, { default: "web" }),
   deviceId: field(String).optional(), // a random id the client keeps for its installation, so a rotated token replaces the one it had
+  sessionId: field(String).optional(), // the sign-in session that registered it; absent on tokens registered before it was recorded
   updatedAt: field(Date, { default: () => dayjs() }),
 })) {}
