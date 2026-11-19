@@ -75,6 +75,11 @@ defaults, the shares they derive from `AKAN_MEMORY_LIMIT`, and what a small cont
 - TypeScript
 - `react` is an optional peer, needed only by the features that render.
 
+## Changelog
+
+[`CHANGELOG.md`](https://github.com/akan-team/akanjs/blob/main/pkgs/@akanjs/devkit/CHANGELOG.md) is kept in the
+repository; the package does not carry it.
+
 ## License
 
 MIT

@@ -3,6 +3,8 @@ import path from "node:path";
 
 //? `akan build` writes it beside main.js: the env the image's Dockerfile sets, for a host that runs the build without it.
 export const BUILD_ENV_FILE = "akan.env.json";
+//? Imported by main.js ahead of the bundle: React, left outside it, reads NODE_ENV as it loads, before a bundled line.
+export const BUILD_ENV_MODULE = "akan.env.js";
 
 export const applyBuildEnv = (dir: string = path.dirname(Bun.main), env: NodeJS.ProcessEnv = process.env): void => {
   const file = path.join(dir, BUILD_ENV_FILE);

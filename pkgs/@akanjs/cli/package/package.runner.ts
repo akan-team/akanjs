@@ -133,7 +133,7 @@ export class PackageRunner extends runner("package") {
       });
     } else {
       await pkg.dist.cp(pkg.cwdPath, pkg.dist.cwdPath);
-      await $`rm -rf ${pkg.dist.cwdPath}/local ${pkg.dist.cwdPath}/akan.baseline.json`;
+      await $`rm -rf ${pkg.dist.cwdPath}/local ${pkg.dist.cwdPath}/akan.baseline.json ${pkg.dist.cwdPath}/CHANGELOG.md`;
       await Promise.all([
         pkg.generateDistPackageJson(packageRuntimeDeps, packageRuntimeDevDeps),
         pkg.generateTsconfigJson(),
@@ -272,6 +272,11 @@ export class PackageRunner extends runner("package") {
     );
     if (baselines.length > 0)
       throw new Error(`[package] ${pkg.name} would publish its workspace's lint baseline: ${baselines.join(", ")}`);
+    const changelogs = packedPaths.filter((filePath) => path.posix.basename(filePath) === "CHANGELOG.md");
+    if (changelogs.length > 0)
+      throw new Error(
+        `[package] ${pkg.name} would publish a changelog, which is kept in the repository: ${changelogs.join(", ")}`,
+      );
     if (pkg.name === "akanjs" && packedPaths.includes("ARCHITECTURE.md"))
       throw new Error("[package] akanjs would publish ARCHITECTURE.md, a contributor document kept in the repository");
     return {

@@ -320,7 +320,7 @@ describe("PackageRunner", () => {
     );
   });
 
-  test("leaves a package's local/ run artifacts and its lint baseline out of the dist it builds", async () => {
+  test("leaves a package's local/ run artifacts, its lint baseline and its changelog out of the dist it builds", async () => {
     const { root, pkg } = track(await createTempPackage("@sample/tool"));
     await writeJson(`${root}/package.json`, { name: "repo", version: "1.0.0", description: "repo" });
     await writeText(`${root}/pkgs/@sample/tool/index.ts`, "export const value = 1;\n");
@@ -329,12 +329,14 @@ describe("PackageRunner", () => {
       `${root}/pkgs/@sample/tool/akan.baseline.json`,
       '{\n  "akan.size.file": {\n    "index.ts": 900\n  }\n}\n',
     );
+    await writeText(`${root}/pkgs/@sample/tool/CHANGELOG.md`, "# @sample/tool\n");
 
     await new PackageRunner().buildPackage(pkg);
 
     expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/index.ts`).exists()).toBe(true);
     expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/local/testing.sqlite`).exists()).toBe(false);
     expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/akan.baseline.json`).exists()).toBe(false);
+    expect(await Bun.file(`${root}/dist/pkgs/@sample/tool/CHANGELOG.md`).exists()).toBe(false);
   });
 
   test("rejects a dist package that would publish local/ run artifacts", async () => {
@@ -370,6 +372,28 @@ describe("PackageRunner", () => {
 
     await expect(new PackageRunner().verifyDistPackage(pkg)).rejects.toThrow(
       "@sample/tool would publish its workspace's lint baseline: vendor/use-agentic/akan.baseline.json",
+    );
+  });
+
+  test("rejects a dist package that would publish a changelog, an embedded package's included", async () => {
+    const { root, pkg } = track(await createTempPackage("@sample/tool"));
+    await writeJson(`${root}/dist/pkgs/@sample/tool/package.json`, {
+      name: "@sample/tool",
+      version: "1.2.3",
+      publishConfig: { access: "public" },
+    });
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.md`, "# Tool\n");
+    await writeText(`${root}/dist/pkgs/@sample/tool/README.ko.md`, "# Tool KO\n");
+    pkg.workspace.spawn = (async () =>
+      JSON.stringify([
+        {
+          files: [{ path: "package.json" }, { path: "CHANGELOG.md" }, { path: "vendor/use-agentic/CHANGELOG.md" }],
+          size: 9,
+        },
+      ])) as never;
+
+    await expect(new PackageRunner().verifyDistPackage(pkg)).rejects.toThrow(
+      "@sample/tool would publish a changelog, which is kept in the repository: CHANGELOG.md, vendor/use-agentic/CHANGELOG.md",
     );
   });
 

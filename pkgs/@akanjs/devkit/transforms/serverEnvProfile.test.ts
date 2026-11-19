@@ -145,6 +145,20 @@ const goneWithin = async (pid: number, ms: number) => {
   return !alive(pid);
 };
 
+describe("ServerEnvProfile.leftOutNotice", () => {
+  test("names every lib env file and what it lost in one line, and says nothing when none lost a value", () => {
+    const leftOut = new Map([
+      ["/repo/libs/util/env/env.server.testing.ts", ["mail.password", "sms.apiKey"]],
+      ["/repo/libs/shared/env/env.server.testing.ts", ["security.jwtSecret"]],
+    ]);
+
+    expect(ServerEnvProfile.leftOutNotice("edge", "/repo", leftOut)).toBe(
+      'The "edge" build leaves out the secret-named defaults of 2 lib env files: libs/shared/env/env.server.testing.ts (security.jwtSecret), libs/util/env/env.server.testing.ts (mail.password, sms.apiKey). A lib\'s env.server.testing.edge.ts says what this profile runs with.',
+    );
+    expect(ServerEnvProfile.leftOutNotice("edge", "/repo", new Map())).toBeNull();
+  });
+});
+
 describe("ServerEnvProfile.evaluate", () => {
   test("says why and where an env file could not be evaluated, and never a line or a value of it", async () => {
     const root = await makeTempRoot();

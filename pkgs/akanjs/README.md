@@ -106,6 +106,7 @@ you are running on a public URL.
 - `akanjs` is one npm package. Its subpaths (`akanjs/base`, `akanjs/client`, `akanjs/signal`, `akanjs/ui`, …) keep
   server-only, client-only, UI and tooling code apart, and the [package reference](https://akanjs.com/references/akanjs/base)
   covers them; the tooling ships as `@akanjs/cli` and `@akanjs/devkit`.
+- Changes by version: [`CHANGELOG.md`](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/CHANGELOG.md).
 - Contributing: [`CONTRIBUTING.md`](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/CONTRIBUTING.md) and
   the [code of conduct](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/CODE_OF_CONDUCT.md). License: MIT
   ([`LICENSE`](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/LICENSE)).
