@@ -39,6 +39,7 @@ const sections: Section[] = [
             "replace",
             "back",
             "backOrFallback",
+            "backTo",
             "refresh",
             "redirect",
             "notFound",

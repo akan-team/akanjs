@@ -38,6 +38,7 @@ lang: string;
 .replace(href: string, routeOptions?: RouteOptions)
 .canGoBack()
 .backOrFallback(fallbackHref?: string, routeOptions?: RouteOptions)
+.backTo(href: string, routeOptions?: RouteOptions)
 .back(routeOptions?: RouteOptions)
 .refresh()
 .redirect(target: string, options?: RedirectOptions)

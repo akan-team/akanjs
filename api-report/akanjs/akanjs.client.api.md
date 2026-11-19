@@ -62,10 +62,12 @@ export declare class CsrLocation {
     entry(): {
         idx: number | undefined;
         href: string;
+        from: string | undefined;
     };
     observe(): {
         idx: number | undefined;
         href: string;
+        from: string | undefined;
     };
     push(state: unknown, href: string): void;
     replace(state: unknown, href?: string): void;
@@ -1506,6 +1508,7 @@ declare class Router {
     navigation(): Promise<void>;
     canGoBack(): boolean;
     backOrFallback(fallbackHref?: string, routeOptions?: RouteOptions): never;
+    backTo(href: string, routeOptions?: RouteOptions): never;
     back(routeOptions?: RouteOptions): never;
     refresh(): never;
     redirectCount(): number;

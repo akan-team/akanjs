@@ -8,7 +8,7 @@ declare global {
 export class CsrLocation {
   //? An MCP App view's document sits at its host's sandbox address, so it reads the screen it draws instead.
   #view: URL | null = null;
-  #entry: { idx: number | undefined; href: string } | null = null;
+  #entry: { idx: number | undefined; href: string; from: string | undefined } | null = null;
   #onBack: ((idx: number) => void) | null = null;
 
   /** Reads `href`, a path on the app's origin, as this document's location from now on; a view never moves. */
@@ -44,26 +44,29 @@ export class CsrLocation {
   }
 
   /**
-   * The entry on screen as of the last write or traversal, and its index; during a `popstate` it is still the entry
-   * left, which `state` no longer reads.
+   * The entry on screen as of the last write or traversal, its index, and `from`, the address a push stacked it on
+   * (none for an entry a document load or a fragment link made); during a `popstate` it is still the entry left,
+   * which `state` no longer reads.
    */
   entry() {
     return this.#entry ?? this.observe();
   }
 
   observe() {
-    this.#entry = { idx: CsrLocation.idxOf(window.history?.state), href: this.href };
+    const state = window.history?.state;
+    this.#entry = { idx: CsrLocation.idxOf(state), href: this.href, from: CsrLocation.#fromOf(state) };
     return this.#entry;
   }
 
   //? Every write is stamped, so a popstate can tell how many entries it moved and a refused one can be undone.
   push(state: unknown, href: string) {
-    window.history.pushState(CsrLocation.#indexed(state, (this.entry().idx ?? 0) + 1), "", href);
+    const stacked = CsrLocation.#indexed(state, (this.entry().idx ?? 0) + 1) as { __akanRouter?: object };
+    window.history.pushState({ ...stacked, __akanRouter: { ...stacked.__akanRouter, from: this.href } }, "", href);
     this.observe();
   }
 
   replace(state: unknown, href?: string) {
-    const indexed = CsrLocation.#indexed(state, this.entry().idx ?? 0);
+    const indexed = CsrLocation.#rewritten(CsrLocation.#indexed(state, this.entry().idx ?? 0), window.history.state);
     if (href === undefined) window.history.replaceState(indexed, "");
     else window.history.replaceState(indexed, "", href);
     this.observe();
@@ -72,6 +75,19 @@ export class CsrLocation {
   static idxOf(state: unknown) {
     const idx = (state as { __akanRouter?: { idx?: unknown } } | null)?.__akanRouter?.idx;
     return Number.isInteger(idx) ? (idx as number) : undefined;
+  }
+
+  static #fromOf(state: unknown) {
+    const from = (state as { __akanRouter?: { from?: unknown } } | null)?.__akanRouter?.from;
+    return typeof from === "string" ? from : undefined;
+  }
+
+  //? A replace hands over a state of its own, and the entry it rewrites still sits on the address it was pushed from.
+  static #rewritten(state: unknown, live: unknown) {
+    const from = CsrLocation.#fromOf(live);
+    if (from === undefined || CsrLocation.#fromOf(state) !== undefined) return state;
+    const record = (state ?? {}) as { __akanRouter?: object };
+    return { ...record, __akanRouter: { ...record.__akanRouter, from } };
   }
 
   static #indexed(state: unknown, idx: number) {
