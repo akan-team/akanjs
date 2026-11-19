@@ -532,6 +532,43 @@ describe("useCsrValues while a page slides in", () => {
   });
 });
 
+describe("router.backTo on the CSR stack", () => {
+  const screens: Screen[] = [
+    { segment: "home" },
+    { segment: "list", sync: true },
+    { segment: "detail", transition: "stack", sync: true },
+  ];
+
+  test("a second tap while the first one's back plays steps back once, to the page `href` names", async () => {
+    const frame = mountFrame("/en/home", screens);
+    await act(async () => void client.router.push("/list"));
+    await act(async () => void client.router.push("/detail"));
+    await elapse(600);
+    expect(frame.stack()).toEqual(["/en/home", "/en/list", "/en/detail"]);
+
+    await act(async () => void client.router.backTo("/list"));
+    await elapse(5);
+    await act(async () => void client.router.backTo("/list"));
+    await elapse(600);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/list");
+    expect(window.location.pathname).toBe("/en/list");
+  });
+
+  test("a push that keeps the pathname is rewritten in place, so backTo rewrites it back and keeps the page under", async () => {
+    const frame = mountFrame("/en/home", screens);
+    await act(async () => void client.router.push("/list"));
+    await act(async () => void client.router.push("/list?id=1"));
+    await elapse(100);
+
+    await act(async () => void client.router.backTo("/list"));
+    await elapse(100);
+
+    expect(`${window.location.pathname}${window.location.search}`).toBe("/en/list");
+    expect(frame.stack()).toEqual(["/en/home", "/en/list"]);
+  });
+});
+
 describe("useCsrValues when a page is switched in place", () => {
   test("a page that draws later stays out of sight until it is drawn, then takes the screen", async () => {
     const frame = mountFrame("/en/home", [{ segment: "home" }, { segment: "news", drawsAfterMs: 80 }]);

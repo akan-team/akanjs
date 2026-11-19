@@ -70,7 +70,8 @@ export async function getPublishedPeerDependencies(
 export const akanReleasePackages = ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"] as const;
 
 //? npm has served a release's packages up to an hour apart (@akanjs/cli after the rest, 3.3.0-rc.42 and rc.43), and an
-//? install that pins them all fails until the last one is there.
+//? install that pins them all fails until the last one is there. The package document is asked too: an install
+//? resolves from it, and it can list a version minutes after the version's own document answers.
 export async function getServedReleasePeers(version: string, registryUrl?: string): Promise<Record<string, string>> {
   const registry = getNpmRegistryUrl(registryUrl);
   const served = await Promise.all(
@@ -79,7 +80,8 @@ export async function getServedReleasePeers(version: string, registryUrl?: strin
       if (res.status === 404) return false;
       if (!res.ok) throw new Error(`Failed to fetch ${name}@${version} metadata from ${registry} (${res.status})`);
       const tarball = ((await res.json()) as { dist?: { tarball?: string } }).dist?.tarball;
-      return !!tarball && (await fetch(tarball, { method: "HEAD" })).ok;
+      if (!tarball || !(await fetch(tarball, { method: "HEAD" })).ok) return false;
+      return !!(await getPublishedVersions(name, registry))?.versions.includes(version);
     }),
   );
   const missing = akanReleasePackages.filter((_, idx) => !served[idx]).map((name) => `${name}@${version}`);

@@ -322,15 +322,13 @@ export class AppExecutor extends SysExecutor {
   async syncPages(libDeps: string[]): Promise<boolean> {
     const akanConfig = await this.getConfig();
     const parents = AppExecutor.#pageLibParents(akanConfig.basePaths);
+    const appLibs = await this.#resolvePageLibs(akanConfig.syncPageLibs, libDeps);
     const libsOf = new Map<string, string[]>();
-    for (const parent of parents)
-      libsOf.set(
-        parent,
-        await this.#resolvePageLibs(
-          akanConfig.routePageLibs.get(parent.slice(0, -1)) ?? akanConfig.syncPageLibs,
-          libDeps,
-        ),
-      );
+    for (const parent of parents) {
+      const basePath = parent.slice(0, -1);
+      const routeLibs = akanConfig.routePageLibs.get(basePath);
+      libsOf.set(parent, routeLibs === undefined ? appLibs : await this.#resolvePageLibs(routeLibs, libDeps, basePath));
+    }
     //* Not `getPageRoots`: it drops links whose target is gone, exactly the ones a sync must clean up.
     const linked = (
       await Promise.all(
@@ -365,8 +363,9 @@ export class AppExecutor extends SysExecutor {
     this.#pageKeys = null;
     return true;
   }
-  async #resolvePageLibs(syncPageLibs: string[] | boolean, libDeps: string[]): Promise<string[]> {
+  async #resolvePageLibs(syncPageLibs: string[] | boolean, libDeps: string[], basePath?: string): Promise<string[]> {
     if (!syncPageLibs) return [];
+    const owner = basePath === undefined ? `app "${this.name}"` : `app "${this.name}"'s route "${basePath}"`;
     const hasPageDir = async (lib: string) =>
       await FileSys.dirExists(`${this.workspace.workspaceRoot}/libs/${lib}/page`);
     if (syncPageLibs === true) {
@@ -377,10 +376,10 @@ export class AppExecutor extends SysExecutor {
     for (const lib of syncPageLibs) {
       if (!libDeps.includes(lib))
         throw new Error(
-          `[syncPageLibs] app "${this.name}" lists lib "${lib}" but does not depend on it (deps: ${libDeps.join(", ") || "none"})`,
+          `[syncPageLibs] ${owner} lists lib "${lib}" but the app does not depend on it (deps: ${libDeps.join(", ") || "none"})`,
         );
       if (!(await hasPageDir(lib)))
-        throw new Error(`[syncPageLibs] app "${this.name}" lists lib "${lib}" but libs/${lib}/page does not exist`);
+        throw new Error(`[syncPageLibs] ${owner} lists lib "${lib}" but libs/${lib}/page does not exist`);
     }
     return [...syncPageLibs];
   }

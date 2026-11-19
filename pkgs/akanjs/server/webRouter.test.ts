@@ -43,7 +43,7 @@ import type { RscRenderResult } from "./rscWorkerHost";
 import { ServerMetrics } from "./serverMetrics";
 import { SessionRefresh } from "./sessionRefresh";
 import { SsrFromRscRenderer } from "./ssrFromRscRenderer";
-import type { RscTraceMetadata, SsrLateRedirect } from "./ssrTypes";
+import type { RscTraceMetadata, SsrLateControl } from "./ssrTypes";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
 import { cancelStreamForHeadResponse } from "./webDocumentRoute";
 import { WebRouteContext } from "./webRouteContext";
@@ -104,7 +104,7 @@ function createFakeRscWorker(
     callIndex: number,
   ) => {
     cacheState?: RouteCacheRenderState;
-    lateControl?: SsrLateRedirect | null;
+    lateControl?: SsrLateControl | null;
     lateControlAfterMs?: number;
     status?: number;
   } = () => ({ cacheState: { cacheable: true, revalidate: 5 } }),
@@ -2483,7 +2483,7 @@ describe("WebRouter full SSR cache orchestration", () => {
     });
   });
 
-  test("does not store full SSR HTML when the body cap is exceeded", async () => {
+  test("does not store full SSR HTML when the body cap is exceeded, and says why from the next response", async () => {
     await withFullSsrCacheHarness(
       async ({ fullSsr, fakeWorker }) => {
         const first = await fullSsr(new Request("https://example.test/docs/large"));
@@ -2491,12 +2491,69 @@ describe("WebRouter full SSR cache orchestration", () => {
         await expect(first.text()).resolves.toContain("/docs/large:render-1");
 
         const second = await fullSsr(new Request("https://example.test/docs/large"));
-        expect(second.headers.get("X-Akan-Cache")).toBe("MISS");
+        expect(second.headers.get("X-Akan-Cache")).toBe("BYPASS");
+        expect(second.headers.get("X-Akan-Cache-Reason")).toBe("body-too-large");
         await expect(second.text()).resolves.toContain("/docs/large:render-2");
         expect(fakeWorker.renderCalls).toHaveLength(2);
       },
       { htmlCacheMaxBodyBytes: "4" },
     );
+  });
+
+  test("a page over the body cap that also reads the request says it reads the request", async () => {
+    const fakeWorker = createFakeRscWorker(() => ({
+      cacheState: { cacheable: false, reason: "dynamic-request-api" },
+    }));
+
+    await withFullSsrCacheHarness(
+      async ({ fullSsr }) => {
+        const first = await fullSsr(new Request("https://example.test/docs/large-dynamic"));
+        await first.text();
+        const second = await fullSsr(new Request("https://example.test/docs/large-dynamic"));
+        await second.text();
+
+        expect([second.headers.get("X-Akan-Cache"), second.headers.get("X-Akan-Cache-Reason")]).toEqual([
+          "BYPASS",
+          "dynamic-request-api",
+        ]);
+      },
+      { worker: fakeWorker, htmlCacheMaxBodyBytes: "4" },
+    );
+  });
+
+  test("a page that answered not-found or redirected after its stream began says so from the next response", async () => {
+    const cases: { render: Parameters<typeof createFakeRscWorker>[0]; reason: string }[] = [
+      { render: () => ({ cacheState: { cacheable: false, reason: "render-not-found" } }), reason: "render-not-found" },
+      { render: () => ({ cacheState: { cacheable: false, reason: "late-redirect" } }), reason: "late-redirect" },
+      {
+        render: () => ({
+          cacheState: { cacheable: true, revalidate: 5 },
+          lateControl: { type: "not-found" },
+          lateControlAfterMs: 5,
+        }),
+        reason: "render-not-found",
+      },
+    ];
+    for (const { render, reason } of cases) {
+      const fakeWorker = createFakeRscWorker(render);
+
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          const first = await fullSsr(new Request("https://example.test/docs/late"));
+          expect([first.status, first.headers.get("X-Akan-Cache")]).toEqual([200, "MISS"]);
+          await first.text();
+          const second = await fullSsr(new Request("https://example.test/docs/late"));
+          await second.text();
+
+          expect([second.headers.get("X-Akan-Cache"), second.headers.get("X-Akan-Cache-Reason")]).toEqual([
+            "BYPASS",
+            reason,
+          ]);
+          expect(fakeWorker.renderCalls).toHaveLength(2);
+        },
+        { worker: fakeWorker },
+      );
+    }
   });
 
   test("does not store full SSR HTML when worker cache state is uncacheable, and says why from the next response", async () => {

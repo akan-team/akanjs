@@ -10,6 +10,7 @@ import { endpoint } from "../../signal/endpoint";
 import type { EndpointBuilder } from "../../signal/endpointInfo";
 import { Public } from "../../signal/guards";
 import { internal } from "../../signal/internal";
+import { SignalFailure } from "../../signal/SignalFailure";
 import { serverSignal } from "../../signal/serverSignal";
 import { DatabaseSignal, ServiceSignal } from "../../signal/signalRegistry";
 import { slice } from "../../signal/slice";
@@ -289,6 +290,42 @@ describe("DiLifecycle declaration-to-runtime contract", () => {
     } finally {
       await lifecycle.destroyAll();
       await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
+  test("a production server leaves a disabled module's paths to the bare 404", async () => {
+    const DiLifecycle = await loadDiLifecycle("serverLifecycle");
+    const keys = ["NODE_ENV", "AKAN_COMMAND_TYPE", "AKAN_ERROR_DETAIL"] as const;
+    const previous = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    process.env.NODE_ENV = "production";
+    delete process.env.AKAN_COMMAND_TYPE;
+    delete process.env.AKAN_ERROR_DETAIL;
+    SignalFailure.reset();
+
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-di-disabled-"));
+    class DisabledServerResolverTestService extends serve(serverResolverTestDatabase, { enabled: false }, () => ({})) {}
+    const disabledServiceModel = ServiceModel.fromModel(
+      DisabledServerResolverTestService,
+      serverResolverTestConstant,
+      serverResolverTestDatabase,
+    );
+    const lib = libOf("serverLifecycleTest", new AkanOption(), {
+      databases: [serverResolverTestModule(disabledServiceModel)],
+    });
+    const lifecycle = new DiLifecycle({ env: makeSqliteEnv(tmp) }, lib);
+
+    try {
+      const { routes } = await lifecycle.initializeAll();
+      const paths = Object.keys(routes ?? {}).filter((path) => path.startsWith("/serverResolverTestItem"));
+      expect(paths).toEqual([]);
+    } finally {
+      await lifecycle.destroyAll();
+      await rm(tmp, { recursive: true, force: true });
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+      SignalFailure.reset();
     }
   });
 });

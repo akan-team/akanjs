@@ -10,6 +10,8 @@ export class CsrLocation {
   #view: URL | null = null;
   #entry: { idx: number | undefined; href: string; from: string | undefined } | null = null;
   #onBack: ((idx: number) => void) | null = null;
+  #backAsked: object | null = null;
+  #backSent: object | null = null;
 
   /** Reads `href`, a path on the app's origin, as this document's location from now on; a view never moves. */
   view(href: string) {
@@ -101,9 +103,27 @@ export class CsrLocation {
     this.#onBack = listener;
   }
 
+  /** Holds the entry on screen as left until `moving`, a shell's back, settles; `back()` holds it until the pop lands. */
+  leaving(moving: unknown) {
+    const entry = this.entry();
+    this.#backAsked = entry;
+    const release = () => {
+      if (this.#backAsked === entry) this.#backAsked = null;
+    };
+    void Promise.resolve(moving).then(release, release);
+  }
+
+  /** Whether a back has left the entry on screen and not landed yet. */
+  isLeaving() {
+    const entry = this.entry();
+    return entry === this.#backAsked || entry === this.#backSent;
+  }
+
   back() {
-    const idx = this.entry().idx;
-    if (idx !== undefined) this.#onBack?.(idx - 1);
+    const entry = this.entry();
+    if (entry.idx !== undefined) this.#onBack?.(entry.idx - 1);
+    //? With no entry of this document under it a back may move nothing and send no pop, which would hold it for good.
+    if (entry.idx !== undefined && entry.idx > 0) this.#backSent = entry;
     window.history.back();
   }
 

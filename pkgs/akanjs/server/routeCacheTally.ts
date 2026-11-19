@@ -15,6 +15,7 @@ const bypassReasons = [
   "render-not-found",
   "render-redirect",
   "late-redirect",
+  "body-too-large",
   "other",
 ] as const;
 
