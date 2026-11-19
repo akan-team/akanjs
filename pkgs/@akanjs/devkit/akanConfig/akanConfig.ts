@@ -11,7 +11,7 @@ import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
 import { AkanWorkers, type LibWorkers } from "./akanWorkers";
 import { DesktopServerConfig } from "./desktopServerConfig";
-import { DEFAULT_DOCKER_IMAGE, dockerfileOf } from "./dockerImage";
+import { dockerfileOf, resolveDocker, resolveDockerVariants } from "./dockerImage";
 import { NativeFileSettings } from "./nativeFileSettings";
 import { nativeKeys } from "./nativeKeys";
 import type {
@@ -33,8 +33,8 @@ import type {
   DatabaseMode,
   DeepPartial,
   DockerConfig,
+  DockerImageConfig,
   DockerOption,
-  DockerRun,
   LibAssetsConfig,
   LibConfigResult,
   LibDockerConfig,
@@ -148,13 +148,6 @@ const normalizeKeepFonts = (keepFonts: string[] | undefined) => [
   ...new Set((keepFonts ?? []).map((glob) => glob.trim().replace(/^\/+/, "")).filter(Boolean)),
 ];
 
-/** First occurrence wins, so a step a lib and its app both declare becomes one layer. */
-const dedupeDockerRuns = (runs: DockerRun[]): DockerRun[] => {
-  const byKey = new Map<string, DockerRun>();
-  for (const run of runs) byKey.set(typeof run === "string" ? run : JSON.stringify(run), run);
-  return [...byKey.values()];
-};
-
 class LibConfigRefusal extends Error {}
 
 export class AkanAppConfig implements AppConfigResult {
@@ -163,6 +156,8 @@ export class AkanAppConfig implements AppConfigResult {
   docker: DockerConfig;
   /** The Dockerfile `akan build` writes: the declared string verbatim, or one assembled from the parts. */
   dockerfile: string;
+  /** Each is the app's `docker` with the variant's fields replaced; a lib's steps reach every one. */
+  dockerVariants: Record<string, DockerImageConfig>;
   database: AkanDatabaseConfig;
   web: AkanWebConfig;
   externalLibs: string[];
@@ -260,7 +255,8 @@ export class AkanAppConfig implements AppConfigResult {
     this.hasNativeConfig = Boolean(config.native);
     this.native = this.#resolveNativeConfig(config.native);
     this.web = this.#resolveWebConfig(config.web);
-    this.docker = AkanAppConfig.#resolveDocker(config.docker, libContributions.docker);
+    this.docker = resolveDocker(config.docker, libContributions.docker);
+    this.dockerVariants = resolveDockerVariants(config.docker, libContributions.docker);
     this.dockerfile = this.#makeDockerfile();
   }
   #resolveWebConfig(web: AkanWebOption | undefined): AkanWebConfig {
@@ -438,18 +434,6 @@ export class AkanAppConfig implements AppConfigResult {
         this.branches.forEach((domain) => void domains.add(`${basePath}-${domain}.${serveDomain}`));
       });
   }
-  /** A declared Dockerfile string is verbatim, so a lib's steps are dropped rather than silently unapplied. */
-  static #resolveDocker(docker: DockerOption | undefined, libDocker: LibDockerConfig): DockerConfig {
-    if (typeof docker === "string") return docker;
-    return {
-      image: docker?.image ?? DEFAULT_DOCKER_IMAGE,
-      preRuns: dedupeDockerRuns([...libDocker.preRuns, ...(docker?.preRuns ?? [])]),
-      installRuns: dedupeDockerRuns([...libDocker.installRuns, ...(docker?.installRuns ?? [])]),
-      postRuns: dedupeDockerRuns([...libDocker.postRuns, ...(docker?.postRuns ?? [])]),
-      command: docker?.command ?? ["bun", "main.js"],
-      crossBuild: docker?.crossBuild ?? false,
-    };
-  }
   /** What the built server runs with in its image; a desktop app's carried server starts from the same values. */
   getProductionEnv(environment: string = this.baseDevEnv.env): Record<string, string> {
     return {
@@ -479,13 +463,24 @@ export class AkanAppConfig implements AppConfigResult {
     "ARG AKAN_ALLOW_LOCAL_IMAGE",
     `RUN if [ "$AKAN_ALLOW_LOCAL_IMAGE" != "1" ]; then echo "This build ran with AKAN_PUBLIC_ENV=local, so the server runs without endpoint rate limits and on local defaults for Redis and the database mode. Build for the environment it deploys to with akan build --env, or pass --build-arg AKAN_ALLOW_LOCAL_IMAGE=1." >&2; exit 1; fi`,
   ].join("\n");
-  dockerfileFor(environment: string, options: { lockfile?: boolean; env?: Record<string, string> } = {}): string {
-    return this.#makeDockerfile(environment, options.lockfile ?? true, options.env);
+  dockerfileFor(
+    environment: string,
+    options: { lockfile?: boolean; env?: Record<string, string>; variant?: string } = {},
+  ): string {
+    return this.#makeDockerfile(environment, options.lockfile ?? true, options.env, options.variant);
   }
-  #makeDockerfile(environment?: string, lockfile = true, env = this.getProductionEnv(environment)): string {
+  #makeDockerfile(
+    environment?: string,
+    lockfile = true,
+    env = this.getProductionEnv(environment),
+    variant?: string,
+  ): string {
     if (typeof this.docker === "string") return this.docker;
+    const docker = variant === undefined ? this.docker : this.dockerVariants[variant];
+    if (!docker)
+      throw new Error(`[docker] apps/${this.app.name}/akan.config.ts declares no docker variant "${variant}"`);
     const isLocal = (environment ?? this.baseDevEnv.env) === "local";
-    return dockerfileOf(this.docker, { env, lockfile, guard: isLocal ? AkanAppConfig.localImageGuard : undefined });
+    return dockerfileOf(docker, { env, lockfile, guard: isLocal ? AkanAppConfig.localImageGuard : undefined });
   }
   static #importGeneration = 0;
   // Bun caches dynamic imports by path; a fresh query string re-evaluates the config module (its imports stay cached).

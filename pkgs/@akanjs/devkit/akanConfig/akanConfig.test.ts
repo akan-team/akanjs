@@ -421,6 +421,79 @@ describe("AkanAppConfig", () => {
     );
   });
 
+  test("lays docker.env over the build's ENV lines in place, quoting a value Docker would split", () => {
+    const docker = { env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera", MOTD: 'say "hi" there' } };
+    const env = new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv).dockerfile
+      .split("\n")
+      .filter((line) => line.startsWith("ENV "));
+    const plain = new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).dockerfile
+      .split("\n")
+      .filter((line) => line.startsWith("ENV "));
+
+    expect(env).toEqual([
+      ...plain.map((line) =>
+        line === "ENV AKAN_PUBLIC_OPERATION_MODE=cloud" ? "ENV AKAN_PUBLIC_OPERATION_MODE=edge" : line,
+      ),
+      "ENV EDGE_MODE=camera",
+      'ENV MOTD="say \\"hi\\" there"',
+    ]);
+  });
+
+  test("refuses a docker.env key that names no variable and a value holding a line break", () => {
+    const configOf = (docker: object) => new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv);
+
+    expect(() => configOf({ env: { "EDGE MODE": "camera" } })).toThrow('docker.env names "EDGE MODE"');
+    expect(() => configOf({ variants: { edge: { env: { EDGE_MODE: "a\nb" } } } })).toThrow(
+      "docker.variants.edge.env.EDGE_MODE holds a line break",
+    );
+  });
+
+  test("a variant is the app's docker with its named fields replaced, and a lib's steps reach it", () => {
+    const tools = "curl -fsSL https://example.com/kubectl -o /usr/local/bin/kubectl";
+    const docker = {
+      preRuns: [tools],
+      postRuns: ["echo post"],
+      env: { REGION: "seoul" },
+      variants: {
+        edge: { preRuns: [], crossBuild: true, env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
+      },
+    };
+    const lib = { externalLibs: [], docker: { preRuns: ["echo lib"], installRuns: [], postRuns: [] } };
+    const config = new AkanAppConfig(app, ["vision"], packageJson, { docker }, baseDevEnv, [], lib);
+    const edge = config.dockerfileFor("main", { variant: "edge" });
+
+    expect(config.dockerVariants).toEqual({
+      edge: {
+        image: DEFAULT_DOCKER_IMAGE,
+        preRuns: ["echo lib"],
+        installRuns: [],
+        postRuns: ["echo post"],
+        command: ["bun", "main.js"],
+        crossBuild: true,
+        env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" },
+      },
+    });
+    expect(config.dockerfileFor("main")).toContain(`RUN echo lib\nRUN ${tools}\n`);
+    expect(config.dockerfileFor("main")).toContain("ENV AKAN_PUBLIC_OPERATION_MODE=cloud\n");
+    expect(config.dockerfileFor("main")).toContain("ENV REGION=seoul\n");
+    expect(edge).toStartWith(`FROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install\n`);
+    expect(edge).toContain("RUN echo lib\nWORKDIR /workspace\n");
+    expect(edge).not.toContain("kubectl");
+    expect(edge).toContain("ENV AKAN_PUBLIC_OPERATION_MODE=edge\n");
+    expect(edge).toContain("ENV EDGE_MODE=camera\n");
+    expect(edge).not.toContain("REGION");
+  });
+
+  test("refuses a variant name that cannot end a file name, and a variant nothing declares", () => {
+    const configOf = (docker: string | object) => new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv);
+
+    expect(() => configOf({ variants: { "Edge Box": {} } })).toThrow('docker.variants names "Edge Box"');
+    expect(() => configOf({ variants: { edge: {} } }).dockerfileFor("main", { variant: "kiosk" })).toThrow(
+      'declares no docker variant "kiosk"',
+    );
+    expect(configOf("FROM scratch").dockerVariants).toEqual({});
+  });
+
   test("keeps a declared Dockerfile string verbatim", () => {
     const dockerfile = 'FROM oven/bun:1-slim\nCOPY . .\nCMD ["bun","main.js"]';
     const config = new AkanAppConfig(app, [], packageJson, { docker: dockerfile }, baseDevEnv);
@@ -439,6 +512,7 @@ describe("AkanAppConfig", () => {
       postRuns: [],
       command: ["bun", "main.js"],
       crossBuild: false,
+      env: {},
     });
   });
 

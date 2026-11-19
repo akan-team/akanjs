@@ -566,8 +566,8 @@ const buildFields = [
     key: "docker",
     type: "string | DockerImageConfig",
     default: "oven/bun:1.4.4-slim@sha256:…",
-    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild.",
-    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, 같은 레이어의 installRuns, command, crossBuild입니다.",
+    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, env, and variants for a second image.",
+    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, 같은 레이어의 installRuns, command, crossBuild, env, 그리고 두 번째 이미지를 위한 variants입니다.",
   },
 ];
 
@@ -1590,6 +1590,10 @@ const config: AppConfig = {
     postRuns: ["echo after"],
     command: ["bun", "main.js"],
     crossBuild: true,
+    env: { REGION: "seoul" },
+    variants: {
+      edge: { preRuns: [], env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
+    },
   },
 };`}
           />
@@ -1688,6 +1692,36 @@ const config: AppConfig = {
                     단계가 <code>bun install --os linux --cpu &lt;target&gt;</code>을 실행하고, 대상 아키텍처 단계는 그
                     결과를 복사한 뒤 apt-get, preRuns, postRuns만 실행합니다. 이때 의존성의 라이프사이클 스크립트는 빌드
                     머신의 CPU에서 실행되며, 빌드에는 BuildKit이 필요합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>env sets the image's defaults, and variants writes a second image.</strong> <code>env</code>{" "}
+                    is laid over the <code>ENV</code> lines the build writes, so the image starts with it unless the
+                    deployment says otherwise. It is tracked and readable in the image, so never a secret, and{" "}
+                    <code>bun main.js</code> on a host does not get it. Each entry of <code>variants</code> is written
+                    beside the Dockerfile as <code>Dockerfile.&lt;name&gt;</code> (
+                    <code>docker build -f Dockerfile.edge .</code>): the app's <code>docker</code> with every field the
+                    variant names replaced whole, so <code>preRuns: []</code> drops the app's steps there, while a
+                    library's steps reach every variant. Split an image by what it is for, a device or a control plane,
+                    this way rather than by architecture.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>env는 이미지의 기본값을 정하고, variants는 두 번째 이미지를 씁니다.</strong>{" "}
+                    <code>env</code>는 빌드가 쓰는 <code>ENV</code> 줄 위에 덮이므로, 배포에서 따로 정하지 않으면
+                    이미지는 그 값으로 뜹니다. 설정 파일에 남고 이미지에서 읽히므로 비밀 값을 넣지 않으며, 호스트에서{" "}
+                    <code>bun main.js</code>로 실행할 때는 적용되지 않습니다. <code>variants</code>의 각 항목은
+                    Dockerfile 옆에 <code>Dockerfile.&lt;name&gt;</code>으로 쓰입니다(
+                    <code>docker build -f Dockerfile.edge .</code>). 앱의 <code>docker</code>에서 variant가 적은 필드를
+                    통째로 바꾼 것이어서 <code>preRuns: []</code>는 앱의 단계를 그 이미지에서 빼고, 라이브러리의 단계는
+                    모든 variant에 들어갑니다. 기기용, 컨트롤 플레인용처럼 용도로 이미지를 가를 때 아키텍처 대신 이
+                    방법을 씁니다.
                   </span>
                 ),
               })}

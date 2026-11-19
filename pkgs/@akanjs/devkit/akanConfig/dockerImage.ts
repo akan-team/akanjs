@@ -1,4 +1,12 @@
-import { type Arch, archs, type DockerImageConfig, type DockerRun } from "./types";
+import {
+  type Arch,
+  archs,
+  type DockerConfig,
+  type DockerImageConfig,
+  type DockerOption,
+  type DockerRun,
+  type LibDockerConfig,
+} from "./types";
 
 //? A Bun bump changes both: `docker buildx imagetools inspect oven/bun:<version>-slim` prints the new multi-arch digest.
 export const BUN_IMAGE_PIN = {
@@ -20,7 +28,13 @@ export const DOCKER_WRITE_DIRS = [
   "/workspace/.akan/artifact/image-cache",
 ];
 
-export const DOCKER_IGNORED = [...DOCKER_WRITE_DIRS.map((dir) => dir.slice("/workspace/".length)), "node_modules"];
+export const DOCKER_VARIANT_FILE_PREFIX = "Dockerfile.";
+export const DOCKER_IGNORED = [
+  ...DOCKER_WRITE_DIRS.map((dir) => dir.slice("/workspace/".length)),
+  "node_modules",
+  //? Copied in, a variant's Dockerfile would rebuild every other image's `COPY . .` layer when it alone changed.
+  `${DOCKER_VARIANT_FILE_PREFIX}*`,
+];
 export const DOCKER_INSTALL_STAGE = "install";
 //? Bun names the CPU x64 where Docker's TARGETARCH says amd64.
 const DOCKER_INSTALL_TARGET = `--os linux --cpu "$(echo "$TARGETARCH" | sed s/amd64/x64/)"`;
@@ -43,6 +57,15 @@ export const dockerImageScript = (image: string | { [key in Arch]?: string }) =>
   typeof image === "string"
     ? `FROM ${image}`
     : [...archs.map((arch) => `FROM ${image[arch] ?? DEFAULT_DOCKER_IMAGE} AS ${arch}`), "FROM $TARGETARCH"].join("\n");
+
+//? Docker ends an unquoted ENV value at a space; inside quotes it still expands `$NAME`.
+const dockerEnvValue = (value: string) => (/[\s"'\\]/.test(value) ? JSON.stringify(value) : value);
+
+const dockerEnvLines = (build: Record<string, string>, declared: Record<string, string>) => {
+  const lines = new Map(Object.entries(build).map(([key, value]) => [key, `ENV ${key}=${value}`]));
+  for (const [key, value] of Object.entries(declared)) lines.set(key, `ENV ${key}=${dockerEnvValue(value)}`);
+  return [...lines.values()];
+};
 
 export interface DockerfileParts {
   env: Record<string, string>;
@@ -89,9 +112,64 @@ export const dockerfileOf = (docker: DockerImageConfig, { env, lockfile, guard }
     ...dockerRunScripts(postRuns),
     "COPY . .",
     `RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}`,
-    ...Object.entries(env).map(([key, value]) => `ENV ${key}=${value}`),
+    ...dockerEnvLines(env, docker.env),
     `USER ${DOCKER_RUN_USER}`,
     `ENTRYPOINT ${JSON.stringify(DOCKER_INIT)}`,
     `CMD ${JSON.stringify(command)}`,
   ].join("\n");
+};
+
+/** First occurrence wins, so a step a lib and its app both declare becomes one layer. */
+const dedupeDockerRuns = (runs: DockerRun[]): DockerRun[] => {
+  const byKey = new Map<string, DockerRun>();
+  for (const run of runs) byKey.set(typeof run === "string" ? run : JSON.stringify(run), run);
+  return [...byKey.values()];
+};
+
+const dockerEnvKeyPattern = /^[A-Za-z_][A-Za-z0-9_]*$/;
+//? The name ends `Dockerfile.<name>`, which a shell, a CI step and `docker build -f` all take unquoted.
+const dockerVariantNamePattern = /^[a-z][a-z0-9-]*$/;
+
+const resolveDockerImage = (
+  docker: Partial<DockerImageConfig>,
+  libDocker: LibDockerConfig,
+  envOwner: string,
+): DockerImageConfig => {
+  const env = docker.env ?? {};
+  for (const [key, value] of Object.entries(env)) {
+    if (!dockerEnvKeyPattern.test(key))
+      throw new Error(`[docker] ${envOwner} names "${key}", which is not an environment variable name`);
+    if (/[\r\n]/.test(value))
+      throw new Error(`[docker] ${envOwner}.${key} holds a line break, which an ENV line cannot carry`);
+  }
+  return {
+    image: docker.image ?? DEFAULT_DOCKER_IMAGE,
+    preRuns: dedupeDockerRuns([...libDocker.preRuns, ...(docker.preRuns ?? [])]),
+    installRuns: dedupeDockerRuns([...libDocker.installRuns, ...(docker.installRuns ?? [])]),
+    postRuns: dedupeDockerRuns([...libDocker.postRuns, ...(docker.postRuns ?? [])]),
+    command: docker.command ?? ["bun", "main.js"],
+    crossBuild: docker.crossBuild ?? false,
+    env,
+  };
+};
+
+/** A declared Dockerfile string is verbatim, so a lib's steps are dropped rather than silently unapplied. */
+export const resolveDocker = (docker: DockerOption | undefined, libDocker: LibDockerConfig): DockerConfig =>
+  typeof docker === "string" ? docker : resolveDockerImage(docker ?? {}, libDocker, "docker.env");
+
+export const resolveDockerVariants = (
+  docker: DockerOption | undefined,
+  libDocker: LibDockerConfig,
+): Record<string, DockerImageConfig> => {
+  if (typeof docker === "string" || !docker?.variants) return {};
+  const { variants, ...base } = docker;
+  return Object.fromEntries(
+    Object.entries(variants).map(([name, variant]) => {
+      if (!dockerVariantNamePattern.test(name))
+        throw new Error(
+          `[docker] docker.variants names "${name}", which cannot end a file name: use lowercase letters, digits and "-"`,
+        );
+      return [name, resolveDockerImage({ ...base, ...variant }, libDocker, `docker.variants.${name}.env`)];
+    }),
+  );
 };
