@@ -85,7 +85,7 @@ export interface SignalTestContext<Fetch = FetchProxy> {
     terminate: () => Promise<void>;
 }
 
-export type SignalTestOptions = Pick<TestServerOptions, "port" | "serverMode" | "storage" | "workerId">;
+export type SignalTestOptions = Pick<TestServerOptions, "enableModules" | "port" | "serverMode" | "storage" | "workerId">;
 
 export interface SignalTestTarget {
     type: "app" | "lib";
@@ -129,6 +129,7 @@ export interface TestServerOptions {
     port?: number;
     storage?: TestStorage;
     serverMode?: "all" | "batch" | "federation";
+    enableModules?: string[];
     listen?: boolean;
     web?: boolean;
 }
