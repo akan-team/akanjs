@@ -94,12 +94,17 @@ jobs:
         with:
           name: npm-packs
       - name: Poll the version and the tarball of each package
+        # The package document is what an install resolves a version and a dist-tag from, and it can trail the
+        # version's own document by minutes.
         run: |
           version=$(jq -r .version publish.json)
+          tag=$(jq -r .tag publish.json)
           for tarball in $(jq -r '.tarballs[]' publish.json); do
             name=$(tar -xzOf "$tarball" package/package.json | jq -r .name)
-            until url=$(curl -fsS "https://registry.npmjs.org/$name/$version" | jq -er .dist.tarball) &&
-              curl -fsSI -o /dev/null "$url"; do
+            until url=$(curl -fsS --max-time 30 "https://registry.npmjs.org/$name/$version" | jq -er .dist.tarball) &&
+              curl -fsSI --max-time 30 -o /dev/null "$url" &&
+              curl -fsS --max-time 30 -H 'Accept: application/vnd.npm.install-v1+json' "https://registry.npmjs.org/$name" |
+              jq -e --arg version "$version" --arg tag "$tag" '.versions[$version] and ."dist-tags"[$tag] == $version' >/dev/null; do
               echo "$name@$version is not served yet"
               sleep 60
             done

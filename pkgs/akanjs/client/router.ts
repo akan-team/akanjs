@@ -289,7 +289,7 @@ class Router {
       prefetch: (href, priority) => options.router.prefetch?.(this.#getNavigationPathInfo(href).href, priority),
       back: () => {
         this.#postPathAfterBack();
-        options.router.back();
+        return options.router.back();
       },
       refresh: () => {
         const router = options.router;
@@ -317,7 +317,7 @@ class Router {
       },
       back: (routeOptions) => {
         this.#postPathAfterBack();
-        options.router.back(routeOptions);
+        return options.router.back(routeOptions);
       },
       refresh: () => {
         const { path, pathname, hash } = this.#getPathInfo(csrLocation.pathname);
@@ -659,11 +659,17 @@ class Router {
   backTo(href: string, routeOptions?: RouteOptions) {
     if (getEnv().side === "server") throw new Error("backTo is only available in client side");
     this.#checkInitialized();
+    //? A second tap before the first one's back lands still reads this entry, and a second back would leave `href`.
+    if (csrLocation.isLeaving()) return undefined as never;
     const { from } = csrLocation.entry();
+    const target = this.#getPathInfo(href);
+    //? With no fragment `href` names the page, and the entry under is that page at any fragment.
+    const under =
+      from === undefined ? null : { ...this.#getVisiblePathInfo(from), ...(target.hash ? {} : { hash: "" }) };
     const isUnder =
-      from !== undefined &&
+      under !== null &&
       this.canGoBack() &&
-      CsrRuntimeParams.sameRoute(this.#routeShown(from), Router.#routeHref(this.#getPathInfo(href)));
+      CsrRuntimeParams.sameRoute(Router.#routeHref(under), Router.#routeHref(target));
     if (isUnder) this.back(routeOptions);
     else this.replace(href, { scrollToTop: false, ...routeOptions });
     return undefined as never;
@@ -673,7 +679,7 @@ class Router {
     this.#checkInitialized();
     this.#guarded("back", null, () => {
       this.#navigations += 1;
-      this.#instance.back(routeOptions);
+      csrLocation.leaving(this.#instance.back(routeOptions));
     });
     return undefined as never;
   }

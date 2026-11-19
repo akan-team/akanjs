@@ -11,7 +11,7 @@ export class BundleSizeGate implements Gate {
   readonly recordsBaseline = true;
   static readonly #relativeSlack = 0.01;
   static readonly #absoluteSlack = 4096;
-  static readonly #entries = ["main.js", "server.js", "rscWorker.js", "console-runtime.js"];
+  static readonly #entries = ["main.js", "main.bundle.js", "server.js", "rscWorker.js", "console-runtime.js"];
   readonly #distDir: string;
   readonly #metaDir: string;
 

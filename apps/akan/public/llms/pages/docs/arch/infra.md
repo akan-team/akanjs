@@ -297,10 +297,10 @@ services:
     environment:
       AKAN_DATABASE_MODE: multiple
       REDIS_URI: redis://redis:6379
-      SQLITE_DATABASE_PATH: /data/app.db
+      SQLITE_DATABASE_PATH: /workspace/sqlite/app.db
       AKAN_STORAGE_SHARED: "true"
     volumes:
-      - app-data:/data
+      - app-data:/workspace/sqlite
       - app-files:/workspace/local
 volumes:
   app-data:

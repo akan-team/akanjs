@@ -28,7 +28,13 @@ const ROUTE_CACHE_SWEEP_INTERVAL_MS = 60_000;
 const HTML_STORE_SKIP_MAX_ENTRIES = 1000;
 //? Only what the page's own render decided is held. A cancelled or failed render says nothing of the next one, and
 //? holding it would let one visitor's closed tab switch the cache off for everyone asking for that URL.
-const HELD_SKIP_REASONS = ["dynamic-request-api", "render-not-found", "render-redirect", "late-redirect"];
+const HELD_SKIP_REASONS = [
+  "dynamic-request-api",
+  "render-not-found",
+  "render-redirect",
+  "late-redirect",
+  "body-too-large",
+];
 
 interface HtmlCacheStreamOptions {
   shouldCache?: () => boolean | Promise<boolean>;
@@ -60,20 +66,20 @@ export function cacheHtmlWhileStreaming(
         controller.enqueue(chunk);
       },
       async flush() {
-        if (exceededMaxBodyBytes) {
-          options.onSkip?.("body-too-large");
-          return;
-        }
-        const body = new Uint8Array(byteLength);
-        let offset = 0;
-        for (const chunk of chunks) {
-          body.set(chunk, offset);
-          offset += chunk.byteLength;
-        }
         try {
           if (options.shouldCache && !(await options.shouldCache())) {
             options.onSkip?.("store-skip");
             return;
+          }
+          if (exceededMaxBodyBytes) {
+            options.onSkip?.("body-too-large");
+            return;
+          }
+          const body = new Uint8Array(byteLength);
+          let offset = 0;
+          for (const chunk of chunks) {
+            body.set(chunk, offset);
+            offset += chunk.byteLength;
           }
           onComplete(body);
         } catch {

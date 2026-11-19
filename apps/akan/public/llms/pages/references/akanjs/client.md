@@ -84,6 +84,8 @@ Method
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.
 
+- backTo(href): Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.
+
 - refresh(): Renders the current route again. Browser only.
 
 - redirect(href, { method, status, external }): On the server, answers with a redirect (307 by default). In the browser, navigates. A URL on another origin goes to the index path instead unless `external: true`.
@@ -327,6 +329,8 @@ PageConfig
 - bottomSafeAreaColor (string, default background color): Color painted behind the bottom safe area.
 
 - prefetch (boolean, default true): `false` answers a Link's prefetch of the page without rendering it; the click renders it. On a layout, it covers every page below.
+
+- canonicalQuery (boolean, default true): `false` keys the page in the RSC and HTML result caches on its query exactly as requested, instead of sorted and without the `AKAN_ROUTE_CACHE_TRACKING_PARAMS`. On a layout, it covers every page below.
 
 - devOnly (boolean, default false): Keeps the route out of `akan build`. It still serves under `akan start`.
 
@@ -594,7 +598,7 @@ setAuth / initAuth / resetAuth
 
 These three keep `fetch`, the cookie and client storage holding the same token. Call `setAuth` after sign-in; the framework already calls `initAuth` at startup.
 
-- setAuth({ jwt }): Gives `fetch` the token and saves it to the cookie and client storage.
+- setAuth({ jwt }): Gives `fetch` the token and saves it to the cookie and client storage. With no token beside a session the server holds in HttpOnly cookies, `fetch` sends none and the socket reconnects on the cookie.
 
 - initAuth({ jwt? }): Restores the token from the cookie at startup. Ignores another app's token, and reads a cookie sent twice as signed out.
 

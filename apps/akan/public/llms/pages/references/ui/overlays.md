@@ -124,7 +124,7 @@ Related pages
 
   - Dialog.Modal ({ onCancel?, confirmClose?, closeButton?, presentation?, placement?, className?, bodyClassName? }): The window `Modal` draws, dialog or sheet. Escape, a backdrop click and the corner button close it.
 
-  - Dialog.LegacyModal ({ onCancel?, confirmClose?, className?, bodyClassName? }): The previous window: spring open/close and drag-to-dismiss on touch.
+  - Dialog.LegacyModal ({ onCancel?, confirmClose?, className?, bodyClassName? }): The previous window: spring open/close and drag-to-dismiss on touch. Its code and react-spring load the first time it renders, so a page drawing only `Dialog.Modal` carries neither.
 
   - Dialog.Title / Dialog.Action ({ children }): Draw nothing where written; they hand their children to the header and footer rows.
 

@@ -102,6 +102,37 @@ describe("CSR.Wrapper", () => {
     frame.unmount();
   });
 
+  test("a crossfading navbar keeps its fill under a page whose bar rides, and the layer fills it under one that fades", () => {
+    const entryOf = (key: string, navbarMotion: "page" | undefined, pageType: string, zIndex: number) => {
+      const pathRoute = {
+        path: `/:lang/${key}`,
+        pageState: { ...client.defaultPageState, topInset: key === "under" ? 48 : 56, navbarMotion },
+        renderRootLayouts: [],
+        renderLayouts: [],
+        renderPage: { kind: "page", render: () => null },
+      };
+      const location = { href: `/en/${key}`, pathname: `/en/${key}`, params: {}, searchParams: {}, pathRoute };
+      return { key, location, pageType, zIndex };
+    };
+    const layer = () => document.getElementById("topInsetContainer");
+    const barOf = (key: string) => document.getElementById(`topInsetContent-${key}`);
+
+    const [crossfadeUnder, ridingTop] = [entryOf("under", undefined, "prev", 1), entryOf("top", "page", "current", 2)];
+    const riding = mount(frameOf("frame", [], 1, [crossfadeUnder, ridingTop], { location: ridingTop.location }));
+    expect(layer()?.className).toContain("bg-transparent");
+    expect(barOf("under")?.className).toContain("bg-background");
+    expect(barOf("under")?.style.height).toBe("48px");
+    expect(barOf("top")?.className).toContain("bg-background");
+    riding.unmount();
+
+    const [ridingUnder, fadingTop] = [entryOf("under", "page", "prev", 1), entryOf("top", undefined, "current", 2)];
+    const fading = mount(frameOf("frame", [], 1, [ridingUnder, fadingTop], { location: fadingTop.location }));
+    expect(layer()?.className).not.toContain("bg-transparent");
+    expect(layer()?.className).toContain("bg-background");
+    expect(barOf("under")?.className).toContain("bg-background");
+    fading.unmount();
+  });
+
   test("publishes what the current page registers for the agent, and parks the page kept under it", async () => {
     const { useAgentGate } = await import("use-agentic");
     const seen: Record<string, boolean | undefined> = {};

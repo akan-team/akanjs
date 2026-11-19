@@ -11,6 +11,7 @@
 - Akan Runtime (#akan-runtime)
 - Identity And Environment (#env-identity)
 - Database Variables (#env-database)
+- Secret Variables (#env-secrets)
 - Text Search Variables (#env-search)
 - Logging Variables (#env-logging)
 - getEnv() (#get-env)
@@ -86,9 +87,15 @@ Two more narrow who reaches the server, for one only its own computer calls, suc
 
 A server that renders pages calls itself at localhost:<PORT>, so list that in AKAN_ALLOWED_HOSTS too, and keep AKAN_LISTEN_HOST on an address localhost reaches.
 
+Dev routes (devtools, Studio, /_akan/hmr, the ssr-dev and csr-dev module registries, /__rsc/manifest) answer only localhost, IP addresses, the app's own hosts and AKAN_ALLOWED_HOSTS names, even on a server that answers every Host. Devtools opens in a local dev runtime; one more setting opens it elsewhere:
+
+- AKAN_DEVTOOLS (true | false, default local dev runtime only): false closes devtools and Studio everywhere. true opens them outside a local runtime only with AKAN_LOG_DEBUG_HEADER set to at least 32 characters, to a caller that sends it as x-akan-debug or posts it to the form a browser is shown, which unlocks that browser for 15 minutes over HTTPS or localhost. Without a secret that long they stay closed and the server log says why.
+
 One more decides whose forwarded headers name the caller. Unset or *, that is X-Real-IP, else the leftmost X-Forwarded-For entry. Given a list, X-Forwarded-For is walked from the nearest hop past every trusted proxy instead, X-Real-IP counting only without it. List your load balancer's and ingress's own addresses, or a CIDR holding only them:
 
 - AKAN_TRUSTED_PROXIES (CIDR, … | private | none | *, default private ranges): Proxies besides loopback whose headers are believed; a list replaces the private ranges. Any other peer's forwarded host, scheme and port are dropped. private lets any pod in them name any caller, so pair it with a NetworkPolicy admitting only the ingress.
+
+- AKAN_TRACE_ADOPT (trusted-proxies, default unset): Unset, every request gets an id the server mints, and a traceparent or x-request-id it arrived with is kept as its link. trusted-proxies takes that id as the request's own from a peer AKAN_TRUSTED_PROXIES names by address, by CIDR or with private; loopback and the private ranges count only when the list spells them, and * does not. Before turning it on, make that proxy overwrite or strip both headers on every request: one that passes them through lets any caller choose the id its response and its logs carry.
 
 Database Variables
 
@@ -121,6 +128,18 @@ An app that declares `database: { modes: ["single", "cluster"] }` ships one imag
 **Behind a PgBouncer in transaction mode,** add `prepare=false` to `POSTGRES_URL`; the driver reads every such setting from the query string.
 
 **Uploads need storage every instance reads.** A deployed `multiple` or `cluster` app keeps them in object storage, or on one volume every instance mounts with `AKAN_STORAGE_SHARED=true`. Outside development, an upload to a disk only one instance reads is refused.
+
+Secret Variables
+
+`akan build` puts no secret value of `env/env.server.<env>.ts` into the server it builds. You keep writing the env file as before; a string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path. `akan secret-env <app>` lists the variables of an environment and writes them as a Kubernetes Secret or a dotenv file.
+
+- <KEY>__<KEY> (string): A secret's key path, each key in upper snake case joined with `__`: `security.sso.google.clientSecret` is `SECURITY__SSO__GOOGLE__CLIENT_SECRET`. An array holding a secret is one variable holding JSON.
+
+- JWT_SECRET (string): `security.jwtSecret`. `database.postgres.url`, `.password` and `.insightUrl` likewise keep `POSTGRES_URL`, `POSTGRES_PASSWORD` and `POSTGRES_INSIGHT_URL`.
+
+- AKAN_ENV_NAMES (string, default written by the build): The names the built server reads, in `akan.env.json` and the Dockerfile. At boot a name that is not set is one warning naming it. The framework does not stop for it, though whatever reads the value may; version 3.5.0 will refuse to start.
+
+**A deployment must set these before it runs an image built with 3.4.0.** On Kubernetes, apply the Secret `akan secret-env --out` writes and name it in the container's `envFrom`. A deployment that cannot yet builds with `akan build --inline-secrets`, which keeps the values in the image for one more release.`akan start`, `akan test`, `--profile` builds and desktop and mobile builds read the env file as written.
 
 Text Search Variables
 
@@ -168,11 +187,17 @@ The level ladder is trace, verbose, debug, info, warn, error, and three destinat
 
 - AKAN_LOG_FLIGHT_MAX (number, default 65536): Caps the records the process holds at once; a call past the cap runs unrecorded.
 
+- AKAN_LOG_SLOW_STATEMENT_MS (number | off, default 200): A SQL statement whose wait and run reach this writes one SlowStatement warning, once a minute per statement; off or 0 turns it off.
+
+- AKAN_QUERY_PLAN_IGNORE (fingerprints | all, default unset — every statement checked): Local dev runtime only: comma-separated statement fingerprints whose full scan or sort is deliberate; all turns the query-plan check off.
+
 - AKAN_LOG_BUFFER (number, default 2000): How many records the in-memory hub keeps for akan logs and the SSE stream to replay.
 
 - AKAN_LOG_BUFFER_MB (number, default 4): The same buffer's byte ceiling; whichever limit is reached first applies.
 
-- AKAN_LOG_DEBUG_HEADER (string, default unset — local only): The secret x-akan-debug must carry outside local to log that one request at trace.
+- AKAN_LOG_DEBUG_HEADER (string, default unset — local only): The secret x-akan-debug must carry outside local to log that one request at trace and answer it with Server-Timing. With AKAN_DEVTOOLS=true it also opens devtools and Studio, when it has at least 32 characters.
+
+- AKAN_CLIENT_REPORT_KEY (string, default unset — made at start): A secret of at least 32 characters that signs the id a page view carries for option.setClientReport. Set the same value on every gateway or pod so each takes the others' ids; a gateway passes it to its replicas unchanged. A shorter value is ignored with a warning.
 
 The ring the gateway (or the solo replica) keeps for akan logs --replay and .trace holds AKAN_LOG_BUFFER records or AKAN_LOG_BUFFER_MB, 2,000 or 4 MB by default, whichever fills first, and the older record goes first.
 

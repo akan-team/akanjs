@@ -582,7 +582,7 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - pipeline (AppPipelineConfig, default build → docker → deploy): The stages Akan Cloud runs to build and deploy this app, in order.
 
-- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim): A whole Dockerfile as a string, or the parts akan build assembles one from.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile as a string, or the parts akan build assembles one from.
 
 - database ({ modes: DatabaseMode[] }, default { modes: ["single"] }): The modes the build can run in; each deployment picks one with AKAN_DATABASE_MODE.
 
@@ -590,7 +590,9 @@ This is the whole key set. Every one of them has a default that a working app ca
 
 - trustedDependencies (string[], default []): Packages whose install scripts bun install --production runs, in the image and in a desktop app's server.
 
-- bin (Record<string, { [platform]: AkanBinSource }>, default {}): Executables every desktop build carries, per platform, first on its PATH; the image ignores it.
+- bin (Record<string, { [platform]: AkanBinSource }>, default {}): Executables every desktop build and the image carry, per platform, first on PATH.
+
+- workers (Record<string, string>, default {}): Entry files akan build bundles apart from the server; AppWorker.spawn(name) runs one as a process of its own. A lib's config takes it too, for every app that depends on the lib.
 
 - barrelImports (string[], default akanjs + workspace): Barrel paths Akan flattens while scanning and bundling.
 
@@ -609,8 +611,6 @@ One source of truth
 CLI commands, production builds, and native app commands all read this file.
 
 Config Shape
-
-The default export can be a plain object or a function. Use an object for most apps. Use a function only when the config needs app metadata while it is being loaded.
 
 ## Data Layer
 
@@ -999,6 +999,7 @@ Headings:
 - Akan Runtime
 - Identity And Environment
 - Database Variables
+- Secret Variables
 - Text Search Variables
 - Logging Variables
 - getEnv()
@@ -1437,9 +1438,9 @@ Method
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.
 
-- refresh(): Renders the current route again. Browser only.
+- backTo(href): Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.
 
-- redirect(href, { method, status, external }): On the server, answers with a redirect (307 by default). In the browser, navigates. A URL on another origin goes to the index path instead unless `external: true`.
+- refresh(): Renders the current route again. Browser only.
 
 ## akanjs/common
 
@@ -2032,6 +2033,8 @@ These commands carry an app from creation to release: create it, run it locally,
 
   - build: Build the app for production into `dist/apps/<app>`.
 
+  - secret-env: List the secret variables a built server reads, or write them for its deployment.
+
 - Native
 
   - start-ios, start-android: Run the app on a simulator, an emulator or a connected device.
@@ -2041,8 +2044,6 @@ These commands carry an app from creation to release: create it, run it locally,
   - build-ios, build-android, build-desktop: Build the native app on the native runtime.
 
   - release-ios, release-android: Build the app for an App Store or Play Store release.
-
-  - update-keygen, publish-update, pack-update, push-update, register-binary: Sign and publish releases installed apps update themselves to, or pack a phone update for a signer elsewhere.
 
 ## Cloud CLI
 
@@ -2821,6 +2822,7 @@ Headings:
 - Quality CLI
 - What Scan Reports
 - Rules By Scope
+- What Keeps A Page Whole
 - Server Render Share
 
 Quality
@@ -2853,9 +2855,9 @@ Term
 
 `akan quality [action] [--format <text|json>]`
 
-Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.
+Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.`runtime` counts, per app and library, the client files that read `st`, `fetch` or `sig` only by names a module answers, notes each file that ties itself to its scope's whole client runtime, and prints what the last `akan build` of each app decided: the routes loading per module, and for every other the file, line and rule that keeps it whole.
 
-- action (String, default scan, scan | ssr | baseline): `scan` reports everything, `ssr` the render balance alone; `baseline` writes `akan.baseline.json`.
+- action (String, default scan, scan | ssr | runtime | baseline): `scan` reports everything, `ssr` the render balance alone, `runtime` how client files read the client runtime; `baseline` writes `akan.baseline.json`.
 
 - --format (String, default text, text | json): Short form `-f`; `json` prints the whole result for tools, each warning's `fix` included.
 
@@ -2984,7 +2986,7 @@ Term
 
 - TTL: How long a share lives before it expires on its own.
 
-**Anyone with the URL reaches your whole dev server.** That is every route under `page/`, the API prefix, the websocket, and `/mcp` if the app mounts it, with nothing in front. Give it a `--ttl`, stop it when the call ends, and never share a session signed in to production data.
+**Anyone with the URL reaches your whole dev server.** That is every route under `page/`, the API prefix, the websocket, and `/mcp` if the app mounts it, with nothing in front. Give it a `--ttl`, stop it when the call ends, and never share a session signed in to production data. The share leaves out the dev routes the app registers (devtools, Studio, `/_akan/hmr`, `/__rsc/manifest`), source maps and the operator routes; it serves the ssr-dev and csr-dev module registries, which a dev page loads its code from.
 
 `akan tunnel [app] [--list <boolean>] [--stop <code>] [--host <url>] [--port <number>] [--ttl <min>]`
 
@@ -3259,6 +3261,7 @@ Headings:
 - externalLibs
 - barrelImports
 - optimizeImports
+- What A Page Loads
 - docker
 - Library Config Fields
 
@@ -5223,7 +5226,7 @@ What it means for you
 
 - AKAN_LOG_TO_FILE=0: File logging is off, so collect stdout or set it to 1 and mount a log volume.
 
-- ca-certificates, tzdata: The only packages installed, so declare ffmpeg or Chromium in `docker.preRuns`.
+- ca-certificates, tzdata, tini: The only packages installed, tini as the init that reaps orphaned processes, so declare ffmpeg or Chromium in `docker.preRuns`.
 
 - console.js: It ships next to `main.js`, so you open an operator console with `docker exec`.
 
@@ -5731,6 +5734,44 @@ Term
 - relation: A field typed as another model, which stores only the id and is loaded by the server.
 
 - scalar: A value object declared under `lib/__scalar/` and stored inside the document.
+
+## Script Policy
+
+Source: /cheatsheet/general/script-policy
+Mirror: /llms/pages/cheatsheet/general/script-policy.md
+Priority: P2
+
+Headings:
+- Script Policy
+- Your Own Inline Scripts
+- Reports And Settings
+- The Framework's Scripts
+- What Changes In A Page
+- What 3.5.0 Enforces
+
+Script Policy
+
+Every HTML response carries `Content-Security-Policy-Report-Only` with a `script-src` that names each script the framework writes. In 3.4 the browser only reports what the policy would refuse; 3.5.0 moves the same `script-src` into the enforced `Content-Security-Policy`. An app with no inline script of its own has nothing to do.
+
+What each response sends
+
+Response
+
+script-src it reports against
+
+- A server-rendered page — 'self' 'nonce-…' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<import map>' 'strict-dynamic'
+
+- The same page from the HTML cache — 'self' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<import map>' 'sha256-<each script React wrote>' 'strict-dynamic'
+
+- The CSR document (?csr=true) — 'self' 'sha256-<the inlined bundle>' 'strict-dynamic'
+
+- System pages (404, 500), the OAuth error page — 'self' 'strict-dynamic'
+
+- The gateway's status page — 'self' 'sha256-<its reload script>' 'strict-dynamic'
+
+- Under akan start — … 'nonce-…' 'strict-dynamic' 'unsafe-eval'
+
+`'strict-dynamic'` turns `'self'` off in a current browser: a script runs because the policy names it by hash or nonce, or because a script that already runs added it. `'self'` is what an older browser falls back to.
 
 ## Text Search
 
@@ -6243,6 +6284,7 @@ Headings:
 - Use Data
 - Client Handling
 - Response Shape
+- Report Errors
 - Tips
 
 Error Handling
@@ -6284,6 +6326,7 @@ Headings:
 - Live Tail
 - Request Line & Flight Recorder
 - Collection: NDJSON stdout
+- Export: OpenTelemetry
 - The SSE Stream
 - Operational Checklist
 
@@ -6303,7 +6346,7 @@ Term
 
 - LogRecord: What one Logger call becomes: level, logger name, process and, inside a request, its trace.
 
-- traceId: An id shared by every line one request writes, such as `m8x1k2-a9f3c1`.
+- traceId: An id shared by every line one request writes, in the gateway, the replica and the RSC worker alike: 32 hex digits such as `0af7651916cd43dd8448eb211c80319c`. The response carries it as `x-request-id`, and a failed call's body as `traceId`.
 
 - sink: A receiver registered with `Logger.addSink`, such as the rotating file or the hub.
 
@@ -6321,6 +6364,9 @@ Headings:
 - Health And Metrics
 - Check Health
 - Check Metrics
+- Scrape With Prometheus
+- Find Slow Statements
+- Dashboard And Alerts
 - How To Read
 - Memory Logs
 - Troubleshooting Order
@@ -6339,15 +6385,15 @@ What it answers
 
 - GET /_akan/app/health: **Is it alive?** Whether each replica is up and ready to take requests.
 
-- GET /_akan/app/metrics: **How busy is it?** Requests in flight, WebSocket load, memory and the render queue.
+- GET /_akan/app/metrics: **How busy is it?** Requests in flight, calls and errors per endpoint, WebSocket load, memory and the render queue.
+
+- GET /_akan/app/statements: **Which query is slow?** The SQL statements that took the most time, with the model call and the endpoint that sent each.
 
 - akan logs <app>: **Why?** Which endpoint, queue or render path produced those numbers.
 
 **No setup, no token.** Both are plain GET routes at the root of the app port (`8282` by default), not under the API prefix.
 
 **Same shape with or without a gateway.** A solo replica answers in the gateway's shape and adds `"solo": true`.
-
-**Only checking the port?** `/_akan/bench/ping` answers a plain `ok`.
 
 ## Caching
 
@@ -6359,6 +6405,7 @@ Headings:
 - Server Caching
 - Document Cache
 - Service Memory
+- Page Cache
 - Which One?
 - Tips
 
@@ -6633,6 +6680,7 @@ Use `message` for small actions the browser sends to the server: a read receipt,
 - File Management: /llms/pages/cheatsheet/general/file.md
 - OAuth For Agents: /llms/pages/cheatsheet/general/mcp-auth.md
 - Schema Design: /llms/pages/cheatsheet/general/schema.md
+- Script Policy: /llms/pages/cheatsheet/general/script-policy.md
 - Text Search: /llms/pages/cheatsheet/general/search.md
 - Single Sign-On: /llms/pages/cheatsheet/general/sso.md
 - Agent Chat: /llms/pages/cheatsheet/interface/agent-chat.md

@@ -248,6 +248,7 @@ describe("CloudRunner", () => {
     const originalFetch = globalThis.fetch;
     const release = {
       "dist-tags": { rc: "9.9.9-rc.0" },
+      versions: { "9.9.9-rc.0": {} },
       peerDependencies: {
         react: "19.9.0",
         "react-dom": "19.9.0",
@@ -258,7 +259,8 @@ describe("CloudRunner", () => {
     const fetched: string[] = [];
     globalThis.fetch = mock(async (url: string) => {
       fetched.push(url);
-      if (!url.endsWith("/9.9.9-rc.0")) return new Response(JSON.stringify({ "dist-tags": release["dist-tags"] }));
+      if (!url.endsWith("/9.9.9-rc.0"))
+        return new Response(JSON.stringify({ "dist-tags": release["dist-tags"], versions: release.versions }));
       const served = { dist: { tarball: `${url}.tgz` } };
       return new Response(JSON.stringify(url.endsWith("/akanjs/9.9.9-rc.0") ? { ...release, ...served } : served));
     }) as never;

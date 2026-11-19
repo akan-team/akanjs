@@ -811,6 +811,43 @@ describe("Workspace and app executor environment contracts", () => {
       await expect(app.syncPages(["shared"])).rejects.toThrow("sets syncPageLibs without a basePath");
     });
 
+    test("refuses two routes of one basePath that set different syncPageLibs", async () => {
+      const { app } = await makeAppWithLibPages("pages-route-libs-twice", {
+        config: [
+          "export default {",
+          "  routes: [",
+          '    { basePath: "shop", domains: {}, syncPageLibs: ["shared"] },',
+          '    { basePath: "shop", domains: {}, syncPageLibs: false },',
+          "  ],",
+          "};",
+          "",
+        ].join("\n"),
+      });
+      await expect(app.syncPages(["shared"])).rejects.toThrow('share basePath "shop" and set different syncPageLibs');
+    });
+
+    test("names the route whose syncPageLibs lists an unknown lib, and checks the app's list no route uses", async () => {
+      const { app } = await makeAppWithLibPages("pages-route-libs-unknown", {
+        config: 'export default { routes: [{ basePath: "shop", domains: {}, syncPageLibs: ["missing"] }] };\n',
+      });
+      await expect(app.syncPages(["shared"])).rejects.toThrow(
+        `app "pages-route-libs-unknown"'s route "shop" lists lib "missing"`,
+      );
+
+      const { app: unused } = await makeAppWithLibPages("pages-route-libs-unused", {
+        config: [
+          "export default {",
+          '  syncPageLibs: ["missing"],',
+          '  routes: [{ basePath: "shop", domains: {}, syncPageLibs: false }],',
+          "};",
+          "",
+        ].join("\n"),
+      });
+      await expect(unused.syncPages(["shared"])).rejects.toThrow(
+        'app "pages-route-libs-unused" lists lib "missing" but the app does not depend on it',
+      );
+    });
+
     test("rejects a lib route that collides with an app route", async () => {
       const { app, appRoot } = await makeAppWithLibPages("pages-collide", {
         config: "export default { syncPageLibs: true };\n",

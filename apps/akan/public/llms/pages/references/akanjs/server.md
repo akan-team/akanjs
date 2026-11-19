@@ -138,7 +138,7 @@ Stops Cleanly
 
 On SIGINT or SIGTERM it asks each replica to stop, then kills what is left after 30s.
 
-**Solo answers the same routes.** A solo process serves `/_akan/app/health`, `/_akan/app/ready` and `/_akan/app/metrics` in the gateway's shape, so a probe reads one contract either way.
+**Solo answers the same routes.** A solo process serves `/_akan/app/health`, `/_akan/app/ready`, `/_akan/app/metrics` and `/_akan/app/statements` in the gateway's shape, so a probe reads one contract either way.
 
 **The detail takes a token.** Outside `local`, health answers only `{ status }` and metrics 401 unless the caller sends `Authorization: Bearer $AKAN_STATUS_TOKEN`, which unlocks nothing else; the log stream token works too.
 
@@ -167,6 +167,8 @@ Every field is optional. With none, `AkanApp` runs one replica on port 8282, and
 - websocketPrefix (string, default "/ws", AKAN_WS_PREFIX): Where the WebSocket upgrade sits, under `prefix`.
 
 - modules (string[], AKAN_MODULES): Boot only these modules and the ones they reach. Empty boots every enabled module.
+
+- enableModules (string[]): Mount these whatever their `enabled` or `operationMode` says. A signal test sets it with `configureSignalTest`.
 
 - disableModules (string[], AKAN_DISABLE_MODULES): Boot everything except these and whatever reaches them. Applied after `modules`.
 
@@ -268,6 +270,10 @@ Method
 
 - setSessionRefresh(fn): Runs before a page or RSC navigation renders and returns `Set-Cookie` values, such as a renewed session. The render reads those cookies and the response carries them.
 
+- setErrorReporter(fn): Gets each server 5xx, render error, uncaught exception and unhandled rejection, and each browser report, once, after the response, as an `Error` with its request id: at most 600 a minute per process.
+
+- setClientReport(setting?): Opens `/_akan/client-report` and has pages send the errors their browser hit to `setErrorReporter`, each with the signed id the server gave its page view; a native app's page asks the route for its id. Off unless set.
+
 A typical app option:
 
 **The type parameter is the env.** `AkanOption<ModulesOptions>` types what every function form receives, so keys and secrets come from the app's server env.
@@ -298,6 +304,8 @@ When several libs set it
 
 - setSessionRefresh: The last call wins; `null` clears what a lib set.
 
+- setErrorReporter, setClientReport: The last call wins; `null` clears a lib's reporter and `false` turns a lib's reports off.
+
 - transformEnv: All run, the libs' in mount order and the app's last; each gets what the one before returned.
 
 **Without `setAgentAccess`, the agent chat refuses every call.** No guard means nobody may spend the LLM key; name the guard your app already uses, such as `SignedIn`.
@@ -305,6 +313,8 @@ When several libs set it
 - MCP Server — Turning `/mcp` on and off, and what `setMcp` configures.
 
 - Agent Chat — Mounting the chat, then `setLlm` and `setAgentAccess`.
+
+- Report Errors — Sending errors to a reporting service with `setErrorReporter` and `setClientReport`.
 
 - Middleware And Web Proxies — Writing the classes `applyMiddleware` and `applyWebProxy` take.
 

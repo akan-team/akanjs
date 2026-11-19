@@ -190,13 +190,15 @@ Result
 
 - AVIF · TIFF on Linux — Passed through untouched; there is no codec to read it.
 
-- SVG — A 400 unless `dangerouslyAllowSVG` is on; then it is served as-is.
+- SVG — A 400 unless `dangerouslyAllowSVG` is on; then it is served as-is, and its sandboxing policy keeps any script in it from running.
 
 **Listing `["image/avif", "image/webp"]` is safe.** A Linux deployment serves webp to everyone, and a developer's Mac serves both for real.
 
 **Order matters.** The first `formats` entry the browser's `Accept` header allows wins, so put `image/avif` first. A browser that accepts neither gets the source format back, resized.
 
 **A failed encode still answers.** The original bytes are served and nothing is cached, so the next request tries again.
+
+**Opened by its URL, an image downloads.** Every image the optimizer sends carries `Content-Disposition: attachment` named after the source file, `X-Content-Type-Options: nosniff` and `script-src 'none'; frame-src 'none'; sandbox;` as its `Content-Security-Policy`. An `<img>` shows it as before.
 
 remotePatterns
 
