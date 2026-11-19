@@ -1185,7 +1185,7 @@ describe("router backTo", () => {
     const { router } = await import("./router");
     const { csrLocation } = await import("./csrLocation");
     const calls: unknown[] = [];
-    const shell: { movesNothing: boolean } = { movesNothing: false };
+    const shell: { movesNothing: boolean; land: () => void } = { movesNothing: false, land: () => undefined };
     router.init({
       type: "csr",
       lang: "en",
@@ -1196,7 +1196,9 @@ describe("router backTo", () => {
         back: async () => {
           calls.push(["back"]);
           if (shell.movesNothing) return;
-          await new Promise((resolve) => setTimeout(resolve, 2));
+          await new Promise<void>((resolve) => {
+            shell.land = resolve;
+          });
           csrLocation.back();
         },
       },
@@ -1206,6 +1208,7 @@ describe("router backTo", () => {
     router.backTo("/board");
     await Promise.resolve();
     router.backTo("/board");
+    shell.land();
     await settle();
     expect(calls).toEqual([["back"]]);
     expect(at()).toBe("/en/board");
