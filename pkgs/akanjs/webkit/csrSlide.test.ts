@@ -101,6 +101,26 @@ describe("CsrSlide", () => {
     });
   });
 
+  test("the page on top says which bar moves, and mid-slide the bar under is cut just where the page coming in starts", () => {
+    const underBar = '#topInsetContainer > [data-page-type="prev"]';
+    const riding = CsrSlide.partsAt(frame({ topInset: 56, navbarMotion: "page" }, { topInset: 48 }), 200);
+    //? The bar under ends at 400 - 40 = 360 on screen and the page coming in starts at 200: 160px of it is covered.
+    expect(riding[underBar]).toEqual({
+      opacity: "0.75",
+      transform: "translateX(-40px)",
+      clipPath: "inset(0px 160px 0px 0px)",
+    });
+    expect(riding["#topInsetContainer"]).toMatchObject({ height: "56px" });
+
+    const fading = CsrSlide.partsAt(frame({ topInset: 56 }, { topInset: 48, navbarMotion: "page" }), 200);
+    expect(fading[underBar]).toEqual({ opacity: "0.5", transform: "translateX(-40px)" });
+    expect(fading['#topInsetContainer > [data-page-type="current"]']).toEqual({
+      opacity: "0.5",
+      transform: "translateX(40px)",
+    });
+    expect(fading["#topInsetContainer"]).toMatchObject({ height: "52px" });
+  });
+
   test("moves the page right under the one sliding when the stack keeps an older page drawn under it too", () => {
     document
       .getElementById("pageContainers")

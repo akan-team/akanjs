@@ -1091,6 +1091,22 @@ describe("router backTo", () => {
     expect(at()).toBe("/en/board/archive");
   });
 
+  test("still rewrites the entry after a back that had no entry under it to land on", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle, at } = installSessionHistory("/en/board?ticketId=1");
+    const calls: unknown[] = [];
+    const router = await stackRouter("ssr", calls);
+
+    router.back();
+    await settle();
+    router.backTo("/board");
+    await settle();
+
+    expect(calls.at(-1)).toEqual(["replace", "/en/board"]);
+    expect(at()).toBe("/en/board");
+  });
+
   test("keeps the scroll where it rewrites the entry, unless the caller asks for the top", async () => {
     envState.side = "client";
     envState.basePaths = "";
@@ -1123,6 +1139,83 @@ describe("router backTo", () => {
     await settle();
     expect(calls.at(-1)).toEqual(["back"]);
     expect(at()).toBe("/en/home");
+  });
+
+  test("steps back to the page under at a fragment when `href` names none, and matches a fragment it names", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle, at } = installSessionHistory("/en/board#done");
+    const calls: unknown[] = [];
+    const router = await stackRouter("ssr", calls);
+
+    router.push("/board?ticketId=1");
+    router.backTo("/board");
+    await settle();
+    expect(calls).toEqual([["back"]]);
+    expect(at()).toBe("/en/board#done");
+
+    router.push("/board?ticketId=2");
+    router.backTo("/board#todo");
+    await settle();
+    expect(calls.at(-1)).toEqual(["replace", "/en/board#todo"]);
+  });
+
+  test("a second tap before the first one's back lands does not step back past `href`", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle, at } = installSessionHistory("/en/home");
+    const calls: unknown[] = [];
+    const router = await stackRouter("ssr", calls);
+    router.push("/board");
+    router.push("/board?ticketId=1");
+
+    router.backTo("/board");
+    await Promise.resolve();
+    router.backTo("/board");
+    await settle();
+
+    expect(calls).toEqual([["back"]]);
+    expect(at()).toBe("/en/board");
+  });
+
+  test("a second tap waits out a shell's back still playing its leave, and goes again once a back moved nothing", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle, at } = installSessionHistory("/en/board");
+    const { router } = await import("./router");
+    const { csrLocation } = await import("./csrLocation");
+    const calls: unknown[] = [];
+    const shell: { movesNothing: boolean } = { movesNothing: false };
+    router.init({
+      type: "csr",
+      lang: "en",
+      router: {
+        ...recordingRouter(calls),
+        push: (href) => csrLocation.push(null, href),
+        canGoBack: () => true,
+        back: async () => {
+          calls.push(["back"]);
+          if (shell.movesNothing) return;
+          await new Promise((resolve) => setTimeout(resolve, 2));
+          csrLocation.back();
+        },
+      },
+    });
+    router.push("/board/1");
+
+    router.backTo("/board");
+    await Promise.resolve();
+    router.backTo("/board");
+    await settle();
+    expect(calls).toEqual([["back"]]);
+    expect(at()).toBe("/en/board");
+
+    router.push("/board/2");
+    shell.movesNothing = true;
+    router.backTo("/board");
+    await settle();
+    router.backTo("/board");
+    expect(calls).toEqual([["back"], ["back"], ["back"]]);
   });
 });
 

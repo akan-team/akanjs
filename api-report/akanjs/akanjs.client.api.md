@@ -73,6 +73,8 @@ export declare class CsrLocation {
     replace(state: unknown, href?: string): void;
     static idxOf(state: unknown): number | undefined;
     onBack(listener: (idx: number) => void): void;
+    leaving(moving: unknown): void;
+    isLeaving(): boolean;
     back(): void;
     assign(href: string): void;
     reload(): void;

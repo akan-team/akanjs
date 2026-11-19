@@ -335,7 +335,9 @@ const KeyboardLayer = ({
 type FrameSlotTarget = "topInset" | "topLeftAction" | "bottomInset" | "keyboardInset";
 
 const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
-  const { stackEntries, topInset, topLeftAction, bottomInset } = useCsr();
+  const { stackEntries, topInset, topLeftAction, bottomInset, location: shownLocation } = useCsr();
+  //? The layer is clear while the page on screen rides, so a crossfading bar under it draws its own fill as well.
+  const isLayerClear = shownLocation?.pathRoute?.pageState?.navbarMotion === "page";
   return (
     <>
       {stackEntries.map(({ key, location, pageType, zIndex }) => {
@@ -350,7 +352,7 @@ const CSRFrameSlotTargets = ({ slot }: { slot: FrameSlotTarget }) => {
         const { topInset: topHeight, bottomInset: bottomHeight, navbarMotion, overlay } = location.pathRoute.pageState;
         const collapsed = slot !== "keyboardInset" && (slot === "bottomInset" ? bottomHeight : topHeight) <= 0;
         const hidden = pageType !== "current" || collapsed;
-        const ownBar = navbarMotion === "page" && (slot === "topInset" || slot === "topLeftAction");
+        const ownBar = (navbarMotion === "page" || isLayerClear) && (slot === "topInset" || slot === "topLeftAction");
         return (
           <animated.div
             key={id}
