@@ -1,7 +1,7 @@
 import path from "node:path";
 import { toError } from "akanjs/common";
 import { AppWorkerPath } from "akanjs/server/appWorkerPath";
-import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
+import { BUILD_ENV_FILE, BUILD_ENV_MODULE } from "akanjs/server/lifecycle/buildEnv";
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
 import { AkanBin } from "../akanConfig/akanBin";
@@ -90,6 +90,7 @@ export interface BuildPhaseRunOptions {
   spinner?: boolean;
 }
 
+const MAIN_BUNDLE = "main.bundle.js";
 const BUILD_PHASE_EMOJIS: Record<BuildPhaseId, string> = {
   prepare: "🧹",
   typecheck: "🔎",
@@ -503,11 +504,17 @@ export class ApplicationBuildRunner {
       ...sharedConfig,
       plugins: [this.#createExternalSpecifiersPlugin(externalLibs), serverEnvPlugin],
     };
+    const buildEnvResult = await this.#buildOrThrow("build-env", {
+      ...sharedConfig,
+      entrypoints: [this.#resolveBuildEnvEntry()],
+      naming: { entry: BUILD_ENV_MODULE },
+    });
     //* Built apart so main.js keeps its own module copies; splitting moves lazy vendor `import()`s out of the boot parse.
     const [mainResult, serverResult] = [
       await this.#buildOrThrow("backend", {
         ...backendConfig,
         entrypoints: [backendEntryPoints[0]],
+        naming: { entry: MAIN_BUNDLE },
         ...(this.#verify ? { banner: this.#verifyBanner() } : {}),
       }),
       await this.#buildOrThrow("backend", { ...backendConfig, entrypoints: [backendEntryPoints[1]], splitting: true }),
@@ -525,12 +532,16 @@ export class ApplicationBuildRunner {
       entrypoints: [this.#resolveConsoleRuntimeBuildEntry()],
       naming: { entry: "console-runtime.[ext]", chunk: "chunk-[hash].[ext]" },
     });
+    await Bun.write(
+      path.join(this.#app.dist.cwdPath, "main.js"),
+      `import "./${BUILD_ENV_MODULE}";\nawait import("./${MAIN_BUNDLE}");\n`,
+    );
     await this.#writeConsoleShim();
     const workerResults = await this.#buildWorkers(backendConfig);
-    const results = [mainResult, serverResult, rscWorkerResult, consoleRuntimeResult, ...workerResults];
+    const results = [buildEnvResult, mainResult, serverResult, rscWorkerResult, consoleRuntimeResult, ...workerResults];
     return {
       entrypoints: backendEntryPoints.length + (rscWorkerResult ? 2 : 1) + workerResults.length,
-      outputs: results.reduce((sum, result) => sum + (result?.outputs.length ?? 0), 1),
+      outputs: results.reduce((sum, result) => sum + (result?.outputs.length ?? 0), 2),
     };
   }
 
@@ -584,6 +595,14 @@ void run().catch((error) => {
       return Bun.resolveSync("akanjs/server/rsc-worker", import.meta.dir);
     } catch {
       return path.join(this.#app.workspace.workspaceRoot, "pkgs/akanjs/server/rscWorker.tsx");
+    }
+  }
+
+  #resolveBuildEnvEntry(): string {
+    try {
+      return path.join(path.dirname(Bun.resolveSync("akanjs/server", import.meta.dir)), "lifecycle/loadBuildEnv.ts");
+    } catch {
+      return path.join(this.#app.workspace.workspaceRoot, "pkgs/akanjs/server/lifecycle/loadBuildEnv.ts");
     }
   }
 
