@@ -217,8 +217,8 @@ export class Executor {
     }
     return { filePath: writePath, content: contentStr, written };
   }
-  async writeJson(filePath: string, content: object) {
-    await this.writeFile(filePath, content);
+  async writeJson(filePath: string, content: object, options: { silent?: boolean } = {}) {
+    await this.writeFile(filePath, content, options);
   }
   async getLocalFile(targetPath: string) {
     const filePath = path.isAbsolute(targetPath) ? targetPath : targetPath.replace(this.cwdPath, "");

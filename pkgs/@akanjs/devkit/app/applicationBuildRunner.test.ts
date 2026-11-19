@@ -105,10 +105,12 @@ console.info(new SampleService().name);
       {},
       { repoName: "akanjs", serveDomain: "akanjs.com", env: "local", portOffset: 0, workspaceRoot: root },
     );
+    const dist = new Executor("dist", root);
+    const printed = spyOn(dist.logger, "rawLog").mockImplementation(() => undefined);
     const app = {
       getConfig: async () => config,
       getScanInfo: () => ({ getLibs: () => [] }),
-      dist: new Executor("dist", root),
+      dist,
       workspace: { workspaceRoot: root },
       logger: { warn: () => undefined },
     } as unknown as App;
@@ -125,6 +127,7 @@ console.info(new SampleService().name);
       expect(await builtEnv()).toEqual(config.getProductionEnv("debug"));
       expect(await builtEnv()).toEqual(await dockerfileEnv());
       expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_APP_NAME: "portal", AKAN_PUBLIC_ENV: "debug" });
+      expect(printed).not.toHaveBeenCalled();
       await new ApplicationBuildRunner(app).buildAppMeta();
       expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_ENV: "local" });
       expect(await builtEnv()).toEqual(await dockerfileEnv());
