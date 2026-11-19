@@ -353,6 +353,14 @@ export default page()
         }),
       },
       {
+        key: "enableModules",
+        type: "string[]",
+        desc: l.trans({
+          en: "Mount these whatever their `enabled` or `operationMode` says. A signal test sets it with `configureSignalTest`.",
+          ko: "`enabled`나 `operationMode`와 상관없이 이 모듈을 마운트합니다. 시그널 테스트는 `configureSignalTest`로 지정합니다.",
+        }),
+      },
+      {
         key: "disableModules",
         type: "string[]",
         tags: ["AKAN_DISABLE_MODULES"],

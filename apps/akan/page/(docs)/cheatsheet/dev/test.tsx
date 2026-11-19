@@ -111,6 +111,15 @@ export default page()
           ko: "테스트 서버가 여는 포트입니다.",
         }),
       },
+      {
+        key: "enableModules",
+        type: "string[]",
+        default: "[]",
+        desc: l.trans({
+          en: 'Modules to mount whatever their `serve()` says with `enabled` or `operationMode`, with the gated modules they depend on. `"@edge"` names every module that lists that mode.',
+          ko: '`serve()`의 `enabled`나 `operationMode`와 상관없이 마운트할 모듈입니다. 그 모듈이 의존하는 꺼진 모듈도 함께 마운트합니다. `"@edge"`는 그 모드를 적은 모듈 전부를 가리킵니다.',
+        }),
+      },
     ];
 
     const targetRows = [

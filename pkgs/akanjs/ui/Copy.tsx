@@ -1,6 +1,5 @@
 "use client";
-import { usePage } from "akanjs/client";
-import { st } from "akanjs/store";
+import { ShellState, usePage } from "akanjs/client";
 import { cloneElement, isValidElement, type MouseEvent, type ReactElement, type ReactNode } from "react";
 
 export interface CopyProps {
@@ -30,7 +29,10 @@ export const Copy = ({ text, copyMessage, children }: CopyProps) => {
   const { l } = usePage();
   const handleCopy = async () => {
     await writeClipboardText(text ?? "");
-    st.do.showMessage({ content: copyMessage ?? l.trans({ en: "Copied", ko: "복사되었습니다" }), type: "success" });
+    ShellState.showMessage({
+      content: copyMessage ?? l.trans({ en: "Copied", ko: "복사되었습니다" }),
+      type: "success",
+    });
   };
 
   if (isValidElement<{ onClick?: (event: MouseEvent) => void | Promise<void> }>(children)) {

@@ -226,7 +226,11 @@ export class ApplicationBuildRunner {
     if (leftOut) this.#app.logger.warn(leftOut);
     if (this.#verify) {
       const routeJs = await this.#runBudgetPhase(environment);
-      await this.#app.dist.writeJson("akan.build.json", { profile: "verify", builtAt: new Date().toISOString() });
+      await this.#app.dist.writeJson(
+        "akan.build.json",
+        { profile: "verify", builtAt: new Date().toISOString() },
+        { silent: true },
+      );
       return this.#resultOf(environment, routeJs);
     }
     await this.#runPhase(
@@ -412,20 +416,23 @@ export class ApplicationBuildRunner {
       lockfile: lockfile !== null,
       env: { ...(carried.length ? { PATH: AkanBin.imagePath(AppBin.dir) } : {}), ...env },
     });
+    const { dist } = this.#app;
+    const buildInfo = {
+      buildId: await this.#resolveBuildId(),
+      akanVersion: akanConfig.akanVersion,
+      builtAt: new Date().toISOString(),
+    };
+    const silent = { silent: true };
     await Promise.all([
-      this.#app.dist.writeJson("package.json", packageJson),
-      this.#app.dist.writeJson(BUILD_ENV_FILE, env),
+      dist.writeJson("package.json", packageJson, silent),
+      dist.writeJson(BUILD_ENV_FILE, env, silent),
       ...(lockfile !== null
-        ? [this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/${ProductionLockfile.fileName}`, lockfile)]
+        ? [dist.writeFile(`${dist.cwdPath}/${ProductionLockfile.fileName}`, lockfile, silent)]
         : []),
-      this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/Dockerfile`, dockerfile),
+      dist.writeFile(`${dist.cwdPath}/Dockerfile`, dockerfile, silent),
       //? A build run by hand writes its database beside main.js, and `COPY . .` would carry it into the image.
-      this.#app.dist.writeFile(`${this.#app.dist.cwdPath}/.dockerignore`, `${DOCKER_IGNORED.join("\n")}\n`),
-      this.#app.dist.writeJson("akan.build.json", {
-        buildId: await this.#resolveBuildId(),
-        akanVersion: akanConfig.akanVersion,
-        builtAt: new Date().toISOString(),
-      }),
+      dist.writeFile(`${dist.cwdPath}/.dockerignore`, `${DOCKER_IGNORED.join("\n")}\n`, silent),
+      dist.writeJson("akan.build.json", buildInfo, silent),
     ]);
   }
 

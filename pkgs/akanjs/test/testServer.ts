@@ -22,6 +22,8 @@ export interface TestServerOptions {
   /** Where the SQLite files live. */
   storage?: TestStorage;
   serverMode?: "federation" | "batch" | "all";
+  /** Modules to mount whatever their `enabled` or `operationMode` says; `"@edge"` names every module listing that mode. */
+  enableModules?: string[];
   listen?: boolean;
   web?: boolean;
 }
@@ -66,6 +68,7 @@ export class TestServer {
   readonly #mode: DatabaseMode = TestServer.#modeFromEnv();
   #dropSchema: (() => Promise<void>) | null = null;
   readonly #serverMode: "federation" | "batch" | "all";
+  readonly #enableModules: string[];
   readonly #listen: boolean;
   readonly #web: boolean;
   readonly #port: number;
@@ -109,6 +112,7 @@ export class TestServer {
     this.#libs = Array.isArray(libs) ? libs : [libs];
     this.#storage = options.storage ?? "memory";
     this.#serverMode = options.serverMode ?? "all";
+    this.#enableModules = options.enableModules ?? [];
     this.#listen = options.listen ?? true;
     this.#web = options.web ?? false;
   }
@@ -153,7 +157,9 @@ export class TestServer {
     };
     this.#env.onCleanup = () => this.cleanup();
     await this.#applyDatabaseMode();
-    this.#server = new AkanServer(this.#env.appName, this.#env, this.#serverMode, ...this.#libs);
+    this.#server = new AkanServer(this.#env.appName, this.#env, this.#serverMode, ...this.#libs, {
+      enableModules: this.#enableModules,
+    });
     await this.#server.start({ listen: this.#listen, web: this.#web });
     this.#logger.info(
       `Test System #${this.workerId} Initialized, database mode: ${this.#mode}, SQLite: ${this.#storage}`,

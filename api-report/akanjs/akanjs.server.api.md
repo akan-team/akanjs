@@ -208,6 +208,7 @@ export interface AkanServerOptions {
     openapi?: boolean;
     mcp?: McpServerOption | boolean;
     modules?: string[];
+    enableModules?: string[];
     disableModules?: string[];
     disableLibs?: string[];
 }
@@ -2250,7 +2251,7 @@ declare class DiLifecycle {
         adaptor: ReadonlyMap<string, AdaptorCls>;
         middleware: ReadonlyMap<string, MiddlewareCls>;
     };
-    constructor({ env, modules, disableModules, disableLibs }: DiLifecycleProps, ...libs: AkanLib[]);
+    constructor({ env, modules, enableModules, disableModules, disableLibs }: DiLifecycleProps, ...libs: AkanLib[]);
     initializeAll(): Promise<SignalRoutes>;
     destroyAll(): Promise<void>;
     registerSchedule(serverMode: "all" | "batch" | "federation"): void;
@@ -2269,6 +2270,7 @@ declare class DiLifecycle {
 interface DiLifecycleProps {
     env: BackendEnv;
     modules?: string[];
+    enableModules?: string[];
     disableModules?: string[];
     disableLibs?: string[];
 }

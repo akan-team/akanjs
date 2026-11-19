@@ -17,6 +17,10 @@ describe("RouteCacheTally", () => {
         "dev-registry",
         "no-route",
         "script-hashes",
+        "dynamic-request-api",
+        "render-not-found",
+        "render-redirect",
+        "late-redirect",
         "other",
       ]);
     }
@@ -40,7 +44,7 @@ describe("RouteCacheTally", () => {
     expect(after.html.bypass.other - before.html.bypass.other).toBe(1);
     expect(after.rsc.bypass.other - before.rsc.bypass.other).toBe(1);
     expect(after.html.bypass["script-hashes"] - before.html.bypass["script-hashes"]).toBe(1);
-    expect(Object.keys(after.html.bypass)).toHaveLength(9);
+    expect(Object.keys(after.html.bypass)).toHaveLength(13);
     expect(after.html.miss).toEqual(before.html.miss);
   });
 

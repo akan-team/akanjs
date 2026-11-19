@@ -84,6 +84,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `missingInput` | 400 | `InvalidInputError` | no | yes | `constant/invalidInputError.ts` |
 | `missingModel` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
 | `missingSlice` | 500 | `SignalDeclarationError` | no | yes | `signal/signalDeclarationError.ts` |
+| `moduleNotMounted` | 404 | `AkanError` | no | yes | `base/akanError.ts` |
 | `noHandler` | 500 | `SignalContractError` | no | yes | `signal/signalContractError.ts` |
 | `nonErrorThrown` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `notApplied` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |

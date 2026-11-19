@@ -105,10 +105,12 @@ console.info(new SampleService().name);
       {},
       { repoName: "akanjs", serveDomain: "akanjs.com", env: "local", portOffset: 0, workspaceRoot: root },
     );
+    const dist = new Executor("dist", root);
+    const printed = spyOn(dist.logger, "rawLog").mockImplementation(() => undefined);
     const app = {
       getConfig: async () => config,
       getScanInfo: () => ({ getLibs: () => [] }),
-      dist: new Executor("dist", root),
+      dist,
       workspace: { workspaceRoot: root },
       logger: { warn: () => undefined },
     } as unknown as App;
@@ -128,6 +130,7 @@ console.info(new SampleService().name);
       expect((await readFile(path.join(root, ".dockerignore"), "utf8")).split("\n")).toEqual(
         expect.arrayContaining(["sqlite", "local", "runtime", "data", ".akan/artifact/image-cache", "node_modules"]),
       );
+      expect(printed).not.toHaveBeenCalled();
       await new ApplicationBuildRunner(app).buildAppMeta();
       expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_ENV: "local" });
       expect(await builtEnv()).toEqual(await dockerfileEnv());

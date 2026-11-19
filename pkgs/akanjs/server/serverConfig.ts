@@ -45,6 +45,7 @@ export class ServerConfig {
         ("openapi" in value ||
           "mcp" in value ||
           "modules" in value ||
+          "enableModules" in value ||
           "disableModules" in value ||
           "disableLibs" in value),
     );
