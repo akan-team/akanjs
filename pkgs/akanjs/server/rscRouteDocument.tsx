@@ -180,7 +180,7 @@ export class RscRouteDocument {
       pathRoute,
       params: match.params,
       searchParams,
-      navKey: url.pathname + url.search,
+      navKey: RouteElementComposer.navKeyOf(url),
       notFound: { ...notFound, head: fallbackHead },
       gate,
     });
@@ -253,7 +253,7 @@ export class RscRouteDocument {
       params: match.params,
       searchParams,
       patchStartIndex,
-      navKey: url.pathname + url.search,
+      navKey: RouteElementComposer.navKeyOf(url),
       notFound,
     });
   }
