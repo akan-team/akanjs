@@ -258,9 +258,9 @@ describe("CloudRunner", () => {
     const fetched: string[] = [];
     globalThis.fetch = mock(async (url: string) => {
       fetched.push(url);
-      return new Response(
-        JSON.stringify(url.endsWith("/akanjs/9.9.9-rc.0") ? release : { "dist-tags": release["dist-tags"] }),
-      );
+      if (!url.endsWith("/9.9.9-rc.0")) return new Response(JSON.stringify({ "dist-tags": release["dist-tags"] }));
+      const served = { dist: { tarball: `${url}.tgz` } };
+      return new Response(JSON.stringify(url.endsWith("/akanjs/9.9.9-rc.0") ? { ...release, ...served } : served));
     }) as never;
     const written: PackageJson[] = [];
     const workspace = createFakeExecutor("workspace", {

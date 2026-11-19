@@ -778,6 +778,39 @@ describe("Workspace and app executor environment contracts", () => {
       ]);
     });
 
+    test("a route's own syncPageLibs decides which lib pages its basePath mounts", async () => {
+      const { app, appRoot } = await makeAppWithLibPages("pages-route-libs", {
+        config: [
+          "export default {",
+          "  syncPageLibs: true,",
+          "  routes: [",
+          '    { basePath: "admin", domains: {} },',
+          '    { basePath: "edge", domains: {}, syncPageLibs: false },',
+          '    { basePath: "shop", domains: {}, syncPageLibs: ["social"] },',
+          "  ],",
+          "};",
+          "",
+        ].join("\n"),
+        libs: { shared: ["about"], social: ["feed"] },
+      });
+      expect(await app.syncPages(["shared", "social"])).toBe(true);
+
+      expect(await app.getPageKeys({ refresh: true })).toEqual([
+        "./admin/(libs)/(shared)/about/_index.tsx",
+        "./admin/(libs)/(social)/feed/_index.tsx",
+        "./shop/(libs)/(social)/feed/_index.tsx",
+      ]);
+      expect(await lstat(path.join(appRoot, "page/edge/(libs)")).catch(() => null)).toBeNull();
+      expect(await app.syncPages(["shared", "social"])).toBe(false);
+    });
+
+    test("refuses a route that sets syncPageLibs without a basePath", async () => {
+      const { app } = await makeAppWithLibPages("pages-route-libs-root", {
+        config: "export default { routes: [{ domains: {}, syncPageLibs: false }] };\n",
+      });
+      await expect(app.syncPages(["shared"])).rejects.toThrow("sets syncPageLibs without a basePath");
+    });
+
     test("rejects a lib route that collides with an app route", async () => {
       const { app, appRoot } = await makeAppWithLibPages("pages-collide", {
         config: "export default { syncPageLibs: true };\n",

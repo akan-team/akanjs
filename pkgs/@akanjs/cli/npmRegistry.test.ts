@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import { LocalRegistryRunner } from "./localRegistry/localRegistry.runner";
-import { getNpmRegistryUrl, npmRegistryFromEnv, warnIgnoredNpmRegistry } from "./npmRegistry";
+import { getNpmRegistryUrl, getServedReleasePeers, npmRegistryFromEnv, warnIgnoredNpmRegistry } from "./npmRegistry";
 
 const shellRegistry = "http://127.0.0.1:4900";
 
@@ -52,5 +52,54 @@ describe("AKAN_NPM_REGISTRY", () => {
       warnIgnoredNpmRegistry();
       expect(warn).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe("getServedReleasePeers", () => {
+  const registryServing = (
+    tarballs: string[],
+    versions = ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"],
+  ) =>
+    Bun.serve({
+      port: 0,
+      fetch: (req) => {
+        const { origin } = new URL(req.url);
+        const pathname = decodeURIComponent(new URL(req.url).pathname);
+        if (pathname.endsWith(".tgz"))
+          return new Response(null, {
+            status: tarballs.some((name) => pathname.startsWith(`/${name}/-/`)) ? 200 : 404,
+          });
+        const name = versions.find((candidate) => pathname === `/${candidate}/3.3.0-rc.9`);
+        if (!name) return new Response("{}", { status: 404 });
+        return Response.json({
+          dist: { tarball: `${origin}/${name}/-/${name.split("/").at(-1)}-3.3.0-rc.9.tgz` },
+          peerDependencies: name === "akanjs" ? { react: "19.3.1" } : {},
+        });
+      },
+    });
+
+  test("answers akanjs's peers once the registry serves the version and the tarball of every package", async () => {
+    const registry = registryServing(["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"]);
+    try {
+      expect(await getServedReleasePeers("3.3.0-rc.9", `http://localhost:${registry.port}`)).toEqual({
+        react: "19.3.1",
+      });
+    } finally {
+      await registry.stop(true);
+    }
+  });
+
+  test("names each package whose version or tarball the registry does not serve yet", async () => {
+    const registry = registryServing(
+      ["akanjs", "@akanjs/devkit", "@akanjs/language"],
+      ["akanjs", "@akanjs/devkit", "@akanjs/cli"],
+    );
+    try {
+      await expect(getServedReleasePeers("3.3.0-rc.9", `http://localhost:${registry.port}`)).rejects.toThrow(
+        "does not serve @akanjs/cli@3.3.0-rc.9, @akanjs/language@3.3.0-rc.9 yet",
+      );
+    } finally {
+      await registry.stop(true);
+    }
   });
 });
