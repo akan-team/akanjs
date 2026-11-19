@@ -12,6 +12,7 @@ import { AkanBin } from "./akanBin";
 import { AkanWorkers, type LibWorkers } from "./akanWorkers";
 import { DesktopServerConfig } from "./desktopServerConfig";
 import { DEFAULT_DOCKER_IMAGE, dockerfileOf } from "./dockerImage";
+import { NativeFileSettings } from "./nativeFileSettings";
 import { nativeKeys } from "./nativeKeys";
 import type {
   AkanApiConfig,
@@ -191,6 +192,7 @@ export class AkanAppConfig implements AppConfigResult {
   domains = new Set<string>();
   subRoutes = new Map<string, Set<string>>();
   basePaths = new Set<string>();
+  routePageLibs = new Map<string, string[] | boolean>();
   branches = new Set<string>(["debug", "develop", "main"]);
   constructor(
     app: App,
@@ -274,7 +276,7 @@ export class AkanAppConfig implements AppConfigResult {
     const configPath = `apps/${this.app.name}/akan.config.ts`;
     const { targets: rawTargets, ...root } = native ?? {};
     AkanAppConfig.#assertNativeKeys(root, "native", configPath);
-    AkanAppConfig.#assertFiles(root, "native", configPath);
+    NativeFileSettings.assert(root, "native", configPath);
     const appName = root.appName ?? this.app.name;
     const appId = root.appId ?? deriveDefaultAppId(this.baseDevEnv.repoName, this.app.name);
     const version = root.version ?? "0.0.1";
@@ -302,7 +304,7 @@ export class AkanAppConfig implements AppConfigResult {
           throw new Error(
             `${where}.updates in ${configPath} has both publicKey and publicKeys${named ? ", native.updates merged in: give one, in native.updates' own form when overriding its keys" : ": give one"}.`,
           );
-        AkanAppConfig.#assertFiles(own ?? {}, where, configPath);
+        NativeFileSettings.assert(own ?? {}, where, configPath);
         const {
           basePath: _basePath,
           indexPath: rawIndexPath,
@@ -406,39 +408,17 @@ export class AkanAppConfig implements AppConfigResult {
     check(settings.desktop?.externalView, nativeKeys.externalView, `${where}.desktop.externalView`, "externalView");
     check(settings.deepLinks, nativeKeys.deepLinks, `${where}.deepLinks`, "deepLinks");
   }
-  static readonly #androidFilePattern = /^(?:res\/[^/]+\/[^/]+|assets\/.+)$/;
-  static #assertFiles(settings: AkanNativeSettings, where: string, configPath: string) {
-    const check = (
-      files: Record<string, string> | undefined,
-      at: string,
-      valid: (to: string) => boolean,
-      shape: string,
-    ) => {
-      for (const [to, from] of Object.entries(files ?? {})) {
-        if (typeof from !== "string")
-          throw new Error(
-            `${at}["${to}"] in ${configPath} must name its source file, relative to the app folder, e.g. { "${shape}": "assets/chime.mp3" }.`,
-          );
-        if (!valid(to)) throw new Error(`${at}["${to}"] in ${configPath} must land at ${shape}.`);
-      }
-    };
-    check(
-      settings.ios?.files,
-      `${where}.ios.files`,
-      (to) => to.length > 0 && !to.startsWith("/") && !to.split("/").includes(".."),
-      "<path in the app bundle>",
-    );
-    check(
-      settings.android?.files,
-      `${where}.android.files`,
-      (to) => AkanAppConfig.#androidFilePattern.test(to),
-      "res/<type>/<file> or assets/<path>",
-    );
-  }
   #applyRoutes(routes: AkanRouteConfig[] = []) {
     for (const route of routes) {
       const basePath = route.basePath ? trimSlashes(route.basePath) : null;
       if (basePath !== null) this.basePaths.add(basePath);
+      if (route.syncPageLibs !== undefined) {
+        if (basePath === null)
+          throw new Error(
+            `A route in apps/${this.app.name}/akan.config.ts sets syncPageLibs without a basePath: only a basePath has lib pages of its own, so set the app's syncPageLibs.`,
+          );
+        this.routePageLibs.set(basePath, route.syncPageLibs);
+      }
       const domains = basePath !== null ? this.subRoutes.getOrInsert(basePath, new Set()) : this.domains;
       for (const branch of Object.keys(route.domains)) this.branches.add(branch);
       for (const domain of Object.values(route.domains).flat())

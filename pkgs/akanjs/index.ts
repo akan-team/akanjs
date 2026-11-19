@@ -88,6 +88,8 @@ export interface AkanRouteDomains {
 export interface AkanRouteConfig {
   basePath?: string;
   domains: AkanRouteDomains;
+  /** The lib pages this `basePath` mounts in place of the app's `syncPageLibs`: `false` none, an array exactly those libs. */
+  syncPageLibs?: string[] | boolean;
 }
 
 /** `ssr`: the RSC/SSR renderer with its bundles and RSC worker; `csr`: the SPA shell the native apps ship and `/__csr` serves. */

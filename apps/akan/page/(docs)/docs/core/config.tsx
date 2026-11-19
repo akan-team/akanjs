@@ -552,8 +552,8 @@ const buildFields = [
     key: "syncPageLibs",
     type: "string[] | boolean",
     default: "false",
-    en: "true mounts every dependency lib with a page folder, an array only those; false unlinks all.",
-    ko: "true는 page 폴더가 있는 모든 의존 라이브러리를, 배열은 적은 것만 마운트하고, false는 기존 링크를 모두 제거합니다.",
+    en: "true mounts every dependency lib with a page folder, an array only those; false unlinks all. A `routes` entry with a basePath can set its own.",
+    ko: "true는 page 폴더가 있는 모든 의존 라이브러리를, 배열은 적은 것만 마운트하고, false는 기존 링크를 모두 제거합니다. basePath가 있는 `routes` 항목은 자기 값을 따로 줄 수 있습니다.",
   },
   {
     key: "plugins",
