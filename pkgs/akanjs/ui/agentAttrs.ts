@@ -1,4 +1,4 @@
-import { actionTagOf } from "akanjs/store";
+import { actionTagOf } from "../store/actionTag";
 
 /** `data-akan-*` attributes for a handler passed by reference, `{}` for an inline arrow. `key` tells apart the
  *  controls sharing one handler (a tab's menus, a list's rows), in the vocabulary of the call's argument. */

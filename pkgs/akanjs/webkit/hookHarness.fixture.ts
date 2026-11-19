@@ -3,6 +3,7 @@ import { csrLocation } from "../client/csrLocation";
 import { Href } from "../client/href";
 import { isMcpView } from "../client/mcpView";
 import { isNativeApp } from "../client/nativeHost";
+import { ShellState } from "../client/shellState";
 
 export const hooks = {
   index: 0,
@@ -91,6 +92,7 @@ export const csrClientBase = () => ({
   isPageKeyboardAvoidance: () => false,
   pageActivityContext: createContext({ activity: "current", focused: true }),
   router: { redirectCount: () => 0 },
+  ShellState,
   setCookie: () => undefined,
   usePathCtx: () => ({}),
   defaultPageState: {
