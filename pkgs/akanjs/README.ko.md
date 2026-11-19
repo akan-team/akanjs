@@ -107,8 +107,7 @@ cd dist/apps/<app> && PORT=3000 bun main.js
 - `akanjs`는 npm 패키지 하나입니다. subpath(`akanjs/base`, `akanjs/client`, `akanjs/signal`, `akanjs/ui`, …)가 서버
   전용, 클라이언트 전용, UI, 툴링 코드를 나누고([패키지 레퍼런스](https://akanjs.com/references/akanjs/base)), 툴링은
   `@akanjs/cli`와 `@akanjs/devkit`으로 나옵니다.
-- 버전별 변경: [`CHANGELOG.md`](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/CHANGELOG.md)와
-  [릴리스](https://github.com/akan-team/akanjs/releases). 패키지에는 이 파일이 들어 있지 않습니다.
+- 버전별 변경: [`CHANGELOG.md`](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/CHANGELOG.md).
 - 기여: [`CONTRIBUTING.md`](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/CONTRIBUTING.md)와
   [행동 강령](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/CODE_OF_CONDUCT.md). 라이선스: MIT
   ([`LICENSE`](https://github.com/akan-team/akanjs/blob/main/pkgs/akanjs/LICENSE)).
