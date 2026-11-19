@@ -25,6 +25,7 @@ import {
   type RouteViewport,
   refreshRsc,
   router,
+  ShellState,
   setCookie,
   type TransitionStyle,
   Translator,
@@ -34,7 +35,6 @@ import {
 import { Logger, parseSearchParams } from "akanjs/common";
 import type { AkanTheme } from "akanjs/fetch";
 import type { SerializedSignal } from "akanjs/signal";
-import { DraftStore, st } from "akanjs/store";
 import { useVisualViewportFrame } from "akanjs/webkit";
 import {
   Children,
@@ -296,10 +296,10 @@ export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect }: 
     ...getEnv(),
     ...env,
   };
-  const uiOperation = st.use.uiOperation({ agent: false });
-  const documentTheme = st.use.theme({ agent: false });
-  const pathname = st.use.pathname({ agent: false });
-  const params = st.use.params({ agent: false });
+  const uiOperation = ShellState.use("uiOperation");
+  const documentTheme = ShellState.use("theme");
+  const pathname = ShellState.use("pathname");
+  const params = ShellState.use("params");
   const language = (params.lang as string | undefined) ?? lang;
   const path = `/${pathname.split("/").slice(2).join("/")}`;
   useEffect(() => {
@@ -307,9 +307,9 @@ export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect }: 
     setCookie("siteurl", window.location.origin);
     dayjs.locale(language);
     initAuth();
-    st.set({ uiOperation: "loading" });
+    ShellState.set({ uiOperation: "loading" });
     setTimeout(() => {
-      st.set({ uiOperation: "idle" });
+      ShellState.set({ uiOperation: "idle" });
     }, 2000);
   }, []);
 
@@ -344,7 +344,7 @@ export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect }: 
     root.setProperty("--akan-viewport-height", `${viewportFrame.height}px`);
     //? iOS pans the page under the keyboard instead of shrinking it, carrying the fixed top bars off the screen.
     root.setProperty("--akan-viewport-offset-top", `${viewportFrame.offsetTop}px`);
-    st.set({ keyboardHeight: viewportFrame.keyboardHeight });
+    ShellState.set({ keyboardHeight: viewportFrame.keyboardHeight });
   }, [viewportFrame]);
 
   useEffect(() => {
@@ -355,26 +355,7 @@ export const ClientBridge = ({ env, lang, theme, viewport, prefix, wsConnect }: 
     return () => window.removeEventListener("pageshow", onPageShow);
   }, [theme]);
 
-  useEffect(() => {
-    const devMode = localStorage.getItem("devMode");
-    if (devMode) st.do.setDevMode(devMode === "true");
-  }, []);
-
-  useEffect(() => {
-    void DraftStore.reconcileIdentity().then(() => DraftStore.sweep());
-  }, []);
-
-  useEffect(() => {
-    if (uiOperation !== "sleep") return;
-    const handleResize = () => {
-      st.do.setWindowSize();
-    };
-    handleResize();
-    window.addEventListener("resize", handleResize);
-    return () => {
-      window.removeEventListener("resize", handleResize);
-    };
-  }, []);
+  useEffect(() => ShellState.mount(), []);
 
   useEffect(() => {
     setCookie("path", path);
@@ -392,7 +373,7 @@ function restoreDocumentTheme(layoutTheme: AkanTheme | undefined): void {
     return;
   }
   document.documentElement.setAttribute("data-theme", theme);
-  st.do.setTheme(theme);
+  ShellState.set({ theme });
 }
 
 function resolveThemePolicy(theme: AkanTheme): string | null {
@@ -402,7 +383,7 @@ function resolveThemePolicy(theme: AkanTheme): string | null {
 }
 
 export const ClientInner = () => {
-  const uiOperation = st.use.uiOperation({ agent: false });
+  const uiOperation = ShellState.use("uiOperation");
   return (
     <>
       <div key="modal-root" id="modal-root" />
@@ -452,7 +433,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
       const url = new URL(href, window.location.origin);
       const { path } = getPathInfo(`${url.pathname}${url.search}${url.hash}`, lang, visiblePrefix);
       const searchParams = parseSearchParams(url.search);
-      st.set({
+      ShellState.set({
         pathname: url.pathname,
         path,
         searchParams,
@@ -497,7 +478,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
       const { pathname, search, hash } = window.location;
       const { path } = getPathInfo(`${pathname}${search}${hash}`, lang, visiblePrefix);
       const searchParams = parseSearchParams(search);
-      st.set({
+      ShellState.set({
         pathname: window.location.pathname,
         path,
         searchParams,

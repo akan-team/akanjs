@@ -1,7 +1,6 @@
 "use client";
-import { usePathCtx } from "akanjs/client";
+import { ShellState, usePathCtx } from "akanjs/client";
 import { isQueryEqual, parseSearchParams } from "akanjs/common";
-import { st } from "akanjs/store";
 
 const documentSearchParams = typeof window !== "undefined" ? parseSearchParams(window.location.search) : {};
 
@@ -14,9 +13,9 @@ const documentSearchParams = typeof window !== "undefined" ? parseSearchParams(w
  */
 export const usePageLocation = () => {
   const { location, followsRouter } = usePathCtx();
-  const pathname = st.use.pathname({ agent: false });
-  const params = st.use.params({ agent: false });
-  const searchParams = st.use.searchParams({ agent: false });
+  const pathname = ShellState.use("pathname");
+  const params = ShellState.use("params");
+  const searchParams: import("akanjs/store").BaseSearchParamsState = ShellState.use("searchParams");
   if (!location) return { pathname, params, searchParams };
   //? On an SSR page only the query moves without a render (a shallow replace, its back), so only it reads the store.
   const followsQuery =
