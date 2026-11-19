@@ -103,7 +103,13 @@ describe("DesktopServerStage", () => {
   test("says what the image installs that the desktop app's server goes without", () => {
     const notice = (docker: unknown, carried: string[] = []) =>
       DesktopServerStage.imageStepsNotice({ app: { name: "portal" }, docker } as never, carried);
-    const steps = { image: "oven/bun", preRuns: ["apt-get install -y ffmpeg"], postRuns: [], command: [] };
+    const steps = {
+      image: "oven/bun",
+      preRuns: ["apt-get install -y ffmpeg"],
+      installRuns: [],
+      postRuns: [],
+      command: [],
+    };
     expect(notice({ ...steps, preRuns: [] })).toBeNull();
     expect(notice(steps)).toEqual({
       level: "warn",
@@ -149,6 +155,7 @@ describe("DesktopServerStage", () => {
     ];
     const imageOnly = [
       "Dockerfile",
+      ".dockerignore",
       "akan.env.json",
       "package.json",
       "rscWorker.js",

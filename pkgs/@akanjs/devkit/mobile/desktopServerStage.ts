@@ -30,6 +30,7 @@ export class DesktopServerStage {
   //? a `.node`, a `.wasm`. The build's env file would hand it the PORT and AKAN_LOG_TO_FILE its launcher leaves out.
   static readonly uncarried = new Set([
     "Dockerfile",
+    ".dockerignore",
     BUILD_ENV_FILE,
     "package.json",
     "bun.lock",
@@ -88,7 +89,9 @@ export class DesktopServerStage {
     carried: string[],
   ): { level: "warn" | "info"; message: string } | null {
     const steps =
-      typeof config.docker === "string" ? null : config.docker.preRuns.length + config.docker.postRuns.length;
+      typeof config.docker === "string"
+        ? null
+        : config.docker.preRuns.length + config.docker.installRuns.length + config.docker.postRuns.length;
     if (steps === 0) return null;
     const image =
       steps === null

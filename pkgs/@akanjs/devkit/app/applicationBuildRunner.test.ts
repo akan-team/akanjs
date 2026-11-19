@@ -125,6 +125,9 @@ console.info(new SampleService().name);
       expect(await builtEnv()).toEqual(config.getProductionEnv("debug"));
       expect(await builtEnv()).toEqual(await dockerfileEnv());
       expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_APP_NAME: "portal", AKAN_PUBLIC_ENV: "debug" });
+      expect((await readFile(path.join(root, ".dockerignore"), "utf8")).split("\n")).toEqual(
+        expect.arrayContaining(["sqlite", "local", "runtime", "data", ".akan/artifact/image-cache", "node_modules"]),
+      );
       await new ApplicationBuildRunner(app).buildAppMeta();
       expect(await builtEnv()).toMatchObject({ AKAN_PUBLIC_ENV: "local" });
       expect(await builtEnv()).toEqual(await dockerfileEnv());

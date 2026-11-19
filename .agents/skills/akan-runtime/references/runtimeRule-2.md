@@ -102,8 +102,8 @@ normalized to `info` with one warning.
 
 ## The Generated Image — `docker` In `akan.config.ts`
 
-**`docker` is `string | { image, preRuns, postRuns, command }`** — a whole Dockerfile, or the parts Akan
-assembles one from. There is no `content` field; the string *is* the content.
+**`docker` is `string | { image, preRuns, installRuns, postRuns, command, crossBuild }`** — a whole Dockerfile, or
+the parts Akan assembles one from. There is no `content` field; the string *is* the content.
 
 ```ts
 const config: AppConfig = {
@@ -115,7 +115,16 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
 - `image` and each run entry take `string | { amd64?, arm64? }`; the object form compiles to a
   `RUN if [ "$TARGETARCH" = "<arch>" ]` guard, so a multi-arch build runs it on one leg only. `preRuns` land
   before `bun install --production` (where a native dependency's build tools have to be), `postRuns` after it
-  and before the app files are copied.
+  and before the app files are copied. An `image` object picks each leg's base by `TARGETARCH`.
+- **`installRuns` are chained onto `bun install` in one `RUN`**, so what a step deletes from `node_modules` is in no
+  layer: prune a package that ships every platform's binary there. An `rm` in `postRuns` is a later layer.
+- **`crossBuild: true` installs on the build machine for the target** (`buildx --platform linux/arm64` on amd64,
+  where Bun under QEMU crashes): a `FROM --platform=$BUILDPLATFORM` stage runs `bun install --os linux --cpu
+  <target>` and `installRuns`, and the target's stage copies its `/workspace` and runs `apt-get`, `preRuns` and
+  `postRuns`. A dependency's lifecycle script then runs on the build machine's CPU. It needs BuildKit, and a string
+  `image` published for the build machine too.
+- **`akan build` writes a `.dockerignore`**: `sqlite`, `local`, `runtime`, `data`, `.akan/artifact/image-cache` and
+  `node_modules`, so the database a build run by hand wrote beside `main.js` stays out of `COPY . .`.
 - **The server runs as `USER 1000:1000`, oven/bun's `bun` user, and owns only the directories it writes.** The
   build steps (`apt-get`, `preRuns`, `bun install`, `postRuns`) run as root and the app files stay root's, so
   `main.js`, `server.js`, `public/` and `node_modules` are read-only to the server. After the copy, uid 1000 gets
@@ -141,8 +150,8 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   `--frozen-lockfile`. A workspace without a root `bun.lock` gets a warning and an unlocked install; a Dockerfile
   written whole copies `bun.lock` itself.
 - **A lib declares the steps its own runtime needs**, and every app that mounts it inherits them:
-  `libs/<lib>/akan.config.ts` takes `docker: { preRuns, postRuns }` and nothing else — the base image and the
-  command belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
+  `libs/<lib>/akan.config.ts` takes `docker: { preRuns, installRuns, postRuns }` and nothing else — the base image,
+  the command and `crossBuild` belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
   becomes one layer.
 - **The string form takes no contributions.** A Dockerfile handed over whole is used exactly as written, so a
   lib's `preRuns` are dropped rather than spliced into a file Akan does not own. An app that needs both writes

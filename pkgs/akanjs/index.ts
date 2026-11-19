@@ -13,9 +13,16 @@ export interface DockerImageConfig {
   image: string | { [key in Arch]?: string };
   /** Runs before `bun install`, so a system package a native dependency needs is there for the install. */
   preRuns: DockerRun[];
+  /** Runs in the layer of `bun install`, so what a step deletes from `node_modules` never reaches the image. */
+  installRuns: DockerRun[];
   /** Runs after `bun install`, before the app files are copied. */
   postRuns: DockerRun[];
   command: string[];
+  /**
+   * Installs in a stage of the build machine's own architecture, for the target's: `docker buildx build --platform`
+   * for another architecture then never runs Bun emulated. A dependency's lifecycle script runs on the build machine.
+   */
+  crossBuild: boolean;
 }
 
 /** The string form is taken verbatim: nothing is merged into it, not even a lib's `docker` steps. */
@@ -26,6 +33,7 @@ export type DockerOption = string | Partial<DockerImageConfig>;
 /** Steps every app mounting the lib inherits; a lib never picks the base image or the command. */
 export interface LibDockerConfig {
   preRuns: DockerRun[];
+  installRuns: DockerRun[];
   postRuns: DockerRun[];
 }
 

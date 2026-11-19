@@ -566,8 +566,8 @@ const buildFields = [
     key: "docker",
     type: "string | DockerImageConfig",
     default: "oven/bun:1.4.4-slim@sha256:…",
-    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, command.",
-    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, command입니다.",
+    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild.",
+    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, 같은 레이어의 installRuns, command, crossBuild입니다.",
   },
 ];
 
@@ -1586,8 +1586,10 @@ const config: AppConfig = {
   docker: {
     image: { amd64: "oven/bun:amd64", arm64: "oven/bun:arm64" },
     preRuns: ["apt-get install -y ffmpeg"],
+    installRuns: ["rm -rf node_modules/onnxruntime-node/bin/napi-v6/darwin"],
     postRuns: ["echo after"],
     command: ["bun", "main.js"],
+    crossBuild: true,
   },
 };`}
           />
@@ -1601,8 +1603,8 @@ const config: AppConfig = {
           />
           <div>
             {l.trans({
-              en: "A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.",
-              ko: "라이브러리가 이 중 다섯에 값을 더합니다. 라이브러리 자신의 externalLibs, trustedDependencies, docker.preRuns·docker.postRuns, assets.keepFonts는 그 라이브러리를 마운트하는 모든 앱에, bin은 그 라이브러리에 의존하는 앱에 적용됩니다. 생성되는 이미지에는 ca-certificates와 tzdata만 설치되므로, ffmpeg나 헤드리스 브라우저가 필요한 앱은 직접 선언해야 합니다.",
+              en: "A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns, docker.installRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.",
+              ko: "라이브러리가 이 중 다섯에 값을 더합니다. 라이브러리 자신의 externalLibs, trustedDependencies, docker.preRuns·docker.installRuns·docker.postRuns, assets.keepFonts는 그 라이브러리를 마운트하는 모든 앱에, bin은 그 라이브러리에 의존하는 앱에 적용됩니다. 생성되는 이미지에는 ca-certificates와 tzdata만 설치되므로, ffmpeg나 헤드리스 브라우저가 필요한 앱은 직접 선언해야 합니다.",
             })}
           </div>
           <ul className="my-4 list-disc space-y-2 pl-5">
@@ -1644,6 +1646,68 @@ const config: AppConfig = {
                     <code>/workspace/local</code>, <code>/workspace/runtime</code>, <code>/workspace/data</code>,{" "}
                     <code>/workspace/.akan/artifact/image-cache</code>를 소유합니다. postRuns 단계가 서버가 쓸
                     디렉터리를 만든다면 <code>chown 1000:1000</code>을 붙입니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>installRuns prune what the image never loads.</strong> They run in the same layer as{" "}
+                    <code>bun install</code>, so a file a step deletes from <code>node_modules</code> is in no layer.
+                    Use them for a package that ships every platform's binary; an <code>rm</code> in postRuns is a later
+                    layer and leaves the image as large.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>installRuns는 이미지가 쓰지 않는 파일을 덜어냅니다.</strong> <code>bun install</code>과 같은
+                    레이어에서 실행되므로, 여기서 <code>node_modules</code>에서 지운 파일은 어느 레이어에도 남지
+                    않습니다. 모든 플랫폼의 바이너리를 한 패키지에 담아 배포하는 의존성에 씁니다. postRuns의{" "}
+                    <code>rm</code>은 다음 레이어라서 이미지 크기가 줄지 않습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>crossBuild builds for another architecture without emulating Bun.</strong> For{" "}
+                    <code>docker buildx build --platform linux/arm64</code> on an amd64 host, a stage on the build
+                    machine's own architecture runs <code>bun install --os linux --cpu &lt;target&gt;</code>, and the
+                    target's stage copies the result and runs only apt-get, preRuns and postRuns. A dependency's
+                    lifecycle script then runs on the build machine's CPU, and the build needs BuildKit.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>crossBuild는 Bun을 에뮬레이션하지 않고 다른 아키텍처용으로 빌드합니다.</strong> amd64
+                    호스트에서 <code>docker buildx build --platform linux/arm64</code>를 할 때, 빌드 머신 아키텍처의
+                    단계가 <code>bun install --os linux --cpu &lt;target&gt;</code>을 실행하고, 대상 아키텍처 단계는 그
+                    결과를 복사한 뒤 apt-get, preRuns, postRuns만 실행합니다. 이때 의존성의 라이프사이클 스크립트는 빌드
+                    머신의 CPU에서 실행되며, 빌드에는 BuildKit이 필요합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>The build writes a .dockerignore.</strong> A build started by hand in{" "}
+                    <code>dist/apps/&lt;app&gt;</code> writes its database beside <code>main.js</code>, so{" "}
+                    <code>sqlite</code>, <code>local</code>, <code>runtime</code>, <code>data</code>, the image cache
+                    and <code>node_modules</code> stay out of the image.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>빌드가 .dockerignore를 씁니다.</strong> <code>dist/apps/&lt;app&gt;</code>에서 직접 실행한
+                    빌드는 <code>main.js</code> 옆에 데이터베이스를 쓰므로, <code>sqlite</code>, <code>local</code>,{" "}
+                    <code>runtime</code>, <code>data</code>, 이미지 캐시, <code>node_modules</code>는 이미지에 들어가지
+                    않습니다.
                   </span>
                 ),
               })}

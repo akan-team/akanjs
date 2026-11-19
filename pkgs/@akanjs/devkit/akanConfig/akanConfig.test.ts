@@ -160,7 +160,9 @@ describe("AkanAppConfig", () => {
     expect(config.publicEnv).toEqual(["AKAN_PUBLIC_FEATURE"]);
     expect(config.optimizeImports).toContain("custom-icons");
     expect(config.dockerfile).toContain('CMD ["bun","server.js"]');
-    expect(config.dockerfile).toContain("FROM oven/bun:amd64 AS amd64");
+    expect(config.dockerfile).toContain(
+      "FROM oven/bun:amd64 AS amd64\nFROM oven/bun:arm64 AS arm64\nFROM $TARGETARCH\n",
+    );
     expect(config.dockerfile).toContain('RUN if [ "$TARGETARCH" = "arm64"');
   });
 
@@ -357,6 +359,61 @@ describe("AkanAppConfig", () => {
     expect(instructions.filter((line) => line.includes("chown") && / \/workspace( |$)/.test(line))).toEqual([]);
   });
 
+  test("runs installRuns in the layer of bun install, a lib's before the app's, so a deleted file reaches no layer", () => {
+    const config = new AkanAppConfig(
+      app,
+      ["vision"],
+      packageJson,
+      { docker: { installRuns: ["rm -rf node_modules/a/win32", { arm64: "rm -rf node_modules/a/linux/x64" }] } },
+      baseDevEnv,
+      [],
+      { externalLibs: [], docker: { preRuns: [], installRuns: ["rm -rf node_modules/a/darwin"], postRuns: [] } },
+    );
+
+    expect(config.dockerfile).toContain(
+      [
+        "RUN bun install --production --frozen-lockfile \\",
+        "  && rm -rf node_modules/a/darwin \\",
+        "  && rm -rf node_modules/a/win32 \\",
+        '  && if [ "$TARGETARCH" = "arm64" ]; then     rm -rf node_modules/a/linux/x64;   fi',
+        "COPY . .",
+      ].join("\n"),
+    );
+  });
+
+  test("crossBuild installs on the build machine for the target, and the target's stage runs no bun", () => {
+    const docker = { crossBuild: true, preRuns: ["echo pre"], installRuns: ["echo prune"], postRuns: ["echo post"] };
+    const lines = new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv).dockerfile.split("\n");
+    const target = lines.lastIndexOf(`FROM ${DEFAULT_DOCKER_IMAGE}`);
+
+    expect(lines.slice(0, target)).toEqual([
+      `FROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install`,
+      "ARG TARGETARCH",
+      "WORKDIR /workspace",
+      "COPY ./package.json ./bun.lock ./",
+      'RUN bun install --production --frozen-lockfile --os linux --cpu "$(echo "$TARGETARCH" | sed s/amd64/x64/)" \\',
+      "  && echo prune",
+    ]);
+    expect(lines.slice(target).filter((line) => line.includes("bun install"))).toEqual([]);
+    expect(lines.slice(lines.indexOf("RUN echo pre"), lines.indexOf("COPY . .") + 1)).toEqual([
+      "RUN echo pre",
+      "WORKDIR /workspace",
+      "COPY --from=install /workspace ./",
+      "RUN echo post",
+      "COPY . .",
+    ]);
+  });
+
+  test("crossBuild installs with the pinned image where each architecture names its own, and a local build still refuses", () => {
+    const docker = { crossBuild: true, image: { arm64: "vendor/bun:arm64" } };
+    const local = new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv).dockerfileFor("local");
+
+    expect(local).toStartWith(`FROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install\n`);
+    expect(local).toContain(
+      `FROM ${DEFAULT_DOCKER_IMAGE} AS amd64\nFROM vendor/bun:arm64 AS arm64\nFROM $TARGETARCH\nARG AKAN_ALLOW_LOCAL_IMAGE\n`,
+    );
+  });
+
   test("keeps a declared Dockerfile string verbatim", () => {
     const dockerfile = 'FROM oven/bun:1-slim\nCOPY . .\nCMD ["bun","main.js"]';
     const config = new AkanAppConfig(app, [], packageJson, { docker: dockerfile }, baseDevEnv);
@@ -371,8 +428,10 @@ describe("AkanAppConfig", () => {
     expect(config.docker).toEqual({
       image: DEFAULT_DOCKER_IMAGE,
       preRuns: ["echo hi"],
+      installRuns: [],
       postRuns: [],
       command: ["bun", "main.js"],
+      crossBuild: false,
     });
   });
 
@@ -966,7 +1025,7 @@ describe("AkanAppConfig lib externalLibs", () => {
       { externalLibs: ["@external/runtime"] },
       baseDevEnv,
       [],
-      { externalLibs: ["@external/runtime", "puppeteer"], docker: { preRuns: [], postRuns: [] } },
+      { externalLibs: ["@external/runtime", "puppeteer"], docker: { preRuns: [], installRuns: [], postRuns: [] } },
     );
 
     expect(config.externalLibs).toEqual(["@external/runtime", "puppeteer"]);
@@ -988,9 +1047,9 @@ describe("AkanAppConfig lib externalLibs", () => {
 });
 
 describe("AkanAppConfig lib docker runs", () => {
-  const libDocker = (preRuns: string[], postRuns: string[] = []) => ({
+  const libDocker = (preRuns: string[], postRuns: string[] = [], installRuns: string[] = []) => ({
     externalLibs: [],
-    docker: { preRuns, postRuns },
+    docker: { preRuns, installRuns, postRuns },
   });
 
   test("runs lib steps before the app's own, deduped", () => {
@@ -1053,7 +1112,7 @@ describe("AkanAppConfig trustedDependencies and bin", () => {
       {
         externalLibs: [],
         trustedDependencies: ["sharp", "@serialport/bindings-cpp"],
-        docker: { preRuns: [], postRuns: [] },
+        docker: { preRuns: [], installRuns: [], postRuns: [] },
       },
     );
     expect(withTrusted.getProductionPackageJson().trustedDependencies).toEqual([
@@ -1077,7 +1136,11 @@ describe("AkanAppConfig trustedDependencies and bin", () => {
       { bin: { ffmpeg: { "darwin-arm64": { path: "tools/ffmpeg" } } } },
       baseDevEnv,
       [],
-      { externalLibs: [], docker: { preRuns: [], postRuns: [] }, bin: [{ lib: "media", bin: libBin }] },
+      {
+        externalLibs: [],
+        docker: { preRuns: [], installRuns: [], postRuns: [] },
+        bin: [{ lib: "media", bin: libBin }],
+      },
     );
     expect(config.bin).toEqual({
       ffmpeg: { "darwin-arm64": { path: path.resolve("/repo/apps/portal/tools/ffmpeg") } },
@@ -1114,9 +1177,10 @@ describe("AkanLibConfig", () => {
 
   test("defaults docker runs to empty lists and preserves declared ones", () => {
     const lib = { name: "shared" } as never;
-    expect(new AkanLibConfig(lib, {}).docker).toEqual({ preRuns: [], postRuns: [] });
-    expect(new AkanLibConfig(lib, { docker: { preRuns: ["echo lib"] } }).docker).toEqual({
+    expect(new AkanLibConfig(lib, {}).docker).toEqual({ preRuns: [], installRuns: [], postRuns: [] });
+    expect(new AkanLibConfig(lib, { docker: { preRuns: ["echo lib"], installRuns: ["rm -rf a"] } }).docker).toEqual({
       preRuns: ["echo lib"],
+      installRuns: ["rm -rf a"],
       postRuns: [],
     });
   });
