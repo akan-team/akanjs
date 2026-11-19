@@ -69,6 +69,17 @@ describe("ShellState", () => {
     expect(ShellState.get().messages).toHaveLength(6);
   });
 
+  test("two messages sent without a key are two toasts, each hidden on its own", () => {
+    ShellState.showMessage({ content: "saved", key: undefined });
+    ShellState.showMessage({ content: "failed", type: "error", key: undefined });
+    const { messages } = ShellState.get();
+    expect(messages.map((message) => message.content)).toEqual(["saved", "failed"]);
+    expect(new Set(messages.map((message) => message.key)).size).toBe(2);
+
+    ShellState.hideMessage(messages[0].key);
+    expect(ShellState.get().messages.map((message) => message.content)).toEqual(["failed"]);
+  });
+
   test("a mount listener runs on each shell mount, and at once when the shell is already up", () => {
     let early = 0;
     let late = 0;

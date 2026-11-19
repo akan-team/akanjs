@@ -89,6 +89,8 @@ export class ShellState {
   }
 
   static set(patch: Partial<ShellStateValue>) {
+    //? One process renders every request: a write on the server would show one visitor's path or toast to the next.
+    if (typeof window === "undefined") return;
     const store = ShellState.#store();
     const keys = (Object.keys(patch) as (keyof ShellStateValue)[]).filter(
       (key) => !Object.is(store.state[key], patch[key]),
@@ -122,7 +124,8 @@ export class ShellState {
   }
 
   static showMessage(message: Omit<Partial<ShellMessage>, "content"> & { content: string | string[] }) {
-    const shown = { type: "info", duration: 3, key: Math.random().toString(36).slice(2, 15), ...message };
+    const key = message.key ?? Math.random().toString(36).slice(2, 15);
+    const shown = { type: "info", duration: 3, ...message, key };
     ShellState.set({ messages: ShellState.messagesWith(ShellState.get().messages, shown as ShellMessage) });
   }
 

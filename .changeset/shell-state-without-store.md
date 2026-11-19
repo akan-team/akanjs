@@ -17,6 +17,13 @@ arrives with a later page starts from what the shell holds. Its routes carry the
 store, about 0.6 KB. `Dialog`, `Dropdown`, `Tab`, `ScreenNavigator`, `ThemeToggle`, `KeyboardAvoiding`, `Sider`,
 `Table`, `Menu` and the model, data and field components still load the store on a page that uses them.
 
+Two things to know when upgrading:
+
+- A test that replaces `akanjs/client` with `mock.module` and then loads `akanjs/store`, `Link`, `System`, `Copy` or
+  `usePageLocation` needs `ShellState` in its mock: pass the real one through.
+- `msg.*`, `Copy` and the theme a restored page gets back write the shell state, not `st.do.showMessage` and
+  `st.do.setTheme`, so a store that declares an action of either name is no longer called for them.
+
 - `ShellState` is exported from `akanjs/client`: `ShellState.use("pathname")` and its other keys (`path`, `params`,
   `searchParams`, `theme`, `uiOperation`, `messages`, `keyboardHeight`, `pageState`) read the same values as the
   `st.use.*` of the same name without loading the store.
