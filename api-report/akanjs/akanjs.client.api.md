@@ -1022,6 +1022,55 @@ export interface SafeAreaTransition {
     containerStyle: TransitionStyle;
 }
 
+export interface ShellMessage {
+    type: "error" | "info" | "loading" | "success" | "warning";
+    content: string;
+    duration: number;
+    key: string;
+}
+
+export declare class ShellState {
+    static readonly keys: readonly [
+        "path",
+        "pathname",
+        "params",
+        "searchParams",
+        "theme",
+        "uiOperation",
+        "messages",
+        "keyboardHeight",
+        "pageState"
+    ];
+    static initial(): ShellStateValue;
+    static get(): ShellStateValue;
+    static set(patch: Partial<ShellStateValue>): void;
+    static subscribe(listener: () => void): () => void;
+    static use<Key extends keyof ShellStateValue>(key: Key): ShellStateValue[Key];
+    static messagesWith(messages: ShellMessage[], message: ShellMessage): ShellMessage[];
+    static showMessage(message: Omit<Partial<ShellMessage>, "content"> & {
+        content: string | string[];
+    }): void;
+    static hideMessage(key: string): void;
+    static mount(): () => void;
+    static onMount(listener: () => void): () => void;
+}
+
+export interface ShellStateValue {
+    path: string;
+    pathname: string;
+    params: {
+        [key: string]: string;
+    };
+    searchParams: {
+        [key: string]: string | string[];
+    };
+    theme: string;
+    uiOperation: "idle" | "loading" | "sleep";
+    messages: ShellMessage[];
+    keyboardHeight: number;
+    pageState: PageState;
+}
+
 export type SsrRenderMode = "block" | "stream";
 
 export type TailwindBreakpoint = (typeof insetBreakpoints)[number][0];

@@ -1,6 +1,5 @@
 "use client";
-import { msg, Translator, usePage } from "akanjs/client";
-import { st } from "akanjs/store";
+import { msg, ShellState, Translator, usePage } from "akanjs/client";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -21,8 +20,8 @@ interface ArmedMessage {
 const exitGraceMs = 2000;
 
 export const Messages = () => {
-  const messages = st.use.messages({ agent: false });
-  const pageState = st.use.pageState({ agent: false });
+  const messages = ShellState.use("messages");
+  const pageState = ShellState.use("pageState");
   const { l, lang } = usePage();
   const [portalElement, setPortalElement] = useState<HTMLElement | null>(null);
   const [leavingKeys, setLeavingKeys] = useState<string[]>([]);
@@ -35,7 +34,7 @@ export const Messages = () => {
       timers.current.delete(key);
     }
     setLeavingKeys((keys) => keys.filter((leavingKey) => leavingKey !== key));
-    st.do.hideMessage(key);
+    ShellState.hideMessage(key);
   };
 
   const startLeaving = (key: string) => {
@@ -97,7 +96,7 @@ export const Messages = () => {
       (type: ToastType) =>
       (msgKey: `${string}.${string}`, option = {} as MsgOption) => {
         const send = () =>
-          st.do.showMessage({
+          ShellState.showMessage({
             type,
             key: option.key,
             duration: option.duration ?? 3,

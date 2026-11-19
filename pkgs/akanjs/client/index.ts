@@ -223,6 +223,7 @@ export {
 } from "./rscNavigation";
 export { scriptHashes, scriptNonce } from "./scriptPolicy";
 export { sharedContext } from "./sharedContext";
+export { type ShellMessage, ShellState, type ShellStateValue } from "./shellState";
 export { secretStorage, storage } from "./storage";
 export { type TransitionType, transitionTypes } from "./transitionTypes";
 export { type AllDictionary, type Dictionary, Translator } from "./translator";

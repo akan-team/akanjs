@@ -61,6 +61,9 @@ File names, stages, the `.render()` order and what a route file must never do ar
   where `Book` is the `common/` interface for the query's `Any` return (`akan-service`).
 - Async page: `.render(async ({ id }) => { const book = (await fetch.book(id)) as Book | null; if (!book) return router.notFound(); … })`;
   the same query in `.head()` and `.render()` is one request.
+- A page whose render calls `fetch.*` is rendered for every request (`X-Akan-Cache-Reason: dynamic-request-api`):
+  the call carries the visitor's session and address. `fetch.book(id, { forwardVisitor: false })`, for an endpoint
+  that answers everyone alike, lets the server keep the page.
 - Loading: `.loading(() => <Skeleton />)` on a page or layout is what that level shows until its `.render()` and the
   levels below it resolve; the levels above it stream first.
 - `router.notFound()` from `.guard()`, `.head()` or `.render()` answers 404 with the nearest layout's `.notFound()`
@@ -73,8 +76,9 @@ File names, stages, the `.render()` order and what a route file must never do ar
   marks the current one.
 - From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.
 - A client filter kept in the URL without reloading the page: ``router.replace(`/books?q=${q}`, { shallow: true,
-  scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`. Shallow
-  holds only while the path stays the same; a server `.search()` sees the value at the next full navigation.
+  scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`, which
+  follows the replace and the back and forward buttons. Shallow holds only while the path stays the same; a server
+  `.search()` sees the value at the next full navigation.
 - On a web page's first render `st.use.searchParams()` is still the server's empty snapshot, synced right after
   hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
 - A `Link` renders its page ahead of the click, guards included: on hover, on keyboard focus, or as it shows with

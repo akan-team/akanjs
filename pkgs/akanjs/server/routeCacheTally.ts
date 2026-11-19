@@ -11,6 +11,10 @@ const bypassReasons = [
   "dev-registry",
   "no-route",
   "script-hashes",
+  "dynamic-request-api",
+  "render-not-found",
+  "render-redirect",
+  "late-redirect",
   "other",
 ] as const;
 

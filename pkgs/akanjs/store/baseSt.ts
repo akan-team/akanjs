@@ -1,8 +1,9 @@
-import type { PageState } from "akanjs/client";
+import { type PageState, ShellState } from "akanjs/client";
 import { parseSearchParams } from "akanjs/common";
 import { Responsive, responsiveWidths } from "akanjs/constant";
 import { type Account, getDefaultAccount } from "akanjs/fetch";
 import type { SignalType } from "akanjs/signal";
+import { ShellMirror } from "./shellMirror";
 import { store } from "./store";
 import { StoreRegistry } from "./storeRegistry";
 
@@ -62,11 +63,9 @@ export class BaseStore extends store("base" as const, () => ({
   showMessage(message: { content: string | string[] } & Partial<typeof defaultMessage>) {
     message.key ??= Math.random().toString(36).slice(2, 15);
     const { messages } = this.get();
-    const newMessage = { ...defaultMessage, ...message };
-
-    if (messages.some((m) => m.key === newMessage.key))
-      this.set({ messages: messages.map((m) => (m.key === newMessage.key ? newMessage : m)) });
-    else this.set({ messages: [...(messages.length > 6 ? messages.slice(1) : messages), newMessage] });
+    this.set({
+      messages: ShellState.messagesWith(messages, { ...defaultMessage, ...message } as typeof defaultMessage),
+    });
   }
   hideMessage(key: string) {
     const { messages } = this.get();
@@ -78,3 +77,5 @@ export const base = StoreRegistry.register(BaseStore);
 export class RootStore extends StoreRegistry.merge("root" as const, BaseStore) {}
 
 export const st = StoreRegistry.build(RootStore);
+
+ShellMirror.bind(StoreRegistry.instance);

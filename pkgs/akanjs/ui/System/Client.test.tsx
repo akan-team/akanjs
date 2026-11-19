@@ -25,9 +25,12 @@ describe("ClientWrapper", () => {
     expect({ locale: Translator.getActiveLocale(), path: Translator.getActivePath() }).toEqual(before);
   });
 
-  test("bundles for the browser without the agent library, which only a CSR page stack gates", async () => {
+  test("the SSR shell, a link and the page-location hook bundle for the browser without the store or the agent library", async () => {
+    const entries = ["SSR.tsx", "../Link/index.tsx", "../../webkit/usePageLocation.ts"].map((entry) =>
+      path.join(import.meta.dir, entry),
+    );
     const script = `
-const built = await Bun.build({ entrypoints: [${JSON.stringify(path.join(import.meta.dir, "Client.tsx"))}], target: "browser", format: "esm", packages: "external", external: ["akanjs/*"] });
+const built = await Bun.build({ entrypoints: ${JSON.stringify(entries)}, target: "browser", format: "esm", packages: "external", external: ["akanjs/*"] });
 const output = (await Promise.all(built.outputs.map((artifact) => artifact.text()))).join("\\n");
 console.log(JSON.stringify({ success: built.success, specifiers: [...new Set([...output.matchAll(/(?:from\\s*|import\\(\\s*)["']([^"']+)["']/g)].map((match) => match[1]))] }));
 `;
@@ -35,7 +38,8 @@ console.log(JSON.stringify({ success: built.success, specifiers: [...new Set([..
     const [stdout] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
     const { success, specifiers } = JSON.parse(stdout.trim().split("\n").at(-1) ?? "{}");
     expect(success).toBe(true);
-    expect(specifiers).toContain("akanjs/store");
+    expect(specifiers).toContain("akanjs/client");
+    expect(specifiers).not.toContain("akanjs/store");
     expect(specifiers).not.toContain("use-agentic");
   });
 });

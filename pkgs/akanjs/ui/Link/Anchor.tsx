@@ -1,8 +1,17 @@
 "use client";
 import { getEnv } from "akanjs/base";
-import { cn, csrLocation, getPathInfo, Href, openExternalUrl, router, usePage, usePathCtx } from "akanjs/client";
+import {
+  cn,
+  csrLocation,
+  getPathInfo,
+  Href,
+  openExternalUrl,
+  router,
+  ShellState,
+  usePage,
+  usePathCtx,
+} from "akanjs/client";
 import { Logger } from "akanjs/common";
-import { st } from "akanjs/store";
 import type { AnchorHTMLAttributes } from "react";
 import { isActiveHref, useCurrentPathname } from "./activePath";
 import { type LinkPrefetch, usePrefetchIntent } from "./prefetchIntent";
@@ -40,7 +49,7 @@ export const CsrLink = ({
   ...props
 }: AnchorProps) => {
   const { prefix } = usePathCtx();
-  const pathname = st.use.pathname({ agent: false });
+  const pathname = ShellState.use("pathname");
   const { lang } = usePage();
   const { hash } = getPathInfo(href, lang, prefix ?? "");
   const active =
