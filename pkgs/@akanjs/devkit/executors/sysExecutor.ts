@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { readdir } from "node:fs/promises";
+import { lstat, readdir, readFile, rmdir, unlink } from "node:fs/promises";
 import path from "node:path";
 import { capitalize, getPageSourceFileViolation } from "akanjs/common";
 import { AkanAppConfig, AkanLibConfig, AkanWorkers } from "../akanConfig";
@@ -187,6 +187,8 @@ export class SysExecutor extends Executor {
       ),
     ];
   }
+  static readonly #generatedModuleIndex =
+    /^(?:import \* as (?:Template|Unit|Util|View|Zone) from "\.\/\w+\.(?:Template|Unit|Util|View|Zone)";\r?\n)+\r?\nexport const \w+ = \{ [\w, ]+ \};\s*$/;
   //? Git keeps an ignored file when a merge or checkout takes a module's sources away, so the folder outlives them.
   async #removeLeftoverModuleDirs() {
     const moduleDirs = [
@@ -194,11 +196,21 @@ export class SysExecutor extends Executor {
       ...(await this.readdir("lib/__scalar")).map((name) => `lib/__scalar/${name}`),
     ];
     for (const dir of moduleDirs) {
-      const entries = (await readdir(this.getPath(dir)).catch(() => [] as string[])).filter(
-        (entry) => entry !== ".DS_Store",
-      );
-      if (entries.length !== 1 || entries[0] !== "index.ts") continue;
-      await this.removeDir(dir);
+      const dirPath = path.join(this.cwdPath, dir);
+      if (!(await lstat(dirPath).catch(() => null))?.isDirectory()) continue;
+      const entries = await readdir(dirPath).catch(() => [] as string[]);
+      if (entries.filter((entry) => entry !== ".DS_Store").join() !== "index.ts") continue;
+      //? `lib/*/index.ts` is git-ignored: one a person wrote there has no other copy, so only the generated shape goes.
+      if (!SysExecutor.#generatedModuleIndex.test(await readFile(path.join(dirPath, "index.ts"), "utf8"))) continue;
+      await Promise.all(entries.map((entry) => unlink(path.join(dirPath, entry))));
+      //? Not recursive: a file that landed since the listing keeps its folder.
+      if (
+        !(await rmdir(dirPath).then(
+          () => true,
+          () => false,
+        ))
+      )
+        continue;
       this.logger.info(
         `Removed ${this.type}s/${this.name}/${dir}: its generated index.ts was all that was left of the module`,
       );
