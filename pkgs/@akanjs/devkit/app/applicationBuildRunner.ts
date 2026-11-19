@@ -5,6 +5,7 @@ import { BUILD_ENV_FILE, BUILD_ENV_MODULE } from "akanjs/server/lifecycle/buildE
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
 import { AkanBin } from "../akanConfig/akanBin";
+import { DOCKER_IGNORED } from "../akanConfig/dockerImage";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
 import type { App } from "../commandDecorators";
 import { parseEnvFile, WorkspaceExecutor } from "../executors";
@@ -429,6 +430,8 @@ export class ApplicationBuildRunner {
         ? [dist.writeFile(`${dist.cwdPath}/${ProductionLockfile.fileName}`, lockfile, silent)]
         : []),
       dist.writeFile(`${dist.cwdPath}/Dockerfile`, dockerfile, silent),
+      //? A build run by hand writes its database beside main.js, and `COPY . .` would carry it into the image.
+      dist.writeFile(`${dist.cwdPath}/.dockerignore`, `${DOCKER_IGNORED.join("\n")}\n`, silent),
       dist.writeJson("akan.build.json", buildInfo, silent),
     ]);
   }

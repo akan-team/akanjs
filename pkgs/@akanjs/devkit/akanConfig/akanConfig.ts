@@ -11,14 +11,7 @@ import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
 import { AkanWorkers, type LibWorkers } from "./akanWorkers";
 import { DesktopServerConfig } from "./desktopServerConfig";
-import {
-  DEFAULT_DOCKER_IMAGE,
-  DOCKER_INIT,
-  DOCKER_RUN_USER,
-  DOCKER_WRITE_DIRS,
-  dockerImageScript,
-  dockerRunScripts,
-} from "./dockerImage";
+import { DEFAULT_DOCKER_IMAGE, dockerfileOf } from "./dockerImage";
 import { NativeFileSettings } from "./nativeFileSettings";
 import { nativeKeys } from "./nativeKeys";
 import type {
@@ -140,7 +133,7 @@ const emptyLibContributions = (): LibContributions => ({
   trustedDependencies: [],
   bin: [],
   workers: [],
-  docker: { preRuns: [], postRuns: [] },
+  docker: { preRuns: [], installRuns: [], postRuns: [] },
   keepFonts: [],
 });
 
@@ -446,8 +439,10 @@ export class AkanAppConfig implements AppConfigResult {
     return {
       image: docker?.image ?? DEFAULT_DOCKER_IMAGE,
       preRuns: dedupeDockerRuns([...libDocker.preRuns, ...(docker?.preRuns ?? [])]),
+      installRuns: dedupeDockerRuns([...libDocker.installRuns, ...(docker?.installRuns ?? [])]),
       postRuns: dedupeDockerRuns([...libDocker.postRuns, ...(docker?.postRuns ?? [])]),
       command: docker?.command ?? ["bun", "main.js"],
+      crossBuild: docker?.crossBuild ?? false,
     };
   }
   /** What the built server runs with in its image; a desktop app's carried server starts from the same values. */
@@ -484,27 +479,8 @@ export class AkanAppConfig implements AppConfigResult {
   }
   #makeDockerfile(environment?: string, lockfile = true, env = this.getProductionEnv(environment)): string {
     if (typeof this.docker === "string") return this.docker;
-    const { image, preRuns, postRuns, command } = this.docker;
-    const preRunScripts = dockerRunScripts(preRuns);
-    const postRunScripts = dockerRunScripts(postRuns);
-    const imageScript = dockerImageScript(image);
     const isLocal = (environment ?? this.baseDevEnv.env) === "local";
-    const envLines = Object.entries(env).map(([key, value]) => `ENV ${key}=${value}`);
-    return `${imageScript}${isLocal ? `\n${AkanAppConfig.localImageGuard}` : ""}
-RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata tini && rm -rf /var/lib/apt/lists/*
-RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime
-ARG TARGETARCH
-${preRunScripts.join("\n")}
-WORKDIR /workspace
-${lockfile ? "COPY ./package.json ./bun.lock ./" : "COPY ./package.json ./package.json"}
-RUN bun install --production${lockfile ? " --frozen-lockfile" : ""}
-${postRunScripts.join("\n")}
-COPY . .
-RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}
-${envLines.join("\n")}
-USER ${DOCKER_RUN_USER}
-ENTRYPOINT ${JSON.stringify(DOCKER_INIT)}
-CMD ${JSON.stringify(command)}`;
+    return dockerfileOf(this.docker, { env, lockfile, guard: isLocal ? AkanAppConfig.localImageGuard : undefined });
   }
   static #importGeneration = 0;
   // Bun caches dynamic imports by path; a fresh query string re-evaluates the config module (its imports stay cached).
@@ -571,6 +547,7 @@ CMD ${JSON.stringify(command)}`;
       ),
       docker: {
         preRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.preRuns ?? []),
+        installRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.installRuns ?? []),
         postRuns: libConfigs.flatMap((libConfig) => libConfig?.docker.postRuns ?? []),
       },
       //* A lib writes the glob against its own `public/`; `akan sync` mounts that at `public/libs/<lib>`.
@@ -719,7 +696,11 @@ export class AkanLibConfig implements LibConfigResult {
     this.trustedDependencies = normalizePackageNames(config?.trustedDependencies, owner);
     this.bin = AkanBin.parse(config?.bin, owner, lib.cwdPath);
     this.workers = AkanWorkers.parse(config?.workers, owner, lib.cwdPath);
-    this.docker = { preRuns: config?.docker?.preRuns ?? [], postRuns: config?.docker?.postRuns ?? [] };
+    this.docker = {
+      preRuns: config?.docker?.preRuns ?? [],
+      installRuns: config?.docker?.installRuns ?? [],
+      postRuns: config?.docker?.postRuns ?? [],
+    };
     this.assets = { keepFonts: normalizeKeepFonts(config?.assets?.keepFonts as string[] | undefined) };
     this.plugins = plugins;
   }

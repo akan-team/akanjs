@@ -15,7 +15,7 @@ the agent guide's Path Rules table.
 | --- | --- |
 | API only, or no CSR bundle for native apps | `web: false`, `web: { csr: false }` |
 | Move the API or websocket mount | `new AkanApp({ prefix, websocketPrefix })` in `main.ts`, mirrored in `api: { … }`; read with `getApiPrefix()` / `getWsPrefix()` |
-| The production image | `docker: string \| { image, preRuns, postRuns, command }` |
+| The production image | `docker: string \| { image, preRuns, installRuns, postRuns, command, crossBuild }` |
 | iOS, Android, desktop | the `native` section; `desktop: { server: true }` carries the server |
 | SQLite, several databases, a cluster | `database: { modes: [...] }` (`single`, `multiple`, `cluster`), picked by `AKAN_DATABASE_MODE` |
 | A secret of `env/env.server.<env>.ts` in a deployed server | nothing to declare: `akan build` leaves it out and the server reads it from a variable named after its key path; `akan secret-env <app> --env <env>` lists them |

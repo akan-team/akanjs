@@ -373,8 +373,10 @@ export interface DockerImageConfig {
         [key in Arch]?: string;
     };
     preRuns: DockerRun[];
+    installRuns: DockerRun[];
     postRuns: DockerRun[];
     command: string[];
+    crossBuild: boolean;
 }
 
 export type DockerOption = Partial<DockerImageConfig> | string;
@@ -472,6 +474,7 @@ export interface LibConfigResult {
 
 export interface LibDockerConfig {
     preRuns: DockerRun[];
+    installRuns: DockerRun[];
     postRuns: DockerRun[];
 }
 
