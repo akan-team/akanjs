@@ -76,6 +76,11 @@ resolve되지 않습니다.
 - TypeScript
 - `react`는 optional peer이며, 렌더링하는 기능에서만 필요합니다.
 
+## 변경 기록
+
+[`CHANGELOG.md`](https://github.com/akan-team/akanjs/blob/main/pkgs/@akanjs/devkit/CHANGELOG.md)는 저장소에 있고,
+패키지에는 들어 있지 않습니다.
+
 ## 라이선스
 
 MIT
