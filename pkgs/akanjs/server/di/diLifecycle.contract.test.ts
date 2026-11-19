@@ -815,6 +815,32 @@ describe("DiLifecycle module selection", () => {
     });
   });
 
+  test("mounts the gated module a module enableModules names depends on", async () => {
+    const DiLifecycle = await loadDiLifecycle("moduleSelection");
+    class GateDeepService extends serve("gateDeep" as const, { operationMode: ["edge"] }, () => ({})) {}
+    class GateBaseService extends serve("gateBase" as const, { enabled: false }, ({ service }) => ({
+      gateDeepService: service<InstanceType<typeof GateDeepService>>(),
+    })) {}
+    class GateNamedService extends serve("gateNamed" as const, { enabled: false }, ({ service }) => ({
+      gateBaseService: service<InstanceType<typeof GateBaseService>>(),
+    })) {}
+    class GateOtherService extends serve("gateOther" as const, { enabled: false }, () => ({})) {}
+    const gateLib = libOf("enableModulesClosureTest", new AkanOption(), {
+      services: [GateDeepService, GateBaseService, GateNamedService, GateOtherService].map((cls) => serviceModule(cls)),
+    });
+
+    await inOperationMode("cloud", async () => {
+      const lifecycle = new DiLifecycle({ env: {}, enableModules: ["gateNamed"] }, gateLib);
+      await expect(lifecycle.initializeAll()).resolves.toBeDefined();
+      expect(["gateNamed", "gateBase", "gateDeep"].map((name) => lifecycle.registry.serviceCls.has(name))).toEqual([
+        true,
+        true,
+        true,
+      ]);
+      expect([...lifecycle.disabledModules.keys()]).toEqual(["gateOther"]);
+    });
+  });
+
   test("keeps a module enableModules names out when disableModules names it too", async () => {
     const DiLifecycle = await loadDiLifecycle("moduleSelection");
 

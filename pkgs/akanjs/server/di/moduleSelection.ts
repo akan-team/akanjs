@@ -111,7 +111,19 @@ export class ModuleSelection {
   #resolveForcedModules(enableModules: string[]) {
     if (enableModules.length)
       ModuleSelection.#assertKnown(enableModules, this.#known, "[DI:enableModules] unknown module", "Registered");
-    return new Set(enableModules);
+    const candidates = this.#candidates;
+    const forced = new Set<string>();
+    const pending = [...enableModules];
+    //? Its dependencies and relations come with a named module: one left gated would switch it off again.
+    while (pending.length) {
+      const refName = pending.pop();
+      if (!refName || forced.has(refName)) continue;
+      forced.add(refName);
+      const candidate = candidates.get(refName);
+      if (!candidate) continue;
+      pending.push(...getModuleDependencyRefNames(candidate.module), ...getModuleRelationRefNames(candidate.module));
+    }
+    return forced;
   }
 
   // Unknown names throw: a typo here would keep a module running silently.
