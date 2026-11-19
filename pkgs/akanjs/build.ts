@@ -55,6 +55,8 @@ const specifierPatternOf = (name: string) =>
     `(\\bfrom\\s*|\\brequire\\s*\\(\\s*|\\bimport\\s*\\(\\s*|\\bimport\\s+)(["'])${escapeRegExp(name)}((?:/[^"']*)?)\\2`,
     "g",
   );
+//* Read in the repository, not in an install: the changelog alone put 677K characters into every one.
+const REPOSITORY_DOCUMENTS = ["ARCHITECTURE.md", "CHANGELOG.md", "CONTRIBUTING.md", "CODE_OF_CONDUCT.md"];
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".js", ".jsx"];
 const TEST_FILE_PATTERNS = [
   "**/*.{test,spec}.{ts,tsx,js,jsx}",
@@ -180,7 +182,7 @@ const rewriteDeclarationRelativeSpecifiers = (targetDir: string) =>
 const embedPackageSource = async (embedded: Embedded) => {
   await $`mkdir -p ${embedded.outDir}`;
   await $`cp -R ${embedded.dir}/. ${embedded.outDir}`;
-  for (const entry of ["node_modules", ...embedded.nonSourceEntries])
+  for (const entry of ["node_modules", "CHANGELOG.md", ...embedded.nonSourceEntries])
     await rm(`${embedded.outDir}/${entry}`, { recursive: true, force: true });
   if (!embedded.nestedTests) return;
   const testDirs = await Array.fromAsync(new Bun.Glob("**/test").scan({ cwd: embedded.outDir, onlyFiles: false }));
@@ -370,7 +372,7 @@ const build = async () => {
     await $`mkdir -p ${OUT_DIR}`;
     await $`cp -R ${PACKAGE_DIR}/. ${OUT_DIR}`;
     //* `local/` is where test runs leave their databases and logs; gitignored, but `cp -R` would ship it.
-    for (const entry of ["akan.baseline.json", "build.ts", "build", "tsconfig.json", "local", "ARCHITECTURE.md"])
+    for (const entry of ["akan.baseline.json", "build.ts", "build", "tsconfig.json", "local", ...REPOSITORY_DOCUMENTS])
       await rm(`${OUT_DIR}/${entry}`, { recursive: true, force: true });
     for (const embedded of EMBEDDED_PACKAGES) await embedPackageSource(embedded);
     await removeTestFiles();
