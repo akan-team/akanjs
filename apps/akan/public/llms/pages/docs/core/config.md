@@ -336,6 +336,8 @@ A library contributes to five of these: its own externalLibs, trustedDependencie
 
 **The build writes a .dockerignore.** A build started by hand in `dist/apps/<app>` writes its database beside `main.js`, so `sqlite`, `local`, `runtime`, `data`, the image cache and `node_modules` stay out of the image.
 
+**A tool that edits the generated Dockerfile finds its place by a marker.** The file opens with `# akan:dockerfile 1`, and each section starts at a comment: `# akan:install-stage` (only with `crossBuild`), `# akan:base`, `# akan:pre-runs`, `# akan:install`, `# akan:post-runs` and `# akan:app`, a section with no instruction left out. The number rises when the sections change, so a tool that meets one it does not know says so instead of skipping its edit. `dockerfileLayoutOf` from `@akanjs/devkit/akanConfig` reads them, and `dockerfileOf` there is the generator itself. A Dockerfile written as a string carries no marker.
+
 **A desktop app carries its own executables.** It gets none of the image's `docker` steps, so `bin` puts ffmpeg, or anything else its server or a native plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and in a plugin's `ctx.binDir`. The image carries the `linux-x64` and `linux-arm64` entries the same way, first on its PATH. Carry a static LGPL build: a `--enable-nonfree` build may not be redistributed.
 
 A docker written as a string is the whole Dockerfile, taken verbatim. Nothing is merged into it — including the preRuns and postRuns your libraries declared, which are silently dropped rather than silently unapplied.

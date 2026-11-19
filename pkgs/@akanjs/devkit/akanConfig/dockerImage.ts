@@ -36,6 +36,12 @@ export const DOCKER_IGNORED = [
   `${DOCKER_VARIANT_FILE_PREFIX}*`,
 ];
 export const DOCKER_INSTALL_STAGE = "install";
+//? Raised when the sections change: a tool editing the file then meets a number it does not know, and can say so.
+export const DOCKERFILE_FORMAT = 1;
+export const dockerfileSections = ["install-stage", "base", "pre-runs", "install", "post-runs", "app"] as const;
+export type DockerfileSection = (typeof dockerfileSections)[number];
+const DOCKERFILE_MARK = "# akan:";
+const DOCKERFILE_HEAD = `${DOCKERFILE_MARK}dockerfile `;
 //? Bun names the CPU x64 where Docker's TARGETARCH says amd64.
 const DOCKER_INSTALL_TARGET = `--os linux --cpu "$(echo "$TARGETARCH" | sed s/amd64/x64/)"`;
 
@@ -90,33 +96,67 @@ const dockerInstallScripts = (
   ];
 };
 
+const dockerfileSectionOf = (section: DockerfileSection, instructions: string[]) =>
+  instructions.length ? [`${DOCKERFILE_MARK}${section}`, ...instructions] : [];
+
 export const dockerfileOf = (docker: DockerImageConfig, { env, lockfile, guard }: DockerfileParts) => {
   const { image, preRuns, postRuns, command, crossBuild } = docker;
   const install = dockerInstallScripts(docker, lockfile);
   return [
-    ...(crossBuild
-      ? [
-          //? One image for every target: the stage runs on the build machine, where a per-architecture image may not.
-          `FROM --platform=$BUILDPLATFORM ${typeof image === "string" ? image : DEFAULT_DOCKER_IMAGE} AS ${DOCKER_INSTALL_STAGE}`,
-          "ARG TARGETARCH",
-          ...install,
-        ]
-      : []),
-    dockerImageScript(image),
-    ...(guard ? [guard] : []),
-    "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata tini && rm -rf /var/lib/apt/lists/*",
-    "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
-    "ARG TARGETARCH",
-    ...dockerRunScripts(preRuns),
-    ...(crossBuild ? ["WORKDIR /workspace", `COPY --from=${DOCKER_INSTALL_STAGE} /workspace ./`] : install),
-    ...dockerRunScripts(postRuns),
-    "COPY . .",
-    `RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}`,
-    ...dockerEnvLines(env, docker.env),
-    `USER ${DOCKER_RUN_USER}`,
-    `ENTRYPOINT ${JSON.stringify(DOCKER_INIT)}`,
-    `CMD ${JSON.stringify(command)}`,
+    `${DOCKERFILE_HEAD}${DOCKERFILE_FORMAT}`,
+    ...dockerfileSectionOf(
+      "install-stage",
+      crossBuild
+        ? [
+            //? One image for every target: the stage runs on the build machine, where a per-architecture image may not.
+            `FROM --platform=$BUILDPLATFORM ${typeof image === "string" ? image : DEFAULT_DOCKER_IMAGE} AS ${DOCKER_INSTALL_STAGE}`,
+            "ARG TARGETARCH",
+            ...install,
+          ]
+        : [],
+    ),
+    ...dockerfileSectionOf("base", [
+      dockerImageScript(image),
+      ...(guard ? [guard] : []),
+      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata tini && rm -rf /var/lib/apt/lists/*",
+      "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+      "ARG TARGETARCH",
+    ]),
+    ...dockerfileSectionOf("pre-runs", dockerRunScripts(preRuns)),
+    ...dockerfileSectionOf(
+      "install",
+      crossBuild ? ["WORKDIR /workspace", `COPY --from=${DOCKER_INSTALL_STAGE} /workspace ./`] : install,
+    ),
+    ...dockerfileSectionOf("post-runs", dockerRunScripts(postRuns)),
+    ...dockerfileSectionOf("app", [
+      "COPY . .",
+      `RUN mkdir -p ${DOCKER_WRITE_DIRS.join(" ")} && chown ${DOCKER_RUN_USER} ${DOCKER_WRITE_DIRS.join(" ")}`,
+      ...dockerEnvLines(env, docker.env),
+      `USER ${DOCKER_RUN_USER}`,
+      `ENTRYPOINT ${JSON.stringify(DOCKER_INIT)}`,
+      `CMD ${JSON.stringify(command)}`,
+    ]),
   ].join("\n");
+};
+
+export interface DockerfileLayout {
+  format: number;
+  /** Each section's lines under its marker, in the file's order; a newer format may name one this version lacks. */
+  sections: Map<string, string[]>;
+}
+
+export const dockerfileLayoutOf = (dockerfile: string): DockerfileLayout | null => {
+  const [head = "", ...lines] = dockerfile.split("\n");
+  if (!/^# akan:dockerfile \d+$/.test(head)) return null;
+  const sections = new Map<string, string[]>();
+  let current: string[] | null = null;
+  for (const line of lines) {
+    if (line.startsWith(DOCKERFILE_MARK)) {
+      current = [];
+      sections.set(line.slice(DOCKERFILE_MARK.length), current);
+    } else current?.push(line);
+  }
+  return { format: Number(head.slice(DOCKERFILE_HEAD.length)), sections };
 };
 
 /** First occurrence wins, so a step a lib and its app both declare becomes one layer. */
