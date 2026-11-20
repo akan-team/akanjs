@@ -4,6 +4,7 @@ import { toError } from "akanjs/common";
 import type { ServerPolicy } from "akanjs/native/api";
 import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
 import type { AkanAppConfig, NativeEnv } from "../akanConfig";
+import { DOCKER_VARIANT_FILE_PREFIX } from "../akanConfig/dockerImage";
 import type { App } from "../commandDecorators";
 import type { PackageJson } from "../workspace/types";
 import { DesktopBin } from "./desktopBin";
@@ -190,7 +191,7 @@ export class DesktopServerStage {
     const dist = this.app.dist.cwdPath;
     await mkdir(this.dir, { recursive: true });
     for (const name of await readdir(dist))
-      if (!DesktopServerStage.uncarried.has(name))
+      if (!DesktopServerStage.uncarried.has(name) && !name.startsWith(DOCKER_VARIANT_FILE_PREFIX))
         await cp(path.join(dist, name), path.join(this.dir, name), { recursive: true });
     const scanInfo = this.app.getScanInfo({ allowEmpty: true }) ?? (await this.app.scan({ write: false }));
     const carried = [...DesktopBin.select(config, scanInfo.getLibs()).keys()];
