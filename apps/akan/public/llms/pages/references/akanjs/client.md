@@ -52,6 +52,8 @@ Export
 
 - resolveServerUrl: Puts a stored `/api/…` URL on the server's origin when a CSR page is served elsewhere, such as in a desktop app.
 
+- usePendingNavigation, PendingLocation: The `{ href, pathname, path, searchParams }` an SSR navigation is loading, from the press until its page is drawn, and `null` otherwise. A redirect moves it to where it leads. For a skeleton or a dimmed pane shown before the response.
+
 - Device: Platform, safe area, keyboard, haptics and scroll of the device.
 
 - Font: The type of one font entry in `rootLayout().fonts([...])`.

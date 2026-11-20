@@ -73,7 +73,9 @@ File names, stages, the `.render()` order and what a route file must never do ar
   `.notFound(() => <><title>Not found</title>…</>)`, except below a `.loading()`, where the head is already out.
 - `<Link href="/books/OL45804W">`: write the path without the locale; Link adds it, or leaves it off for the default
   locale under `i18n.localePrefix: "as-needed"`. It renders an `<a>` and takes its attributes; `activeClassName`
-  marks the current one.
+  marks the current one from the press, before its page arrives; an `active` prop from a layout's render is late.
+- An SSR page still loading: `pendingClassName` / `data-pending` on its `Link`, and `usePendingNavigation()`
+  (`akanjs/client`) for its `{ path, searchParams }`, `null` once the page is drawn.
 - From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.
 - A page state a push opens in the query (a record in `?id=`): close it with `router.backTo(href)`, never
   `router.back()` or a `renderMode` branch. A CSR or native stack rewrites a push that keeps the pathname rather than

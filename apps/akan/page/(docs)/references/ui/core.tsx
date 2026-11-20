@@ -137,8 +137,8 @@ export default page()
         key: "activeClassName",
         type: "string",
         desc: l.trans({
-          en: "Class added while the current page is `href` or below it. The locale and the basePath are ignored.",
-          ko: "현재 페이지가 `href`이거나 그 아래일 때 붙는 class입니다. locale과 basePath는 비교에서 뺍니다.",
+          en: "Class added while the current page is `href` or below it. The locale and the basePath are ignored. It follows the press: a push lights the link at once, before its page arrives.",
+          ko: "현재 페이지가 `href`이거나 그 아래일 때 붙는 class입니다. locale과 basePath는 비교에서 뺍니다. 누른 순간을 따릅니다. push가 시작되면 페이지가 도착하기 전에 바로 켜집니다.",
         }),
       },
       {
@@ -155,6 +155,14 @@ export default page()
         desc: l.trans({
           en: "More paths under which the link counts as active, such as a tab lit on its detail pages.",
           ko: "링크를 활성으로 볼 경로를 더합니다. 상세 페이지에서도 켜져 있어야 하는 탭에 씁니다.",
+        }),
+      },
+      {
+        key: "pendingClassName",
+        type: "string",
+        desc: l.trans({
+          en: "Class added, with a `data-pending` attribute, from the press until the page is drawn, on a link the loading page would make active. SSR pages only: a CSR stack moves at once.",
+          ko: "누른 순간부터 새 페이지가 그려질 때까지 붙는 class이며 `data-pending` 속성도 함께 붙습니다. 불러오는 페이지에서 활성이 될 링크가 대상입니다. SSR 페이지 전용입니다. CSR 스택은 바로 이동합니다.",
         }),
       },
       {
