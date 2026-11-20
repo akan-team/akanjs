@@ -20,6 +20,7 @@ import {
   Suspense,
 } from "react";
 import { getExplicitPageConfigKeys, mergePageConfigs, resolvePageState } from "../client/frameConfig";
+import { routeLoadingAtPressMarker } from "../client/route/RouteDefinition";
 import { RouteGuards } from "../client/route/RouteGuards";
 import { RouteHead } from "../client/route/RouteHead";
 import type { FallbackHead } from "./fallbackHead";
@@ -33,7 +34,7 @@ import {
   isAkanRscPartialCommitEnabled,
 } from "./routeState";
 import { RscRenderLevels } from "./rscRenderLevels";
-import { AkanSegmentOutletReference } from "./rscSegmentOutletReference";
+import { AkanPressLoadingReference, AkanSegmentOutletReference } from "./rscSegmentOutletReference";
 
 /** How a render reached after the layouts streamed answers `router.notFound()` — in place, since its parents are out. */
 export interface RouteNotFoundInPlace {
@@ -143,6 +144,7 @@ export class RouteElementComposer {
       renders: RouteElementComposer.#getRenderStack(pathRoute),
       segments: isAkanRscPartialCommitEnabled() ? createAkanRouteSegments(pathRoute) : undefined,
       levelBoundary: pathRoute.levelBoundary,
+      page: pathRoute,
       params,
       searchParams,
       navKey,
@@ -272,6 +274,7 @@ export class RouteElementComposer {
       renders: renders.slice(patchStartIndex),
       owners: renders.slice(0, patchStartIndex),
       levelBoundary: pathRoute.levelBoundary,
+      page: pathRoute,
       params,
       searchParams,
       navKey,
@@ -382,6 +385,7 @@ export class RouteElementComposer {
     owners = [],
     segments,
     levelBoundary,
+    page,
     params,
     searchParams,
     navKey,
@@ -395,6 +399,8 @@ export class RouteElementComposer {
     /** Around each level below its owner: the Flight server only references it and React's server renderer runs no
      * error boundary, so a level failing before the first byte still takes its `.error()`. */
     levelBoundary?: OwnedLevelBoundary;
+    /** The route whose page is the last of `renders`, named so `.loading(…, { atPress })` knows its other paths. */
+    page?: Pick<PathRoute, "path" | "shadowedBy">;
     params: Record<string, string>;
     searchParams: Record<string, string | string[]>;
     navKey?: string;
@@ -411,6 +417,7 @@ export class RouteElementComposer {
       const loadingFallback = RouteElementComposer.#composeLoadingFallback(renders.slice(i), params);
       const suspenseKey =
         navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
+      const pressDelayMs = suspenseKey && page ? RouteElementComposer.#loadingAtPressMsOf(routeRender) : undefined;
       const levelGate = levelGates[i];
       //? The owner renders System.Provider, which starts the router, and a root `_overrides` level sits above it: a
       //? notice at or above the owner would have no router to retry. The owner bounds its own content inside the
@@ -431,6 +438,9 @@ export class RouteElementComposer {
       element = (
         <Suspense key={suspenseKey} fallback={loadingFallback}>
           {Boundary ? <Boundary>{level}</Boundary> : level}
+          {page && pressDelayMs !== undefined ? (
+            <AkanPressLoadingReference pattern={page.path} shadowedBy={page.shadowedBy ?? []} delayMs={pressDelayMs} />
+          ) : null}
           {routeRender.Loading && levelGate ? <RouteShellGate.Wait until={levelGate.opened} /> : null}
         </Suspense>
       );
@@ -584,6 +594,10 @@ export class RouteElementComposer {
     for (const levelGate of new Set([gate, ...gates]))
       levelGate.hold(gates.filter((held, index) => held === levelGate && renders[index]).length);
     return gates;
+  }
+
+  static #loadingAtPressMsOf(routeRender: RouteRender): number | undefined {
+    return (routeRender.Loading as { [routeLoadingAtPressMarker]?: number } | undefined)?.[routeLoadingAtPressMarker];
   }
 
   static #composeLoadingFallback(renders: RouteRender[], params: Record<string, string>): ReactNode {

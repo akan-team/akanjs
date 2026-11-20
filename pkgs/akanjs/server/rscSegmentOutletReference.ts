@@ -1,5 +1,5 @@
 import { AkanError } from "akanjs/base";
-import type { AkanRouteHead, AkanSegmentOutlet } from "./rscSegmentOutlet";
+import type { AkanPressLoading, AkanRouteHead, AkanSegmentOutlet } from "./rscSegmentOutlet";
 
 const AKAN_SEGMENT_OUTLET_REFERENCE_ID = "pkgs/akanjs/server/rscSegmentOutlet.tsx";
 
@@ -25,3 +25,4 @@ function resolveAkanSegmentOutletReference<T>(exportName: string): T {
 export const AkanSegmentOutletReference =
   resolveAkanSegmentOutletReference<typeof AkanSegmentOutlet>("AkanSegmentOutlet");
 export const AkanRouteHeadReference = resolveAkanSegmentOutletReference<typeof AkanRouteHead>("AkanRouteHead");
+export const AkanPressLoadingReference = resolveAkanSegmentOutletReference<typeof AkanPressLoading>("AkanPressLoading");

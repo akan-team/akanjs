@@ -196,7 +196,7 @@ rootLayout
 
   - .guard(fn): Runs before anything on the route renders, and refuses with a redirect or a not-found.
 
-  - .loading(fn): Shown while render awaits. It gets path values but no search values.
+  - .loading(fn, option?): Shown while render awaits. It gets path values but no search values. On a page(), { atPress: true } shows it once a press to another path of the same page (/chat/a to /chat/b) has waited 150 ms on the server, where the page being left would stay until the answer; { atPress: { delayMs } } sets the wait. Back, Forward and a page the browser already holds keep the page. The fallback shown is the one drawn for the path being left, so it should not draw from its arguments.
 
   - .render(fn): The last stage. Draws the route from the typed arguments.
 

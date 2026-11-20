@@ -594,7 +594,7 @@ function installNavigate(
     const navId = supersedeForPageNavigation();
     const target = normalizeHref(href);
     const signal = requestSignalOf(navId, target);
-    const pending = PendingNavigation.begin(target);
+    const pending = PendingNavigation.begin(target, { from: renderedHref, traversal: options.traversal });
     //? A committed page ends it once drawn, and a document load never does: the document is replaced still loading.
     let endsPending = true;
     //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
@@ -712,7 +712,7 @@ window.addEventListener("popstate", (event) => {
   // The URL already moved, so a refused route falls back to the document route's real not-found page.
   if (!keepsPage)
     void globalThis
-      .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false, scrollY })
+      .__AKAN_RSC_NAVIGATE__?.(window.location.href, { replace: true, scrollToTop: false, scrollY, traversal: true })
       ?.catch((error: unknown) => hardNavigateAfterRscFailure(window.location.href, true, error));
   else {
     //? Still a navigation: one in flight would otherwise commit its page onto the entry this move landed on.

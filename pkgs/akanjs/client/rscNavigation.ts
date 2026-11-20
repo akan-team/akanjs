@@ -9,7 +9,14 @@ declare global {
   var __AKAN_RSC_NAVIGATE__:
     | ((
         href: string,
-        options?: { replace?: boolean; scrollToTop?: boolean; scrollY?: number; shallow?: boolean },
+        options?: {
+          replace?: boolean;
+          scrollToTop?: boolean;
+          scrollY?: number;
+          shallow?: boolean;
+          /** Back or Forward: the history entry is already the target's. */
+          traversal?: boolean;
+        },
       ) => Promise<void>)
     | undefined;
   var __AKAN_DEV_SYNC_NAVIGATION__: ((href: string, kind: "push" | "replace" | "back" | "pop") => void) | undefined;

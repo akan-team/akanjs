@@ -189,6 +189,7 @@ export {
   RouteGuards,
   RouteHead,
   type RouteKind,
+  type RouteLoadingOption,
   type RouteModuleSource,
   type RoutePromptArgument,
   type RoutePromptMeta,
@@ -197,6 +198,7 @@ export {
   rootLayout,
   routeArgsMarker,
   routeDefinitionMarker,
+  routeLoadingAtPressMarker,
 } from "./route";
 export {
   AkanNotFoundError,

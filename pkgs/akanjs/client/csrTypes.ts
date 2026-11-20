@@ -429,6 +429,8 @@ export const pageActivityContext = sharedContext<PageActivityState>("pageActivit
 export interface PathRoute {
   path: string;
   pathSegments: string[];
+  /** The pages matched ahead of this one that take some of its paths, as `/:lang/chat/new` does of `/:lang/chat/:id`. */
+  shadowedBy?: string[];
   renderPage: RouteRender;
   pageState: PageState;
   pageConfigChain?: PageConfig[];
