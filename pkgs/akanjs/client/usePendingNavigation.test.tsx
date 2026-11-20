@@ -23,7 +23,7 @@ describe("usePendingNavigation", () => {
   afterEach(() => PendingNavigation.clear());
 
   test("answers null with no navigation in flight, on the server as in the browser", () => {
-    PendingNavigation.begin("http://localhost/en/chat/b");
+    PendingNavigation.wait(PendingNavigation.begin("http://localhost/en/chat/b"));
     expect(renderToString(<Pending />)).toContain("null");
     PendingNavigation.clear();
 
@@ -38,6 +38,10 @@ describe("usePendingNavigation", () => {
     let pending: ReturnType<typeof PendingNavigation.begin> | undefined;
     act(() => {
       pending = PendingNavigation.begin("http://localhost/en/chat/b?thread=1&tag=x&tag=y#latest");
+    });
+    expect(seen).toBeNull();
+    act(() => {
+      if (pending) PendingNavigation.wait(pending);
     });
     expect(seen).toEqual({
       href: "/en/chat/b?thread=1&tag=x&tag=y#latest",

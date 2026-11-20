@@ -443,7 +443,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
     };
     //? A redirect starts its navigation inside the RSC client, past `push` and `replace`: the store follows it here.
     const followPending = PendingNavigation.subscribe(() => {
-      const pending = PendingNavigation.get();
+      const pending = PendingNavigation.target();
       if (!pending) return;
       const { pathname, search } = new URL(pending);
       const shown = ShellState.get();

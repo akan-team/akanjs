@@ -29,7 +29,7 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   activeExact?: boolean;
   /** More paths under which the link counts as active, as a tab does for its detail pages. */
   activeMatch?: string[];
-  /** Applied, with `data-pending`, while a page this link would be active on is still loading. */
+  /** Applied, with `data-pending`, while a page this link would be active on loads from the server. */
   pendingClassName?: string;
   /** @deprecated Has no effect: neither renderer reads it. */
   noCache?: boolean;

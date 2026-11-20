@@ -613,8 +613,10 @@ function installNavigate(
           commitRscPatchNavigation({ target, patch, fromCache, replace: options.replace, requestScroll });
         if (caches.replayPatch(target, navId, (patch) => commitPatch(patch, true))) return;
         const taken = caches.takePrefetch(target, signal);
+        if (!taken?.arrived) PendingNavigation.wait(pending);
         const prefetched = (await taken?.response) ?? undefined;
         if (signal.aborted) return;
+        if (!prefetched) PendingNavigation.wait(pending);
         servedFromCache = !!prefetched && !taken?.fresh;
         const fetched = await fetchRsc(target, {
           replaceOnRedirect,
@@ -632,6 +634,7 @@ function installNavigate(
             return;
           }
           caches.forgetPatch(target);
+          PendingNavigation.wait(pending);
           const fallback = await fetchRsc(target, {
             replaceOnRedirect,
             sendRouterState: false,

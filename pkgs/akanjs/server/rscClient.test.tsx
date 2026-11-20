@@ -2222,6 +2222,54 @@ describe("rscClient pending navigation", () => {
     expect(PendingNavigation.get()).toBeNull();
   });
 
+  test("a page replayed from the client cache is never pending, though the navigation names its target", async () => {
+    await navigate("/pending/seen");
+    await navigate("/pending/other");
+    const seen: [string | null, string | null][] = [];
+    const unsubscribe = PendingNavigation.subscribe(() =>
+      seen.push([PendingNavigation.get(), PendingNavigation.target()]),
+    );
+
+    await navigate("/pending/seen");
+    await waitFor(() => shown() === "/pending/seen");
+    unsubscribe();
+
+    expect(fetchCountOf("/pending/seen")).toBe(1);
+    expect(seen).toEqual([
+      [null, `${origin}/pending/seen`],
+      [null, null],
+    ]);
+  });
+
+  test("a prefetch that has arrived is never pending, and one still loading is", async () => {
+    const prefetch = async (href: string) => {
+      await act(async () => {
+        globalThis.__AKAN_RSC_PREFETCH__?.(href);
+        await sleep(10);
+      });
+    };
+    await navigate("/pending/list");
+    await prefetch("/pending/ready");
+    const seen: (string | null)[] = [];
+    const unsubscribe = PendingNavigation.subscribe(() => seen.push(PendingNavigation.get()));
+    await navigate("/pending/ready");
+    await waitFor(() => shown() === "/pending/ready");
+    unsubscribe();
+    expect(fetchCountOf("/pending/ready")).toBe(1);
+    expect(seen).toEqual([null, null]);
+
+    const late = heldPage("/pending/late");
+    served.set("/pending/late", late.serve);
+    await prefetch("/pending/late");
+    await start("/pending/late");
+    expect(PendingNavigation.get()).toBe(`${origin}/pending/late`);
+
+    await act(async () => late.release());
+    await waitFor(() => shown() === "/pending/late");
+    expect(fetchCountOf("/pending/late")).toBe(1);
+    expect(PendingNavigation.get()).toBeNull();
+  });
+
   test("a shallow change loads nothing, so it is never pending", async () => {
     await navigate("/pending/tabs");
     await waitFor(() => shown() === "/pending/tabs");
