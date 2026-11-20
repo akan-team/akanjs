@@ -22,6 +22,7 @@ import { DevSurfacePolicy } from "./devSurfacePolicy";
 import type { HostAllowlist } from "./hostAllowlist";
 import { ServerLimits } from "./serverLimits";
 import { WsCredentialExpiry } from "./wsCredentialExpiry";
+import { WsCredentialRevocation } from "./wsCredentialRevocation";
 import { WsUpgrade } from "./wsUpgrade";
 
 export interface HmrStateSource {
@@ -186,6 +187,7 @@ export class ApiRouter {
         }
         SignalResolver.handleWsOpen(ws, registry);
         WsCredentialExpiry.watch(ws);
+        WsCredentialRevocation.track(ws);
       },
       message: async (ws, message) => {
         const data = ws.data as WsTaggedData | undefined;
@@ -252,6 +254,7 @@ export class ApiRouter {
           return;
         }
         WsCredentialExpiry.unwatch(ws);
+        WsCredentialRevocation.untrack(ws);
         SignalResolver.handleWsClose(ws, registry, live);
       },
     };

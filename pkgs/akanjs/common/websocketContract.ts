@@ -35,6 +35,8 @@ export interface WebsocketHeartbeatAckData {
 export const websocketCredentialContract = {
   expiredCode: 4401,
   expiredReason: "credential expired",
+  //? A revoked one closes with the expiry's code: a client renews and reconnects on it, and a shipped one knows no other.
+  revokedReason: "credential revoked",
   expiresAtOf: (jwt: string): number | null => {
     try {
       const { exp } = decodeJwtPayload<{ exp?: unknown }>(jwt);

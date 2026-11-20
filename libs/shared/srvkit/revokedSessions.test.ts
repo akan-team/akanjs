@@ -2,6 +2,7 @@ import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { accessTokenSeconds } from "@libs/util/common";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import { WsCredentialRevocation } from "akanjs/server";
 
 import { RevokedSessions } from "./revokedSessions";
 
@@ -36,6 +37,19 @@ describe("RevokedSessions", () => {
     expect(RevokedSessions.deniedSeconds).toBeGreaterThanOrEqual(sevenDays);
     for (const { until } of marks)
       expect(Math.abs(until.diff(dayjs(), "second") - RevokedSessions.deniedSeconds)).toBeLessThanOrEqual(2);
+  });
+
+  test("closes every socket a revoked session holds, under whichever claim its token names it, once it is marked", async () => {
+    const steps: string[] = [];
+    RevokedSessions.use(null, async (sessionId) => void steps.push(`mark ${sessionId}`));
+    const revoke = spyOn(WsCredentialRevocation, "revoke").mockImplementation(() => void steps.push("close"));
+    try {
+      await RevokedSessions.markRevoked(["s1", "s2"]);
+      expect(steps).toEqual(["mark s1", "mark s2", "close"]);
+      expect(revoke).toHaveBeenCalledWith({ sid: ["s1", "s2"], selfSid: ["s1", "s2"], meSid: ["s1", "s2"] });
+    } finally {
+      revoke.mockRestore();
+    }
   });
 
   test("an answering check decides alone, whichever way the caller asked to fail", async () => {

@@ -34,6 +34,18 @@ describe("SolidPubSub", () => {
     expect(routed).toEqual([change]);
   });
 
+  test("hands a revocation to the gateway and closes for one another replica made", () => {
+    const claims = { sid: ["s-1"] };
+    pubsub.publishRevocation(claims);
+    expect(sent).toEqual([{ type: "ws.revoke", claims, origin: "replica-0" }]);
+
+    const closed: unknown[] = [];
+    pubsub.onRevocation((received) => closed.push(received));
+    process.emit("message", { type: "ws.revoke", claims, origin: "replica-1" });
+    process.emit("message", { type: "ws.revoke", claims, origin: "replica-0" });
+    expect(closed).toEqual([claims]);
+  });
+
   test("delivers a room event another replica published once", () => {
     const delivered: unknown[] = [];
     pubsub.setEventHandler((roomId, data) => delivered.push([roomId, data]));

@@ -318,6 +318,9 @@ export class AkanApp {
       case "live.models":
         this.#rooms.setLiveModels(idx, message.models);
         return;
+      case "ws.revoke":
+        this.#children.fanoutToFederation(message, idx);
+        return;
       case "metrics.report":
         this.#children.updateMetrics(idx, message.metrics);
         return;
