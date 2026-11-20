@@ -566,8 +566,8 @@ const buildFields = [
     key: "docker",
     type: "string | DockerImageConfig",
     default: "oven/bun:1.4.4-slim@sha256:…",
-    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, env, and variants for a second image.",
-    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, 같은 레이어의 installRuns, command, crossBuild, env, 그리고 두 번째 이미지를 위한 variants입니다.",
+    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, baseSetup, env, and variants for a second image.",
+    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, 같은 레이어의 installRuns, command, crossBuild, baseSetup, env, 그리고 두 번째 이미지를 위한 variants입니다.",
   },
 ];
 
@@ -1692,6 +1692,32 @@ const config: AppConfig = {
                     단계가 <code>bun install --os linux --cpu &lt;target&gt;</code>을 실행하고, 대상 아키텍처 단계는 그
                     결과를 복사한 뒤 apt-get, preRuns, postRuns만 실행합니다. 이때 의존성의 라이프사이클 스크립트는 빌드
                     머신의 CPU에서 실행되며, 빌드에는 BuildKit이 필요합니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>baseSetup: false leaves the base step to the image.</strong> Every generated image runs{" "}
+                    <code>apt-get</code> for <code>ca-certificates</code>, <code>tzdata</code> and <code>tini</code> and
+                    sets the time zone, which a builder with no layer cache repeats on every build. Build an image once
+                    from <code>DOCKER_BASE_RUNS</code> in <code>@akanjs/devkit/akanConfig</code> (
+                    <code>DOCKER_BASE_PACKAGES</code> is its package list), name it in <code>image</code>, for every
+                    architecture when it is an object, and set <code>baseSetup: false</code>. Tag that image by the
+                    steps it ran, so a release that changes them builds a new one.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>baseSetup: false는 기본 단계를 베이스 이미지에 맡깁니다.</strong> 생성된 이미지는 모두{" "}
+                    <code>apt-get</code>으로 <code>ca-certificates</code>, <code>tzdata</code>, <code>tini</code>를
+                    설치하고 시간대를 맞추는데, 레이어 캐시가 없는 빌더는 빌드마다 이를 반복합니다.{" "}
+                    <code>@akanjs/devkit/akanConfig</code>의 <code>DOCKER_BASE_RUNS</code>로 이미지를 한 번 만들어 두고(
+                    <code>DOCKER_BASE_PACKAGES</code>가 패키지 목록입니다) <code>image</code>에 지정한 뒤{" "}
+                    <code>baseSetup: false</code>로 둡니다. <code>image</code>가 객체라면 모든 아키텍처를 지정해야
+                    합니다. 그 이미지의 태그는 실행한 단계에서 만들어, 단계가 바뀌는 릴리스에서 새로 빌드되게 합니다.
                   </span>
                 ),
               })}

@@ -377,6 +377,7 @@ export interface DockerImageConfig {
     postRuns: DockerRun[];
     command: string[];
     crossBuild: boolean;
+    baseSetup: boolean;
     env: Record<string, string>;
 }
 
