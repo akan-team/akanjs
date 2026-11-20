@@ -64,6 +64,9 @@ File names, stages, the `.render()` order and what a route file must never do ar
   that answers everyone alike, lets the server keep the page.
 - Loading: `.loading(() => <Skeleton />)` on a page or layout is what that level shows until its `.render()` and the
   levels below it resolve; the levels above it stream first.
+- A page left on screen while its next path loads (`/chat/a` to `/chat/b` under an awaiting layout):
+  `.loading(fn, { atPress: true })` shows the fallback after 150 ms of waiting on the server (`{ atPress: { delayMs } }`).
+  `page()` only; never on Back, Forward or a held page. It is the path being left's fallback: draw it from no argument.
 - `router.notFound()` from `.guard()`, `.head()` or `.render()` answers 404 with the nearest layout's `.notFound()`
   above it (an unmatched URL: the deepest layout covering it), else the built-in 404.
 - A layout's own 404 and error views: `.notFound(({ pathname }) => …)` and `.error(({ error }) => …)` on `layout()`

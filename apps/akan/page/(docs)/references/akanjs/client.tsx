@@ -383,10 +383,10 @@ export default page()
             marks: onEvery,
           },
           {
-            name: ".loading(fn)",
+            name: ".loading(fn, option?)",
             desc: l.trans({
-              en: "Shown while render awaits. It gets path values but no search values.",
-              ko: "render가 기다리는 동안 보여 줍니다. path 값은 받지만 search 값은 받지 않습니다.",
+              en: "Shown while render awaits. It gets path values but no search values. On a page(), { atPress: true } shows it once a press to another path of the same page (/chat/a to /chat/b) has waited 150 ms on the server, where the page being left would stay until the answer; { atPress: { delayMs } } sets the wait. Back, Forward and a page the browser already holds keep the page. The fallback shown is the one drawn for the path being left, so it should not draw from its arguments.",
+              ko: "render가 기다리는 동안 보여 줍니다. path 값은 받지만 search 값은 받지 않습니다. page()에서 { atPress: true }를 주면, 같은 페이지의 다른 경로로 이동할 때(/chat/a에서 /chat/b) 서버 응답을 150ms 기다린 시점부터 이 화면을 보여 줍니다. 주지 않으면 응답이 올 때까지 떠나는 페이지가 그대로 남습니다. { atPress: { delayMs } }로 기다리는 시간을 정합니다. 뒤로·앞으로 가기와 브라우저가 이미 가진 페이지로의 이동은 페이지를 그대로 둡니다. 보이는 화면은 떠나는 경로에서 그려 둔 것이므로 인자에 따라 달라지지 않게 그려야 합니다.",
             }),
             marks: onEvery,
           },

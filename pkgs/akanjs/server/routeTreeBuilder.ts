@@ -77,7 +77,31 @@ export class RouteTreeBuilder {
 
     const rootRoute = this.#routeMap.get("/");
     if (!rootRoute) throw new AkanError("invalidRoute", "No root route");
-    return this.#getPathRoutes(rootRoute).sort((a, b) => compareRouteSpecificity(a.path, b.path));
+    return RouteTreeBuilder.#withShadows(
+      this.#getPathRoutes(rootRoute).sort((a, b) => compareRouteSpecificity(a.path, b.path)),
+    );
+  }
+
+  //? `match` takes the first route in this order, so the ones ahead that fit the same paths are the ones that win.
+  static #withShadows(sorted: PathRoute[]): PathRoute[] {
+    const parts = sorted.map((pathRoute) => pathRoute.path.split("/").filter(Boolean));
+    const isParam = (part: string | undefined) => part?.startsWith(":") === true;
+    sorted.forEach((pathRoute, index) => {
+      const own = parts[index] ?? [];
+      if (!own.some((part) => isParam(part) && part !== ":lang")) return;
+      const shadowedBy = sorted
+        .slice(0, index)
+        .filter((_, ahead) => {
+          const other = parts[ahead] ?? [];
+          return (
+            other.length === own.length &&
+            other.every((part, at) => part === own[at] || isParam(part) || isParam(own[at]))
+          );
+        })
+        .map((ahead) => ahead.path);
+      if (shadowedBy.length) pathRoute.shadowedBy = shadowedBy;
+    });
+    return sorted;
   }
 
   getFallbackRoutes(): LayoutFallbackRoute[] {

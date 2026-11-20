@@ -5,7 +5,7 @@ import { RenderScope } from "akanjs/fetch";
 import type { LayoutModule, PageModule, PageProps } from "../csrTypes";
 import { AkanNotFoundError } from "../router";
 import { Translator } from "../translator";
-import { RouteDefinition } from "./RouteDefinition";
+import { RouteDefinition, routeLoadingAtPressMarker } from "./RouteDefinition";
 import { assertGuardOnChain, isRouteDefinition, resolveRouteModule } from "./resolveRouteModule";
 import { RouteArgError, RouteArgPending } from "./routeArgs";
 import { layout, page, rootLayout } from "./routeBuilders";
@@ -372,6 +372,31 @@ describe("the render path a chain's render reads", () => {
     expect(await renderAt(withApp.toRouteModule().default, props({ lang: "en" }))).toBe("app");
     expect(seen).toEqual({ page: "/en/pushed", layout: "/en/pushed", withApp: "/en/pushed" });
     expect(Translator.getRenderPath()).toBeUndefined();
+  });
+});
+
+describe(".loading(…, { atPress })", () => {
+  const delayOf = (mod: PageModule) =>
+    (mod.Loading as { [routeLoadingAtPressMarker]?: number } | undefined)?.[routeLoadingAtPressMarker];
+  const chain = (option?: Parameters<ReturnType<typeof page>["loading"]>[1]) =>
+    page()
+      .loading(() => "loading", option)
+      .render(() => "page")
+      .toRouteModule();
+
+  test("marks the page's Loading with the delay, 150 ms when it names none, and nothing without the option", () => {
+    expect(delayOf(chain())).toBeUndefined();
+    expect(delayOf(chain({ atPress: false }))).toBeUndefined();
+    expect(delayOf(chain({ atPress: true }))).toBe(150);
+    expect(delayOf(chain({ atPress: { delayMs: 0 } }))).toBe(0);
+    expect(chain({ atPress: true }).Loading?.({ params: {} })).toBe("loading");
+  });
+
+  test("refuses the option on a layout, and a delay that is not a time", () => {
+    expect(() => layout().loading(() => null, { atPress: true })).toThrow("layout() takes no .loading(…, { atPress })");
+    expect(() => rootLayout().loading(() => null, { atPress: true })).toThrow("takes no .loading(…, { atPress })");
+    expect(() => page().loading(() => null, { atPress: { delayMs: -1 } })).toThrow("delayMs of 0 or more, not -1");
+    expect(() => page().loading(() => null, { atPress: { delayMs: Number.NaN } })).toThrow("delayMs of 0 or more");
   });
 });
 

@@ -11,6 +11,7 @@ import { deserialize } from "akanjs/constant";
 import { RenderScope } from "akanjs/fetch";
 import type { ReactNode } from "react";
 import type { Head, LayoutModule, PageConfig, PageModule, RouteGuardProps } from "../csrTypes";
+import { PressLoading } from "../pressLoading";
 import { AkanNotFoundError, getRequestRoutePath } from "../router";
 import { Translator } from "../translator";
 import {
@@ -28,6 +29,16 @@ export type RouteKind = "page" | "layout" | "rootLayout";
 export const routeDefinitionMarker = Symbol.for("akan.routeDefinition");
 /** Interned like the marker: the declared args ride on the module's render function, read by the CSR render cache. */
 export const routeArgsMarker = Symbol.for("akan.routeArgs");
+/** Interned like the marker: the delay of `.loading(…, { atPress })` rides on the module's `Loading`. */
+export const routeLoadingAtPressMarker = Symbol.for("akan.routeLoadingAtPress");
+
+export interface RouteLoadingOption {
+  /**
+   * Shows the fallback once a press to another path of this page (`/chat/a` to `/chat/b`) waits on the server, in
+   * place of the page being left. `true` waits 150 ms first. The fallback drawn is the one of the path being left.
+   */
+  atPress?: boolean | { delayMs: number };
+}
 
 type HeadStage<Args> = Head | ((args: Args) => PromiseOrObject<Head | null | undefined>);
 type GuardStage<Args> = (args: Args, request: RouteGuardRequest) => void | Promise<void>;
@@ -57,6 +68,7 @@ export abstract class RouteDefinition<
   #head?: HeadStage<never>;
   #guard?: GuardStage<never>;
   #loading?: (args: never) => PromiseOrObject<ReactNode>;
+  #loadingAtPressMs?: number;
   #render?: (args: never) => PromiseOrObject<ReactNode>;
   #renderRoute?: {
     render: (args: never) => PromiseOrObject<ReactNode>;
@@ -79,8 +91,19 @@ export abstract class RouteDefinition<
     this.#guard = guard as GuardStage<never>;
     return this;
   }
-  loading(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>) {
+  loading(
+    render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>,
+    { atPress = false }: RouteLoadingOption = {},
+  ) {
+    const delayMs = atPress === true ? PressLoading.defaultDelayMs : atPress ? atPress.delayMs : undefined;
+    if (delayMs !== undefined && this.kind !== "page")
+      throw new Error(
+        `[route-convention] ${this.kind}() takes no .loading(…, { atPress }); a press replaces the page under its layouts`,
+      );
+    if (delayMs !== undefined && !(Number.isFinite(delayMs) && delayMs >= 0))
+      throw new Error(`[route-convention] .loading(…, { atPress }) takes a delayMs of 0 or more, not ${delayMs}`);
     this.#loading = render as (args: never) => PromiseOrObject<ReactNode>;
+    this.#loadingAtPressMs = delayMs;
     return this;
   }
   render(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>) {
@@ -160,12 +183,7 @@ export abstract class RouteDefinition<
                 await RenderScope.run(() => head(this.#argsOf(props) as never)),
             }
           : { head }),
-      ...(loading
-        ? {
-            Loading: ((props: RouteRenderProps) =>
-              RenderScope.run(() => loading(this.#argsOf({ ...props, searchParams: {} }) as never))) as never,
-          }
-        : {}),
+      ...(loading ? { Loading: this.#loadingRouteOf(loading) as never } : {}),
     };
     return this.extendModule(module);
   }
@@ -177,6 +195,14 @@ export abstract class RouteDefinition<
   /** What `.render()` receives beyond the declared args; a page adds its apps' elements. */
   protected renderArgsOf(args: RouteBaseArgs & Args & Extra): PromiseOrObject<RouteBaseArgs & Args & Extra> {
     return args;
+  }
+
+  #loadingRouteOf(loading: (args: never) => PromiseOrObject<ReactNode>) {
+    const route = (props: RouteRenderProps) =>
+      RenderScope.run(() => loading(this.#argsOf({ ...props, searchParams: {} }) as never));
+    if (this.#loadingAtPressMs !== undefined)
+      Object.defineProperty(route, routeLoadingAtPressMarker, { value: this.#loadingAtPressMs });
+    return route;
   }
 
   //? Marked with the args it reads, as the render is, so CSR asks the guards again only when one of those moves.

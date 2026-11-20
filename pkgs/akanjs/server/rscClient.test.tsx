@@ -2178,6 +2178,29 @@ describe("rscClient pending navigation", () => {
     expect(shownAsItEnded).toBe("/pending/a");
   });
 
+  test("a navigation names the page it leaves, and the one Back starts is marked a traversal", async () => {
+    await navigate("/pending/left");
+    await waitFor(() => shown() === "/pending/left");
+    const page = heldPage("/pending/pressed");
+    served.set("/pending/pressed", page.serve);
+
+    await start("/pending/pressed");
+    expect(PendingNavigation.entry()).toMatchObject({ from: `${origin}/pending/left`, traversal: false, waits: true });
+    await act(async () => page.release());
+    await waitFor(() => shown() === "/pending/pressed");
+
+    const traversals: boolean[] = [];
+    const unsubscribe = PendingNavigation.subscribe(() => {
+      const entry = PendingNavigation.entry();
+      if (entry) traversals.push(entry.traversal);
+    });
+    await act(async () => window.history.back());
+    await waitFor(() => shown() === "/pending/left");
+    unsubscribe();
+    expect(traversals.length).toBeGreaterThan(0);
+    expect(traversals).not.toContain(false);
+  });
+
   test("a navigation another one overtook leaves the later one pending, and ends nothing when it settles", async () => {
     const slow = heldPage("/pending/slow");
     const next = heldPage("/pending/next");
