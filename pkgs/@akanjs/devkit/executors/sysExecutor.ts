@@ -95,9 +95,7 @@ export class SysExecutor extends Executor {
         this.writeFile(path.join(envDir, fileName), content, { overwrite: false, silent: true }),
       ),
     );
-    this.logger.info(
-      `${missing.map(({ fileName }) => `env/${fileName}`).join(", ")} were missing (gitignored, so a clone has none) and now hold local defaults: put this machine's values in them, or fetch the team's with \`akan download-env\`.`,
-    );
+    for (const notice of EnvSeed.notices(missing)) this.logger.info(notice);
     return written;
   }
   //? `synced` is the app or lib whose sync this is: a lib's files are written by the sync of each app mounting it.

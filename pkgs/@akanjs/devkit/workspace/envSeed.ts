@@ -1,9 +1,12 @@
 import path from "node:path";
 import { FileSys } from "../util/fileSys";
+import { MainCheckout } from "./mainCheckout";
 
 export interface EnvSeedFile {
   fileName: string;
   content: string;
+  /** The main checkout's file the content is a copy of, when the folder is in a linked worktree that has none. */
+  copiedFrom?: string;
 }
 
 //? These files are gitignored for the secrets they hold, so a fresh clone has none of them.
@@ -39,7 +42,33 @@ export const env: AppClientEnv = {};
     const wanted = [...new Set([EnvSeed.#testing, ...(await this.#selected())])].sort();
     const exists = await Promise.all(wanted.map((fileName) => FileSys.fileExists(path.join(this.#envDir, fileName))));
     const missing = wanted.filter((_, idx) => !exists[idx]);
-    return await Promise.all(missing.map(async (fileName) => ({ fileName, content: await this.#contentOf(fileName) })));
+    return await Promise.all(missing.map(async (fileName) => await this.#seedOf(fileName)));
+  }
+
+  //? Copied, not linked: a symlinked env file resolves its `../lib/option` import from the main checkout's tree.
+  async #seedOf(fileName: string): Promise<EnvSeedFile> {
+    const copiedFrom = await MainCheckout.counterpartOf(path.join(this.#envDir, fileName));
+    if (copiedFrom) return { fileName, content: await FileSys.readText(copiedFrom), copiedFrom };
+    return { fileName, content: await this.#contentOf(fileName) };
+  }
+
+  static notices(seeded: EnvSeedFile[]): string[] {
+    const named = (files: EnvSeedFile[]) => files.map(({ fileName }) => `env/${fileName}`).join(", ");
+    const copied = seeded.filter((file) => file.copiedFrom !== undefined);
+    const defaults = seeded.filter((file) => file.copiedFrom === undefined);
+    const source = copied.map(({ copiedFrom }) => copiedFrom).find((file) => file !== undefined);
+    return [
+      ...(source
+        ? [
+            `${named(copied)} were missing in this worktree (gitignored, so a worktree has none) and now hold a copy of the main checkout's, from ${path.dirname(source)}: a later change there does not reach the copy.`,
+          ]
+        : []),
+      ...(defaults.length
+        ? [
+            `${named(defaults)} were missing (gitignored, so a clone has none) and now hold local defaults: put this machine's values in them, or fetch the team's with \`akan download-env\`.`,
+          ]
+        : []),
+    ];
   }
 
   async #selected() {
