@@ -448,12 +448,12 @@ describe("AkanAppConfig", () => {
     );
   });
 
-  test("a variant is the app's docker with its named fields replaced, and a lib's steps reach it", () => {
+  test("a variant is the app's docker with its named fields replaced and its env laid over the app's, and a lib's steps reach it", () => {
     const tools = "curl -fsSL https://example.com/kubectl -o /usr/local/bin/kubectl";
     const docker = {
       preRuns: [tools],
       postRuns: ["echo post"],
-      env: { REGION: "seoul" },
+      env: { REGION: "seoul", EDGE_MODE: "off" },
       variants: {
         edge: { preRuns: [], crossBuild: true, env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
       },
@@ -470,9 +470,10 @@ describe("AkanAppConfig", () => {
         postRuns: ["echo post"],
         command: ["bun", "main.js"],
         crossBuild: true,
-        env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" },
+        env: { REGION: "seoul", EDGE_MODE: "camera", AKAN_PUBLIC_OPERATION_MODE: "edge" },
       },
     });
+    expect(config.dockerfileFor("main")).toContain("ENV EDGE_MODE=off\n");
     expect(config.dockerfileFor("main")).toContain(`RUN echo lib\nRUN ${tools}\n`);
     expect(config.dockerfileFor("main")).toContain("ENV AKAN_PUBLIC_OPERATION_MODE=cloud\n");
     expect(config.dockerfileFor("main")).toContain("ENV REGION=seoul\n");
@@ -481,7 +482,8 @@ describe("AkanAppConfig", () => {
     expect(edge).not.toContain("kubectl");
     expect(edge).toContain("ENV AKAN_PUBLIC_OPERATION_MODE=edge\n");
     expect(edge).toContain("ENV EDGE_MODE=camera\n");
-    expect(edge).not.toContain("REGION");
+    expect(edge).toContain("ENV REGION=seoul\n");
+    expect(edge).not.toContain("EDGE_MODE=off");
   });
 
   test("refuses a variant name that cannot end a file name, and a variant nothing declares", () => {

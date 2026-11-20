@@ -16,8 +16,9 @@ device's mode lived in a compose file that a plain `docker run` skipped.
   is never a secret. `akan.env.json`, which a host run without the image reads, does not carry it.
 - **`docker.variants`** writes `Dockerfile.<name>` beside the Dockerfile for each entry
   (`docker build -f Dockerfile.edge .`). A variant is the app's `docker` with every field it names replaced whole,
-  lists and `env` included, so `preRuns: []` leaves the app's steps out of that image and `crossBuild: true` may be
-  the variant's alone. A lib's `preRuns`, `installRuns` and `postRuns` reach every variant. The generated
+  lists included, so `preRuns: []` leaves the app's steps out of that image and `crossBuild: true` may be the
+  variant's alone. Its `env` is the exception: laid over the app's `env` key by key, so a variant adds or overrides a
+  default and keeps the rest. A lib's `preRuns`, `installRuns` and `postRuns` reach every variant. The generated
   `.dockerignore` lists `Dockerfile.*`, so an edit to one variant does not rebuild the other image's `COPY . .`
   layer, and a desktop app's carried server leaves the variant files out, as it does the Dockerfile.
 - A key of `env` that is no variable name, a value holding a line break, and a variant name outside lowercase

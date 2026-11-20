@@ -33,7 +33,10 @@ export interface DockerImageConfig {
 /** The string form is taken verbatim: nothing is merged into it, not even a lib's `docker` steps. */
 export type DockerConfig = string | DockerImageConfig;
 
-/** The app's `docker` with the fields it names replaced, written beside the Dockerfile as `Dockerfile.<name>`. */
+/**
+ * The app's `docker` with the fields it names replaced and its `env` laid over the app's key by key, written beside
+ * the Dockerfile as `Dockerfile.<name>`.
+ */
 export type DockerVariantOption = Partial<DockerImageConfig>;
 
 export type DockerOption = string | (Partial<DockerImageConfig> & { variants?: Record<string, DockerVariantOption> });

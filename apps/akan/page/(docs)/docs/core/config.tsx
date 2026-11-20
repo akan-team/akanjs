@@ -1706,9 +1706,9 @@ const config: AppConfig = {
                     <code>bun main.js</code> on a host does not get it. Each entry of <code>variants</code> is written
                     beside the Dockerfile as <code>Dockerfile.&lt;name&gt;</code> (
                     <code>docker build -f Dockerfile.edge .</code>): the app's <code>docker</code> with every field the
-                    variant names replaced whole, so <code>preRuns: []</code> drops the app's steps there, while a
-                    library's steps reach every variant. Split an image by what it is for, a device or a control plane,
-                    this way rather than by architecture.
+                    variant names replaced whole, so <code>preRuns: []</code> drops the app's steps there, while its{" "}
+                    <code>env</code> is laid over the app's key by key and a library's steps reach every variant. Split
+                    an image by what it is for, a device or a control plane, this way rather than by architecture.
                   </span>
                 ),
                 ko: (
@@ -1719,9 +1719,9 @@ const config: AppConfig = {
                     <code>bun main.js</code>로 실행할 때는 적용되지 않습니다. <code>variants</code>의 각 항목은
                     Dockerfile 옆에 <code>Dockerfile.&lt;name&gt;</code>으로 쓰입니다(
                     <code>docker build -f Dockerfile.edge .</code>). 앱의 <code>docker</code>에서 variant가 적은 필드를
-                    통째로 바꾼 것이어서 <code>preRuns: []</code>는 앱의 단계를 그 이미지에서 빼고, 라이브러리의 단계는
-                    모든 variant에 들어갑니다. 기기용, 컨트롤 플레인용처럼 용도로 이미지를 가를 때 아키텍처 대신 이
-                    방법을 씁니다.
+                    통째로 바꾼 것이어서 <code>preRuns: []</code>는 앱의 단계를 그 이미지에서 뺍니다. <code>env</code>
+                    만은 앱의 <code>env</code> 위에 키별로 덮이고, 라이브러리의 단계는 모든 variant에 들어갑니다.
+                    기기용, 컨트롤 플레인용처럼 용도로 이미지를 가를 때 아키텍처 대신 이 방법을 씁니다.
                   </span>
                 ),
               })}

@@ -129,8 +129,8 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
 - **`env` sets the image's defaults; `variants` writes a second image.** `env: { EDGE_MODE: "camera" }` is laid
   over the build's `ENV` lines (`AKAN_PUBLIC_OPERATION_MODE` too): tracked and readable, so never a secret, and not
   given to `bun main.js` on a host. `variants: { edge: { … } }` writes `Dockerfile.edge` (`docker build -f`): the
-  app's `docker` with each field it names replaced whole, so `preRuns: []` drops the app's steps; lib steps reach
-  every variant. Split an image by purpose (a device, a control plane) this way, not by `{ amd64 }`.
+  app's `docker` with each field it names replaced whole (`preRuns: []` drops the app's steps) and its `env` laid
+  over the app's by key; lib steps reach every variant. Split an image by purpose (a device, a control plane) this way, not by `{ amd64 }`.
 - **`akan build` writes a `.dockerignore`**: `sqlite`, `local`, `runtime`, `data`, `.akan/artifact/image-cache` and
   `node_modules`, so the database a build run by hand wrote beside `main.js` stays out of `COPY . .`.
 - **The server runs as `USER 1000:1000`, oven/bun's `bun` user, and owns only the directories it writes.** The

@@ -169,7 +169,8 @@ export const resolveDockerVariants = (
         throw new Error(
           `[docker] docker.variants names "${name}", which cannot end a file name: use lowercase letters, digits and "-"`,
         );
-      return [name, resolveDockerImage({ ...base, ...variant }, libDocker, `docker.variants.${name}.env`)];
+      const env = { ...base.env, ...variant.env };
+      return [name, resolveDockerImage({ ...base, ...variant, env }, libDocker, `docker.variants.${name}.env`)];
     }),
   );
 };
