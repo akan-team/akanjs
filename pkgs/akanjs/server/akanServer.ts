@@ -31,7 +31,7 @@ import { SignalResolver } from "./resolver";
 import { BuiltinRoutes } from "./routing/builtinRoutes";
 import { RouteHosts } from "./routing/routeHosts";
 import { type AkanAppPrepared, ServerListener } from "./routing/serverListener";
-import { WebSurfaceHold } from "./routing/webSurfaceHold";
+import type { WebSurfaceHold } from "./routing/webSurfaceHold";
 import { ServerConfig } from "./serverConfig";
 import { ServerMetrics } from "./serverMetrics";
 import { SessionRefresh } from "./sessionRefresh";
@@ -386,6 +386,7 @@ export class AkanServer {
     const requestedWeb = ServerConfig.narrowWeb(this.web, web);
     //? Beside the first base build the api listens now, and a request it does not route waits for the artifact.
     if (listensBeforeWeb && DevBaseArtifact.awaited()) {
+      const { WebSurfaceHold } = await import("./routing/webSurfaceHold");
       this.#webHold = { hold: new WebSurfaceHold(), web: requestedWeb };
       this.#prepared = this.#apiOnly({ routes, wsRoutes, routeOptions }, {});
       this.status = "initialized";
