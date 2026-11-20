@@ -661,6 +661,13 @@ export interface PathRoute {
     resolveLayoutsHead?: ResolveHead;
 }
 
+export interface PendingLocation {
+    href: string;
+    pathname: string;
+    path: string;
+    searchParams: Record<string, string | string[]>;
+}
+
 export type PrefetchPriority = "high" | "low";
 
 export interface ReactFont {
@@ -1448,6 +1455,8 @@ export declare const useCsr: () => CsrContextType;
 export declare const usePage: ClientRuntime["usePage"];
 
 export declare const usePathCtx: () => PathContextType;
+
+export declare const usePendingNavigation: () => PendingLocation | null;
 
 export declare const validatePageConfig: (routeKey: string, config?: PageConfig) => void;
 

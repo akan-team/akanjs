@@ -1058,7 +1058,7 @@ describe("a repeatable option", () => {
     );
   });
 
-  test("types the exec parameter as a list, and a positional argument cannot repeat", () => {
+  test("types the exec parameter as a list, and a list argument must be the last positional", () => {
     const expectType = <Expected>(_value: Expected) => undefined;
     class RepeatRunner extends runner("repeat") {}
     class RepeatScript extends script("repeat", [RepeatRunner]) {}
@@ -1072,13 +1072,37 @@ describe("a repeatable option", () => {
         }),
     })) {}
     expect(getTargetMetas(RepeatCommand)[0]?.key).toBe("run");
+    class ListCommand extends command("list", [RepeatScript], ({ public: target }) => ({
+      run: target({ desc: "run" })
+        .arg("action", String)
+        .arg("names", String, { multiple: true })
+        .option("force", Boolean)
+        .exec(async (action, names) => {
+          expectType<string>(action);
+          expectType<string[]>(names);
+        }),
+    })) {}
+    expect(stripAnsi(formatCommandHelp(ListCommand, "run"))).toContain("akan run [action] [names...]");
     expect(() =>
-      command("repeatArg", [RepeatScript], ({ public: target }) => ({
+      command("listFirst", [RepeatScript], ({ public: target }) => ({
         run: target({ desc: "run" })
           .arg("names", String, { multiple: true })
+          .arg("action", String)
           .exec(async () => undefined),
       })),
-    ).toThrow("argument 'names' cannot be multiple");
+    ).toThrow("argument 'names' takes a list, so it must be declared last");
+  });
+
+  test("a list argument reads its words space- or comma-separated, each against the choices, and none as empty", async () => {
+    const names: ArgMeta = { ...meta, name: "names", type: "Argument" };
+    expect(await getArgumentValue(names, ["a.test.ts", "b.test.ts,c.test.ts", " "])).toEqual([
+      "a.test.ts",
+      "b.test.ts",
+      "c.test.ts",
+    ]);
+    expect(await getArgumentValue(names, undefined)).toEqual([]);
+    const choices = { ...names, argsOption: { ...names.argsOption, enum: ["a", "b"] } };
+    await expect(getArgumentValue(choices, ["a", "c"])).rejects.toThrow("argument 'names' argument 'c' is invalid");
   });
 
   test("collects each time the flag is given, long or short", async () => {
@@ -1098,6 +1122,17 @@ describe("a repeatable option", () => {
         "    .exec(async function (param) {",
         "      process.stdout.write(JSON.stringify(param));",
         "    }),",
+        '  gather: target({ desc: "gathers", stdio: true })',
+        '    .arg("action", String)',
+        '    .arg("files", String, { multiple: true })',
+        "    .exec(async function (action, files) {",
+        "      process.stdout.write(JSON.stringify([action, files]));",
+        "    }),",
+        '  single: target({ desc: "takes one", stdio: true })',
+        '    .arg("action", String, { nullable: true })',
+        '    .option("format", String, { default: "text", enum: ["text", "json"] })',
+        "    .exec(async function () {}),",
+        '  bare: target({ desc: "takes none", stdio: true }).exec(async function () {}),',
         "})) {}",
         "await runCommands(CollectCommand);",
         "",
@@ -1110,6 +1145,38 @@ describe("a repeatable option", () => {
     };
     expect(await collect("--param", "a=1", "-p", "b=x=y")).toEqual(["a=1", "b=x=y"]);
     expect(await collect()).toEqual([]);
+
+    const run = async (...args: string[]) => {
+      const proc = Bun.spawn(["bun", entry, ...args], { cwd: root, stdout: "pipe", stderr: "pipe" });
+      const [stdout, stderr, code] = await Promise.all([
+        new Response(proc.stdout).text(),
+        new Response(proc.stderr).text(),
+        proc.exited,
+      ]);
+      return { stdout, stderr, code };
+    };
+    expect((await run("gather", "scan", "a.test.ts", "b.test.ts,c.test.ts")).stdout).toBe(
+      '["scan",["a.test.ts","b.test.ts","c.test.ts"]]',
+    );
+    expect((await run("gather", "scan")).stdout).toBe('["scan",[]]');
+
+    const excess = await run("single", "scan", "web");
+    expect(excess.code).toBe(2);
+    expect(excess.stderr).toBe(
+      [
+        "error: too many arguments for 'single'. Expected 1 argument but got 2: scan, web.",
+        "`akan single` takes [action]: see `akan single --help`.",
+        "",
+      ].join("\n"),
+    );
+    const excessJson = await run("single", "scan", "web", "--format", "json");
+    expect(JSON.parse(excessJson.stdout)).toEqual({
+      ok: false,
+      code: "usage",
+      error:
+        "too many arguments for 'single'. Expected 1 argument but got 2: scan, web. `akan single` takes [action]: see `akan single --help`.",
+    });
+    expect((await run("bare", "web")).stderr).toContain("`akan bare` takes no argument: see `akan bare --help`.");
   }, 30_000);
 });
 

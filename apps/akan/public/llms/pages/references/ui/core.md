@@ -61,11 +61,13 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - disabled (boolean, default false): Blocks navigation and renders the same `div`, so the layout does not move.
 
-- activeClassName (string): Class added while the current page is `href` or below it. The locale and the basePath are ignored.
+- activeClassName (string): Class added while the current page is `href` or below it. The locale and the basePath are ignored. It follows the press: a push lights the link at once, before its page arrives.
 
 - activeExact (boolean): Adds `activeClassName` only on the exact path, not on its sub-paths.
 
 - activeMatch (string[]): More paths under which the link counts as active, such as a tab lit on its detail pages.
+
+- pendingClassName (string): Class added, with a `data-pending` attribute, from the press until the page is drawn, on a link the loading page would make active. SSR pages only: a CSR stack moves at once.
 
 - scrollToTop (boolean): Scrolls to the top after client-side navigation.
 

@@ -91,6 +91,13 @@ export default page()
         }),
       },
       {
+        name: ["usePendingNavigation", "PendingLocation"],
+        desc: l.trans({
+          en: "The `{ href, pathname, path, searchParams }` an SSR navigation is loading, from the press until its page is drawn, and `null` otherwise. A redirect moves it to where it leads. For a skeleton or a dimmed pane shown before the response.",
+          ko: "SSR 내비게이션이 불러오는 중인 위치 `{ href, pathname, path, searchParams }`입니다. 누른 순간부터 새 페이지가 그려질 때까지 값이 있고, 그 밖에는 `null`입니다. redirect되면 도착지로 바뀝니다. 응답 전에 스켈레톤을 띄우거나 영역을 흐리게 할 때 씁니다.",
+        }),
+      },
+      {
         name: "Device",
         desc: l.trans({
           en: "Platform, safe area, keyboard, haptics and scroll of the device.",

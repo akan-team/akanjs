@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { TransformStream } from "node:stream/web";
 import { act } from "react";
+import { PendingNavigation } from "../client/pendingNavigation";
 import { Translator } from "../client/translator";
 import { StaleReads } from "../fetch/staleReads";
 import {
@@ -2138,5 +2139,98 @@ describe("rscClient newly mounted route level", () => {
     await act(async () => release());
     await waitFor(() => shown() === "/levels/d");
     expect(shown()).toBe("/levels/d");
+  });
+});
+
+describe("rscClient pending navigation", () => {
+  const heldPage = (text: string) => {
+    let release = () => {};
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { serve: () => held.then(() => responseOf(text)), release: () => release() };
+  };
+  const start = async (href: string) => {
+    let settled: Promise<void> | undefined;
+    await act(async () => {
+      settled = globalThis.__AKAN_RSC_NAVIGATE__?.(href)?.catch(() => undefined);
+      await sleep(5);
+    });
+    return { settled };
+  };
+
+  test("a navigation is pending from its start until its page is drawn", async () => {
+    const page = heldPage("/pending/a");
+    served.set("/pending/a", page.serve);
+
+    await start("/pending/a");
+    expect(PendingNavigation.get()).toBe(`${origin}/pending/a`);
+    expect(shown()).not.toBe("/pending/a");
+    let shownAsItEnded: string | null | undefined;
+    const unsubscribe = PendingNavigation.subscribe(() => {
+      if (!PendingNavigation.get()) shownAsItEnded = shown();
+    });
+
+    await act(async () => page.release());
+    await waitFor(() => shown() === "/pending/a");
+    unsubscribe();
+    expect(PendingNavigation.get()).toBeNull();
+    expect(shownAsItEnded).toBe("/pending/a");
+  });
+
+  test("a navigation another one overtook leaves the later one pending, and ends nothing when it settles", async () => {
+    const slow = heldPage("/pending/slow");
+    const next = heldPage("/pending/next");
+    served.set("/pending/slow", slow.serve);
+    served.set("/pending/next", next.serve);
+
+    await start("/pending/slow");
+    await start("/pending/next");
+    expect(PendingNavigation.get()).toBe(`${origin}/pending/next`);
+    await act(async () => {
+      slow.release();
+      await sleep(10);
+    });
+    expect(PendingNavigation.get()).toBe(`${origin}/pending/next`);
+
+    await act(async () => next.release());
+    await waitFor(() => shown() === "/pending/next");
+    expect(PendingNavigation.get()).toBeNull();
+  });
+
+  test("a redirect moves the pending location to where it leads", async () => {
+    const landing = heldPage("/pending/landing");
+    served.set("/pending/moved", preStreamRedirectTo("/pending/landing"));
+    served.set("/pending/landing", landing.serve);
+
+    await start("/pending/moved");
+    expect(PendingNavigation.get()).toBe(`${origin}/pending/landing`);
+
+    await act(async () => landing.release());
+    await waitFor(() => shown() === "/pending/landing");
+    expect(PendingNavigation.get()).toBeNull();
+  });
+
+  test("a refused route and a replay of the page on screen leave nothing pending", async () => {
+    served.set("/pending/nowhere", bareNotFound);
+    await (await start("/pending/nowhere")).settled;
+    expect(PendingNavigation.get()).toBeNull();
+
+    await navigate("/pending/shown");
+    await waitFor(() => shown() === "/pending/shown");
+    await navigate("/pending/shown");
+    expect(PendingNavigation.get()).toBeNull();
+  });
+
+  test("a shallow change loads nothing, so it is never pending", async () => {
+    await navigate("/pending/tabs");
+    await waitFor(() => shown() === "/pending/tabs");
+    const seen: (string | null)[] = [];
+    const unsubscribe = PendingNavigation.subscribe(() => seen.push(PendingNavigation.get()));
+
+    await navigate("/pending/tabs?tab=2", { shallow: true });
+    unsubscribe();
+
+    expect(seen).toEqual([]);
   });
 });

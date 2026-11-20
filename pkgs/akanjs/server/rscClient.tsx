@@ -5,6 +5,7 @@ import { AkanError } from "../base/akanError";
 import { csrLocation } from "../client/csrLocation";
 import { DictionaryAsset } from "../client/dictionaryAsset";
 import { DictionaryGroups } from "../client/dictionaryGroups";
+import { PendingNavigation, type PendingNavigationEntry } from "../client/pendingNavigation";
 import type {} from "../client/rscNavigation";
 import {
   type FlightLineRowHandler,
@@ -129,7 +130,9 @@ function createRscThenable(rows: FlightRowPass, ...onLineRows: FlightLineRowHand
 
 //? A page restored from the back-forward cache outlived the document load its fallback started.
 window.addEventListener("pageshow", (event) => {
-  if (event.persisted) documentNavigationFallbackInFlight = false;
+  if (!event.persisted) return;
+  documentNavigationFallbackInFlight = false;
+  PendingNavigation.clear();
 });
 
 function hardNavigateAfterRscFailure(target: string, replace = false, error?: unknown): void {
@@ -466,9 +469,25 @@ function forgetPagesOfAnotherAccount(): void {
 
 globalThis.__AKAN_RSC_PREFETCH__ = (href, priority) => caches.prefetch(href, priority);
 
+let drawnThenable: RscThenable = initialThenable;
+let awaitedDraw: { pending: PendingNavigationEntry; thenable: RscThenable } | null = null;
+
+//? React draws a transition later, and a replay of the page on screen sets the same thenable, which draws nothing.
+function endPendingOnceDrawn(pending: PendingNavigationEntry, thenable: RscThenable): void {
+  if (thenable === drawnThenable) PendingNavigation.end(pending);
+  else awaitedDraw = { pending, thenable };
+}
+
 function Root(): ReactNode {
   const [thenable, setThenable] = useState<RscThenable>(initialThenable);
   const [scrollRequest, setScrollRequest] = useState<ScrollRequest | null>(null);
+
+  useLayoutEffect(() => {
+    drawnThenable = thenable;
+    if (awaitedDraw?.thenable !== thenable) return;
+    PendingNavigation.end(awaitedDraw.pending);
+    awaitedDraw = null;
+  }, [thenable]);
 
   useLayoutEffect(() => {
     if (scrollRequest?.hash) scrollRestoration.scrollToHash(scrollRequest.hash, scrollRequest.scrollY);
@@ -575,6 +594,9 @@ function installNavigate(
     const navId = supersedeForPageNavigation();
     const target = normalizeHref(href);
     const signal = requestSignalOf(navId, target);
+    const pending = PendingNavigation.begin(target);
+    //? A committed page ends it once drawn, and a document load never does: the document is replaced still loading.
+    let endsPending = true;
     //? A redirect replaces the entry this navigation is on, which a push does not write until its page commits.
     let ownsEntry = !!options.replace;
     const replaceOnRedirect = () => ownsEntry;
@@ -650,6 +672,8 @@ function installNavigate(
           currentCommitFromCache = servedFromCache;
           resetAkanSegmentOutletPatches();
           setThenable(node.thenable);
+          endsPending = false;
+          endPendingOnceDrawn(pending, node.thenable);
         },
         updateHistory: () => {
           commitHistory(target, options.replace);
@@ -666,9 +690,12 @@ function installNavigate(
       if (error instanceof RscRedirectNavigationStarted) return;
       // Rethrown before the fallback: a document navigation would land on the very 404 this refusal exists to avoid.
       if (error instanceof RscRouteNotFound) throw error;
-      if (navId === navigationSeq) hardNavigateAfterRscFailure(target, options.replace, error);
+      if (navId !== navigationSeq) return;
+      endsPending = false;
+      hardNavigateAfterRscFailure(target, options.replace, error);
     } finally {
       settleRequestOf(navId);
+      if (endsPending) PendingNavigation.end(pending);
     }
   };
 }

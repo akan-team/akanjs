@@ -50,6 +50,7 @@ import {
   useState,
 } from "react";
 import { NativeThemeColor } from "../../client/nativeThemeColor";
+import { PendingNavigation } from "../../client/pendingNavigation";
 import { readRscRoutePatch, subscribeRscRoutePatch } from "../../client/rscRoutePatch";
 import { CsrSlide } from "../../webkit/csrSlide";
 import { FrameRootVars } from "../../webkit/FrameRootVars";
@@ -440,6 +441,15 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
         ...(initialPageState ? { pageState: initialPageState } : {}),
       });
     };
+    //? A redirect starts its navigation inside the RSC client, past `push` and `replace`: the store follows it here.
+    const followPending = PendingNavigation.subscribe(() => {
+      const pending = PendingNavigation.get();
+      if (!pending) return;
+      const { pathname, search } = new URL(pending);
+      const shown = ShellState.get();
+      const sameSearch = JSON.stringify(parseSearchParams(search)) === JSON.stringify(shown.searchParams);
+      if (pathname !== shown.pathname || !sameSearch) syncHref(pending);
+    });
     router.init({
       type: "ssr",
       side: "client",
@@ -468,6 +478,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
     });
     void Device.load({ lang });
     return () => {
+      followPending();
       if (globalThis.__AKAN_GET_SYNC_ROUTE_HREF__) globalThis.__AKAN_GET_SYNC_ROUTE_HREF__ = undefined;
     };
   }, [lang, prefix, initialPageState]);
