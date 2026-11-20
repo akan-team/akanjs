@@ -10,6 +10,7 @@ import {
   revokeRefreshSessionsBut,
   rotateRefreshSession,
   SignChallenge,
+  SignCode,
   type SigninDevice,
 } from "@libs/shared/srvkit";
 import { randomString } from "@libs/util/common";
@@ -140,6 +141,9 @@ export class UserModel extends into(User, UserFilter, cnst.user, () => ({})) {
   }
   get signChallenge() {
     return new SignChallenge(this.userCache);
+  }
+  signCodeOf(serverSecret: string) {
+    return new SignCode(this.userCache, serverSecret);
   }
   async assertResignable(key: string, resignupDays: number) {
     await this.signChallenge.assertResignable(key, resignupDays);

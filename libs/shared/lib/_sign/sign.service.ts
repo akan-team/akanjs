@@ -30,6 +30,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   settingService: service<srv.SettingService>(),
   userService: service<srv.UserService>(),
   host: use<string>(),
+  jwtSecret: use<string>(),
   hosts: use<string[]>(),
   emailApi: plug(EmailApi),
   purpleApi: plug(PurpleApi),
@@ -55,6 +56,9 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   }
   private get challenge() {
     return this.userService.userModel.signChallenge;
+  }
+  private get codes() {
+    return this.userService.userModel.signCodeOf(this.jwtSecret);
   }
   //? `<provider>:<id>` is how SSO rows are keyed, so a typed id in that shape would take a provider sign-up's place.
   static assertSignupAccountId(accountId: string) {
@@ -141,7 +145,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   async getSignTokenForSetPassword(userId: string, phone: string, phoneCode: string) {
     const user = await this.userModel.getUser(userId);
     await this.assertPhoneOfUser(user.id, phone);
-    const isValid = await this.challenge.isPhoneCodeValid(user.id, phone, "setPasswordWithSignToken", phoneCode);
+    const isValid = await this.codes.isPhoneCodeValid(user.id, phone, "setPasswordWithSignToken", phoneCode);
     if (!isValid) throw new Err("user.error.invalidPhoneCode");
     return await this.challenge.setSignToken(user.id, "password");
   }
@@ -179,7 +183,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   async verifyEmailInPrepareUser(userId: string, emailCode: string) {
     const user = await this.userService.getPrepareUser(userId);
     const accountId = await this.userModel.getAccountId(user.id);
-    const isValid = await this.challenge.isEmailCodeValid(user.id, accountId, emailCode);
+    const isValid = await this.codes.isEmailCodeValid(user.id, accountId, emailCode);
     if (!isValid) throw new Err("user.error.invalidEmailCode");
     await this.userModel.verifyEmailInPrepareUser(user.id, accountId);
     return await this.challenge.setSignToken(user.id, "password");
@@ -193,7 +197,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   async verifyEmailInActiveUser(userId: string, email: string, emailCode: string) {
     const user = await this.userModel.getActiveUser(userId);
     const address = email.trim().toLowerCase();
-    if (!(await this.challenge.isEmailCodeValid(user.id, address, emailCode, "address")))
+    if (!(await this.codes.isEmailCodeValid(user.id, address, emailCode, "address")))
       throw new Err("user.error.invalidEmailCode");
     await this.userModel.addVerifiedEmail(user.id, address);
   }
@@ -220,7 +224,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   async verifyEmailCodeForResetPassword(accountId: string, emailCode: string) {
     const userId = await this.userModel.findIdByAccountId(accountId, ["active"]);
     if (!userId) throw new Err("user.error.invalidEmailCode");
-    const isValid = await this.challenge.isEmailCodeValid(userId, accountId, emailCode);
+    const isValid = await this.codes.isEmailCodeValid(userId, accountId, emailCode);
     if (!isValid) throw new Err("user.error.invalidEmailCode");
     return await this.challenge.setSignToken(userId, "password");
   }
@@ -236,7 +240,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
     if (!isEmail(accountId)) throw new Err("user.error.invalidAccountId");
     const dryrun = this.isMasterEmail(accountId);
     const emailCode = dryrun && this.masterEmailCode ? this.masterEmailCode : this.generateCode();
-    await this.challenge.registerEmailCode(userId, accountId, emailCode, purpose);
+    await this.codes.registerEmailCode(userId, accountId, emailCode, purpose);
     return dryrun || (await this.emailApi.sendVerificationCodeMail(accountId, emailCode, this.host));
   }
   // Reserved test domains (RFC 2606) cannot receive mail, so the master code can never vouch for a real mailbox.
@@ -281,7 +285,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   }
   async verifyPhoneInPrepareUser(userId: string, phone: string, phoneCode: string) {
     const user = await this.userService.getPrepareUser(userId);
-    const isValid = await this.challenge.isPhoneCodeValid(userId, phone, "setPhoneInPrepareUser", phoneCode);
+    const isValid = await this.codes.isPhoneCodeValid(userId, phone, "setPhoneInPrepareUser", phoneCode);
     if (!isValid) throw new Err("user.error.invalidPhoneCode");
     return await this.userModel.verifyPhoneInPrepareUser(user.id, phone);
   }
@@ -293,7 +297,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   }
   async setPhoneInActiveUser(userId: string, phone: string, phoneCode: string) {
     const user = await this.userService.getActiveUser(userId);
-    const isValid = await this.challenge.isPhoneCodeValid(user.id, phone, "setPhoneInActiveUser", phoneCode);
+    const isValid = await this.codes.isPhoneCodeValid(user.id, phone, "setPhoneInActiveUser", phoneCode);
     if (!isValid) throw new Err("user.error.invalidPhoneCode");
     return await this.userModel.setPhoneInActiveUser(user.id, phone);
   }
@@ -303,7 +307,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
   }
   async getSignTokenForSignin(phone: string, phoneCode: string) {
     const userId = await this.getUserIdByPhone(phone);
-    const isValid = await this.challenge.isPhoneCodeValid(userId, phone, "signinWithSignToken", phoneCode);
+    const isValid = await this.codes.isPhoneCodeValid(userId, phone, "signinWithSignToken", phoneCode);
     if (!isValid) throw new Err("user.error.invalidPhoneCode");
     return await this.challenge.setSignToken(userId, "signin");
   }
@@ -318,7 +322,7 @@ export class SignService extends serve("sign" as const, ({ use, service, env, pl
       throw new Err("user.error.tooManyPhoneCodes");
     const dryrun = SignService.honoursMasterPhones() && this.masterPhones.includes(phone);
     const phoneCode = dryrun && this.masterPhoneCode ? this.masterPhoneCode : this.generateCode();
-    await this.challenge.registerPhoneCode(user.id, phone, purpose, phoneCode);
+    await this.codes.registerPhoneCode(user.id, phone, purpose, phoneCode);
     // `hash` is appended to the text as-is for Android's SMS Retriever, which only ever needs an 11-char app hash.
     const appHash = /^[A-Za-z0-9+/]{1,11}$/.test(hash) ? hash : "";
     if (!dryrun) await this.purpleApi.sendPhoneCode(phone, phoneCode, appHash);
