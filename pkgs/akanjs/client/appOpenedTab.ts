@@ -1,5 +1,6 @@
 import { Href } from "./href";
-import { isNativeShell } from "./nativeHost";
+//? Not ./nativeHost: its shell boot `import()` is inlined into every bundle built without splitting, the RSC worker's too.
+import { isNativeShell } from "./nativeShell";
 
 //? HTML lets a script close any tab whose session history holds one document, so only one this app opened is closed.
 export const closeAppOpenedTab = (): boolean => {
