@@ -169,6 +169,9 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   change in dev. Keep a lib's steps to what its runtime genuinely requires.
 - `AkanAppConfig.docker` is the resolved declaration; `AkanAppConfig.dockerfile` is the text `akan build` writes
   to `dist/apps/<app>/Dockerfile`.
+- **A tool editing that file goes by its markers**, not its instructions: `# akan:dockerfile <n>` on top (`<n>`
+  rises when the sections change), then `# akan:<section>` before each of `install-stage`, `base`, `pre-runs`,
+  `install`, `post-runs`, `app` that holds a step. `dockerfileLayoutOf` in `@akanjs/devkit/akanConfig` reads them.
 
 ## An Image On A Device — A LAN Host With No Domain
 

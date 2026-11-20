@@ -8,7 +8,15 @@ import { NativeConfig } from "../mobile/nativeConfig";
 import type { PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
 import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
-import { BUN_IMAGE_PIN, DEFAULT_DOCKER_IMAGE } from "./dockerImage";
+import {
+  BUN_IMAGE_PIN,
+  DEFAULT_DOCKER_IMAGE,
+  DOCKER_INIT,
+  DOCKERFILE_FORMAT,
+  dockerfileLayoutOf,
+  dockerfileOf,
+  dockerfileSections,
+} from "./dockerImage";
 import type { LibConfigInput } from "./types";
 
 const akanPackageJson = JSON.parse(
@@ -310,7 +318,7 @@ describe("AkanAppConfig", () => {
       'ENTRYPOINT ["tini","-s","--"]',
       'CMD ["bun","main.js"]',
     ];
-    const lines = (text: string) => text.split("\n").filter((line) => line !== "");
+    const lines = (text: string) => text.split("\n").filter((line) => line !== "" && !line.startsWith("#"));
 
     expect(lines(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).dockerfile)).toEqual(lines(before.join("\n")));
   });
@@ -383,6 +391,7 @@ describe("AkanAppConfig", () => {
         "  && ( rm -rf node_modules/a/darwin ) \\",
         "  && ( find node_modules -name '*.map' -delete || true ) \\",
         '  && if [ "$TARGETARCH" = "arm64" ]; then     rm -rf node_modules/a/linux/x64;   fi',
+        "# akan:app",
         "COPY . .",
       ].join("\n"),
     );
@@ -394,19 +403,26 @@ describe("AkanAppConfig", () => {
     const target = lines.lastIndexOf(`FROM ${DEFAULT_DOCKER_IMAGE}`);
 
     expect(lines.slice(0, target)).toEqual([
+      "# akan:dockerfile 1",
+      "# akan:install-stage",
       `FROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install`,
       "ARG TARGETARCH",
       "WORKDIR /workspace",
       "COPY ./package.json ./bun.lock ./",
       'RUN bun install --production --frozen-lockfile --os linux --cpu "$(echo "$TARGETARCH" | sed s/amd64/x64/)" \\',
       "  && ( echo prune )",
+      "# akan:base",
     ]);
     expect(lines.slice(target).filter((line) => line.includes("bun install"))).toEqual([]);
-    expect(lines.slice(lines.indexOf("RUN echo pre"), lines.indexOf("COPY . .") + 1)).toEqual([
+    expect(lines.slice(lines.indexOf("# akan:pre-runs"), lines.indexOf("COPY . .") + 1)).toEqual([
+      "# akan:pre-runs",
       "RUN echo pre",
+      "# akan:install",
       "WORKDIR /workspace",
       "COPY --from=install /workspace ./",
+      "# akan:post-runs",
       "RUN echo post",
+      "# akan:app",
       "COPY . .",
     ]);
   });
@@ -415,7 +431,9 @@ describe("AkanAppConfig", () => {
     const docker = { crossBuild: true, image: { arm64: "vendor/bun:arm64" } };
     const local = new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv).dockerfileFor("local");
 
-    expect(local).toStartWith(`FROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install\n`);
+    expect(local).toContain(
+      `# akan:install-stage\nFROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install\n`,
+    );
     expect(local).toContain(
       `FROM ${DEFAULT_DOCKER_IMAGE} AS amd64\nFROM vendor/bun:arm64 AS arm64\nFROM $TARGETARCH\nARG AKAN_ALLOW_LOCAL_IMAGE\n`,
     );
@@ -477,8 +495,8 @@ describe("AkanAppConfig", () => {
     expect(config.dockerfileFor("main")).toContain(`RUN echo lib\nRUN ${tools}\n`);
     expect(config.dockerfileFor("main")).toContain("ENV AKAN_PUBLIC_OPERATION_MODE=cloud\n");
     expect(config.dockerfileFor("main")).toContain("ENV REGION=seoul\n");
-    expect(edge).toStartWith(`FROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install\n`);
-    expect(edge).toContain("RUN echo lib\nWORKDIR /workspace\n");
+    expect(edge).toContain(`# akan:install-stage\nFROM --platform=$BUILDPLATFORM ${DEFAULT_DOCKER_IMAGE} AS install\n`);
+    expect(edge).toContain("RUN echo lib\n# akan:install\nWORKDIR /workspace\n");
     expect(edge).not.toContain("kubectl");
     expect(edge).toContain("ENV AKAN_PUBLIC_OPERATION_MODE=edge\n");
     expect(edge).toContain("ENV EDGE_MODE=camera\n");
@@ -494,6 +512,42 @@ describe("AkanAppConfig", () => {
       'declares no docker variant "kiosk"',
     );
     expect(configOf("FROM scratch").dockerVariants).toEqual({});
+  });
+
+  test("opens the Dockerfile with its format and marks each section it wrote, so a tool finds one without matching its instructions", () => {
+    const plain = dockerfileLayoutOf(new AkanAppConfig(app, [], packageJson, {}, baseDevEnv).dockerfile);
+    expect(plain?.format).toBe(DOCKERFILE_FORMAT);
+    expect([...(plain?.sections.keys() ?? [])]).toEqual(["base", "install", "app"]);
+    expect(plain?.sections.get("install")).toEqual([
+      "WORKDIR /workspace",
+      "COPY ./package.json ./bun.lock ./",
+      "RUN bun install --production --frozen-lockfile",
+    ]);
+    expect(plain?.sections.get("base")?.[0]).toBe(`FROM ${DEFAULT_DOCKER_IMAGE}`);
+    expect(plain?.sections.get("app")?.at(-2)).toBe(`ENTRYPOINT ${JSON.stringify(DOCKER_INIT)}`);
+
+    const docker = { crossBuild: true, preRuns: ["echo pre"], installRuns: ["echo prune"], postRuns: ["echo post"] };
+    const every = dockerfileLayoutOf(new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv).dockerfile);
+    expect([...(every?.sections.keys() ?? [])]).toEqual([...dockerfileSections]);
+    expect(every?.sections.get("install")).toEqual(["WORKDIR /workspace", "COPY --from=install /workspace ./"]);
+    expect(every?.sections.get("install-stage")?.at(-1)).toBe("  && ( echo prune )");
+  });
+
+  test("reads no layout from a Dockerfile it did not write, and the format of one a later version wrote", () => {
+    expect(dockerfileLayoutOf('FROM oven/bun:1-slim\nCOPY . .\nCMD ["bun","main.js"]')).toBeNull();
+    expect(dockerfileLayoutOf("# akan:base\nFROM scratch")).toBeNull();
+    const later = dockerfileLayoutOf("# akan:dockerfile 7\n# akan:base\nFROM scratch\n# akan:warm\nRUN true");
+    expect(later?.format).toBe(7);
+    expect(later?.sections.get("warm")).toEqual(["RUN true"]);
+  });
+
+  test("the akanConfig entry carries the generator, for a tool that checks its edits against the installed one", async () => {
+    const entry = await import("./index");
+    expect(entry.dockerfileOf).toBe(dockerfileOf);
+    expect(entry.dockerfileLayoutOf).toBe(dockerfileLayoutOf);
+    expect(entry.DEFAULT_DOCKER_IMAGE).toBe(DEFAULT_DOCKER_IMAGE);
+    expect(entry.DOCKER_INIT).toBe(DOCKER_INIT);
+    expect(entry.DOCKERFILE_FORMAT).toBe(DOCKERFILE_FORMAT);
   });
 
   test("keeps a declared Dockerfile string verbatim", () => {

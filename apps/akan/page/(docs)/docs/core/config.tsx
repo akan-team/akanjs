@@ -1750,6 +1750,35 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
+                    <strong>A tool that edits the generated Dockerfile finds its place by a marker.</strong> The file
+                    opens with <code># akan:dockerfile 1</code>, and each section starts at a comment:{" "}
+                    <code># akan:install-stage</code> (only with <code>crossBuild</code>), <code># akan:base</code>,{" "}
+                    <code># akan:pre-runs</code>, <code># akan:install</code>, <code># akan:post-runs</code> and{" "}
+                    <code># akan:app</code>, a section with no instruction left out. The number rises when the sections
+                    change, so a tool that meets one it does not know says so instead of skipping its edit.{" "}
+                    <code>dockerfileLayoutOf</code> from <code>@akanjs/devkit/akanConfig</code> reads them, and{" "}
+                    <code>dockerfileOf</code> there is the generator itself. A Dockerfile written as a string carries no
+                    marker.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>생성된 Dockerfile을 고치는 도구는 표식으로 자리를 찾습니다.</strong> 파일은{" "}
+                    <code># akan:dockerfile 1</code>로 시작하고, 구간마다 주석으로 시작합니다.{" "}
+                    <code># akan:install-stage</code>(<code>crossBuild</code>일 때만), <code># akan:base</code>,{" "}
+                    <code># akan:pre-runs</code>, <code># akan:install</code>, <code># akan:post-runs</code>,{" "}
+                    <code># akan:app</code>이며, 명령이 없는 구간은 쓰지 않습니다. 구간 구성이 바뀌면 번호가 올라가므로,
+                    모르는 번호를 만난 도구는 수정을 조용히 건너뛰지 않고 그 사실을 알릴 수 있습니다.{" "}
+                    <code>@akanjs/devkit/akanConfig</code>의 <code>dockerfileLayoutOf</code>가 이 표식을 읽고, 같은 곳의{" "}
+                    <code>dockerfileOf</code>가 생성기입니다. 문자열로 쓴 Dockerfile에는 표식이 없습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
                     <strong>A desktop app carries its own executables.</strong> It gets none of the image's{" "}
                     <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else its server or a native
                     plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and
