@@ -26,6 +26,7 @@ export const pages: PagesContext = {
       .param("name", String)
       .render(({ name }) => {
         started.inc({ name });
+        fs.appendFileSync(flag("start-order"), `${name}\n`);
         return <p>{`quick ${name}`}</p>;
       }),
   }),

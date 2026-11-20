@@ -14,6 +14,7 @@ interface Harness {
   render: (route: string, signal?: AbortSignal) => ReturnType<RscWorker["renderWithMeta"]>;
   body: (route: string, signal?: AbortSignal) => Promise<string>;
   started: (name: string) => number;
+  startOrder: () => string[];
   sample: (family: string, labels?: Record<string, string>) => number;
   settled: (inFlight: number, depth: number) => Promise<void>;
   logged: LogRecord[];
@@ -73,6 +74,7 @@ const withAdmissionWorker = async (env: Record<string, string>, run: (harness: H
         return await new Response(result.stream).text();
       },
       started: (name) => sample("akan_test_admission_renders_total", { name }),
+      startOrder: () => fs.readFileSync(path.join(dir, "start-order"), "utf8").trim().split("\n"),
       sample,
       settled: (inFlight, depth) =>
         until(
@@ -94,24 +96,22 @@ const oneSlot = { AKAN_RSC_WORKER_MAX_CONCURRENCY: "1" };
 
 describe("RscWorker render admission", () => {
   test("starts no more renders than the cap, and the waiting ones in the order they were asked", async () => {
-    await withAdmissionWorker(oneSlot, async ({ raise, body, started, sample, settled }) => {
-      const order: string[] = [];
+    await withAdmissionWorker(oneSlot, async ({ raise, body, started, startOrder, sample, settled }) => {
       const first = body("held/first");
       await settled(1, 0);
-      const waiting = ["second", "third", "fourth"].map((name) =>
-        body(`quick/${name}`).then((text) => order.push(text)),
-      );
+      const waiting = ["second", "third", "fourth"].map((name) => body(`quick/${name}`));
       await settled(1, 3);
       expect(["first", "second", "third", "fourth"].map(started)).toEqual([1, 0, 0, 0]);
 
       raise("release-first");
       expect(await first).toContain("held first");
-      await Promise.all(waiting);
-      expect(order.map((text) => text.match(/quick \w+/)?.[0])).toEqual([
-        "quick second",
-        "quick third",
-        "quick fourth",
+      expect(await Promise.all(waiting)).toEqual([
+        expect.stringContaining("quick second"),
+        expect.stringContaining("quick third"),
+        expect.stringContaining("quick fourth"),
       ]);
+      //? Read in the worker: the host finishes reading two bodies in either order, whichever render started first.
+      expect(startOrder()).toEqual(["second", "third", "fourth"]);
       await settled(0, 0);
       expect(sample("akan_rsc_render_queue_wait_seconds")).toBe(4);
     });
