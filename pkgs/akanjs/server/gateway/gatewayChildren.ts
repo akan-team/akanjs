@@ -23,6 +23,7 @@ export interface ChildState {
   healthPath?: string;
   //? `undefined` is a replica of an earlier release, which reports no worker; it counts as rendering, as it did then.
   rscWorker?: AkanRscWorkerStatus;
+  webPending?: boolean;
   metrics: AkanMetricsReport;
   /** Monotonic (`performance.now()`) so sleep/wake wall-clock jumps cannot fake a health timeout. */
   lastPongAtMono?: number;

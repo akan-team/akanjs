@@ -443,6 +443,7 @@ export type AkanIpcMessage = {
         enabled: boolean;
     };
     rscWorker?: AkanRscWorkerStatus;
+    webPending?: boolean;
 } | {
     type: "secret.answer";
     id: string;

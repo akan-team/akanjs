@@ -6,6 +6,10 @@ import { resolveArtifactDir } from "../proxy/hostBasePathWebProxy";
 export class DevBaseArtifact {
   static readonly #pollMs = 20;
 
+  static awaited(env: Record<string, string | undefined> = process.env) {
+    return env.AKAN_DEV_AWAIT_ARTIFACT === "1";
+  }
+
   //? `akan start` sets the key on a server it boots beside the first base build, which renames its artifact in last.
   static async arrived({
     artifactDir = resolveArtifactDir(),
@@ -20,7 +24,7 @@ export class DevBaseArtifact {
     warnAfterMs?: number;
     warn?: (message: string) => void;
   } = {}): Promise<number> {
-    if (env.AKAN_DEV_AWAIT_ARTIFACT !== "1") return 0;
+    if (!DevBaseArtifact.awaited(env)) return 0;
     const file = path.join(artifactDir, "base-artifact.json");
     const started = performance.now();
     let warned = false;

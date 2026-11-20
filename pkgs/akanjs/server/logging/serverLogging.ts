@@ -17,6 +17,7 @@ export class ServerLogging {
   #logControl: LogControlSocket | null = null;
   #logForwarder: LogForwarder | null = null;
   #logStream: LogStreamRoute | null = null;
+  #minSev: number | null | undefined;
 
   constructor(solo: boolean, logger: Logger) {
     this.#solo = solo;
@@ -29,27 +30,41 @@ export class ServerLogging {
   }
 
   setMinSev(minSev: number | null) {
+    this.#minSev = minSev;
     this.#logForwarder?.setMinSev(minSev);
   }
 
   async startTransport(webRouter: WebRouter | null = null) {
     if (this.#logHub || this.#logForwarder) return;
     if (this.#solo) {
-      const hub = LogHub.attach();
-      this.#logHub = hub;
-      hub.onFloorChange((minSev) => webRouter?.setLogLevel(minSev));
-      webRouter?.onLogRecords((records, dropped) => {
-        hub.ingestMany(records);
-        if (dropped) this.#logger.warn(`RSC worker dropped ${dropped} log records (ipc backpressure)`);
-      });
-      this.#logControl = await LogControlSocket.open(hub, resolveRuntimeDir(), this.#logger);
+      this.#logHub = LogHub.attach();
+      this.attachWeb(webRouter);
+      this.#logControl = await LogControlSocket.open(this.#logHub, resolveRuntimeDir(), this.#logger);
       return;
     }
     // An ndjson gateway relays records, not text; the forwarder starts at the stdout level before `log.level` arrives.
     if (Logger.isNdjson) Logger.consoleOutput = false;
-    const forwarder = new LogForwarder((message, onSent) => process.send?.(message, undefined, undefined, onSent));
-    this.#logForwarder = forwarder;
-    webRouter?.onLogRecords((records) => forwarder.pushMany(records));
+    this.#logForwarder = new LogForwarder((message, onSent) => process.send?.(message, undefined, undefined, onSent));
+    this.attachWeb(webRouter);
+  }
+
+  //? A web router mounted after the transport started missed the floor a `log.level` or a subscriber already set.
+  attachWeb(webRouter: WebRouter | null) {
+    if (!webRouter) return;
+    const hub = this.#logHub;
+    if (hub) {
+      hub.onFloorChange((minSev) => webRouter.setLogLevel(minSev));
+      if (hub.floor !== null) webRouter.setLogLevel(hub.floor);
+      webRouter.onLogRecords((records, dropped) => {
+        hub.ingestMany(records);
+        if (dropped) this.#logger.warn(`RSC worker dropped ${dropped} log records (ipc backpressure)`);
+      });
+      return;
+    }
+    const forwarder = this.#logForwarder;
+    if (!forwarder) return;
+    if (this.#minSev !== undefined) webRouter.setLogLevel(this.#minSev);
+    webRouter.onLogRecords((records) => forwarder.pushMany(records));
   }
 
   startFileLogging(role: string) {

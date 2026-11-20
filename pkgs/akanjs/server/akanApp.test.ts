@@ -1658,6 +1658,81 @@ describe("AkanApp", () => {
     }
   }, 20_000);
 
+  test("under akan start keeps a replica that listened before its artifact from settling the hosts and the await flag", async () => {
+    const { root, serverPath, runtimeDir } = await makeRoot("akan-app-web-pending-");
+    const artifactPath = path.join(root, ".akan", "artifact", "base-artifact.json");
+    const goPath = path.join(root, "go");
+    await Bun.write(
+      serverPath,
+      `
+        export const server = {
+          async start() {
+            const http = Bun.serve({ unix: process.env.AKAN_CHILD_SOCKET, fetch() { return new Response("api"); } });
+            process.on("message", (message) => {
+              if (!message || typeof message !== "object") return;
+              ${answerHealthPing}
+              if (message.type === "shutdown") {
+                http.stop(true);
+                process.exit(0);
+              }
+            });
+            const ready = (extra) => process.send?.({
+              type: "ready",
+              pid: process.pid,
+              replicaIdx: Number(process.env.AKAN_REPLICA_IDX ?? 0),
+              role: process.env.SERVER_MODE ?? "all",
+              upstream: { type: "unix", socketPath: process.env.AKAN_CHILD_SOCKET },
+              healthPath: "/_akan/app/child-health",
+              ...extra,
+            });
+            ready({ rscWorker: "starting", webPending: true });
+            while (!(await Bun.file(${JSON.stringify(goPath)}).exists())) await Bun.sleep(20);
+            await Bun.write(${JSON.stringify(artifactPath)}, JSON.stringify({ domains: ["pending.example.com"] }));
+            ready({});
+          },
+        };
+      `,
+    );
+    const identity = {
+      AKAN_PUBLIC_APP_NAME: "alpha",
+      AKAN_PUBLIC_REPO_NAME: "akanjs",
+      AKAN_PUBLIC_SERVE_DOMAIN: "akanjs.com",
+    };
+    const saved = Object.fromEntries(Object.keys(identity).map((key) => [key, process.env[key]]));
+    Object.assign(process.env, identity);
+    const app = withEnvSet(
+      { AKAN_COMMAND_TYPE: "start" },
+      () => new AkanApp(serverPath, { replica: 1, runtimeDir, port: 0 }),
+    );
+    process.env.AKAN_DEV_AWAIT_ARTIFACT = "1";
+    const running = app.start();
+    try {
+      const port = await portOf(app);
+      const at = (host: string) => fetch(`http://127.0.0.1:${port}/`, { headers: { host: `${host}:${port}` } });
+      const local = await at("localhost");
+      expect([local.status, await local.text()]).toEqual([200, "api"]);
+      expect((await at("pending.example.com")).status).toBe(503);
+      expect(process.env.AKAN_DEV_AWAIT_ARTIFACT).toBe("1");
+
+      await Bun.write(goPath, "");
+      const own = await waitFor(async () => {
+        const res = await at("pending.example.com");
+        return res.status === 503 ? null : res;
+      });
+
+      expect([own.status, await own.text()]).toEqual([200, "api"]);
+      expect(process.env.AKAN_DEV_AWAIT_ARTIFACT).toBeUndefined();
+    } finally {
+      delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
+      await app.stop();
+      await Promise.race([running, wait(1_000)]);
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }, 20_000);
+
   const onDeployedGateway = async (
     name: string,
     env: Record<string, string | undefined>,
