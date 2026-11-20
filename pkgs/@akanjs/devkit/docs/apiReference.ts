@@ -12,6 +12,7 @@ interface Item {
   from?: string;
   file?: string;
   show: Show;
+  note?: string;
 }
 
 interface Section {
@@ -58,7 +59,12 @@ const sections: Section[] = [
   {
     title: "Services and adapters (`lib/_<service>/`, `srvkit/`)",
     items: [
-      { name: "adapt", from: "akanjs/service", show: { kind: "signature" } },
+      {
+        name: "adapt",
+        from: "akanjs/service",
+        show: { kind: "signature" },
+        note: "A class extending `adapt(name)` has `this.logger`; the server awaits its `onInit()` before the app serves and its `onDestroy()` when it stops.",
+      },
       { name: "serve", from: "akanjs/service", show: { kind: "signature" } },
       { name: "ServiceOptions", file: "service/serve.ts", show: { kind: "props" } },
     ],
@@ -74,6 +80,7 @@ const sections: Section[] = [
         name: "EndpointInfo",
         file: "signal/endpointInfo.ts",
         show: { kind: "members", only: ["param", "search", "body", "room", "msg", "with", "exec"] },
+        note: "`.search()` is always optional and takes no `nullable`: the caller may omit it or pass `null`, and the handler gets `T | undefined`.",
       },
       { name: "EndpointArgProps", file: "signal/endpointInfo.ts", show: { kind: "props" } },
       {
@@ -194,18 +201,19 @@ export class ApiReference {
     const symbol = item.from ? reader.exported(item.from, item.name) : reader.declared(item.file ?? "", item.name);
     const where = item.from ? ` · \`${item.from}\`` : "";
     const heading = `### \`${item.name}\`${where}`;
+    const note = item.note ? ["", item.note] : [];
     if (item.show.kind === "declaration")
-      return [heading, "", "```ts", reader.declarationText(symbol), "```"].join("\n");
+      return [heading, "", "```ts", reader.declarationText(symbol), "```", ...note].join("\n");
     if (item.show.kind === "signature")
-      return [heading, "", "```ts", ...reader.signatures(symbol, item.name), "```"].join("\n");
+      return [heading, "", "```ts", ...reader.signatures(symbol, item.name), "```", ...note].join("\n");
     if (item.show.kind === "props") {
       const bases = reader.foreignBases(symbol).map((base) => `\`${base}\``);
       const inherits = bases.length ? ["", `Every prop of ${bases.join(" and ")}, and:`] : [];
       const props = reader.props(reader.declaredType(symbol), item.show.omit);
-      return [heading, ...inherits, "", "```ts", ...props, "```"].join("\n");
+      return [heading, ...inherits, "", "```ts", ...props, "```", ...note].join("\n");
     }
     const members = reader.members(reader.instanceType(symbol), item.show);
-    return [heading, "", "```ts", ...members.map(([, line]) => line), "```"].join("\n");
+    return [heading, "", "```ts", ...members.map(([, line]) => line), "```", ...note].join("\n");
   }
 
   static #routeStages(reader: DeclarationReader): string {

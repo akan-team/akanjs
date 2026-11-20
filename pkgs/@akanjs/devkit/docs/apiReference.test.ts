@@ -28,6 +28,16 @@ describe("ApiReference", () => {
     expect(rendered).toMatch(/^\/\*\* .+ \*\/\nserverMode\?: "batch" \| "federation";$/m);
   });
 
+  test("says under an entry what its signature cannot: a search is always optional, an adaptor has a logger and hooks", () => {
+    expect(rendered).toMatch(/^\.search<.+option\?: Omit<EndpointArgProps, "nullable">\)$/m);
+    expect(rendered).toMatch(
+      /^```\n\n`\.search\(\)` is always optional and takes no `nullable`: .+`T \| undefined`\./m,
+    );
+    expect(rendered).toMatch(
+      /^```\n\nA class extending `adapt\(name\)` has `this\.logger`; .+`onInit\(\)` .+`onDestroy\(\)` .+\.$/m,
+    );
+  });
+
   test("says what each listed subpath holds, and lists only subpaths the package exports", async () => {
     const exports = Object.keys((await Bun.file(path.join(akanjsDir, "package.json")).json()).exports);
     const listed = [...rendered.matchAll(/^- `akanjs\/([^`]+)` — .+\.$/gm)].map(([, subpath]) => `./${subpath}`);

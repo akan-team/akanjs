@@ -36,6 +36,8 @@ message<Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullabl
 .exec<ExecFn extends (this: Srvs, ...args: [...ServerArgs, ...InternalArgs]) => ReqType extends "pubsub" ? Promise<void> | void : PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>>(execFn: ExecFn)
 ```
 
+`.search()` is always optional and takes no `nullable`: the caller may omit it or pass `null`, and the handler gets `T | undefined`.
+
 ### `EndpointArgProps`
 
 ```ts

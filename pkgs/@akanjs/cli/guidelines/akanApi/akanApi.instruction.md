@@ -174,6 +174,8 @@ adapt<Name extends string>(name: Name): AdaptorCls<{}, Record<never, never>>
 adapt<Name extends string, Injection extends InjectBuilder<"use" | "env" | "memory" | "plug">>(name: Name, injectBuilder: Injection): AdaptorCls<{}, ReturnType<Injection>>
 ```
 
+A class extending `adapt(name)` has `this.logger`; the server awaits its `onInit()` before the app serves and its `onDestroy()` when it stops.
+
 ### `serve` · `akanjs/service`
 
 ```ts
@@ -223,6 +225,8 @@ message<Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullabl
 .with<ArgType, Optional extends boolean = false>(argRef: InternalArgCls<ArgType>, option?: InternalArgProps<Optional>)
 .exec<ExecFn extends (this: Srvs, ...args: [...ServerArgs, ...InternalArgs]) => ReqType extends "pubsub" ? Promise<void> | void : PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>>(execFn: ExecFn)
 ```
+
+`.search()` is always optional and takes no `nullable`: the caller may omit it or pass `null`, and the handler gets `T | undefined`.
 
 ### `EndpointArgProps`
 
