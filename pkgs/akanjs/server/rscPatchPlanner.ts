@@ -1,5 +1,5 @@
-import type { PageState, PathRoute } from "akanjs/client";
-import type { Logger } from "akanjs/common";
+import type { PageState, PathRoute, RouteRender } from "akanjs/client";
+import { type Logger, parseSearchParams } from "akanjs/common";
 import type { ReactNode } from "react";
 import { RouteHead } from "../client/route/RouteHead";
 import { akanHeadSnapshotKey, createAkanLocaleAlternateHeadSnapshot, mergeAkanHeadSnapshots } from "./head";
@@ -21,7 +21,8 @@ import { resolveAkanRscHeadSafePatchDecision } from "./rscWorkerCache";
 type RouteHeadLayers = Awaited<ReturnType<typeof RouteElementComposer.resolveHeadLayers>>;
 type RouteMatch = { pathRoute: PathRoute; params: Record<string, string> };
 type SearchParams = Record<string, string | string[]>;
-type FrameChange = "params-changed" | "layouts-changed" | "page-state-changed" | "frame-unknown";
+type RouteRead = { params: Record<string, string>; searchParams: SearchParams };
+type FrameChange = "params-changed" | "search-changed" | "layouts-changed" | "page-state-changed" | "frame-unknown";
 
 export interface RouteHeadSnapshots {
   layouts: AkanHeadSnapshotV1;
@@ -138,7 +139,7 @@ export class RscPatchPlanner {
     const routeHeadMounted = routeHeadKey !== undefined;
     const frameChange =
       pageConfig?.rscPatchHeadSafe === true && routeHeadMounted
-        ? await this.#frameChangeOf(url, match, current, patchDecision.patch.patchStartIndex)
+        ? await this.#frameChangeOf(url, match, searchParams, current, patchDecision.patch.patchStartIndex)
         : undefined;
     let admittedHead: ResolvedRouteHead | undefined;
     if (pageConfig?.rscPatchHeadSafe === true && routeHeadMounted && !frameChange) {
@@ -188,25 +189,33 @@ export class RscPatchPlanner {
   }
 
   //? A patch keeps every layout above it as the page left from rendered it, and the SSR wrapper with them: the same
-  //? layouts, the params and the frame settings they read must hold for the target, or the kept layouts are the old
-  //? page's. Segment keys name URL prefixes only, so two route groups' layouts at one prefix pass as the same segment.
+  //? layouts, the params and query they read and the frame settings must hold for the target, or the kept layouts are
+  //? the old page's. Segment keys name URL prefixes only, so two route groups' layouts at one prefix pass as the same
+  //? segment.
   async #frameChangeOf(
     url: URL,
     match: RouteMatch,
+    searchParams: SearchParams,
     current: AkanRouterStateV1 | null,
     patchStartIndex: number,
   ): Promise<FrameChange | undefined> {
     const currentUrl = current && URL.canParse(current.href) ? new URL(current.href) : null;
     const currentMatch = currentUrl ? RouteTreeBuilder.match(currentUrl.pathname, this.#props.routes()) : null;
-    if (!currentMatch) return "frame-unknown";
-    const paramNames = new Set([...Object.keys(currentMatch.params), ...Object.keys(match.params)]);
-    if ([...paramNames].some((name) => currentMatch.params[name] !== match.params[name])) return "params-changed";
+    if (!currentUrl || !currentMatch) return "frame-unknown";
     const keptLayouts = (route: PathRoute) =>
       [...route.renderRootLayouts, ...route.renderLayouts].slice(0, patchStartIndex);
     const [fromLayouts, toLayouts] = [keptLayouts(currentMatch.pathRoute), keptLayouts(match.pathRoute)];
-    if (fromLayouts.length !== toLayouts.length || fromLayouts.some((layout, index) => layout !== toLayouts[index]))
-      return "layouts-changed";
+    const sameLayouts =
+      fromLayouts.length === toLayouts.length && fromLayouts.every((layout, index) => layout === toLayouts[index]);
+    if (currentMatch.params.lang !== match.params.lang) return "params-changed";
+    if (!sameLayouts) return "layouts-changed";
     try {
+      const readChange = await RscPatchPlanner.#readChangeOf(
+        toLayouts,
+        { params: currentMatch.params, searchParams: parseSearchParams(currentUrl.search) },
+        { params: match.params, searchParams },
+      );
+      if (readChange) return readChange;
       const basePath = this.#props.basePathOf(url);
       const [from, to] = await Promise.all([
         RouteElementComposer.resolveSsrFramePathRoute({ pathRoute: currentMatch.pathRoute, basePath }),
@@ -222,6 +231,26 @@ export class RscPatchPlanner {
       );
       return "frame-unknown";
     }
+  }
+
+  //? A chain layout receives only the args it declares, so a param or a query value it does not name may differ under
+  //? it. A legacy layout receives every param; the query is the page's to read, as it is in CSR.
+  static async #readChangeOf(
+    layouts: RouteRender[],
+    from: RouteRead,
+    to: RouteRead,
+  ): Promise<"params-changed" | "search-changed" | undefined> {
+    const reads = await Promise.all(
+      layouts.map(async (layout) => ({
+        params: await layout.getParamNames?.(),
+        search: (await layout.getSearchNames?.()) ?? [],
+      })),
+    );
+    const everyParam = [...new Set([...Object.keys(from.params), ...Object.keys(to.params)])];
+    if (reads.some(({ params }) => (params ?? everyParam).some((name) => from.params[name] !== to.params[name])))
+      return "params-changed";
+    const moved = (name: string) => JSON.stringify(from.searchParams[name]) !== JSON.stringify(to.searchParams[name]);
+    return reads.some(({ search }) => search.some(moved)) ? "search-changed" : undefined;
   }
 
   //? `cache` and `ssr` steer how the target is served, not how the kept layouts or the SSR wrapper render it.

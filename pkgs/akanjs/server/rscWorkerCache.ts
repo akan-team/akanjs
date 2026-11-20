@@ -281,7 +281,7 @@ export function resolveAkanRscHeadSafePatchDecision({
   pageConfig?: PageConfig;
   /** Whether the page the patch leaves from shows its head through `AkanRouteHead`, the only head a patch can swap. */
   routeHeadMounted?: boolean;
-  frameChange?: "params-changed" | "layouts-changed" | "page-state-changed" | "frame-unknown";
+  frameChange?: "params-changed" | "search-changed" | "layouts-changed" | "page-state-changed" | "frame-unknown";
   headSnapshot?: AkanHeadSnapshotV1;
   /** Whether the target's layouts head differs from the one the page left from shows, which a patch would keep. */
   layoutsHeadChanged?: boolean;

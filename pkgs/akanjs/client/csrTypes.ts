@@ -58,8 +58,10 @@ export interface PageConfig {
   ssr?: SsrRenderMode;
   /**
    * Opt-in suffix-only RSC commits under `AKAN_PUBLIC_RSC_PARTIAL_COMMIT=1`: the page's `.head()` is plain `title`,
-   * `meta` and `link` tags, and the layouts above it render the same for each sibling page, apart from what they
-   * read through `usePathCtx()`.
+   * `meta` and `link` tags, and the layouts above it draw on the server only from the args they declare. A move to a
+   * sibling page, or to another param or query of this page that no layout above declares with `.param()` or
+   * `.search()`, then renders the page alone and keeps those layouts as drawn; what follows the path in them is read
+   * on the client (`usePathCtx()`, `Link`'s `activeClassName`).
    */
   rscPatchHeadSafe?: boolean;
   /** `false` answers a `Link` prefetch of the page (on a layout, of every page under it) without rendering it, for a
@@ -180,6 +182,8 @@ export interface RouteRender {
   getRouteDefinition?: () => PromiseOrObject<RouteDefinition | undefined>;
   /** The query names the level reads; `undefined` for a legacy module, which receives every one. */
   getSearchNames?: () => PromiseOrObject<string[] | undefined>;
+  /** The params the level reads beyond `lang`; `undefined` for a legacy module, which receives every one. */
+  getParamNames?: () => PromiseOrObject<string[] | undefined>;
 }
 export interface RouteViewport {
   /** `viewport-fit=cover`: the page runs under the notch and home indicator, and `env(safe-area-inset-*)` measures them. */

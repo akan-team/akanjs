@@ -976,6 +976,7 @@ export interface RouteRender {
     getLayoutManifest?: () => PromiseOrObject<WebAppManifest | undefined>;
     getRouteDefinition?: () => PromiseOrObject<RouteDefinition | undefined>;
     getSearchNames?: () => PromiseOrObject<string[] | undefined>;
+    getParamNames?: () => PromiseOrObject<string[] | undefined>;
 }
 
 export type RouteSearchType = RouteArgType | [

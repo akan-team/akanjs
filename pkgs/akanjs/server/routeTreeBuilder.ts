@@ -337,6 +337,11 @@ export class RouteTreeBuilder {
         if (definition) return definition.args.filter((arg) => arg.kind === "search").map((arg) => arg.name);
         return parseRouteModuleKey(key).isInternalRootLayout ? [] : undefined;
       },
+      getParamNames: async () => {
+        const { definition } = await loadModule();
+        if (definition) return definition.args.filter((arg) => arg.kind === "param").map((arg) => arg.name);
+        return parseRouteModuleKey(key).isInternalRootLayout ? [] : undefined;
+      },
     };
     if (kind === "page") {
       routeRender.getPageConfig = pageConfigOf;
@@ -371,6 +376,7 @@ export class RouteTreeBuilder {
         return createElement(mod.default as never, { children } as never);
       }) as RouteRender["render"],
       getSearchNames: () => [],
+      getParamNames: () => [],
     };
   }
 

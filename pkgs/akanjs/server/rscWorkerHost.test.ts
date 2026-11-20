@@ -508,7 +508,7 @@ describe("RscWorker cache invalidation", () => {
     const patch = makeHeadSafePatch();
     const patchDecision = {
       status: "patch" as const,
-      reason: "same-route-search-params",
+      reason: "same-route-page",
       commonPrefixLength: 3,
       patch,
     };
@@ -544,7 +544,7 @@ describe("RscWorker cache invalidation", () => {
     const targetRouterState = makePatchRouterState();
     const patchDecision = {
       status: "patch" as const,
-      reason: "same-route-search-params",
+      reason: "same-route-page",
       commonPrefixLength: 3,
       patch: makeHeadSafePatch(),
     };
@@ -618,7 +618,7 @@ describe("RscWorker cache invalidation", () => {
     });
     const safePatchDecision = {
       status: "patch" as const,
-      reason: "same-route-search-params",
+      reason: "same-route-page",
       commonPrefixLength: 3,
       patch: freshPatch,
     };
@@ -814,7 +814,11 @@ describe("RscWorker cached result replay", () => {
 
 describe("RscWorker route head", () => {
   interface HeadWorker {
-    render: (url: string, headers?: Headers) => Promise<{ body: string; trace?: RscTraceMetadata }>;
+    render: (
+      url: string,
+      headers?: Headers,
+      option?: { prefetch?: boolean },
+    ) => Promise<{ body: string; trace?: RscTraceMetadata }>;
     redirectOf: (url: string, headers?: Headers) => Promise<string | null>;
     headRuns: (name: string) => number;
   }
@@ -840,8 +844,8 @@ describe("RscWorker route head", () => {
     try {
       await rsc.ready;
       await run({
-        render: async (url, headers) => {
-          const result = await rsc.renderWithMeta(new Request(url, { headers }));
+        render: async (url, headers, option) => {
+          const result = await rsc.renderWithMeta(new Request(url, { headers }), option);
           if (result.type !== "stream") throw new Error(`expected a stream, got ${result.type}`);
           return { body: decoder.decode(await new Response(result.stream).arrayBuffer()), trace: result.trace };
         },
@@ -966,14 +970,74 @@ describe("RscWorker route head", () => {
         expect(sameSection.trace).toMatchObject({ partial: "patch" });
         expect(headRuns("list")).toBe(1);
 
-        const otherSection = await render(
-          "http://localhost/en/query/list?tab=b",
-          stateOf("query/list", "http://localhost/en/query/list?tab=a", { headKey: sectionHead("a") }),
+        const otherHead = await render(
+          "http://localhost/en/query/list?tab=a&page=3",
+          stateOf("query/list", "http://localhost/en/query/list?tab=a", { headKey: sectionHead("b") }),
         );
-        expect(otherSection.trace).toMatchObject({ partial: "full", partialReason: "layouts-head-changed" });
+        expect(otherHead.trace).toMatchObject({ partial: "full", partialReason: "layouts-head-changed" });
         expect(headRuns("list")).toBe(2);
       },
     );
+  }, 20_000);
+
+  test("patches a move that changes only a param or a query value no kept layout declares, a prefetch of it too", async () => {
+    await withHeadWorker(
+      { AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" },
+      async ({ render, headRuns }) => {
+        const channel = await render(
+          "http://localhost/en/chat/b",
+          stateOf("chat/:channelId", "http://localhost/en/chat/a"),
+        );
+        expect(channel.trace).toMatchObject({ partial: "patch", partialReason: "same-route-page" });
+        expect(channel.body).toContain("channel b body");
+        expect(channel.body).not.toContain("data-pane");
+        expect(headRuns("chat layout")).toBe(0);
+
+        const prefetched = await render(
+          "http://localhost/en/chat/c",
+          stateOf("chat/:channelId", "http://localhost/en/chat/b"),
+          { prefetch: true },
+        );
+        expect(prefetched.trace).toMatchObject({ partial: "patch" });
+        expect(headRuns("chat layout")).toBe(0);
+
+        const doc = await render(
+          "http://localhost/en/org/1/y",
+          stateOf("org/:orgId/:docId", "http://localhost/en/org/1/x"),
+        );
+        expect(doc.trace).toMatchObject({ partial: "patch" });
+        expect(doc.body).not.toContain("data-org");
+
+        const paged = await render(
+          "http://localhost/en/query/board?tab=a&page=2",
+          stateOf("query/board", "http://localhost/en/query/board?tab=a", { headKey: sectionHead("a") }),
+        );
+        expect(paged.trace).toMatchObject({ partial: "patch" });
+      },
+    );
+  }, 20_000);
+
+  test("renders whole when a kept layout declares the param or the query value that moved, or declares nothing", async () => {
+    await withHeadWorker({ AKAN_PUBLIC_RSC_PARTIAL_COMMIT: "1", AKAN_RSC_RESULT_CACHE: "0" }, async ({ render }) => {
+      const otherOrg = await render(
+        "http://localhost/en/org/2/x",
+        stateOf("org/:orgId/:docId", "http://localhost/en/org/1/x"),
+      );
+      expect(otherOrg.trace).toMatchObject({ partial: "full", partialReason: "params-changed" });
+      expect(otherOrg.body).toContain('"data-org":"2"');
+
+      const otherTab = await render(
+        "http://localhost/en/query/board?tab=b",
+        stateOf("query/board", "http://localhost/en/query/board?tab=a", { headKey: sectionHead("b") }),
+      );
+      expect(otherTab.trace).toMatchObject({ partial: "full", partialReason: "search-changed" });
+
+      const legacyLayout = await render(
+        "http://localhost/en/shelf/1/y",
+        stateOf("shelf/:shelfId/:bookId", "http://localhost/en/shelf/1/x"),
+      );
+      expect(legacyLayout.trace).toMatchObject({ partial: "full", partialReason: "params-changed" });
+    });
   }, 20_000);
 
   test("names the layouts head in the router state of a page that shows a route head, a patch onto it and a replay", async () => {
