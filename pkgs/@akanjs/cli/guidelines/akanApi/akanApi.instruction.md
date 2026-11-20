@@ -325,6 +325,7 @@ bin?: AkanBinConfig;
 native?: AkanNativeAppConfig;
 plugins?: AkanPlugin[];
 pipeline?: AppPipelineConfig;
+preview?: AkanPreviewConfig;
 ```
 
 ### `AkanWebOption` · `akanjs`

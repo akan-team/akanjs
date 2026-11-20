@@ -4,8 +4,8 @@ import path from "node:path";
 import type { DevHostEvent } from "@akanjs/devkit/akanApp";
 import type { App } from "@akanjs/devkit/commandDecorators";
 import type { AppRouteSource } from "@akanjs/devkit/executors";
-import { PreviewChrome, type PreviewEngine, PreviewView } from "@akanjs/devkit/preview";
-import { type AkanLocalePrefix, type LogRecord, parseRouteModuleKey } from "akanjs/common";
+import { PreviewChrome, type PreviewEngine, type PreviewSession, PreviewView } from "@akanjs/devkit/preview";
+import { type AkanLocalePrefix, type LogRecord, matchRoutePattern, parseRouteModuleKey } from "akanjs/common";
 import { VerifyScope } from "../verify/verifyScope";
 import { ApplicationRunner } from "./application.runner";
 import { DevSupervisor } from "./devSupervisor";
@@ -20,6 +20,9 @@ export interface AppPreviewOptions {
   desktop?: boolean;
   keep?: boolean;
   timeoutMs?: number;
+  /** Handed to `preview.signIn`, for an app with more than one kind of account. */
+  as?: string | null;
+  anonymous?: boolean;
 }
 
 export interface AppPreviewPage {
@@ -52,6 +55,8 @@ export interface AppPreviewReport {
   serverLog: string | null;
   /** False when the app's log socket could not be read, so client and server errors are missing. */
   logsRead: boolean;
+  /** How the pages were signed in, `null` when they opened with no session. */
+  signedIn: string | null;
   /** Pages `--changed` reached but did not open, each with why. */
   skipped: string[];
   notes: string[];
@@ -111,12 +116,15 @@ export class AppPreview {
       serverPid: started?.proc.pid ?? null,
       serverLog: started ? path.relative(root, started.logPath) : null,
       logsRead: false,
+      signedIn: null,
       skipped: changed.skipped,
       notes: plan.notes,
       pages: [],
     };
     try {
       if (started) await AppPreview.#waitBooted(started);
+      const session = await AppPreview.sessionOf(app, options, origin);
+      if (session) report.signedIn = `preview.signIn${options.as ? ` as ${options.as}` : ""}`;
       const records: LogRecord[] = [];
       const tail = await AppPreview.#tail(app, records);
       report.logsRead = !!tail;
@@ -126,6 +134,7 @@ export class AppPreview {
           const page = await AppPreview.#probe(origin, pagePath, {
             engine,
             viewport,
+            session,
             screenshot: options.screenshot ? path.join(previewDir, AppPreview.screenshotName(pagePath)) : null,
             timeoutMs: options.timeoutMs ?? 60_000,
           });
@@ -142,6 +151,58 @@ export class AppPreview {
       if (started && !options.keep) await AppPreview.#stopServer(started.proc);
       else started?.proc.unref();
     }
+  }
+
+  //? Any document of the origin can write its cookies; this one is answered without a render.
+  static readonly sessionPath = "/_akan/app/health";
+  static readonly #cookieName = /^[\w!#$%&'*+.^`|~:-]+$/;
+
+  static async sessionOf(
+    app: Pick<App, "name" | "getConfig">,
+    options: Pick<AppPreviewOptions, "as" | "anonymous">,
+    origin: string,
+  ): Promise<PreviewSession | null> {
+    if (options.anonymous) return null;
+    const as = options.as ?? null;
+    const { preview = {} } = await app.getConfig();
+    const where = `preview.signIn in apps/${app.name}/akan.config.ts`;
+    if (!preview.signIn) {
+      if (as) throw new Error(`--as ${as} needs ${where}, which is not declared.`);
+      return null;
+    }
+    let answer: Response | Record<string, string>;
+    try {
+      answer = await preview.signIn({ origin, as });
+    } catch (error) {
+      throw new Error(`${where} threw: ${error instanceof Error ? error.message : String(error)}`);
+    }
+    const cookies =
+      answer instanceof Response
+        ? await AppPreview.#answerCookies(answer, where)
+        : AppPreview.#namedCookies(answer, where);
+    if (!cookies.length)
+      throw new Error(
+        `${where} opened no session: its answer set no cookie. Pass --anonymous to open the pages without one.`,
+      );
+    return { url: `${origin}${AppPreview.sessionPath}`, cookies };
+  }
+
+  static async #answerCookies(answer: Response, where: string) {
+    const lines = answer.headers.getSetCookie();
+    if (!answer.bodyUsed) await answer.body?.cancel().catch(() => undefined);
+    if (!answer.ok) throw new Error(`${where} was answered ${answer.status}, so the preview has no session.`);
+    //? A pair with no value is the server expiring a cookie, not setting one.
+    return lines.map((line) => line.split(";", 1)[0]?.trim() ?? "").filter((pair) => /^[^=]+=./.test(pair));
+  }
+
+  static #namedCookies(answer: unknown, where: string) {
+    if (typeof answer !== "object" || answer === null || Array.isArray(answer))
+      throw new Error(`${where} has to return the sign-in Response, or the cookies by name.`);
+    return Object.entries(answer).flatMap(([name, value]) => {
+      if (!AppPreview.#cookieName.test(name))
+        throw new Error(`${where} returned "${name}", which is not a cookie name.`);
+      return typeof value === "string" && value ? [`${name}=${encodeURIComponent(value)}`] : [];
+    });
   }
 
   static async planOf(
@@ -280,7 +341,7 @@ export class AppPreview {
 
   static readonly changedPageLimit = 8;
 
-  static changedPages(sources: AppRouteSource[], changedFiles: Iterable<string>) {
+  static changedPages(sources: AppRouteSource[], changedFiles: Iterable<string>, examples: string[] = []) {
     //? Real paths on both sides: a synced lib page is read through its symlink, and git names the lib's own file.
     const realOf = (file: string) => {
       try {
@@ -310,8 +371,11 @@ export class AppPreview {
       );
       if (!touched && !wrapped) continue;
       const urlPath = route.pattern.replace(/^\/:lang/, "") || "/";
-      if (urlPath.includes("/:")) skipped.push(`${urlPath} needs a concrete path`);
-      else reached.push(urlPath);
+      const example = urlPath.includes("/:")
+        ? examples.find((written) => matchRoutePattern(urlPath, written.split(/[?#]/, 1)[0] ?? ""))
+        : urlPath;
+      if (example) reached.push(example);
+      else skipped.push(`${urlPath} needs a concrete path, typed or declared in preview.examples`);
     }
     if (!anyRoute) return { paths: ["/"], skipped };
     const paths = reached.sort((a, b) => a.localeCompare(b)).slice(0, AppPreview.changedPageLimit);
@@ -363,6 +427,7 @@ export class AppPreview {
       `${report.engine}, ${report.viewport.width}x${report.viewport.height}`,
     ];
     if (!report.logsRead) lines.push("The app's log socket did not answer, so client and server errors are not shown.");
+    if (report.signedIn) lines.push(`Signed in through ${report.signedIn}.`);
     for (const reason of report.skipped) lines.push(`Not opened: ${reason}.`);
     for (const note of report.notes) lines.push(`Note: ${note}`);
     lines.push("");
@@ -404,11 +469,13 @@ export class AppPreview {
     {
       engine,
       viewport,
+      session,
       screenshot,
       timeoutMs,
     }: {
       engine: PreviewEngine;
       viewport: { width: number; height: number };
+      session: PreviewSession | null;
       screenshot: string | null;
       timeoutMs: number;
     },
@@ -437,6 +504,7 @@ export class AppPreview {
       const probe = await PreviewView.probe(url, {
         engine,
         ...viewport,
+        session,
         screenshot: !!screenshot,
         timeoutMs,
         settleMs: AppPreview.settleMs,
@@ -469,7 +537,8 @@ export class AppPreview {
     const root = app.workspace.workspaceRoot;
     const changes = (await VerifyScope.changesIn(root)) ?? [];
     const files = changes.filter((change) => !change.code.includes("D")).map((change) => path.join(root, change.file));
-    return AppPreview.changedPages(await app.getRouteSources(), files);
+    const { preview = {} } = await app.getConfig();
+    return AppPreview.changedPages(await app.getRouteSources(), files, preview.examples);
   }
 
   static async #tail(app: App, records: LogRecord[]) {

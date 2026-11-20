@@ -22,6 +22,8 @@ export type {
   AkanNativeValue,
   AkanPlugin,
   AkanPluginNativeConfig,
+  AkanPreviewConfig,
+  AkanPreviewSignIn,
   AkanRouteConfig,
   AkanScanInfo,
   AkanSyncContext,
