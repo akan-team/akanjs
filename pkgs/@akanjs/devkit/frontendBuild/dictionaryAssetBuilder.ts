@@ -3,7 +3,7 @@ import { type AllDictionary, type Dictionary, Translator } from "akanjs/client";
 import type { AkanI18nConfig } from "akanjs/common";
 import type { DictAsset } from "akanjs/server";
 import type { App } from "../commandDecorators";
-import { DictionaryPacking } from "./dictionaryPacking";
+import { type DictionaryPack, DictionaryPacking } from "./dictionaryPacking";
 import { dictionaryBrotliBytesOf, dictionaryServedBytesOf } from "./precompressArtifacts";
 
 export interface DictionaryAssetBuildOptions {
@@ -62,14 +62,18 @@ export class DictionaryAssetBuilder {
       this.#app.verbose(
         `[dictionary] ${packed.wholeRoutes.length} route(s) load the whole page dictionary: their own files would not be smaller. Routes: ${packed.wholeRoutes.join(", ")}`,
       );
-    const pack =
+    if (packed?.ownParts.length)
+      this.#app.verbose(
+        `[dictionary] ${packed.ownParts.length} file(s) hold the texts of a route past its ${DictionaryPacking.bound} files`,
+      );
+    const pack: DictionaryPack | null =
       packed && Object.keys(packed.partsByRoute).length
         ? packed
         : everyGroupAlone
-          ? { parts: groups.map((group) => [group]), partsByRoute: {} }
+          ? { parts: groups.map((group) => [group]), ownParts: [], partsByRoute: {} }
           : null;
     const measured = !!packed && pack === packed;
-    const assets = await Promise.all(locales.map((locale) => this.#writeLocale(locale, pack?.parts, measured)));
+    const assets = await Promise.all(locales.map((locale) => this.#writeLocale(locale, pack, measured)));
     const files = assets.flatMap(([, asset]) => [
       asset,
       ...Object.values(asset.parts ?? {}),
@@ -78,7 +82,8 @@ export class DictionaryAssetBuilder {
     this.#app.verbose(`[base-artifact] dictionaries -> ${files.map((asset) => asset.relPath).join(", ")}`);
     if (!pack?.parts.length) return { assets: Object.fromEntries(assets) };
     const { apiPart, apiGroup } = DictionaryAssetBuilder;
-    const apiFile = assets.every(([, asset]) => asset.parts?.[apiPart]) ? pack.parts.length : null;
+    const fileCount = pack.parts.length + pack.ownParts.length;
+    const apiFile = assets.every(([, asset]) => asset.parts?.[apiPart]) ? fileCount : null;
     if (!everyGroupAlone || routes?.size) {
       const withApi = (routeId: string, files: number[]) =>
         apiFile !== null && routes?.get(routeId)?.includes(apiGroup) ? [...files, apiFile] : files;
@@ -123,15 +128,16 @@ export class DictionaryAssetBuilder {
 
   async #writeLocale(
     { lang, page, api }: LocalePages,
-    packed?: string[][],
-    measured = false,
+    pack: DictionaryPack | null,
+    measured: boolean,
   ): Promise<readonly [string, DictAsset]> {
     const { source, apiPart } = DictionaryAssetBuilder;
-    const apiSource = source(lang, api, undefined, packed?.length ? { part: apiPart } : {});
+    const packed = pack?.parts.length ? [...pack.parts, ...pack.ownParts] : null;
+    const apiSource = source(lang, api, undefined, packed ? { part: apiPart } : {});
     const apiAsset = Object.keys(api).length ? await this.#write(`${lang}-api`, apiSource) : null;
     const parts = apiAsset ? { [apiPart]: apiAsset.url } : undefined;
     const withParts = apiAsset ? { parts: { [apiPart]: apiAsset } } : {};
-    if (!packed?.length) return [lang, { ...(await this.#write(lang, source(lang, page, parts))), ...withParts }];
+    if (!pack || !packed) return [lang, { ...(await this.#write(lang, source(lang, page, parts))), ...withParts }];
     //? Named for what decides every file it lists, not for their names: each part names the table it belongs to.
     const tableName = `${lang}-groups-${Bun.hash(JSON.stringify([page, packed, parts ?? null])).toString(36)}.js`;
     const table = `${DictionaryAssetBuilder.urlPrefix}/${tableName}`;
@@ -142,7 +148,8 @@ export class DictionaryAssetBuilder {
       }),
     );
     const files = apiAsset ? [...groupFiles, apiAsset] : groupFiles;
-    const groupIndex = Object.fromEntries(packed.flatMap((groups, idx) => groups.map((group) => [group, idx])));
+    //? A route's own file holds groups a shared file holds too: a group missed is fetched from the shared one.
+    const groupIndex = Object.fromEntries(pack.parts.flatMap((groups, idx) => groups.map((group) => [group, idx])));
     const tableSource = `export const lang = ${JSON.stringify(lang)};\nexport const files = ${JSON.stringify(files.map(({ url }) => url))};\nexport default ${JSON.stringify(groupIndex)};\n`;
     const tableAsset = await this.#write(lang, tableSource, tableName);
     const whole = await this.#write(lang, source(lang, page, parts, { table }), undefined, measured);

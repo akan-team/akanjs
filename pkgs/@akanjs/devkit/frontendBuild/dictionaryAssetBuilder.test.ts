@@ -407,6 +407,59 @@ describe("DictionaryAssetBuilder", () => {
       }
     });
 
+    test("gives a route past the bound a file of its own, which the table never names, and records what each file costs", async () => {
+      let seed = 3;
+      const word = () => {
+        seed = (seed * 48271) % 2147483647;
+        return seed.toString(36);
+      };
+      const textOf = () => Array.from({ length: 400 }, word).join(" ");
+      const modules = Array.from({ length: 6 }, (_, idx) => idx);
+      const en = Object.fromEntries(
+        modules.flatMap((idx) => [
+          [`g${idx}`, { t: textOf() }],
+          [`h${idx}`, { t: textOf() }],
+        ]),
+      );
+      const heavy = "/:lang/heavy";
+      const wide = new Map([
+        [heavy, modules.map((idx) => `g${idx}`)],
+        ...modules.map((idx) => [`/:lang/light${idx}`, [`g${idx}`, `h${idx}`]] as [string, string[]]),
+      ]);
+      const { app, artifactDir } = await makeApp(dictSourceOf({ en, ko: en }));
+      const built = await new DictionaryAssetBuilder(app, path.join(artifactDir, "build")).buildAll(i18n, {
+        routes: wide,
+      });
+      const dev = await new DictionaryAssetBuilder(app, path.join(artifactDir, "dev")).buildAll(i18n, {
+        everyGroupAlone: true,
+      });
+
+      const held = built.routes?.[heavy] ?? [];
+      expect(held).toHaveLength(4);
+      for (const lang of i18n.locales) {
+        const asset = built.assets[lang];
+        const files = asset?.routeParts?.files ?? [];
+        const table = await importOf<{ default: Record<string, number> }>(
+          path.join(artifactDir, "build"),
+          asset?.routeParts?.table.url ?? "",
+        );
+        const own = held.at(-1) ?? -1;
+        expect(Object.values(table.default)).not.toContain(own);
+        for (const [routeId, shown] of wide) {
+          const merged: Record<string, unknown> = {};
+          for (const idx of built.routes?.[routeId] ?? []) {
+            const part = await importOf<PartModule>(path.join(artifactDir, "build"), files[idx]?.url ?? "");
+            Object.assign(merged, part.default);
+          }
+          expect(new Set(Object.keys(merged))).toEqual(new Set(shown));
+        }
+        expect(asset?.bytes).toBeGreaterThan(0);
+        for (const file of files) expect(file.bytes).toBeGreaterThan(0);
+        expect(dev.assets[lang]?.bytes).toBeUndefined();
+        for (const file of dev.assets[lang]?.routeParts?.files ?? []) expect(file.bytes).toBeUndefined();
+      }
+    });
+
     test("development writes one file per group and the index of each, as each route's groups are read when it builds", async () => {
       const { app, artifactDir } = await makeApp(dictSourceOf(routedDictionary));
       const built = await new DictionaryAssetBuilder(app, artifactDir).buildAll(i18n, { everyGroupAlone: true });
