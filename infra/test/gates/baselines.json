@@ -6,12 +6,12 @@
   },
   "bundle-size": {
     "main.js": 58,
-    "main.bundle.js": 219011,
-    "server.js": 482513,
-    "rscWorker.js": 332433,
-    "console-runtime.js": 77079,
-    "chunk-*.js": 6244716,
-    "public/": 2474085,
-    "csr/": 3582170
+    "main.bundle.js": 297921,
+    "server.js": 538611,
+    "rscWorker.js": 431880,
+    "console-runtime.js": 60763,
+    "chunk-*.js": 6574793,
+    "public/": 2470863,
+    "csr/": 1647931
   }
 }

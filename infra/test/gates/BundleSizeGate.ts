@@ -12,6 +12,7 @@ export class BundleSizeGate implements Gate {
   static readonly #relativeSlack = 0.01;
   static readonly #absoluteSlack = 4096;
   static readonly #entries = ["main.js", "main.bundle.js", "server.js", "rscWorker.js", "console-runtime.js"];
+  static readonly #chunkPattern = /^chunk-.+\.js$/;
   readonly #distDir: string;
   readonly #metaDir: string;
 
@@ -22,15 +23,19 @@ export class BundleSizeGate implements Gate {
 
   /** The inputs that put the most bytes into an entry, read off the metafile `AKAN_BUILD_METAFILE=1` builds write. */
   async contributors(entry: string, limit = 10): Promise<{ input: string; bytes: number }[]> {
-    const file = Bun.file(path.join(this.#metaDir, `${path.parse(entry).name}.json`));
-    if (!(await file.exists())) return [];
-    const { outputs } = (await file.json()) as {
-      outputs: Record<string, { inputs: Record<string, { bytesInOutput: number }> }>;
-    };
+    const names = await readdir(this.#metaDir).catch(() => []);
     const bytesByInput = new Map<string, number>();
-    for (const output of Object.values(outputs))
-      for (const [input, { bytesInOutput }] of Object.entries(output.inputs))
-        bytesByInput.set(input, (bytesByInput.get(input) ?? 0) + bytesInOutput);
+    for (const name of names.filter((file) => file.endsWith(".json"))) {
+      const { outputs } = (await Bun.file(path.join(this.#metaDir, name)).json()) as {
+        outputs: Record<string, { inputs: Record<string, { bytesInOutput: number }> }>;
+      };
+      for (const [output, { inputs }] of Object.entries(outputs)) {
+        const file = path.basename(output);
+        if (entry === "chunk-*.js" ? !BundleSizeGate.#chunkPattern.test(file) : file !== entry) continue;
+        for (const [input, { bytesInOutput }] of Object.entries(inputs))
+          bytesByInput.set(input, (bytesByInput.get(input) ?? 0) + bytesInOutput);
+      }
+    }
     return [...bytesByInput]
       .map(([input, bytes]) => ({ input, bytes }))
       .sort((a, b) => b.bytes - a.bytes)
@@ -65,7 +70,7 @@ export class BundleSizeGate implements Gate {
     for (const entry of BundleSizeGate.#entries)
       measured[entry] = await BundleSizeGate.#sizeOf(path.join(this.#distDir, entry));
     const files = await readdir(this.#distDir);
-    const chunks = files.filter((file) => /^chunk-.+\.js$/.test(file));
+    const chunks = files.filter((file) => BundleSizeGate.#chunkPattern.test(file));
     measured["chunk-*.js"] = (
       await Promise.all(chunks.map((file) => BundleSizeGate.#sizeOf(path.join(this.#distDir, file))))
     ).reduce((sum, size) => sum + size, 0);
