@@ -9,17 +9,36 @@ describe("PendingNavigation", () => {
     const unsubscribe = PendingNavigation.subscribe(() => seen.push(PendingNavigation.get()));
 
     const first = PendingNavigation.begin("http://localhost/a");
+    PendingNavigation.wait(first);
     const second = PendingNavigation.begin("http://localhost/b");
+    PendingNavigation.wait(second);
     PendingNavigation.end(first);
     PendingNavigation.end(second);
     unsubscribe();
-    PendingNavigation.begin("http://localhost/c");
+    PendingNavigation.wait(PendingNavigation.begin("http://localhost/c"));
 
-    expect(seen).toEqual(["http://localhost/a", "http://localhost/b", null]);
+    expect(seen).toEqual([null, "http://localhost/a", null, "http://localhost/b", null]);
+  });
+
+  test("a navigation that waits on nothing names its target and is never pending", () => {
+    const seen: [string | null, string | null][] = [];
+    const unsubscribe = PendingNavigation.subscribe(() =>
+      seen.push([PendingNavigation.get(), PendingNavigation.target()]),
+    );
+
+    const replay = PendingNavigation.begin("http://localhost/a");
+    PendingNavigation.end(replay);
+    PendingNavigation.wait(replay);
+    unsubscribe();
+
+    expect(seen).toEqual([
+      [null, "http://localhost/a"],
+      [null, null],
+    ]);
   });
 
   test("clear ends whichever navigation is pending and says nothing when none is", () => {
-    PendingNavigation.begin("http://localhost/a");
+    PendingNavigation.wait(PendingNavigation.begin("http://localhost/a"));
     const seen: (string | null)[] = [];
     const unsubscribe = PendingNavigation.subscribe(() => seen.push(PendingNavigation.get()));
 

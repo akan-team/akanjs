@@ -6,6 +6,7 @@ interface RscPrefetchEntry<B> {
   whole: boolean;
   optedOut: boolean;
   startedAt: number;
+  arrived: boolean;
   controller: AbortController;
   response: Promise<Response | null>;
   release: () => void;
@@ -19,6 +20,8 @@ interface RscPrefetchQueued {
 export interface RscPrefetched {
   response: Promise<Response | null>;
   fresh: boolean;
+  //? The whole body is in memory, so the navigation taking it waits on no request.
+  arrived: boolean;
 }
 
 export interface RscPrefetchCacheOptions<B = undefined> {
@@ -122,7 +125,11 @@ export class RscPrefetchCache<B = undefined> {
       return null;
     }
     signal?.addEventListener("abort", () => entry.controller.abort(), { once: true });
-    return { response: entry.response, fresh: this.#now() - entry.startedAt <= this.#freshMs };
+    return {
+      response: entry.response,
+      fresh: this.#now() - entry.startedAt <= this.#freshMs,
+      arrived: entry.arrived,
+    };
   }
 
   prune(): void {
@@ -183,6 +190,7 @@ export class RscPrefetchCache<B = undefined> {
       whole: false,
       optedOut: false,
       startedAt: this.#now(),
+      arrived: false,
       controller,
       response: this.#fetchResponse(href, controller.signal).then(
         (response) => {
@@ -201,10 +209,16 @@ export class RscPrefetchCache<B = undefined> {
           //? Drained to its end, so an unread body never holds a connection; the other branch keeps the bytes.
           const [drain, branch] = response.body.tee();
           kept = branch;
-          void RscPrefetchCache.#readToEnd(drain, controller.signal).then(settle, () => {
-            forget();
-            settle();
-          });
+          void RscPrefetchCache.#readToEnd(drain, controller.signal).then(
+            () => {
+              entry.arrived = true;
+              settle();
+            },
+            () => {
+              forget();
+              settle();
+            },
+          );
           return new Response(branch, {
             status: response.status,
             statusText: response.statusText,

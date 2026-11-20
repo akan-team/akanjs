@@ -161,8 +161,8 @@ export default page()
         key: "pendingClassName",
         type: "string",
         desc: l.trans({
-          en: "Class added, with a `data-pending` attribute, from the press until the page is drawn, on a link the loading page would make active. SSR pages only: a CSR stack moves at once.",
-          ko: "누른 순간부터 새 페이지가 그려질 때까지 붙는 class이며 `data-pending` 속성도 함께 붙습니다. 불러오는 페이지에서 활성이 될 링크가 대상입니다. SSR 페이지 전용입니다. CSR 스택은 바로 이동합니다.",
+          en: "Class added, with a `data-pending` attribute, from the press until the page is drawn, on a link the loading page would make active. Not added for a page the browser already holds. SSR pages only: a CSR stack moves at once.",
+          ko: "누른 순간부터 새 페이지가 그려질 때까지 붙는 class이며 `data-pending` 속성도 함께 붙습니다. 불러오는 페이지에서 활성이 될 링크가 대상입니다. 브라우저가 이미 가진 페이지로 갈 때는 붙지 않습니다. SSR 페이지 전용입니다. CSR 스택은 바로 이동합니다.",
         }),
       },
       {
