@@ -320,7 +320,7 @@ The rest of the config is for the build system and the production image. Most ap
 
 - plugins (AkanPlugin[], default []): Read live by the CLI for runtime packages, native project setup, and public/ assets.
 
-- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, env, and variants for a second image.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, baseSetup, env, and variants for a second image.
 
 A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns, docker.installRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
 
@@ -331,6 +331,8 @@ A library contributes to five of these: its own externalLibs, trustedDependencie
 **installRuns prune what the image never loads.** They run in the same layer as `bun install`, so a file a step deletes from `node_modules` is in no layer. Use them for a package that ships every platform's binary; an `rm` in postRuns is a later layer and leaves the image as large.
 
 **crossBuild builds for another architecture without emulating Bun.** For `docker buildx build --platform linux/arm64` on an amd64 host, a stage on the build machine's own architecture runs `bun install --os linux --cpu <target>`, and the target's stage copies the result and runs only apt-get, preRuns and postRuns. A dependency's lifecycle script then runs on the build machine's CPU, and the build needs BuildKit.
+
+**baseSetup: false leaves the base step to the image.** Every generated image runs `apt-get` for `ca-certificates`, `tzdata` and `tini` and sets the time zone, which a builder with no layer cache repeats on every build. Build an image once from `DOCKER_BASE_RUNS` in `@akanjs/devkit/akanConfig` (`DOCKER_BASE_PACKAGES` is its package list), name it in `image`, for every architecture when it is an object, and set `baseSetup: false`. Tag that image by the steps it ran, so a release that changes them builds a new one.
 
 **env sets the image's defaults, and variants writes a second image.** `env` is laid over the `ENV` lines the build writes, so the image starts with it unless the deployment says otherwise. It is tracked and readable in the image, so never a secret, and `bun main.js` on a host does not get it. Each entry of `variants` is written beside the Dockerfile as `Dockerfile.<name>` (`docker build -f Dockerfile.edge .`): the app's `docker` with every field the variant names replaced whole, so `preRuns: []` drops the app's steps there, while its `env` is laid over the app's key by key and a library's steps reach every variant. Split an image by what it is for, a device or a control plane, this way rather than by architecture.
 

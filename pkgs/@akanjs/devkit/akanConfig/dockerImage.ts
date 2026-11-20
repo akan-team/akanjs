@@ -19,6 +19,12 @@ export const DEFAULT_DOCKER_IMAGE = `oven/bun:${BUN_IMAGE_PIN.version}-slim@${BU
 export const DOCKER_RUN_USER = "1000:1000";
 //? Bun as PID 1 never waits for a process re-parented to it, which stays defunct; `-s` reaps under another init too.
 export const DOCKER_INIT = ["tini", "-s", "--"];
+export const DOCKER_BASE_PACKAGES = ["ca-certificates", "tzdata", "tini"] as const;
+//? Every generated image runs these on its base; an image built with them is one `baseSetup: false` can start from.
+export const DOCKER_BASE_RUNS = [
+  `apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ${DOCKER_BASE_PACKAGES.join(" ")} && rm -rf /var/lib/apt/lists/*`,
+  "ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+];
 //? The directories the server writes, its code staying read-only; an empty named volume mounted on one takes its owner.
 export const DOCKER_WRITE_DIRS = [
   "/workspace/sqlite",
@@ -100,7 +106,7 @@ const dockerfileSectionOf = (section: DockerfileSection, instructions: string[])
   instructions.length ? [`${DOCKERFILE_MARK}${section}`, ...instructions] : [];
 
 export const dockerfileOf = (docker: DockerImageConfig, { env, lockfile, guard }: DockerfileParts) => {
-  const { image, preRuns, postRuns, command, crossBuild } = docker;
+  const { image, preRuns, postRuns, command, crossBuild, baseSetup } = docker;
   const install = dockerInstallScripts(docker, lockfile);
   return [
     `${DOCKERFILE_HEAD}${DOCKERFILE_FORMAT}`,
@@ -118,8 +124,7 @@ export const dockerfileOf = (docker: DockerImageConfig, { env, lockfile, guard }
     ...dockerfileSectionOf("base", [
       dockerImageScript(image),
       ...(guard ? [guard] : []),
-      "RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ca-certificates tzdata tini && rm -rf /var/lib/apt/lists/*",
-      "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+      ...(baseSetup ? dockerRunScripts(DOCKER_BASE_RUNS) : []),
       "ARG TARGETARCH",
     ]),
     ...dockerfileSectionOf("pre-runs", dockerRunScripts(preRuns)),
@@ -173,29 +178,37 @@ const dockerVariantNamePattern = /^[a-z][a-z0-9-]*$/;
 const resolveDockerImage = (
   docker: Partial<DockerImageConfig>,
   libDocker: LibDockerConfig,
-  envOwner: string,
+  owner: string,
 ): DockerImageConfig => {
   const env = docker.env ?? {};
   for (const [key, value] of Object.entries(env)) {
     if (!dockerEnvKeyPattern.test(key))
-      throw new Error(`[docker] ${envOwner} names "${key}", which is not an environment variable name`);
+      throw new Error(`[docker] ${owner}.env names "${key}", which is not an environment variable name`);
     if (/[\r\n]/.test(value))
-      throw new Error(`[docker] ${envOwner}.${key} holds a line break, which an ENV line cannot carry`);
+      throw new Error(`[docker] ${owner}.env.${key} holds a line break, which an ENV line cannot carry`);
   }
+  const { image } = docker;
+  const baseSetup = docker.baseSetup ?? true;
+  //? The pinned default has no tini, the entrypoint: an image skipping the base step without one never starts.
+  if (!baseSetup && (!image || (typeof image !== "string" && archs.some((arch) => !image[arch]))))
+    throw new Error(
+      `[docker] ${owner}.baseSetup is false, so ${owner}.image has to name an image built with the base step, for every architecture`,
+    );
   return {
-    image: docker.image ?? DEFAULT_DOCKER_IMAGE,
+    image: image ?? DEFAULT_DOCKER_IMAGE,
     preRuns: dedupeDockerRuns([...libDocker.preRuns, ...(docker.preRuns ?? [])]),
     installRuns: dedupeDockerRuns([...libDocker.installRuns, ...(docker.installRuns ?? [])]),
     postRuns: dedupeDockerRuns([...libDocker.postRuns, ...(docker.postRuns ?? [])]),
     command: docker.command ?? ["bun", "main.js"],
     crossBuild: docker.crossBuild ?? false,
+    baseSetup,
     env,
   };
 };
 
 /** A declared Dockerfile string is verbatim, so a lib's steps are dropped rather than silently unapplied. */
 export const resolveDocker = (docker: DockerOption | undefined, libDocker: LibDockerConfig): DockerConfig =>
-  typeof docker === "string" ? docker : resolveDockerImage(docker ?? {}, libDocker, "docker.env");
+  typeof docker === "string" ? docker : resolveDockerImage(docker ?? {}, libDocker, "docker");
 
 export const resolveDockerVariants = (
   docker: DockerOption | undefined,
@@ -210,7 +223,7 @@ export const resolveDockerVariants = (
           `[docker] docker.variants names "${name}", which cannot end a file name: use lowercase letters, digits and "-"`,
         );
       const env = { ...base.env, ...variant.env };
-      return [name, resolveDockerImage({ ...base, ...variant, env }, libDocker, `docker.variants.${name}.env`)];
+      return [name, resolveDockerImage({ ...base, ...variant, env }, libDocker, `docker.variants.${name}`)];
     }),
   );
 };

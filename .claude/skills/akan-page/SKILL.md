@@ -75,7 +75,7 @@ File names, stages, the `.render()` order and what a route file must never do ar
   locale under `i18n.localePrefix: "as-needed"`. It renders an `<a>` and takes its attributes; `activeClassName`
   marks the current one from the press, before its page arrives; an `active` prop from a layout's render is late.
 - An SSR page still loading: `pendingClassName` / `data-pending` on its `Link`, and `usePendingNavigation()`
-  (`akanjs/client`) for its `{ path, searchParams }`, `null` once the page is drawn.
+  (`akanjs/client`) for its `{ path, searchParams }`, `null` once the page is drawn and for a page already held.
 - From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.
 - A page state a push opens in the query (a record in `?id=`): close it with `router.backOrReplace(href)`, never
   `router.back()` or a `renderMode` branch. A CSR or native stack rewrites a push that keeps the pathname rather than

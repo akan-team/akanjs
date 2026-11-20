@@ -187,6 +187,10 @@ describe("SsrLink navigation state", () => {
     act(() => {
       pending = PendingNavigation.begin("http://localhost/en/chat/b?thread=1");
     });
+    expect(state()).toEqual(["|false", "|false", "|false", "|false", "|false"]);
+    act(() => {
+      if (pending) PendingNavigation.wait(pending);
+    });
     expect(state()).toEqual(["wait|true", "|false", "wait|true", "|false", "|false"]);
 
     act(() => {

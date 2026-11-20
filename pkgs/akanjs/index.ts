@@ -24,6 +24,11 @@ export interface DockerImageConfig {
    */
   crossBuild: boolean;
   /**
+   * False when `image` was built with the base step already run (`DOCKER_BASE_RUNS` in `@akanjs/devkit/akanConfig`),
+   * so a builder with no layer cache does not repeat `apt-get` on every build.
+   */
+  baseSetup: boolean;
+  /**
    * `ENV` lines laid over the build's own, as the image's defaults. The config is tracked and the image shows them,
    * so never a secret.
    */

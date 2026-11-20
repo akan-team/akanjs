@@ -3,6 +3,8 @@ import { useSyncExternalStore } from "react";
 
 export interface PendingNavigationEntry {
   href: string;
+  //? False while nothing is asked of the server: a page replayed from the client cache, or a prefetch that has arrived.
+  waits: boolean;
 }
 
 interface PendingNavigationStore {
@@ -28,9 +30,15 @@ export class PendingNavigation {
   }
 
   static begin(href: string): PendingNavigationEntry {
-    const entry = { href };
+    const entry = { href, waits: false };
     PendingNavigation.#set(entry);
     return entry;
+  }
+
+  static wait(entry: PendingNavigationEntry) {
+    if (entry.waits || PendingNavigation.#store().entry !== entry) return;
+    entry.waits = true;
+    PendingNavigation.#set(entry);
   }
 
   //? A navigation another one overtook ends later than that one began, and must leave its entry alone.
@@ -43,6 +51,11 @@ export class PendingNavigation {
   }
 
   static get(): string | null {
+    const { entry } = PendingNavigation.#store();
+    return entry?.waits ? entry.href : null;
+  }
+
+  static target(): string | null {
     return PendingNavigation.#store().entry?.href ?? null;
   }
 

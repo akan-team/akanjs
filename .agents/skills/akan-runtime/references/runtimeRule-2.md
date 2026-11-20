@@ -102,7 +102,7 @@ normalized to `info` with one warning.
 
 ## The Generated Image — `docker` In `akan.config.ts`
 
-**`docker` is `string | { image, preRuns, installRuns, postRuns, command, crossBuild, env, variants }`** — a whole
+**`docker` is `string | { image, preRuns, installRuns, postRuns, command, crossBuild, baseSetup, env, variants }`** — a whole
 Dockerfile, or the parts Akan assembles one from. There is no `content` field; the string *is* the content.
 
 ```ts
@@ -126,6 +126,9 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   then runs on the build machine's CPU, where `preRuns` never ran, so one that downloads or compiles a native
   binary gets the build machine's. It needs BuildKit (an `image` object does too), and a string `image` published
   for the build machine.
+- **`baseSetup: false` leaves the base step (`apt-get`, the time zone) to `image`**, for a builder with no layer
+  cache: build that image from `DOCKER_BASE_RUNS` (`@akanjs/devkit/akanConfig`) and tag it by them. `image` is then
+  required, for every architecture.
 - **`env` sets the image's defaults; `variants` writes a second image.** `env: { EDGE_MODE: "camera" }` is laid
   over the build's `ENV` lines (`AKAN_PUBLIC_OPERATION_MODE` too): tracked and readable, so never a secret, and not
   given to `bun main.js` on a host. `variants: { edge: { … } }` writes `Dockerfile.edge` (`docker build -f`): the
@@ -159,7 +162,7 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   written whole copies `bun.lock` itself.
 - **A lib declares the steps its own runtime needs**, and every app that mounts it inherits them:
   `libs/<lib>/akan.config.ts` takes `docker: { preRuns, installRuns, postRuns }` and nothing else — the base image,
-  the command, `crossBuild`, `env` and `variants` belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
+  the command, `crossBuild`, `baseSetup`, `env` and `variants` belong to the app. Lib steps are emitted before the app's own, and an identical step declared twice
   becomes one layer.
 - **The string form takes no contributions.** A Dockerfile handed over whole is used exactly as written, so a
   lib's `preRuns` are dropped rather than spliced into a file Akan does not own. An app that needs both writes

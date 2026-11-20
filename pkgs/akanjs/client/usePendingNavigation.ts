@@ -16,7 +16,7 @@ export interface PendingLocation {
   searchParams: Record<string, string | string[]>;
 }
 
-/** The location a navigation is loading, from the press until its page is drawn; `null` with none in flight. */
+/** The location a navigation is loading from the server, from the press until its page is drawn; else `null`. */
 export const usePendingNavigation = (): PendingLocation | null => {
   const pending = PendingNavigation.use((href) => href);
   const { lang } = usePage();
