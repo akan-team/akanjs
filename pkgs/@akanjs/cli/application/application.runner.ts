@@ -30,7 +30,7 @@ import { Logger, type LogRecord, toError } from "akanjs/common";
 import { openBrowser } from "../openBrowser";
 import { type CarriedServer, carriedServerOf } from "./carriedServer";
 import type { InterruptTeardown } from "./interruptTeardown";
-import { reportsNoTestFile, signalTestEnv, testTargetOf } from "./testTarget";
+import { reportsNoTestFile, signalTestEnv, testOwnerOf, testTargetOf } from "./testTarget";
 
 export interface LogsOptions {
   level?: string | null;
@@ -333,17 +333,16 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
     return files.map((file) => {
       const candidates = path.isAbsolute(file) ? [file] : [path.resolve(exec.cwdPath, file), path.resolve(root, file)];
-      const existing = candidates
-        .filter((candidate) => existsSync(candidate))
-        .map((candidate) => path.relative(exec.cwdPath, candidate));
-      const found = existing.find(isInside);
-      if (found === undefined)
-        throw new Error(
-          existing.length
-            ? `${file} is outside ${target}: akan test ${exec.name} runs its own tests only`
-            : `${file} names no file or folder in ${target}`,
-        );
-      return `./${found.split(path.sep).join("/")}`;
+      const existing = candidates.filter((candidate) => existsSync(candidate));
+      const found = existing.map((candidate) => path.relative(exec.cwdPath, candidate)).find(isInside);
+      if (found !== undefined) return `./${found.split(path.sep).join("/")}`;
+      const [outside] = existing;
+      if (outside === undefined) throw new Error(`${file} names no file or folder in ${target}`);
+      const fromRoot = path.relative(root, outside).split(path.sep).join("/");
+      const owner = testOwnerOf(fromRoot);
+      throw new Error(
+        `${file} is outside ${target}: akan test ${exec.name} runs its own tests only${owner ? `, so run it as \`akan test ${owner} ${fromRoot}\`` : ""}`,
+      );
     });
   }
   async test(exec: Exec, testPaths: string[] = [], flags: string[] = []) {

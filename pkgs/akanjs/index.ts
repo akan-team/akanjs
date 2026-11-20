@@ -23,12 +23,23 @@ export interface DockerImageConfig {
    * for another architecture then never runs Bun emulated. A dependency's lifecycle script runs on the build machine.
    */
   crossBuild: boolean;
+  /**
+   * `ENV` lines laid over the build's own, as the image's defaults. The config is tracked and the image shows them,
+   * so never a secret.
+   */
+  env: Record<string, string>;
 }
 
 /** The string form is taken verbatim: nothing is merged into it, not even a lib's `docker` steps. */
 export type DockerConfig = string | DockerImageConfig;
 
-export type DockerOption = string | Partial<DockerImageConfig>;
+/**
+ * The app's `docker` with the fields it names replaced and its `env` laid over the app's key by key, written beside
+ * the Dockerfile as `Dockerfile.<name>`.
+ */
+export type DockerVariantOption = Partial<DockerImageConfig>;
+
+export type DockerOption = string | (Partial<DockerImageConfig> & { variants?: Record<string, DockerVariantOption> });
 
 /** Steps every app mounting the lib inherits; a lib never picks the base image or the command. */
 export interface LibDockerConfig {

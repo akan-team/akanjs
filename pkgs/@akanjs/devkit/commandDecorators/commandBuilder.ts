@@ -82,8 +82,14 @@ const argMetaOf = (
   argsOption: Pick<ArgsOption, "multiple"> | undefined,
   idx: number,
 ): ArgMeta => {
-  if (type === "Argument" && argsOption?.multiple) throw new Error(`argument '${name}' cannot be multiple`);
   return { name, argsOption: { ...argsOption, type: normalizePrimitiveArgType(primitive) }, key: "", idx, type };
+};
+
+//? commander gives a variadic argument every word left on the line, and throws for one declared before another.
+const assertListArgumentIsLast = (args: (ArgMeta | InternalArgMeta)[]) => {
+  const positionals = args.filter((arg) => arg.type !== "Option" && arg.type !== "Workspace");
+  const list = positionals.slice(0, -1).find((arg) => arg.type === "Argument" && arg.argsOption.multiple);
+  if (list?.type === "Argument") throw new Error(`argument '${list.name}' takes a list, so it must be declared last`);
 };
 
 class TargetBuilder<Deps extends readonly DependencyCls[], Params extends unknown[] = [], Context = object> {
@@ -128,6 +134,7 @@ class TargetBuilder<Deps extends readonly DependencyCls[], Params extends unknow
   }
 
   exec(handler: CommandHandler<Deps, Params>) {
+    assertListArgumentIsLast(this.#args);
     return {
       args: this.#args,
       handler: handler as TargetMeta["handler"],

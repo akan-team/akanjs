@@ -566,8 +566,8 @@ const buildFields = [
     key: "docker",
     type: "string | DockerImageConfig",
     default: "oven/bun:1.4.4-slim@sha256:…",
-    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild.",
-    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, 같은 레이어의 installRuns, command, crossBuild입니다.",
+    en: "A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, env, and variants for a second image.",
+    ko: "Dockerfile 전체이거나 그 재료입니다. image, bun install 앞뒤의 preRuns·postRuns, 같은 레이어의 installRuns, command, crossBuild, env, 그리고 두 번째 이미지를 위한 variants입니다.",
   },
 ];
 
@@ -1590,6 +1590,10 @@ const config: AppConfig = {
     postRuns: ["echo after"],
     command: ["bun", "main.js"],
     crossBuild: true,
+    env: { REGION: "seoul" },
+    variants: {
+      edge: { preRuns: [], env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
+    },
   },
 };`}
           />
@@ -1696,6 +1700,36 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
+                    <strong>env sets the image's defaults, and variants writes a second image.</strong> <code>env</code>{" "}
+                    is laid over the <code>ENV</code> lines the build writes, so the image starts with it unless the
+                    deployment says otherwise. It is tracked and readable in the image, so never a secret, and{" "}
+                    <code>bun main.js</code> on a host does not get it. Each entry of <code>variants</code> is written
+                    beside the Dockerfile as <code>Dockerfile.&lt;name&gt;</code> (
+                    <code>docker build -f Dockerfile.edge .</code>): the app's <code>docker</code> with every field the
+                    variant names replaced whole, so <code>preRuns: []</code> drops the app's steps there, while its{" "}
+                    <code>env</code> is laid over the app's key by key and a library's steps reach every variant. Split
+                    an image by what it is for, a device or a control plane, this way rather than by architecture.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>env는 이미지의 기본값을 정하고, variants는 두 번째 이미지를 씁니다.</strong>{" "}
+                    <code>env</code>는 빌드가 쓰는 <code>ENV</code> 줄 위에 덮이므로, 배포에서 따로 정하지 않으면
+                    이미지는 그 값으로 뜹니다. 설정 파일에 남고 이미지에서 읽히므로 비밀 값을 넣지 않으며, 호스트에서{" "}
+                    <code>bun main.js</code>로 실행할 때는 적용되지 않습니다. <code>variants</code>의 각 항목은
+                    Dockerfile 옆에 <code>Dockerfile.&lt;name&gt;</code>으로 쓰입니다(
+                    <code>docker build -f Dockerfile.edge .</code>). 앱의 <code>docker</code>에서 variant가 적은 필드를
+                    통째로 바꾼 것이어서 <code>preRuns: []</code>는 앱의 단계를 그 이미지에서 뺍니다. <code>env</code>
+                    만은 앱의 <code>env</code> 위에 키별로 덮이고, 라이브러리의 단계는 모든 variant에 들어갑니다.
+                    기기용, 컨트롤 플레인용처럼 용도로 이미지를 가를 때 아키텍처 대신 이 방법을 씁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
                     <strong>The build writes a .dockerignore.</strong> A build started by hand in{" "}
                     <code>dist/apps/&lt;app&gt;</code> writes its database beside <code>main.js</code>, so{" "}
                     <code>sqlite</code>, <code>local</code>, <code>runtime</code>, <code>data</code>, the image cache
@@ -1708,6 +1742,35 @@ const config: AppConfig = {
                     빌드는 <code>main.js</code> 옆에 데이터베이스를 쓰므로, <code>sqlite</code>, <code>local</code>,{" "}
                     <code>runtime</code>, <code>data</code>, 이미지 캐시, <code>node_modules</code>는 이미지에 들어가지
                     않습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A tool that edits the generated Dockerfile finds its place by a marker.</strong> The file
+                    opens with <code># akan:dockerfile 1</code>, and each section starts at a comment:{" "}
+                    <code># akan:install-stage</code> (only with <code>crossBuild</code>), <code># akan:base</code>,{" "}
+                    <code># akan:pre-runs</code>, <code># akan:install</code>, <code># akan:post-runs</code> and{" "}
+                    <code># akan:app</code>, a section with no instruction left out. The number rises when the sections
+                    change, so a tool that meets one it does not know says so instead of skipping its edit.{" "}
+                    <code>dockerfileLayoutOf</code> from <code>@akanjs/devkit/akanConfig</code> reads them, and{" "}
+                    <code>dockerfileOf</code> there is the generator itself. A Dockerfile written as a string carries no
+                    marker.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>생성된 Dockerfile을 고치는 도구는 표식으로 자리를 찾습니다.</strong> 파일은{" "}
+                    <code># akan:dockerfile 1</code>로 시작하고, 구간마다 주석으로 시작합니다.{" "}
+                    <code># akan:install-stage</code>(<code>crossBuild</code>일 때만), <code># akan:base</code>,{" "}
+                    <code># akan:pre-runs</code>, <code># akan:install</code>, <code># akan:post-runs</code>,{" "}
+                    <code># akan:app</code>이며, 명령이 없는 구간은 쓰지 않습니다. 구간 구성이 바뀌면 번호가 올라가므로,
+                    모르는 번호를 만난 도구는 수정을 조용히 건너뛰지 않고 그 사실을 알릴 수 있습니다.{" "}
+                    <code>@akanjs/devkit/akanConfig</code>의 <code>dockerfileLayoutOf</code>가 이 표식을 읽고, 같은 곳의{" "}
+                    <code>dockerfileOf</code>가 생성기입니다. 문자열로 쓴 Dockerfile에는 표식이 없습니다.
                   </span>
                 ),
               })}

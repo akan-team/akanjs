@@ -99,11 +99,11 @@ Create a new workspace and its first app in one go. It runs these steps in order
 
 - create-akan-workspace: `bunx create-akan-workspace` installs the matching `@akanjs/cli` globally, then runs this command.
 
-`akan verify [targets] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>] [--comments]`
+`akan verify [targets...] [--files <paths>] [--lint-only] [--no-build] [--max <n>] [--format <format>] [--comments]`
 
 Check a change in one run: sync, lint with fixes, typecheck, a build of each changed app's server and SSR routes, and the SSR check for a `.tsx` change. It prints one line when everything passes and one line per problem otherwise, so it is the one command to run after an edit.
 
-- targets (String): Apps, libraries or packages, comma-separated, checked whole. Left out, what git reports as changed.
+- targets (String): Apps, libraries or packages, space- or comma-separated, checked whole. Left out, what git reports as changed.
 
 - --files (String, -F): Check these files, comma-separated, instead of the git changes.
 
