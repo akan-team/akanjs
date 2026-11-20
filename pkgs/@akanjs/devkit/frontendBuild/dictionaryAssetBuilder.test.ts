@@ -5,6 +5,7 @@ import path from "node:path";
 import type { App } from "../commandDecorators";
 import { tempDirs } from "../test/testHelpers";
 import { DictionaryAssetBuilder } from "./dictionaryAssetBuilder";
+import { dictionaryBrotliBytesOf } from "./precompressArtifacts";
 
 const tempRoot = tempDirs("akan-devkit-dict-asset-");
 
@@ -379,6 +380,31 @@ describe("DictionaryAssetBuilder", () => {
       );
       expect(api.part).toBe(DictionaryAssetBuilder.apiPart);
       expect(api.default).toEqual({ memo: { signal: { getMemo: { desc: { t: "Reads a memo" } } } } });
+    });
+
+    test("records what each page file of a build costs a browser, in every locale, and nothing in development", async () => {
+      const { app, artifactDir } = await makeApp(dictSourceOf(routedDictionary));
+      const built = await new DictionaryAssetBuilder(app, path.join(artifactDir, "build")).buildAll(i18n, {
+        splitApi: true,
+        routes,
+      });
+      const dev = await new DictionaryAssetBuilder(app, path.join(artifactDir, "dev")).buildAll(i18n, {
+        splitApi: true,
+        everyGroupAlone: true,
+      });
+
+      for (const lang of i18n.locales) {
+        const asset = built.assets[lang];
+        const pageFiles = (asset?.routeParts?.files ?? []).filter(({ url }) => url !== asset?.parts?.api?.url);
+        expect(pageFiles.length).toBeGreaterThan(1);
+        for (const file of [asset, ...pageFiles]) {
+          const source = await Bun.file(path.join(artifactDir, "build", file?.relPath ?? "")).bytes();
+          const brotli = dictionaryBrotliBytesOf(new TextDecoder().decode(source));
+          expect(file?.bytes).toBe(Math.min(source.byteLength, brotli));
+        }
+        expect(dev.assets[lang]?.bytes).toBeUndefined();
+        for (const file of dev.assets[lang]?.routeParts?.files ?? []) expect(file.bytes).toBeUndefined();
+      }
     });
 
     test("development writes one file per group and the index of each, as each route's groups are read when it builds", async () => {
