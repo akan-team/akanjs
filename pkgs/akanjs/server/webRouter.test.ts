@@ -1561,7 +1561,7 @@ describe("WebRouter RSC stream response", () => {
           routeId: "/:lang/docs",
           cache: "miss" as const,
           partial: "patch",
-          partialReason: "same-route-search-params",
+          partialReason: "same-route-page",
           partialCommonPrefixLength: 3,
           patchStartIndex: 2,
           patchSegmentPath: encodeAkanRscPatchSegmentPath(["root:/:0", "layout:/docs:1", "page:/:lang/docs:2"]),
@@ -1587,7 +1587,7 @@ describe("WebRouter RSC stream response", () => {
     );
 
     expect(response.headers.get("X-Akan-Rsc-Partial")).toBe("patch");
-    expect(response.headers.get("X-Akan-Rsc-Partial-Reason")).toBe("same-route-search-params");
+    expect(response.headers.get("X-Akan-Rsc-Partial-Reason")).toBe("same-route-page");
     expect(response.headers.get("X-Akan-Rsc-Partial-Common-Prefix")).toBe("3");
     expect(response.headers.get("X-Akan-Rsc-Patch-Start-Index")).toBe("2");
     expect(response.headers.get("X-Akan-Rsc-Patch-Segment-Path")).toBeTruthy();
