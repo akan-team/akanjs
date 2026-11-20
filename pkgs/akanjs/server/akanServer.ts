@@ -4,6 +4,7 @@ import { Logger } from "akanjs/common";
 import {
   type Adaptor,
   type AdaptorCls,
+  type AkanRscWorkerStatus,
   type DatabaseConfig,
   LiveRoomLimit,
   type Service,
@@ -30,6 +31,7 @@ import { SignalResolver } from "./resolver";
 import { BuiltinRoutes } from "./routing/builtinRoutes";
 import { RouteHosts } from "./routing/routeHosts";
 import { type AkanAppPrepared, ServerListener } from "./routing/serverListener";
+import type { WebSurfaceHold } from "./routing/webSurfaceHold";
 import { ServerConfig } from "./serverConfig";
 import { ServerMetrics } from "./serverMetrics";
 import { SessionRefresh } from "./sessionRefresh";
@@ -128,6 +130,7 @@ export class AkanServer {
   status: "stopped" | "initializing" | "initialized" | "starting" | "running" | "stopping" = "stopped";
   #prepared: AkanAppPrepared | null = null;
   #webRouter: WebRouter | null = null;
+  #webHold: { hold: WebSurfaceHold; web: AkanWebConfig } | null = null;
   readonly logger: Logger;
   readonly name: string;
   readonly libs: AkanLib[];
@@ -223,7 +226,7 @@ export class AkanServer {
     const webRouter = () => this.#webRouter;
     this.#listener = new ServerListener(this, this.#di, solo);
     this.#metrics = new ServerMetrics(this, this.#listener, webRouter);
-    this.#parent = new ParentChannel(this, this.#logging, webRouter);
+    this.#parent = new ParentChannel(this, this.#logging, webRouter, () => this.#rscWorkerStatus());
     this.#builtinRoutes = new BuiltinRoutes({
       owner: this,
       di: this.#di,
@@ -347,18 +350,26 @@ export class AkanServer {
   }
 
   async init(option: { routes?: boolean; web?: AkanWebOption } = {}) {
+    return await this.#initialize(option, false);
+  }
+
+  async #initialize(option: { routes?: boolean; web?: AkanWebOption }, listensBeforeWeb: boolean) {
     if (this.status !== "stopped")
       throw new AkanError("alreadyInitialized", "AkanServer is not able to init. It is already running.");
     ServerConfig.assertPrefixClearsBasePaths(this.prefix);
     const start = performance.now();
     this.#initTimings.clear();
-    if (await this.#start.unwound(() => this.#start.stoppedDuring(() => this.#init(option)))) return this;
+    const init = () => this.#init(option, listensBeforeWeb);
+    if (await this.#start.unwound(() => this.#start.stoppedDuring(init))) return this;
     const stages = [...this.#di.initTimings, ...this.#initTimings].map(([stage, ms]) => `${stage} ${ms.toFixed(1)}`);
     this.logger.debug(`Initialized in ${(performance.now() - start).toFixed(1)}ms (${stages.join(" · ")})`);
     return this;
   }
 
-  async #init({ routes: initRoutes = true, web }: { routes?: boolean; web?: AkanWebOption }) {
+  async #init(
+    { routes: initRoutes = true, web }: { routes?: boolean; web?: AkanWebOption },
+    listensBeforeWeb: boolean,
+  ) {
     this.status = "initializing";
     AgentTools.provide(this.#di, this);
     const { routes, wsRoutes, routeOptions } = await this.#di.initializeAll().catch((error: unknown) => {
@@ -372,32 +383,39 @@ export class AkanServer {
       this.status = "initialized";
       return this;
     }
-    const artifactWaitMs = await DevBaseArtifact.arrived({ stopped: () => this.#start.stopHeld });
-    if (this.#start.stopHeld) return this;
-    if (artifactWaitMs > 0) this.#initTimings.set("artifact", artifactWaitMs);
-    RouteHosts.declare();
     const requestedWeb = ServerConfig.narrowWeb(this.web, web);
-    const noWeb = () => {
-      this.#prepared = {
-        routes,
-        routeOptions,
-        wsRoutes,
-        builtinRoutes: this.#builtinRoutes.timed(null, this.#initTimings),
-        renderEnvRoutes: {},
-        hmrHub: null,
-        webProxyRunner: null,
-      };
+    //? Beside the first base build the api listens now, and a request it does not route waits for the artifact.
+    if (listensBeforeWeb && DevBaseArtifact.awaited()) {
+      const { WebSurfaceHold } = await import("./routing/webSurfaceHold");
+      this.#webHold = { hold: new WebSurfaceHold(), web: requestedWeb };
+      this.#prepared = this.#apiOnly({ routes, wsRoutes, routeOptions }, {});
       this.status = "initialized";
       return this;
-    };
+    }
+    const prepared = await this.#mountWeb({ routes, wsRoutes, routeOptions }, requestedWeb);
+    if (!prepared) return this;
+    this.#prepared = prepared;
+    this.status = "initialized";
+    return this;
+  }
+
+  #apiOnly(base: ApiSurface, builtinRoutes: AkanAppPrepared["builtinRoutes"]): AkanAppPrepared {
+    return { ...base, builtinRoutes, renderEnvRoutes: {}, hmrHub: null, webProxyRunner: null };
+  }
+
+  async #mountWeb(base: ApiSurface, requestedWeb: AkanWebConfig): Promise<AkanAppPrepared | null> {
+    const artifactWaitMs = await DevBaseArtifact.arrived({ stopped: () => this.#start.stopHeld });
+    if (this.#start.stopHeld) return null;
+    if (artifactWaitMs > 0) this.#initTimings.set("artifact", artifactWaitMs);
+    RouteHosts.declare();
     if (!requestedWeb.ssr) {
       this.web = requestedWeb;
       this.logger.debug("web off: serving api only (AKAN_SSR=false, or a build with `web: false`)");
-      return noWeb();
+      return this.#apiOnly(base, this.#builtinRoutes.timed(null, this.#initTimings));
     }
     const webStart = performance.now();
     const { WebRouter } = await import("./webRouter");
-    if (this.#start.stopHeld) return this;
+    if (this.#start.stopHeld) return null;
     const webRouter = await WebRouter.create({
       web: requestedWeb,
       upgradeHmrWs: (req, data) => this.#listener.upgradeHmrWs(req, data),
@@ -406,25 +424,20 @@ export class AkanServer {
     if (!webRouter) {
       this.web = { ssr: false, csr: false };
       this.logger.warn("web off: no build artifact under .akan/artifact; serving api only");
-      return noWeb();
+      return this.#apiOnly(base, this.#builtinRoutes.timed(null, this.#initTimings));
     }
     this.#webRouter = webRouter;
     this.web = webRouter.web;
     this.logger.verbose(`web on: ssr=${this.web.ssr} csr=${this.web.csr}`);
     const { renderEnvRoutes, hmrHub } = await webRouter.initializeRoute();
     this.#initTimings.set("web", performance.now() - webStart);
-    const webProxyRunner = WebProxyRunner.create(this.#di.webProxies);
-    this.#prepared = {
-      routes,
-      routeOptions,
-      wsRoutes,
+    return {
+      ...base,
       builtinRoutes: this.#builtinRoutes.timed(webRouter, this.#initTimings),
       renderEnvRoutes,
       hmrHub,
-      webProxyRunner,
+      webProxyRunner: WebProxyRunner.create(this.#di.webProxies),
     };
-    this.status = "initialized";
-    return this;
   }
 
   async listen() {
@@ -440,11 +453,48 @@ export class AkanServer {
   async #listen(prepared: AkanAppPrepared) {
     if (await this.#start.stoppedDuring(() => this.#logging.startTransport(this.#webRouter))) return this;
     this.#logging.startFileLogging(this.serverMode);
-    const { unix, port } = this.#listener.listen(prepared, this.#webRouter);
+    const { unix, port } = this.#listener.listen(prepared, this.#webRouter, this.#webHold?.hold ?? null);
     this.status = "running";
     this.#metrics.start();
     if (this.#schedules) this.#di.registerSchedule(this.serverMode);
     this.logger.verbose(`🚀 ${this.name} is running on ${unix ? `unix://${unix}` : `port ${port}`}`);
+    this.#sendReady(unix, port);
+    if (this.#webHold) {
+      if (await this.#start.stoppedDuring(() => this.#attachWeb())) return this;
+      this.#sendReady(unix, port);
+    }
+    if (this.#schedules && this.status === "running") await this.#di.runSchedulerInit();
+    ShutdownManager.register(this.logger, () => this.stop());
+    return this;
+  }
+
+  async #attachWeb() {
+    const held = this.#webHold;
+    const base = this.#prepared;
+    if (!held || !base) return;
+    const start = performance.now();
+    this.#initTimings.clear();
+    try {
+      const prepared = await this.#mountWeb(base, held.web);
+      if (!prepared || this.#start.stopHeld) return;
+      this.#prepared = prepared;
+      this.#listener.attachWeb(prepared, this.#webRouter);
+      this.#logging.attachWeb(this.#webRouter);
+      held.hold.open();
+    } catch (error) {
+      held.hold.fail(error instanceof Error ? error.message : String(error));
+      throw error;
+    }
+    const stages = [...this.#initTimings].map(([stage, ms]) => `${stage} ${ms.toFixed(1)}`);
+    this.logger.debug(`Web surface attached in ${(performance.now() - start).toFixed(1)}ms (${stages.join(" · ")})`);
+  }
+
+  #rscWorkerStatus(): AkanRscWorkerStatus {
+    if (this.#webHold?.hold.pending) return "starting";
+    return this.#webRouter?.rscWorkerStatus ?? null;
+  }
+
+  #sendReady(unix: string | undefined, port: number | undefined) {
     const wsPort = this.#listener.wsPort;
     this.#parent.sendReady({
       type: "ready",
@@ -455,11 +505,9 @@ export class AkanServer {
       wsUpstream: typeof wsPort === "number" ? { type: "tcp", host: "127.0.0.1", port: wsPort } : undefined,
       healthPath: "/_akan/app/child-health",
       crossSite: CrossSiteGuard.option(),
-      rscWorker: this.#webRouter?.rscWorkerStatus ?? null,
+      rscWorker: this.#rscWorkerStatus(),
+      ...(this.#webHold?.hold.pending ? { webPending: true } : {}),
     });
-    if (this.#schedules && this.status === "running") await this.#di.runSchedulerInit();
-    ShutdownManager.register(this.logger, () => this.stop());
-    return this;
   }
 
   /**
@@ -472,7 +520,7 @@ export class AkanServer {
     const shouldListen = (listen ?? !isNoListenCommand) && this.serverMode !== "batch";
     //? Before init: once an adaptor listens for `message`, Bun emits `disconnect` at the close only to listeners there.
     if (shouldListen || !isNoListenCommand) this.#parent.register();
-    await this.init({ routes: shouldListen, web });
+    await this.#initialize({ routes: shouldListen, web }, shouldListen);
     if (this.#parent.gone || this.status !== "initialized") return this;
     if (shouldListen) return this.listen();
     return await this.#start.unwound(async () => {
@@ -513,6 +561,8 @@ export class AkanServer {
       this.status = "stopping";
       this.#metrics.stop();
       this.#di.getWebsocketAdaptor()?.clearEventHandler();
+      await this.#webHold?.hold.settle("the server stopped before the first base build finished");
+      this.#webHold = null;
       this.#listener.close();
 
       this.#webRouter?.dispose();
@@ -533,6 +583,8 @@ export class AkanServer {
     }
   }
 }
+
+type ApiSurface = Pick<AkanAppPrepared, "routes" | "routeOptions" | "wsRoutes">;
 
 const assertCanGet = (status: AkanServer["status"], type = "Dependency", refName?: string) => {
   if (status === "initialized" || status === "running") return;

@@ -290,11 +290,13 @@ export class AkanApp {
     if (!message || typeof message !== "object") return;
     switch (message.type) {
       case "ready":
-        //? Again: under `akan start` this gateway listens before the first base build has written the hosts.
-        if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#config.artifactDir);
-        this.#routeHostsPending = false;
-        //? A replica respawned from here on must not wait for an artifact that is already there, or never coming.
-        delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
+        if (!message.webPending) {
+          //? Again: under `akan start` this gateway listens before the first base build has written the hosts.
+          if (this.#hostAllowlist?.devDefault) RouteHosts.declare(this.#config.artifactDir);
+          this.#routeHostsPending = false;
+          //? A replica respawned from here on must not wait for an artifact that is already there, or never coming.
+          delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
+        }
         this.#supervisor.markReady(idx, message);
         return;
       case "pubsub.publish":

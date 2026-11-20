@@ -1216,6 +1216,7 @@ const webServer = async () => {
     WebRouter,
     LogControlSocket,
     socketPath,
+    sent: ipc.sent,
     start: () => server.replica.start({ listen: true, web: { csr: false } }),
     writeSeedIndex: () => Bun.write(join(artifactDir, ROUTE_SEED_INDEX_JSON), JSON.stringify({ entries: [] })),
     unwound: () => ({
@@ -1237,6 +1238,157 @@ const webServer = async () => {
     },
   };
 };
+
+const heldWebServer = async () => {
+  const web = await webServer();
+  await web.writeSeedIndex();
+  const { DevBaseArtifact } = await import("./hmr/devBaseArtifact");
+  const { WebSurfaceHold } = await import("./routing/webSurfaceHold");
+  const artifact = Promise.withResolvers<number>();
+  const arrived = spyOn(DevBaseArtifact, "arrived").mockImplementation(() => artifact.promise);
+  const listening = Promise.withResolvers<void>();
+  const pushed = web.sent.push.bind(web.sent);
+  web.sent.push = (...messages: unknown[]) => {
+    if (messages.some((message) => (message as { type?: string }).type === "ready")) listening.resolve();
+    return pushed(...messages);
+  };
+  const reached = Promise.withResolvers<void>();
+  const route = WebSurfaceHold.prototype.route;
+  const holdRoute = spyOn(WebSurfaceHold.prototype, "route").mockImplementation(function (
+    this: InstanceType<typeof WebSurfaceHold>,
+    table,
+  ) {
+    const handler = route.call(this, table);
+    return (req, srv) => {
+      reached.resolve();
+      return handler(req, srv);
+    };
+  });
+  process.env.AKAN_DEV_AWAIT_ARTIFACT = "1";
+  const readies = () =>
+    web.sent
+      .filter((message) => (message as { type?: string }).type === "ready")
+      .map((message) => {
+        const { rscWorker, webPending } = message as { rscWorker?: string; webPending?: boolean };
+        return { rscWorker, webPending: webPending ?? false };
+      });
+  const get = (path: string, accept = "text/html") =>
+    fetch(`http://127.0.0.1:${web.port}${path}`, { headers: { accept } }).then(async (res) => ({
+      status: res.status,
+      body: await res.text(),
+    }));
+  return {
+    ...web,
+    artifact,
+    listening: listening.promise,
+    reached: reached.promise,
+    readies,
+    get,
+    restore: async () => {
+      delete process.env.AKAN_DEV_AWAIT_ARTIFACT;
+      arrived.mockRestore();
+      holdRoute.mockRestore();
+      await web.restore();
+    },
+  };
+};
+
+describe("AkanServer listening before the first base build", () => {
+  test("answers an api request before the artifact exists, and renders a page held until it does", async () => {
+    const held = await heldWebServer();
+
+    try {
+      const starting = held.start();
+      await held.listening;
+      expect(held.replica.status).toBe("running");
+      expect(held.readies()).toEqual([{ rscWorker: "starting", webPending: true }]);
+
+      const page = held.get("/cached");
+      const pageOutcome = { done: false };
+      void page.then(() => void Object.assign(pageOutcome, { done: true }));
+      await held.reached;
+      const api = await held.get("/api/serverResolverTestItem/serverResolverTestItemList", "application/json");
+
+      expect(api.status).toBe(200);
+      expect(pageOutcome.done).toBe(false);
+      expect(held.schedulerInit).not.toHaveBeenCalled();
+
+      held.artifact.resolve(0);
+      expect(await page).toMatchObject({ status: 200, body: expect.stringContaining("cached body") });
+      await starting;
+      expect(held.readies()).toEqual([
+        { rscWorker: "starting", webPending: true },
+        { rscWorker: "ready", webPending: false },
+      ]);
+      expect(held.schedulerInit).toHaveBeenCalledTimes(1);
+    } finally {
+      await held.restore();
+    }
+  }, 30_000);
+
+  test("a stop while a page is held, as the host's on a failed first build, answers it 503 before tearing down", async () => {
+    const held = await heldWebServer();
+
+    try {
+      const starting = held.start();
+      await held.listening;
+      const page = held.get("/cached");
+      await held.reached;
+
+      const stopped = held.replica.stop();
+      held.artifact.resolve(0);
+      const answered = await page;
+
+      expect(answered.status).toBe(503);
+      expect(answered.body).toContain("the server stopped before the first base build finished");
+      await stopped;
+      expect(await starting).toBe(held.replica);
+      expect(held.unwound()).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        routersDisposed: 0,
+        workersKilled: 0,
+        logSocket: false,
+      });
+      expect(held.readies()).toEqual([{ rscWorker: "starting", webPending: true }]);
+      expect(held.schedulerInit).not.toHaveBeenCalled();
+      expect(await held.served()).toBe(false);
+    } finally {
+      await held.restore();
+    }
+  }, 30_000);
+
+  test("a web surface that fails to mount answers the held page 503 with the failure and fails the start", async () => {
+    const held = await heldWebServer();
+    const initializeRoute = spyOn(held.WebRouter.prototype, "initializeRoute").mockImplementationOnce(async () => {
+      throw new Error("routes refused");
+    });
+
+    try {
+      const starting = held.start();
+      const failure = starting.catch((error: unknown) => error);
+      await held.listening;
+      const page = held.get("/cached", "application/json");
+      await held.reached;
+
+      held.artifact.resolve(0);
+
+      expect(await page).toMatchObject({ status: 503, body: expect.stringContaining("routes refused") });
+      expect(await failure).toMatchObject({ message: "routes refused" });
+      expect(held.unwound()).toEqual({
+        status: "stopped",
+        destroyed: 1,
+        routersDisposed: 1,
+        workersKilled: 1,
+        logSocket: false,
+      });
+      expect(held.readies()).toEqual([{ rscWorker: "starting", webPending: true }]);
+    } finally {
+      initializeRoute.mockRestore();
+      await held.restore();
+    }
+  }, 30_000);
+});
 
 describe("AkanServer start that fails part way", () => {
   test("a WebRouter.create() that fails after spawning its worker kills it and destroys the container once", async () => {

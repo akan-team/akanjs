@@ -134,6 +134,37 @@ describe("GatewayStatus readiness", () => {
       for (const upstream of upstreams) upstream.close();
     }
   });
+
+  test("tells the dev host its backend is ready only once a replica that listened early has its web surface", () => {
+    const { children, supervisor, status, ready } = gatewayOf(1);
+    const send = process.send;
+    const sent: unknown[] = [];
+    process.send = (message: unknown) => sent.push(message) > 0;
+    const pending = {
+      type: "ready",
+      pid: 1000,
+      replicaIdx: 0,
+      role: "all",
+      upstream: { type: "unix", socketPath: "/tmp/replica-0.sock" },
+      rscWorker: "starting",
+      webPending: true,
+    } satisfies AkanIpcMessage;
+
+    try {
+      children.get(0)?.restart.next();
+      supervisor.markReady(0, pending);
+      expect(sent).toEqual([]);
+      expect(children.get(0)?.restart.attempts).toBe(1);
+      expect(status.readyStatus()).toMatchObject({ ready: false, children: [{ ready: true, rscWorker: "starting" }] });
+
+      ready(0, "ready");
+      expect(sent).toEqual([{ type: "backend-ready", pid: process.pid }]);
+      expect(children.get(0)?.restart.attempts).toBe(0);
+      expect(status.readyStatus().ready).toBe(true);
+    } finally {
+      process.send = send;
+    }
+  });
 });
 
 describe("GatewayStatus metric families", () => {

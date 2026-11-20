@@ -1,5 +1,5 @@
 import type { Logger } from "akanjs/common";
-import type { AkanIpcMessage } from "akanjs/service";
+import type { AkanIpcMessage, AkanRscWorkerStatus } from "akanjs/service";
 import type { AkanServer } from "../akanServer";
 import type { ServerLogging } from "../logging/serverLogging";
 import type { WebRouter } from "../webRouter";
@@ -10,16 +10,23 @@ type ParentChannelOwner = Pick<AkanServer, "logger" | "shutdownTimeoutMs" | "sto
 export class ParentChannel {
   readonly #owner: ParentChannelOwner;
   readonly #logger: Logger;
-  readonly #logging: ServerLogging;
+  readonly #logging: Pick<ServerLogging, "setMinSev">;
   readonly #webRouter: () => WebRouter | null;
+  readonly #rscWorker: () => AkanRscWorkerStatus;
   #parentGone: boolean = false;
   #orphanExiting = false;
 
-  constructor(owner: ParentChannelOwner, logging: ServerLogging, webRouter: () => WebRouter | null) {
+  constructor(
+    owner: ParentChannelOwner,
+    logging: Pick<ServerLogging, "setMinSev">,
+    webRouter: () => WebRouter | null,
+    rscWorker: () => AkanRscWorkerStatus = () => webRouter()?.rscWorkerStatus ?? null,
+  ) {
     this.#owner = owner;
     this.#logger = owner.logger;
     this.#logging = logging;
     this.#webRouter = webRouter;
+    this.#rscWorker = rscWorker;
   }
 
   get gone() {
@@ -66,7 +73,7 @@ export class ParentChannel {
         nonce: message.nonce,
         sentAt: message.sentAt,
         pid: process.pid,
-        rscWorker: this.#webRouter()?.rscWorkerStatus ?? null,
+        rscWorker: this.#rscWorker(),
       } satisfies AkanIpcMessage);
     else if (message.type === "log.level") {
       this.#logging.setMinSev(message.minSev);
