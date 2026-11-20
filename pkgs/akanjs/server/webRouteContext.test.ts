@@ -55,6 +55,35 @@ describe("WebRouteContext.dictionaryUrlsOf", () => {
     expect(context.dictionaryUrlsOf(headers, "/en/memo", "/:lang/memo")).toEqual(["/_akan/dict/en-page.js"]);
   });
 
+  test("names the whole page file, and still the API descriptions, where a locale's route files would cost more", () => {
+    const sized = (lang: string, whole: number, sizes: number[]): DictAsset => {
+      const asset = assetOf(lang, sizes.length);
+      const files = asset.routeParts?.files.map((file, idx) => ({ ...file, bytes: sizes[idx] })) ?? [];
+      const api = files.at(-1);
+      return {
+        ...asset,
+        bytes: whole,
+        ...(api ? { parts: { api } } : {}),
+        ...(asset.routeParts ? { routeParts: { ...asset.routeParts, files } } : {}),
+      };
+    };
+    const context = contextOf({
+      dictAssets: { en: sized("en", 1000, [600, 300, 900, 500]), ko: sized("ko", 1000, [700, 400, 900, 500]) },
+      dictRoutes: { "/:lang/memo": [0, 1, 3], "/:lang/user": [0, 2] },
+    });
+
+    expect(context.dictionaryUrlsOf(headers, "/en/memo", "/:lang/memo")).toEqual([
+      "/_akan/dict/en-0.js",
+      "/_akan/dict/en-1.js",
+      "/_akan/dict/en-3.js",
+    ]);
+    expect(context.dictionaryUrlsOf(headers, "/ko/memo", "/:lang/memo")).toEqual([
+      "/_akan/dict/ko-page.js",
+      "/_akan/dict/ko-3.js",
+    ]);
+    expect(context.dictionaryUrlsOf(headers, "/en/user", "/:lang/user")).toEqual(["/_akan/dict/en-page.js"]);
+  });
+
   test("development names the file of each group the route's build read, a group no dictionary holds having none", () => {
     const context = contextOf(
       { dictGroups: { base: 0, memo: 1, user: 2 } },

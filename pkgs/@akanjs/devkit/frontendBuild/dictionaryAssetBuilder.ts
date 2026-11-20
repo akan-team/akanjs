@@ -4,7 +4,7 @@ import type { AkanI18nConfig } from "akanjs/common";
 import type { DictAsset } from "akanjs/server";
 import type { App } from "../commandDecorators";
 import { DictionaryPacking } from "./dictionaryPacking";
-import { dictionaryBrotliBytesOf } from "./precompressArtifacts";
+import { dictionaryBrotliBytesOf, dictionaryServedBytesOf } from "./precompressArtifacts";
 
 export interface DictionaryAssetBuildOptions {
   /** Each locale's API descriptions go to a file of their own, loaded where shown. */
@@ -68,7 +68,8 @@ export class DictionaryAssetBuilder {
         : everyGroupAlone
           ? { parts: groups.map((group) => [group]), partsByRoute: {} }
           : null;
-    const assets = await Promise.all(locales.map((locale) => this.#writeLocale(locale, pack?.parts)));
+    const measured = !!packed && pack === packed;
+    const assets = await Promise.all(locales.map((locale) => this.#writeLocale(locale, pack?.parts, measured)));
     const files = assets.flatMap(([, asset]) => [
       asset,
       ...Object.values(asset.parts ?? {}),
@@ -100,9 +101,13 @@ export class DictionaryAssetBuilder {
   ) {
     const { lang = defaultLocale, page: sizing = {} } =
       locales.find((locale) => locale.lang === defaultLocale) ?? locales[0] ?? {};
+    //? The exports a file carries are counted too, its table's name at its longest: the build's names are not known yet.
+    const table = `${DictionaryAssetBuilder.urlPrefix}/${lang}-groups-${"x".repeat(13)}.js`;
     const servedBytesOf = (held: readonly string[]) => {
       const texts = Object.fromEntries(held.flatMap((group) => (sizing[group] ? [[group, sizing[group]]] : [])));
-      return dictionaryBrotliBytesOf(DictionaryAssetBuilder.source(lang, texts));
+      const whole = held.length === groups.length;
+      const exports = whole ? { table } : { table, groups: [...held] };
+      return dictionaryBrotliBytesOf(DictionaryAssetBuilder.source(lang, texts, undefined, exports));
     };
     const bytesOf = (group: string) => JSON.stringify(sizing[group] ?? {}).length;
     return DictionaryPacking.packUnderWhole(routes, bytesOf, groups, servedBytesOf);
@@ -116,7 +121,11 @@ export class DictionaryAssetBuilder {
     return getAllDictionary ? getAllDictionary() : null;
   }
 
-  async #writeLocale({ lang, page, api }: LocalePages, packed?: string[][]): Promise<readonly [string, DictAsset]> {
+  async #writeLocale(
+    { lang, page, api }: LocalePages,
+    packed?: string[][],
+    measured = false,
+  ): Promise<readonly [string, DictAsset]> {
     const { source, apiPart } = DictionaryAssetBuilder;
     const apiSource = source(lang, api, undefined, packed?.length ? { part: apiPart } : {});
     const apiAsset = Object.keys(api).length ? await this.#write(`${lang}-api`, apiSource) : null;
@@ -129,22 +138,25 @@ export class DictionaryAssetBuilder {
     const groupFiles = await Promise.all(
       packed.map((groups, idx) => {
         const held = Object.fromEntries(groups.flatMap((group) => (page[group] ? [[group, page[group]]] : [])));
-        return this.#write(`${lang}-${idx}`, source(lang, held, parts, { table, groups }));
+        return this.#write(`${lang}-${idx}`, source(lang, held, parts, { table, groups }), undefined, measured);
       }),
     );
     const files = apiAsset ? [...groupFiles, apiAsset] : groupFiles;
     const groupIndex = Object.fromEntries(packed.flatMap((groups, idx) => groups.map((group) => [group, idx])));
     const tableSource = `export const lang = ${JSON.stringify(lang)};\nexport const files = ${JSON.stringify(files.map(({ url }) => url))};\nexport default ${JSON.stringify(groupIndex)};\n`;
     const tableAsset = await this.#write(lang, tableSource, tableName);
-    const whole = await this.#write(lang, source(lang, page, parts, { table }));
+    const whole = await this.#write(lang, source(lang, page, parts, { table }), undefined, measured);
     return [lang, { ...whole, ...withParts, routeParts: { table: tableAsset, files } }];
   }
 
-  async #write(stem: string, source: string, fileName?: string): Promise<DictAsset> {
+  async #write(stem: string, source: string, fileName?: string, measured = false): Promise<DictAsset> {
     const name = fileName ?? `${stem}-${Bun.hash(source).toString(36)}.js`;
     const relPath = `dict/${name}`;
-    await Bun.write(path.join(this.#absArtifactDir, relPath), source);
-    return { url: `${DictionaryAssetBuilder.urlPrefix}/${name}`, relPath };
+    const [bytes] = await Promise.all([
+      measured ? dictionaryServedBytesOf(source) : undefined,
+      Bun.write(path.join(this.#absArtifactDir, relPath), source),
+    ]);
+    return { url: `${DictionaryAssetBuilder.urlPrefix}/${name}`, relPath, ...(bytes === undefined ? {} : { bytes }) };
   }
 
   //? An endpoint's own label stays with the page: apps show `l("<model>.signal.<endpoint>")` as a button's text.

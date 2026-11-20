@@ -21,7 +21,7 @@ import { RscRenderRefusal } from "./rscRenderRefusal";
 import type { ScriptPolicySources } from "./scriptPolicy";
 import { getPathnameLocale } from "./systemPageDocument";
 import { createSystemPageResponse, getSystemPageHomeHref } from "./systemPages";
-import type { BaseBuildArtifact, RenderState } from "./types";
+import type { BaseBuildArtifact, DictAsset, RenderState } from "./types";
 
 const CLIENT_CLOSED_REQUEST_STATUS = 499;
 
@@ -128,8 +128,18 @@ export class WebRouteContext {
     const asset = assets[locale] ?? assets[i18n.defaultLocale];
     if (!asset) return [];
     const files = routeId ? (this.artifact.dictRoutes?.[routeId] ?? this.#builtFilesOf(routeId)) : undefined;
-    const urls = files?.flatMap((idx) => asset.routeParts?.files[idx]?.url ?? []) ?? [];
-    return urls.length && urls.length === files?.length ? urls : [asset.url];
+    const picked = files?.flatMap((idx) => asset.routeParts?.files[idx] ?? []) ?? [];
+    if (!picked.length || picked.length !== files?.length) return [asset.url];
+    return WebRouteContext.#underWhole(asset, picked).map(({ url }) => url);
+  }
+
+  //? Each locale's own sizes: a route's files can cost less than the whole file in one language and more in another.
+  static #underWhole(asset: DictAsset, picked: { url: string; bytes?: number }[]): { url: string }[] {
+    const apiUrl = asset.parts?.api?.url;
+    const page = picked.filter(({ url }) => url !== apiUrl);
+    if (asset.bytes === undefined || page.some(({ bytes }) => bytes === undefined)) return picked;
+    const pageBytes = page.reduce((sum, { bytes = 0 }) => sum + bytes, 0);
+    return pageBytes < asset.bytes ? picked : [asset, ...picked.filter(({ url }) => url === apiUrl)];
   }
 
   //? Development names a route's groups as the route builds; a group no dictionary holds has no file.

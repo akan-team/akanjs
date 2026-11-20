@@ -771,6 +771,7 @@ export interface DevtoolsRouterContext {
 export interface DictAsset {
     url: string;
     relPath: string;
+    bytes?: number;
     parts?: Record<string, {
         url: string;
         relPath: string;
@@ -783,6 +784,7 @@ export interface DictAsset {
         files: {
             url: string;
             relPath: string;
+            bytes?: number;
         }[];
     };
 }
