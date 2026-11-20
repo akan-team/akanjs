@@ -176,6 +176,15 @@ jobs:
             echo "::error::akan sync changed tracked files. Run it locally and commit the result."
             exit 1
           fi
+      - run: bun apps/akan/script/generateLlms.ts
+      - name: Fail when the llms mirror is behind the docs pages
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            git status --short
+            git --no-pager diff --stat
+            echo "::error::apps/akan/public/llms is behind the docs pages. Run bun apps/akan/script/generateLlms.ts and commit the result."
+            exit 1
+          fi
       - name: Keep native core off a page drawing the synced shared lib
         working-directory: pkgs/@akanjs/devkit
         run: bun test --isolate ./frontendBuild/nativeCore.test.ts
