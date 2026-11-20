@@ -467,6 +467,24 @@ export interface AkanPlugin {
   syncAssets?: (ctx: AkanSyncContext) => Promise<void>;
 }
 
+export interface AkanPreviewSignIn {
+  /** The dev server the preview opens its pages on. */
+  origin: string;
+  /** What `akan preview --as <name>` named, for an app with more than one kind of account. */
+  as: string | null;
+}
+
+/** Read live by `akan preview`; it carries a function, so it stays out of the serializable config results. */
+export interface AkanPreviewConfig {
+  /**
+   * Signs in the pages a preview opens: the sign-in answer, whose `Set-Cookie` pairs become their cookies, or the
+   * cookies by name. Credentials are read from the environment here, never written in this file.
+   */
+  signIn?: (signIn: AkanPreviewSignIn) => Promise<Response | Record<string, string>>;
+  /** One concrete path per `[param]` route, without the locale, for `akan preview --changed` to open. */
+  examples?: string[];
+}
+
 export interface AkanApiConfig {
   /** Where signal endpoints are mounted. Defaults to `/api`. */
   prefix: string;
@@ -551,6 +569,7 @@ export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "docker" | "web"
   native?: AkanNativeAppConfig;
   plugins?: AkanPlugin[];
   pipeline?: AppPipelineConfig;
+  preview?: AkanPreviewConfig;
 };
 export type LibConfigInput = Omit<DeepPartial<LibConfigResult>, "bin"> & {
   bin?: AkanBinConfig;

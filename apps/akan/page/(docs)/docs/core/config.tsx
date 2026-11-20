@@ -563,6 +563,13 @@ const buildFields = [
     ko: "CLI가 실행 시점에 읽어 런타임 패키지, 네이티브 프로젝트 설정, public/ 에셋을 처리합니다.",
   },
   {
+    key: "preview",
+    type: "{ signIn?, examples? }",
+    default: "{}",
+    en: "Read live by `akan preview`. `signIn({ origin, as })` returns the sign-in Response or the cookies by name, and every page opens with them; it reads the account from the environment. `examples` lists one concrete path per [param] route for `--changed`.",
+    ko: "`akan preview`가 실행 시점에 읽습니다. `signIn({ origin, as })`은 로그인 Response나 이름별 쿠키를 돌려주고, 모든 페이지가 그 쿠키로 열립니다. 계정 정보는 환경 변수에서 읽습니다. `examples`는 `--changed`가 열 [param] 라우트별 구체 경로입니다.",
+  },
+  {
     key: "docker",
     type: "string | DockerImageConfig",
     default: "oven/bun:1.4.4-slim@sha256:…",
@@ -1583,6 +1590,15 @@ const config: AppConfig = {
   assets: { pruneFonts: true, keepFonts: ["fonts/Assistant-*.woff2"] },
   syncPageLibs: ["shared"],
   plugins: [pushNotificationPlugin],
+  preview: {
+    signIn: ({ origin }) =>
+      fetch(\`\${origin}/api/user/signin\`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId: process.env.DEV_ACCOUNT_ID, password: process.env.DEV_ACCOUNT_PASSWORD }),
+      }),
+    examples: ["/memo/1"],
+  },
   docker: {
     image: { amd64: "oven/bun:amd64", arm64: "oven/bun:arm64" },
     preRuns: ["apt-get install -y ffmpeg"],

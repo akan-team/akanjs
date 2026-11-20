@@ -1,6 +1,14 @@
 import { PreviewChrome, type PreviewEngine } from "./PreviewChrome";
 
+export interface PreviewSession {
+  /** A document of the pages' origin, where the cookies are written before a page opens. */
+  url: string;
+  /** `name=value` pairs. */
+  cookies: string[];
+}
+
 export interface PreviewProbeOptions {
+  session?: PreviewSession | null;
   screenshot?: boolean;
   width?: number;
   height?: number;
@@ -67,6 +75,7 @@ export class PreviewView {
   static async probe(
     url: string,
     {
+      session = null,
       screenshot = false,
       width = 1280,
       height = 800,
@@ -90,6 +99,10 @@ export class PreviewView {
           deadline,
           new Error(`Timed out ${what} ${url}; the dev server may be rebuilding or stuck.`),
         );
+      if (session?.cookies.length) {
+        await within(view.navigate(session.url), "opening the session for");
+        await within(view.evaluate(PreviewView.cookieExpression(session.cookies)), "opening the session for");
+      }
       let page = await PreviewView.#load(view, url, settleMs, within);
       //? Right after a save the first load can render nothing (`[rscClient] module not loaded`); the next one has it.
       if (page.empty) {
@@ -99,7 +112,7 @@ export class PreviewView {
       const result: PreviewProbeResult = {
         url,
         finalUrl: page.href,
-        status: page.status ?? (await PreviewView.#statusOf(page.href, deadline)),
+        status: page.status ?? (await PreviewView.#statusOf(page.href, deadline, session?.cookies ?? [])),
         title: page.title,
         text: page.text,
         consoleErrors: logs.filter((line) => line.startsWith("error")),
@@ -162,10 +175,19 @@ export class PreviewView {
   }
 
   //? webkit has no Navigation Timing `responseStatus`, so the status comes from asking the server again, unredirected.
-  static async #statusOf(href: string, deadline: number) {
+  static async #statusOf(href: string, deadline: number, cookies: string[]) {
     const left = Math.max(1, deadline - Date.now());
-    const response = await fetch(href, { redirect: "manual", signal: AbortSignal.timeout(left) }).catch(() => null);
+    const response = await fetch(href, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(left),
+      ...(cookies.length ? { headers: { Cookie: cookies.join("; ") } } : {}),
+    }).catch(() => null);
     return response?.status ?? null;
+  }
+
+  //? Written from a document: the webkit backend has no cookie API, and a page sends a cookie its script set like any other.
+  static cookieExpression(cookies: string[]) {
+    return `(() => { for (const pair of ${JSON.stringify(cookies)}) document.cookie = pair + "; Path=/; SameSite=Lax"; return true; })()`;
   }
 
   static async #within<T>(work: Promise<T>, deadline: number, expiry: Error): Promise<T> {

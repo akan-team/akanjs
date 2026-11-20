@@ -270,13 +270,13 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 - in the console: `akan console` has the same filters as `.tail` and `.trace <id>`.
 
-`akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]`
+`akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>] [--as <name>] [--anonymous]`
 
 Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
 - paths (String): Page paths, space- or comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`; `--csr` prints a note naming them. `/mcp` answers only `POST`, so preview cannot check it (it fails with 405). A full URL (`http://localhost:<port>/oauth/token`) opens its path and query the same way, always on the app's dev server, with a note when it names another server, for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at a server route's path, under the same locale rule, and `/en` and `/en/` open once.
 
-- --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.
+- --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed. A route with a `[param]` opens at the first path in `preview.examples` of `akan.config.ts` that fits it, and is listed as not opened without one.
 
 - --csr (Boolean, default false): Load each page through the CSR boot a native app uses.
 
@@ -291,6 +291,12 @@ Open pages of the app's dev server in a headless browser and print one verdict l
 - --timeout (Number, default 60): Seconds one page may take to load.
 
 - --format (String, default text, text | json): `json` prints the full report.
+
+- --as (String): The account to sign in as, handed to `preview.signIn` as `as`.
+
+- --anonymous (Boolean, default false, -A): Open the pages without the session `preview.signIn` opens.
+
+- signed-in pages: `preview.signIn` in `akan.config.ts` is called once per run with `{ origin, as }` and returns the sign-in `Response` or the cookies by name; every page then opens with those cookies. It reads the account from the environment, and the report never prints a cookie.
 
 - native shells: `--csr` checks the bundle a shell loads, not the shell. A simulator page's errors reach `akan logs`, tagged.
 
@@ -852,6 +858,7 @@ akan preview myapp
 akan preview myapp /board,/board/new --screenshot
 akan preview myapp --changed --csr
 akan preview myapp /admin --desktop --format json
+akan preview myapp /admin --as admin
 ```
 
 ### studio

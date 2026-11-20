@@ -320,6 +320,8 @@ The rest of the config is for the build system and the production image. Most ap
 
 - plugins (AkanPlugin[], default []): Read live by the CLI for runtime packages, native project setup, and public/ assets.
 
+- preview ({ signIn?, examples? }, default {}): Read live by `akan preview`. `signIn({ origin, as })` returns the sign-in Response or the cookies by name, and every page opens with them; it reads the account from the environment. `examples` lists one concrete path per [param] route for `--changed`.
+
 - docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, baseSetup, env, and variants for a second image.
 
 A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns, docker.installRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
@@ -763,6 +765,15 @@ const config: AppConfig = {
   assets: { pruneFonts: true, keepFonts: ["fonts/Assistant-*.woff2"] },
   syncPageLibs: ["shared"],
   plugins: [pushNotificationPlugin],
+  preview: {
+    signIn: ({ origin }) =>
+      fetch(`${origin}/api/user/signin`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ accountId: process.env.DEV_ACCOUNT_ID, password: process.env.DEV_ACCOUNT_PASSWORD }),
+      }),
+    examples: ["/memo/1"],
+  },
   docker: {
     image: { amd64: "oven/bun:amd64", arm64: "oven/bun:arm64" },
     preRuns: ["apt-get install -y ffmpeg"],
