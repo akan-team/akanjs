@@ -175,7 +175,7 @@ export default page()
         }),
       },
       {
-        name: "backTo(href)",
+        name: "backOrReplace(href)",
         desc: l.trans({
           en: "Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.",
           ko: "`push`로 쿼리에 연 페이지 상태(예: `?id=`의 레코드)를 닫습니다. 바로 아래 기록이 `href`이면 뒤로 가고, 아니면 현재 기록을 `href`로 교체합니다. CSR이나 네이티브 스택은 pathname이 같은 push를 쌓지 않고, 방문자가 그 주소로 바로 들어왔을 수도 있기 때문입니다. 교체할 때 스크롤 위치는 그대로 둡니다. 브라우저에서만 됩니다.",
