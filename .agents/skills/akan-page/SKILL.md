@@ -80,10 +80,17 @@ File names, stages, the `.render()` order and what a route file must never do ar
 - A page state a push opens in the query (a record in `?id=`): close it with `router.backOrReplace(href)`, never
   `router.back()` or a `renderMode` branch. A CSR or native stack rewrites a push that keeps the pathname rather than
   stacking it, and the address may be opened directly.
-- A client filter kept in the URL without reloading the page: ``router.replace(`/books?q=${q}`, { shallow: true,
-  scrollToTop: false })`` in a `"use client"` component, read back with `usePageLocation().searchParams`, which
-  follows the replace and the back and forward buttons. Shallow holds only while the path stays the same; a server
-  `.search()` sees the value at the next full navigation.
+- A client filter kept in the URL without reloading the page: the URL is the state, in a `"use client"` component.
+
+  ```tsx
+  const { searchParams } = usePageLocation(); // akanjs/webkit
+  const genre = typeof searchParams.genre === "string" ? searchParams.genre : "all";
+  const setGenre = (next: string) => router.replace(`/books?genre=${next}`, { shallow: true, scrollToTop: false });
+  ```
+
+  `searchParams` follows the replace and the back and forward buttons. Never keep the filter in `useState`: a shallow
+  back draws no page, so the copy stays on the old value while the URL moves. Shallow holds only while the path stays
+  the same; a server `.search()` sees the value at the next full navigation.
 - On a web page's first render `st.use.searchParams()` is still the server's empty snapshot, synced right after
   hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
 - A `Link` renders its page ahead of the click, guards included: on hover, on keyboard focus, or as it shows with
