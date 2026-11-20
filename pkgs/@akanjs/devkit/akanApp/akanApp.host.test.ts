@@ -406,8 +406,10 @@ describe("a stop while the builder is starting", () => {
       const starting = host.start();
       await Bun.sleep(50);
       expect(builder.started).toBe(1);
+      //? Read before the stop: stop() takes real time with a backend alive, and Bun fails a test on an unread rejection.
+      const outcome = settled(starting);
       await host.stop();
-      expect(await settled(starting)).toBe("dev server stopped before the builder was ready");
+      expect(await outcome).toBe("dev server stopped before the builder was ready");
       exitLate?.();
       await Bun.sleep(50);
       expect({ creates, stopped: builder.stopped }).toEqual({ creates: 1, stopped: 1 });
