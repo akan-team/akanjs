@@ -51,7 +51,7 @@ export class DictionarySizes {
     return `Dictionary ${lang}: first visit ${visit} brotli on the lightest / median / largest route (whole ${formatBytes(pageBrotliBytes)})${api}`;
   }
 
-  //? A route the build could not read loads the whole page file, so it counts at that file's size.
+  //? A route the build could not read, or whose files would cost the whole or more, is served the whole page file.
   static #routes(
     asset: DictAsset,
     pageBytes: number,
@@ -62,10 +62,14 @@ export class DictionarySizes {
     const files = asset.routeParts?.files;
     if (!files) return null;
     const fileBytes = files.map(({ relPath }) => brotliOf(relPath));
+    const apiIdx = files.findIndex(({ url }) => url === asset.parts?.api?.url);
     const sizes = routeIds
       .map((routeId) => {
         const parts = dictRoutes[routeId];
-        return parts ? parts.reduce((total, idx) => total + (fileBytes[idx] ?? 0), 0) : pageBytes;
+        if (!parts) return pageBytes;
+        const api = parts.includes(apiIdx) ? (fileBytes[apiIdx] ?? 0) : 0;
+        const page = parts.reduce((total, idx) => total + (idx === apiIdx ? 0 : (fileBytes[idx] ?? 0)), 0);
+        return Math.min(page, pageBytes) + api;
       })
       .sort((a, b) => a - b);
     const at = (idx: number) => sizes[idx] ?? 0;

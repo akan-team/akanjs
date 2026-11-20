@@ -10,7 +10,7 @@ import { ConstantSerializer } from "./constantSerializer";
 import { DepsSerializer } from "./depsSerializer";
 import { DevtoolsAccess } from "./devtoolsAccess";
 import { SignalSerializer } from "./signalSerializer";
-import { StudioRoute } from "./studio/studioRoute";
+import type { StudioRoute } from "./studio/studioRoute";
 import type { DepsData, DevtoolsApp, DevtoolsEnvelope, DevtoolsIndex, DictionaryData, SignalData } from "./types";
 
 export interface DevtoolsRouterContext {
@@ -60,23 +60,12 @@ export class DevtoolsRouter {
     const closedReason = DevtoolsAccess.closedReason(env);
     if (closedReason) DevtoolsRouter.logger.warn(closedReason);
     if (!DevtoolsRouter.isEnabled(env)) return {};
-    const studio = new StudioRoute({
-      basePath: `${DevtoolsRouter.basePath}/studio`,
-      appName: this.#context.env.appName,
-      web: this.#context.web ?? true,
-      buildGraph: this.#context.buildGraph ?? null,
-      buildChanges: this.#context.buildChanges ?? null,
-      buildFramework: this.#context.buildFramework ?? null,
-      runtime: () => ({
-        app: this.#app(),
-        deps: DevtoolsRouter.#attempt("studio runtime (deps)", () => this.#deps()),
-        signal: DevtoolsRouter.#attempt("studio runtime (signal)", () => this.#signal()),
-      }),
-    });
     return DevRoutes.mount(
       {
-        [`${DevtoolsRouter.basePath}/studio`]: { GET: (req: Request) => studio.page(req) },
-        [`${DevtoolsRouter.basePath}/studio/graph`]: { GET: (req: Request) => studio.graph(req) },
+        [`${DevtoolsRouter.basePath}/studio`]: { GET: async (req: Request) => (await this.#studio()).page(req) },
+        [`${DevtoolsRouter.basePath}/studio/graph`]: {
+          GET: async (req: Request) => (await this.#studio()).graph(req),
+        },
         [`${DevtoolsRouter.basePath}/devtools`]: { GET: () => DevtoolsRouter.#json(this.#index()) },
         [`${DevtoolsRouter.basePath}/constant`]: {
           GET: () => this.#respond("constant", () => ConstantSerializer.serialize()),
@@ -96,6 +85,28 @@ export class DevtoolsRouter {
       },
       env,
     );
+  }
+
+  #studioRoute: Promise<StudioRoute> | null = null;
+  //? Imported on the first studio request: a server whose devtools are closed, or never opened, parses none of it.
+  #studio(): Promise<StudioRoute> {
+    this.#studioRoute ??= import("./studio/studioRoute").then(
+      ({ StudioRoute }) =>
+        new StudioRoute({
+          basePath: `${DevtoolsRouter.basePath}/studio`,
+          appName: this.#context.env.appName,
+          web: this.#context.web ?? true,
+          buildGraph: this.#context.buildGraph ?? null,
+          buildChanges: this.#context.buildChanges ?? null,
+          buildFramework: this.#context.buildFramework ?? null,
+          runtime: () => ({
+            app: this.#app(),
+            deps: DevtoolsRouter.#attempt("studio runtime (deps)", () => this.#deps()),
+            signal: DevtoolsRouter.#attempt("studio runtime (signal)", () => this.#signal()),
+          }),
+        }),
+    );
+    return this.#studioRoute;
   }
 
   #signal(): SignalData {

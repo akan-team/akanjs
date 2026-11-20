@@ -159,6 +159,22 @@ jobs:
       - run: bun run runAkan build minimal --fast --check-budget
       - run: bun run runAkan build akan --fast --check-budget
 
+  bundle-size:
+    name: Bundle size
+    # Skips the run npm-publish.yml calls, as route-js-budget does: a bundle's size never holds a release.
+    if: ${{ contains(github.workflow_ref, '/.github/workflows/ci.yml@') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/setup
+      - run: bun run buildAkan
+      # The metafile lets a failing entry list the inputs that put the most bytes into it.
+      - run: bun run runAkan build minimal --fast
+        env:
+          AKAN_BUILD_METAFILE: "1"
+      - run: bun run testGates --only=bundle
+
   sync:
     name: Sync is clean
     runs-on: ubuntu-latest
@@ -174,6 +190,15 @@ jobs:
             git status --short
             git --no-pager diff
             echo "::error::akan sync changed tracked files. Run it locally and commit the result."
+            exit 1
+          fi
+      - run: bun apps/akan/script/generateLlms.ts
+      - name: Fail when the llms mirror is behind the docs pages
+        run: |
+          if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+            git status --short
+            git --no-pager diff --stat
+            echo "::error::apps/akan/public/llms is behind the docs pages. Run bun apps/akan/script/generateLlms.ts and commit the result."
             exit 1
           fi
       - name: Keep native core off a page drawing the synced shared lib

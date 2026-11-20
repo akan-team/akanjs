@@ -12,7 +12,6 @@ import {
   SERVER_VALUE,
 } from "akanjs/base";
 import { applyMixins, plainFieldsOf } from "akanjs/common";
-import { immerable } from "immer";
 import { CascadePaths } from "./cascadePaths";
 import { ConstantRegistry } from "./constantRegistry";
 import { dateAccessorOf, isDateSlotField } from "./dateSlot";
@@ -30,6 +29,7 @@ import {
 import { FieldPlan } from "./fieldPlan";
 import { getDefault } from "./getDefault";
 import { HydrationPlan } from "./hydrationPlan";
+import { immerable } from "./immerable";
 import { makePurify, type PurifiedModel, type PurifyFunc } from "./purify";
 import { TextFieldPaths } from "./textFieldPaths";
 import type { BaseInsight, BaseObject, ConstantType, DefaultOf, DefaultOfSchema, NonFunctionalKeys } from "./types";

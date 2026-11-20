@@ -167,10 +167,12 @@ export interface CssAsset {
 export interface DictAsset {
   url: string;
   relPath: string;
+  /** What a browser downloads of the page file: its brotli sidecar's size, or the file's own when that is no smaller. */
+  bytes?: number;
   /** The files this locale's dictionary left out, by name, loaded where a page shows them. */
   parts?: Record<string, { url: string; relPath: string }>;
-  /** The page file cut into the files routes load; `table` names each group's file. */
-  routeParts?: { table: { url: string; relPath: string }; files: { url: string; relPath: string }[] };
+  /** The page file cut into the files routes load; `table` names each group's file. Each file's `bytes` as above. */
+  routeParts?: { table: { url: string; relPath: string }; files: { url: string; relPath: string; bytes?: number }[] };
 }
 
 export interface RenderState {

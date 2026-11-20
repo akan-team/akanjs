@@ -1,5 +1,6 @@
 import { AkanError } from "akanjs/base";
 import { DevtoolsAccess, type DevtoolsEnv } from "../devtools/devtoolsAccess";
+import { isDevBuild } from "./devBuild";
 import { type DevSurface, DevSurfaces } from "./devSurfaces";
 
 type Env = Record<string, string | undefined>;
@@ -7,10 +8,8 @@ type Env = Record<string, string | undefined>;
 export class DevSurfacePolicy {
   static readonly #mounted = new WeakSet<object>();
 
-  // `akan start` outranks a stray NODE_ENV=production (a Bun-loaded `.env`, a CI default): its artifact has no
-  // routes manifest, so production mode would throw on every request.
   static isDevBuild(env: Env = process.env): boolean {
-    return env.NODE_ENV !== "production" || env.AKAN_COMMAND_TYPE === "start";
+    return isDevBuild(env);
   }
 
   static opens(surface: DevSurface, env: DevtoolsEnv = {}): boolean {

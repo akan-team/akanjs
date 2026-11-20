@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { DevSurfacePolicy } from "./routing/devSurfacePolicy";
+import { isDevBuild } from "./routing/devBuild";
 
 export const SCRIPT_POLICY_REPORT_ONLY_HEADER = "Content-Security-Policy-Report-Only";
 export const SCRIPT_POLICY_REPORT_GROUP = "akan-csp";
@@ -119,7 +119,7 @@ export class ScriptPolicy {
     const extra = ScriptPolicy.extraSources(env.AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC?.trim());
     const named = new Set([...(nonce ? [`'nonce-${nonce}'`] : []), ...hashes, ...extra]);
     const sources = ["'self'", ...named, "'strict-dynamic'"];
-    if (DevSurfacePolicy.isDevBuild(env)) sources.push("'unsafe-eval'");
+    if (isDevBuild(env)) sources.push("'unsafe-eval'");
     const reportUri = ScriptPolicy.reportUri(env.AKAN_CONTENT_SECURITY_POLICY_REPORT_URI?.trim());
     const report = reportUri ? `; report-uri ${reportUri}; report-to ${SCRIPT_POLICY_REPORT_GROUP}` : "";
     return `script-src ${sources.join(" ")}${report}`;

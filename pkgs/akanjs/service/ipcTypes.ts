@@ -206,6 +206,8 @@ export type AkanIpcMessage =
       healthPath?: string;
       crossSite?: { allowedOrigins: string[]; enabled: boolean };
       rscWorker?: AkanRscWorkerStatus;
+      /** Sent first by a dev replica booted beside the first base build: its api answers, its pages wait. */
+      webPending?: boolean;
     }
   | { type: "pubsub.publish"; roomId: string; data: object | object[]; origin?: string }
   | { type: "pubsub.deliver"; roomId: string; data: object | object[]; origin?: string }
