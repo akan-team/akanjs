@@ -75,7 +75,7 @@ File names, stages, the `.render()` order and what a route file must never do ar
 - An SSR page still loading: `pendingClassName` / `data-pending` on its `Link`, and `usePendingNavigation()`
   (`akanjs/client`) for its `{ path, searchParams }`, `null` once the page is drawn.
 - From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.
-- A page state a push opens in the query (a record in `?id=`): close it with `router.backTo(href)`, never
+- A page state a push opens in the query (a record in `?id=`): close it with `router.backOrReplace(href)`, never
   `router.back()` or a `renderMode` branch. A CSR or native stack rewrites a push that keeps the pathname rather than
   stacking it, and the address may be opened directly.
 - A client filter kept in the URL without reloading the page: ``router.replace(`/books?q=${q}`, { shallow: true,

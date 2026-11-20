@@ -810,6 +810,7 @@ describe("HTML response classes", () => {
       "oauth/OAuthErrors.ts",
       "remote/RemoteSource.ts",
       "renderBusyResponse.ts",
+      "routing/webSurfaceHold.ts",
       "systemPages.tsx",
       "webRouteContext.ts",
     ]);

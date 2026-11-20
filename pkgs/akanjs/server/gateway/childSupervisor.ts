@@ -249,22 +249,26 @@ export class ChildSupervisor {
     child.wsUpstream = message.wsUpstream;
     child.healthPath = message.healthPath;
     child.rscWorker = message.rscWorker;
+    child.webPending = message.webPending === true;
     if (message.crossSite) CrossSiteGuard.configure(message.crossSite);
     child.lastPongAtMono = performance.now();
-    child.restart.reset();
+    //? A replica whose web surface then fails to mount has not booted, or a failing first build never reads as a loop.
+    if (!child.webPending) child.restart.reset();
     // A child that (re)spawned after subscribers arrived has never heard the floor.
     const hub = this.#logging.hub;
     if (hub && hub.floor !== null) this.#children.send(child, { type: "log.level", minSev: hub.floor });
     child.restartPending = false;
-    child.lastErrorMessage = undefined;
+    if (!child.webPending) child.lastErrorMessage = undefined;
     this.#children.invalidateFederation();
     // Batch children serve no HTTP/HMR traffic, so they must not gate frontend readiness.
     const trafficChildren = [...this.#children.values()].filter((item) => item.role !== "batch");
+    //? The host replays builds and opens its HMR once this lands, which a replica still waiting on its artifact drops.
+    const settled = (item: ChildState) => item.ready && !item.webPending;
     //? A gateway that lost its port stops only after its replicas exit, and one may boot in that wait.
-    if (!this.#children.stopping && child.role !== "batch" && trafficChildren.every((item) => item.ready)) {
+    if (!this.#children.stopping && child.role !== "batch" && trafficChildren.every(settled)) {
       process.send?.({ type: "backend-ready", pid: process.pid } satisfies BuilderMessage);
     }
-    if ([...this.#children.values()].every((item) => item.ready)) {
+    if (!child.webPending && [...this.#children.values()].every((item) => item.ready)) {
       this.#logger.verbose(`All ${this.#children.size} child process(es) are ready`);
     }
   }

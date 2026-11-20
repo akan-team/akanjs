@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import type { ConnectConfig } from "ssh2";
 import { type AppExecutor, WorkspaceExecutor } from "../executors";
 import { ShellOnlyEnv } from "../util/shellOnlyEnv";
+import { loadSsh2 } from "./ssh2Module";
 import { SshHostKeys } from "./sshHostKeys";
 import { createSshTunnel } from "./sshTunnel";
 
@@ -81,7 +82,9 @@ export const createTunnel = async (
   const baseDevEnv = WorkspaceExecutor.getBaseDevEnv();
   WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, `The ${service} tunnel`);
   for (const line of tunnelEnv.ignored()) app.logger.warn(line);
-  const auth = tunnelAuth(`The ${service} tunnel for ${app.name}-${environment}`);
+  const purpose = `The ${service} tunnel for ${app.name}-${environment}`;
+  const ssh2 = await loadSsh2(purpose, app.workspace.workspaceRoot);
+  const auth = tunnelAuth(purpose);
   const { serveDomain } = baseDevEnv;
   const host = `${app.name}-${environment}.${serveDomain}`;
   //? RFC 6761 makes *.localhost loopback, but only macOS resolves it; glibc without systemd-resolved and Windows answer ENOTFOUND
@@ -104,6 +107,7 @@ export const createTunnel = async (
       srcPort: port,
       dstHost,
       dstPort,
+      ssh2,
       sshOptions: {
         host: sshHost,
         port: sshPort,

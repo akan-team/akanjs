@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import zlib from "node:zlib";
 import type { App } from "../commandDecorators";
 import { FontPruner } from "./fontPruner";
@@ -94,6 +95,17 @@ export function dictionaryBrotliBytesOf(source: string): number {
   const bytes = new TextEncoder().encode(source);
   const buffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   return brotliCompress(buffer, ROOT_BROTLI_QUALITY.dict ?? MAX_BROTLI_QUALITY).byteLength;
+}
+
+//? What a browser downloads of a `dict/` file once this phase has run: its `.br`, or the file when that is no smaller.
+export async function dictionaryServedBytesOf(source: string): Promise<number> {
+  const bytes = new TextEncoder().encode(source);
+  const params = {
+    [zlib.constants.BROTLI_PARAM_QUALITY]: ROOT_BROTLI_QUALITY.dict ?? MAX_BROTLI_QUALITY,
+    [zlib.constants.BROTLI_PARAM_SIZE_HINT]: bytes.byteLength,
+  };
+  const encoded = await promisify(zlib.brotliCompress)(bytes, { params });
+  return Math.min(bytes.byteLength, encoded.byteLength);
 }
 
 function brotliCompress(buffer: ArrayBuffer, quality: number): Buffer {

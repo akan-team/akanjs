@@ -35,6 +35,8 @@ const HELD_SKIP_REASONS = [
   "late-redirect",
   "body-too-large",
 ];
+//? The record a page looked for can exist a moment later, so a not-found is not held for a route's whole TTL.
+const NOT_FOUND_SKIP_HOLD_SECONDS = 60;
 
 interface HtmlCacheStreamOptions {
   shouldCache?: () => boolean | Promise<boolean>;
@@ -302,7 +304,11 @@ export class HtmlResultCache {
         onSkip: (reason) => {
           const why = reason === "store-skip" ? skipReason : reason;
           if (HELD_SKIP_REASONS.includes(why))
-            this.#skips.set(htmlStoreKey, { reason: why, ...htmlCacheMetadata }, entry.ttl);
+            this.#skips.set(
+              htmlStoreKey,
+              { reason: why, ...htmlCacheMetadata },
+              why === "render-not-found" ? Math.min(entry.ttl, NOT_FOUND_SKIP_HOLD_SECONDS) : entry.ttl,
+            );
           logger.verbose(`html cache store skipped pathname=${pathname} reason=${why}`);
         },
       },

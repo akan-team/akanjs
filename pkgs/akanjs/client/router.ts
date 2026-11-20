@@ -656,8 +656,8 @@ class Router {
    * than stacking it, and a visitor may have opened this address directly, so `back()` alone would leave the page.
    * Only the one entry under this one is looked at, and the rewrite keeps the scroll unless `scrollToTop` is set.
    */
-  backTo(href: string, routeOptions?: RouteOptions) {
-    if (getEnv().side === "server") throw new Error("backTo is only available in client side");
+  backOrReplace(href: string, routeOptions?: RouteOptions) {
+    if (getEnv().side === "server") throw new Error("backOrReplace is only available in client side");
     this.#checkInitialized();
     //? A second tap before the first one's back lands still reads this entry, and a second back would leave `href`.
     if (csrLocation.isLeaving()) return undefined as never;

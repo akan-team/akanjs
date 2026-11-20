@@ -26,6 +26,9 @@ by `akan agent install`; edit anything outside the markers freely.
   code goes into the `errorCodes` guideline with `bun run error:codes`; the devkit test fails while it is stale.
 - `akan verify @akanjs/cli` lints and typechecks one package. Tests run with `bun run akan test <pkg> [files]` from
   the root or `cd <pkg> && bun test --isolate ./<file>`, never plain `bun test` from the root.
+- `apps/akan/public/llms/**` and `llms-full.txt` mirror the docs pages under `apps/akan/page/(docs)`. After changing
+  a docs page run `bun apps/akan/script/generateLlms.ts` (after `akan sync akan` in a fresh checkout) and commit the
+  result; CI's `Sync is clean` job fails while the mirror is behind.
 - The managed block below, `.claude/rules/akan/`, `.cursor/rules/akan-*.mdc`, `.claude/skills/` and
   `.agents/skills/` are generated from `pkgs/@akanjs/cli/guidelines/conventions/` (`core.md`, `rules/*.md`) and
   `pkgs/@akanjs/devkit/codeAgent/skills/`. Edit those sources, then run `akan agent install`.
