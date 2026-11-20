@@ -131,7 +131,7 @@ Shared by `page()`, `layout()` and `rootLayout()`:
 .config(config: PageConfig)
 .head(head: HeadStage<RouteBaseArgs>)
 .guard(guard: (args: RouteBaseArgs, request: RouteGuardRequest) => void | Promise<void>)
-.loading(render: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>)
+.loading(render: (args: RouteBaseArgs) => PromiseOrObject<ReactNode>, { atPress }?: RouteLoadingOption)
 ```
 
 Only on `page()`:
@@ -149,7 +149,7 @@ interface LayoutExtra { children: ReactNode; }
 .search<Name extends string, Type extends RouteSearchType>(name: Name, type: Type, option?: RouteArgOption)
 .notFound(render: LayoutNotFoundRender)
 .error(render: LayoutErrorRender)
-.loading(render: (args: RouteBaseArgs & LayoutExtra) => PromiseOrObject<ReactNode>)
+.loading(render: (args: RouteBaseArgs & LayoutExtra) => PromiseOrObject<ReactNode>, { atPress }?: RouteLoadingOption)
 .render(render: (args: RouteBaseArgs & LayoutExtra) => PromiseOrObject<ReactNode>)
 ```
 
@@ -325,6 +325,7 @@ bin?: AkanBinConfig;
 native?: AkanNativeAppConfig;
 plugins?: AkanPlugin[];
 pipeline?: AppPipelineConfig;
+preview?: AkanPreviewConfig;
 ```
 
 ### `AkanWebOption` · `akanjs`

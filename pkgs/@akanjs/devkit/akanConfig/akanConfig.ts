@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { AkanPlugin } from "akanjs";
+import type { AkanPlugin, AkanPreviewConfig } from "akanjs";
 import { DatabaseModes, normalizeRoutePrefix } from "akanjs/base";
 import { type AkanI18nConfig, resolveAkanI18nConfig, trimSlashes } from "akanjs/common";
 import type { AkanImageConfig } from "akanjs/server";
@@ -9,6 +9,7 @@ import type { App, Lib } from "../commandDecorators";
 import { WorkspaceExecutor } from "../executors/workspaceExecutor";
 import type { BaseDevEnv, PackageJson } from "../workspace/types";
 import { AkanBin } from "./akanBin";
+import { AkanPreview } from "./akanPreview";
 import { AkanWorkers, type LibWorkers } from "./akanWorkers";
 import { DesktopServerConfig } from "./desktopServerConfig";
 import { dockerfileOf, resolveDocker, resolveDockerVariants } from "./dockerImage";
@@ -184,6 +185,8 @@ export class AkanAppConfig implements AppConfigResult {
   libs: string[];
   /** Live-only: plugins declared in this app's `akan.config.ts` (never serialized). */
   plugins: AkanPlugin[];
+  /** Live-only: `akan preview` reads it from this app's `akan.config.ts` (never serialized). */
+  preview: AkanPreviewConfig = {};
   domains = new Set<string>();
   subRoutes = new Map<string, Set<string>>();
   basePaths = new Set<string>();
@@ -507,17 +510,29 @@ export class AkanAppConfig implements AppConfigResult {
     const {
       plugins,
       pipeline: _pipeline,
+      preview,
       ...config
     } = (resolved ?? {}) as AppConfigDeclaration & {
       plugins?: AkanPlugin[];
       pipeline?: unknown;
+      preview?: unknown;
     };
     if ("subspace" in config)
       throw new Error(
         `apps/${app.name}/akan.config.ts declares \`subspace\`, a workspace setting: it belongs in the workspace root akan.config.ts.`,
       );
     const libContributions = await AkanAppConfig.#collectLibContributions(app, libs, bustImportCache);
-    return new AkanAppConfig(app, libs, rootPackageJson, config, baseDevEnv, plugins ?? [], libContributions);
+    const appConfig = new AkanAppConfig(
+      app,
+      libs,
+      rootPackageJson,
+      config,
+      baseDevEnv,
+      plugins ?? [],
+      libContributions,
+    );
+    appConfig.preview = AkanPreview.parse(preview, `apps/${app.name}/akan.config.ts`);
+    return appConfig;
   }
   //* Every workspace lib is read, not just this app's lib deps: narrowing the set needs the dependency
   //* scan, and the incremental page rebundle re-reads this config on every file change.

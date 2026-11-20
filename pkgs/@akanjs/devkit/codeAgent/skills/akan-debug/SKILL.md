@@ -24,8 +24,13 @@ the server errors logged meanwhile, console errors and warnings, and layout smel
   opens its path and query the same way, always on the app's dev server, with a note when it names another
   server: use it for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at
   a server route's path, under the same locale rule, and `/en` and `/en/` open once.
-  `--changed` adds the pages your uncommitted page and layout edits reach. A dynamic route needs a concrete
-  path (`/memo/1`); `akan context --app <app>` lists every route with its params and search names.
+  `--changed` adds the pages your uncommitted page and layout edits reach. A dynamic route opens at the first
+  `preview.examples` path of `akan.config.ts` that fits it (`["/memo/1"]`, no locale), else type a concrete
+  one; `akan context --app <app>` lists every route with its params and search names.
+- A page behind a sign-in opens through `preview.signIn({ origin, as })` in `akan.config.ts`, called once per
+  run: it returns the sign-in `Response` (its `Set-Cookie` pairs become every page's cookies) or the cookies by
+  name, and reads the account from `process.env`. `--as <name>` reaches it as `as`; `--anonymous` skips it.
+  With none declared a guarded page shows its redirect: add it, or say "not opened signed in".
 - The viewport is a 390x844 phone; `--desktop` is 1280x800. `--csr` loads each page in the CSR boot the native
   shells load. `--screenshot` saves a PNG per page under `local/apps/<app>/runtime/preview/`, for a model
   that reads images. `--format json` gives the same report as data.

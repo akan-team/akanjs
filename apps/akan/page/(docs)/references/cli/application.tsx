@@ -1138,7 +1138,7 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
       {
         name: "preview",
         signature:
-          "akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]",
+          "akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>] [--as <name>] [--anonymous]",
         desc: l.trans({
           en: "Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.",
           ko: "앱 개발 서버의 페이지를 헤드리스 브라우저로 열어 페이지마다 판정 한 줄을 출력합니다. 상태 코드, 제목, 잡히지 않은 오류, 페이지를 여는 동안 서버가 남긴 오류, 콘솔 오류, 레이아웃 이상이 담깁니다. 실행 중인 `akan start`가 있으면 그대로 쓰고, 없으면 띄웠다가 끝나면 내립니다. 실패한 페이지가 있으면 1로 끝납니다.",
@@ -1158,8 +1158,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             defaultValue: "false",
             enumOrFlag: "-C",
             desc: l.trans({
-              en: "Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.",
-              ko: "커밋하지 않은 페이지·레이아웃 변경이 닿는 페이지도 엽니다. 바뀐 라우트가 없으면 `/`입니다.",
+              en: "Also open the pages that uncommitted page and layout changes reach, `/` when no route changed. A route with a `[param]` opens at the first path in `preview.examples` of `akan.config.ts` that fits it, and is listed as not opened without one.",
+              ko: "커밋하지 않은 페이지·레이아웃 변경이 닿는 페이지도 엽니다. 바뀐 라우트가 없으면 `/`입니다. `[param]`이 있는 라우트는 `akan.config.ts`의 `preview.examples`에서 맞는 첫 경로로 열고, 없으면 열지 못한 페이지로 알려 줍니다.",
             }),
           },
           {
@@ -1223,8 +1223,33 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
             enumOrFlag: "text | json",
             desc: l.trans({ en: "`json` prints the full report.", ko: "`json`은 보고서 전체를 출력합니다." }),
           },
+          {
+            name: "--as",
+            type: "String",
+            desc: l.trans({
+              en: "The account to sign in as, handed to `preview.signIn` as `as`.",
+              ko: "로그인할 계정 이름입니다. `preview.signIn`에 `as`로 전달됩니다.",
+            }),
+          },
+          {
+            name: "--anonymous",
+            type: "Boolean",
+            defaultValue: "false",
+            enumOrFlag: "-A",
+            desc: l.trans({
+              en: "Open the pages without the session `preview.signIn` opens.",
+              ko: "`preview.signIn`이 여는 세션 없이 페이지를 엽니다.",
+            }),
+          },
         ],
         notes: [
+          {
+            name: l.trans({ en: "signed-in pages", ko: "로그인이 필요한 페이지" }),
+            desc: l.trans({
+              en: "`preview.signIn` in `akan.config.ts` is called once per run with `{ origin, as }` and returns the sign-in `Response` or the cookies by name; every page then opens with those cookies. It reads the account from the environment, and the report never prints a cookie.",
+              ko: "`akan.config.ts`의 `preview.signIn`은 실행마다 한 번 `{ origin, as }`를 받아 호출되고, 로그인 `Response`나 이름별 쿠키를 돌려줍니다. 이후 모든 페이지가 그 쿠키로 열립니다. 계정 정보는 환경 변수에서 읽으며, 보고서에는 쿠키가 출력되지 않습니다.",
+            }),
+          },
           {
             name: l.trans({ en: "native shells", ko: "네이티브 셸" }),
             desc: l.trans({
@@ -1236,7 +1261,8 @@ akan logs myapp --json true | jq 'select(.attrs.userId)'`,
         examples: `akan preview myapp
 akan preview myapp /board,/board/new --screenshot
 akan preview myapp --changed --csr
-akan preview myapp /admin --desktop --format json`,
+akan preview myapp /admin --desktop --format json
+akan preview myapp /admin --as admin`,
       },
       {
         name: "studio",

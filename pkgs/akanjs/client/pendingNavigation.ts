@@ -3,8 +3,13 @@ import { useSyncExternalStore } from "react";
 
 export interface PendingNavigationEntry {
   href: string;
+  //? The page on screen when it began; `null` when its starter did not say.
+  from: string | null;
+  //? Back or Forward, which a `.loading()` shown at the press leaves to the page on screen.
+  traversal: boolean;
   //? False while nothing is asked of the server: a page replayed from the client cache, or a prefetch that has arrived.
   waits: boolean;
+  left?: { promise: Promise<void>; resolve: () => void };
 }
 
 interface PendingNavigationStore {
@@ -25,12 +30,17 @@ export class PendingNavigation {
 
   static #set(entry: PendingNavigationEntry | null) {
     const store = PendingNavigation.#store();
+    const previous = store.entry;
     store.entry = entry;
+    if (previous !== entry) previous?.left?.resolve();
     for (const listener of [...store.listeners]) listener();
   }
 
-  static begin(href: string): PendingNavigationEntry {
-    const entry = { href, waits: false };
+  static begin(
+    href: string,
+    { from = null, traversal = false }: { from?: string | null; traversal?: boolean } = {},
+  ): PendingNavigationEntry {
+    const entry: PendingNavigationEntry = { href, from, traversal, waits: false };
     PendingNavigation.#set(entry);
     return entry;
   }
@@ -57,6 +67,23 @@ export class PendingNavigation {
 
   static target(): string | null {
     return PendingNavigation.#store().entry?.href ?? null;
+  }
+
+  static entry(): PendingNavigationEntry | null {
+    return PendingNavigation.#store().entry;
+  }
+
+  /** Settles once `entry` is no longer the navigation in flight: it was drawn, it failed, or another began. */
+  static left(entry: PendingNavigationEntry): Promise<void> {
+    if (!entry.left) {
+      let resolve = () => {};
+      const promise = new Promise<void>((done) => {
+        resolve = done;
+      });
+      entry.left = { promise, resolve };
+      if (PendingNavigation.#store().entry !== entry) resolve();
+    }
+    return entry.left.promise;
   }
 
   static subscribe(listener: () => void) {

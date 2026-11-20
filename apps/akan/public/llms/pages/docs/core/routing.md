@@ -91,7 +91,7 @@ Stage
 
   - .head: The route's <head> as JSX (title, meta, link), or a function of the args that returns it. — (jsx | fn)
 
-  - .loading: Fallback UI while the route loads; every .search() value reads undefined inside it. — (fn)
+  - .loading: Fallback UI while the route loads; every .search() value reads undefined inside it. On a page, { atPress: true } also shows it when a press moves to another path of the same page and waits on the server, in place of the page being left. — (fn, option?)
 
 - page() only
 

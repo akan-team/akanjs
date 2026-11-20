@@ -237,6 +237,16 @@ export interface AkanPluginNativeConfig {
     androidFeatures?: string[];
 }
 
+export interface AkanPreviewConfig {
+    signIn?: (signIn: AkanPreviewSignIn) => Promise<Record<string, string> | Response>;
+    examples?: string[];
+}
+
+export interface AkanPreviewSignIn {
+    origin: string;
+    as: null | string;
+}
+
 export interface AkanRouteConfig {
     basePath?: string;
     domains: AkanRouteDomains;
@@ -295,6 +305,7 @@ export type AppConfigInput = Omit<DeepPartial<AppConfigResult>, "bin" | "docker"
     native?: AkanNativeAppConfig;
     plugins?: AkanPlugin[];
     pipeline?: AppPipelineConfig;
+    preview?: AkanPreviewConfig;
 };
 
 export interface AppConfigResult {

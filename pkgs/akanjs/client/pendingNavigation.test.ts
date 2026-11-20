@@ -37,6 +37,27 @@ describe("PendingNavigation", () => {
     ]);
   });
 
+  test("an entry says where it began and whether it is a traversal, and settles once another is in flight", async () => {
+    const plain = PendingNavigation.begin("http://localhost/a");
+    expect(plain).toMatchObject({ from: null, traversal: false });
+    const back = PendingNavigation.begin("http://localhost/b", { from: "http://localhost/a", traversal: true });
+    expect(PendingNavigation.entry()).toBe(back);
+    expect(back).toMatchObject({ from: "http://localhost/a", traversal: true });
+
+    const settled: string[] = [];
+    void PendingNavigation.left(plain).then(() => settled.push("overtaken"));
+    void PendingNavigation.left(back).then(() => settled.push("ended"));
+    await Promise.resolve();
+    expect(settled).toEqual(["overtaken"]);
+    PendingNavigation.wait(back);
+    await Promise.resolve();
+    expect(settled).toEqual(["overtaken"]);
+    PendingNavigation.end(back);
+    await Promise.resolve();
+    expect(settled).toEqual(["overtaken", "ended"]);
+    expect(PendingNavigation.entry()).toBeNull();
+  });
+
   test("clear ends whichever navigation is pending and says nothing when none is", () => {
     PendingNavigation.wait(PendingNavigation.begin("http://localhost/a"));
     const seen: (string | null)[] = [];

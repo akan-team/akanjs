@@ -364,8 +364,17 @@ describe("AppPreview.changedPages", () => {
     expect(AppPreview.changedPages(sources, [`${pageDir}/about.tsx`])).toEqual({ paths: ["/about"], skipped: [] });
     expect(AppPreview.changedPages(sources, [`${pageDir}/admin/_layout.tsx`])).toEqual({
       paths: ["/admin/users"],
-      skipped: ["/admin/:userId needs a concrete path"],
+      skipped: ["/admin/:userId needs a concrete path, typed or declared in preview.examples"],
     });
+  });
+
+  test("opens a route with a param at the first declared example that fits it, query kept", () => {
+    const examples = ["/users/7", "/admin/7?tab=roles", "/admin/8", "/admin/7/more"];
+    expect(AppPreview.changedPages(sources, [`${pageDir}/admin/[userId].tsx`], examples)).toEqual({
+      paths: ["/admin/7?tab=roles"],
+      skipped: [],
+    });
+    expect(AppPreview.changedPages(sources, [`${pageDir}/admin/[userId].tsx`], ["/users/7"]).paths).toEqual([]);
   });
 
   test("falls back to the home page when no route file changed", () => {
@@ -397,6 +406,90 @@ describe("AppPreview.attribute", () => {
   });
 });
 
+describe("AppPreview.sessionOf", () => {
+  const appWith = (signIn?: unknown) =>
+    ({ name: "demo", getConfig: async () => ({ preview: signIn ? { signIn } : {} }) }) as unknown as App;
+  const answerOf = (cookies: string[], status = 200) => {
+    const headers = new Headers();
+    for (const cookie of cookies) headers.append("Set-Cookie", cookie);
+    return new Response("{}", { status, headers });
+  };
+
+  test("opens no session without preview.signIn or under --anonymous, and says what --as needs", async () => {
+    let asked = 0;
+    const counted = appWith(async () => {
+      asked += 1;
+      return answerOf(["jwt=abc"]);
+    });
+    expect(await AppPreview.sessionOf(appWith(), {}, dev)).toBeNull();
+    expect(await AppPreview.sessionOf(counted, { anonymous: true, as: "admin" }, dev)).toBeNull();
+    expect(asked).toBe(0);
+    expect(AppPreview.sessionOf(appWith(), { as: "admin" }, dev)).rejects.toThrow(
+      "--as admin needs preview.signIn in apps/demo/akan.config.ts",
+    );
+  });
+
+  test("takes the cookies the sign-in answer sets, without their attributes or one the answer expires", async () => {
+    const seen: unknown[] = [];
+    const app = appWith(async (signIn: unknown) => {
+      seen.push(signIn);
+      return answerOf([
+        "jwt=abc.def; Path=/; SameSite=Lax; HttpOnly",
+        "jwt.claims=abc; Path=/; SameSite=Lax",
+        "legacy=; Max-Age=0",
+      ]);
+    });
+
+    expect(await AppPreview.sessionOf(app, { as: "admin" }, dev)).toEqual({
+      url: `${dev}/_akan/app/health`,
+      cookies: ["jwt=abc.def", "jwt.claims=abc"],
+    });
+    expect(seen).toEqual([{ origin: dev, as: "admin" }]);
+  });
+
+  test("takes cookies returned by name, for a session the app's own client writes", async () => {
+    const session = await AppPreview.sessionOf(
+      appWith(async () => ({ jwt: "a b", empty: "" })),
+      {},
+      dev,
+    );
+    expect(session?.cookies).toEqual(["jwt=a%20b"]);
+    expect(
+      AppPreview.sessionOf(
+        appWith(async () => ({ "bad name": "x" })),
+        {},
+        dev,
+      ),
+    ).rejects.toThrow('returned "bad name", which is not a cookie name');
+  });
+
+  test("stops on a refused sign-in, one that set nothing and one that threw, never naming a cookie's value", async () => {
+    const refused = AppPreview.sessionOf(
+      appWith(async () => answerOf(["jwt=secret-token"], 401)),
+      {},
+      dev,
+    );
+    expect(refused).rejects.toThrow("preview.signIn in apps/demo/akan.config.ts was answered 401");
+    expect(await refused.catch((error: Error) => error.message)).not.toContain("secret-token");
+    expect(
+      AppPreview.sessionOf(
+        appWith(async () => answerOf([])),
+        {},
+        dev,
+      ),
+    ).rejects.toThrow("opened no session");
+    expect(
+      AppPreview.sessionOf(
+        appWith(async () => {
+          throw new Error("DEV_ACCOUNT_ID is not set");
+        }),
+        {},
+        dev,
+      ),
+    ).rejects.toThrow("threw: DEV_ACCOUNT_ID is not set");
+  });
+});
+
 describe("AppPreview.render", () => {
   const report: AppPreviewReport = {
     app: "demo",
@@ -407,6 +500,7 @@ describe("AppPreview.render", () => {
     serverPid: 4242,
     serverLog: "local/apps/demo/runtime/preview/server.log",
     logsRead: false,
+    signedIn: "preview.signIn as admin",
     skipped: ["/admin/:userId needs a concrete path"],
     notes: ["--csr does not apply to /openapi.json: it opens without the CSR boot."],
     pages: [
@@ -419,6 +513,8 @@ describe("AppPreview.render", () => {
     const text = AppPreview.render(report);
     expect(text).toContain(`left running (pid 4242; stop it with \`${AppPreview.stopArgvOf(4242).join(" ")}\`)`);
     expect(text).toContain("client and server errors are not shown");
+    expect(text).toContain("Signed in through preview.signIn as admin.");
+    expect(AppPreview.render({ ...report, signedIn: null })).not.toContain("Signed in");
     expect(text).toContain("Not opened: /admin/:userId needs a concrete path.");
     expect(text).toContain("Note: --csr does not apply to /openapi.json: it opens without the CSR boot.");
     expect(text).toContain('ok    /en/ -> /en/explore  200  "Board"  1.2s');
@@ -489,7 +585,7 @@ describe("AppPreview.run", () => {
       } as unknown as App;
       const report = await AppPreview.run(app, { changed: true, csr: true, paths: ["/openapi.json"] });
       const origin = `http://localhost:${server.port}`;
-      expect(report.skipped).toEqual(["/admin/:userId needs a concrete path"]);
+      expect(report.skipped).toEqual(["/admin/:userId needs a concrete path, typed or declared in preview.examples"]);
       expect(report.notes).toEqual(["--csr does not apply to /openapi.json: it opens without the CSR boot."]);
       expect(opened).toEqual([`${origin}/openapi.json`, `${origin}/en/admin/users?csr=true&akanMobileTarget=preview`]);
       expect(report.pages.map((page) => [page.path, page.failed])).toEqual([
@@ -550,6 +646,64 @@ describe("AppPreview.run", () => {
           ["/en/gone", 404, true, "missing"],
           ["/_akan/studio", 200, false, "Studio"],
         ]);
+      } finally {
+        server.stop(true);
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+    PreviewView.startTimeoutMs + 60_000,
+  );
+
+  test.skipIf(!PreviewView.available)(
+    "opens a guarded page as the account preview.signIn signed in, and as nobody under --anonymous",
+    async () => {
+      const root = await mkdtemp(path.join(tmpdir(), "akan-preview-session-"));
+      const html = (title: string, status = 200) =>
+        new Response(`<!doctype html><title>${title}</title><body><h1>${title}</h1></body>`, {
+          status,
+          headers: { "content-type": "text/html" },
+        });
+      const server = Bun.serve({
+        port: 0,
+        fetch: (req) => {
+          const { pathname } = new URL(req.url);
+          if (pathname === "/_akan/app/health") return Response.json({ status: "running" });
+          if (pathname === "/_akan/app/info") return Response.json({ appName: "demo", workspaceRoot: root });
+          if (pathname === "/api/signin") {
+            const headers = new Headers();
+            headers.append("Set-Cookie", "jwt=token-of-admin; Path=/; SameSite=Lax; HttpOnly");
+            headers.append("Set-Cookie", "jwt.claims=admin; Path=/; SameSite=Lax");
+            return new Response("{}", { headers });
+          }
+          if (pathname === "/en/signin") return html("Sign in");
+          if (pathname !== "/en/desk") return html("Missing", 404);
+          const signedIn = (req.headers.get("cookie") ?? "").split("; ").includes("jwt=token-of-admin");
+          return signedIn ? html("Desk") : Response.redirect(new URL("/en/signin", req.url).href, 307);
+        },
+      });
+      const app = {
+        name: "demo",
+        cwdPath: root,
+        workspace: { workspaceRoot: root },
+        getDevPort: async () => server.port,
+        getConfig: async () => ({
+          i18n,
+          api: { prefix: "/api" },
+          preview: { signIn: ({ origin }: { origin: string }) => fetch(`${origin}/api/signin`, { method: "POST" }) },
+        }),
+      } as unknown as App;
+      const landingOf = (report: AppPreviewReport) =>
+        report.pages.map((page) => [new URL(page.finalUrl).pathname, page.status, page.text]);
+      try {
+        //? Anonymous first: the chrome backend keeps one cookie jar for every view of a process.
+        const anonymous = await AppPreview.run(app, { paths: ["/desk"], anonymous: true, timeoutMs: 20_000 });
+        expect(anonymous.signedIn).toBeNull();
+        expect(landingOf(anonymous)[0]?.[0]).toBe("/en/signin");
+
+        const signedIn = await AppPreview.run(app, { paths: ["/desk"], as: "admin", timeoutMs: 20_000 });
+        expect(signedIn.signedIn).toBe("preview.signIn as admin");
+        expect(landingOf(signedIn)).toEqual([["/en/desk", 200, "Desk"]]);
+        expect(JSON.stringify(signedIn)).not.toContain("token-of-admin");
       } finally {
         server.stop(true);
         await rm(root, { recursive: true, force: true });

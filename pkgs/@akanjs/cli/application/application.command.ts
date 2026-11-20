@@ -148,8 +148,19 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .option("keep", Boolean, { desc: "leave a server this command started running", default: false })
     .option("timeout", Number, { desc: "seconds a page may take to load", default: 60 })
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
-    .exec(async function (app, paths, changed, csr, engine, screenshot, desktop, keep, timeout, format) {
+    .option("as", String, {
+      desc: "the account to sign in as, handed to preview.signIn of the app's akan.config.ts",
+      nullable: true,
+    })
+    .option("anonymous", Boolean, {
+      flag: "A",
+      desc: "open the pages without the session preview.signIn opens",
+      default: false,
+    })
+    .exec(async function (app, paths, changed, csr, engine, screenshot, desktop, keep, timeout, format, as, anonymous) {
       await this.applicationScript.preview(app, {
+        as,
+        anonymous,
         paths,
         changed,
         csr,

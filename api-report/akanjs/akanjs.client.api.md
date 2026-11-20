@@ -651,6 +651,7 @@ export interface PathContextType {
 export interface PathRoute {
     path: string;
     pathSegments: string[];
+    shadowedBy?: string[];
     renderPage: RouteRender;
     pageState: PageState;
     pageConfigChain?: PageConfig[];
@@ -854,7 +855,7 @@ export declare abstract class RouteDefinition<Args extends RouteArgsShape = Reco
     config(config: PageConfig): this;
     head(head: HeadStage<RouteBaseArgs & Args>): this;
     guard(guard: (args: RouteBaseArgs & Args, request: RouteGuardRequest) => Promise<void> | void): this;
-    loading(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>): this;
+    loading(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>, { atPress }?: RouteLoadingOption): this;
     render(render: (args: RouteBaseArgs & Args & Extra) => PromiseOrObject<ReactNode>): this;
     get pageConfig(): PageConfig | undefined;
     protected declare(arg: RouteArgInfo): void;
@@ -918,6 +919,12 @@ export declare class RouteHead {
 }
 
 export type RouteKind = "layout" | "page" | "rootLayout";
+
+export interface RouteLoadingOption {
+    atPress?: boolean | {
+        delayMs: number;
+    };
+}
 
 export interface RouteManifest {
     routes: string[];
@@ -1413,6 +1420,8 @@ export declare const rootLayout: () => RootLayoutDefinition<Record<never, never>
 export declare const routeArgsMarker: unique symbol;
 
 export declare const routeDefinitionMarker: unique symbol;
+
+export declare const routeLoadingAtPressMarker: unique symbol;
 
 export declare const router: Router;
 

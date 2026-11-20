@@ -8,7 +8,7 @@ import { type AkanModalComponent, createOverridable, override, UiOverrideProvide
 import { RouteLevelBoundary } from "../webkit/RouteLevelBoundary";
 import { RouteElementComposer } from "./routeElementComposer";
 import { RouteTreeBuilder } from "./routeTreeBuilder";
-import { AkanSegmentOutletReference } from "./rscSegmentOutletReference";
+import { AkanPressLoadingReference, AkanSegmentOutletReference } from "./rscSegmentOutletReference";
 
 async function renderToText(node: ReactNode): Promise<string> {
   return new Response(await renderToReadableStream(node)).text();
@@ -584,6 +584,57 @@ describe("RouteTreeBuilder implicit locale", () => {
       if (previous === undefined) delete process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT;
       else process.env.AKAN_PUBLIC_RSC_PARTIAL_COMMIT = previous;
     }
+  });
+});
+
+describe("a page's .loading(…, { atPress })", () => {
+  const chatPage = (option?: { atPress: boolean | { delayMs: number } }) => async () => ({
+    default: page()
+      .param("channelId", String)
+      .loading(() => <i>channel loading</i>, option)
+      .render(({ channelId }) => <article>{channelId}</article>),
+  });
+  const buildChatRoutes = (option?: { atPress: boolean | { delayMs: number } }) =>
+    new RouteTreeBuilder({
+      "./__root_layout.tsx": passthroughModule,
+      "./chat/_layout.tsx": passthroughModule,
+      "./chat/[channelId].tsx": chatPage(option),
+      "./chat/new.tsx": async () => ({ default: () => <article>new</article> }),
+      "./[section]/archive.tsx": async () => ({ default: () => <article>archive</article> }),
+      "./mail/[mailId].tsx": async () => ({ default: () => <article>mail</article> }),
+    } as never).build();
+  const composed = async (option?: { atPress: boolean | { delayMs: number } }, suffix = false) => {
+    const matched = RouteTreeBuilder.match("/en/chat/a", buildChatRoutes(option));
+    if (!matched) throw new Error("route did not match");
+    const pathRoute = await RouteElementComposer.resolveSsrFramePathRoute({ pathRoute: matched.pathRoute });
+    await RouteElementComposer.resolveSuffixLoadings(pathRoute, 0);
+    const input = { pathRoute, params: matched.params, searchParams: {}, navKey: "/en/chat/a" };
+    return suffix
+      ? RouteElementComposer.composeSuffix({ ...input, patchStartIndex: 2 })
+      : RouteElementComposer.compose(input);
+  };
+
+  test("a route names the pages matched ahead of it that take some of its paths, and a route they miss names none", () => {
+    const routes = buildChatRoutes();
+    const shadowsOf = (path: string) => routes.find((route) => route.path === path)?.shadowedBy;
+    expect(shadowsOf("/:lang/chat/:channelId")).toEqual(["/:lang/chat/new"]);
+    expect(shadowsOf("/:lang/:section/archive")).toEqual(["/:lang/chat/:channelId", "/:lang/mail/:mailId"]);
+    expect(shadowsOf("/:lang/mail/:mailId")).toBeUndefined();
+    expect(shadowsOf("/:lang/chat/new")).toBeUndefined();
+  });
+
+  test("puts the press reader inside the page's boundary, with the route's pattern, its shadows and the delay", async () => {
+    const element = await composed({ atPress: { delayMs: 80 } });
+    expect(containsElementType(element, AkanPressLoadingReference)).toBe(true);
+    expect(findElementProp(element, AkanPressLoadingReference, "pattern")).toBe("/:lang/chat/:channelId");
+    expect(findElementProp(element, AkanPressLoadingReference, "shadowedBy")).toEqual(["/:lang/chat/new"]);
+    expect(findElementProp(element, AkanPressLoadingReference, "delayMs")).toBe(80);
+    expect(containsElementType(await composed({ atPress: true }, true), AkanPressLoadingReference)).toBe(true);
+  });
+
+  test("a page that does not opt in carries no press reader", async () => {
+    expect(containsElementType(await composed(), AkanPressLoadingReference)).toBe(false);
+    expect(containsElementType(await composed({ atPress: false }), AkanPressLoadingReference)).toBe(false);
   });
 });
 

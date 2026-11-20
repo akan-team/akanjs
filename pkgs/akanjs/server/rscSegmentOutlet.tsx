@@ -6,6 +6,9 @@ import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from ".
 import { useTransitionStore } from "../webkit/useTransitionStore";
 import type { AkanHeadSnapshotV1 } from "./routeState";
 
+//? The build registers this one module as the runtime's client reference, so the composer names the export here.
+export { AkanPressLoading } from "./rscPressLoading";
+
 type RscSegmentThenable = PromiseLike<ReactNode>;
 
 interface RscSegmentOutletStore {

@@ -1385,13 +1385,19 @@ describe("AkanAppConfig.from", () => {
       const libConfigPath = path.join(root, "libs/extlib/akan.config.ts");
       fs.mkdirSync(path.join(root, "apps/extapp"), { recursive: true });
       fs.mkdirSync(path.join(root, "libs/extlib"), { recursive: true });
-      fs.writeFileSync(path.join(root, "apps/extapp/akan.config.ts"), "export default {};\n");
+      fs.writeFileSync(
+        path.join(root, "apps/extapp/akan.config.ts"),
+        "export default { preview: { signIn: async () => ({ jwt: 'token' }), examples: ['/chat/1'] } };\n",
+      );
       fs.writeFileSync(libConfigPath, "export default { externalLibs: ['first'] };\n");
       fs.writeFileSync(path.join(root, "package.json"), JSON.stringify({ name: "extrepo", version: "1.0.0" }));
       fs.writeFileSync(path.join(root, ".env"), "AKAN_PUBLIC_REPO_NAME=extrepo\nAKAN_PUBLIC_SERVE_DOMAIN=ext.test\n");
       const workspace = WorkspaceExecutor.fromRoot({ workspaceRoot: root, repoName: "extrepo" });
       const app = AppExecutor.from(workspace, "extapp");
-      expect((await AkanAppConfig.from(app)).externalLibs).toEqual(["first"]);
+      const config = await AkanAppConfig.from(app);
+      expect(config.externalLibs).toEqual(["first"]);
+      expect(config.preview.examples).toEqual(["/chat/1"]);
+      expect(await config.preview.signIn?.({ origin: "http://localhost:8282", as: null })).toEqual({ jwt: "token" });
 
       fs.writeFileSync(libConfigPath, "export default { externalLibs: ['second'] };\n");
       expect((await AkanAppConfig.from(app, { bustImportCache: true })).externalLibs).toEqual(["second"]);
