@@ -173,6 +173,7 @@ async function withFullSsrCacheHarness<T>(
     htmlCacheEnabled?: string;
     htmlCachePaths?: string;
     htmlCacheMaxBodyBytes?: string;
+    htmlCacheTtl?: string;
     appDir?: string;
     web?: { ssr: boolean; csr: boolean };
     prebuilt?: RoutesManifest;
@@ -206,7 +207,7 @@ async function withFullSsrCacheHarness<T>(
   setEnv("AKAN_HTML_RESULT_CACHE", options.htmlCacheEnabled);
   setEnv("AKAN_HTML_RESULT_CACHE_PATHS", options.htmlCachePaths);
   delete process.env.AKAN_HTML_RESULT_CACHE_EXCLUDE_PATHS;
-  process.env.AKAN_HTML_RESULT_CACHE_TTL = "30";
+  process.env.AKAN_HTML_RESULT_CACHE_TTL = options.htmlCacheTtl ?? "30";
   setEnv("AKAN_HTML_RESULT_CACHE_MAX_BODY_BYTES", options.htmlCacheMaxBodyBytes);
 
   const originalRender = SsrFromRscRenderer.prototype.render;
@@ -2553,6 +2554,37 @@ describe("WebRouter full SSR cache orchestration", () => {
         },
         { worker: fakeWorker },
       );
+    }
+  });
+
+  test("a not-found is held for a minute, not for a long route TTL, and the page is cached once it exists", async () => {
+    let found = false;
+    const fakeWorker = createFakeRscWorker(() => ({
+      cacheState: found ? { cacheable: true, revalidate: 3600 } : { cacheable: false, reason: "render-not-found" },
+    }));
+    const cacheOf = async (fullSsr: FullSsrHandler) => {
+      const response = await fullSsr(new Request("https://example.test/docs/soon"));
+      await response.text();
+      return [response.headers.get("X-Akan-Cache"), response.headers.get("X-Akan-Cache-Reason")];
+    };
+    const startedAt = Date.now();
+    const now = spyOn(Date, "now");
+    try {
+      await withFullSsrCacheHarness(
+        async ({ fullSsr }) => {
+          expect(await cacheOf(fullSsr)).toEqual(["MISS", null]);
+          found = true;
+          now.mockReturnValue(startedAt + 59_000);
+          expect(await cacheOf(fullSsr)).toEqual(["BYPASS", "render-not-found"]);
+          now.mockReturnValue(startedAt + 61_000);
+          expect(await cacheOf(fullSsr)).toEqual(["MISS", null]);
+          expect(await cacheOf(fullSsr)).toEqual(["HIT", null]);
+          expect(fakeWorker.renderCalls).toHaveLength(3);
+        },
+        { worker: fakeWorker, htmlCacheTtl: "3600" },
+      );
+    } finally {
+      now.mockRestore();
     }
   });
 
