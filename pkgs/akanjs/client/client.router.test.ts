@@ -1031,7 +1031,7 @@ describe("router", () => {
   });
 });
 
-describe("router backTo", () => {
+describe("router backOrReplace", () => {
   const stackRouter = async (type: "ssr" | "csr", calls: unknown[], replaceOptions: unknown[] = []) => {
     const { router } = await import("./router");
     const { csrLocation } = await import("./csrLocation");
@@ -1066,7 +1066,7 @@ describe("router backTo", () => {
     const router = await stackRouter("ssr", calls);
 
     router.push("/board?ticketId=1");
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await settle();
 
     expect(calls).toEqual([["back"]]);
@@ -1080,12 +1080,12 @@ describe("router backTo", () => {
     const calls: unknown[] = [];
     const router = await stackRouter("ssr", calls);
 
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await settle();
     expect(calls).toEqual([["replace", "/en/board"]]);
 
     router.push("/board/archive?ticketId=2");
-    router.backTo("/board/archive");
+    router.backOrReplace("/board/archive");
     await settle();
     expect(calls.at(-1)).toEqual(["replace", "/en/board/archive"]);
     expect(at()).toBe("/en/board/archive");
@@ -1100,7 +1100,7 @@ describe("router backTo", () => {
 
     router.back();
     await settle();
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await settle();
 
     expect(calls.at(-1)).toEqual(["replace", "/en/board"]);
@@ -1114,8 +1114,8 @@ describe("router backTo", () => {
     const replaceOptions: unknown[] = [];
     const router = await stackRouter("ssr", [], replaceOptions);
 
-    router.backTo("/board");
-    router.backTo("/board", { scrollToTop: true });
+    router.backOrReplace("/board");
+    router.backOrReplace("/board", { scrollToTop: true });
     await settle();
 
     expect(replaceOptions).toEqual([{ scrollToTop: false }, { scrollToTop: true }]);
@@ -1130,12 +1130,12 @@ describe("router backTo", () => {
 
     router.push("/board");
     router.push("/board?ticketId=1");
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await settle();
     expect(calls).toEqual([["replace", "/en/board"]]);
     expect(at()).toBe("/en/board");
 
-    router.backTo("/home");
+    router.backOrReplace("/home");
     await settle();
     expect(calls.at(-1)).toEqual(["back"]);
     expect(at()).toBe("/en/home");
@@ -1149,13 +1149,13 @@ describe("router backTo", () => {
     const router = await stackRouter("ssr", calls);
 
     router.push("/board?ticketId=1");
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await settle();
     expect(calls).toEqual([["back"]]);
     expect(at()).toBe("/en/board#done");
 
     router.push("/board?ticketId=2");
-    router.backTo("/board#todo");
+    router.backOrReplace("/board#todo");
     await settle();
     expect(calls.at(-1)).toEqual(["replace", "/en/board#todo"]);
   });
@@ -1169,9 +1169,9 @@ describe("router backTo", () => {
     router.push("/board");
     router.push("/board?ticketId=1");
 
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await Promise.resolve();
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await settle();
 
     expect(calls).toEqual([["back"]]);
@@ -1205,9 +1205,9 @@ describe("router backTo", () => {
     });
     router.push("/board/1");
 
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await Promise.resolve();
-    router.backTo("/board");
+    router.backOrReplace("/board");
     shell.land();
     await settle();
     expect(calls).toEqual([["back"]]);
@@ -1215,9 +1215,9 @@ describe("router backTo", () => {
 
     router.push("/board/2");
     shell.movesNothing = true;
-    router.backTo("/board");
+    router.backOrReplace("/board");
     await settle();
-    router.backTo("/board");
+    router.backOrReplace("/board");
     expect(calls).toEqual([["back"], ["back"], ["back"]]);
   });
 });

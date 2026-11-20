@@ -84,7 +84,7 @@ Method
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.
 
-- backTo(href): Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.
+- backOrReplace(href): Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.
 
 - refresh(): Renders the current route again. Browser only.
 

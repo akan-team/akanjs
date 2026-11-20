@@ -1514,7 +1514,7 @@ declare class Router {
     navigation(): Promise<void>;
     canGoBack(): boolean;
     backOrFallback(fallbackHref?: string, routeOptions?: RouteOptions): never;
-    backTo(href: string, routeOptions?: RouteOptions): never;
+    backOrReplace(href: string, routeOptions?: RouteOptions): never;
     back(routeOptions?: RouteOptions): never;
     refresh(): never;
     redirectCount(): number;
