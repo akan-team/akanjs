@@ -5,7 +5,7 @@ import { BUILD_ENV_FILE, BUILD_ENV_MODULE } from "akanjs/server/lifecycle/buildE
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
 import { AkanBin } from "../akanConfig/akanBin";
-import { DOCKER_IGNORED } from "../akanConfig/dockerImage";
+import { DOCKER_IGNORED, DOCKER_VARIANT_FILE_PREFIX } from "../akanConfig/dockerImage";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
 import type { App } from "../commandDecorators";
 import { parseEnvFile, WorkspaceExecutor } from "../executors";
@@ -412,10 +412,12 @@ export class ApplicationBuildRunner {
           ? `The build carries ${carried.join(", ")} in ${AppBin.dir}/<TARGETARCH>/; apps/${this.#app.name}/akan.config.ts writes its own Dockerfile, which puts that folder on PATH itself (ENV PATH=${AkanBin.imagePath(AppBin.dir)}).`
           : `The image carries ${carried.join(", ")} from bin, first on its PATH.`,
       );
-    const dockerfile = akanConfig.dockerfileFor(environment, {
+    const imageParts = {
       lockfile: lockfile !== null,
       env: { ...(carried.length ? { PATH: AkanBin.imagePath(AppBin.dir) } : {}), ...env },
-    });
+    };
+    const dockerfile = akanConfig.dockerfileFor(environment, imageParts);
+    const variants = Object.keys(akanConfig.dockerVariants);
     const { dist } = this.#app;
     const buildInfo = {
       buildId: await this.#resolveBuildId(),
@@ -430,6 +432,13 @@ export class ApplicationBuildRunner {
         ? [dist.writeFile(`${dist.cwdPath}/${ProductionLockfile.fileName}`, lockfile, silent)]
         : []),
       dist.writeFile(`${dist.cwdPath}/Dockerfile`, dockerfile, silent),
+      ...variants.map((variant) =>
+        dist.writeFile(
+          `${dist.cwdPath}/${DOCKER_VARIANT_FILE_PREFIX}${variant}`,
+          akanConfig.dockerfileFor(environment, { ...imageParts, variant }),
+          silent,
+        ),
+      ),
       //? A build run by hand writes its database beside main.js, and `COPY . .` would carry it into the image.
       dist.writeFile(`${dist.cwdPath}/.dockerignore`, `${DOCKER_IGNORED.join("\n")}\n`, silent),
       dist.writeJson("akan.build.json", buildInfo, silent),

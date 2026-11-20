@@ -260,5 +260,6 @@ export {
   type RootLayoutProps,
   type UserMenuItem,
 } from "./types";
+export { type PendingLocation, usePendingNavigation } from "./usePendingNavigation";
 export { type ThemeColorTag, ViewportMeta } from "./viewportMeta";
 export { getWebManifestBasePath, toManifestJson, webManifestHref } from "./webManifest";

@@ -96,6 +96,37 @@ console.info(new SampleService().name);
     }
   });
 
+  test("writes each docker variant beside the Dockerfile as Dockerfile.<name>, for the build's environment", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
+    const config = new AkanAppConfig(
+      { name: "portal" } as never,
+      [],
+      { name: "repo", version: "1.0.0", description: "repo" },
+      { docker: { variants: { edge: { env: { AKAN_PUBLIC_OPERATION_MODE: "edge" } } } } },
+      { repoName: "akanjs", serveDomain: "akanjs.com", env: "local", portOffset: 0, workspaceRoot: root },
+    );
+    const app = {
+      getConfig: async () => config,
+      getScanInfo: () => ({ getLibs: () => [] }),
+      dist: new Executor("dist", root),
+      workspace: { workspaceRoot: root },
+      logger: { warn: () => undefined },
+    } as unknown as App;
+    try {
+      await new ApplicationBuildRunner(app, { environment: "debug" }).buildAppMeta();
+      const image = await readFile(path.join(root, "Dockerfile"), "utf8");
+      const edge = await readFile(path.join(root, "Dockerfile.edge"), "utf8");
+      expect(image).toContain("ENV AKAN_PUBLIC_OPERATION_MODE=cloud\n");
+      expect(edge).toBe(
+        image.replace("ENV AKAN_PUBLIC_OPERATION_MODE=cloud\n", "ENV AKAN_PUBLIC_OPERATION_MODE=edge\n"),
+      );
+      expect(edge).toContain("ENV AKAN_PUBLIC_ENV=debug\n");
+      expect((await readFile(path.join(root, ".dockerignore"), "utf8")).split("\n")).toContain("Dockerfile.*");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("writes beside main.js the env its Dockerfile sets, so a host without the image runs the build as is", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
     const config = new AkanAppConfig(
