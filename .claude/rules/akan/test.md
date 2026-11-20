@@ -14,7 +14,7 @@ paths:
 - Bun's runner (`describe`, `expect`, `test` from `bun:test`); colocated `*.test.ts` / `*.spec.ts`; focused behavior
   tests of public contracts and edge cases. A placeholder `it` with a descriptive title is the floor; a
   security-relevant behaviour gets a real suite.
-- Run `bun run akan test <pkg> [files]` from the root (`files`: comma-separated paths from the target or the root;
+- Run `bun run akan test <pkg> [files]` from the root (`files`: its own tests, space- or comma-separated, from the target or the root;
   the only way a signal test runs), or `cd <pkg> && bun test --isolate ./<file>`. Plain `bun test` shares one global
   object across files and fails dozens of tests from that pollution (`bunfig.toml` `[test] isolate` is not honored as
   of Bun 1.4.4); from the repo root it breaks subprocess stdio pipes.

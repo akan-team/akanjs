@@ -377,13 +377,18 @@ export interface DockerImageConfig {
     postRuns: DockerRun[];
     command: string[];
     crossBuild: boolean;
+    env: Record<string, string>;
 }
 
-export type DockerOption = Partial<DockerImageConfig> | string;
+export type DockerOption = (Partial<DockerImageConfig> & {
+    variants?: Record<string, DockerVariantOption>;
+}) | string;
 
 export type DockerRun = string | {
     [key in Arch]?: string;
 };
+
+export type DockerVariantOption = Partial<DockerImageConfig>;
 
 export interface FileConventionScanResult {
     constant: {

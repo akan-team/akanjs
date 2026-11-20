@@ -13,8 +13,8 @@ export class VerifyCommand extends command("verify", [VerifyScript], ({ public: 
     stdio: true,
   })
     .arg("targets", String, {
-      desc: "apps, libraries or packages to verify, comma-separated (default: whatever git reports as changed)",
-      nullable: true,
+      desc: "apps, libraries or packages to verify, space- or comma-separated (default: whatever git reports as changed)",
+      multiple: true,
     })
     .option("files", String, {
       flag: "F",
@@ -36,7 +36,7 @@ export class VerifyCommand extends command("verify", [VerifyScript], ({ public: 
     })
     .with(Workspace)
     .exec(async function (targets, files, lintOnly, build, max, format, comments, workspace) {
-      await this.verifyScript.verify(workspace, listOf(targets), {
+      await this.verifyScript.verify(workspace, targets, {
         files: listOf(files),
         lintOnly,
         build,
