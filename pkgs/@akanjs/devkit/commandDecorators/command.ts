@@ -33,7 +33,7 @@ import {
 import { camelToKebabCase } from "./camelToKebabCase";
 import { CliError, type CliErrorCode } from "./cliError";
 import { CommandContainer } from "./dependencyBuilder";
-import { formatCommandHelp, formatHelp } from "./helpFormatter";
+import { formatCommandHelp, formatHelp, usageArgsOf } from "./helpFormatter";
 import {
   type CommandCls,
   getTargetCommandNames,
@@ -88,12 +88,16 @@ const failureReporterOf =
 
 //? commander refuses a flag, an argument or a command before any action runs, having printed why to stderr.
 //? Thrown, not exited: the failure path awaits onFailure, and an exit drops what a pipe still buffers.
-const usageRefusalOf = (error: CommanderError) => {
+const usageRefusalOf = (error: CommanderError, hint = "") => {
   if (error.exitCode === 0) process.exit(0);
-  const refused = new CliError("usage", error.message.replace(/^error: /, ""));
+  if (hint) process.stderr.write(`${hint}\n`);
+  const refused = new CliError("usage", `${error.message.replace(/^error: /, "")}${hint ? ` ${hint}` : ""}`);
   loggedCliErrorObjects.add(refused);
   return refused;
 };
+
+export const excessArgumentHintOf = (commandName: string, argMetas: (ArgMeta | InternalArgMeta)[]) =>
+  `\`akan ${commandName}\` takes ${usageArgsOf(argMetas).join(" ") || "no argument"}: see \`akan ${commandName} --help\`.`;
 
 const handleOption = (programCommand: Command, argMeta: ArgMeta) => {
   const {
@@ -118,7 +122,7 @@ const handleOption = (programCommand: Command, argMeta: ArgMeta) => {
 const handleArgument = (programCommand: Command, argMeta: ArgMeta) => {
   const kebabName = camelToKebabCase(argMeta.name);
   programCommand.argument(
-    `[${kebabName}]`,
+    `[${kebabName}${argMeta.argsOption.multiple ? "..." : ""}]`,
     `${argMeta.argsOption.desc}${argMeta.argsOption.example ? ` (example: ${argMeta.argsOption.example})` : ""}`,
   );
   return programCommand;
@@ -257,11 +261,17 @@ export const getOptionValue = async (argMeta: ArgMeta, opt: Record<string, unkno
   } else return convertArgValue(await input({ message: inputMessageOf(argMeta) }), type ?? "string");
 };
 
-export const getArgumentValue = async (argMeta: ArgMeta, value: string | undefined) => {
+export const getArgumentValue = async (argMeta: ArgMeta, value: string | string[] | undefined) => {
   const { default: defaultValue, type, nullable } = argMeta.argsOption;
-  if (value !== undefined) {
-    assertEnumChoice(argMeta, value);
-    return convertArgValue(value, type ?? "string");
+  if (argMeta.argsOption.multiple) {
+    const values = operandListOf(value);
+    for (const each of values) assertEnumChoice(argMeta, each);
+    return values.map((each) => convertArgValue(each, type ?? "string"));
+  }
+  const given = Array.isArray(value) ? value[0] : value;
+  if (given !== undefined) {
+    assertEnumChoice(argMeta, given);
+    return convertArgValue(given, type ?? "string");
   } else if (defaultValue !== undefined) return defaultValue;
   else if (nullable) return null;
   const { enum: enumChoices } = argMeta.argsOption;
@@ -326,7 +336,7 @@ export const rerunCommandOf =
 const rerunRemedyOf = (rerun: RerunOf | undefined, placeholder: string) =>
   rerun ? { remedy: `rerun it as \`${rerun(placeholder)}\`` } : {};
 
-const parseAppNameList = (value: string | string[] | undefined): string[] =>
+const operandListOf = (value: string | string[] | undefined): string[] =>
   (Array.isArray(value) ? value : value === undefined ? [] : [value])
     .flatMap((entry) => entry.split(","))
     .map((entry) => entry.trim())
@@ -340,7 +350,7 @@ export const getAppsArgumentValue = async (
 ): Promise<AppExecutor[]> => {
   const appNames = await workspace.getApps();
   if (appNames.length === 0) throw new Error("No apps found in this workspace (apps/<appName>/akan.config.ts)");
-  const requested = parseAppNameList(value);
+  const requested = operandListOf(value);
   if (requested.includes("all")) return appNames.map((name) => AppExecutor.from(workspace, name));
   if (requested.length) {
     const unknown = requested.filter((name) => !appNames.includes(name));
@@ -549,7 +559,10 @@ export const runCommands = async (...commands: CommandCls[]) => {
         const { onFailure } = targetMeta.targetOption;
         const [allArgMetas] = getArgMetas(command, targetMeta.key);
         programCommand.exitOverride((error) => {
-          const refused = usageRefusalOf(error);
+          const refused = usageRefusalOf(
+            error,
+            error.code === "commander.excessArguments" ? excessArgumentHintOf(commandName, allArgMetas) : "",
+          );
           failure.usageExitCode = targetUsageExitCode;
           const given = givenOptionsOf(allArgMetas, programCommand.opts());
           failure.report = failureReporterOf(asksJson(allArgMetas, given), onFailure, { usage: true, given });
@@ -607,7 +620,10 @@ export const runCommands = async (...commands: CommandCls[]) => {
             if (argMeta.type === "Option")
               commandArgs[argMeta.idx] = await getOptionValue(argMeta, opt, commandContext);
             else if (argMeta.type === "Argument")
-              commandArgs[argMeta.idx] = await getArgumentValue(argMeta, cmdArgs[argMeta.idx] as string);
+              commandArgs[argMeta.idx] = await getArgumentValue(
+                argMeta,
+                cmdArgs[argMeta.idx] as string | string[] | undefined,
+              );
             else if (argMeta.type === "Apps")
               commandArgs[argMeta.idx] = await getAppsArgumentValue(
                 cmdArgs[argMeta.idx] as string | string[] | undefined,

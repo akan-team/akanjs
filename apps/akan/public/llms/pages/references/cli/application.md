@@ -270,11 +270,11 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 - in the console: `akan console` has the same filters as `.tail` and `.trace <id>`.
 
-`akan preview <app> [paths] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]`
+`akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>]`
 
 Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
-- paths (String): Page paths, comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`; `--csr` prints a note naming them. `/mcp` answers only `POST`, so preview cannot check it (it fails with 405). A full URL (`http://localhost:<port>/oauth/token`) opens its path and query the same way, always on the app's dev server, with a note when it names another server, for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at a server route's path, under the same locale rule, and `/en` and `/en/` open once.
+- paths (String): Page paths, space- or comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`; `--csr` prints a note naming them. `/mcp` answers only `POST`, so preview cannot check it (it fails with 405). A full URL (`http://localhost:<port>/oauth/token`) opens its path and query the same way, always on the app's dev server, with a note when it names another server, for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at a server route's path, under the same locale rule, and `/en` and `/en/` open once.
 
 - --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed.
 
@@ -324,11 +324,11 @@ Typecheck an app or a library with TypeScript, its own `*.test.ts` and `*.spec.t
 
 - alias: `akan t` runs this command.
 
-`akan test <app|lib|pkg> [files] [--write <boolean>]`
+`akan test <app|lib|pkg> [files...] [--write <boolean>]`
 
 Prepare an app, library or package, then run its tests with `bun test --isolate` in that folder.
 
-- files (String): Comma-separated test files or folders inside the target, written from the target or the workspace root. Leave it out to run every test.
+- files (String): Test files or folders inside the target, space- or comma-separated, each written from the target or the workspace root. Leave it out to run every test. A file of another target is refused, with the command that runs it.
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 

@@ -14,7 +14,7 @@ the server errors logged meanwhile, console errors and warnings, and layout smel
 - It uses the dev server that answers for this app and checkout. With none, it starts one for the run and
   stops it after; `--keep` leaves it up for the next preview. It never starts a second server beside a
   running one.
-- Paths are comma-separated (`akan preview <app> /board,/board/new`) and get the default locale when they lack
+- Paths are space- or comma-separated (`akan preview <app> /board /board/new`) and get the default locale when they lack
   one, unless the app sets `localePrefix: "as-needed"` and `--csr` is off. What the server answers outside a
   locale opens as written, with no locale and no CSR boot query: a `/_akan` route such as Studio
   (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`,
