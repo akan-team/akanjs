@@ -11,6 +11,8 @@ import { AkanAppConfig, AkanLibConfig, deriveDefaultAppId } from "./akanConfig";
 import {
   BUN_IMAGE_PIN,
   DEFAULT_DOCKER_IMAGE,
+  DOCKER_BASE_PACKAGES,
+  DOCKER_BASE_RUNS,
   DOCKER_INIT,
   DOCKERFILE_FORMAT,
   dockerfileLayoutOf,
@@ -488,6 +490,7 @@ describe("AkanAppConfig", () => {
         postRuns: ["echo post"],
         command: ["bun", "main.js"],
         crossBuild: true,
+        baseSetup: true,
         env: { REGION: "seoul", EDGE_MODE: "camera", AKAN_PUBLIC_OPERATION_MODE: "edge" },
       },
     });
@@ -541,6 +544,34 @@ describe("AkanAppConfig", () => {
     expect(later?.sections.get("warm")).toEqual(["RUN true"]);
   });
 
+  test("baseSetup false leaves the base step to the image, which then has to be named for every architecture", () => {
+    const configOf = (docker: object) => new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv);
+    const baseOf = (docker: object) => dockerfileLayoutOf(configOf(docker).dockerfile)?.sections.get("base");
+
+    expect(baseOf({})).toEqual([
+      `FROM ${DEFAULT_DOCKER_IMAGE}`,
+      `RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends ${DOCKER_BASE_PACKAGES.join(" ")} && rm -rf /var/lib/apt/lists/*`,
+      "RUN ln -sf /usr/share/zoneinfo/Asia/Seoul /etc/localtime",
+      "ARG TARGETARCH",
+    ]);
+    expect(baseOf({})?.slice(1, -1)).toEqual(DOCKER_BASE_RUNS.map((run) => `RUN ${run}`));
+    expect(baseOf({ image: "registry.example.com/akan-base:1", baseSetup: false })).toEqual([
+      "FROM registry.example.com/akan-base:1",
+      "ARG TARGETARCH",
+    ]);
+    const edge = configOf({ variants: { edge: { image: "registry.example.com/akan-base:1", baseSetup: false } } });
+    expect(edge.dockerfile).toContain("apt-get update");
+    expect(edge.dockerfileFor("main", { variant: "edge" })).not.toContain("apt-get");
+
+    expect(() => configOf({ baseSetup: false })).toThrow("docker.baseSetup is false, so docker.image has to name");
+    expect(() => configOf({ baseSetup: false, image: { amd64: "registry.example.com/akan-base:1" } })).toThrow(
+      "for every architecture",
+    );
+    expect(() => configOf({ variants: { edge: { baseSetup: false } } })).toThrow(
+      "docker.variants.edge.baseSetup is false",
+    );
+  });
+
   test("the akanConfig entry carries the generator, for a tool that checks its edits against the installed one", async () => {
     const entry = await import("./index");
     expect(entry.dockerfileOf).toBe(dockerfileOf);
@@ -568,6 +599,7 @@ describe("AkanAppConfig", () => {
       postRuns: [],
       command: ["bun", "main.js"],
       crossBuild: false,
+      baseSetup: true,
       env: {},
     });
   });
