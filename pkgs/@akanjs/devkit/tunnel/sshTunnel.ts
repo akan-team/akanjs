@@ -1,4 +1,5 @@
-import { type Channel, Client, type ConnectConfig } from "ssh2";
+import type { Channel, Client, ConnectConfig } from "ssh2";
+import type { Ssh2 } from "./ssh2Module";
 
 export interface SshTunnelOptions {
   localHost?: string;
@@ -8,6 +9,7 @@ export interface SshTunnelOptions {
   dstHost: string;
   dstPort: number;
   sshOptions: ConnectConfig;
+  ssh2: Pick<Ssh2, "Client">;
 }
 
 export interface SshTunnel {
@@ -32,7 +34,7 @@ const closeQuietly = (close: () => void) => {
 
 const createSshClient = async (options: SshTunnelOptions) =>
   new Promise<Client>((resolve, reject) => {
-    const client = new Client();
+    const client = new options.ssh2.Client();
 
     const cleanup = () => {
       client.off("ready", onReady);
