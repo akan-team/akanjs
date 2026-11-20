@@ -52,13 +52,17 @@ describe("JsonFormatter", () => {
     expect(JsonFormatter.stringify(manifest, "libs/x/package.json")).toBe(`${JSON.stringify(manifest, null, 2)}\n`);
   });
 
-  test.skipIf(!hasBiome)("prints what Biome prints", async () => {
-    expect(await formatWithBiome('{"a":[1]}', "libs/fixture/akan.lib.json")).toBe('{ "a": [1] }\n');
-    for (const [name, fixture] of Object.entries(fixtures)) {
-      const printed = JsonFormatter.stringify(fixture, `libs/fixture/${name}.json`);
-      expect(await formatWithBiome(printed, `libs/fixture/${name}.json`)).toBe(printed);
-    }
-    const manifest = JsonFormatter.stringify({ name: "x", workspaces: ["a", "b"] }, "package.json");
-    expect(await formatWithBiome(manifest, "libs/fixture/package.json")).toBe(manifest);
-  });
+  test.skipIf(!hasBiome)(
+    "prints what Biome prints",
+    async () => {
+      expect(await formatWithBiome('{"a":[1]}', "libs/fixture/akan.lib.json")).toBe('{ "a": [1] }\n');
+      for (const [name, fixture] of Object.entries(fixtures)) {
+        const printed = JsonFormatter.stringify(fixture, `libs/fixture/${name}.json`);
+        expect(await formatWithBiome(printed, `libs/fixture/${name}.json`)).toBe(printed);
+      }
+      const manifest = JsonFormatter.stringify({ name: "x", workspaces: ["a", "b"] }, "package.json");
+      expect(await formatWithBiome(manifest, "libs/fixture/package.json")).toBe(manifest);
+    },
+    30_000,
+  );
 });

@@ -225,7 +225,7 @@ describe("RSC route state helpers", () => {
 
     expect(resolveAkanRscPatchDecision({ currentState: current, targetState: target, partialDecision })).toEqual({
       status: "patch",
-      reason: "same-route-search-params",
+      reason: "same-route-page",
       commonPrefixLength: 3,
       patch: {
         patchStartIndex: 2,

@@ -57,6 +57,48 @@ export const pages: PagesContext = {
       .head(headOf("list"))
       .render(() => <p>list body</p>),
   }),
+  "./query/board.tsx": async () => ({
+    default: page()
+      .search("page", String)
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("board"))
+      .render(() => <p>board body</p>),
+  }),
+  "./chat/_layout.tsx": async () => ({
+    default: layout().render(({ children }) => {
+      log("chat layout");
+      return <div data-pane="chat">{children}</div>;
+    }),
+  }),
+  "./chat/[channelId].tsx": async () => ({
+    default: page()
+      .param("channelId", String)
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("channel"))
+      .render(({ channelId }) => <p>{`channel ${channelId} body`}</p>),
+  }),
+  "./org/[orgId]/_layout.tsx": async () => ({
+    default: layout()
+      .param("orgId", String)
+      .render(({ children, orgId }) => <div data-org={orgId}>{children}</div>),
+  }),
+  "./org/[orgId]/[docId].tsx": async () => ({
+    default: page()
+      .param("orgId", String)
+      .param("docId", String)
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("doc"))
+      .render(({ docId }) => <p>{`doc ${docId} body`}</p>),
+  }),
+  "./shelf/[shelfId]/_layout.tsx": async () => ({ default: ({ children }: { children: ReactNode }) => children }),
+  "./shelf/[shelfId]/[bookId].tsx": async () => ({
+    default: page()
+      .param("shelfId", String)
+      .param("bookId", String)
+      .config({ rscPatchHeadSafe: true })
+      .head(headOf("book"))
+      .render(({ bookId }) => <p>{`book ${bookId} body`}</p>),
+  }),
   "./quiet/_layout.tsx": async () => ({
     default: layout()
       .head(() => <>{false}</>)

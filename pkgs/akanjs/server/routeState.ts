@@ -326,7 +326,7 @@ export function resolveAkanRscPatchDecision({
     }
     return {
       status: "patch",
-      reason: "same-route-search-params",
+      reason: "same-route-page",
       commonPrefixLength: partialDecision.commonPrefixLength,
       patch: {
         patchStartIndex,
