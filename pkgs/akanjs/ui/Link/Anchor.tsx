@@ -13,6 +13,7 @@ import {
 } from "akanjs/client";
 import { Logger } from "akanjs/common";
 import type { AnchorHTMLAttributes } from "react";
+import { PendingNavigation } from "../../client/pendingNavigation";
 import { isActiveHref, useCurrentPathname } from "./activePath";
 import { type LinkPrefetch, usePrefetchIntent } from "./prefetchIntent";
 
@@ -28,6 +29,8 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   activeExact?: boolean;
   /** More paths under which the link counts as active, as a tab does for its detail pages. */
   activeMatch?: string[];
+  /** Applied, with `data-pending`, while a page this link would be active on is still loading. */
+  pendingClassName?: string;
   /** @deprecated Has no effect: neither renderer reads it. */
   noCache?: boolean;
   /** `"hover"` (the default, or `true`) loads the page on hover or keyboard focus, `"viewport"` also once it shows. */
@@ -44,6 +47,7 @@ export const CsrLink = ({
   scrollToTop,
   activeExact,
   activeMatch,
+  pendingClassName,
   noCache,
   prefetch,
   ...props
@@ -88,6 +92,7 @@ export const SsrLink = ({
   activeClassName,
   activeExact,
   activeMatch,
+  pendingClassName,
   noCache,
   prefetch = "hover",
   ...props
@@ -98,6 +103,20 @@ export const SsrLink = ({
   const prefetchIntent = usePrefetchIntent(href, prefetch, props);
   const currentPath = getPathInfo(pathname, lang, prefix).path;
   const isExternal = Href.isExternal(href);
+  const pending = PendingNavigation.use(
+    (pendingHref) =>
+      !!pendingHref &&
+      !isExternal &&
+      !href.startsWith("#") &&
+      isActiveHref({
+        pathname: new URL(pendingHref).pathname,
+        href,
+        lang,
+        prefix,
+        exact: activeExact,
+        match: activeMatch,
+      }),
+  );
   const internalPathInfo = getPathInfo(href, lang, prefix);
   const requestHref = getEnv().operationMode === "local" ? internalPathInfo.href : getPathInfo(href, lang, "").href;
   const path = internalPathInfo.path;
@@ -114,8 +133,10 @@ export const SsrLink = ({
         !!activeClassName &&
           isActiveHref({ pathname, href, lang, prefix, exact: activeExact, match: activeMatch }) &&
           activeClassName,
+        pending && pendingClassName,
       )}
       href={isExternal ? href : requestHref}
+      data-pending={pending ? "" : undefined}
       {...props}
       {...prefetchIntent}
       onClick={(event) => {
