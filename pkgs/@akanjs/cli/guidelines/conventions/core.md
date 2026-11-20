@@ -81,8 +81,9 @@ a lib's `common/`, `webkit/`, `ui/` [app].
 
 ## Code Style
 
-- `const` arrows, `interface` shapes, no non-null assertions or `as any`, `#private`, one class per file, English
-  identifiers, and user text through `l("model.field")` or `l.trans({ en, ko })` [ts].
+- `const` arrows, `interface` shapes, no non-null assertions or `as any`, `#private` (TypeScript `private` in a
+  `*.constant.ts`, `*.document.ts`, `*.service.ts` or `*.store.ts`), one class per file, English identifiers, and
+  user text through `l("model.field")` or `l.trans({ en, ko })` [ts].
 - Comment only what the code cannot say — a vendor quirk, an infrastructure constraint, security reasoning, a domain
   field's meaning, a state transition, a rejected alternative (`akan.comment.added`) [ts].
 - `"use client"` only for a hook, an event handler, the store, a browser global or a client-only package [ssr].

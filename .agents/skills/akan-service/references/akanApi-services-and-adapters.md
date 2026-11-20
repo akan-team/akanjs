@@ -14,6 +14,8 @@ adapt<Name extends string>(name: Name): AdaptorCls<{}, Record<never, never>>
 adapt<Name extends string, Injection extends InjectBuilder<"use" | "env" | "memory" | "plug">>(name: Name, injectBuilder: Injection): AdaptorCls<{}, ReturnType<Injection>>
 ```
 
+A class extending `adapt(name)` has `this.logger`; the server awaits its `onInit()` before the app serves and its `onDestroy()` when it stops.
+
 ### `serve` · `akanjs/service`
 
 ```ts
