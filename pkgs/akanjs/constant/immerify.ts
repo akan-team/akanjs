@@ -1,6 +1,6 @@
 import { FIELD_META } from "akanjs/base";
 import { plainFieldsOf } from "akanjs/common";
-import { immerable } from "immer";
+import { immerable } from "./immerable";
 import type { ConstantModelRef } from "./via";
 
 export const immerify = <T extends object>(modelRef: ConstantModelRef, objOrArr: T): T => {
