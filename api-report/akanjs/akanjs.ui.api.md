@@ -1548,6 +1548,7 @@ type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "href"> & {
     activeClassName?: string;
     activeExact?: boolean;
     activeMatch?: string[];
+    pendingClassName?: string;
     noCache?: boolean;
     prefetch?: LinkPrefetch;
 };

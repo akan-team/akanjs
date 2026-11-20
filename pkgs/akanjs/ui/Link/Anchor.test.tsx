@@ -1,12 +1,14 @@
 import "../../test/registerDom";
 import { afterAll, beforeAll, describe, expect, mock, test } from "bun:test";
 import { act } from "react";
+import { PendingNavigation } from "../../client/pendingNavigation";
 import { mount, setTestEnv } from "../testHelpers.fixture";
 
 let SsrLink: typeof import("./Anchor").SsrLink;
 let CsrLink: typeof import("./Anchor").CsrLink;
 let Link: typeof import("./index").Link;
 let router: typeof import("akanjs/client").router;
+let clientModule: typeof import("akanjs/client");
 
 const pushes: string[] = [];
 const prefetches: string[] = [];
@@ -48,7 +50,8 @@ beforeAll(async () => {
   setTestEnv("linktest");
   const { registerClientRuntime } = await import("akanjs/client");
   registerClientRuntime({ usePage: () => ({ path: "/", lang: "en", l: (key: string) => key }) } as never);
-  ({ router } = await import("akanjs/client"));
+  clientModule = await import("akanjs/client");
+  ({ router } = clientModule);
   ({ SsrLink, CsrLink } = await import("./Anchor"));
   ({ Link } = await import("./index"));
   globalThis.__AKAN_RSC_NAVIGATE__ = () => Promise.resolve();
@@ -133,6 +136,65 @@ describe("SsrLink", () => {
       unmount();
     });
   }
+});
+
+describe("SsrLink navigation state", () => {
+  test("activeClassName follows the store's path, which a push moves at the press, before any page arrives", () => {
+    const { ShellState } = clientModule;
+    act(() => ShellState.set({ pathname: "/en/chat/a" }));
+    const { container, unmount } = mount(
+      <>
+        <SsrLink href="/chat/a" activeClassName="on">
+          a
+        </SsrLink>
+        <SsrLink href="/chat/b" activeClassName="on">
+          b
+        </SsrLink>
+      </>,
+    );
+    const [a, b] = [...container.querySelectorAll("a")];
+    expect([a?.className, b?.className]).toEqual(["on", ""]);
+
+    act(() => ShellState.set({ pathname: "/en/chat/b" }));
+
+    expect([a?.className, b?.className]).toEqual(["", "on"]);
+    unmount();
+  });
+
+  test("a link a loading navigation would light carries pendingClassName and data-pending until it ends", () => {
+    const { container, unmount } = mount(
+      <>
+        <SsrLink href="/chat" pendingClassName="wait">
+          chat
+        </SsrLink>
+        <SsrLink href="/chat" pendingClassName="wait" activeExact>
+          chat home
+        </SsrLink>
+        <SsrLink href="/chat/b" pendingClassName="wait">
+          b
+        </SsrLink>
+        <SsrLink href="/chat/c">c</SsrLink>
+        <SsrLink href="#top" pendingClassName="wait">
+          top
+        </SsrLink>
+      </>,
+    );
+    const anchors = [...container.querySelectorAll("a")];
+    const state = () => anchors.map((anchor) => `${anchor.className}|${anchor.hasAttribute("data-pending")}`);
+    expect(state()).toEqual(["|false", "|false", "|false", "|false", "|false"]);
+
+    let pending: ReturnType<typeof PendingNavigation.begin> | undefined;
+    act(() => {
+      pending = PendingNavigation.begin("http://localhost/en/chat/b?thread=1");
+    });
+    expect(state()).toEqual(["wait|true", "|false", "wait|true", "|false", "|false"]);
+
+    act(() => {
+      if (pending) PendingNavigation.end(pending);
+    });
+    expect(state()).toEqual(["|false", "|false", "|false", "|false", "|false"]);
+    unmount();
+  });
 });
 
 describe("CsrLink", () => {
@@ -244,6 +306,7 @@ describe("Link", () => {
           replace
           activeClassName="a"
           activeExact
+          pendingClassName="p"
           noCache
           prefetch="viewport"
         >
