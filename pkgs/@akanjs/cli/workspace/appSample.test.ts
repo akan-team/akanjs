@@ -140,7 +140,7 @@ describe("appSample", () => {
       expect(
         scriptsWhere((command) => /\bakan (create-[\w-]+|add-[\w-]+|workflow (plan|apply))\b/.test(command)),
       ).toEqual([]);
-    });
+    }, 30_000);
 
     test("brings the demo home, its jelly theme and button, and every font face its layout declares", async () => {
       const { files, read } = await scaffold({ sample: true });

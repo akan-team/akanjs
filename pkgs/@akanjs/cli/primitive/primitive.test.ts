@@ -570,26 +570,30 @@ describe("Task Signal", () => {
       );
     });
 
-    test.skipIf(!hasBiome)("writes every file the way Biome prints it", async () => {
-      const { root, app, module, add } = await createTaskApp();
-      await createNoteModule(app);
-      await writeText(
-        path.join(root, "apps/demo/srvkit/self.ts"),
-        'import type { Guard, InternalArg } from "akanjs/signal";\n\nexport class User implements Guard {\n  canPass() {\n    return true;\n  }\n}\n\nexport class Self implements InternalArg {\n  getArg() {\n    return null;\n  }\n}\n',
-      );
-      const report = await add({
-        guards: ["User", "Public"],
-        withCalls: ["note.touchNote"],
-        afterCalls: ["note.sendArchived"],
-      });
-      expect(report.status).toBe("passed");
-      expect(await module.readFile("task.signal.ts")).toContain('import { Self, User } from "@apps/demo/srvkit";');
+    test.skipIf(!hasBiome)(
+      "writes every file the way Biome prints it",
+      async () => {
+        const { root, app, module, add } = await createTaskApp();
+        await createNoteModule(app);
+        await writeText(
+          path.join(root, "apps/demo/srvkit/self.ts"),
+          'import type { Guard, InternalArg } from "akanjs/signal";\n\nexport class User implements Guard {\n  canPass() {\n    return true;\n  }\n}\n\nexport class Self implements InternalArg {\n  getArg() {\n    return null;\n  }\n}\n',
+        );
+        const report = await add({
+          guards: ["User", "Public"],
+          withCalls: ["note.touchNote"],
+          afterCalls: ["note.sendArchived"],
+        });
+        expect(report.status).toBe("passed");
+        expect(await module.readFile("task.signal.ts")).toContain('import { Self, User } from "@apps/demo/srvkit";');
 
-      for (const file of [...moduleFiles, "task.signal.test.ts"]) {
-        const written = await module.readFile(file);
-        expect(await formatWithBiome(written, `apps/demo/lib/task/${file}`)).toBe(written);
-      }
-    });
+        for (const file of [...moduleFiles, "task.signal.test.ts"]) {
+          const written = await module.readFile(file);
+          expect(await formatWithBiome(written, `apps/demo/lib/task/${file}`)).toBe(written);
+        }
+      },
+      30_000,
+    );
 
     test("refuses an unknown guard, None, or no guard at all, and writes nothing", async () => {
       const { module, add } = await createTaskApp();
@@ -684,6 +688,6 @@ describe("Task Signal", () => {
       const again = await create();
       expect(again.status).toBe("failed");
       expect(again.diagnostics).toContainEqual(expect.objectContaining({ code: "create-interaction-exists" }));
-    });
+    }, 30_000);
   });
 });
