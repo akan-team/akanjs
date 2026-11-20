@@ -1,10 +1,21 @@
 import chalk from "chalk";
 
-import { type EnumChoice, getArgMetas } from "./argMeta";
+import { type ArgMeta, type EnumChoice, getArgMetas, type InternalArgMeta } from "./argMeta";
 import { camelToKebabCase } from "./camelToKebabCase";
 import { type CommandCls, getTargetMetas } from "./targetMeta";
 
 const formatChoice = (choice: EnumChoice) => (typeof choice === "object" ? choice.label : choice.toString());
+
+const argumentNameOf = (arg: ArgMeta) => `${camelToKebabCase(arg.name)}${arg.argsOption.multiple ? "..." : ""}`;
+
+export const usageArgsOf = (argMetas: (ArgMeta | InternalArgMeta)[]) =>
+  argMetas.flatMap((arg) => {
+    if (arg.type === "Option" || arg.type === "Workspace") return [];
+    if (arg.type === "Module") return ["[sys:module]"];
+    if (arg.type === "Apps") return ["[apps...]"];
+    if (arg.type === "Argument") return [`[${argumentNameOf(arg)}]`];
+    return [`[${arg.type.toLowerCase()}]`];
+  });
 
 const groupCommands = (commands: CommandCls[]) => {
   const groups = new Map<string, { key: string; args: string[]; desc?: string }[]>();
@@ -87,16 +98,7 @@ export const formatCommandHelp = (command: CommandCls, key: string) => {
   const kebabKey = camelToKebabCase(key);
   const commandDesc = getTargetMetas(command).find((t) => t.key === key)?.targetOption.desc;
   const nonOptionArgs = allArgMetas.filter((arg) => arg.type !== "Option");
-  const args = nonOptionArgs
-    .map((arg) => {
-      if (arg.type === "Workspace") return "";
-      if (arg.type === "Module") return "[sys:module]";
-      if (arg.type === "Apps") return "[apps...]";
-      if (arg.type === "Argument") return `[${camelToKebabCase(arg.name)}]`;
-      return `[${arg.type.toLowerCase()}]`;
-    })
-    .filter(Boolean)
-    .join(" ");
+  const args = usageArgsOf(allArgMetas).join(" ");
 
   const lines = ["", chalk.bold.cyan(`  Command: ${kebabKey}`)];
   if (commandDesc) lines.push(chalk.gray(`  ${commandDesc}`));
@@ -115,7 +117,7 @@ export const formatCommandHelp = (command: CommandCls, key: string) => {
       let argDesc: string;
       let example = "";
       if (arg.type === "Argument") {
-        argName = camelToKebabCase(arg.name);
+        argName = argumentNameOf(arg);
         argDesc = arg.argsOption.desc ?? "";
         example = arg.argsOption.example ? chalk.gray(` (e.g., ${String(arg.argsOption.example)})`) : "";
       } else if (arg.type === "Module") {

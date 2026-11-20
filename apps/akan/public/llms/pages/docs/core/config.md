@@ -320,7 +320,7 @@ The rest of the config is for the build system and the production image. Most ap
 
 - plugins (AkanPlugin[], default []): Read live by the CLI for runtime packages, native project setup, and public/ assets.
 
-- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild.
+- docker (string | DockerImageConfig, default oven/bun:1.4.4-slim@sha256:…): A whole Dockerfile, or its parts: image, preRuns and postRuns around bun install, installRuns in its layer, command, crossBuild, env, and variants for a second image.
 
 A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns, docker.installRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.
 
@@ -332,7 +332,11 @@ A library contributes to five of these: its own externalLibs, trustedDependencie
 
 **crossBuild builds for another architecture without emulating Bun.** For `docker buildx build --platform linux/arm64` on an amd64 host, a stage on the build machine's own architecture runs `bun install --os linux --cpu <target>`, and the target's stage copies the result and runs only apt-get, preRuns and postRuns. A dependency's lifecycle script then runs on the build machine's CPU, and the build needs BuildKit.
 
+**env sets the image's defaults, and variants writes a second image.** `env` is laid over the `ENV` lines the build writes, so the image starts with it unless the deployment says otherwise. It is tracked and readable in the image, so never a secret, and `bun main.js` on a host does not get it. Each entry of `variants` is written beside the Dockerfile as `Dockerfile.<name>` (`docker build -f Dockerfile.edge .`): the app's `docker` with every field the variant names replaced whole, so `preRuns: []` drops the app's steps there, while its `env` is laid over the app's key by key and a library's steps reach every variant. Split an image by what it is for, a device or a control plane, this way rather than by architecture.
+
 **The build writes a .dockerignore.** A build started by hand in `dist/apps/<app>` writes its database beside `main.js`, so `sqlite`, `local`, `runtime`, `data`, the image cache and `node_modules` stay out of the image.
+
+**A tool that edits the generated Dockerfile finds its place by a marker.** The file opens with `# akan:dockerfile 1`, and each section starts at a comment: `# akan:install-stage` (only with `crossBuild`), `# akan:base`, `# akan:pre-runs`, `# akan:install`, `# akan:post-runs` and `# akan:app`, a section with no instruction left out. The number rises when the sections change, so a tool that meets one it does not know says so instead of skipping its edit. `dockerfileLayoutOf` from `@akanjs/devkit/akanConfig` reads them, and `dockerfileOf` there is the generator itself. A Dockerfile written as a string carries no marker.
 
 **A desktop app carries its own executables.** It gets none of the image's `docker` steps, so `bin` puts ffmpeg, or anything else its server or a native plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and in a plugin's `ctx.binDir`. The image carries the `linux-x64` and `linux-arm64` entries the same way, first on its PATH. Carry a static LGPL build: a `--enable-nonfree` build may not be redistributed.
 
@@ -764,6 +768,10 @@ const config: AppConfig = {
     postRuns: ["echo after"],
     command: ["bun", "main.js"],
     crossBuild: true,
+    env: { REGION: "seoul" },
+    variants: {
+      edge: { preRuns: [], env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
+    },
   },
 };
 ```

@@ -27,6 +27,8 @@ contract: `runtimeRule`.
   from a variable named after its key path, which the deployment sets (`akan secret-env <app> --env <env>` lists
   them). A secret the file computes or imports stops the build: write the string at the key, or
   `process.env.<NAME>` there.
+- `akan sync` writes a missing, gitignored `env/env.<side>.<env>.ts`: in a git worktree a copy of the main
+  checkout's. Never symlink one from another checkout: its `../lib/option` import resolves over there.
 - Give every log sink a floor (`Logger.addSink(sink, { minLevel })`), and never log per delivered record in anything
   that delivers records.
 - **A desktop app's carried server listens on a loopback port any local program can call** — guard it as a network

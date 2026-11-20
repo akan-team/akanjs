@@ -44,6 +44,7 @@ export type {
   DockerImageConfig,
   DockerOption,
   DockerRun,
+  DockerVariantOption,
   FileConventionScanResult,
   LibAssetsConfig,
   LibConfig,

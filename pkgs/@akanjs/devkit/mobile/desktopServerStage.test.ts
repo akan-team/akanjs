@@ -155,6 +155,7 @@ describe("DesktopServerStage", () => {
     ];
     const imageOnly = [
       "Dockerfile",
+      "Dockerfile.edge",
       ".dockerignore",
       "akan.env.json",
       "package.json",
