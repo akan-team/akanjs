@@ -94,7 +94,8 @@ ${renderRecipeEntries(recipes)}`;
 const renderPathRules = (rules: { name: string; paths: string[] }[]) => `## Path Rules
 
 Each area's full contract is a rule file in \`${AgentAssets.ruleDir}/\`. Claude Code and Cursor load it when a
-matching file is touched; any other agent reads it before editing a match.
+file tool reads or edits a match, not when a shell command or a scaffold writes one: read it yourself before that,
+as any other agent does before editing a match.
 
 | Files | Rule |
 |---|---|

@@ -47,7 +47,9 @@ akan start <app-name> --open
 ### 기존 저장소 안에서 시작하기
 
 앱이 놓일 폴더와 실행 방식이 정해진 작업이라면, 예를 들어 다른 저장소의 하위 폴더, Node와 npm만 있는 호스트, 스펙이 정한
-URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩니다.
+URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩니다. 스캐폴드에 필요한 것은 아래가 전부라서 다른 패키지의
+README를 먼저 읽을 필요가 없습니다. 이 명령이 쓰는 파일, 실행하는 명령, 네트워크 접근은
+[`create-akan-workspace` README](https://www.npmjs.com/package/create-akan-workspace#이-명령이-하는-일)에 있습니다.
 
 - **그 폴더에 바로 만들기:** `bunx create-akan-workspace@latest . --app <app> --dir <folder> --sample false`.
   `<folder>` 자체에 쓰고, 이미 있는 파일은 덮어쓰지 않고 멈추며, 샘플 모듈과 페이지는 만들지 않습니다. 함께 생기는

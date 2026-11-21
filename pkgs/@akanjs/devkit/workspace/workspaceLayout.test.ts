@@ -1,12 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { readdir } from "node:fs/promises";
 import path from "node:path";
+import { Prompter } from "../guideline/prompter";
 import {
   appRootAllowedDirs,
   appRootAllowedFiles,
   facetIndexShadowOf,
   isAllowedLibFacetRootFile,
   isScannedRootEntry,
+  libFacetRootAllowedFiles,
   libFacetRootHintOf,
   libRootAllowedDirs,
   libRootAllowedFiles,
@@ -193,5 +195,20 @@ describe("cli root tsconfig templates vs workspace scan allowlists", () => {
       const tsconfig = await loadRootTemplate(dir);
       expect(tsconfig.references, `${dir} template must not declare references`).toBeUndefined();
     }
+  });
+});
+
+describe("syncRule guideline", () => {
+  test("names every root file and folder the allowlists admit, and every lib/ root file", async () => {
+    const text = await Prompter.getInstruction("syncRule");
+    const named = new Set([...text.matchAll(/`([^`\s]+)`/g)].map((match) => match[1]));
+    const admitted = [
+      ...appRootAllowedFiles,
+      ...appRootAllowedDirs,
+      ...libRootAllowedFiles,
+      ...libRootAllowedDirs,
+      ...libFacetRootAllowedFiles,
+    ];
+    expect(admitted.filter((name) => !named.has(name))).toEqual([]);
   });
 });

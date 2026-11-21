@@ -24,7 +24,7 @@ Term
 
 - agent guide: The workspace's `AGENTS.md`: the short core every coding agent reads first.
 
-- path rule: One area's full contract, such as `page/**`, loaded when a matching file is touched.
+- path rule: One area's full contract, such as `page/**`, loaded when a file tool opens a matching file.
 
 - skill: A procedure and its full guidelines, which an agent loads only when a task needs it.
 

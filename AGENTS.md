@@ -128,7 +128,7 @@ a lib's `common/`, `webkit/`, `ui/` [app].
 
 - `const` arrows, `interface` shapes, no non-null assertions or `as any`, `#private` (TypeScript `private` in a
   `*.constant.ts`, `*.document.ts`, `*.service.ts` or `*.store.ts`), one class per file, English identifiers, and
-  user text through `l("model.field")` or `l.trans({ en, ko })` [ts].
+  user text through `l("model.field")` or `l.trans({ en, ko })`, inline when `i18n.locales` names one locale [ts].
 - Comment only what the code cannot say — a vendor quirk, an infrastructure constraint, security reasoning, a domain
   field's meaning, a state transition, a rejected alternative (`akan.comment.added`) [ts].
 - `"use client"` only for a hook, an event handler, the store, a browser global or a client-only package [ssr].
@@ -158,7 +158,8 @@ with placeholders only. `AKAN_PUBLIC_*` values ship to the browser — never put
 ## Path Rules
 
 Each area's full contract is a rule file in `.claude/rules/akan/`. Claude Code and Cursor load it when a
-matching file is touched; any other agent reads it before editing a match.
+file tool reads or edits a match, not when a shell command or a scaffold writes one: read it yourself before that,
+as any other agent does before editing a match.
 
 | Files | Rule |
 |---|---|

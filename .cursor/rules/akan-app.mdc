@@ -1,5 +1,5 @@
 ---
-description: Akan app and library code: the lint gates, sync allowlists and the warts not to copy.
+description: Akan app and library code: the lint gates, what sync refuses and the warts not to copy.
 globs: apps/**,libs/**
 alwaysApply: false
 ---

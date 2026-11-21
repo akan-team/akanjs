@@ -46,18 +46,20 @@ What neither the `page` rule nor the `akan-page` skill says; nothing either of t
   `og:image` or `twitter:image` drops the `og:image:*` / `twitter:image:*` tags it inherits, and a
   `<meta name="theme-color">` replaces the root `.viewport({ themeColor })`'s. Only `.head()` merges: a `<title>` or
   `<meta>` written inside a component renders beside the merged head, so a second `<title>` can reach the document.
-- **The script policy.** Every HTML response sends `Content-Security-Policy-Report-Only: script-src …
-  'strict-dynamic'`. A `<script src>` in JSX needs `nonce={scriptNonce()}` too (its host in a policy does nothing
-  under `'strict-dynamic'`); the hash `scriptHashes()` takes is the one the browser prints in its console report; and
-  reading `scriptNonce()` makes the page dynamic, so no result cache keeps it. Both do nothing in the browser and are
-  too late outside a `.head()`: the header leaves with the first byte. An `onclick="…"` attribute and a `javascript:`
-  URL have no such form. `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header,
-  `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names where the browser posts reports, and
-  `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response (`'wasm-unsafe-eval'` for a page that
-  compiles WebAssembly). A response names at most 32 hashes (its header stays under 2 KB, inside the 4 KB a proxy
-  reads headers into): `scriptHashes()` past that are left out with one warning per route, and a page whose cached
-  replay would need more (one per streamed boundary) is rendered each time, answering
-  `X-Akan-Cache-Reason: script-hashes`.
+- **The script policy.** An inline `<script>` in a `.head()` is named in the page's policy, reported now and refused
+  from 3.5.0: `scriptHashes("sha256-…")` for a constant snippet (the page stays cacheable), `nonce={scriptNonce()}`
+  for anything else; both from `akanjs/client`, called in the `.head()`. Every HTML response sends
+  `Content-Security-Policy-Report-Only: script-src … 'strict-dynamic'`. A `<script src>` in JSX needs
+  `nonce={scriptNonce()}` too (its host in a policy does nothing under `'strict-dynamic'`); the hash `scriptHashes()`
+  takes is the one the browser prints in its console report; and reading `scriptNonce()` makes the page dynamic, so no
+  result cache keeps it. Both do nothing in the browser and are too late outside a `.head()`: the header leaves with
+  the first byte. An `onclick="…"` attribute and a `javascript:` URL have no such form.
+  `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header, `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names
+  where the browser posts reports, and `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response
+  (`'wasm-unsafe-eval'` for a page that compiles WebAssembly). A response names at most 32 hashes (its header stays
+  under 2 KB, inside the 4 KB a proxy reads headers into): `scriptHashes()` past that are left out with one warning
+  per route, and a page whose cached replay would need more (one per streamed boundary) is rendered each time,
+  answering `X-Akan-Cache-Reason: script-hashes`.
 - **`load` and `DOMContentLoaded` can fire before client code runs.** The client entry is a module the document's
   bootstrap script adds, not a tag in the markup, so neither event waits for it. A listener for either is added only
   after checking `document.readyState` (`"complete"` for `load`, not `"loading"` for `DOMContentLoaded`) and calling
@@ -67,22 +69,25 @@ What neither the `page` rule nor the `akan-page` skill says; nothing either of t
 ## A Root Layout Inside A CSR Bundle
 
 - In a native app or `?csr=true`, pages render into the frame, and what the root layout draws around `{children}`
-  stays in a hidden container, so its wrappers cannot stack a second screen beside the frame. Its components still
-  mount and their effects run (`<Auth.User />` works); `<Agent.Chat />` and the dialogs already portal. A non-root
-  `_layout.tsx` has no such limit. A gate belongs in the root layout's `.guard()`, which runs in every page's chain.
+  stays in a hidden container, so its wrappers cannot stack a second screen beside the frame. What a person must see
+  from it renders through `createPortal(…, document.body)`. Its components still mount and their effects run
+  (`<Auth.User />` works); `<Agent.Chat />` and the dialogs already portal. A non-root `_layout.tsx` has no such
+  limit. A gate belongs in the root layout's `.guard()`, which runs in every page's chain.
 
 ## Lib Pages
 
-- `libs/<lib>/page` follows the same rules as an app's. An app that declares subRoutes gets the link once per
-  basePath, and the folder is gitignored like `public/libs`. A `routes` entry's own `syncPageLibs` (`false`, or an
+- `libs/<lib>/page` reaches an app through `syncPageLibs`, linked into the generated `page/(libs)/(<lib>)`; edit the
+  lib source, never the link. It follows the same rules as an app's. An app that declares subRoutes gets the link once
+  per basePath, and the folder is gitignored like `public/libs`. A `routes` entry's own `syncPageLibs` (`false`, or an
   array of libs) replaces the app's for its basePath.
 - Both path segments are route groups, so a lib route mounts at its own path (`libs/<lib>/page/login/_index.tsx`
   serves `/login`). Two synced routes that resolve to the same pattern are a sync-time error.
 
 ## `devOnly` And The Legacy Shape
 
-- A `devOnly` route keeps serving under `akan start` and keeps being typechecked; on a `_layout.tsx` it excludes every
-  route under that directory too. It is a literal because the build reads it off the source without evaluating it.
+- `.config({ devOnly: true })` keeps a route out of `akan build`. It keeps serving under `akan start` and keeps being
+  typechecked; on a `_layout.tsx` it excludes every route under that directory too. It is a literal because the build
+  reads it off the source without evaluating it.
 - The legacy shape — `export default async function Page` beside `pageConfig` / `head` / `Loading` exports — still
   loads and logs one deprecation warning per file at boot. Migrate with the `workspaceRecipes` recipe "Migrating
   `page/` to the route chain".

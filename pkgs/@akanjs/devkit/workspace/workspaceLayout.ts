@@ -1,6 +1,3 @@
-// The one source of the app/lib root allowlists (sync, doctor and quality scan read it); mirror a change into the
-// root AGENTS.md list.
-
 import { barrelFacetDirs } from "akanjs/common";
 
 export type SysType = "app" | "lib";
