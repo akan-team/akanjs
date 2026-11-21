@@ -93,6 +93,8 @@ Read the one for an area before a larger change there.
 
 - ssrRule: When a `.tsx` file earns `"use client"`, and how to keep markup on the server.
 
+- syncRule: What `akan sync` accepts at an app or lib root, the files it generates, and the dependencies it keeps.
+
 - runtimeRule: Web surfaces, route prefixes, processes, logging, the Docker image and shipped assets.
 
 - queryRule: Filters, slices and hydration, full-text search, and cascade removal.

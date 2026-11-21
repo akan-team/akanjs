@@ -7,7 +7,8 @@ paths:
 # Akan Page Routing
 
 Steps, guards, typed values, loading and error views, Link and the router: the `akan-page` skill. The rest of the
-contract — client-navigation guards, heads, CSR root layouts, lib pages, `devOnly`: `pageRule`.
+contract — client-navigation guards, heads and an inline `<script>` in one, a root layout in a CSR or native bundle,
+lib pages, `devOnly`: `pageRule`.
 
 - `page/` holds `.tsx` route modules only: `<routeName>.tsx` or `_index.tsx`, `_layout.tsx`, `_overrides.tsx` — no
   other `_*.tsx`, helpers, `.ts` / `.js` files, or uppercase filenames. `[id]` is a dynamic segment, `(group)` a
@@ -22,13 +23,6 @@ contract — client-navigation guards, heads, CSR root layouts, lib pages, `devO
   receives it.
 - `.head()` takes JSX or a function returning it — never a metadata object; deeper heads replace by tag identity,
   and a canonical link / `og:url` comes only from the page's own `.head()`.
-- An inline `<script>` in a `.head()` is named in the page's script policy, reported now and refused from 3.5.0:
-  `scriptHashes("sha256-…")` for a constant snippet (the page stays cacheable), `nonce={scriptNonce()}` for anything
-  else (the page turns dynamic); both from `akanjs/client`, called in the `.head()`.
-- In a CSR bundle a root layout's own markup is hidden: what a person must see from it renders through
-  `createPortal(…, document.body)`.
-- `libs/<lib>/page` reaches an app through `syncPageLibs`, linked into the generated `page/(libs)/(<lib>)`; edit the
-  lib source, never the link. `.config({ devOnly: true })` (a literal) keeps a route out of `akan build`.
 - `.render()` gets the declared args flat and typed (no `PageProps`, no `loader=` prop). Order: `usePage()`, fetch,
   return. Hand `fetch.init*` / `view*` / `edit*` fields to sections unawaited; await only what the shell reads
   (title, redirect, link id) in one `Promise.all`. `async` only when the body awaits; the callback is not a React

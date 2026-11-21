@@ -1,6 +1,6 @@
 ---
 name: akan-deps
-description: "Fix an import, dependency, or barrel problem in an Akan workspace — barrels are generated, and a third-party package may not be imported from most files."
+description: "Fix an import, dependency, or barrel problem, or a file akan sync refuses, in an Akan workspace — barrels are generated, and a third-party package may not be imported from most files."
 ---
 
 # Akan imports, deps and barrels
@@ -15,6 +15,12 @@ contents.
 **If an import "cannot be found" but the file exists, the barrel is stale** — run `akan sync <app-or-lib>`,
 or `repair_generated`. A `ui/<Folder>/index.tsx` that builds a namespace is hand-written source; the
 distinguishing test is that a generated barrel contains nothing but `export * from "./X";` lines.
+
+## What sync refuses
+
+`akan sync` refuses a root file or folder its allowlist lacks, a hand-written file or test in `lib/`'s root, a
+module file named off the pattern, and an `index.tsx` / `.jsx` / `.mts` beside a generated barrel. The allowlists,
+the module file names and what sync does to `package.json` are the `syncRule` reference.
 
 ## Where a dependency is declared
 

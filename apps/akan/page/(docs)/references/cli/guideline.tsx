@@ -188,6 +188,13 @@ akan guideline show ssrRule`,
         }),
       },
       {
+        name: "syncRule",
+        desc: l.trans({
+          en: "What `akan sync` accepts at an app or lib root, the files it generates, and the dependencies it keeps.",
+          ko: "`akan sync`가 앱·라이브러리 루트에서 허용하는 파일, 생성하는 파일, 유지하는 의존성입니다.",
+        }),
+      },
+      {
         name: "runtimeRule",
         desc: l.trans({
           en: "Web surfaces, route prefixes, processes, logging, the Docker image and shipped assets.",
