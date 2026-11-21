@@ -118,6 +118,7 @@ prefetch?: LinkPrefetch;
 
 ```ts
 usePageLocation(): { pathname: string; params: { [key: string]: string; }; searchParams: BaseSearchParamsState; }
+type BaseSearchParamsState = { [key: string]: string | string[]; }
 ```
 
 ### Route stages
