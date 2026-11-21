@@ -1,5 +1,5 @@
 ---
-description: Akan app and library code: the lint gates, sync allowlists and the warts not to copy.
+description: Akan app and library code: the lint gates, what sync refuses and the warts not to copy.
 paths:
   - "{apps,libs}/**"
 ---
@@ -8,77 +8,39 @@ paths:
 
 ## Rules Every File Obeys
 
+The root guide's "Rules That Break The Build" names each check and its fix; this adds only what it leaves out.
 `biome.json` extends `@akanjs/devkit/biome.base.json`, which scopes every grit plugin in `@akanjs/devkit/lint/`;
-each plugin's header and diagnostic carry its full reasoning.
+each plugin's diagnostic carries its reasoning.
 
-- **Never construct a raw `Error`** (`no-throw-raw-error`). Throw `new Err("<module>.error.<key>")` with the key
-  registered as `[en, ko]` in the module dictionary's `.error({})` — imported from `"../dict"` on the server, from
-  `"@libs/<lib>/client"` / `"@apps/<app>/client"` in UI. A `throw` is an error; a raw `Error` rejected, returned or
-  stored loses the key and status too (a warning for now). Exempt: tests, `*.constant.ts`, a root `native/` folder
-  (plugins throw `AkanNativeError`), `script/migration/**` (an operator reads its message), and `common/**` / `env/**`,
-  which have no legal `Err` import — keep throwing code out of them.
-- **Never import `Err` from `akanjs/common`** or `akanjs/common/err` (`no-import-common-err`). That class takes any
-  string, so a mistyped key compiles; the `Err` from `"../dict"` or a client entrypoint is the same class, typed with
-  the dictionary's keys. `import type` stays legal, to annotate a caught `Err`. Exempt: tests.
-- **Never import a third-party package** (`no-import-external-library`) from `page/**`, any barrel, a module logic file
-  (`*.{constant,dictionary,document,service,signal,store}.ts`) or module component
-  (`*.{Template,Unit,Util,View,Zone}.tsx`) — re-export it through a lib first (one-line shims in a lib's `common/`,
-  `webkit/`, `ui/` are load-bearing). `*.signal.test.ts` / `*.service.test.ts` too, though they may import `node:*` and
-  `bun:*` (`no-import-external-library-in-test`).
-- **No `console.log` / `console.debug`** (`noConsole`; only `assert`, `error`, `info`, `warn`; server code uses
-  `this.logger` or `new Logger("ClassName")`), and **never `logger.log()` / `Logger.log()`** (`no-deprecated-log-level`)
-  — it emits at `info` while reading like its own level; write `.info()`. The ladder is
-  `trace verbose debug info warn error`.
-- **Never touch `document.cookie`, `localStorage` or `sessionStorage`** (`no-document-cookie`, `no-web-storage`) — a
-  native shell's page keeps no cookies on iOS, macOS and Linux, and Web Storage throws during SSR. Use `getCookie` /
-  `setCookie` / `removeCookie`, `storage`, `secretStorage` from `akanjs/client`. Browser APIs a WebView lacks
-  (`navigator.share`, `serviceWorker`, `Notification`, `geolocation`, `vibrate`) live in a `webkit/` hook behind
-  `isNativeApp()` (`no-web-only-api-outside-webkit`, a warning). Both in full: `runtimeRule`.
+- **`Err` is imported from `"../dict"`** on the server and from `"@libs/<lib>/client"` / `"@apps/<app>/client"` in
+  UI, its key registered as `[en, ko]`; `import type` of `akanjs/common`'s stays legal, to annotate a caught `Err`.
+  A raw `Error` rejected, returned or stored loses the key and status too (a warning for now).
+  `no-throw-raw-error` exempts tests, `*.constant.ts`, a root `native/` folder (plugins throw `AkanNativeError`),
+  `script/migration/**` (an operator reads its message), and `common/**` / `env/**`, which have no legal `Err`
+  import — keep throwing code out of them.
+- **The third-party import ban** covers `page/**`, any barrel, a module logic file
+  (`*.{constant,dictionary,document,service,signal,store}.ts`) and a module component
+  (`*.{Template,Unit,Util,View,Zone}.tsx`). `*.signal.test.ts` / `*.service.test.ts` too, though they may import
+  `node:*` and `bun:*` (`no-import-external-library-in-test`).
+- Server code logs through `this.logger` or `new Logger("ClassName")`, on the ladder
+  `trace verbose debug info warn error`; `console` keeps `assert`, `error`, `info`, `warn`.
+- Browser APIs a WebView lacks (`navigator.share`, `serviceWorker`, `Notification`, `geolocation`, `vibrate`) live
+  in a `webkit/` hook behind `isNativeApp()` (`no-web-only-api-outside-webkit`, a warning). In full: `runtimeRule`.
 - **No deep imports past a barrel** (`no-deep-internal-import`), except cross-module constants (`../map/map.constant`).
-- **Suppress a grit diagnostic as `lint/plugin`** (`// biome-ignore lint/plugin: <reason>`,
-  `// biome-ignore-all lint/plugin: <reason>`); bare `plugin:` does nothing. `pkgs/` is out of scope.
-- **`biome.json` is strict JSON** — a comment breaks config resolution without an error (Biome falls back to
-  discovery and aborts on a nested config); rename it `biome.jsonc` to document a disabled rule.
-- **`akan lint` prints up to 200 diagnostics** (`--max-diagnostics <n>`, `0` = all); Biome's own uncounted 20 reads
-  as progress when the mix merely changed.
 
-## Akan Sync Conventions
+## What `akan sync` Refuses And Owns
 
-- App root files: `AGENTS.md`, `CLAUDE.md`, `akan.app.json`, `akan.baseline.json`, `akan.budget.json`,
-  `akan.config.ts`, `client.ts`, `main.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.tsbuildinfo`;
-  folders: `.akan`, `common`, `env`, `lib`, `native`, `page`, `plugin`, `private`, `public`, `script`, `secrets`,
-  `srvkit`, `ui`, `webkit`. A Capacitor-era `ios` / `android` / `mobile` folder or `capacitor.config.*` in an app root
-  is refused as a leftover (native projects live under `dist/native/<app>/<target>`).
-- Lib root files: `AGENTS.md`, `CLAUDE.md`, `README.md`, `akan.baseline.json`, `akan.config.ts`, `akan.lib.json`,
-  `client.ts`, `index.ts`, `package.json`, `server.ts`, `tsconfig.json`, `tsconfig.spec.json`, `tsconfig.tsbuildinfo`;
-  folders: the app's minus `.akan`, `secrets` (no `main.ts` either — a lib is never booted). A lib's `script/` is
-  asset tooling nothing runs or ships (`private/` ships in every image); a `script/migration` there is refused.
-- The allowlists' one source is `pkgs/@akanjs/devkit/workspace/workspaceLayout.ts`, read by `akan sync` (error), `akan doctor`
-  and `akan quality scan` — add an entry there and mirror it here.
-- `apps/<app>/AGENTS.md` / `libs/<lib>/AGENTS.md` carry a generated `## Recipes In Scope` block between the
-  `akan:agent` markers — never hand-edit it (outside the markers is yours); `akan lint` fails when it is stale.
-- `plugin/<name>.plugin.ts` declares an Akan plugin. No `apps/*/base` or `libs/*/base` — use `common/`.
-- `lib/` root holds only `cnst.ts`, `db.ts`, `dict.ts`, `option.ts`, `sig.ts`, `srv.ts`, `st.ts`, `useClient.ts`,
-  `usePage.ts`, `useServer.ts` — no hand-written file or test.
-- `lib/__lib/` and `lib/__client/` (each module's client runtime piece) are generated; never hand-edit them.
-- Modules are `lib/<model>`, `lib/_<service>`, `lib/__scalar/<scalar>`; their UI files are
-  `<Model>.Template|Unit|Util|View|Zone.tsx`, `<Service>.Util|Zone.tsx`, `<Scalar>.Template|Unit.tsx`. A test is
-  named after the one file it covers, so `<model>.<topic>.signal.test.ts` is refused like `<model>.<topic>.signal.ts`.
-  Sync removes, and names, a module folder left with only its generated `index.ts` (a merge moved its sources away).
-- `ui/`, `webkit/`, `srvkit/`, `common/`, `plugin/` and module `index.ts` barrels are generated
-  (`export * from "./name";` per 1-depth entry, `export {};` when empty, so a stale one heals on sync;
-  `akan create-library` starts `common/`, `srvkit/`, `webkit/`, `ui/` with that empty barrel) — never hand-edit or
-  track them. **Never hand-write an
-  `index.tsx` / `.jsx` / `.mts` at those roots**: Bun resolves it before the generated `index.ts`, so new exports are
-  `undefined` at runtime (`akan sync` refuses it, `akan doctor` reports `facet-index-shadowed`); a namespace belongs
-  in `ui/<Folder>/index.tsx`.
-- Sync writes barrels, module indexes and `akan.*.json` exactly as Biome prints them (`akan lint --no-fix` passes
-  right after a sync), so a lint diff in one is a generator bug — fix the generator.
-- **`akan sync` owns package.json `dependencies`**: it adds imports at the root's version, realigns root-declared
-  entries, and drops unimported ones (logged); undeclared-at-root entries are kept with a warning. Keep a package no
-  TS file imports (a CSS `@plugin`, a runtime-only package) with `akan.keepDependencies`; `externalLibs` and
-  `trustedDependencies` always stay; devDependencies are realigned, never pruned. `akan install-library` lets the
-  root win — it adds only what the root lacks and warns when the lib wants a newer version.
+The root allowlists, module file names, and everything sync generates or keeps: `syncRule`, a reference of the
+`akan-deps` skill.
+
+- Sync refuses a file or folder its root allowlist lacks, a hand-written file or test in `lib/`'s root, and a
+  module file named off the pattern (`<model>.<topic>.signal.ts`). No `apps/*/base` or `libs/*/base` — use `common/`.
+- `ui/`, `webkit/`, `srvkit/`, `common/`, `plugin/` and module `index.ts` barrels, `lib/__lib/` and `lib/__client/`
+  are generated — never hand-edit or track them. **Never hand-write an `index.tsx` / `.jsx` / `.mts` at those
+  roots**: Bun resolves it before the generated `index.ts`, so new exports are `undefined` at runtime; a namespace
+  belongs in `ui/<Folder>/index.tsx`.
+- **`akan sync` owns package.json `dependencies`**: it adds what a file imports and drops what none does (logged).
+  Keep a package no TS file imports (a CSS `@plugin`, a runtime-only package) with `akan.keepDependencies`.
 
 ## Present In The Code — Do Not Imitate
 

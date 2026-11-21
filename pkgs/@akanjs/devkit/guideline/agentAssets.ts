@@ -54,7 +54,7 @@ export class AgentAssets {
       "framework",
     ],
     "akan-err": ["errorCodes"],
-    "akan-deps": [],
+    "akan-deps": ["syncRule"],
     "akan-debug": [],
     "akan-page": ["pageRule", "akanApi#imports", "akanApi#routes", "akanApi#app-config"],
     "akan-query": ["queryRule"],

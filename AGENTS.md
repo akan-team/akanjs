@@ -158,7 +158,8 @@ with placeholders only. `AKAN_PUBLIC_*` values ship to the browser — never put
 ## Path Rules
 
 Each area's full contract is a rule file in `.claude/rules/akan/`. Claude Code and Cursor load it when a
-matching file is touched; any other agent reads it before editing a match.
+file tool reads or edits a match, not when a shell command or a scaffold writes one: read it yourself before that,
+as any other agent does before editing a match.
 
 | Files | Rule |
 |---|---|

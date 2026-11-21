@@ -31,8 +31,14 @@ Raw `tsc` misses the generated barrels and reports false errors. Do not reach fo
 **Apply the real fix the rule intends. Do not silence the checker.** No blanket lint-disable, no throwaway
 re-export, no export-in-place trick, no `as any`, no non-null assertion. Gaming a check is a defect, not a
 fix. When a suppression is genuinely right it carries a reason:
-`// biome-ignore lint/<rule>: <why>` — and a grit plugin diagnostic is suppressed as `lint/plugin`, not the
-bare `plugin` category Biome's own message suggests.
+`// biome-ignore lint/<rule>: <why>` — and a grit plugin diagnostic is suppressed as `lint/plugin`
+(`// biome-ignore-all lint/plugin: <why>` for a whole file), not the bare `plugin` category Biome's own message
+suggests. The grit plugins scope `apps/` and `libs/`, never `pkgs/`.
+
+- **`biome.json` is strict JSON** — a comment breaks config resolution without an error (Biome falls back to
+  discovery and aborts on a nested config); rename it `biome.jsonc` to document a disabled rule.
+- **`akan lint` prints up to 200 diagnostics** (`--max-diagnostics <n>`, `0` = all); Biome's own uncounted 20 reads
+  as progress when the mix merely changed.
 
 Common classes and their real fix:
 

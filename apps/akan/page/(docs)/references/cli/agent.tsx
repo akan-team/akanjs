@@ -44,8 +44,8 @@ export default page()
       {
         name: <span className="font-sans">{l.trans({ en: "path rule", ko: "경로 규칙" })}</span>,
         desc: l.trans({
-          en: "One area's full contract, such as `page/**`, loaded when a matching file is touched.",
-          ko: "`page/**` 같은 한 영역의 전체 규칙입니다. 그 경로의 파일을 다룰 때 불러옵니다.",
+          en: "One area's full contract, such as `page/**`, loaded when a file tool opens a matching file.",
+          ko: "`page/**` 같은 한 영역의 전체 규칙입니다. 에이전트가 파일 도구로 그 경로의 파일을 열 때 불러옵니다.",
         }),
       },
       {
