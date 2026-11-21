@@ -105,6 +105,36 @@ export class DeclarationReader {
     ];
   }
 
+  aliasesUsedBy(symbol: ts.Symbol, documented: ReadonlySet<string>): string[] {
+    const found = new Map<string, string>();
+    const seen = new Set<ts.Type>();
+    const visit = (type: ts.Type) => {
+      if (seen.has(type)) return;
+      seen.add(type);
+      const alias = type.aliasSymbol;
+      if (alias) {
+        const [declaration] = alias.declarations ?? [];
+        if (
+          declaration &&
+          ts.isTypeAliasDeclaration(declaration) &&
+          !declaration.typeParameters &&
+          this.#isOwn(declaration) &&
+          !documented.has(alias.name)
+        )
+          found.set(alias.name, this.declarationText(alias));
+        return;
+      }
+      if (type.isUnionOrIntersection()) for (const each of type.types) visit(each);
+      else if (type.flags & ts.TypeFlags.Object && (type as ts.ObjectType).objectFlags & ts.ObjectFlags.Anonymous)
+        for (const property of this.#checker.getPropertiesOfType(type)) visit(this.#checker.getTypeOfSymbol(property));
+    };
+    for (const signature of this.#checker.getTypeOfSymbol(symbol).getCallSignatures()) {
+      for (const parameter of signature.getParameters()) visit(this.#checker.getTypeOfSymbol(parameter));
+      visit(signature.getReturnType());
+    }
+    return [...found.values()];
+  }
+
   foreignBases(symbol: ts.Symbol): string[] {
     const [declaration] = symbol.declarations ?? [];
     const nodes =
