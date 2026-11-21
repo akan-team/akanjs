@@ -10,6 +10,7 @@ import { DatabaseSignal } from "../signal/signalRegistry";
 import { slice } from "../signal/slice";
 import { AkanLib } from "./akanLib";
 import { AkanOption } from "./akanOption";
+import { WsCredentialRevocation } from "./routing/wsCredentialRevocation";
 
 const CrossItemInput = via((f) => ({ title: f(String), category: f(String), score: f(Int, { default: 0 }) }));
 const CrossItemObject = via(CrossItemInput, () => ({}));
@@ -50,7 +51,15 @@ class CrossItemService extends serve(crossItemDatabase, () => ({})) {}
 const crossItemServiceModel = ServiceModel.fromModel(CrossItemService, crossItemConstant, crossItemDatabase);
 
 class CrossItemInternal extends internal(crossItemServiceModel, () => ({})) {}
-class CrossItemEndpoint extends endpoint(crossItemServiceModel, () => ({})) {}
+class CrossItemEndpoint extends endpoint(crossItemServiceModel, (builder) => ({
+  revokeCrossSession: builder
+    .mutation(Boolean, { guards: [Public] })
+    .body("sid", String)
+    .exec((sid) => {
+      WsCredentialRevocation.revoke({ sid: [sid] });
+      return true;
+    }),
+})) {}
 class CrossItemSlice extends slice(
   crossItemServiceModel,
   { guards: { root: Public, get: Public, cru: Public } },

@@ -66,10 +66,11 @@ const call = async (instance: Instance, route: string, body: object) => {
   return (await response.json()) as { id: string };
 };
 
-const subscribe = async (instance: Instance, key: string, args: unknown[]) => {
-  const socket = new WebSocket(`ws://localhost:${instance.port}/api/ws`);
+const subscribe = async (instance: Instance, key: string, args: unknown[], headers?: Record<string, string>) => {
+  const socket = new WebSocket(`ws://localhost:${instance.port}/api/ws`, { headers } as unknown as string[]);
   const received: Received[] = [];
   socket.addEventListener("message", (event) => received.push(JSON.parse(String(event.data)) as Received));
+  const closed = new Promise<CloseEvent>((resolve) => socket.addEventListener("close", resolve));
   await new Promise((resolve, reject) => {
     socket.addEventListener("open", resolve);
     socket.addEventListener("error", reject);
@@ -87,7 +88,7 @@ const subscribe = async (instance: Instance, key: string, args: unknown[]) => {
   while (!received.length) await Bun.sleep(20);
   const ack = received.shift() as Received;
   if (ack.type !== "sub" || !ack.subscribe) throw new Error(`${key} was not subscribed: ${JSON.stringify(ack)}`);
-  return { ack, next, close: () => socket.close() };
+  return { ack, next, closed, close: () => socket.close() };
 };
 
 const modes = [
@@ -161,6 +162,28 @@ for (const mode of modes)
         expect(await list.next("pub")).toMatchObject({ data: { op: "leave", id: created.id } });
       } finally {
         list.close();
+      }
+    });
+
+    test("a session revoked on one instance closes its sockets on another, and leaves another session's open", async () => {
+      const [holder, revoker] = instances;
+      const bearerOf = (sid: string) => ({
+        authorization: `Bearer header.${Buffer.from(JSON.stringify({ sid })).toString("base64url")}.signature`,
+      });
+      const revoked = await subscribe(holder, "crossItemLiveInCategory", ["politics"], bearerOf("s-revoked"));
+      const kept = await subscribe(holder, "crossItemLiveInCategory", ["politics"], bearerOf("s-kept"));
+      try {
+        await call(revoker, "revokeCrossSession", { sid: "s-revoked" });
+        const timeout = Bun.sleep(5_000).then(() => null);
+        expect(await Promise.race([revoked.closed, timeout])).toMatchObject({
+          code: 4401,
+          reason: "credential revoked",
+        });
+        const created = await call(revoker, "createCrossItem", { data: { title: "Vote", category: "politics" } });
+        expect(await kept.next("pub")).toMatchObject({ data: { op: "enter", id: created.id } });
+      } finally {
+        revoked.close();
+        kept.close();
       }
     });
   });

@@ -2185,6 +2185,13 @@ export type WebsocketRoute = (ws: Bun.ServerWebSocket<unknown>, data: unknown[],
 
 export type WebsocketRoutes = Record<string, WebsocketRoute>;
 
+export declare class WsCredentialRevocation {
+    static use(websocket: WebsocketAdaptor): void;
+    static track(ws: Bun.ServerWebSocket<unknown>): void;
+    static untrack(ws: Bun.ServerWebSocket<unknown>): void;
+    static revoke(claims: WsCredentialClaims): void;
+}
+
 export declare const assertAkanConsoleAllowed: (env?: Partial<Pick<BaseEnv, "environment" | "operationMode">>) => void;
 
 export declare const copyBunRequestFields: (target: Request, source: Request) => Request;

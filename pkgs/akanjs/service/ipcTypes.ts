@@ -1,5 +1,5 @@
 import type { LogRecord } from "akanjs/common";
-import type { LiveChange } from "./predefinedAdaptor/websocket.adaptor";
+import type { LiveChange, WsCredentialClaims } from "./predefinedAdaptor/websocket.adaptor";
 
 export type AkanChildRole = "all" | "federation" | "batch";
 
@@ -218,6 +218,7 @@ export type AkanIpcMessage =
   | { type: "pubsub.snapshot.request" }
   | { type: "pubsub.snapshot"; rooms: string[]; liveModels?: string[]; pid?: number }
   | { type: "live.change"; change: LiveChange; origin?: string }
+  | { type: "ws.revoke"; claims: WsCredentialClaims; origin?: string }
   /** Child → gateway: every model the child holds live rooms for. */
   | { type: "live.models"; models: string[]; pid?: number }
   | { type: "queue.enqueued"; queue: string; name: string; jobId: string }

@@ -250,6 +250,7 @@ export {
   type RemoteSourceProps,
   type RemoteTokens,
 } from "./remote";
+export { WsCredentialRevocation } from "./routing/wsCredentialRevocation";
 export type { SessionRefreshHook } from "./sessionRefresh";
 // `routeElementComposer`/`routeTreeBuilder` stay out: they would pull React into every process that loads this barrel.
 export {

@@ -169,6 +169,7 @@ const writePubsubChild = (serverPath: string) =>
           const delivered = [];
           const changes = [];
           const acks = [];
+          const revocations = [];
           const http = Bun.serve({
             unix: process.env.AKAN_CHILD_SOCKET,
             fetch(req) {
@@ -193,6 +194,9 @@ const writePubsubChild = (serverPath: string) =>
               if (url.pathname === "/models") process.send?.({ type: "live.models", models, pid: process.pid });
               if (url.pathname === "/change")
                 process.send?.({ type: "live.change", change: { refName: models[0], next: url.searchParams.get("n") } });
+              if (url.pathname === "/revoke")
+                process.send?.({ type: "ws.revoke", claims: { sid: url.searchParams.getAll("sid") } });
+              if (url.pathname === "/revocations") return Response.json(revocations);
               if (url.pathname === "/changes") return Response.json(changes);
               if (url.pathname === "/acks") return Response.json(acks);
               return Response.json(delivered);
@@ -204,6 +208,7 @@ const writePubsubChild = (serverPath: string) =>
             if (message.type === "pubsub.deliver") delivered.push(message.data.n);
             if (message.type === "live.change") changes.push(message.change.refName + ":" + message.change.next);
             if (message.type === "pubsub.subscribed") acks.push(message.ack);
+            if (message.type === "ws.revoke") revocations.push(message.claims);
             if (message.type === "shutdown") {
               http.stop(true);
               process.exit(0);
@@ -2385,6 +2390,33 @@ describe("AkanApp", () => {
       await call(writer, "/change?model=task&n=4");
       await changesReach(["task:2", "task:4"]);
       expect(await call(writer, "/changes")).toEqual([]);
+    });
+  }, 20_000);
+
+  test("hands a revocation from one replica to every other, whatever rooms they hold", async () => {
+    const { serverPath, runtimeDir } = await makeRoot("akan-app-revoke-");
+    await writePubsubChild(serverPath);
+
+    await withApp(serverPath, { replica: 2, runtimeDir }, async (port) => {
+      await waitFor(async () => {
+        const body = await readHealth(port);
+        return body?.children.length === 2 && body.children.every((child) => child.ready) ? body : null;
+      });
+      const entries = await readdir(runtimeDir);
+      const socketOf = (idx: number) =>
+        path.join(runtimeDir, entries.find((name) => name.endsWith(`-${idx}.sock`)) ?? `missing-${idx}`);
+      const [holder, revoker] = [socketOf(0), socketOf(1)];
+      const call = async (socketPath: string, pathname: string) =>
+        (await (await fetch(`http://child${pathname}`, { unix: socketPath })).json()) as unknown;
+
+      await call(revoker, "/revoke?sid=s-1&sid=s-2");
+      await waitFor(
+        async () => ((await call(holder, "/revocations")) as unknown[]).length > 0 || null,
+        2_000,
+        "the other replica never heard the revocation",
+      );
+      expect(await call(holder, "/revocations")).toEqual([{ sid: ["s-1", "s-2"] }]);
+      expect(await call(revoker, "/revocations")).toEqual([]);
     });
   }, 20_000);
 

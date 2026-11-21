@@ -19,6 +19,7 @@ import { localRoomsOf } from "./localRooms";
 import { RoomReplay } from "./roomReplay";
 import { ServerLimits } from "./serverLimits";
 import type { WebSurfaceHold } from "./webSurfaceHold";
+import { WsCredentialRevocation } from "./wsCredentialRevocation";
 
 export interface AkanAppPrepared {
   routes: SignalRoutes["routes"];
@@ -260,6 +261,7 @@ export class ServerListener {
       coalesces: (roomId) => SignalResolver.coalescesRoom(roomId),
     });
     SignalResolver.setLocalPublish(rooms.publish, websocket, this.#di.live, roomReplay, rooms.resync);
+    WsCredentialRevocation.use(websocket);
     this.#localPublish = rooms.publish;
     this.#roomReplay = roomReplay;
     this.#websocket = websocket;

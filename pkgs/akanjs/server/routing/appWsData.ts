@@ -59,8 +59,11 @@ export class AppWsData {
     return TrustedProxy.clientAddress(this.headers, ws.remoteAddress);
   }
   //? The bearer first: `__auth` sets one over the handshake cookie, which stays in the jar.
+  credentialToken(): string | null {
+    return bearerTokenOf(this.headers.get("authorization")) ?? readSessionToken(this.jar).token ?? null;
+  }
   credentialExpiresAt(): number | null {
-    const token = bearerTokenOf(this.headers.get("authorization")) ?? readSessionToken(this.jar).token;
+    const token = this.credentialToken();
     return token ? websocketCredentialContract.expiresAtOf(token) : null;
   }
   constructor(headers: Headers) {

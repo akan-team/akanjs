@@ -2146,6 +2146,7 @@ export declare const websocketBinaryFrameContract: {
 export declare const websocketCredentialContract: {
     readonly expiredCode: 4401;
     readonly expiredReason: "credential expired";
+    readonly revokedReason: "credential revoked";
     readonly expiresAtOf: (jwt: string) => null | number;
 };
 
