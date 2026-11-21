@@ -71,7 +71,9 @@ paths:
 - Keep existing domain vocabulary and its typos — transliterated terms and misspellings in use are load-bearing, and
   renaming silently breaks callers that match on the name.
 - Identifiers, type names, endpoint names, and log messages are **English**. Everything a user reads goes through
-  `l("model.field")` or `l.trans({ en, ko })` — never a hard-coded JSX string, never `window.alert`.
+  `l("model.field")` or `l.trans({ en, ko })` — never a hard-coded JSX string, never `window.alert`. An app whose
+  `i18n.locales` names one locale writes that text inline (`l.trans` and a dictionary entry each take a second
+  language it never serves); adding a locale later means moving each string into `l()` by hand.
 - Dictionary entries are `[en, ko]` pairs, nearly every label with a `.desc([en, ko])` even when repetitive; English
   in Title Case, Korean the plain domain term, `.error()` Korean ending in `다.`.
 
