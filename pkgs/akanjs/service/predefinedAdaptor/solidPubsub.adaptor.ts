@@ -5,6 +5,7 @@ import type {
   LiveChange,
   LiveChangeHandler,
   WebsocketAdaptor,
+  WsCredentialClaims,
   WsRedisEventHandler,
   WsSocketData,
 } from "./websocket.adaptor";
@@ -35,6 +36,7 @@ export class SolidPubSub
   #lastAck = 0;
   #eventHandler: WsRedisEventHandler | null = null;
   #changeHandler: LiveChangeHandler | null = null;
+  #revocationHandler: ((claims: WsCredentialClaims) => void) | null = null;
   #liveModels: string[] = [];
   readonly #messageHandler = (message: unknown) => {
     if (!message || typeof message !== "object") return;
@@ -44,6 +46,7 @@ export class SolidPubSub
       data?: unknown;
       origin?: string;
       change?: LiveChange;
+      claims?: WsCredentialClaims;
       ack?: number;
     };
     if (data.type === "pubsub.subscribed" && data.ack !== undefined) {
@@ -56,6 +59,10 @@ export class SolidPubSub
     }
     if (data.type === "live.change" && data.change && data.origin !== this.serverId) {
       this.#changeHandler?.(data.change);
+      return;
+    }
+    if (data.type === "ws.revoke" && data.claims && data.origin !== this.serverId) {
+      this.#revocationHandler?.(data.claims);
       return;
     }
     if (data.type === "pubsub.snapshot.request") {
@@ -78,6 +85,7 @@ export class SolidPubSub
     this.#acks.clear();
     this.#eventHandler = null;
     this.#changeHandler = null;
+    this.#revocationHandler = null;
     this.#liveModels = [];
     this.#socketRooms.clear();
   }
@@ -92,6 +100,14 @@ export class SolidPubSub
 
   onChange(handler: LiveChangeHandler): void {
     this.#changeHandler = handler;
+  }
+
+  publishRevocation(claims: WsCredentialClaims): void {
+    sendAkanIpc({ type: "ws.revoke", claims, origin: this.serverId });
+  }
+
+  onRevocation(handler: (claims: WsCredentialClaims) => void): void {
+    this.#revocationHandler = handler;
   }
 
   reportLiveModels(models: string[]): void {

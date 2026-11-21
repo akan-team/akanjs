@@ -32,6 +32,7 @@ import { BuiltinRoutes } from "./routing/builtinRoutes";
 import { RouteHosts } from "./routing/routeHosts";
 import { type AkanAppPrepared, ServerListener } from "./routing/serverListener";
 import type { WebSurfaceHold } from "./routing/webSurfaceHold";
+import { WsCredentialRevocation } from "./routing/wsCredentialRevocation";
 import { ServerConfig } from "./serverConfig";
 import { ServerMetrics } from "./serverMetrics";
 import { SessionRefresh } from "./sessionRefresh";
@@ -525,12 +526,14 @@ export class AkanServer {
     if (shouldListen) return this.listen();
     return await this.#start.unwound(async () => {
       const websocket = this.#di.getWebsocketAdaptor();
-      if (websocket)
+      if (websocket) {
         SignalResolver.setLocalPublish(
           (roomId, data) => this.#listener.publishLocal(roomId, data),
           websocket,
           this.#di.live,
         );
+        WsCredentialRevocation.use(websocket);
+      }
       this.status = "running";
       if (isNoListenCommand) return this;
       Logger.role = this.serverMode;

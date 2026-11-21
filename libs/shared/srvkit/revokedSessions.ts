@@ -1,6 +1,7 @@
 import { accessTokenSeconds } from "@libs/util/common";
 import { type Dayjs, dayjs } from "akanjs/base";
 import { Logger } from "akanjs/common";
+import { WsCredentialRevocation } from "akanjs/server";
 import { WebSession } from "./webSession";
 
 type RevokedSessionCheck = (sessionId: string) => Promise<boolean>;
@@ -41,9 +42,10 @@ export class RevokedSessions {
     }
   }
 
+  //? Sockets close after the mark, so the reconnect they make at once is already refused the session.
   static async markRevoked(sessionIds: string[], until = dayjs().add(RevokedSessions.deniedSeconds, "second")) {
     const mark = RevokedSessions.#mark;
-    if (!mark) return;
-    await Promise.all(sessionIds.map((sessionId) => mark(sessionId, until)));
+    if (mark) await Promise.all(sessionIds.map((sessionId) => mark(sessionId, until)));
+    WsCredentialRevocation.revoke({ sid: sessionIds, selfSid: sessionIds, meSid: sessionIds });
   }
 }

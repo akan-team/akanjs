@@ -488,6 +488,31 @@ describe("WebSocketRedisAdaptor channels", () => {
     expect(changes).toEqual([{ refName: "task", next: "{}" }]);
   });
 
+  test("listens for revocations on the app's channel from the start, through a return, and hears another server's", async () => {
+    const reader = await openAdaptor("server-b");
+    const writer = await openAdaptor("server-a");
+    const [heard, echoed]: unknown[][] = [[], []];
+    reader.adaptor.onRevocation((claims) => heard.push(claims));
+    reader.subscriber.emit("ready");
+    reader.subscriber.emit("close");
+    reader.subscriber.emit("ready");
+    writer.subscriber.emit("ready");
+    writer.adaptor.onRevocation((claims) => echoed.push(claims));
+    expect([reader.subscriber.subscribed, writer.subscriber.subscribed]).toEqual([
+      ["app:ws:revoke", "app:ws:revoke"],
+      ["app:ws:revoke"],
+    ]);
+    expect(reader.warns).toEqual([]);
+
+    writer.publisher.emit("ready");
+    writer.adaptor.publishRevocation({ sid: ["s-1"] });
+    await until(() => writer.publisher.sent.length === 1);
+    const [{ channel, message }] = writer.publisher.sent;
+    expect(channel).toBe("app:ws:revoke");
+    for (const server of [reader, writer]) server.subscriber.emit("messageBuffer", Buffer.from(channel), message);
+    expect([heard, echoed]).toEqual([[{ sid: ["s-1"] }], []]);
+  });
+
   test("resolves a join once Redis confirms the SUBSCRIBE, and a room on the same channel waits for that reply", async () => {
     const { adaptor, subscriber } = await openAdaptor();
     subscriber.emit("ready");

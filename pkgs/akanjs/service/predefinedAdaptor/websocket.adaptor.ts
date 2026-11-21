@@ -18,6 +18,9 @@ export interface LiveChange {
 }
 export type LiveChangeHandler = (change: LiveChange) => void;
 
+/** Claim name to values: a socket whose credential carries any one of them is closed. */
+export type WsCredentialClaims = Record<string, string[]>;
+
 export interface WebsocketPublishOption {
   /** Only the newest frame for the room matters, so an undelivered older one may be dropped for it. */
   coalesce?: boolean;
@@ -44,6 +47,9 @@ export interface WebsocketAdaptor {
   onChange?(handler: LiveChangeHandler): void;
   /** The models this server holds live rooms for, each time that changes, so changes to the rest pass it by. */
   reportLiveModels?(models: string[]): void;
+  /** To the app's other servers, each closing its own sockets whose credential carries one of the claims. */
+  publishRevocation?(claims: WsCredentialClaims): void;
+  onRevocation?(handler: (claims: WsCredentialClaims) => void): void;
   /** Resolves once what another server publishes to the room reaches this one, or sooner if that link is down or stalls. */
   joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, option?: WebsocketJoinOption): Promise<void>;
   leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
@@ -65,6 +71,13 @@ interface BufferedMessage {
 interface HeldRoom {
   sockets: Set<string>;
   channel: string;
+}
+
+interface RedisHandlers {
+  event: WsRedisEventHandler | null;
+  change: LiveChangeHandler | null;
+  recovery: ((rooms: string[]) => void) | null;
+  revocation: ((claims: WsCredentialClaims) => void) | null;
 }
 
 interface ChannelHold {
@@ -93,7 +106,7 @@ export class WebSocketRedisAdaptor
   //* `[version][kind][origin length][origin][room length][room][payload]`; the payload is what the publisher hands its
   //* own sockets, so a receiver needs no model.
   static readonly #version = 1;
-  static readonly #kind = { json: 0x6a, bytes: 0x62, change: 0x63 } as const;
+  static readonly #kind = { json: 0x6a, bytes: 0x62, change: 0x63, revoke: 0x72 } as const;
   //* Every server of an app must split rooms the same way, or it listens on shards the others never publish to. More
   //* shards bring what a server hears closer to its own rooms, at one more SUBSCRIBE for a room alone in its shard.
   static readonly #shards = 16_384;
@@ -104,9 +117,7 @@ export class WebSocketRedisAdaptor
   readonly #rooms = new Map<string, HeldRoom>();
   readonly #socketRooms = new Map<string, Set<string>>();
   readonly #channels = new Map<string, ChannelHold>();
-  #eventHandler: WsRedisEventHandler | null = null;
-  #changeHandler: LiveChangeHandler | null = null;
-  #recoveryHandler: ((rooms: string[]) => void) | null = null;
+  readonly #handlers: RedisHandlers = { event: null, change: null, recovery: null, revocation: null };
   #publisherReady = false;
   #draining = false;
   #drained: Promise<void> = Promise.resolve();
@@ -130,6 +141,10 @@ export class WebSocketRedisAdaptor
 
   #changeChannel(refName: string) {
     return `${this.channelPrefix}ws:change:${refName}`;
+  }
+
+  get #revocationChannel() {
+    return `${this.channelPrefix}ws:revoke`;
   }
 
   override async onInit() {
@@ -171,6 +186,7 @@ export class WebSocketRedisAdaptor
       //* A SUBSCRIBE ioredis rejected in an outage included. `ready` fires before Redis answers what ioredis resent, so
       //* no earlier reply vouches for the new connection.
       const replies = [...this.#channels].map(([channel, hold]) => this.#subscribe(channel, hold));
+      if (this.#handlers.revocation) this.#subscribeRevocations();
       const recovering = !this.#subscriberReady && this.#subscriberStarted && this.#channels.size > 0;
       this.#subscriberReady = true;
       this.#subscriberStarted = true;
@@ -181,7 +197,7 @@ export class WebSocketRedisAdaptor
       //? first has them told at the next `ready`.
       let lost = false;
       const recover = () => {
-        if (!lost) this.#recoveryHandler?.([...this.#rooms.keys()]);
+        if (!lost) this.#handlers.recovery?.([...this.#rooms.keys()]);
       };
       const timer = setTimeout(recover, WebSocketRedisAdaptor.#subscribeTimeoutMs);
       const lose = () => {
@@ -230,9 +246,7 @@ export class WebSocketRedisAdaptor
       //? On a link that already ended, ioredis would arm a 2 s destroy timer that no close ever clears.
       if (this.publisher.status !== "end") this.publisher.disconnect();
     }
-    this.#eventHandler = null;
-    this.#changeHandler = null;
-    this.#recoveryHandler = null;
+    Object.assign(this.#handlers, { event: null, change: null, recovery: null, revocation: null });
     this.#rooms.clear();
     this.#socketRooms.clear();
     this.#channels.clear();
@@ -266,7 +280,29 @@ export class WebSocketRedisAdaptor
   }
 
   onChange(handler: LiveChangeHandler): void {
-    this.#changeHandler = handler;
+    this.#handlers.change = handler;
+  }
+
+  publishRevocation(claims: WsCredentialClaims): void {
+    this.#send({
+      channel: this.#revocationChannel,
+      roomId: "",
+      message: this.#pack("revoke", "", JSON.stringify(claims)),
+      coalesce: false,
+      seq: this.#sent++,
+    });
+  }
+
+  //? Kept out of `#channels`, whose count decides the room resync and the outage warning: neither means anything here.
+  onRevocation(handler: (claims: WsCredentialClaims) => void): void {
+    this.#handlers.revocation = handler;
+    if (this.#subscriberReady) this.#subscribeRevocations();
+  }
+
+  #subscribeRevocations() {
+    this.subscriber.subscribe(this.#revocationChannel).catch((err: Error) => {
+      this.logger.warn(`Subscribe to ${this.#revocationChannel} failed: ${err.message}`);
+    });
   }
 
   //? Behind a non-empty buffer a message waits its turn: published now, it would overtake the ones still draining.
@@ -285,15 +321,15 @@ export class WebSocketRedisAdaptor
   }
 
   setEventHandler(handler: WsRedisEventHandler): void {
-    this.#eventHandler = handler;
+    this.#handlers.event = handler;
   }
 
   clearEventHandler(): void {
-    this.#eventHandler = null;
+    this.#handlers.event = null;
   }
 
   onRecovered(handler: (rooms: string[]) => void): void {
-    this.#recoveryHandler = handler;
+    this.#handlers.recovery = handler;
   }
 
   async joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, { live }: WebsocketJoinOption = {}): Promise<void> {
@@ -410,22 +446,27 @@ export class WebSocketRedisAdaptor
       const unpacked = this.#unpack(message);
       if (!unpacked || unpacked.origin === this.serverId) return;
       if (unpacked.kind === WebSocketRedisAdaptor.#kind.change) {
-        this.#changeHandler?.(JSON.parse(unpacked.payload.toString()) as LiveChange);
+        this.#handlers.change?.(JSON.parse(unpacked.payload.toString()) as LiveChange);
+        return;
+      }
+      if (unpacked.kind === WebSocketRedisAdaptor.#kind.revoke) {
+        this.#handlers.revocation?.(JSON.parse(unpacked.payload.toString()) as WsCredentialClaims);
         return;
       }
       // A shard carries other rooms too; a server with nobody in this one stops before reading the payload.
-      if (!this.#eventHandler || !this.#rooms.has(unpacked.roomId)) return;
+      const handleEvent = this.#handlers.event;
+      if (!handleEvent || !this.#rooms.has(unpacked.roomId)) return;
       const data =
         unpacked.kind === WebSocketRedisAdaptor.#kind.bytes
           ? new Uint8Array(unpacked.payload)
           : (JSON.parse(unpacked.payload.toString()) as unknown);
-      this.#eventHandler(unpacked.roomId, data);
+      handleEvent(unpacked.roomId, data);
     } catch (err) {
       this.logger.warn(`Failed to handle Redis WS message: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  #pack(kind: "json" | "bytes" | "change", roomId: string, payload: string | Uint8Array): Buffer {
+  #pack(kind: "json" | "bytes" | "change" | "revoke", roomId: string, payload: string | Uint8Array): Buffer {
     const origin = Buffer.from(this.serverId, "utf-8");
     const room = Buffer.from(roomId, "utf-8");
     const header = Buffer.alloc(2 + 2 + origin.length + 2 + room.length);

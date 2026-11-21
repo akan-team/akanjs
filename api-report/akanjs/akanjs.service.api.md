@@ -468,6 +468,10 @@ export type AkanIpcMessage = {
     socketId: string;
     roomId?: string;
     pid?: number;
+} | {
+    type: "ws.revoke";
+    claims: WsCredentialClaims;
+    origin?: string;
 };
 
 export interface AkanJob<Data = unknown, Returns = unknown> {
@@ -1942,6 +1946,8 @@ export declare class SolidPubSub extends SolidPubSub_base implements WebsocketAd
     publish(roomId: string, data: unknown): void;
     publishChange(change: LiveChange): void;
     onChange(handler: LiveChangeHandler): void;
+    publishRevocation(claims: WsCredentialClaims): void;
+    onRevocation(handler: (claims: WsCredentialClaims) => void): void;
     reportLiveModels(models: string[]): void;
     setEventHandler(handler: WsRedisEventHandler): void;
     clearEventHandler(): void;
@@ -2282,6 +2288,8 @@ export declare class WebSocketRedisAdaptor extends WebSocketRedisAdaptor_base im
     publish(roomId: string, data: unknown, { coalesce }?: WebsocketPublishOption): void;
     publishChange(change: LiveChange): void;
     onChange(handler: LiveChangeHandler): void;
+    publishRevocation(claims: WsCredentialClaims): void;
+    onRevocation(handler: (claims: WsCredentialClaims) => void): void;
     setEventHandler(handler: WsRedisEventHandler): void;
     clearEventHandler(): void;
     onRecovered(handler: (rooms: string[]) => void): void;
@@ -2300,6 +2308,8 @@ export interface WebsocketAdaptor {
     publishChange?(change: LiveChange): void;
     onChange?(handler: LiveChangeHandler): void;
     reportLiveModels?(models: string[]): void;
+    publishRevocation?(claims: WsCredentialClaims): void;
+    onRevocation?(handler: (claims: WsCredentialClaims) => void): void;
     joinRoom(ws: Bun.ServerWebSocket<unknown>, room: string, option?: WebsocketJoinOption): Promise<void>;
     leaveRoom(ws: Bun.ServerWebSocket<unknown>, room: string): Promise<void>;
     leaveAllRooms(ws: Bun.ServerWebSocket<unknown>): Promise<void>;
@@ -2317,6 +2327,8 @@ export interface WebsocketJoinOption {
 export interface WebsocketPublishOption {
     coalesce?: boolean;
 }
+
+export type WsCredentialClaims = Record<string, string[]>;
 
 export type WsRedisEventHandler = (roomId: string, data: unknown) => void;
 
