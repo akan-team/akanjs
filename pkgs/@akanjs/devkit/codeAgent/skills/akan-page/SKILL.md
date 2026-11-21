@@ -89,9 +89,12 @@ File names, stages, the `.render()` order and what a route file must never do ar
   const setGenre = (next: string) => router.replace(`/books?genre=${next}`, { shallow: true, scrollToTop: false });
   ```
 
-  `searchParams` follows the replace and the back and forward buttons. Never keep the filter in `useState`: a shallow
-  back draws no page, so the copy stays on the old value while the URL moves. Shallow holds only while the path stays
-  the same; a server `.search()` sees the value at the next full navigation.
+  `searchParams` follows the replace and the back and forward buttons, and the server render reads the request's
+  query from it, so the first HTML already shows the filter the URL names. A text box is the same: `value` from
+  `searchParams` and a replace on every `onChange`, which writes `searchParams` before it returns, so no keystroke
+  lags. Never keep the filter in `useState`, with or without a `popstate` listener: a shallow back draws no page, so
+  the copy stays on the old value while the URL moves. Shallow holds only while the path stays the same; a server
+  `.search()` sees the value at the next full navigation.
 - On a web page's first render `st.use.searchParams()` is still the server's empty snapshot, synced right after
   hydration, so an effect that needs the query on its first run takes the page's `.search()` value as a prop.
 - A `Link` renders its page ahead of the click, guards included: on hover, on keyboard focus, or as it shows with
