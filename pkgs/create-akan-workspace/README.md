@@ -15,16 +15,27 @@ global folder (`~/.bun` by default) ([details](#with-only-node-and-npm)):
 npx -y bun@1.4.4 x create-akan-workspace@latest
 ```
 
-It installs the `akan` CLI (`@akanjs/cli`, at this package's own version) with `bun install -g`, then runs
-`akan create-workspace`, which:
+## What It Does
 
-1. asks for a workspace name and an app name, unless you passed them,
-2. creates `./<workspace>`, or fills the current folder when the name is `.`, and installs its dependencies,
-3. generates the first app with a sample `task` module and pages, unless you pass `--sample false`,
-4. writes `AGENTS.md`, `CLAUDE.md` and Cursor rules, and registers the Akan MCP server for Claude Code, Codex and
-   Cursor,
-5. makes the first git commit, as `Akan.js <noreply@akanjs.com>` when git has no identity configured. In a folder
-   another git repository tracks, it commits nothing and leaves the new files for you to commit there.
+All of it, so a coding agent has nothing to read from the package before running it:
+
+- **One global install.** `bun install -g @akanjs/cli@<this package's version>` puts the `akan` CLI in Bun's global
+  folder (`~/.bun` by default), then `akan create-workspace` does the rest. Nothing else is written outside the
+  workspace folder.
+- **Files, in the workspace folder only.** `./<workspace>`, or the folder itself when the name is `.`. It gets the
+  root config (`package.json`, `.env`, `.gitignore`, `tsconfig.json`, `biome.json`, editor settings), the first app in
+  `apps/<app>/` with a sample `task` module and pages unless you pass `--sample false`, and the coding-agent files:
+  `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.cursor/`, `.codex/config.toml` and `.mcp.json`, which register
+  the Akan MCP server for Claude Code, Codex and Cursor. A file already there is never overwritten: the command stops
+  and names it. Your home folder and a filesystem root are refused.
+- **One command in it.** `bun install`, unless you pass `--init false`. It builds nothing and starts no server.
+- **Network.** The npm registry, or the one `--registry` names: the CLI, the workspace's dependencies and one
+  version lookup. `--libs true` also fetches the Akan.js repository when the installed `akanjs` package does not carry the
+  two libraries.
+- **Git.** In a folder no repository tracks, `git init` and a first commit, as `Akan.js <noreply@akanjs.com>` when git has
+  no identity configured. In a folder another git repository tracks, no `git init` and no commit: the new files are
+  left for you to commit there.
+- **Questions.** A workspace name and an app name, each asked only when it was not passed.
 
 Then start the app. It opens on `http://localhost:8282`.
 

@@ -15,15 +15,27 @@ Node와 npm만 있는 호스트에서는 npx로 실행하세요. `PATH`에는 �
 npx -y bun@1.4.4 x create-akan-workspace@latest
 ```
 
-이 패키지와 같은 버전의 `akan` CLI(`@akanjs/cli`)를 `bun install -g`로 설치한 뒤 `akan create-workspace`를 실행합니다.
-이 명령은 다음을 합니다.
+## 이 명령이 하는 일
 
-1. 워크스페이스 이름과 앱 이름을 묻습니다. 미리 넘겼다면 묻지 않습니다.
-2. `./<workspace>`를 만들고 의존성을 설치합니다. 이름이 `.`이면 현재 폴더를 그대로 씁니다.
-3. 샘플 `task` 모듈과 페이지가 들어 있는 첫 앱을 만듭니다. `--sample false`면 샘플을 빼고 만듭니다.
-4. `AGENTS.md`, `CLAUDE.md`, Cursor 규칙을 쓰고, Claude Code·Codex·Cursor에 Akan MCP 서버를 등록합니다.
-5. 첫 git 커밋을 만듭니다. git에 사용자 정보가 없으면 `Akan.js <noreply@akanjs.com>`으로 커밋합니다. 다른 git
-   저장소가 추적하는 폴더라면 커밋하지 않고, 새 파일을 그 저장소에서 직접 커밋하도록 남겨 둡니다.
+아래가 전부입니다. 코딩 에이전트가 실행 전에 패키지 내용을 읽어 볼 필요가 없습니다.
+
+- **전역 설치 하나.** `bun install -g @akanjs/cli@<이 패키지의 버전>`으로 `akan` CLI를 Bun의 전역 폴더(기본
+  `~/.bun`)에 설치하고, 나머지는 `akan create-workspace`가 합니다. 워크스페이스 폴더 밖에는 그 밖에 아무것도 쓰지
+  않습니다.
+- **파일은 워크스페이스 폴더 안에만.** `./<workspace>`에 쓰고, 이름이 `.`이면 그 폴더에 그대로 씁니다. 루트
+  설정(`package.json`, `.env`, `.gitignore`, `tsconfig.json`, `biome.json`, 에디터 설정), `apps/<app>/`의 첫 앱(샘플
+  `task` 모듈과 페이지 포함, `--sample false`면 제외), 코딩 에이전트 파일(`AGENTS.md`, `CLAUDE.md`, `.claude/`,
+  `.agents/`, `.cursor/`, `.codex/config.toml`, `.mcp.json`)이 들어갑니다. 에이전트 파일은 Claude Code·Codex·Cursor에
+  Akan MCP 서버를 등록합니다. 이미 있는 파일은 덮어쓰지 않고, 그 파일 이름을 알려 주며 멈춥니다. 홈 폴더와 파일
+  시스템 루트에는 만들지 않습니다.
+- **그 안에서 실행하는 명령 하나.** `bun install`입니다. `--init false`면 생략합니다. 빌드하거나 서버를 띄우지
+  않습니다.
+- **네트워크.** npm 레지스트리(또는 `--registry`로 지정한 곳)만 씁니다. CLI와 워크스페이스 의존성을 받고 버전을 한
+  번 조회합니다. `--libs true`는 설치된 `akanjs` 패키지에 두 라이브러리가 없을 때 Akan.js 저장소도 받아옵니다.
+- **Git.** 어떤 저장소도 추적하지 않는 폴더에서는 `git init` 후 첫 커밋을 만듭니다. git에 사용자 정보가 없으면
+  `Akan.js <noreply@akanjs.com>`으로 커밋합니다. 다른 git 저장소가 추적하는 폴더에서는 `git init`도 커밋도 하지 않고,
+  새 파일을 그 저장소에서 직접 커밋하도록 남겨 둡니다.
+- **질문.** 워크스페이스 이름과 앱 이름을 묻습니다. 미리 넘긴 것은 묻지 않습니다.
 
 그다음 앱을 실행하면 `http://localhost:8282`에서 열립니다.
 

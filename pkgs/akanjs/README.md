@@ -46,7 +46,10 @@ generates a sample app. The app opens on `http://localhost:8282`.
 ### Inside an existing repository
 
 When a task fixes where the app lives and how it runs, for example a folder in another repository, a host with only
-Node and npm, or URLs given by a spec, a coding agent needs these, and nothing has to ask:
+Node and npm, or URLs given by a spec, a coding agent needs these, and nothing has to ask. A scaffold takes no more
+than these, so no other package's README has to be read first; the
+[`create-akan-workspace` README](https://www.npmjs.com/package/create-akan-workspace#what-it-does) lists what the
+command writes, runs and fetches.
 
 - **Create the workspace in that folder:** `bunx create-akan-workspace@latest . --app <app> --dir <folder> --sample false`.
   It writes into `<folder>` itself, refuses to overwrite a file already there, and leaves out the sample module and
