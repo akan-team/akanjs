@@ -8,7 +8,7 @@ import { AkanBin } from "../akanConfig/akanBin";
 import { DOCKER_IGNORED, DOCKER_VARIANT_FILE_PREFIX } from "../akanConfig/dockerImage";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
 import type { App } from "../commandDecorators";
-import { parseEnvFile, WorkspaceExecutor } from "../executors";
+import { LibExecutor, parseEnvFile, WorkspaceExecutor } from "../executors";
 import {
   AllRoutesBuilder,
   type BuildAllRoutesResult,
@@ -36,6 +36,7 @@ import {
   ApplicationBuildReporter,
   type ApplicationBuildResult,
 } from "./applicationBuildReporter";
+import { ClientServerBoundary } from "./clientServerBoundary";
 import { RouteFilesReport } from "./routeFilesReport";
 import { RouteJsBudget, type RouteJsBudgetMode, type RouteJsBudgetStatus, type RouteJsSize } from "./routeJsBudget";
 
@@ -50,6 +51,7 @@ export interface TypecheckOptions {
 export type BuildPhaseId =
   | "prepare"
   | "typecheck"
+  | "boundary"
   | "backend"
   | "ssr"
   | "csr"
@@ -95,6 +97,7 @@ const MAIN_BUNDLE = "main.bundle.js";
 const BUILD_PHASE_EMOJIS: Record<BuildPhaseId, string> = {
   prepare: "🧹",
   typecheck: "🔎",
+  boundary: "🚧",
   backend: "📦",
   ssr: "🧭",
   csr: "🎨",
@@ -201,6 +204,13 @@ export class ApplicationBuildRunner {
     if (this.#secretEnv) await this.#declareSecrets(environment);
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
     if (!this.#fast) await this.#runPhase("typecheck", "Typechecking", () => this.typecheck());
+    if (!this.#verify)
+      await this.#runPhase(
+        "boundary",
+        "Checking client imports",
+        () => this.assertClientBoundary(),
+        (files) => `${files} client files`,
+      );
     await this.#runPhase(
       "backend",
       "Compiling backend",
@@ -367,6 +377,12 @@ export class ApplicationBuildRunner {
       ],
       options,
     );
+  }
+
+  async assertClientBoundary() {
+    const scanInfo = this.#app.getScanInfo({ allowEmpty: true }) ?? (await this.#app.scan({ write: false }));
+    const libs = scanInfo.getLibs().map((lib) => LibExecutor.from(this.#app, lib).cwdPath);
+    return await ClientServerBoundary.assert([this.#app.cwdPath, ...libs], this.#app.workspace.workspaceRoot);
   }
 
   static #ssrSummary({ manifest, runtimeReport }: BuildAllRoutesResult) {
