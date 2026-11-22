@@ -66,6 +66,8 @@ export interface AgentWireMessage {
   tainted?: boolean;
   /** On a summary `agentService.loop` wrote: the toolkits its run had opened, which the messages it replaced recorded. */
   toolkits?: string[];
+  /** On a summary `agentService.loop` wrote: the tools its run had found with `findTools` and still listed. */
+  foundTools?: string[];
 }
 
 export interface AgentWireTool {

@@ -555,7 +555,10 @@ at every event.
   every tool. A tool in no toolkit is listed every round, beside `openToolkit({ name })`, whose description lists the
   toolkits. An opened toolkit's tools are listed from the next round on, until a compaction keeps no message using
   it; `openToolkit` never reaches `approve` and counts as no tool call. A resume reopens what stored calls and a
-  summary opened.
+  summary opened. A kit's `instructions` come back with what it lists; `asked: true` sends its open to `approve`.
+  `listed: [kit or tool]` lists those from round one, for good. `search: { keywords?, limit?, rank? }` adds
+  `findTools({ query })`, which lists the closed kits' tools it ranks, as an open does; pass `keywords` in the words
+  members ask in. `toolBudget` caps the characters of loaded definitions, unlisting the least recently used.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
   counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or

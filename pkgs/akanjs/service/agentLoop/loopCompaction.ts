@@ -113,13 +113,19 @@ export class LoopCompaction {
     return [...head, `[... ${high - low + 1} messages omitted ...]`, ...tail].join("\n");
   }
 
-  static message(summary: string, tainted?: boolean, toolkits: string[] = []): AgentWireMessage {
+  static message(
+    summary: string,
+    tainted?: boolean,
+    toolkits: string[] = [],
+    foundTools: string[] = [],
+  ): AgentWireMessage {
     return {
       role: "user",
       text: summary,
       summary: true,
       ...(tainted === undefined ? {} : { tainted }),
       ...(toolkits.length ? { toolkits } : {}),
+      ...(foundTools.length ? { foundTools } : {}),
     };
   }
 
