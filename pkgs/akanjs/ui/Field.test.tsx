@@ -17,6 +17,7 @@ beforeAll(async () => {
   ({ actionTagOf, tagAction } = await import("akanjs/store"));
   ({ Field } = await import("./Field"));
   ({ DraggableList } = await import("./DraggableList"));
+  await (await import("../store/agentic/fieldTools")).loadFieldTools();
 
   const { Int } = await import("akanjs/base");
   const { ConstantRegistry, via } = await import("akanjs/constant");
