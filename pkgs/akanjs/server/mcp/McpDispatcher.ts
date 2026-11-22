@@ -15,7 +15,13 @@ import type { Endpoint, EndpointCls } from "../../signal/endpoint";
 import type { EndpointInfo } from "../../signal/endpointInfo";
 import { Exception, isExceptionLike } from "../../signal/exception";
 import type { GuardCls } from "../../signal/guard";
-import { MCP_APP_META, McpDocument, type McpExposedEndpoint, type McpToolResult } from "../../signal/mcp";
+import {
+  MCP_APP_META,
+  McpDocument,
+  type McpExposedEndpoint,
+  type McpOutputSchemaMode,
+  type McpToolResult,
+} from "../../signal/mcp";
 import type { MiddlewareCls } from "../../signal/middleware";
 import { SignalFailure } from "../../signal/SignalFailure";
 import { SignalContext } from "../../signal/signalContext";
@@ -36,7 +42,12 @@ interface McpDispatcherProps {
   middleware: Map<string, MiddlewareCls>;
   language?: string;
   legacyTextBlock?: boolean;
+  outputSchema?: McpOutputSchemaMode;
+  structuredContent?: McpStructuredContentMode;
 }
+
+/** `declared`: `structuredContent` only for a tool publishing an `outputSchema`, else the text block alone. */
+export type McpStructuredContentMode = "always" | "declared";
 
 export type McpAnswer = { value: unknown } | { images: ImageResultValue[] } | { error: string; code: string };
 
@@ -57,11 +68,12 @@ export class McpDispatcher {
 
   // `forView`: an MCP Apps view also gets the value a browser would — `visual` fields and a primitive's own form kept,
   // `hidden`/`secret` already gone — in `_meta`, which no host shows the model. That is cost, never a secret.
+  // `structured` keeps `structuredContent` whatever the mode, for a caller that reads it rather than the model.
   async call(
     exposed: McpExposedEndpoint,
     args: Record<string, unknown>,
     req: Request,
-    { forView = false }: { forView?: boolean } = {},
+    { forView = false, structured = false }: { forView?: boolean; structured?: boolean } = {},
   ): Promise<McpToolResult> {
     const found = this.#index().get(exposed.key);
     if (!found) return McpDispatcher.#failure(`Tool "${exposed.key}" is declared but not mounted on this server.`);
@@ -73,7 +85,8 @@ export class McpDispatcher {
         return image.isError ? image : { ...image, ...view };
       }
       const value = McpDispatcher.#readable(exposed, wire);
-      const structuredContent = McpDocument.structuredContent(exposed.endpoint, value);
+      const keep = forView || structured || this.#keepsStructured(exposed);
+      const structuredContent = keep ? McpDocument.structuredContent(exposed.endpoint, value) : undefined;
       return {
         content: this.#content(structuredContent, value),
         ...(structuredContent === undefined ? {} : { structuredContent }),
@@ -230,6 +243,11 @@ export class McpDispatcher {
     if (isExceptionLike(error)) return error.statusCode;
     if (AkanError.is(error)) return SignalFailure.generalized(error).statusCode;
     return undefined;
+  }
+
+  #keepsStructured({ endpoint }: McpExposedEndpoint) {
+    if (this.#props.structuredContent !== "declared") return true;
+    return McpDocument.publishesOutputSchema(endpoint, this.#props.outputSchema);
   }
 
   // -32602 covers not-found too: this revision retired -32002 and points resource-not-found at invalid params.

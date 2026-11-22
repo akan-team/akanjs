@@ -294,7 +294,7 @@ When several libs set it
 
 - applyWebProxy: All run: the two built-ins first, then each lib's in order.
 
-- setMcp: Merged field by field; the app's values win, but `excludeSignals` and `excludeEndpoints` add up.
+- setMcp: Merged field by field; the app's values win, but `excludeSignals` and `excludeEndpoints` add up and `shelves` merge by name.
 
 - setLlm: Merged field by field, so a lib may name the host and the app the key.
 

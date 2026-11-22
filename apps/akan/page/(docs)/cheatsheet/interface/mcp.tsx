@@ -406,6 +406,33 @@ export default page()
         }),
       },
       {
+        key: "structuredContent",
+        type: '"always" | "declared"',
+        default: "always",
+        desc: l.trans({
+          en: "`declared` ships `structuredContent` only for a tool with an `outputSchema`, and to an MCP Apps view; the rest is text.",
+          ko: "`declared`면 `outputSchema`가 있는 툴과 MCP Apps view에만 `structuredContent`를 싣고, 나머지는 텍스트로만 보냅니다.",
+        }),
+      },
+      {
+        key: "shelves",
+        type: "Record<name, { endpoints, instructions? }>",
+        default: "{}",
+        desc: l.trans({
+          en: "Extra listings at `<path>/<name>` with only those tools and their own `instructions`, under the same guards; each is its own OAuth resource and takes the root's token.",
+          ko: "`<path>/<name>`에 그 툴만 담고 자체 `instructions`를 쓰는 목록을 더합니다. 가드는 같고, 각각이 OAuth 리소스이며 루트용 토큰도 받습니다.",
+        }),
+      },
+      {
+        key: "search",
+        type: "{ listed, limit?, keywords? }",
+        default: "off",
+        desc: l.trans({
+          en: "The root lists only `listed` plus `findTools`, whose finds join that caller's listing, and `readTool`, which runs a query by name. `keywords` adds words, Korean included.",
+          ko: "루트는 `listed`와 `findTools`, `readTool`만 나열합니다. `findTools`가 찾은 툴은 그 호출자의 목록에 더해지고, `readTool`은 query를 이름으로 바로 실행합니다. `keywords`로 한국어 등 검색어를 더합니다.",
+        }),
+      },
+      {
         key: "rateLimit",
         type: "{ calls?, windowMs?, concurrent? } | false",
         default: "120 calls / 60s, 8 in flight",

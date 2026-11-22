@@ -72,6 +72,24 @@ delegates to lives in `akanjs/server` (`OAuthAuthorize`, `OAuthToken`, `OAuthReg
   derived fallback is seeded from the app, environment and repo names and forges an admin token for anyone who
   knows them. `AKAN_ALLOW_DERIVED_JWT_SECRET=1` accepts that risk explicitly.
 
+## Fewer Tools Per Client — `shelves` And `search`
+
+A client that pays for every listed tool on every turn can take a narrower listing; neither option changes who may
+call what, since guards, `Person` and the rate limit apply as at the root.
+
+- **`shelves: { runner: { endpoints: ["startTask", "taskInProject"], instructions } }`** serves a second listing at
+  `<path>/runner` with only those entries, under its own `instructions` (none if unset, never the app's), and no
+  resources, page prompts or MCP Apps. It is its own OAuth resource (`<resource>/runner`, metadata at
+  `/.well-known/oauth-protected-resource<path>/runner`) and also takes a token issued for the root, which is what
+  the bundled authorization server issues. Shelves merge by name across `setMcp` calls; a name that is no lowercase
+  path segment, or an entry no signal has, fails the boot.
+- **`search: { listed, limit?, keywords? }`** lists only `listed` at the root, plus `findTools({ query })` and
+  `readTool({ name, args })`. A tool `findTools` returns joins that caller's listing (announced as
+  `notifications/tools/list_changed` on the call's own stream) and is then called by its own name, so a client still
+  asks before each write; `readTool` runs a published query at once and refuses a mutation (`notReadOnly`).
+  `keywords` adds words a tool is found by — the users' language, Korean included. The found set lives in the app's
+  cache for 24 hours per credential (per address without `auth.verify`), and in the process when there is no cache.
+
 ## Page Prompts — `page().prompt()`
 **A prompt is a screen.** There is no `prompt()` on `endpoint()`: the page file declares it —
 `page().param("projectId", ID, { desc: "The project to brief." }).prompt("briefProjectTickets", "Brief the ticket

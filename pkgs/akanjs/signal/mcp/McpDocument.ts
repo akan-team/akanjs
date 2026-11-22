@@ -76,6 +76,7 @@ export class McpDocument {
   readonly #byToolName = new Map<string, McpExposedEndpoint>();
   readonly #templates = new Map<string, string>();
   readonly #appOnly: (McpExposedEndpoint & { reason: string })[] = [];
+  readonly #keys: ReadonlySet<string>;
   #cost: McpListingCost | null = null;
 
   constructor(serializedSignal: Record<string, SerializedSignal>, options: McpDocumentOptions = {}) {
@@ -83,6 +84,7 @@ export class McpDocument {
     this.#catalogue = new AgentCatalogue(options);
     const candidates = AgentCatalogue.candidates(serializedSignal);
     const keys = new Set(candidates.map((candidate) => candidate.key));
+    this.#keys = keys;
     this.unmatchedExclusions = {
       signals: (options.excludeSignals ?? []).filter((name) => !(name in serializedSignal)),
       endpoints: (options.excludeEndpoints ?? []).filter((name) => !keys.has(name)),
@@ -117,6 +119,11 @@ export class McpDocument {
 
   findTool(name: string): McpExposedEndpoint | undefined {
     return this.#byToolName.get(name);
+  }
+
+  /** Whether a served signal has an entry by this name, published or refused. */
+  knows(name: string): boolean {
+    return this.#keys.has(name);
   }
 
   resourceUri(key: string, args: Record<string, unknown>): string | undefined {
@@ -244,12 +251,15 @@ export class McpDocument {
     return { ...texts, description: texts.description ? `${texts.description}\n${line}` : line };
   }
 
+  // An `outputSchema` obliges every result to match it as an object, which a scalar or an empty (`null`) single return
+  // cannot; a nullable list can, inside its `{ items }` wrapper.
+  static publishesOutputSchema(endpoint: SerializedEndpoint, mode: McpOutputSchemaMode | undefined): boolean {
+    if (mode === "none" || !endpoint.returns.modelType) return false;
+    return !endpoint.returns.nullable || !!endpoint.returns.arrDepth;
+  }
+
   #outputSchema(endpoint: SerializedEndpoint) {
-    if (this.#options.outputSchema === "none") return undefined;
-    // An `outputSchema` obliges every result to match it as an object, which a scalar or an empty (`null`) single
-    // return cannot; a nullable list can, inside its `{ items }` wrapper.
-    if (!endpoint.returns.modelType) return undefined;
-    if (endpoint.returns.nullable && !endpoint.returns.arrDepth) return undefined;
+    if (!McpDocument.publishesOutputSchema(endpoint, this.#options.outputSchema)) return undefined;
     const returns = this.#schema.returns(endpoint.returns);
     const schema = endpoint.returns.arrDepth
       ? {

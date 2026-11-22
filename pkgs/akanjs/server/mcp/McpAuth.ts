@@ -17,6 +17,8 @@ export interface McpAuthOption {
 
 export interface McpAuthProps extends McpAuthOption {
   path: string;
+  /** A shelf's root: its tokens pass here too, as a shelf serves a subset of the root's tools under the same guards. */
+  parent?: McpAuth;
 }
 
 interface McpAuthFailure {
@@ -39,7 +41,7 @@ export class McpAuth {
   createRoutes(): HttpRoutes {
     const handler = { GET: (req: Request) => this.#metadata(req) };
     return {
-      [McpAuth.wellKnownPath]: handler,
+      ...(this.#props.parent ? {} : { [McpAuth.wellKnownPath]: handler }),
       [`${McpAuth.wellKnownPath}${this.#props.path}`]: handler,
     };
   }
@@ -97,7 +99,10 @@ export class McpAuth {
     // named: its tokens for other resources could then arrive audience-less (RFC 8707 confused deputy).
     if (this.#props.authorizationServers?.length && !audience.length)
       return { status: 401, error: "invalid_token", description: "The access token names no resource." };
-    if (audience.length && !(this.answersTo(req) && audience.includes(this.#resource(req))))
+    if (
+      audience.length &&
+      !(this.answersTo(req) && this.#resources(req).some((resource) => audience.includes(resource)))
+    )
       return { status: 401, error: "invalid_token", description: "The access token was issued for another resource." };
     const missing = this.#missingScopes(claims);
     // Every missing scope at once — a client that has to discover them one 403 at a time re-authorizes N times.
@@ -145,6 +150,11 @@ export class McpAuth {
 
   #resource(req: Request) {
     return this.#props.resource ?? new URL(this.#props.path, this.publicOrigin(req)).href;
+  }
+
+  #resources(req: Request): string[] {
+    const parent = this.#props.parent;
+    return parent ? [this.#resource(req), parent.#resource(req)] : [this.#resource(req)];
   }
 
   // A configured `resource` wins: it is what the authorization server issued `aud` for, so no request outranks it.

@@ -995,6 +995,9 @@ export interface McpServerOption {
     promptBudget?: number;
     apps?: boolean;
     modern?: boolean;
+    shelves?: Record<string, McpShelfOption>;
+    search?: McpSearchOption;
+    structuredContent?: McpStructuredContentMode;
 }
 
 export interface MergedManifest {
@@ -1459,7 +1462,7 @@ export type OAuthAddressLookup = (hostname: string) => Promise<{
 
 export declare class OAuthAuthorize {
     static parse(url: URL, { client, issuer, resource }: OAuthAuthorizeContext): OAuthAuthorizeResult;
-    static sameResource(a: string, b: string): boolean;
+    static sameResource(requested: string, resource: string): boolean;
 }
 
 export interface OAuthAuthorizeContext {
@@ -2339,7 +2342,23 @@ interface McpRouterProps {
     apps?: boolean;
     appShell?: McpAppShellSource;
     modern?: boolean;
+    shelves?: Record<string, McpShelfOption>;
+    search?: McpSearchOption;
+    structuredContent?: McpStructuredContentMode;
 }
+
+interface McpSearchOption {
+    listed: string[];
+    limit?: number;
+    keywords?: Record<string, string[]>;
+}
+
+interface McpShelfOption {
+    endpoints: string[];
+    instructions?: string;
+}
+
+type McpStructuredContentMode = "always" | "declared";
 
 type MigrationParamBase<Type, Option> = Option extends {
     enum: readonly (infer Value)[];

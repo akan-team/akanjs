@@ -24,7 +24,15 @@ import { ParentChannel } from "./lifecycle/parentChannel";
 import { ShutdownManager } from "./lifecycle/shutdownManager";
 import { StartGuard } from "./lifecycle/startGuard";
 import { ServerLogging } from "./logging/serverLogging";
-import { AgentTools, type McpAuthOption, type McpRateLimitOption, type McpRouter } from "./mcp";
+import {
+  AgentTools,
+  type McpAuthOption,
+  type McpRateLimitOption,
+  type McpRouter,
+  type McpSearchOption,
+  type McpShelfOption,
+  type McpStructuredContentMode,
+} from "./mcp";
 import { OtlpExporter } from "./otlp/otlpExporter";
 import { WebProxyRunner } from "./proxy";
 import { SignalResolver } from "./resolver";
@@ -112,6 +120,18 @@ export interface McpServerOption {
    * `AKAN_MCP_MODERN`.
    */
   modern?: boolean;
+  /**
+   * More listings, each at `<path>/<name>` with only the named endpoints and its own `instructions`, for a client that
+   * needs a few tools; same auth, guards and rate limit, and its own OAuth resource. Merged by name across `setMcp`.
+   */
+  shelves?: Record<string, McpShelfOption>;
+  /**
+   * The root lists only `listed`, plus `findTools`, which adds the tools it finds to that caller's listing (announced
+   * with `notifications/tools/list_changed`), and `readTool`, which runs any read-only tool by name.
+   */
+  search?: McpSearchOption;
+  /** `declared` ships `structuredContent` only for a tool publishing an `outputSchema`; `always` (default) for every one. */
+  structuredContent?: McpStructuredContentMode;
 }
 
 export interface AkanServerConsoleInfo {
@@ -269,7 +289,7 @@ export class AkanServer {
     const requested = typeof mcp === "boolean" ? mcp : (mcp.enabled ?? this.mcp);
     this.mcp = requested && !ServerConfig.isEnvOff("AKAN_MCP", "AKAN_PUBLIC_MCP");
     if (typeof mcp === "boolean") return this;
-    const { enabled: _enabled, readOnly, auth, excludeSignals, excludeEndpoints, ...rest } = mcp;
+    const { enabled: _enabled, readOnly, auth, excludeSignals, excludeEndpoints, shelves, ...rest } = mcp;
     if (readOnly !== undefined) this.mcpReadOnly = readOnly;
     if (auth) this.mcpAuth = { ...this.mcpAuth, ...ServerConfig.defined(auth) };
     const added = (current: string[] | undefined, names: string[] | undefined) =>
@@ -279,6 +299,7 @@ export class AkanServer {
       ...ServerConfig.defined(rest),
       excludeSignals: added(this.mcpOption.excludeSignals, excludeSignals),
       excludeEndpoints: added(this.mcpOption.excludeEndpoints, excludeEndpoints),
+      shelves: shelves ? { ...this.mcpOption.shelves, ...shelves } : this.mcpOption.shelves,
     });
     return this;
   }

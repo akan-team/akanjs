@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { AkanError } from "akanjs/base";
 import { getDefaultInjectRegistry, getDefaultLiveRegistry } from "akanjs/service";
 import { MCP_LEGACY_PRIOR_VERSION, MCP_LEGACY_VERSION, MCP_MODERN_VERSION } from "../../signal/mcp";
 import { McpRouter } from "./McpRouter";
@@ -325,5 +326,125 @@ describe("McpRouter rate limit", () => {
     let limited = 0;
     for (let id = 0; id < 130; id += 1) if ((await post(call(id), {}, on)).res.status === 429) limited += 1;
     expect(limited).toBe(10);
+  });
+});
+
+describe("McpRouter shelves", () => {
+  const shelves = { runner: { endpoints: ["echoTitle"], instructions: "Runner tools." } };
+  const oauth = { resource: "https://app.example.com/mcp", authorizationServers: ["https://auth.example.com"] };
+  const token = (aud: string) => `Bearer x.${Buffer.from(JSON.stringify({ aud, sub: "u1" })).toString("base64url")}.y`;
+  const shelfPost = (handlers: Routes[string], authorization?: string) =>
+    handlers.POST(
+      new Request("http://127.0.0.1:8080/mcp/runner", {
+        method: "POST",
+        body: JSON.stringify(rpc("tools/list")),
+        headers: { "Content-Type": "application/json", ...(authorization ? { authorization } : {}) },
+      }),
+    );
+  const metadataOf = async (table: Routes, path: string) =>
+    (await (await table[path].GET(new Request(`http://127.0.0.1:8080${path}`))).json()) as Record<string, unknown>;
+
+  test("mounts each shelf beside the root, and nothing for a name it was not given", () => {
+    const table = routes({ shelves });
+    expect(Object.keys(table).sort((a, b) => a.localeCompare(b))).toEqual([
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+      "/.well-known/oauth-protected-resource/mcp/runner",
+      "/mcp",
+      "/mcp/runner",
+    ]);
+    expect(Object.keys(routes()).sort((a, b) => a.localeCompare(b))).toEqual([
+      "/.well-known/oauth-protected-resource",
+      "/.well-known/oauth-protected-resource/mcp",
+      "/mcp",
+    ]);
+  });
+
+  test("serves each shelf as its own protected resource, leaving the root's metadata as it was", async () => {
+    const table = routes({ shelves, auth: oauth });
+    expect(await metadataOf(table, "/.well-known/oauth-protected-resource/mcp/runner")).toEqual({
+      resource: "https://app.example.com/mcp/runner",
+      authorization_servers: ["https://auth.example.com"],
+      bearer_methods_supported: ["header"],
+    });
+    for (const path of ["/.well-known/oauth-protected-resource", "/.well-known/oauth-protected-resource/mcp"])
+      expect((await metadataOf(table, path)).resource).toBe("https://app.example.com/mcp");
+    const challenge = await shelfPost(table["/mcp/runner"]);
+    expect(challenge.status).toBe(401);
+    expect(challenge.headers.get("WWW-Authenticate")).toContain(
+      'resource_metadata="https://app.example.com/.well-known/oauth-protected-resource/mcp/runner"',
+    );
+  });
+
+  test("takes a token for the shelf or for the root, and refuses one for another shelf", async () => {
+    const table = routes({ shelves: { ...shelves, desk: { endpoints: ["echoTitle"] } }, auth: oauth });
+    const runner = table["/mcp/runner"];
+    expect((await shelfPost(runner, token("https://app.example.com/mcp/runner"))).status).toBe(200);
+    expect((await shelfPost(runner, token("https://app.example.com/mcp"))).status).toBe(200);
+    expect((await shelfPost(runner, token("https://app.example.com/mcp/desk"))).status).toBe(401);
+    expect((await shelfPost(runner, token("https://other.example.com/mcp"))).status).toBe(401);
+    const root = await post(
+      rpc("tools/list"),
+      { headers: { authorization: token("https://app.example.com/mcp/runner") } },
+      table["/mcp"],
+    );
+    expect(root.res.status).toBe(401);
+  });
+
+  test("refuses at construction a shelf name that is no path segment, or a shelf with no endpoints", () => {
+    for (const name of ["Runner", "run/ner", "1runner", "", "a".repeat(33)]) {
+      const thrown = (() => {
+        try {
+          routes({ shelves: { [name]: { endpoints: ["echoTitle"] } } });
+        } catch (error) {
+          return error;
+        }
+      })();
+      expect(AkanError.is(thrown, "invalidConfig")).toBe(true);
+    }
+    expect(() => routes({ shelves: { runner: { endpoints: [] } } })).toThrow("lists no endpoints");
+  });
+});
+
+describe("McpRouter search", () => {
+  const search = { listed: [] };
+  const findTools = (id: number) => ({
+    ...rpc("tools/call", { name: "findTools", arguments: { query: "ticket" } }),
+    id,
+  });
+
+  test("declares list changes only when search is on, and lists the two meta tools read-only", async () => {
+    const init = rpc("initialize", { protocolVersion: MCP_LEGACY_VERSION, capabilities: {} });
+    expect((await post(init)).json.result.capabilities.tools).toBeUndefined();
+    const handlers = routes({ search })["/mcp"];
+    expect((await post(init, {}, handlers)).json.result.capabilities.tools).toEqual({ listChanged: true });
+    const listed = (await post(rpc("tools/list"), {}, handlers)).json.result.tools;
+    expect(listed.map((tool: { name: string }) => tool.name)).toEqual(["findTools", "readTool"]);
+    for (const tool of listed) expect(tool.annotations).toEqual({ readOnlyHint: true, openWorldHint: false });
+  });
+
+  test("gives a modern client no cache hint on a listing that grows, and the usual one otherwise", async () => {
+    const list = rpc("tools/list", { _meta: meta });
+    const headers = mirrored("tools/list");
+    expect((await post(list, { headers })).json.result.ttlMs).toBe(300_000);
+    const searched = (await post(list, { headers }, routes({ search })["/mcp"])).json.result;
+    expect(searched.ttlMs).toBeUndefined();
+    expect(searched.tools.map((tool: { name: string }) => tool.name)).toEqual(["findTools", "readTool"]);
+  });
+
+  test("counts findTools and readTool against the caller's budget", async () => {
+    const handlers = routes({ search, rateLimit: { calls: 2, windowMs: 60_000 } })["/mcp"];
+    expect((await post(findTools(1), {}, handlers)).res.status).toBe(200);
+    expect(
+      (await post(rpc("tools/call", { name: "readTool", arguments: { name: "x" } }), {}, handlers)).res.status,
+    ).toBe(200);
+    const third = await post(findTools(3), {}, handlers);
+    expect(third.res.status).toBe(429);
+    expect(third.json.error?.data).toEqual({ code: "tooManyRequests" });
+  });
+
+  test("leaves the names findTools and readTool to the endpoints when search is off", async () => {
+    const { json } = await post(findTools(1));
+    expect(json.error?.message).toBe("Unknown tool: findTools.");
   });
 });
