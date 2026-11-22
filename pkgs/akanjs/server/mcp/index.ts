@@ -5,3 +5,5 @@ export * from "./McpEventStream";
 export * from "./McpExecutionContext";
 export * from "./McpRateLimiter";
 export * from "./McpRouter";
+export * from "./McpSearch";
+export * from "./McpShelves";

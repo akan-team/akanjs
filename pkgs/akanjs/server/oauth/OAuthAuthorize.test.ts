@@ -97,10 +97,15 @@ describe("OAuthAuthorize", () => {
     expect(ambiguous.ok).toBe(false);
   });
 
-  test("treats the resource as a URI, so a trailing slash or an omitted parameter is not another server", () => {
+  test("treats the resource as a URI, so a trailing slash, an omitted parameter or a shelf path under it is not another server", () => {
     expect(OAuthAuthorize.sameResource("https://app.example.com/mcp/", "https://app.example.com/mcp")).toBe(true);
     expect(OAuthAuthorize.sameResource("HTTPS://APP.example.com/mcp", "https://app.example.com/mcp")).toBe(true);
     expect(OAuthAuthorize.sameResource("https://app.example.com/other", "https://app.example.com/mcp")).toBe(false);
+    expect(OAuthAuthorize.sameResource("https://app.example.com/mcp/runner", "https://app.example.com/mcp")).toBe(true);
+    expect(OAuthAuthorize.sameResource("https://app.example.com/mcpx", "https://app.example.com/mcp")).toBe(false);
+    expect(OAuthAuthorize.sameResource("https://app.example.com/mcp", "https://app.example.com/mcp/runner")).toBe(
+      false,
+    );
     const absent = OAuthAuthorize.parse(request({ ...valid, resource: undefined }), context);
     if (!absent.ok) throw new Error("expected params");
     expect(absent.params.resource).toBe("https://app.example.com/mcp");

@@ -138,6 +138,12 @@ Options
 
 - legacyTextBlock (boolean, default true, AKAN_MCP_LEGACY_TEXT): Repeats a structured result as JSON in the text block; the env can only turn it off.
 
+- structuredContent ("always" | "declared", default always): `declared` ships `structuredContent` only for a tool with an `outputSchema`, and to an MCP Apps view; the rest is text.
+
+- shelves (Record<name, { endpoints, instructions? }>, default {}): Extra listings at `<path>/<name>` with only those tools and their own `instructions`, under the same guards; each is its own OAuth resource and takes the root's token.
+
+- search ({ listed, limit?, keywords? }, default off): The root lists only `listed` plus `findTools`, whose finds join that caller's listing, and `readTool`, which runs a query by name. `keywords` adds words, Korean included.
+
 - rateLimit ({ calls?, windowMs?, concurrent? } | false, default 120 calls / 60s, 8 in flight, AKAN_MCP_RATE_LIMIT, AKAN_MCP_CONCURRENT): Per-caller budget for `tools/call`, `resources/read` and `prompts/get`, counted per process.
 
 - promptBudget (number, default 60000, AKAN_MCP_PROMPT_BUDGET): Characters of screen data one page prompt may attach before its lists are cut.

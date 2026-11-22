@@ -591,8 +591,8 @@ export default page()
       {
         name: "setMcp",
         desc: l.trans({
-          en: "Merged field by field; the app's values win, but `excludeSignals` and `excludeEndpoints` add up.",
-          ko: "필드 단위로 합쳐지고 앱의 값이 이깁니다. 단 `excludeSignals`·`excludeEndpoints`는 누적됩니다.",
+          en: "Merged field by field; the app's values win, but `excludeSignals` and `excludeEndpoints` add up and `shelves` merge by name.",
+          ko: "필드 단위로 합쳐지고 앱의 값이 이깁니다. 단 `excludeSignals`·`excludeEndpoints`는 누적되고 `shelves`는 이름별로 합쳐집니다.",
         }),
       },
       {
