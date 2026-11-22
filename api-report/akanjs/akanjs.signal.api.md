@@ -891,6 +891,7 @@ export declare class McpDocument {
     constructor(serializedSignal: Record<string, SerializedSignal>, options?: McpDocumentOptions);
     get listingCost(): McpListingCost;
     findTool(name: string): McpExposedEndpoint | undefined;
+    knows(name: string): boolean;
     resourceUri(key: string, args: Record<string, unknown>): string | undefined;
     resolveResource(uri: string): null | {
         exposed: McpExposedEndpoint;
@@ -898,6 +899,7 @@ export declare class McpDocument {
     };
     static structuredContent(endpoint: SerializedEndpoint, value: unknown): undefined | {};
     isAppOnly(name: string): boolean;
+    static publishesOutputSchema(endpoint: SerializedEndpoint, mode: McpOutputSchemaMode | undefined): boolean;
 }
 
 export interface McpDocumentOptions {

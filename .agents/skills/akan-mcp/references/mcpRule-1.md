@@ -67,13 +67,13 @@ export class FileSlice extends slice(srv.file, {
 ## Configuration
 Settings live in the app's `lib/option.ts` — `option.setMcp({ … })`, taking `enabled`, `readOnly`, `path`,
 `version`, `instructions`, `allowedOrigins`, `pageSize`, `language`, `legacyTextBlock`, `outputSchema`, `rateLimit`,
-`promptBudget`, `apps`, `modern`, `auth`, and `excludeSignals` / `excludeEndpoints` (curation like `mcp: false`,
-added up across libs, an unmatched name warned at boot) — or `setMcp((env) => …)` for settings derived from the
-server env.
+`promptBudget`, `apps`, `modern`, `auth`, `shelves`, `search`, `structuredContent`, and `excludeSignals` /
+`excludeEndpoints` (curation like `mcp: false`, added up across libs, an unmatched name warned at boot) — or
+`setMcp((env) => …)` for settings derived from the server env.
 **Not `main.ts`**: the gateway
 there only spawns children, and `option.ts` is the app-authored file `server.ts` already hands to the process that
 mounts `/mcp`. Every lib's option is read in mount order with the app's last, so an app tightens what a library
-declared without restating it. Each field but the two lists also has an env spelling (`AKAN_MCP`, `AKAN_MCP_READONLY`,
+declared without restating it. Each field but the two lists, `shelves`, `search` and `structuredContent` also has an env spelling (`AKAN_MCP`, `AKAN_MCP_READONLY`,
 `AKAN_MCP_PATH`, `AKAN_MCP_VERSION`, `AKAN_MCP_INSTRUCTIONS`, `AKAN_MCP_ALLOWED_ORIGINS`, `AKAN_MCP_PAGE_SIZE`,
 `AKAN_MCP_LANGUAGE`, `AKAN_MCP_LEGACY_TEXT`, `AKAN_MCP_OUTPUT_SCHEMA`, `AKAN_MCP_RATE_LIMIT`, `AKAN_MCP_CONCURRENT`,
 `AKAN_MCP_PROMPT_BUDGET`, `AKAN_MCP_APPS`, `AKAN_MCP_MODERN`, `AKAN_MCP_AUTH_SERVERS`, `AKAN_MCP_SCOPES`, `AKAN_MCP_RESOURCE`) for a deployment that configures what the source does
@@ -170,6 +170,8 @@ export default page()
   clients read the structured half. A scalar return is unaffected: it has no structured half to point at, so it
   ships as the value itself either way. `resources/read` is unaffected too: `ReadResourceResult` has no
   `structuredContent`, so a resource's text is its only channel and always carries the serialized value.
+  `structuredContent: "declared"` ships `structuredContent` only for a tool that publishes an `outputSchema` (and
+  to an MCP Apps view); with `outputSchema: "none"` every result is then text alone.
 - **A picture is an `ImageResult` return, and the one result a model sees rather than reads.**
   `query(ImageResult, { guards: [...] })` (or `[ImageResult]`) returns `{ data, mimeType, caption? }`: `data` is
   padded standard base64 with no `data:` prefix, `mimeType` one of `image/png`, `image/jpeg`, `image/webp`,
@@ -264,7 +266,7 @@ export default page()
 - **Every failed call carries a code** beside the text, which reads as it always did. A tool error holds
   `_meta["akanjs/failure"]: { code, statusCode }` — in `_meta`, because a client checks `structuredContent` against
   the tool's `outputSchema` even on a failure — and a JSON-RPC error holds `data.code`, which tells apart what
-  `-32602` files together: `unknownTool`, `invalidArgument`, `unknownPrompt`, `unknownResource` and a screen's
+  `-32602` files together: `unknownTool`, `invalidArgument`, `notReadOnly`, `unknownPrompt`, `unknownResource` and a screen's
   refusal, beside `tooManyRequests` and `internalError`. The code is the one an HTTP caller gets: a domain `Err`'s
   dictionary key (what `Err.is` matches), else the `AkanError`'s own code; a guard's 401 or 403 by its status alone
   (`unauthorized`, `forbidden`), since a guard's own code names its rule as its message does; a crash, or a 5xx whose

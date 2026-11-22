@@ -60,9 +60,14 @@ export class OAuthAuthorize {
     };
   }
 
-  /** RFC 8707 §2 compares resource identifiers as URIs, so a trailing slash a client added is not another server. */
-  static sameResource(a: string, b: string): boolean {
-    return OAuthAuthorize.#canonical(a) === OAuthAuthorize.#canonical(b);
+  /**
+   * RFC 8707 §2 compares resource identifiers as URIs, so a trailing slash a client added is not another server. A
+   * path under `resource` is one of its MCP shelves, which take the token issued for `resource` itself.
+   */
+  static sameResource(requested: string, resource: string): boolean {
+    const asked = OAuthAuthorize.#canonical(requested);
+    const served = OAuthAuthorize.#canonical(resource);
+    return asked === served || asked.startsWith(`${served}/`);
   }
 
   static #canonical(resource: string): string {

@@ -7,7 +7,7 @@
   "bundle-size": {
     "main.js": 58,
     "main.bundle.js": 298081,
-    "server.js": 541802,
+    "server.js": 553984,
     "rscWorker.js": 414981,
     "console-runtime.js": 60763,
     "chunk-*.js": 6561335,

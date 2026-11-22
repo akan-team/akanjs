@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -2191,5 +2192,287 @@ describe("MCP exclusions and the served catalogue", () => {
     expect(view.tools.find((tool) => tool.name === "quietTitle")?._meta).toEqual({ ui: { visibility: ["app"] } });
     const textOnly = mcpRouter({ ...apps, appShell: undefined });
     expect(names(await textOnly.listFor(listRequest(), { ui: true }))).not.toContain("quietTitle");
+  });
+});
+
+describe("MCP shelves, search and structuredContent", () => {
+  type Sent = { res: Response; json: any };
+  const toolNames = (json: { result: { tools: { name: string }[] } }) => json.result.tools.map((tool) => tool.name);
+  const raw = async (
+    path: string,
+    props: Partial<McpRouterProps>,
+    body: object,
+    headers: Record<string, string> = {},
+  ) =>
+    await mcpRoutes(props)[path].POST(
+      new Request(`http://127.0.0.1:8080${path}`, {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: { "Content-Type": "application/json", ...headers },
+      }),
+    );
+  const at =
+    (path: string, props: Partial<McpRouterProps>) =>
+    async (body: object, headers: Record<string, string> = {}): Promise<Sent> => {
+      const res = await raw(path, props, body, headers);
+      return { res, json: await res.json() };
+    };
+  const toolCall = (name: string, args: Record<string, unknown> = {}, meta?: object) =>
+    rpc("tools/call", { name, arguments: args, ...(meta ? { _meta: meta } : {}) });
+  const readTool = (name: string, args: Record<string, unknown> = {}) => toolCall("readTool", { name, args });
+  const findTools = (query: string) => toolCall("findTools", { query });
+  const caller = () => ({ authorization: `Bearer ${randomUUID()}` });
+  const shellHtml = '<!DOCTYPE html><html lang="en"><head><title>shell</title></head><body></body></html>';
+  const apps = {
+    apps: true,
+    appShell: { read: async (app: string) => (app === "showItem" ? shellHtml : null) },
+    pagePrompts: pagePromptsOf(okRun(), [briefEntry, showEntry]),
+  } satisfies Partial<McpRouterProps>;
+  const uiCapabilities = { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } };
+  const uiSession = async (props: Partial<McpRouterProps>) => {
+    const init = rpc("initialize", { protocolVersion: "2025-11-25", capabilities: uiCapabilities });
+    return { "mcp-session-id": (await raw("/mcp", props, init)).headers.get("mcp-session-id") ?? "" };
+  };
+  const shelves = {
+    runner: { endpoints: ["echoTitle", "ownedTitle", "renameTitle"], instructions: "Runner tools." },
+    bare: { endpoints: ["visualItem"] },
+  };
+
+  describe("a shelf", () => {
+    const props = { shelves, instructions: "Domain tools.", ...apps } satisfies Partial<McpRouterProps>;
+    const runner = at("/mcp/runner", props);
+
+    test("lists only its endpoints, still as the caller's guards allow", async () => {
+      expect(toolNames((await runner(rpc("tools/list"))).json)).toEqual(["echoTitle", "renameTitle"]);
+      const signed = await runner(rpc("tools/list"), { authorization: "Bearer u1" });
+      expect(toolNames(signed.json)).toEqual(["echoTitle", "ownedTitle", "renameTitle"]);
+      const root = toolNames((await at("/mcp", props)(rpc("tools/list"))).json);
+      expect(root).toContain("visualItem");
+      expect(root).toContain("showItem");
+    });
+
+    test("hands over its own instructions or none, never the app's", async () => {
+      const init = rpc("initialize", { protocolVersion: "2025-11-25", capabilities: uiCapabilities });
+      const handshake = await runner(init);
+      expect(handshake.json.result.instructions).toBe("Runner tools.");
+      expect(handshake.json.result.capabilities).toEqual({ tools: {} });
+      expect(handshake.res.headers.get("mcp-session-id")).toBeNull();
+      expect("instructions" in (await at("/mcp/bare", props)(init)).json.result).toBe(false);
+      expect((await at("/mcp", props)(init)).json.result.instructions).toBe("Domain tools.");
+    });
+
+    test("calls only its endpoints, and serves no resource, prompt or view", async () => {
+      const echoed = await runner(toolCall("echoTitle", { id: itemId, suffix: "tail" }));
+      expect(echoed.json.result.content[0].text).toBe(`${itemId}:tail`);
+      for (const name of ["visualItem", "showItem", "briefItem", "findTools"]) {
+        const outside = await runner(toolCall(name, { serverResolverTestItemId: itemId }));
+        expect(outside.json.error).toEqual({
+          code: -32602,
+          message: `Unknown tool: ${name}.`,
+          data: { code: "unknownTool" },
+        });
+      }
+      for (const [method, key] of [
+        ["resources/list", "resources"],
+        ["resources/templates/list", "resourceTemplates"],
+        ["prompts/list", "prompts"],
+      ] as const)
+        expect((await runner(rpc(method))).json.result[key]).toEqual([]);
+      const resource = await runner(rpc("resources/read", { uri: `akan://serverResolverTestItem/${itemId}` }));
+      expect(resource.json.error.data).toEqual({ code: "unknownResource" });
+      const prompt = await runner(rpc("prompts/get", { name: "briefItem", arguments: {} }));
+      expect(prompt.json.error.data).toEqual({ code: "unknownPrompt" });
+    });
+
+    test("refuses at boot a name no served signal has, and warns about one MCP does not publish", () => {
+      for (const option of [
+        { shelves: { runner: { endpoints: ["echoTitel"] } } },
+        { search: { listed: ["echoTitel"] } },
+        { search: { listed: [], keywords: { echoTitel: ["echo"] } } },
+      ]) {
+        const thrown = (() => {
+          try {
+            mcpRouter(option).report();
+          } catch (error) {
+            return error;
+          }
+        })();
+        expect(AkanError.is(thrown, "invalidConfig")).toBe(true);
+        expect((thrown as Error).message).toContain('"echoTitel"');
+      }
+      const lines: string[] = [];
+      const stop = Logger.addSink(({ message }) => void lines.push(message));
+      try {
+        mcpRouter({
+          shelves: {
+            runner: { endpoints: ["echoTitle", "quietTitle", "publicRenameTitle"], instructions: "x".repeat(2_001) },
+          },
+        }).report();
+      } finally {
+        stop();
+      }
+      expect(lines.find((line) => line.includes('shelf "runner" names "quietTitle"'))).toContain("cannot list");
+      expect(lines.find((line) => line.includes('shelf "runner" names "publicRenameTitle"'))).toContain("cannot list");
+      expect(lines.some((line) => line.includes('names "echoTitle"'))).toBe(false);
+      expect(lines.some((line) => line.includes('instructions for shelf "runner" run 2001 characters'))).toBe(true);
+    });
+  });
+
+  describe("search", () => {
+    const search = { listed: ["echoTitle"], keywords: { renameTitle: ["제목 변경", "이름 바꾸기"] } };
+    const verified = { search, auth: { verify: () => ({}) } } satisfies Partial<McpRouterProps>;
+    const send = at("/mcp", verified);
+
+    test("lists the listed endpoints and the two meta tools, then what this caller found, to this caller alone", async () => {
+      const [a, b] = [caller(), caller()];
+      expect(toolNames((await send(rpc("tools/list"), a)).json)).toEqual(["echoTitle", "findTools", "readTool"]);
+      const found = await send(findTools("제목을 변경해줘"), a);
+      expect(found.json.result.isError).toBe(false);
+      expect(found.json.result.structuredContent.tools.map((tool: { name: string }) => tool.name)).toEqual([
+        "renameTitle",
+      ]);
+      expect(JSON.parse(found.json.result.content[0].text)).toEqual(found.json.result.structuredContent);
+      const listed = (await send(rpc("tools/list"), a)).json.result.tools;
+      expect(listed.map((tool: { name: string }) => tool.name)).toEqual([
+        "echoTitle",
+        "findTools",
+        "readTool",
+        "renameTitle",
+      ]);
+      const full = (await post(rpc("tools/list"))).json.result.tools;
+      expect(listed.at(-1)).toEqual(full.find((tool: { name: string }) => tool.name === "renameTitle"));
+      expect(toolNames((await send(rpc("tools/list"), b)).json)).toEqual(["echoTitle", "findTools", "readTool"]);
+    });
+
+    test("announces the grown listing on the call's own stream to a client that takes one", async () => {
+      const headers = { ...caller(), accept: "application/json, text/event-stream" };
+      const res = await raw("/mcp", verified, findTools("rename"), headers);
+      expect(res.headers.get("content-type")).toContain("text/event-stream");
+      const events = (await res.text())
+        .split("\n")
+        .filter((line) => line.startsWith("data: "))
+        .map((line) => JSON.parse(line.slice(6)));
+      expect(events[0]).toEqual({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+      expect(events[1].result.structuredContent.tools.map((tool: { name: string }) => tool.name)).toEqual([
+        "renameTitle",
+      ]);
+      const again = await raw("/mcp", verified, findTools("rename"), headers);
+      expect(again.headers.get("content-type")).toContain("application/json");
+      expect((await again.json()).result.structuredContent.tools).toHaveLength(1);
+    });
+
+    test("finds and lists nothing the caller's guards refuse, even from a set it shares", async () => {
+      // No verifier: every caller from one address shares a found set, so the listing's guard filter is what holds.
+      const shared = { search };
+      const signed = await at("/mcp", shared)(findTools("owned"), { authorization: "Bearer u1" });
+      expect(signed.json.result.structuredContent.tools.map((tool: { name: string }) => tool.name)).toEqual([
+        "ownedTitle",
+      ]);
+      expect(toolNames((await at("/mcp", shared)(rpc("tools/list"), { authorization: "Bearer u1" })).json)).toContain(
+        "ownedTitle",
+      );
+      expect(toolNames((await at("/mcp", shared)(rpc("tools/list"))).json)).not.toContain("ownedTitle");
+      expect((await at("/mcp", shared)(findTools("owned"))).json.result.structuredContent.tools).toEqual([]);
+    });
+
+    test("leaves a shelf without search, and the root listing as it was without the option", async () => {
+      const both = at("/mcp/runner", { ...verified, shelves });
+      expect(toolNames((await both(rpc("tools/list"))).json)).toEqual(["echoTitle", "renameTitle"]);
+      expect((await both(findTools("rename"))).json.error.data).toEqual({ code: "unknownTool" });
+      expect(toolNames((await post(rpc("tools/list"))).json)).not.toContain("findTools");
+    });
+  });
+
+  describe("readTool", () => {
+    const send = at("/mcp", { search: { listed: [] } });
+
+    test("runs a read-only tool by name through the same call a direct one takes", async () => {
+      const read = await send(readTool("echoTitle", { id: itemId, suffix: "tail" }));
+      expect(read.json.result).toEqual((await call("echoTitle", { id: itemId, suffix: "tail" })).result);
+      expect(read.json.result.content[0].text).toBe(`${itemId}:tail`);
+      const missing = await send(readTool("echoTitle", { suffix: "tail" }));
+      expect(missing.json).toEqual((await post(toolCall("echoTitle", { suffix: "tail" }))).json);
+    });
+
+    test("refuses a tool that writes, so each write keeps its own approval", async () => {
+      const refused = await send(readTool("renameTitle", { id: itemId, title: "x" }), { authorization: "Bearer u1" });
+      expect(refused.json.error.code).toBe(-32602);
+      expect(refused.json.error.data).toEqual({ code: "notReadOnly" });
+      expect(refused.json.error.message).toContain("findTools");
+    });
+
+    test("answers a guard's refusal as a direct call does, and an unpublished tool as unknown", async () => {
+      const bearer = { authorization: "Bearer whatever" };
+      const denied = await send(readTool("deniedTitle"), bearer);
+      expect(denied.json.result.isError).toBe(true);
+      expect(denied.json.result.content[0].text).toBe("You are not permitted to perform this action.");
+      expect((await raw("/mcp", { search: { listed: [] } }, readTool("deniedTitle"))).status).toBe(401);
+      for (const name of ["quietTitle", "hiddenTitle", "publicRenameTitle", "nothingAtAll"]) {
+        const unknown = await send(readTool(name, { id: itemId }), bearer);
+        expect(unknown.json.error).toEqual({
+          code: -32602,
+          message: `Unknown tool: ${name}.`,
+          data: { code: "unknownTool" },
+        });
+      }
+      const excluded = await at("/mcp", { search: { listed: [] }, excludeEndpoints: ["echoTitle"] })(
+        readTool("echoTitle", { id: itemId }),
+      );
+      expect(excluded.json.error.data).toEqual({ code: "unknownTool" });
+    });
+
+    test("does not reach a tool kept for the views, even from a client that renders them", async () => {
+      const props = { ...apps, search: { listed: [] } };
+      const session = await uiSession(props);
+      const view = await at("/mcp", props)(readTool("quietTitle", { id: itemId }), {
+        ...session,
+        authorization: "Bearer u1",
+      });
+      expect(view.json.error.data).toEqual({ code: "unknownTool" });
+      const direct = await at("/mcp", props)(toolCall("quietTitle", { id: itemId }), {
+        ...session,
+        authorization: "Bearer u1",
+      });
+      expect(direct.json.result.content[0].text).toBe(`${itemId}:quiet`);
+    });
+  });
+
+  describe("structuredContent", () => {
+    const declared = { structuredContent: "declared" } satisfies Partial<McpRouterProps>;
+    const result = async (props: Partial<McpRouterProps>, name: string, args: Record<string, unknown> = {}) =>
+      (await at("/mcp", props)(toolCall(name, args))).json.result;
+
+    test("`declared` ships it only beside a published outputSchema, the text carrying the value otherwise", async () => {
+      expect((await result(declared, "visualItem")).structuredContent).toMatchObject({ title: "shot" });
+      const maybe = await result(declared, "maybeItem", { title: "here" });
+      expect("structuredContent" in maybe).toBe(false);
+      expect(JSON.parse(maybe.content[0].text)).toMatchObject({ title: "here" });
+      expect((await result({}, "maybeItem", { title: "here" })).structuredContent).toMatchObject({ title: "here" });
+      const pointer = await result({ ...declared, legacyTextBlock: false }, "maybeItem", { title: "here" });
+      expect(JSON.parse(pointer.content[0].text)).toMatchObject({ title: "here" });
+    });
+
+    test('`declared` under `outputSchema: "none"` ships none, while the default still ships every one', async () => {
+      const bare = await result({ ...declared, outputSchema: "none" }, "visualItem");
+      expect("structuredContent" in bare).toBe(false);
+      expect(JSON.parse(bare.content[0].text)).toMatchObject({ title: "shot" });
+      expect((await result({ outputSchema: "none" }, "visualItem")).structuredContent).toMatchObject({ title: "shot" });
+      const read = await at("/mcp", { ...declared, outputSchema: "none" })(
+        rpc("resources/read", { uri: "akan://serverResolverTestItem/list?limit=5" }),
+      );
+      expect(read.json.result.contents[0].text).toBe('{"items":[]}');
+    });
+
+    test("`declared` keeps it for an MCP Apps view and an app's own result", async () => {
+      const props = { ...apps, ...declared };
+      const session = await uiSession(props);
+      const send = at("/mcp", props);
+      const view = await send(toolCall("maybeItem", { title: "here" }, { [MCP_APP_META.view]: true }), session);
+      expect(view.json.result.structuredContent).toMatchObject({ title: "here" });
+      const model = await send(toolCall("maybeItem", { title: "here" }), session);
+      expect("structuredContent" in model.json.result).toBe(false);
+      const app = await send(toolCall("showItem", { serverResolverTestItemId: itemId }), session);
+      expect(app.json.result.structuredContent).toMatchObject({ href: `/en/item/${itemId}` });
+    });
   });
 });

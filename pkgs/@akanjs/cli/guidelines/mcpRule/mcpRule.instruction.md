@@ -65,13 +65,13 @@ export class FileSlice extends slice(srv.file, {
 ## Configuration
 Settings live in the app's `lib/option.ts` — `option.setMcp({ … })`, taking `enabled`, `readOnly`, `path`,
 `version`, `instructions`, `allowedOrigins`, `pageSize`, `language`, `legacyTextBlock`, `outputSchema`, `rateLimit`,
-`promptBudget`, `apps`, `modern`, `auth`, and `excludeSignals` / `excludeEndpoints` (curation like `mcp: false`,
-added up across libs, an unmatched name warned at boot) — or `setMcp((env) => …)` for settings derived from the
-server env.
+`promptBudget`, `apps`, `modern`, `auth`, `shelves`, `search`, `structuredContent`, and `excludeSignals` /
+`excludeEndpoints` (curation like `mcp: false`, added up across libs, an unmatched name warned at boot) — or
+`setMcp((env) => …)` for settings derived from the server env.
 **Not `main.ts`**: the gateway
 there only spawns children, and `option.ts` is the app-authored file `server.ts` already hands to the process that
 mounts `/mcp`. Every lib's option is read in mount order with the app's last, so an app tightens what a library
-declared without restating it. Each field but the two lists also has an env spelling (`AKAN_MCP`, `AKAN_MCP_READONLY`,
+declared without restating it. Each field but the two lists, `shelves`, `search` and `structuredContent` also has an env spelling (`AKAN_MCP`, `AKAN_MCP_READONLY`,
 `AKAN_MCP_PATH`, `AKAN_MCP_VERSION`, `AKAN_MCP_INSTRUCTIONS`, `AKAN_MCP_ALLOWED_ORIGINS`, `AKAN_MCP_PAGE_SIZE`,
 `AKAN_MCP_LANGUAGE`, `AKAN_MCP_LEGACY_TEXT`, `AKAN_MCP_OUTPUT_SCHEMA`, `AKAN_MCP_RATE_LIMIT`, `AKAN_MCP_CONCURRENT`,
 `AKAN_MCP_PROMPT_BUDGET`, `AKAN_MCP_APPS`, `AKAN_MCP_MODERN`, `AKAN_MCP_AUTH_SERVERS`, `AKAN_MCP_SCOPES`, `AKAN_MCP_RESOURCE`) for a deployment that configures what the source does
@@ -168,6 +168,8 @@ export default page()
   clients read the structured half. A scalar return is unaffected: it has no structured half to point at, so it
   ships as the value itself either way. `resources/read` is unaffected too: `ReadResourceResult` has no
   `structuredContent`, so a resource's text is its only channel and always carries the serialized value.
+  `structuredContent: "declared"` ships `structuredContent` only for a tool that publishes an `outputSchema` (and
+  to an MCP Apps view); with `outputSchema: "none"` every result is then text alone.
 - **A picture is an `ImageResult` return, and the one result a model sees rather than reads.**
   `query(ImageResult, { guards: [...] })` (or `[ImageResult]`) returns `{ data, mimeType, caption? }`: `data` is
   padded standard base64 with no `data:` prefix, `mimeType` one of `image/png`, `image/jpeg`, `image/webp`,
@@ -262,7 +264,7 @@ export default page()
 - **Every failed call carries a code** beside the text, which reads as it always did. A tool error holds
   `_meta["akanjs/failure"]: { code, statusCode }` — in `_meta`, because a client checks `structuredContent` against
   the tool's `outputSchema` even on a failure — and a JSON-RPC error holds `data.code`, which tells apart what
-  `-32602` files together: `unknownTool`, `invalidArgument`, `unknownPrompt`, `unknownResource` and a screen's
+  `-32602` files together: `unknownTool`, `invalidArgument`, `notReadOnly`, `unknownPrompt`, `unknownResource` and a screen's
   refusal, beside `tooManyRequests` and `internalError`. The code is the one an HTTP caller gets: a domain `Err`'s
   dictionary key (what `Err.is` matches), else the `AkanError`'s own code; a guard's 401 or 403 by its status alone
   (`unauthorized`, `forbidden`), since a guard's own code names its rule as its message does; a crash, or a 5xx whose
@@ -368,6 +370,24 @@ delegates to lives in `akanjs/server` (`OAuthAuthorize`, `OAuthToken`, `OAuthReg
 - **`JWT_SECRET`** (or `security.jwtSecret`) is required outside `local`; the boot refuses without it, because the
   derived fallback is seeded from the app, environment and repo names and forges an admin token for anyone who
   knows them. `AKAN_ALLOW_DERIVED_JWT_SECRET=1` accepts that risk explicitly.
+
+## Fewer Tools Per Client — `shelves` And `search`
+
+A client that pays for every listed tool on every turn can take a narrower listing; neither option changes who may
+call what, since guards, `Person` and the rate limit apply as at the root.
+
+- **`shelves: { runner: { endpoints: ["startTask", "taskInProject"], instructions } }`** serves a second listing at
+  `<path>/runner` with only those entries, under its own `instructions` (none if unset, never the app's), and no
+  resources, page prompts or MCP Apps. It is its own OAuth resource (`<resource>/runner`, metadata at
+  `/.well-known/oauth-protected-resource<path>/runner`) and also takes a token issued for the root, which is what
+  the bundled authorization server issues. Shelves merge by name across `setMcp` calls; a name that is no lowercase
+  path segment, or an entry no signal has, fails the boot.
+- **`search: { listed, limit?, keywords? }`** lists only `listed` at the root, plus `findTools({ query })` and
+  `readTool({ name, args })`. A tool `findTools` returns joins that caller's listing (announced as
+  `notifications/tools/list_changed` on the call's own stream) and is then called by its own name, so a client still
+  asks before each write; `readTool` runs a published query at once and refuses a mutation (`notReadOnly`).
+  `keywords` adds words a tool is found by — the users' language, Korean included. The found set lives in the app's
+  cache for 24 hours per credential (per address without `auth.verify`), and in the process when there is no cache.
 
 ## Page Prompts — `page().prompt()`
 **A prompt is a screen.** There is no `prompt()` on `endpoint()`: the page file declares it —
@@ -555,7 +575,10 @@ at every event.
   every tool. A tool in no toolkit is listed every round, beside `openToolkit({ name })`, whose description lists the
   toolkits. An opened toolkit's tools are listed from the next round on, until a compaction keeps no message using
   it; `openToolkit` never reaches `approve` and counts as no tool call. A resume reopens what stored calls and a
-  summary opened.
+  summary opened. A kit's `instructions` come back with what it lists; `asked: true` sends its open to `approve`.
+  `listed: [kit or tool]` lists those from round one, for good. `search: { keywords?, limit?, rank? }` adds
+  `findTools({ query })`, which lists the closed kits' tools it ranks, as an open does; pass `keywords` in the words
+  members ask in. `toolBudget` caps the characters of loaded definitions, unlisting the least recently used.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
   counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or

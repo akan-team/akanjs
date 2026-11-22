@@ -583,6 +583,22 @@ describe("AkanServer MCP config", () => {
     }
   });
 
+  test("merges MCP shelves by name across setMcp calls, a later shelf of one name replacing the earlier", async () => {
+    const { AkanServer, createLib } = await loadRuntime();
+    const tmp = await mkdtemp(join(tmpdir(), "akan-server-mcp-shelves-"));
+    try {
+      const server = new AkanServer("serverGet", createEnv(tmp), "all", createLib())
+        .setMcp({ shelves: { runner: { endpoints: ["a"] }, desk: { endpoints: ["b"] } } })
+        .setMcp({ shelves: { runner: { endpoints: ["c"] } }, search: { listed: ["a"] } })
+        .setMcp({ structuredContent: "declared" });
+      expect(server.mcpOption.shelves).toEqual({ runner: { endpoints: ["c"] }, desk: { endpoints: ["b"] } });
+      expect(server.mcpOption.search).toEqual({ listed: ["a"] });
+      expect(server.mcpOption.structuredContent).toBe("declared");
+    } finally {
+      await rm(tmp, { recursive: true, force: true });
+    }
+  });
+
   test("keeps the surface off under AKAN_MCP=false whatever an option.ts configures", async () => {
     const { AkanOption, AkanServer, createLib } = await loadRuntime();
     const tmp = await mkdtemp(join(tmpdir(), "akan-server-mcp-off-"));

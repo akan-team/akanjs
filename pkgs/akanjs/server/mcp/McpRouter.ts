@@ -30,11 +30,15 @@ import { FetchSerializer } from "../../signal/serializer";
 import type { HttpRoutes } from "../types";
 import { type McpAppShellSource, McpApps } from "./McpApps";
 import { McpAuth, type McpAuthOption } from "./McpAuth";
-import { McpAuthRequiredError, McpDispatcher } from "./McpDispatcher";
+import { McpAuthRequiredError, McpDispatcher, type McpStructuredContentMode } from "./McpDispatcher";
 import { McpEventStream } from "./McpEventStream";
+import type { McpFoundToolsStore } from "./McpFoundTools";
 import { McpPages } from "./McpPages";
 import { McpRateLimiter, type McpRateLimitOption, type McpSharedCounter } from "./McpRateLimiter";
+import { McpSearch, type McpSearchOption } from "./McpSearch";
+import { type McpShelfOption, McpShelves, type McpSurface } from "./McpShelves";
 import { McpUiSession, type McpUiSessionStore } from "./McpUiSession";
+import { McpWire } from "./McpWire";
 
 export interface McpRouterProps {
   registry: InjectRegistry;
@@ -59,6 +63,9 @@ export interface McpRouterProps {
   apps?: boolean;
   appShell?: McpAppShellSource;
   modern?: boolean;
+  shelves?: Record<string, McpShelfOption>;
+  search?: McpSearchOption;
+  structuredContent?: McpStructuredContentMode;
 }
 
 interface McpCall {
@@ -68,13 +75,8 @@ interface McpCall {
   era: McpEra;
   req: Request;
   ui: boolean;
+  surface: McpSurface;
   inProcess?: boolean;
-}
-
-interface McpErrorOptions {
-  status?: number;
-  data?: unknown;
-  headers?: Record<string, string>;
 }
 
 interface McpCacheHint {
@@ -104,6 +106,9 @@ export class McpRouter {
   readonly #limiter: McpRateLimiter | null;
   readonly #apps: McpApps | null;
   readonly #pages: McpPages;
+  readonly #root: McpSurface;
+  readonly #shelves: McpSurface[];
+  readonly #search: McpSearch | null;
   #document: McpDocument | null = null;
 
   constructor(props: McpRouterProps) {
@@ -112,12 +117,17 @@ export class McpRouter {
     const legacyTextBlock = props.outputSchema === "none" ? undefined : props.legacyTextBlock;
     // Resolved here so a call's domain error reads in the language its tool was described in.
     this.#dispatcher = new McpDispatcher({ ...props, legacyTextBlock, language: props.language ?? defaultLanguage });
-    this.#auth = new McpAuth({ ...props.auth, path: props.path ?? "/mcp" });
+    const path = props.path ?? "/mcp";
+    this.#auth = new McpAuth({ ...props.auth, path });
+    this.#root = { shelf: null, path, auth: this.#auth, instructions: props.instructions, endpoints: null };
+    this.#shelves = McpShelves.surfaces(props.shelves, { path, auth: props.auth, root: this.#auth });
     this.#apps =
       props.apps && props.pagePrompts
         ? new McpApps(props.appShell ?? null, { readOnly: props.readOnly, staticHtml: !!props.pagePrompts.render })
         : null;
-    const cache = props.registry.adaptor.get(CacheAdaptorRole) as (McpSharedCounter & McpUiSessionStore) | undefined;
+    const cache = props.registry.adaptor.get(CacheAdaptorRole) as
+      | (McpSharedCounter & McpUiSessionStore & McpFoundToolsStore)
+      | undefined;
     this.#pages = new McpPages({
       source: props.pagePrompts,
       apps: this.#apps,
@@ -131,6 +141,7 @@ export class McpRouter {
       readOnly: props.readOnly,
     });
     this.#limiter = props.rateLimit === false ? null : new McpRateLimiter(props.rateLimit, cache ?? null);
+    this.#search = props.search ? new McpSearch(props.search, cache ?? null) : null;
   }
 
   // claude.ai renders a view only for a server it reached through `initialize`; over `server/discover` it reads the
@@ -144,17 +155,20 @@ export class McpRouter {
   }
 
   createRoutes(): HttpRoutes {
-    return {
-      [this.#props.path ?? "/mcp"]: {
-        POST: async (req: Request) => this.#cors(req, await this.#post(req)),
-        OPTIONS: (req: Request) => this.#preflight(req),
-        // No server stream in either era, and the one session stores nothing to end; still CORS-labelled so a browser can
-        // tell 405 from a refusal.
-        GET: (req: Request) => this.#cors(req, notAllowed()),
-        DELETE: (req: Request) => this.#cors(req, notAllowed()),
-      },
-      ...this.#auth.createRoutes(),
-    };
+    const routes: HttpRoutes = {};
+    for (const surface of [this.#root, ...this.#shelves])
+      Object.assign(routes, {
+        [surface.path]: {
+          POST: async (req: Request) => this.#cors(req, await this.#post(req, surface)),
+          OPTIONS: (req: Request) => this.#preflight(req),
+          // No server stream in either era, and the one session stores nothing to end; still CORS-labelled so a browser
+          // can tell 405 from a refusal.
+          GET: (req: Request) => this.#cors(req, notAllowed()),
+          DELETE: (req: Request) => this.#cors(req, notAllowed()),
+        },
+        ...surface.auth.createRoutes(),
+      });
+    return routes;
   }
 
   // The only place a refusal is explained: it turns on resolved types and guards, which no source scan can read.
@@ -199,6 +213,19 @@ export class McpRouter {
         `MCP catalogue could not be built at boot: ${error instanceof Error ? error.message : error}`,
       );
     }
+    this.#checkNames();
+  }
+
+  // Outside `report`'s catch: a misspelt shelf or search name would leave a connector without the tool it was set up for.
+  #checkNames() {
+    let document: McpDocument;
+    try {
+      document = this.#getDocument();
+    } catch {
+      return;
+    }
+    for (const line of McpShelves.report(document, [this.#root, ...this.#shelves], this.#search))
+      McpRouter.logger.warn(line);
   }
 
   #reportUnmatched(document: McpDocument) {
@@ -254,31 +281,31 @@ export class McpRouter {
     return this.#document;
   }
 
-  async #post(req: Request) {
+  async #post(req: Request, surface: McpSurface) {
     if (!this.#originAllowed(req)) return new Response("Forbidden", { status: 403 });
     // Security: the spec's only credential is `Authorization`; an ambient cookie would let a same-site page drive
     // tools/call past `CrossSiteGuard`. Deleted in place so the `BunRequest` keeps its peer address.
     req.headers.delete("cookie");
-    const rejected = this.#auth.challengeAnonymous(req) ?? (await this.#auth.reject(req));
+    const rejected = surface.auth.challengeAnonymous(req) ?? (await surface.auth.reject(req));
     if (rejected) return rejected;
     let body: McpJsonRpcRequest;
     try {
       body = (await req.json()) as McpJsonRpcRequest;
     } catch {
-      return McpRouter.#error(null, McpErrorCode.parse, "Invalid JSON body.", { status: 400 });
+      return McpWire.error(null, McpErrorCode.parse, "Invalid JSON body.", { status: 400 });
     }
     if (body === null)
-      return McpRouter.#error(null, McpErrorCode.invalidRequest, "A JSON-RPC request is an object.", { status: 400 });
+      return McpWire.error(null, McpErrorCode.invalidRequest, "A JSON-RPC request is an object.", { status: 400 });
     const id = body.id ?? null;
     const method = body.method;
     if (typeof method !== "string")
-      return McpRouter.#error(id, McpErrorCode.invalidRequest, "Missing JSON-RPC method.", { status: 400 });
+      return McpWire.error(id, McpErrorCode.invalidRequest, "Missing JSON-RPC method.", { status: 400 });
     // A notification carries no id and expects no body back.
     if (method.startsWith("notifications/")) return new Response(null, { status: 202 });
 
     const params = (body.params ?? {}) as Record<string, unknown>;
     // Keyed on the modern version key, not on `_meta` itself: legacy `_meta` exists too (it carries `progressToken`).
-    const meta = McpRouter.#meta(params);
+    const meta = McpWire.meta(params);
     const era: McpEra = method !== "initialize" && meta && MCP_META_PROTOCOL_VERSION in meta ? "modern" : "legacy";
     const discoverable = method !== "server/discover" || this.#versions.includes(MCP_MODERN_VERSION);
     const rejection =
@@ -287,7 +314,8 @@ export class McpRouter {
 
     const started = Date.now();
     try {
-      const call: McpCall = { id, method, params, era, req, ui: await this.#pages.uiCapable(era, meta, req) };
+      const ui = !surface.endpoints && (await this.#pages.uiCapable(era, meta, req));
+      const call: McpCall = { id, method, params, era, req, ui, surface };
       const res = await this.#dispatch(call);
       const subject = typeof params.name === "string" ? params.name : typeof params.uri === "string" ? params.uri : "";
       const client = `${era}${this.#apps ? (call.ui ? ", ui" : ", text") : ""}`;
@@ -296,11 +324,11 @@ export class McpRouter {
       );
       return res;
     } catch (error) {
-      if (error instanceof McpAuthRequiredError) return this.#auth.unauthorized(req);
+      if (error instanceof McpAuthRequiredError) return surface.auth.unauthorized(req);
       McpRouter.logger.error(
         `MCP ${method} failed: ${error instanceof Error ? (error.stack ?? error.message) : error}`,
       );
-      return McpRouter.#error(id, McpErrorCode.internal, "Internal server error.", McpRouter.#coded("internalError"));
+      return McpWire.error(id, McpErrorCode.internal, "Internal server error.", McpWire.coded("internalError"));
     }
   }
 
@@ -313,12 +341,12 @@ export class McpRouter {
           call,
           {
             protocolVersion: this.#negotiate(call.params.protocolVersion),
-            capabilities: this.#capabilities(document),
+            capabilities: this.#capabilities(document, call.surface),
             serverInfo: this.#serverInfo(),
-            ...(this.#props.instructions ? { instructions: this.#props.instructions } : {}),
+            ...(call.surface.instructions ? { instructions: call.surface.instructions } : {}),
           },
           undefined,
-          await this.#pages.uiSession(call.params.capabilities),
+          call.surface.endpoints ? undefined : await this.#pages.uiSession(call.params.capabilities),
         );
       case "ping":
         // Both eras keep it, and a client that uses it as a liveness check reads a `-32601` as a dead connection.
@@ -326,36 +354,40 @@ export class McpRouter {
       case "server/discover":
         //? At 200, as a legacy-only server answers it: that is the reply claude.ai was seen to fall back from.
         if (!this.#versions.includes(MCP_MODERN_VERSION))
-          return McpRouter.#error(call.id, McpErrorCode.methodNotFound, this.#methodNotFound(call.method));
+          return McpWire.error(call.id, McpErrorCode.methodNotFound, this.#methodNotFound(call.method));
         return this.#result(
           call,
           {
             supportedVersions: this.#versions,
-            capabilities: this.#capabilities(document),
-            ...(this.#props.instructions ? { instructions: this.#props.instructions } : {}),
+            capabilities: this.#capabilities(document, call.surface),
+            ...(call.surface.instructions ? { instructions: call.surface.instructions } : {}),
           },
           discoverCache,
         );
       case "tools/list":
-        return await this.#list(call, "tools", async () => [
-          ...document.tools,
-          ...(await this.#pages.tools(call.ui, document, call.req)),
-        ]);
+        // Uncached under search: the listing grows with each `findTools`, announced only by `list_changed`.
+        return await this.#list(
+          call,
+          "tools",
+          () => this.#toolsOf(call, document),
+          this.#search && !call.surface.endpoints ? null : listCache,
+        );
       case "resources/list":
-        return await this.#list(call, "resources", async () => [
-          ...document.resources,
-          ...(await this.#pages.resources(call.ui, call.req)),
-        ]);
+        return await this.#list(call, "resources", async () =>
+          call.surface.endpoints ? [] : [...document.resources, ...(await this.#pages.resources(call.ui, call.req))],
+        );
       case "resources/templates/list":
-        return await this.#list(call, "resourceTemplates", () => document.resourceTemplates);
+        return await this.#list(call, "resourceTemplates", () =>
+          call.surface.endpoints ? [] : document.resourceTemplates,
+        );
       case "prompts/list":
-        return await this.#list(call, "prompts", () => this.#pages.prompts(call.req));
+        return await this.#list(call, "prompts", () => (call.surface.endpoints ? [] : this.#pages.prompts(call.req)));
       case "tools/call": {
         const slot = await this.#acquire(call);
         if ("refused" in slot) return slot.refused;
         let release = slot.release;
         try {
-          const page = await this.#pages.toolOf(call.params.name);
+          const page = call.surface.endpoints ? null : await this.#pages.toolOf(call.params.name);
           if (page) return await this.#pageToolCall(call, document, page);
           // Handed over: a streamed call keeps its slot until the stream ends.
           release = () => {};
@@ -370,7 +402,7 @@ export class McpRouter {
         return await this.#limited(call, () => this.#resourcesRead(call, document));
       default:
         // Legacy clients read a 404 as "session gone" and would re-handshake in a loop, so they get the error at 200.
-        return McpRouter.#error(call.id, McpErrorCode.methodNotFound, this.#methodNotFound(call.method), {
+        return McpWire.error(call.id, McpErrorCode.methodNotFound, this.#methodNotFound(call.method), {
           status: call.era === "modern" ? 404 : 200,
         });
     }
@@ -378,15 +410,28 @@ export class McpRouter {
 
   // Filter first, then page: an offset has to address the list the caller can actually see.
   //? Rate-limited like a call, as a listing runs the account and route guards; `listFor` (in-process) is not.
-  async #list<T extends { name: string }>(call: McpCall, key: string, itemsOf: () => Promise<T[]> | T[]) {
+  async #list<T extends { name: string }>(
+    call: McpCall,
+    key: string,
+    itemsOf: () => Promise<T[]> | T[],
+    cache: McpCacheHint | null = listCache,
+  ) {
     const list = async () => {
       const visible = await this.#dispatcher.filterForAccount(await itemsOf(), call.req);
-      const page = McpRouter.#page(visible, call.params.cursor, this.#props.pageSize ?? defaultPageSize);
-      if (!page) return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Invalid cursor.");
+      const page = McpWire.page(visible, call.params.cursor, this.#props.pageSize ?? defaultPageSize);
+      if (!page) return McpWire.error(call.id, McpErrorCode.invalidParams, "Invalid cursor.");
       const result = { [key]: page.items, ...(page.nextCursor ? { nextCursor: page.nextCursor } : {}) };
-      return this.#result(call, result, listCache);
+      return this.#result(call, result, cache ?? undefined);
     };
     return call.inProcess ? await list() : await this.#limited(call, list);
+  }
+
+  async #toolsOf(call: McpCall, document: McpDocument): Promise<McpTool[]> {
+    const endpoints = call.surface.endpoints;
+    if (endpoints) return document.tools.filter((tool) => endpoints.has(tool.name));
+    const pages = await this.#pages.tools(call.ui, document, call.req);
+    if (!this.#search) return [...document.tools, ...pages];
+    return await this.#search.listing(document, this.#auth.callerKey(call.req), pages);
   }
 
   /** The catalogue as built, before any caller filter: refusals, undescribed entries, `findTool`. */
@@ -421,6 +466,7 @@ export class McpRouter {
         era: "legacy",
         req,
         ui,
+        surface: this.#root,
         inProcess: true,
       };
       const body = (await (await this.#dispatch(call)).json()) as McpJsonRpcResponse;
@@ -453,8 +499,8 @@ export class McpRouter {
         ? `Rate limit exceeded: ${this.#limiter.calls} calls per ${Math.round(this.#limiter.windowMs / 1000)}s. Retry in ${seconds}s.`
         : `Too many calls in flight: at most ${this.#limiter.concurrent} at once. Retry in ${seconds}s.`;
     return {
-      refused: McpRouter.#error(call.id, McpErrorCode.rateLimited, message, {
-        ...McpRouter.#coded(AkanError.codeOfStatus(429)),
+      refused: McpWire.error(call.id, McpErrorCode.rateLimited, message, {
+        ...McpWire.coded(AkanError.codeOfStatus(429)),
         status: 429,
         headers: { "retry-after": String(seconds) },
       }),
@@ -466,21 +512,30 @@ export class McpRouter {
     try {
       const name = call.params.name;
       if (typeof name !== "string")
-        return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing tool name.", McpRouter.#invalid);
-      // An app-only tool is part of the surface only for a client that renders views; to any other it does not exist.
-      const exposed = document.isAppOnly(name) && !call.ui ? undefined : document.findTool(name);
+        return McpWire.error(call.id, McpErrorCode.invalidParams, "Missing tool name.", McpWire.invalid);
+      const search = call.surface.endpoints ? null : this.#search;
+      const meta = search && (name === McpSearch.findName || name === McpSearch.readName);
+      const named = meta ? McpWire.arguments(call.params) : undefined;
+      if (named === null) return McpWire.badArgumentsError(call.id);
+      if (search && named && name === McpSearch.findName) return await this.#findTools(call, document, named, search);
+      const target = named
+        ? McpSearch.readTarget(document, named)
+        : { exposed: this.#exposedTool(call, document, name), args: call.params.arguments };
+      if ("refusal" in target)
+        return McpWire.error(call.id, McpErrorCode.invalidParams, target.refusal, McpWire.coded(target.code));
+      const exposed = target.exposed;
       // Security: not-exposed must read like nonexistent, or the error itself enumerates the private surface.
       if (!exposed)
-        return McpRouter.#error(
+        return McpWire.error(
           call.id,
           McpErrorCode.invalidParams,
           `Unknown tool: ${name}.`,
-          McpRouter.#coded("unknownTool"),
+          McpWire.coded("unknownTool"),
         );
-      const args = McpRouter.#arguments(call.params);
-      if (!args) return McpRouter.#badArgumentsError(call.id);
-      const progressToken = McpRouter.#progressToken(call);
-      const option = { forView: this.#pages.forView(call.ui, McpRouter.#meta(call.params)) };
+      const args = McpWire.arguments({ arguments: target.args });
+      if (!args) return McpWire.badArgumentsError(call.id);
+      const progressToken = McpWire.progressToken(call.req, call.params);
+      const option = { forView: this.#pages.forView(call.ui, McpWire.meta(call.params)) };
       if (progressToken === undefined)
         return this.#result(call, await this.#dispatcher.call(exposed, args, call.req, option));
       streaming = true;
@@ -488,6 +543,27 @@ export class McpRouter {
     } finally {
       if (!streaming) release();
     }
+  }
+
+  // An app-only tool is part of the surface only for a client that renders views; to any other it does not exist.
+  #exposedTool(call: McpCall, document: McpDocument, name: string) {
+    if (document.isAppOnly(name) && !call.ui) return undefined;
+    if (call.surface.endpoints && !call.surface.endpoints.has(name)) return undefined;
+    return document.findTool(name);
+  }
+
+  //? The new listing is announced on this call's own stream: the modern era keeps no server stream to send it on later.
+  async #findTools(call: McpCall, document: McpDocument, args: Record<string, unknown>, search: McpSearch) {
+    const visible = await this.#dispatcher.filterForAccount(document.tools, call.req);
+    const found = await search.find(visible, args, this.#auth.callerKey(call.req));
+    if ("error" in found) return McpWire.error(call.id, McpErrorCode.invalidParams, found.error, McpWire.invalid);
+    const result = McpSearch.result({ tools: found.tools }, this.#props.structuredContent !== "declared");
+    if (!found.added || !McpWire.acceptsStream(call.req)) return this.#result(call, result);
+    const stream = new McpEventStream(() => {});
+    stream.write({ jsonrpc: "2.0", method: "notifications/tools/list_changed" });
+    stream.write(this.#envelope(call, result));
+    stream.close();
+    return stream.response();
   }
 
   // Commits to SSE only once progress is reported: a stream opened up front could no longer answer a 401 challenge.
@@ -500,7 +576,7 @@ export class McpRouter {
     release: () => void,
   ) {
     const channel = new McpProgress();
-    const option = { forView: this.#pages.forView(call.ui, McpRouter.#meta(call.params)) };
+    const option = { forView: this.#pages.forView(call.ui, McpWire.meta(call.params)) };
     const settled = McpProgress.run(channel, async () => await this.#dispatcher.call(exposed, args, call.req, option))
       .then(
         (result) => ({ result }),
@@ -537,7 +613,7 @@ export class McpRouter {
       // Should be unreachable (guards throw before any progress); kept so a client is never left hanging.
       stream.write(
         "error" in outcome
-          ? McpRouter.#errorBody(call.id, McpErrorCode.internal, "Internal server error.", { code: "internalError" })
+          ? McpWire.errorBody(call.id, McpErrorCode.internal, "Internal server error.", { code: "internalError" })
           : this.#envelope(call, outcome.result),
       );
     } finally {
@@ -545,32 +621,14 @@ export class McpRouter {
     }
   }
 
-  static readonly #badArguments = "`arguments` must be an object of named values.";
-
-  //? `data.code` tells apart the failures JSON-RPC files under one number, `-32602` above all.
-  static #coded(code: string) {
-    return { data: { code } };
-  }
-
-  static readonly #invalid = McpRouter.#coded("invalidArgument");
-
-  static #badArgumentsError(id: string | number | null) {
-    return McpRouter.#error(id, McpErrorCode.invalidParams, McpRouter.#badArguments, McpRouter.#invalid);
-  }
-
-  // Not coerced to `{}`: that ran the call with every argument missing. An array would read as properties "0", "1".
-  static #arguments(params: Record<string, unknown>) {
-    const args = params.arguments;
-    if (args === undefined || args === null) return {};
-    if (typeof args !== "object" || Array.isArray(args)) return null;
-    return args as Record<string, unknown>;
-  }
-
   // Unfiltered on purpose: per-credential capabilities would contradict themselves across a cached handshake.
-  #capabilities(document: McpDocument) {
+  #capabilities(document: McpDocument, surface: McpSurface) {
+    if (surface.endpoints) return { tools: {} };
     const ui = !!this.#apps?.rendersUi;
     return {
-      ...(document.tools.length || this.#apps ? { tools: {} } : {}),
+      ...(document.tools.length || this.#apps || this.#search
+        ? { tools: this.#search ? { listChanged: true } : {} }
+        : {}),
       ...(document.resources.length || document.resourceTemplates.length || ui ? { resources: {} } : {}),
       ...(this.#props.pagePrompts ? { prompts: {} } : {}),
       //? A modern-era host treats an extension as negotiated only when both sides declare it, and renders nothing otherwise.
@@ -578,53 +636,46 @@ export class McpRouter {
     };
   }
 
-  // Only tools/call streams progress: listings are served from memory and prompts render as slash commands.
-  static #progressToken(call: McpCall) {
-    if (!call.req.headers.get("accept")?.includes("text/event-stream")) return undefined;
-    const token = McpRouter.#meta(call.params)?.progressToken;
-    return typeof token === "string" || typeof token === "number" ? token : undefined;
-  }
-
   async #pageToolCall(call: McpCall, document: McpDocument, entry: PagePromptEntry) {
-    const outcome = await this.#pages.toolCall(call, document, entry, McpRouter.#arguments(call.params));
-    if ("badArguments" in outcome) return McpRouter.#badArgumentsError(call.id);
+    const outcome = await this.#pages.toolCall(call, document, entry, McpWire.arguments(call.params));
+    if ("badArguments" in outcome) return McpWire.badArgumentsError(call.id);
     return this.#result(call, outcome.result);
   }
 
   async #promptsGet(call: McpCall, document: McpDocument) {
     const name = call.params.name;
     if (typeof name !== "string")
-      return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing prompt name.", McpRouter.#invalid);
-    const unknown = McpRouter.#coded("unknownPrompt");
-    const entry = await this.#pages.prompt(name);
-    if (!entry) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown prompt: ${name}.`, unknown);
-    const page = await this.#pages.run(call, document, entry, McpRouter.#arguments(call.params));
-    if ("badArguments" in page) return McpRouter.#badArgumentsError(call.id);
+      return McpWire.error(call.id, McpErrorCode.invalidParams, "Missing prompt name.", McpWire.invalid);
+    const unknown = McpWire.coded("unknownPrompt");
+    const entry = call.surface.endpoints ? null : await this.#pages.prompt(name);
+    if (!entry) return McpWire.error(call.id, McpErrorCode.invalidParams, `Unknown prompt: ${name}.`, unknown);
+    const page = await this.#pages.run(call, document, entry, McpWire.arguments(call.params));
+    if ("badArguments" in page) return McpWire.badArgumentsError(call.id);
     if ("refusal" in page)
-      return McpRouter.#error(call.id, McpErrorCode.invalidParams, page.refusal, McpRouter.#coded(page.failure.code));
+      return McpWire.error(call.id, McpErrorCode.invalidParams, page.refusal, McpWire.coded(page.failure.code));
     return this.#result(call, { description: entry.description, messages: page.messages });
   }
 
   async #resourcesRead(call: McpCall, document: McpDocument) {
     const uri = call.params.uri;
     if (typeof uri !== "string")
-      return McpRouter.#error(call.id, McpErrorCode.invalidParams, "Missing resource uri.", McpRouter.#invalid);
-    const unknown = McpRouter.#coded("unknownResource");
-    if (this.#apps && uri.startsWith(McpApps.scheme)) {
+      return McpWire.error(call.id, McpErrorCode.invalidParams, "Missing resource uri.", McpWire.invalid);
+    const unknown = McpWire.coded("unknownResource");
+    if (this.#apps && !call.surface.endpoints && uri.startsWith(McpApps.scheme)) {
       const contents = await this.#apps.read(uri, this.#auth.publicOrigin(call.req));
-      if (!contents) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`, unknown);
+      if (!contents) return McpWire.error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`, unknown);
       return this.#result(call, { contents: [contents] });
     }
-    const resolved = document.resolveResource(uri);
-    if (!resolved) return McpRouter.#error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`, unknown);
-    const result = await this.#dispatcher.call(resolved.exposed, resolved.args, call.req);
+    const resolved = call.surface.endpoints ? null : document.resolveResource(uri);
+    if (!resolved) return McpWire.error(call.id, McpErrorCode.invalidParams, `Unknown resource: ${uri}.`, unknown);
+    const result = await this.#dispatcher.call(resolved.exposed, resolved.args, call.req, { structured: true });
     const [first] = result.content;
     const firstText = first?.type === "text" ? first.text : undefined;
     // An explicit error: a client reads an empty `contents` array as "this exists and is empty".
     if (result.isError) {
       const failure = result._meta?.[MCP_FAILURE_META] as McpFailure | undefined;
       const code = failure?.code ?? AkanError.codeOfStatus(500);
-      return McpRouter.#error(call.id, McpErrorCode.invalidParams, firstText ?? "Read failed.", McpRouter.#coded(code));
+      return McpWire.error(call.id, McpErrorCode.invalidParams, firstText ?? "Read failed.", McpWire.coded(code));
     }
     // `ReadResourceResult` has no `structuredContent`, so the text is the resource's only channel.
     const text =
@@ -695,32 +746,6 @@ export class McpRouter {
     } satisfies McpJsonRpcResponse;
   }
 
-  // An out-of-range cursor (minted by an earlier process) is refused, not clamped: a short page reads as the end.
-  static #page<T>(items: T[], cursor: unknown, size: number) {
-    const offset = McpRouter.#offset(cursor);
-    if (offset === null || offset > items.length) return null;
-    const next = offset + size;
-    return {
-      items: items.slice(offset, next),
-      ...(next < items.length ? { nextCursor: Buffer.from(String(next)).toString("base64url") } : {}),
-    };
-  }
-
-  static #offset(cursor: unknown) {
-    if (cursor === undefined || cursor === null) return 0;
-    if (typeof cursor !== "string") return null;
-    const decoded = Buffer.from(cursor, "base64url").toString("utf8");
-    // `Number("")` is 0: an empty decode would restart a corrupted cursor at page one, forever.
-    if (!decoded) return null;
-    const offset = Number(decoded);
-    return Number.isInteger(offset) && offset >= 0 ? offset : null;
-  }
-
-  static #meta(params: Record<string, unknown>) {
-    const meta = params._meta;
-    return meta && typeof meta === "object" ? (meta as Record<string, unknown>) : null;
-  }
-
   // An unknown proposal newer than ours gets our newest, an older one our oldest: the spec's "latest supported" would
   // strand old clients. Revision names are ISO dates, so they order as strings.
   #negotiate(requested: unknown) {
@@ -744,48 +769,17 @@ export class McpRouter {
   ) {
     const version = meta[MCP_META_PROTOCOL_VERSION];
     if (typeof version !== "string" || !(MCP_META_CLIENT_CAPABILITIES in meta))
-      return McpRouter.#error(id, McpErrorCode.invalidParams, "Missing required `_meta` fields.", { status: 400 });
+      return McpWire.error(id, McpErrorCode.invalidParams, "Missing required `_meta` fields.", { status: 400 });
     if (!this.#versions.includes(version as McpProtocolVersion))
-      return McpRouter.#error(id, McpErrorCode.unsupportedProtocolVersion, "Unsupported protocol version.", {
+      return McpWire.error(id, McpErrorCode.unsupportedProtocolVersion, "Unsupported protocol version.", {
         status: 400,
         data: { requested: version, supported: this.#versions },
       });
     const named = params.name ?? params.uri;
     const mismatch =
-      McpRouter.#headerMismatch(req, "mcp-protocol-version", version) ??
-      McpRouter.#headerMismatch(req, "mcp-method", method) ??
-      (typeof named === "string" ? McpRouter.#headerMismatch(req, "mcp-name", named) : undefined);
-    return mismatch ? McpRouter.#error(id, McpErrorCode.headerMismatch, mismatch, { status: 400 }) : null;
-  }
-
-  static #headerMismatch(req: Request, header: string, expected: string) {
-    const raw = req.headers.get(header);
-    // Absence is refused like a mismatch: a gateway rule keyed on the header does not fire for a request omitting it.
-    if (raw === null) return `Header \`${header}\` is required by this protocol version and was not sent.`;
-    return McpRouter.#decodeHeader(raw) === expected ? undefined : `Header \`${header}\` does not match the body.`;
-  }
-
-  // Values that are not ASCII-safe travel wrapped in a lowercase base64 sentinel: `=?base64?…?=`.
-  static #decodeHeader(value: string) {
-    if (!value.startsWith("=?base64?") || !value.endsWith("?=")) return value;
-    return Buffer.from(value.slice(9, -2), "base64").toString("utf8");
-  }
-
-  // The JSON-RPC body is what tells a client a 4xx came from MCP, not a proxy; tool-level failures stay at 200.
-  static #error(
-    id: string | number | null,
-    code: number,
-    message: string,
-    { status, data, headers }: McpErrorOptions = {},
-  ) {
-    return Response.json(McpRouter.#errorBody(id, code, message, data), { status: status ?? 200, headers });
-  }
-
-  static #errorBody(id: string | number | null, code: number, message: string, data?: unknown) {
-    return {
-      jsonrpc: "2.0",
-      id,
-      error: { code, message, ...(data !== undefined ? { data } : {}) },
-    } satisfies McpJsonRpcResponse;
+      McpWire.headerMismatch(req, "mcp-protocol-version", version) ??
+      McpWire.headerMismatch(req, "mcp-method", method) ??
+      (typeof named === "string" ? McpWire.headerMismatch(req, "mcp-name", named) : undefined);
+    return mismatch ? McpWire.error(id, McpErrorCode.headerMismatch, mismatch, { status: 400 }) : null;
   }
 }
