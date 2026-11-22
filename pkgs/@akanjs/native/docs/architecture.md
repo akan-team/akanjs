@@ -994,15 +994,16 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - 확인(2026-09-27): 사용자가 Xcode로 `com.akanjs.sample` 개발 프로파일(Push Notifications 포함)을 만든 뒤, `akan-native run ios --device`가 iPhone 13 mini(iOS 26.6.2)에 서명·설치·실행했다. 키체인에 개발 인증서가 둘이라 처음에는 선택을 요구했는데, 프로파일이 허용하는 인증서로 고르도록 고쳤다. push 확인 앱이 실제 APNs 토큰을 받았다. iOS 16.4 시뮬레이터 자가 테스트 70/70. 단위 테스트가 plist 읽기, 프로파일 해석·선택 조건, entitlements 검사, 식별자 선택을 검사한다.
 
 ### 고정 Maven 라이브러리 (akanjs 준비 O8)
-- 옵트인 Android 모듈(push의 FCM, iap의 Play Billing)만 Maven AAR을 쓴다. 플러그인 manifest의 `android.maven`에 루트 좌표를 적고, 그 플러그인을 쓰는 앱에만 들어간다. 사용자 결정으로 두 모듈의 전이 의존성(kotlinx-coroutines, Okio, DataStore와 그 `.so`, datatransport)은 그대로 허용한다.
-- 잠금 `native/android/maven.lock.json`: 루트 조합(FCM, Billing, 둘 다)마다 폐포 하나와 파일마다 URL·SHA-256·크기. 빌드 때 해석기는 없다. Kotlin 표준 라이브러리 계열은 빼고 akan-native의 2.4.20을 쓴다(Billing만의 폐포는 1.8.22와 1.6.21 jdk7·jdk8이 겹쳐 d8이 거절한다). 조사: research/android-aar-closure.md.
+- 옵트인 Android 모듈(push의 FCM, iap의 Play Billing)과 앱 플러그인의 ML Kit 문서 스캐너만 Maven AAR을 쓴다. 플러그인 manifest의 `android.maven`에 루트 좌표를 적고, 그 플러그인을 쓰는 앱에만 들어간다. 사용자 결정으로 이들의 전이 의존성(kotlinx-coroutines, Okio, DataStore와 그 `.so`, datatransport, 스캐너의 appcompat·ML Kit common)은 그대로 허용한다.
+- 잠금 `native/android/maven.lock.json`: 루트 조합(FCM, Billing, 둘 다, FCM과 문서 스캐너)마다 폐포 하나와 파일마다 URL·SHA-256·크기. 빌드 때 해석기는 없다. 폐포는 Android 앱의 Gradle 빌드처럼 푼다(Gradle로 풀면 `java-base`를 켜야 kotlinx-coroutines-bom 같은 플랫폼 BOM이 적용된다). Kotlin 표준 라이브러리 계열은 빼고 akan-native의 2.4.20을 쓴다(Billing만의 폐포는 1.8.22와 1.6.21 jdk7·jdk8이 겹쳐 d8이 거절한다). 조사: research/android-aar-closure.md.
 - 빌드(`lib/maven.ts`, `lib/manifestmerge.ts`, android.ts)
-  - 받은 파일은 SHA-256을 확인하고 `~/.akan/native/maven`에 두며, AAR은 한 번 풀어 둔다(classes.jar, manifest, res, R.txt, proguard.txt, jni, jar의 `META-INF/services`).
+  - 받은 파일은 SHA-256을 확인하고 `~/.akan/native/maven`에 두며, AAR은 한 번 풀어 둔다(classes.jar와 `libs/*.jar`, manifest, res, R.txt, proguard.txt, jni, jar의 `META-INF/services`).
   - manifest: 자체 병합기. `${applicationId}`(debug 접미사 포함) 치환, `tools:` 제거, 권한과 `<queries>`는 한 번씩, 같은 이름의 컴포넌트는 하나로(meta-data는 이름마다 한 번, intent-filter는 하나씩). Firebase의 `ComponentDiscoveryService`처럼 여러 AAR이 나눠 선언한 것을 합친다. `<application>` 속성은 `appComponentFactory`만 가져온다(Gradle과 같게).
   - 리소스: 각 AAR의 res를 aapt2로 한 번 컴파일해 두고 앱 패키지에 overlay로 링크한다(`-R`, `--auto-add-overlay`). R.txt가 있는 라이브러리 패키지마다 R 클래스를 만들고(`--java --extra-packages`) JDK javac로 컴파일한다. 그래서 링크를 Kotlin·dex보다 먼저 한다.
   - dex: kotlinc·d8의 classpath에 라이브러리 jar. debug는 라이브러리 dex를 폐포마다 한 번 만들어 캐시하고 R 클래스만 매번 dex한다. release R8은 라이브러리 jar, R 클래스, 각 AAR의 `proguard.txt`, aapt2 `--proguard`가 만든 manifest keep 규칙(컴포넌트와 `appComponentFactory`)을 받는다. dex가 여러 개면 모두 담는다.
   - APK·AAB: `META-INF/services/*`를 합쳐 루트에(AAB는 `root/`), `jni/<abi>/*.so`는 `lib/<abi>/`에(압축, 설치할 때 푼다).
 - 확인(2026-09-26): FCM + Billing 폐포(69개)를 쓰는 시험 플러그인으로 debug(APK 10.8MB), release R8(1.28MB), AAB → universal APK를 만들어 에뮬레이터에서 실행했다. FirebaseApp 초기화, `FirebaseMessaging` 컴포넌트, `google_play_services_version` 리소스, Billing 서비스 연결(에뮬레이터에 Play 계정이 없어 BILLING_UNAVAILABLE)이 모두 동작했다. 첫 release에서 R8이 `CoreComponentFactory`를 지운 것을 aapt2 keep 규칙으로 고쳤다. 조사 초안의 URL 7개가 Maven Central 것이라 고쳤다(SHA-256은 그대로).
+- 확인(2026-11-22): FCM + 문서 스캐너 폐포(77개)와 앱 플러그인으로 debug, release R8(2.1MB) APK를 만들었고, Pixel 10 에뮬레이터(API 37)의 release 앱이 스캔 한 장을 받았다. 첫 release에서 R8이 emoji2의 `libs/repackaged.jar`에 든 flatbuffer 클래스가 없다고 멈춰, AAR의 `libs/*.jar`도 classpath와 dex에 넣는다.
 - 라이선스 고지(사용자 결정 2026-09-27)
   - 잠금이 각 라이브러리의 POM도 URL·SHA-256·크기로 고정하고, POM이 선언한 라이선스를 담는다(선언이 없으면 부모 POM의 것, `parents`에 고정). `scripts/maven-licenses.ts`가 채우고 `--check`가 다시 받아 비교한다. 추측한 라이선스는 없다.
   - 빌드는 이 라이선스와 AAR에 든 내장 코드 고지(`third_party_licenses.json`·`.txt`, Play services와 Billing)를 합쳐 웹 루트의 `/akan-native-licenses.json`(과 APK 옆)에 둔다. 앱은 이것을 오픈소스 라이선스 화면에 보여 주면 된다. web.dir에 같은 이름의 파일이 있으면 빌드 오류다.

@@ -103,6 +103,7 @@ const MODULE: Record<string, string> = {
   fcm: "push (FCM)",
   billing: "iap (Play Billing)",
   union: "push and iap together",
+  "fcm-document-scanner": "push with ML Kit's document scanner",
 };
 const maven = new Map<string, Set<string>>();
 for (const closure of lock.closures) {
@@ -155,7 +156,7 @@ const lines = [
   "",
   `Every Android app contains kotlin-stdlib ${TOOLCHAIN.kotlin.version} from the pinned Kotlin compiler: ${kotlinName}, ${kotlinCopyright}.`,
   "",
-  "Apps that enable the push plugin's FCM module or the iap plugin also contain these Maven libraries (licenses from their pinned POMs):",
+  "Apps that enable the push plugin's FCM module, the iap plugin or a plugin of their own on ML Kit's document scanner also contain these Maven libraries (licenses from their pinned POMs):",
   "",
   "| Library | License | Included with |",
   "|---|---|---|",

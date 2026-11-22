@@ -256,7 +256,7 @@ class ClipboardPlugin(private val context: AkanNativePluginContext) : AkanNative
   - `ApiN` object 안에는 `inline` 함수를 두지 않는다(호출한 쪽으로 복사되어 검사를 벗어난다). 새 API 인터페이스를 구현하는 람다·클래스를 필드 초기화에서 만들지 않는다(생성할 때 클래스 로드가 실패한다).
   - 검사가 보지 못하는 것은 직접 확인한다: 인라인 상수(`RECEIVER_*`, 새 권한 이름, `FLAG_MUTABLE`), 나중에 붙은 인터페이스(`TypedArray.use {}`는 31), 문자열로 고르는 알고리즘과 인텐트 액션.
   - 공용 분기는 `AkanNativeCompat`(`display`, `parcelableExtra`)에 있다.
-  - Google의 Maven 라이브러리가 꼭 필요하면(FCM, Play Billing) manifest의 `"android": { "maven": ["group:artifact:version"] }`에 루트를 적는다. 폐포는 `native/android/maven.lock.json`에 고정되어 있어야 하고(루트 조합마다 하나, SHA-256), 그 플러그인을 쓰는 앱에만 들어간다. AndroidX·kotlinx 금지의 예외는 이 두 모듈뿐이다(architecture.md "고정 Maven 라이브러리").
+  - Google의 Maven 라이브러리가 꼭 필요하면(FCM, Play Billing, ML Kit 문서 스캐너) manifest의 `"android": { "maven": ["group:artifact:version"] }`에 루트를 적는다. 폐포는 `native/android/maven.lock.json`에 고정되어 있어야 하고(루트 조합마다 하나, SHA-256), 그 플러그인을 쓰는 앱에만 들어간다. AndroidX·kotlinx 금지의 예외는 이 고정 폐포뿐이다(architecture.md "고정 Maven 라이브러리").
   - 플러그인 전체가 더 새 Android를 요구하면 manifest에 `"android": { "minSdk": 35 }`. 그 아래에서는 플러그인이 만들어지지 않고 모든 호출이 `UNSUPPORTED`다.
 - 검사: `akan-native plugin compile android`(셸과 함께 컴파일하고 API 수준까지 검사), 직접이라면 `kotlinc native/android/src plugins/*/android <registry stub> -d /tmp/x.jar -classpath $ANDROID_HOME/platforms/android-36/android.jar:<kotlin-stdlib.jar> -jvm-target 17 -no-jdk -no-stdlib -no-reflect`
 
