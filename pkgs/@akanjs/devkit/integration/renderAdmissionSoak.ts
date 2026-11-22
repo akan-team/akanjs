@@ -159,6 +159,7 @@ export default page()
   #server: { kill: (signal: NodeJS.Signals) => void } | null = null;
   #build: { kill: (signal: NodeJS.Signals) => void } | null = null;
   #injected = false;
+  #secretEnv: { [name: string]: string } = {};
 
   constructor(options: RenderAdmissionSoakOptions) {
     this.#options = options;
@@ -223,6 +224,10 @@ export default page()
         `no built app at ${distDir} — run this with --prepare, which builds ${appName} with the soak page`,
       );
     const routes = await this.#routes();
+    this.#secretEnv = await DevResourceProbe.deployedSecretEnv(
+      distDir,
+      path.join(this.#options.workspaceRoot, "apps", appName, "env"),
+    );
     console.info(
       `[soak] app=${appName} arrival=${this.#options.arrival} caps=${caps.join(",")} mixes=${mixes.join(",")} runs=${runs} routes=${routes.docs.length}`,
     );
@@ -323,6 +328,7 @@ export default page()
     return Bun.spawn(["bun", "main.js"], {
       cwd: distDir,
       env: {
+        ...this.#secretEnv,
         ...process.env,
         NODE_ENV: "production",
         USE_AKANJS_PKGS: "true",

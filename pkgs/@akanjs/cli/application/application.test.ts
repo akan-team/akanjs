@@ -141,24 +141,6 @@ describe("ApplicationCommand", () => {
     ]);
   });
 
-  test("build takes --inline-secrets, off unless given", async () => {
-    const option = getArgMetas(ApplicationCommand, "build")[1].find((meta) => meta.name === "inlineSecrets");
-    expect(option?.argsOption).toMatchObject({ default: false });
-
-    const command = CommandContainer.get(ApplicationCommand);
-    const calls: unknown[] = [];
-    command.applicationScript.build = async (...args: unknown[]) => {
-      calls.push(args);
-    };
-    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "build")?.handler;
-    await handler?.call(command, { name: "demo" }, true, false, false, null, null, false, false, false, false);
-    await handler?.call(command, { name: "demo" }, true, false, false, null, null, false, false, false, true);
-    expect(calls.map((args) => (args as [unknown, { inlineSecrets?: boolean }])[1].inlineSecrets)).toEqual([
-      false,
-      true,
-    ]);
-  });
-
   test("build takes --check-budget, --update-budget or --raise-budget, off unless given, as one budget mode", async () => {
     const options = getArgMetas(ApplicationCommand, "build")[1];
     for (const name of ["checkBudget", "updateBudget", "raiseBudget"])
@@ -450,7 +432,7 @@ describe("ApplicationScript", () => {
     }
   });
 
-  test("build has the server read its env's secrets from the process env, and keeps them in the build only with --inline-secrets", async () => {
+  test("build has the server read its env's secrets from the process env, and a --profile build leaves it to the profile", async () => {
     const script = CommandContainer.get(ApplicationScript);
     const { app } = track(await createTempApp("demo"));
     app.scanSync = mock(async () => undefined) as never;
@@ -459,11 +441,9 @@ describe("ApplicationScript", () => {
     });
     try {
       await expect(script.build(app, { quiet: true })).rejects.toThrow("stopped");
-      await expect(script.build(app, { quiet: true, inlineSecrets: true })).rejects.toThrow("stopped");
       await expect(script.build(app, { quiet: true, profile: "edge" })).rejects.toThrow("stopped");
       expect(build.mock.calls.map(([, options]) => [options?.secretEnv, options?.envProfile])).toEqual([
         ["read", undefined],
-        ["inline", undefined],
         ["read", "edge"],
       ]);
     } finally {

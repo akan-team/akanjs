@@ -597,8 +597,8 @@ REDIS_URI=redis://redis.internal:6379`}
                   type: "string",
                   default: l.trans({ en: "written by the build", ko: "빌드가 기록" }),
                   desc: l.trans({
-                    en: "The names the built server reads, in `akan.env.json` and the Dockerfile. At boot a name that is not set is one warning naming it. The framework does not stop for it, though whatever reads the value may; version 3.5.0 will refuse to start.",
-                    ko: "빌드된 서버가 읽는 변수 이름 목록이며 `akan.env.json`과 Dockerfile에 적힙니다. 시작할 때 설정되지 않은 이름이 있으면 그 이름을 들어 한 번 경고합니다. 프레임워크는 이 때문에 멈추지 않지만 그 값을 읽는 코드는 멈출 수 있습니다. 3.5.0부터는 시작을 거부합니다.",
+                    en: "The names the built server reads, in `akan.env.json` and the Dockerfile. A server with one of them unset or empty does not start: it exits, naming each one and `akan secret-env <app> --env <env>`.",
+                    ko: "빌드된 서버가 읽는 변수 이름 목록이며 `akan.env.json`과 Dockerfile에 적힙니다. 이 중 하나라도 없거나 비어 있으면 서버는 시작하지 않고, 빠진 이름과 `akan secret-env <app> --env <env>`를 알린 뒤 종료합니다.",
                   }),
                 },
               ]}
@@ -607,20 +607,19 @@ REDIS_URI=redis://redis.internal:6379`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>A deployment must set these before it runs an image built with 3.4.0.</strong> On
+                    <strong>A deployment must set these before it runs an image built with 3.3.0.</strong> On
                     Kubernetes, apply the Secret <code>akan secret-env --out</code> writes and name it in the
-                    container's <code>envFrom</code>. A deployment that cannot yet builds with{" "}
-                    <code>akan build --inline-secrets</code>, which keeps the values in the image for one more release.
-                    <code>akan start</code>, <code>akan test</code>, <code>--profile</code> builds and desktop and
-                    mobile builds read the env file as written.
+                    container's <code>envFrom</code>. Images built before 3.3.0 still hold the values: rotate them once
+                    the new images are live. <code>akan start</code>, <code>akan test</code>, <code>--profile</code>{" "}
+                    builds and desktop and mobile builds read the env file as written.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>3.4.0으로 빌드한 이미지를 돌리기 전에 배포가 이 변수들을 설정해야 합니다.</strong>{" "}
+                    <strong>3.3.0으로 빌드한 이미지를 돌리기 전에 배포가 이 변수들을 설정해야 합니다.</strong>{" "}
                     Kubernetes에서는 <code>akan secret-env --out</code>이 쓴 Secret을 apply하고 컨테이너의{" "}
-                    <code>envFrom</code>에 적습니다. 아직 그럴 수 없는 배포는 <code>akan build --inline-secrets</code>로
-                    빌드하면 한 릴리스 동안 값이 이미지에 남습니다. <code>akan start</code>, <code>akan test</code>,{" "}
+                    <code>envFrom</code>에 적습니다. 3.3.0 이전에 빌드한 이미지에는 값이 그대로 남아 있으니, 새 이미지가
+                    배포되면 그 비밀 값을 교체하세요. <code>akan start</code>, <code>akan test</code>,{" "}
                     <code>--profile</code> 빌드, 데스크톱·모바일 빌드는 env 파일을 적힌 그대로 읽습니다.
                   </span>
                 ),

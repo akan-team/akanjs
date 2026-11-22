@@ -15,9 +15,9 @@ export interface ServerEnvPluginOptions {
   onLibEnv?: (file: string, report: { profileFile: boolean; stripped: string[] }) => void;
   /**
    * Without a profile: `read` bundles each env file, a lib's included, with its secret strings replaced by reads of the
-   * process env, and `inline` keeps each string as what its read falls back to. Unset, the files are bundled as written.
+   * process env. Unset, the files are bundled as written.
    */
-  secrets?: "read" | "inline";
+  secrets?: "read";
 }
 
 const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");

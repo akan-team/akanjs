@@ -338,7 +338,7 @@ Prepare an app, library or package, then run its tests with `bun test --isolate`
 
 - --write (Boolean, default true): Sync an app target first. Libraries and packages are always prepared.
 
-`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>] [--inline-secrets <boolean>]`
+`akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>]`
 
 Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.
 
@@ -358,11 +358,9 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - --raise-budget (Boolean, default false): Rewrite the app's `akan.budget.json` at what every route measures now, raising the entries of the routes that grew, and name them. Run it in the change that grows a route on purpose, and commit the file with it. Pass one of the three budget flags at most.
 
-- --inline-secrets (Boolean, default false): Keep the server env's secret values in the build, as before 3.4.0, for a deployment that does not set their variables yet. A variable that is set still wins. Nothing about a secret stops this build: when the env file cannot be loaded it warns and bundles the env files as written. Version 3.5.0 removes the flag.
-
 - alias: `akan b` runs this command.
 
-- server env secrets: The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path: `security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` from `JWT_SECRET`, an array holding a secret from one JSON variable. `akan.env.json` and the Dockerfile list the names in `AKAN_ENV_NAMES`, the build prints them, and a server started without one warns by name, and the framework does not stop for it though whatever reads the value may (3.5.0 will refuse to start). A secret the env file computes or imports stops the build before it writes anything, whatever its length: write the string at the key, or `process.env.<NAME>` there, which the build leaves as that read and never moves. A secret string that another key of the env or the app's code holds as well stops the build when it is long and mixed, and is a warning when it is short or plain. The build loads the env file to list the secrets, with the shell's variables only when the file cannot load without them; a file that throws as it loads stops the build with the error's class and line. No message prints a value. A `--profile` build and a desktop or mobile build bundle their env files as written. See `secret-env`.
+- server env secrets: The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path: `security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` from `JWT_SECRET`, an array holding a secret from one JSON variable. `akan.env.json` and the Dockerfile list the names in `AKAN_ENV_NAMES`, the build prints them, and a server started without one exits before it listens, naming each. A secret the env file computes or imports stops the build before it writes anything, whatever its length: write the string at the key, or `process.env.<NAME>` there, which the build leaves as that read and never moves. A secret string that another key of the env or the app's code holds as well stops the build when it is long and mixed, and is a warning when it is short or plain. The build loads the env file to list the secrets, with the shell's variables only when the file cannot load without them; a file that throws as it loads stops the build with the error's class and line. No message prints a value. A `--profile` build and a desktop or mobile build bundle their env files as written. See `secret-env`.
 
 - lib defaults: With `--profile`, a lib that has no profile file of its own ships its defaults with every secret-named value left out, and the build names what it left out.
 
@@ -897,7 +895,6 @@ akan build myapp --profile edge
 akan build myapp --check-budget
 akan build myapp --update-budget
 akan build myapp --raise-budget
-akan build myapp --inline-secrets
 ```
 
 ### secret-env

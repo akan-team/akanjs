@@ -102,7 +102,7 @@ export class ServerBundleSecrets {
     }
     if (stops.length)
       throw new Error(
-        `The build holds secret values the server reads from its process env, so it stops here:\n  ${[...new Set(stops)].join("\n  ")}\nThe build left each out at its secret-named key of the env file, and the same string is in what it wrote for another reason: another key of the env holds it too, or the app's code, or a file the build copies. Take it out there, or read it there from the same variable. \`akan build --inline-secrets\` builds with the env files as written until akanjs 3.5.0 removes it.`,
+        `The build holds secret values the server reads from its process env, so it stops here:\n  ${[...new Set(stops)].join("\n  ")}\nThe build left each out at its secret-named key of the env file, and the same string is in what it wrote for another reason: another key of the env holds it too, or the app's code, or a file the build copies. Take it out there, or read it there from the same variable.`,
       );
     if (!notes.length) return null;
     const lines = [...new Set(notes)];

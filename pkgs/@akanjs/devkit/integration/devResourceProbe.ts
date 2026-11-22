@@ -1,5 +1,9 @@
+import { existsSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { BUILD_ENV_FILE } from "akanjs/server/lifecycle/buildEnv";
+import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
+import { SecretEnvDeclaration } from "../transforms/secretEnvDeclaration";
 
 export type DevResourceRole = "host" | "builder" | "batch" | "gateway" | "replica" | "rsc" | "other";
 
@@ -205,6 +209,16 @@ export class DevResourceProbe {
       if (kept.size === before) break;
     }
     return [...kept.values()].filter((proc) => proc.role !== "other" || proc.pid === rootPid);
+  }
+
+  static async deployedSecretEnv(distDir: string, envDir: string): Promise<{ [name: string]: string }> {
+    const file = path.join(distDir, BUILD_ENV_FILE);
+    const built = existsSync(file)
+      ? (JSON.parse(readFileSync(file, "utf8")) as { [key: string]: string | undefined })
+      : {};
+    if (!built[SecretEnv.listKey]) return {};
+    const { variables } = await SecretEnvDeclaration.of(envDir, built.AKAN_PUBLIC_ENV ?? "local");
+    return Object.fromEntries(variables.map(({ name, value }) => [name, value]));
   }
 
   static async killTree(

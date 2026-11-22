@@ -279,23 +279,16 @@ const buildAndTestTargets = ({ public: target }: ApplicationBuilderContext) => (
     .option("checkBudget", Boolean, { desc: checkBudgetDesc, default: false })
     .option("updateBudget", Boolean, { desc: "write akan.budget.json, never raising an entry", default: false })
     .option("raiseBudget", Boolean, { desc: "rewrite akan.budget.json at each route's measured JS", default: false })
-    .option("inlineSecrets", Boolean, {
-      desc: "keep the server env's secret values in the build, as before 3.4.0, for a deployment that does not set them yet (3.5.0 removes this)",
-      default: false,
-    })
-    .exec(
-      async function (app, write, fast, quiet, profile, env, checkBudget, updateBudget, raiseBudget, inlineSecrets) {
-        await this.applicationScript.build(app, {
-          write,
-          fast,
-          quiet,
-          profile: profile ?? undefined,
-          env: env ?? undefined,
-          budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
-          inlineSecrets,
-        });
-      },
-    ),
+    .exec(async function (app, write, fast, quiet, profile, env, checkBudget, updateBudget, raiseBudget) {
+      await this.applicationScript.build(app, {
+        write,
+        fast,
+        quiet,
+        profile: profile ?? undefined,
+        env: env ?? undefined,
+        budget: RouteJsBudget.modeOf({ checkBudget, updateBudget, raiseBudget }),
+      });
+    }),
   secretEnv: target({
     desc: "List the environment variables a build of the app reads its server env secrets from, or write them to a file for its deployment",
     readOnly: ({ out }) => !out,

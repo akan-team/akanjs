@@ -1410,7 +1410,7 @@ akan test util`,
       {
         name: "build",
         signature:
-          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>] [--inline-secrets <boolean>]",
+          "akan build <app> [--write <boolean>] [--fast <boolean>] [--quiet <boolean>] [--profile <profile>] [--env <env>] [--check-budget <boolean>] [--update-budget <boolean>] [--raise-budget <boolean>]",
         desc: l.trans({
           en: "Build the app for production into `dist/apps/<app>`. It typechecks, then compiles the backend, the SSR routes and the CSR bundle.",
           ko: "배포용 빌드를 `dist/apps/<app>`에 만듭니다. 타입을 검사한 뒤 백엔드, SSR 라우트, CSR 번들을 차례로 만듭니다.",
@@ -1476,23 +1476,14 @@ akan test util`,
               ko: "앱의 `akan.budget.json`을 모든 라우트의 지금 잰 크기로 다시 쓰고, 커진 라우트의 항목을 올리며 그 라우트들을 알려 줍니다. 라우트를 일부러 키우는 변경에서 실행하고, 그 파일을 함께 커밋합니다. 세 예산 옵션은 하나만 줄 수 있습니다.",
             }),
           },
-          {
-            name: "--inline-secrets",
-            type: "Boolean",
-            defaultValue: "false",
-            desc: l.trans({
-              en: "Keep the server env's secret values in the build, as before 3.4.0, for a deployment that does not set their variables yet. A variable that is set still wins. Nothing about a secret stops this build: when the env file cannot be loaded it warns and bundles the env files as written. Version 3.5.0 removes the flag.",
-              ko: "서버 env의 비밀 값을 3.4.0 이전처럼 빌드에 그대로 둡니다. 아직 그 환경변수를 넣지 못한 배포를 위한 옵션이며, 환경변수가 있으면 그 값이 우선합니다. 이 빌드는 비밀 값 때문에 멈추지 않으며, env 파일을 불러올 수 없으면 경고한 뒤 env 파일을 적힌 그대로 번들합니다. 3.5.0에서 없어집니다.",
-            }),
-          },
         ],
         notes: [
           aliasNote("b"),
           {
             name: l.trans({ en: "server env secrets", ko: "서버 env의 비밀 값" }),
             desc: l.trans({
-              en: "The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path: `security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` from `JWT_SECRET`, an array holding a secret from one JSON variable. `akan.env.json` and the Dockerfile list the names in `AKAN_ENV_NAMES`, the build prints them, and a server started without one warns by name, and the framework does not stop for it though whatever reads the value may (3.5.0 will refuse to start). A secret the env file computes or imports stops the build before it writes anything, whatever its length: write the string at the key, or `process.env.<NAME>` there, which the build leaves as that read and never moves. A secret string that another key of the env or the app's code holds as well stops the build when it is long and mixed, and is a warning when it is short or plain. The build loads the env file to list the secrets, with the shell's variables only when the file cannot load without them; a file that throws as it loads stops the build with the error's class and line. No message prints a value. A `--profile` build and a desktop or mobile build bundle their env files as written. See `secret-env`.",
-              ko: "빌드는 `env/env.server.<env>.ts`의 비밀 값을 `dist/apps/<app>`에 넣지 않습니다. 비밀 이름의 키(password, secret, token, apiKey, privateKey 등) 아래의 문자열과 비밀번호가 든 URL은 서버가 시작할 때 키 경로에서 이름을 딴 환경변수에서 읽습니다. `security.sso.google.clientSecret`은 `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret`은 `JWT_SECRET`에서 읽고, 비밀 값이 든 배열은 JSON을 담은 변수 하나에서 읽습니다. `akan.env.json`과 Dockerfile의 `AKAN_ENV_NAMES`에 그 이름들이 적히고 빌드가 이를 출력하며, 변수가 없는 채로 시작한 서버는 이름을 들어 경고하고, 프레임워크는 멈추지 않지만 그 값을 읽는 코드는 멈출 수 있습니다(3.5.0부터는 시작을 거부합니다). env 파일이 계산하거나 import한 비밀 값이 있으면 길이와 상관없이 빌드가 아무것도 쓰기 전에 멈춥니다. 그 키에 문자열을 직접 적거나 `process.env.<NAME>`을 적으면 되고, 직접 적은 `process.env` 읽기는 빌드가 옮기지 않고 그대로 둡니다. 같은 비밀 문자열을 env의 다른 키나 앱 코드도 갖고 있으면, 길고 여러 종류의 문자가 섞인 값은 빌드를 멈추고 짧거나 평범한 값은 경고로 알립니다. 빌드는 비밀 값을 찾으려고 env 파일을 불러오는데, 셸의 환경변수는 그것 없이는 불러올 수 없을 때만 씁니다. 불러오는 중 오류가 나면 오류의 종류와 줄을 알리고 멈춥니다. 어떤 메시지도 값을 출력하지 않습니다. `--profile` 빌드와 데스크톱·모바일 빌드는 env 파일을 적힌 그대로 번들합니다. `secret-env`를 참고하세요.",
+              en: "The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path: `security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` from `JWT_SECRET`, an array holding a secret from one JSON variable. `akan.env.json` and the Dockerfile list the names in `AKAN_ENV_NAMES`, the build prints them, and a server started without one exits before it listens, naming each. A secret the env file computes or imports stops the build before it writes anything, whatever its length: write the string at the key, or `process.env.<NAME>` there, which the build leaves as that read and never moves. A secret string that another key of the env or the app's code holds as well stops the build when it is long and mixed, and is a warning when it is short or plain. The build loads the env file to list the secrets, with the shell's variables only when the file cannot load without them; a file that throws as it loads stops the build with the error's class and line. No message prints a value. A `--profile` build and a desktop or mobile build bundle their env files as written. See `secret-env`.",
+              ko: "빌드는 `env/env.server.<env>.ts`의 비밀 값을 `dist/apps/<app>`에 넣지 않습니다. 비밀 이름의 키(password, secret, token, apiKey, privateKey 등) 아래의 문자열과 비밀번호가 든 URL은 서버가 시작할 때 키 경로에서 이름을 딴 환경변수에서 읽습니다. `security.sso.google.clientSecret`은 `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret`은 `JWT_SECRET`에서 읽고, 비밀 값이 든 배열은 JSON을 담은 변수 하나에서 읽습니다. `akan.env.json`과 Dockerfile의 `AKAN_ENV_NAMES`에 그 이름들이 적히고 빌드가 이를 출력하며, 변수가 빠진 채로 시작한 서버는 요청을 받기 전에 빠진 이름을 모두 알리고 종료합니다. env 파일이 계산하거나 import한 비밀 값이 있으면 길이와 상관없이 빌드가 아무것도 쓰기 전에 멈춥니다. 그 키에 문자열을 직접 적거나 `process.env.<NAME>`을 적으면 되고, 직접 적은 `process.env` 읽기는 빌드가 옮기지 않고 그대로 둡니다. 같은 비밀 문자열을 env의 다른 키나 앱 코드도 갖고 있으면, 길고 여러 종류의 문자가 섞인 값은 빌드를 멈추고 짧거나 평범한 값은 경고로 알립니다. 빌드는 비밀 값을 찾으려고 env 파일을 불러오는데, 셸의 환경변수는 그것 없이는 불러올 수 없을 때만 씁니다. 불러오는 중 오류가 나면 오류의 종류와 줄을 알리고 멈춥니다. 어떤 메시지도 값을 출력하지 않습니다. `--profile` 빌드와 데스크톱·모바일 빌드는 env 파일을 적힌 그대로 번들합니다. `secret-env`를 참고하세요.",
             }),
           },
           {
@@ -1522,8 +1513,7 @@ akan build myapp --write true --fast false --quiet false
 akan build myapp --profile edge
 akan build myapp --check-budget
 akan build myapp --update-budget
-akan build myapp --raise-budget
-akan build myapp --inline-secrets`,
+akan build myapp --raise-budget`,
       },
       {
         name: "secret-env",
