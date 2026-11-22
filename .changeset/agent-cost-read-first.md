@@ -15,7 +15,9 @@ A coding agent spends fewer calls before and after its first passing test.
 - The `akan-page` skill says a layout's `.notFound()` and `.error()` are drawn as that layout's `.render()` children,
   and that `Link` has no `shallow` (an `onClick` calls `router.push(href, { shallow: true })`). The `akan-service`
   recipe shapes the upstream JSON in a TypeScript `private` helper, which lint accepts in a service where `#private`
-  is refused. The `style` rule says the frame around a page draws nothing on the web without Tailwind.
+  is refused. The `style` rule says the frame around a page draws nothing on the web without Tailwind. The `ssr`
+  rule says what each server-component lint refuses: a client hook or `st` import, `"use client"`, and an inline
+  function prop other than `loader`, `render` and `of`; plain objects and arrays cross into a client component.
 - `create-akan-workspace` treats a Bun installed with `npm i -g bun` as npm's: the workspace lists `bun` in its
   dependencies and gets the `build` and `start` scripts, as it does under `npx bun`. The `akanjs` README says the
   creator builds and starts nothing, and that `npm run build`, `npm start` and `npx akan` run such a workspace.

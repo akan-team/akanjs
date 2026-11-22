@@ -17,8 +17,10 @@ paths:
   `dict` / `option` / `useServer` barrels. Server files (those four suffixes, `srvkit/`) never import a `*.store.ts`, a
   module component, `ui/`, `webkit/`, a package `client` entrypoint, or the `st` / `store` / `useClient` barrels.
   `common/` and `*.constant.ts` obey both. `import type` is legal everywhere; a mixed value-and-type import is not.
-- **Server-component discipline** on `page/**`, `*.Unit.tsx`, `*.View.tsx` (`no-import-client-functions`,
-  `no-use-client-in-server`, `non-scalar-props-restricted`).
+- **Server-component discipline** on `page/**`, `*.Unit.tsx`, `*.View.tsx`: no client hook (`useState`, `useEffect`,
+  …) or `st` import (`no-import-client-functions`), no `"use client"` (`no-use-client-in-server`), and no inline
+  function as a prop except `loader`, `render` and `of` (`non-scalar-props-restricted`). Plain objects and arrays
+  cross into a client component as props; a function or a class instance does not.
 - **Server is the default.** `akan quality ssr` prints each app's and lib's server share: 50% is the floor, and a
   falling share is a regression to justify in the PR or revert. Why, what earns the directive and the ten-step
   playbook (wrap the interaction, split compound components, fetch in the route, hand promises across, …): `ssrRule`
