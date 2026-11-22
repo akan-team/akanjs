@@ -52,6 +52,12 @@ describe("ApiReference", () => {
     expect(rendered).toMatch(/^Link\.Back\(.+\): Element$/m);
   });
 
+  test("defines under a signature the akanjs type alias it names, so no shape has to be grepped from node_modules", () => {
+    expect(rendered).toMatch(
+      /^usePageLocation\(\): .+ searchParams: BaseSearchParamsState; \}\ntype BaseSearchParamsState = \{ \[key: string\]: string \| string\[\]; \}\n```$/m,
+    );
+  });
+
   test("lists the keys of akan.config.ts, so the web and i18n shapes have a field to belong to", () => {
     const appConfig = rendered.slice(rendered.indexOf("### `AppConfigInput`"));
     expect(appConfig).toMatch(/^web\?: AkanWebOption;$/m);

@@ -7,10 +7,8 @@ import { hashPassword, isPasswordMatch } from "./bcrypt";
 import { emitSecuritySignal } from "./securitySignalHook";
 
 export type SignTokenPurpose = "signin" | "password";
-export type EmailCodePurpose = "accountId" | "address";
 
 export class SignChallenge {
-  static readonly maxCodeFails = 10;
   static readonly maxSigninFails = 10;
   static readonly maxAccountSigninFails = 50;
   readonly #cache: CacheDatabase;
@@ -102,58 +100,6 @@ export class SignChallenge {
     await this.#cache.delete("resetPassword", userId);
     return true;
   }
-  // One live code per account and purpose: a new request replaces the old one instead of adding a second guess.
-  async registerPhoneCode(userId: string, phone: string, purpose: string, phoneCode: string) {
-    await this.#cache.set("phoneCode", `${userId}:${purpose}`, `${phone}:${hashToken(phoneCode)}`, {
-      expireAt: dayjs().add(3, "minute"),
-    });
-  }
-  async isPhoneCodeValid(userId: string, phone: string, purpose: string, phoneCode: string) {
-    await this.#assertCodeAttemptsLeft(userId);
-    const stored = await this.#cache.get<string>("phoneCode", `${userId}:${purpose}`);
-    if (stored !== `${phone}:${hashToken(phoneCode)}`) {
-      await this.#failCodeAttempt(userId);
-      return false;
-    }
-    await this.#cache.delete("phoneCode", `${userId}:${purpose}`);
-    await this.#cache.delete("codeFails", userId);
-    return true;
-  }
-  async registerEmailCode(
-    userId: string,
-    accountId: string,
-    emailCode: string,
-    purpose: EmailCodePurpose = "accountId",
-  ) {
-    const sendNum = (await this.#cache.get<number>("emailCodeSends", accountId)) ?? 0;
-    if (sendNum >= 5) throw new Err("user.error.tooManyEmailCodes");
-    await this.#cache.set("emailCodeSends", accountId, sendNum + 1, { expireAt: dayjs().add(1, "hour") });
-    await this.#cache.set(
-      "emailCode",
-      SignChallenge.#emailCodeSlotOf(userId, purpose),
-      `${accountId}:${hashToken(emailCode)}`,
-      {
-        expireAt: dayjs().add(10, "minute"),
-      },
-    );
-  }
-  async isEmailCodeValid(
-    userId: string,
-    accountId: string,
-    emailCode: string,
-    purpose: EmailCodePurpose = "accountId",
-  ) {
-    const slot = SignChallenge.#emailCodeSlotOf(userId, purpose);
-    await this.#assertCodeAttemptsLeft(slot);
-    const existingEmailCode = await this.#cache.get<string>("emailCode", slot);
-    if (existingEmailCode !== `${accountId}:${hashToken(emailCode)}`) {
-      await this.#failCodeAttempt(slot);
-      return false;
-    }
-    await this.#cache.delete("emailCode", slot);
-    await this.#cache.delete("codeFails", slot);
-    return true;
-  }
   // Written once a removal lands, so a removal a hook refuses records nothing; a re-signup cannot read the removed row.
   async recordLeave(keys: string[], at = dayjs()) {
     await Promise.all(
@@ -165,18 +111,5 @@ export class SignChallenge {
     const leftAt = await this.#cache.get<number>("leftAt", hashToken(key));
     if (leftAt && dayjs(Number(leftAt)).add(resignupDays, "day").isAfter(dayjs()))
       throw new Err("user.error.resignupNotAvailable", { days: resignupDays });
-  }
-  // Misses count for a day however many codes were sent, so asking for a fresh code never resets the guesses.
-  async #assertCodeAttemptsLeft(failKey: string) {
-    const fails = Number((await this.#cache.get<number>("codeFails", failKey)) ?? 0);
-    if (fails >= SignChallenge.maxCodeFails) throw new Err("user.error.tooManyCodeFailures");
-  }
-  async #failCodeAttempt(failKey: string) {
-    await this.#cache.incr("codeFails", failKey, 1, { expireAt: dayjs().add(1, "day") });
-  }
-  //? Names both the code and its miss counter. The sign-up and reset key stays bare, shared with phone codes as before, so
-  //? a code mailed by the previous image still verifies and a public reset check cannot spend the verify flow's misses.
-  static #emailCodeSlotOf(userId: string, purpose: EmailCodePurpose) {
-    return purpose === "accountId" ? userId : `${userId}:${purpose}`;
   }
 }
