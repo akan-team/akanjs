@@ -1406,7 +1406,7 @@ Export
 
 - resolveServerUrl: Puts a stored `/api/…` URL on the server's origin when a CSR page is served elsewhere, such as in a desktop app.
 
-- usePendingNavigation, PendingLocation: The `{ href, pathname, path, searchParams }` an SSR navigation is loading, from the press until its page is drawn, and `null` otherwise. A page the browser already holds (one drawn before, or a prefetch that has arrived) is never reported. A redirect moves it to where it leads. For a skeleton or a dimmed pane shown before the response.
+- usePendingNavigation, PendingLocation: The `{ href, pathname, path, searchParams }` a navigation is loading, from the press until its page is drawn or shows its `.loading()`, and `null` otherwise. A page the browser already holds is never reported: under SSR one drawn before or a prefetch that has arrived, on a CSR stack one the stack keeps or one with no async layer or guard. A redirect moves it to where it leads. For a skeleton or a dimmed pane shown before the page.
 
 - Device: Platform, safe area, keyboard, haptics and scroll of the device.
 
