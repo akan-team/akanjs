@@ -211,7 +211,7 @@ describe("SignService email codes", () => {
     const sentTo: string[] = [];
     const userModel = new UserModel();
     Object.defineProperty(userModel, "getAccountId", { value: async () => "ann@client.example.com" });
-    Object.defineProperty(userModel, "signChallenge", { value: { registerEmailCode: async () => undefined } });
+    Object.defineProperty(userModel, "signCodeOf", { value: () => ({ registerEmailCode: async () => undefined }) });
     Object.defineProperty(userModel, "findIdByAccountId", { value: async () => user.id });
     const userService = new UserService();
     Object.defineProperty(userService, "getPrepareUser", { value: async () => ({ ...user, status: "prepare" }) });
@@ -286,13 +286,13 @@ describe("SignService master phones", () => {
     const userModel = new UserModel();
     Object.defineProperty(userModel, "findIdByPhone", { value: async () => user.id });
     Object.defineProperty(userModel, "getUser", { value: async () => user });
-    Object.defineProperty(userModel, "signChallenge", {
-      value: {
-        takeSendSlot: async () => true,
+    Object.defineProperty(userModel, "signChallenge", { value: { takeSendSlot: async () => true } });
+    Object.defineProperty(userModel, "signCodeOf", {
+      value: () => ({
         registerPhoneCode: async (_userId: string, _phone: string, _purpose: string, phoneCode: string) => {
           registered.push(phoneCode);
         },
-      },
+      }),
     });
     const service = signServiceOf(userModel);
     Object.defineProperty(service, "masterPhones", { value: [phone] });
