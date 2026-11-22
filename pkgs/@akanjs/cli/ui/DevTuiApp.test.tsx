@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { esc, FakeStdout, makeStdin, nextFrame } from "@akanjs/devkit/test/fakeTerminal";
 import { render } from "ink";
 import type { DevLogLine } from "../application/devLogBuffer";
 import { HOST_SOURCE } from "../application/devLogBuffer";
 import { type DevTuiActions, DevTuiApp, type DevTuiRailRow, type DevTuiSnapshot } from "./DevTuiApp";
-import { esc, FakeStdout, makeStdin, nextFrame } from "./fakeTerminal.spec";
 
 class DevStdout extends FakeStdout {
   override get lastFrame() {

@@ -159,8 +159,9 @@ Akan 프레임워크 패키지는 `dist/pkgs/*`에서만 배포합니다. `verif
 - 애플리케이션과 런타임 코드에서는 `akanjs`를 사용합니다.
 - 사용자용 실행 파일 패키지는 `@akanjs/cli`입니다.
 - `@akanjs/devkit`은 배포된 CLI 안에 번들되므로, 일반 CLI 사용자는 따로 설치할 필요가 없습니다.
-- `akan code` 에이전트도 같은 경계를 따릅니다. 엔진, 도구, 스킬은 devkit facet(`@akanjs/devkit/codeAgent`)이고,
-  `@akanjs/cli/code`는 터미널 호스트이자 둘을 다시 내보내는 SDK 진입점입니다.
+- `akan code` 에이전트와 에이전트가 쓰는 LLM 공급자 SDK는 `@akanjs/code`로 배포됩니다. 워크스페이스는 `akan code`를
+  쓸 때만 CLI와 정확히 같은 버전으로 설치합니다: `bun add -d @akanjs/code@<akan 버전>`. 패키지가 없으면
+  `akan code`가 이 명령을 알려 줍니다. 스킬은 `@akanjs/devkit/codeAgent`에 남아 있습니다.
 
 ## 요구사항
 
