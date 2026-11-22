@@ -138,6 +138,8 @@ const subpathPurposes = [
 
 const routeInternals = ["assertPattern", "resolveArgs", "toRouteModule"];
 
+const documented = new Set(sections.flatMap((section) => section.items.map((item) => item.name)));
+
 export class ApiReference {
   static readonly guideline = "akanApi";
 
@@ -205,7 +207,15 @@ export class ApiReference {
     if (item.show.kind === "declaration")
       return [heading, "", "```ts", reader.declarationText(symbol), "```", ...note].join("\n");
     if (item.show.kind === "signature")
-      return [heading, "", "```ts", ...reader.signatures(symbol, item.name), "```", ...note].join("\n");
+      return [
+        heading,
+        "",
+        "```ts",
+        ...reader.signatures(symbol, item.name),
+        ...reader.aliasesUsedBy(symbol, documented),
+        "```",
+        ...note,
+      ].join("\n");
     if (item.show.kind === "props") {
       const bases = reader.foreignBases(symbol).map((base) => `\`${base}\``);
       const inherits = bases.length ? ["", `Every prop of ${bases.join(" and ")}, and:`] : [];
