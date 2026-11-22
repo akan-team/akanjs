@@ -92,6 +92,9 @@ export interface AgentLoopOptions {
     maxRounds?: number;
     budget?: AgentLoopBudget;
     toolkits?: Record<string, AgentLoopToolkit>;
+    search?: AgentLoopToolSearch;
+    listed?: readonly string[];
+    toolBudget?: number;
     remotes?: readonly AgentLoopRemote[];
     clientTools?: AgentTool[];
     ask?: boolean;
@@ -128,9 +131,23 @@ export type AgentLoopRequest = AgentLoopOptions & ({
 
 export type AgentLoopStop = "aborted" | "awaiting" | "budget" | "end" | "length" | "maxRounds" | "quota" | "unauthorized";
 
+export interface AgentLoopToolSearch {
+    limit?: number;
+    keywords?: Record<string, readonly string[]>;
+    rank?: (query: string, candidates: AgentLoopToolSearchCandidate[]) => PromiseOrObject<readonly string[]>;
+}
+
+export interface AgentLoopToolSearchCandidate {
+    name: string;
+    description: string;
+    keywords: string[];
+}
+
 export interface AgentLoopToolkit {
     description: string;
     tools: readonly string[];
+    instructions?: string;
+    asked?: boolean;
 }
 
 export interface AgentLoopView {
@@ -292,6 +309,7 @@ export interface AgentWireMessage {
     summary?: boolean;
     tainted?: boolean;
     toolkits?: string[];
+    foundTools?: string[];
 }
 
 export interface AgentWireReference {

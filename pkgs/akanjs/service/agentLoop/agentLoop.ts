@@ -94,7 +94,7 @@ export class AgentLoop {
     this.#messages = Array.isArray(request.messages) ? [...request.messages] : [];
     this.#signal = request.signal ? AbortSignal.any([request.signal, this.#halt.signal]) : this.#halt.signal;
     this.#remotes = new LoopRemotes(request.remotes);
-    this.#toolkits = new LoopToolkits(request.toolkits, this.#remotes.kits);
+    this.#toolkits = new LoopToolkits(request, this.#remotes.kits);
     this.#askUser = new LoopAsk(request.ask);
   }
 
@@ -246,7 +246,12 @@ export class AgentLoop {
 
   #turnOf(tools: AgentTool[]): LlmTurnRequest {
     const { context = [], model, preamble } = this.#request;
-    const instructions = this.#request.instructions || (preamble ? "" : AgentLoop.noInstructions);
+    const instructions = [
+      this.#request.instructions || (preamble ? "" : AgentLoop.noInstructions),
+      ...this.#toolkits.pinnedInstructions(),
+    ]
+      .filter(Boolean)
+      .join("\n\n");
     return {
       messages: LoopTranscript.wire(this.#messages),
       tools: tools.map(({ readOnly: _readOnly, ...tool }) => tool),
@@ -329,7 +334,7 @@ export class AgentLoop {
     }
     if (!text) return null;
     this.#toolkits.keepUsed(this.#messages.slice(at));
-    const summary = LoopCompaction.message(text, this.#tainted, this.#toolkits.opened);
+    const summary = LoopCompaction.message(text, this.#tainted, this.#toolkits.opened, this.#toolkits.found);
     this.#messages.splice(0, at, summary);
     yield { type: "compacted", replaced: at, summary };
     const listed = await this.#listTools();
@@ -342,6 +347,7 @@ export class AgentLoop {
   async *#runCalls(calls: AgentWireToolCall[], tools: AgentTool[]): Events<AgentLoopStop | null> {
     const round = this.#round;
     for (const call of calls) yield { type: "toolCall", call, round };
+    this.#toolkits.used(calls);
     yield* this.#refuseMalformed(calls, round);
     const byName = new Map(tools.map((tool) => [tool.name, tool]));
     //? Judged before any runs: the batch was written before its results were read, so none of them taints it.
@@ -383,7 +389,10 @@ export class AgentLoop {
           stop = "awaiting";
           break;
         }
-        const whole = unasked ?? opened ?? (meta ? this.#toolkits.open(call) : await this.#execute(call, verdict));
+        const whole =
+          unasked ??
+          opened ??
+          (meta && verdict === "allow" ? await this.#toolkits.answer(call) : await this.#execute(call, verdict));
         const result = LoopToolOutput.clipped(whole);
         results.push(result);
         //? Security: an opened remote's tool names, or the error it answered the open with, are that party's text.
@@ -438,9 +447,14 @@ export class AgentLoop {
     }
   }
 
-  async #verdictOf(call: AgentWireToolCall, tool: AgentTool | undefined): Promise<Verdict> {
+  async #verdictOf(call: AgentWireToolCall, listed: AgentTool | undefined): Promise<Verdict> {
     if (call.argsError) return { deny: call.argsError, code: "invalidArgument" };
-    if (this.#toolkits.isMeta(call.name) || this.#askUser.isMeta(call.name)) return "allow";
+    let tool = listed;
+    if (this.#toolkits.isMeta(call.name) || this.#askUser.isMeta(call.name)) {
+      const gate = this.#toolkits.gateOf(call);
+      if (!gate) return "allow";
+      tool = gate;
+    }
     //? Security: refused here, as a guard that hid a tool from the listing may still pass it at call time, past `approve`.
     if (!tool) {
       const closed = this.#toolkits.refusalOf(call.name);

@@ -17,7 +17,10 @@ at every event.
   every tool. A tool in no toolkit is listed every round, beside `openToolkit({ name })`, whose description lists the
   toolkits. An opened toolkit's tools are listed from the next round on, until a compaction keeps no message using
   it; `openToolkit` never reaches `approve` and counts as no tool call. A resume reopens what stored calls and a
-  summary opened.
+  summary opened. A kit's `instructions` come back with what it lists; `asked: true` sends its open to `approve`.
+  `listed: [kit or tool]` lists those from round one, for good. `search: { keywords?, limit?, rank? }` adds
+  `findTools({ query })`, which lists the closed kits' tools it ranks, as an open does; pass `keywords` in the words
+  members ask in. `toolBudget` caps the characters of loaded definitions, unlisting the least recently used.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
   counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or
@@ -275,17 +278,3 @@ element, beside the tools it explains. Exactly these texts reach every client: `
 - **An app is a tool the model picks**, like a read endpoint: its description says what the component shows and for
   which arguments (`Show one ticket with its status and assignee.`), and the model reads the briefing of what its load
   fetched whether or not the host draws the view.
-
-## Verifying An App
-
-- `akan verify <app>`, then the boot log above.
-- The lib's own suites run wherever it is mounted: the OAuth signal test (metadata, registration, both `authorize`
-  redirects, code exchange, `/mcp` with the minted token and the refusal of a first-party or forged one, refresh
-  rotation) and the refresh-session and option unit tests.
-- **One exposure test per app**, in `srvkit/mcpExposure.signal.test.ts`, since it spans every module: list
-  `tools/list` with a user token and pin the names with `toEqual`, and assert the curated and admin-only ones with
-  `not.toContain`. Exposure is derived from the guards, so a guard change fails this test first — which is the point.
-  The framework's own pattern is `pkgs/akanjs/server/mcp/mcp.integration.test.ts`.
-- Live: connect a client, consent, call a tool, `claude mcp logout`, authenticate again. `AKAN_PUBLIC_LOG_LEVEL=debug`
-  prints one `OAuth token request grant_type=… client_id=…` line per token call; two refreshes in the same second
-  both answering 200 is the grace window working, not a fault.

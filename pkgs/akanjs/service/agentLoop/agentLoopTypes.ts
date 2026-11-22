@@ -65,6 +65,38 @@ export interface AgentLoopRemote {
 export interface AgentLoopToolkit {
   description: string;
   tools: readonly string[];
+  /**
+   * Guidance for using these tools, returned with the tools `openToolkit` lists, or added to the instructions when
+   * `listed` opens the toolkit from the start. The run's own text: it taints nothing.
+   */
+  instructions?: string;
+  /**
+   * Opening it is a call `approve` hears, as `openToolkit` with `{ name }` and a tool that reads as a `needsConfirm`
+   * write, so a run can park as `awaiting` before it opens. Without `approve` it is refused, and until it is open
+   * `findTools` finds none of its tools but those another toolkit not `asked` also holds.
+   */
+  asked?: boolean;
+}
+
+export interface AgentLoopToolSearchCandidate {
+  name: string;
+  description: string;
+  keywords: string[];
+}
+
+/**
+ * Lists `findTools({ query, limit? })`, answered by the run itself: it ranks the tools of closed toolkits the run may
+ * see that are not listed yet, and lists those it returns from the next round on, after the tools already listed.
+ * Like `openToolkit`, it never reaches `approve`, counts as no tool call, taints nothing, and what it found stays
+ * listed across a resume until a compaction keeps no message that found or called it.
+ */
+export interface AgentLoopToolSearch {
+  /** The most tools one call returns, and its default (5); a call's `limit` only lowers it. */
+  limit?: number;
+  /** More words each tool is found by, by tool name: the words people ask in, in any language. */
+  keywords?: Record<string, readonly string[]>;
+  /** Replaces the built-in ranking over name, description and keywords; names it returns outside `candidates` are dropped. */
+  rank?: (query: string, candidates: AgentLoopToolSearchCandidate[]) => PromiseOrObject<readonly string[]>;
 }
 
 export interface AgentLoopBudget {
@@ -125,6 +157,19 @@ export interface AgentLoopOptions {
    * it keeps neither opened nor called a tool of. `openToolkit` is never asked about and counts as no tool call.
    */
   toolkits?: Record<string, AgentLoopToolkit>;
+  /** Tool search over the tools of `toolkits` not listed yet: see `AgentLoopToolSearch`. */
+  search?: AgentLoopToolSearch;
+  /**
+   * Names of `toolkits` and of tools in them, listed from the first round on, after the tools in no toolkit, as such a
+   * tool is: never closed by a compaction or `toolBudget`. A name the run may not see lists nothing.
+   */
+  listed?: readonly string[];
+  /**
+   * Characters of tool definitions that opened toolkits and `findTools` may keep listed. Past it, the tools least
+   * recently called or loaded are taken off the list before the next round, never one the last round loaded or
+   * called, and a toolkit left with none of its tools closes. `openToolkit` lists a toolkit again, `findTools` a tool.
+   */
+  toolBudget?: number;
   /**
    * Other servers, each a toolkit the model opens with `openToolkit({ name })`; none is listed or contacted before.
    * Opening one the account has no live connection to ends the run as `awaiting` with `connect` naming it: connect

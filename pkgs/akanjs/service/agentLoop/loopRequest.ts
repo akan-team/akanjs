@@ -3,6 +3,7 @@ import type { AgentLoopRequest } from "./agentLoopTypes";
 import { LoopAsk } from "./loopAsk";
 import { LoopRemotes } from "./loopRemotes";
 import { LoopToolkits } from "./loopToolkits";
+import { LoopToolSearch } from "./loopToolSearch";
 
 export class LoopRequest {
   //? The most `setTimeout` takes: past it a timer fires at once, which would end the run as out of budget.
@@ -15,11 +16,14 @@ export class LoopRequest {
   static readonly maxClientToolDepth = 64;
 
   static assertValid(request: AgentLoopRequest) {
-    const { allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask, remotes, approve } = request;
+    const { allow, messages, maxRounds, budget, compact, toolkits, clientTools, ask, remotes, approve, toolBudget } =
+      request;
     //? Security: `listAs` reads a missing `allow` as every tool the account may see.
     if (!Array.isArray(allow)) LoopRequest.#refuse("allow");
     if (!Array.isArray(messages)) LoopRequest.#refuse("messages");
     LoopRequest.#assertToolkits(toolkits, allow);
+    LoopRequest.#assertLoading(request);
+    LoopRequest.#assertCount("toolBudget", toolBudget);
     LoopRequest.#assertRemotes(remotes, toolkits, allow);
     //? Security: a call's arguments leave for the remote, which names its own tools read-only, so someone must be asked.
     if (remotes?.length && typeof approve !== "function")
@@ -42,15 +46,34 @@ export class LoopRequest {
     if (typeof toolkits !== "object" || Array.isArray(toolkits)) LoopRequest.#refuse("toolkits");
     for (const [name, kit] of Object.entries(toolkits)) {
       const tools = (kit as { tools?: unknown } | null)?.tools;
+      const { instructions, asked } = (kit ?? {}) as { instructions?: unknown; asked?: unknown };
       const valid =
         !!name &&
         typeof kit?.description === "string" &&
         Array.isArray(tools) &&
-        tools.every((tool) => typeof tool === "string");
+        tools.every((tool) => typeof tool === "string") &&
+        (instructions === undefined || typeof instructions === "string") &&
+        (asked === undefined || typeof asked === "boolean");
       if (!valid) LoopRequest.#refuse(`toolkits.${name}`);
     }
     //? The run answers that name itself, so a real tool by it would be shadowed.
     if (allow.includes(LoopToolkits.toolName)) LoopRequest.#refuse("allow");
+  }
+
+  static #assertLoading({ search, listed, allow }: AgentLoopRequest) {
+    if (listed !== undefined && !(Array.isArray(listed) && listed.every((name) => typeof name === "string")))
+      LoopRequest.#refuse("listed");
+    if (search === undefined) return;
+    if (!search || typeof search !== "object" || Array.isArray(search)) LoopRequest.#refuse("search");
+    const { limit, keywords, rank } = search;
+    if (limit !== undefined && !(Number.isSafeInteger(limit) && limit >= 1)) LoopRequest.#refuse("search.limit");
+    const words = Object.values((keywords ?? {}) as Record<string, unknown>);
+    const listsWords = (value: unknown) => Array.isArray(value) && value.every((word) => typeof word === "string");
+    if (typeof keywords !== "undefined" && (typeof keywords !== "object" || !words.every(listsWords)))
+      LoopRequest.#refuse("search.keywords");
+    if (rank !== undefined && typeof rank !== "function") LoopRequest.#refuse("search.rank");
+    //? The run answers that name itself, so a real tool by it would be shadowed.
+    if (allow.includes(LoopToolSearch.toolName)) LoopRequest.#refuse("allow");
   }
 
   static #assertRemotes(
