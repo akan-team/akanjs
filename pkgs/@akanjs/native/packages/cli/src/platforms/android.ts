@@ -592,7 +592,7 @@ export async function buildAndroid(ctx: BuildContext): Promise<string> {
     ...kotlinSources(join(gen, "kotlin")),
     ...bindings,
   ];
-  const libraryJars = libraries.map((l) => l.classes);
+  const libraryJars = libraries.flatMap((l) => l.jars);
   const fingerprint = sha([
     release ? "release" : "debug",
     java.kotlin.version,
@@ -1325,7 +1325,7 @@ export async function compileAndroidPlugins(
     ];
     const jar = join(dir, "classes.jar");
     const libraries = await mavenLibraries(plugins);
-    const classpath = [tools.androidJar, java.kotlin.stdlib, ...libraries.map((l) => l.classes)].join(":");
+    const classpath = [tools.androidJar, java.kotlin.stdlib, ...libraries.flatMap((l) => l.jars)].join(":");
     const result = await exec(
       [
         java.kotlin.kotlinc,

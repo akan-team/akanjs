@@ -137,100 +137,122 @@ The Rust crates linked into the desktop library, with the license each declares:
 
 Every Android app contains kotlin-stdlib 2.4.20 from the pinned Kotlin compiler: Apache License 2.0, Copyright 2010-2024 JetBrains s.r.o and respective authors and developers.
 
-Apps that enable the push plugin's FCM module or the iap plugin also contain these Maven libraries (licenses from their pinned POMs):
+Apps that enable the push plugin's FCM module, the iap plugin or a plugin of their own on ML Kit's document scanner also contain these Maven libraries (licenses from their pinned POMs):
 
 | Library | License | Included with |
 |---|---|---|
 | androidx.activity:activity:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
 | androidx.activity:activity:1.2.3 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.annotation:annotation-experimental:1.3.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.activity:activity:1.6.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.annotation:annotation-experimental:1.3.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push with ML Kit's document scanner |
 | androidx.annotation:annotation-experimental:1.4.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.annotation:annotation:1.7.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.annotation:annotation:1.7.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push with ML Kit's document scanner |
 | androidx.annotation:annotation:1.8.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.arch.core:core-common:2.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.appcompat:appcompat-resources:1.6.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.appcompat:appcompat:1.6.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.arch.core:core-common:2.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push with ML Kit's document scanner |
 | androidx.arch.core:core-common:2.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.arch.core:core-runtime:2.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.arch.core:core-runtime:2.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push with ML Kit's document scanner |
 | androidx.arch.core:core-runtime:2.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.collection:collection:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.collection:collection:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push with ML Kit's document scanner |
 | androidx.collection:collection:1.4.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.concurrent:concurrent-futures:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
+| androidx.concurrent:concurrent-futures:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.core:core-ktx:1.10.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.core:core-ktx:1.15.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.core:core:1.10.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.core:core:1.10.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push with ML Kit's document scanner |
 | androidx.core:core:1.15.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.customview:customview:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| androidx.datastore:datastore-core-okio:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| androidx.datastore:datastore-core:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| androidx.datastore:datastore-preferences-core:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| androidx.datastore:datastore-preferences-external-protobuf:1.1.7 | [BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause) | push (FCM), push and iap together |
-| androidx.datastore:datastore-preferences-proto:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| androidx.datastore:datastore-preferences:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| androidx.datastore:datastore:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| androidx.documentfile:documentfile:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| androidx.cursoradapter:cursoradapter:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.customview:customview:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.datastore:datastore-core-okio:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.datastore:datastore-core:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.datastore:datastore-preferences-core:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.datastore:datastore-preferences-external-protobuf:1.1.7 | [BSD-3-Clause](https://opensource.org/licenses/BSD-3-Clause) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.datastore:datastore-preferences-proto:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.datastore:datastore-preferences:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.datastore:datastore:1.1.7 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.documentfile:documentfile:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.drawerlayout:drawerlayout:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.emoji2:emoji2-views-helper:1.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.emoji2:emoji2:1.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.fragment:fragment:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| androidx.interpolator:interpolator:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| androidx.legacy:legacy-support-core-utils:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| androidx.fragment:fragment:1.3.6 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.interpolator:interpolator:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.legacy:legacy-support-core-utils:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-common:2.3.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.lifecycle:lifecycle-common:2.5.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-common:2.6.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
 | androidx.lifecycle:lifecycle-livedata-core:2.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.lifecycle:lifecycle-livedata-core:2.5.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-livedata-core:2.6.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.lifecycle:lifecycle-livedata:2.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.lifecycle:lifecycle-livedata:2.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-livedata:2.6.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
+| androidx.lifecycle:lifecycle-process:2.4.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-runtime:2.3.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.lifecycle:lifecycle-runtime:2.5.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-runtime:2.6.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
+| androidx.lifecycle:lifecycle-viewmodel-savedstate:2.5.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-viewmodel-savedstate:2.6.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
 | androidx.lifecycle:lifecycle-viewmodel:2.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.lifecycle:lifecycle-viewmodel:2.5.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.lifecycle:lifecycle-viewmodel:2.6.2 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.loader:loader:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| androidx.localbroadcastmanager:localbroadcastmanager:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| androidx.print:print:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| androidx.loader:loader:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.localbroadcastmanager:localbroadcastmanager:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.print:print:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | androidx.profileinstaller:profileinstaller:1.3.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
+| androidx.resourceinspection:resourceinspection-annotation:1.0.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.savedstate:savedstate:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM) |
+| androidx.savedstate:savedstate:1.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.savedstate:savedstate:1.2.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.startup:startup-runtime:1.1.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
+| androidx.startup:startup-runtime:1.1.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together, push with ML Kit's document scanner |
+| androidx.tracing:tracing:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
 | androidx.tracing:tracing:1.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push and iap together |
-| androidx.versionedparcelable:versionedparcelable:1.1.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| androidx.viewpager:viewpager:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
+| androidx.vectordrawable:vectordrawable-animated:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.vectordrawable:vectordrawable:1.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push with ML Kit's document scanner |
+| androidx.versionedparcelable:versionedparcelable:1.1.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| androidx.viewpager:viewpager:1.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
 | com.android.billingclient:billing:9.1.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | iap (Play Billing), push and iap together |
 | com.google.android.datatransport:transport-api:3.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing) |
-| com.google.android.datatransport:transport-api:3.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| com.google.android.datatransport:transport-api:3.1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | com.google.android.datatransport:transport-backend-cct:3.1.8 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing) |
-| com.google.android.datatransport:transport-backend-cct:3.1.9 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| com.google.android.datatransport:transport-backend-cct:3.1.9 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | com.google.android.datatransport:transport-runtime:3.1.8 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing) |
-| com.google.android.datatransport:transport-runtime:3.1.9 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| com.google.android.datatransport:transport-runtime:3.1.9 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | com.google.android.gms:play-services-base:18.5.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | iap (Play Billing) |
-| com.google.android.gms:play-services-base:18.9.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together |
-| com.google.android.gms:play-services-basement:18.9.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | iap (Play Billing), push (FCM), push and iap together |
-| com.google.android.gms:play-services-cloud-messaging:17.4.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together |
+| com.google.android.gms:play-services-base:18.9.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.android.gms:play-services-basement:18.9.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.android.gms:play-services-cloud-messaging:17.4.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | com.google.android.gms:play-services-location:19.0.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | iap (Play Billing), push and iap together |
+| com.google.android.gms:play-services-mlkit-document-scanner:16.0.0 | [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms) | push with ML Kit's document scanner |
 | com.google.android.gms:play-services-places-placereport:17.0.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | iap (Play Billing), push and iap together |
-| com.google.android.gms:play-services-stats:17.0.2 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together |
+| com.google.android.gms:play-services-stats:17.0.2 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | com.google.android.gms:play-services-tasks:18.2.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | iap (Play Billing) |
-| com.google.android.gms:play-services-tasks:18.4.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together |
-| com.google.errorprone:error_prone_annotations:2.26.0 | [Apache 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.firebase:firebase-annotations:17.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.firebase:firebase-common:22.0.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.firebase:firebase-components:19.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.firebase:firebase-datatransport:18.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.firebase:firebase-encoders-json:18.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| com.google.firebase:firebase-encoders-proto:16.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| com.google.firebase:firebase-encoders:17.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| com.google.firebase:firebase-iid-interop:17.1.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together |
-| com.google.firebase:firebase-installations-interop:17.3.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.firebase:firebase-installations:19.1.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.firebase:firebase-measurement-connector:19.0.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together |
-| com.google.firebase:firebase-messaging:25.1.3 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| com.google.guava:listenablefuture:1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
-| com.squareup.okio:okio:3.4.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| javax.inject:javax.inject:1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together |
+| com.google.android.gms:play-services-tasks:18.4.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.errorprone:error_prone_annotations:2.26.0 | [Apache 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-annotations:17.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-common:22.0.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-components:19.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-datatransport:18.2.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-encoders-json:18.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-encoders-proto:16.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-encoders:17.0.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-iid-interop:17.1.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-installations-interop:17.3.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-installations:19.1.1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-measurement-connector:19.0.0 | [Android Software Development Kit License](https://developer.android.com/studio/terms.html) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.firebase:firebase-messaging:25.1.3 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.guava:listenablefuture:1.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
+| com.google.mlkit:common:18.11.0 | [ML Kit Terms of Service](https://developers.google.com/ml-kit/terms) | push with ML Kit's document scanner |
+| com.squareup.okio:okio:3.4.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| javax.inject:javax.inject:1 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing), push (FCM), push and iap together, push with ML Kit's document scanner |
 | org.jetbrains:annotations:13.0 | [The Apache Software License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing) |
-| org.jetbrains:annotations:23.0.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| org.jetbrains.kotlin:kotlin-android-extensions-runtime:1.9.22 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| org.jetbrains.kotlin:kotlin-parcelize-runtime:1.9.22 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| org.jetbrains:annotations:23.0.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| org.jetbrains.kotlin:kotlin-android-extensions-runtime:1.9.22 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| org.jetbrains.kotlin:kotlin-parcelize-runtime:1.9.22 | [The Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
 | org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing) |
-| org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push and iap together |
+| org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push and iap together, push with ML Kit's document scanner |
 | org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | iap (Play Billing) |
-| org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
-| org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together |
+| org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
+| org.jetbrains.kotlinx:kotlinx-coroutines-play-services:1.9.0 | [The Apache Software License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt) | push (FCM), push and iap together, push with ML Kit's document scanner |
 
 ## iOS apps
 

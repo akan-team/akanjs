@@ -15,7 +15,7 @@ build API. The docs call it akan-native for short.
 | Page runtime | `packages/core`, `packages/react` | The bridge client in the WebView, `definePlugin`, env, React hooks |
 | Plugins | `plugins/<id>` | 41 plugins: a TypeScript API, a web fallback, and Swift, Kotlin or desktop code, described by `native-plugin.json` |
 | iOS shell | `native/ios` | Swift: WKWebView, the `app://` scheme handler, the reply bridge |
-| Android shell | `native/android` | Kotlin: WebView, MessagePort bridge, asset server, the pinned Maven lock for the push (FCM) and iap (Play Billing) modules |
+| Android shell | `native/android` | Kotlin: WebView, MessagePort bridge, asset server, the pinned Maven lock for the push (FCM) and iap (Play Billing) modules and ML Kit's document scanner |
 | Desktop shell | `native/desktop`, `packages/desktop` | Rust cdylib (TAO + WRY behind a C ABI) with Bun running the plugin host in a Worker |
 | Build tools | `packages/cli` | Config, the programmatic build API, and one builder per platform. Swift is compiled with `swiftc`, Android with aapt2, kotlinc, d8 and apksigner, and the desktop app with cargo and `bun build --compile` |
 

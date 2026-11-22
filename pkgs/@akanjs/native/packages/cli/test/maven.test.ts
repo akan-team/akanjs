@@ -22,7 +22,7 @@ const enc = (s: string) => new TextEncoder().encode(s);
 describe("maven lock", () => {
   const lock = loadMavenLock();
 
-  test("one closure per root set: FCM, Billing, both; the kotlin-stdlib family is left out", () => {
+  test("one closure per root set: FCM, Billing, both, FCM with the document scanner; the kotlin-stdlib family is left out", () => {
     expect(closureFor(lock, [])).toBeNull();
     const fcm = closureFor(lock, ["com.google.firebase:firebase-messaging:25.1.3", "androidx.core:core:1.10.0"])!;
     const both = closureFor(lock, [
@@ -30,7 +30,12 @@ describe("maven lock", () => {
       "com.google.firebase:firebase-messaging:25.1.3",
       "androidx.core:core:1.10.0",
     ])!;
-    expect([fcm.name, both.name]).toEqual(["fcm", "union"]);
+    const scanner = closureFor(lock, [
+      "com.google.android.gms:play-services-mlkit-document-scanner:16.0.0",
+      "com.google.firebase:firebase-messaging:25.1.3",
+      "androidx.core:core:1.10.0",
+    ])!;
+    expect([fcm.name, both.name, scanner.name]).toEqual(["fcm", "union", "fcm-document-scanner"]);
     //? play-services-basement 18.9.0 calls androidx.core's PendingIntentCompat, added in core 1.10.0; R8 stops without it.
     expect(
       fcm.artifacts.filter((a) => a.coordinate.startsWith("androidx.core:core:")).map((a) => a.coordinate),
@@ -38,6 +43,18 @@ describe("maven lock", () => {
     expect(both.artifacts.some((a) => a.coordinate.startsWith("org.jetbrains.kotlin:kotlin-stdlib"))).toBe(false);
     expect(both.artifacts.every((a) => /^[0-9a-f]{64}$/.test(a.sha256) && a.url.startsWith("https://"))).toBe(true);
     expect(() => closureFor(lock, ["com.example:other:1.0"])).toThrow(/no locked Maven closure/);
+  });
+
+  //? kotlinx-coroutines-core's Gradle metadata pulls in kotlinx-coroutines-bom, which an Android build applies; a resolver without the JVM ecosystem skips it and pairs core 1.9.0 with android 1.6.x.
+  test("each closure holds one kotlinx-coroutines version, as the coroutines BOM aligns them", () => {
+    for (const closure of lock.closures) {
+      const versions = new Set(
+        closure.artifacts
+          .filter((c) => c.startsWith("org.jetbrains.kotlinx:kotlinx-coroutines-"))
+          .map((c) => c.split(":")[2]),
+      );
+      expect([closure.name, versions.size]).toEqual([closure.name, 1]);
+    }
   });
 
   test("every locked artifact has its POM pinned and the licenses it declares (scripts/maven-licenses.ts)", () => {
@@ -62,6 +79,11 @@ describe("fetching and unpacking", () => {
     fileEntry("res/values/values.xml", enc("<resources />"), false),
     fileEntry("proguard.txt", enc("-keep class com.example.Lib"), false),
     fileEntry("jni/arm64-v8a/libx.so", enc("ELF"), true),
+    fileEntry(
+      "libs/repackaged.jar",
+      writeZip([fileEntry("com/example/inner/Table.class", enc("cafebabe"), false)]),
+      true,
+    ),
   ]);
   const artifact: MavenArtifact = {
     coordinate: "com.example:lib:1.0",
@@ -118,12 +140,13 @@ describe("fetching and unpacking", () => {
     ]);
   });
 
-  test("an AAR unpacks into classes, manifest, resources, rules, native libraries and service files", async () => {
+  test("an AAR unpacks into classes, its own jars, manifest, resources, rules, native libraries and service files", async () => {
     const file = await fetchArtifact(artifact, cache, (async () => new Response(Buffer.from(aar))) as never);
     const lib = unpackLibrary(artifact, file, cache);
     expect(lib.package).toBe("com.example.lib");
     expect(lib.hasResources).toBe(true);
-    expect(existsSync(lib.classes) && existsSync(lib.res!) && existsSync(lib.proguard!)).toBe(true);
+    expect(lib.jars.map((jar) => jar.slice(jar.lastIndexOf("/") + 1))).toEqual(["classes.jar", "repackaged.jar"]);
+    expect(lib.jars.every((jar) => existsSync(jar)) && existsSync(lib.res!) && existsSync(lib.proguard!)).toBe(true);
     expect(lib.nativeLibs.map((n) => `${n.abi}/${n.name}`)).toEqual(["arm64-v8a/libx.so"]);
     expect(lib.services.map((s) => s.name)).toEqual(["com.example.Service"]);
     expect(readFileSync(lib.services[0]!.path, "utf8")).toBe("com.example.Impl\n");
