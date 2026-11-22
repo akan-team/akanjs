@@ -18,7 +18,7 @@ Android, macOS, Windows, Linux 앱으로 만듭니다. Capacitor, Xcode 프로�
 | 페이지 런타임 | `packages/core`, `packages/react` | WebView 안의 브리지 클라이언트, `definePlugin`, env, React 훅 |
 | 플러그인 | `plugins/<id>` | 41개. TypeScript API, 웹 대체 구현, Swift·Kotlin·데스크톱 코드를 `native-plugin.json`이 기술합니다 |
 | iOS 셸 | `native/ios` | Swift: WKWebView, `app://` 스킴 핸들러, 응답형 브리지 |
-| Android 셸 | `native/android` | Kotlin: WebView, MessagePort 브리지, 에셋 서버. push(FCM)와 iap(Play Billing) 모듈용 Maven 잠금도 여기 있습니다 |
+| Android 셸 | `native/android` | Kotlin: WebView, MessagePort 브리지, 에셋 서버. push(FCM)와 iap(Play Billing) 모듈, ML Kit 문서 스캐너용 Maven 잠금도 여기 있습니다 |
 | 데스크톱 셸 | `native/desktop`, `packages/desktop` | Rust cdylib(TAO + WRY, C ABI). 플러그인 호스트는 Bun Worker에서 돕니다 |
 | 빌드 도구 | `packages/cli` | 설정, 프로그램 빌드 API, 플랫폼별 빌더. Swift는 `swiftc`로, Android는 aapt2·kotlinc·d8·apksigner로, 데스크톱은 cargo와 `bun build --compile`로 빌드합니다 |
 

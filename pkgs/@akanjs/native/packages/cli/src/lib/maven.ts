@@ -4,7 +4,8 @@
 // a build downloads what its closure lists, checks every file's SHA-256, and unpacks the AARs into a
 // cache the Android builder links from (android.ts).
 // A plugin asks for a library with android.maven (root coordinates); the lock holds one closure per
-// root set an app can have (FCM, Billing, both), so versions never depend on the order of plugins.
+// root set an app can have (FCM, Billing, both, FCM with an app plugin's ML Kit document scanner), so
+// versions never depend on the order of plugins.
 
 import { createHash, randomBytes } from "node:crypto";
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -100,8 +101,8 @@ export interface Library {
   coordinate: string;
   /** The AAR manifest's package (its R class package); none for plain jars. */
   package?: string;
-  /** Compile classpath and dex input. */
-  classes: string;
+  /** Compile classpath and dex input: an AAR's classes.jar, then the jars in its libs/ (emoji2's flatbuffers). */
+  jars: string[];
   manifest?: string;
   res?: string;
   /** R.txt with at least one entry: the library reads R fields and needs an R class. */
@@ -140,7 +141,8 @@ export function unpackLibrary(a: MavenArtifact, file: string, cache = mavenCache
           e.name === "AndroidManifest.xml" ||
           e.name === "R.txt" ||
           e.name === "proguard.txt" ||
-          /^(res|jni)\//.test(e.name)
+          /^(res|jni)\//.test(e.name) ||
+          /^libs\/[^/]+\.jar$/.test(e.name)
         )
           write(e.name, bytes(e));
       }
@@ -165,10 +167,17 @@ export function unpackLibrary(a: MavenArtifact, file: string, cache = mavenCache
         if (name.endsWith(".so")) nativeLibs.push({ abi, name, path: join(jniDir, abi, name) });
   }
   const servicesDir = join(dir, "services");
+  const libsDir = join(dir, "libs");
   return {
     coordinate: a.coordinate,
     package: manifest ? /\bpackage\s*=\s*"([^"]+)"/.exec(readFileSync(manifest, "utf8"))?.[1] : undefined,
-    classes: a.packaging === "aar" ? join(dir, "classes.jar") : file,
+    jars:
+      a.packaging === "aar"
+        ? [
+            join(dir, "classes.jar"),
+            ...(existsSync(libsDir) ? readdirNames(libsDir).map((name) => join(libsDir, name)) : []),
+          ]
+        : [file],
     manifest,
     res: at("res"),
     hasResources: !!rTxt && readFileSync(rTxt, "utf8").trim().length > 0,
