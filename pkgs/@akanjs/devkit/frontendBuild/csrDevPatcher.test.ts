@@ -84,14 +84,13 @@ describe("CsrDevPatcher", () => {
     expect((await new CsrDevPatcher(unstamped.bundler).update([])).kind).toBe("delegate");
   });
 
-  test("a resident patcher checks the stamp once, when it reads the registry", async () => {
+  test("a resident patcher checks the stamp of the registry it holds in memory too", async () => {
     const { bundler, stamp } = await makeRegistry("same");
     const patcher = new CsrDevPatcher(bundler, { resident: true });
     expect(await patcher.update([])).toEqual({ kind: "unchanged" });
-    stamp.current = "moved";
     expect(await patcher.update([])).toEqual({ kind: "unchanged" });
-    patcher.forget();
-    expect((await patcher.update([])).kind).toBe("delegate");
+    stamp.current = "moved";
+    expect(await patcher.update([])).toMatchObject({ kind: "delegate", generation: 5 });
   });
 
   test("a saved metadata file goes to a whole build even when the stamp matches", async () => {

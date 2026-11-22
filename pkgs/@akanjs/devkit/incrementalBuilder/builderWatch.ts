@@ -1,6 +1,7 @@
 import path from "node:path";
 import type { Logger } from "akanjs/common";
 import type { ChangeBatch } from "akanjs/server";
+import { runtimeMetadataFilesOf } from "../akanApp/devHostPolicy";
 import type { App } from "../commandDecorators";
 import type { PageRoot } from "../executors";
 import { AutoImportSync } from "../frontendBuild/autoImportSync";
@@ -17,6 +18,7 @@ import type { BuilderLanes } from "./builderLanes";
 import type { BatchJob, DiscoveryJob } from "./builderWorkQueue";
 import type { CsrRegistry } from "./csrRegistry";
 import { prepareDevWatchBatch } from "./devWatchBatch";
+import type { PendingMetadata } from "./pendingMetadata";
 import type { SsrRegistry } from "./ssrRegistry";
 
 interface BuilderWatchParts {
@@ -25,6 +27,7 @@ interface BuilderWatchParts {
   csr: CsrRegistry;
   ssr: SsrRegistry;
   graphPayloads: BuilderGraphPayloads;
+  metadata: PendingMetadata;
 }
 
 interface BuilderWatchLinks {
@@ -39,6 +42,7 @@ export class BuilderWatch {
   readonly #csr: CsrRegistry;
   readonly #ssr: SsrRegistry;
   readonly #graphPayloads: BuilderGraphPayloads;
+  readonly #metadata: PendingMetadata;
   readonly #links: BuilderWatchLinks;
   #changePlanner: DevChangePlanner;
   #generatedIndexSync: DevGeneratedIndexSync;
@@ -46,13 +50,18 @@ export class BuilderWatch {
   #watcher: HmrWatcher | null = null;
   #barrelFailed = false;
 
-  constructor(app: App, { logger, lanes, csr, ssr, graphPayloads }: BuilderWatchParts, links: BuilderWatchLinks) {
+  constructor(
+    app: App,
+    { logger, lanes, csr, ssr, graphPayloads, metadata }: BuilderWatchParts,
+    links: BuilderWatchLinks,
+  ) {
     this.#app = app;
     this.#logger = logger;
     this.#lanes = lanes;
     this.#csr = csr;
     this.#ssr = ssr;
     this.#graphPayloads = graphPayloads;
+    this.#metadata = metadata;
     this.#links = links;
     this.#changePlanner = new DevChangePlanner({ workspaceRoot: app.workspace.workspaceRoot });
     this.#generatedIndexSync = new DevGeneratedIndexSync({ workspaceRoot: app.workspace.workspaceRoot });
@@ -131,6 +140,7 @@ export class BuilderWatch {
       indexSync,
       changePlanner: this.#changePlanner,
     });
+    this.#metadata.note(runtimeMetadataFilesOf(devPlan), generation);
     this.#logger.verbose(
       `[hmr] batch generation=${generation} kinds=${kinds.join(",")} files=${files.length} generated=${indexSync.changedFiles.length} roles=${devPlan.roles.join(",") || "(none)"} actions=${devPlan.actions.join(",") || "(none)"}`,
     );
