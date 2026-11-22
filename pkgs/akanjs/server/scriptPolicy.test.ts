@@ -66,100 +66,114 @@ describe("ScriptPolicy hashes", () => {
   });
 });
 
-describe("ScriptPolicy report-only header", () => {
-  test("names the nonce and each hash once, between 'self' and 'strict-dynamic'", () => {
+describe("ScriptPolicy header", () => {
+  const own = { directives: "frame-ancestors 'self'; base-uri 'self'", own: true };
+  const report = "report-uri /_akan/csp-report; report-to akan-csp";
+  const endpoint = 'akan-csp="/_akan/csp-report"';
+
+  test("names the nonce and each hash once, between 'self' and 'strict-dynamic', and allows WebAssembly", () => {
     expect(
-      ScriptPolicy.reportOnly({ nonce: "n1", hashes: ["'sha256-a'", "'sha256-b'", "'sha256-a'"] }, production),
-    ).toBe("script-src 'self' 'nonce-n1' 'sha256-a' 'sha256-b' 'strict-dynamic'");
-    expect(ScriptPolicy.reportOnly({}, production)).toBe("script-src 'self' 'strict-dynamic'");
+      ScriptPolicy.scriptSrc({ nonce: "n1", hashes: ["'sha256-a'", "'sha256-b'", "'sha256-a'"] }, production),
+    ).toBe("script-src 'self' 'nonce-n1' 'sha256-a' 'sha256-b' 'strict-dynamic' 'wasm-unsafe-eval'");
+    expect(ScriptPolicy.scriptSrc({}, production)).toBe("script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval'");
   });
 
   test("allows evaluation only outside a production build", () => {
-    expect(ScriptPolicy.reportOnly({}, { NODE_ENV: "development" })).toBe(
-      "script-src 'self' 'strict-dynamic' 'unsafe-eval'",
+    expect(ScriptPolicy.scriptSrc({}, { NODE_ENV: "development" })).toBe(
+      "script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'",
     );
-    expect(ScriptPolicy.reportOnly({}, { NODE_ENV: "production", AKAN_COMMAND_TYPE: "start" })).toBe(
-      "script-src 'self' 'strict-dynamic' 'unsafe-eval'",
+    expect(ScriptPolicy.scriptSrc({}, { NODE_ENV: "production", AKAN_COMMAND_TYPE: "start" })).toBe(
+      "script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'",
     );
   });
 
-  test("is dropped by `off` and replaced as written by any other value", () => {
-    for (const off of ["off", "false", "0", "none", "OFF"])
-      expect(
-        ScriptPolicy.reportOnly({ nonce: "n1" }, { ...production, AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: off }),
-      ).toBeNull();
-    expect(
-      ScriptPolicy.reportOnly(
-        { nonce: "n1" },
-        { ...production, AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: " default-src 'self' " },
-      ),
-    ).toBe("default-src 'self'");
-    expect(
-      ScriptPolicy.reportOnly({}, { ...production, AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: "a\r\nSet-Cookie: x=1" }),
-    ).toBe("script-src 'self' 'strict-dynamic'");
+  test("enforces the script policy after the response's other directives, reporting to the framework's receiver", () => {
+    expect(ScriptPolicy.headersOf({ nonce: "n1" }, own, production)).toEqual({
+      "Content-Security-Policy": `frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-n1' 'strict-dynamic' 'wasm-unsafe-eval'; ${report}`,
+      "Reporting-Endpoints": endpoint,
+    });
   });
 
-  test("adds the sources AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC names, and none that could end the directive", () => {
+  test("moves the script policy into the report-only header for `on`, and takes any other value as a policy of its own", () => {
+    const withSetting = (value: string) =>
+      ScriptPolicy.headersOf({ nonce: "n1" }, own, { ...production, AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: value });
+    const enforced = `frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-n1' 'strict-dynamic' 'wasm-unsafe-eval'; ${report}`;
+
+    for (const on of ["on", "true", "1", "ON"])
+      expect(withSetting(on)).toEqual({
+        "Content-Security-Policy": "frame-ancestors 'self'; base-uri 'self'",
+        "Content-Security-Policy-Report-Only": `script-src 'self' 'nonce-n1' 'strict-dynamic' 'wasm-unsafe-eval'; ${report}`,
+        "Reporting-Endpoints": endpoint,
+      });
+    for (const off of ["off", "false", "0", "none"])
+      expect(withSetting(off)).toEqual({ "Content-Security-Policy": enforced, "Reporting-Endpoints": endpoint });
+    expect(withSetting(" require-trusted-types-for 'script' ")).toEqual({
+      "Content-Security-Policy": enforced,
+      "Content-Security-Policy-Report-Only": "require-trusted-types-for 'script'",
+      "Reporting-Endpoints": endpoint,
+    });
+    expect(withSetting("a\r\nSet-Cookie: x=1")).toEqual({
+      "Content-Security-Policy": enforced,
+      "Reporting-Endpoints": endpoint,
+    });
+  });
+
+  test("sends a policy the operator wrote as written, with the script policy reporting beside it", () => {
+    const written = { directives: "frame-ancestors https://partner.example", own: false };
+    const script = `script-src 'self' 'nonce-n1' 'strict-dynamic' 'wasm-unsafe-eval'; ${report}`;
+
+    expect(ScriptPolicy.headersOf({ nonce: "n1" }, written, production)).toEqual({
+      "Content-Security-Policy": "frame-ancestors https://partner.example",
+      "Content-Security-Policy-Report-Only": script,
+      "Reporting-Endpoints": endpoint,
+    });
+    expect(ScriptPolicy.headersOf({ nonce: "n1" }, { directives: null, own: false }, production)).toEqual({
+      "Content-Security-Policy-Report-Only": script,
+      "Reporting-Endpoints": endpoint,
+    });
+    expect(
+      ScriptPolicy.headersOf({ nonce: "n1" }, written, {
+        ...production,
+        AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: "off",
+      }),
+    ).toEqual({ "Content-Security-Policy": "frame-ancestors https://partner.example" });
+  });
+
+  test("takes its added sources from AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC, and none that could end the directive", () => {
     const hash = "'sha256-47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU='";
     const policyOf = (value: string) =>
-      ScriptPolicy.reportOnly({ nonce: "n1" }, { ...production, AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC: value });
+      ScriptPolicy.scriptSrc({ nonce: "n1" }, { ...production, AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC: value });
 
     expect(policyOf(`'wasm-unsafe-eval'  ${hash} https://cdn.example.com`)).toBe(
-      `script-src 'self' 'nonce-n1' 'wasm-unsafe-eval' ${hash} https://cdn.example.com 'strict-dynamic'`,
+      `script-src 'self' 'nonce-n1' 'strict-dynamic' 'wasm-unsafe-eval' ${hash} https://cdn.example.com`,
     );
+    expect(policyOf(hash)).toBe(`script-src 'self' 'nonce-n1' 'strict-dynamic' ${hash}`);
     expect(policyOf("'wasm-unsafe-eval'; default-src * 'a\"b' x,y")).toBe(
-      "script-src 'self' 'nonce-n1' default-src * 'strict-dynamic'",
+      "script-src 'self' 'nonce-n1' 'strict-dynamic' default-src *",
     );
     expect(policyOf("off")).toBe("script-src 'self' 'nonce-n1' 'strict-dynamic'");
   });
 
-  test("sends reports to AKAN_CONTENT_SECURITY_POLICY_REPORT_URI, by both directives", () => {
-    const env = { ...production, AKAN_CONTENT_SECURITY_POLICY_REPORT_URI: "/api/csp-report" };
+  test("reports to AKAN_CONTENT_SECURITY_POLICY_REPORT_URI by both directives, and to nothing when it is off", () => {
+    const withUri = (value: string) =>
+      ScriptPolicy.headersOf({}, own, { ...production, AKAN_CONTENT_SECURITY_POLICY_REPORT_URI: value });
 
-    expect(ScriptPolicy.reportOnly({}, env)).toBe(
-      "script-src 'self' 'strict-dynamic'; report-uri /api/csp-report; report-to akan-csp",
-    );
-    for (const refused of ["/a b", "/a;script-src *", '/a"', "/a,b", "off"])
-      expect(ScriptPolicy.reportOnly({}, { ...production, AKAN_CONTENT_SECURITY_POLICY_REPORT_URI: refused })).toBe(
-        "script-src 'self' 'strict-dynamic'",
-      );
-  });
-
-  test("sets the report-only header beside the endpoint it reports to, and nothing when it is off", () => {
-    const saved = {
-      uri: process.env.AKAN_CONTENT_SECURITY_POLICY_REPORT_URI,
-      policy: process.env.AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY,
-      nodeEnv: process.env.NODE_ENV,
-    };
-    try {
-      process.env.NODE_ENV = "production";
-      delete process.env.AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY;
-      process.env.AKAN_CONTENT_SECURITY_POLICY_REPORT_URI = "https://reports.example/csp";
-      expect(Object.fromEntries(ScriptPolicy.apply(new Headers(), { nonce: "n1" }))).toEqual({
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-n1' 'strict-dynamic'; report-uri https://reports.example/csp; report-to akan-csp",
-        "reporting-endpoints": 'akan-csp="https://reports.example/csp"',
+    expect(withUri("https://reports.example/csp")).toEqual({
+      "Content-Security-Policy":
+        "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri https://reports.example/csp; report-to akan-csp",
+      "Reporting-Endpoints": 'akan-csp="https://reports.example/csp"',
+    });
+    for (const refused of ["/a b", "/a;script-src *", '/a"', "/a,b", "off", "none"])
+      expect(withUri(refused)).toEqual({
+        "Content-Security-Policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval'",
       });
-      process.env.AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY = "off";
-      expect(Object.fromEntries(ScriptPolicy.apply(new Headers(), { nonce: "n1" }))).toEqual({});
-    } finally {
-      for (const [key, value] of [
-        ["AKAN_CONTENT_SECURITY_POLICY_REPORT_URI", saved.uri],
-        ["AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY", saved.policy],
-        ["NODE_ENV", saved.nodeEnv],
-      ] as const) {
-        if (value === undefined) delete process.env[key];
-        else process.env[key] = value;
-      }
-    }
   });
 
-  test("keeps a response's hash list under what a proxy's header buffer holds", () => {
-    const policy = ScriptPolicy.reportOnly(
-      { nonce: "n".repeat(24), hashes: Array.from({ length: MAX_RESPONSE_SCRIPT_HASHES }, (_, i) => sha256(`${i}`)) },
-      production,
-    );
+  test("keeps a response's policy under what a proxy's header buffer holds", () => {
+    const hashes = Array.from({ length: MAX_RESPONSE_SCRIPT_HASHES }, (_, i) => sha256(`${i}`));
+    const headers = ScriptPolicy.headersOf({ nonce: "n".repeat(24), hashes }, own, { NODE_ENV: "development" });
 
-    expect(policy?.length).toBeLessThan(2048);
+    expect(Object.values(headers).join("").length).toBeLessThan(2048);
   });
 });

@@ -13,19 +13,19 @@
 - Reports And Settings (#reports)
 - The Framework's Scripts (#framework-scripts)
 - What Changes In A Page (#page-changes)
-- What 3.5.0 Enforces (#enforcement)
+- Upgrading (#upgrading)
 
 ## Content
 
 Script Policy
 
-Every HTML response carries `Content-Security-Policy-Report-Only` with a `script-src` that names each script the framework writes. In 3.4 the browser only reports what the policy would refuse; 3.5.0 moves the same `script-src` into the enforced `Content-Security-Policy`. An app with no inline script of its own has nothing to do.
+Every HTML response's `Content-Security-Policy` carries a `script-src` that names each script the framework writes. The browser refuses any other inline script and reports it to the app. An app with no inline script of its own has nothing to do.
 
 What each response sends
 
 Response
 
-script-src it reports against
+script-src it enforces
 
 - A server-rendered page — 'self' 'nonce-…' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<import map>' 'strict-dynamic'
 
@@ -41,7 +41,7 @@ script-src it reports against
 
 `'strict-dynamic'` turns `'self'` off in a current browser: a script runs because the policy names it by hash or nonce, or because a script that already runs added it. `'self'` is what an older browser falls back to.
 
-The enforced header is unchanged: `frame-ancestors 'self'; base-uri 'self'`.
+It follows `frame-ancestors 'self'; base-uri 'self'` in the same header, and ends with `'wasm-unsafe-eval'`, so WebAssembly compiles, then `report-uri /_akan/csp-report; report-to akan-csp`.
 
 A page replayed from the HTML cache has no nonce: it lists the hash of every script its first render ran under one, which is one per boundary that streamed in.
 
@@ -49,7 +49,7 @@ A response names at most 32 hashes, which keeps the header under 2 KB: a proxy i
 
 Your Own Inline Scripts
 
-An inline `<script>` a `.head()` or a layout writes is reported until the policy names it. Name a constant snippet by hash with `scriptHashes()`: the page stays cacheable, and the hash is the one the browser prints in its console report.
+An inline `<script>` a `.head()` or a layout writes is refused until the policy names it. Name a constant snippet by hash with `scriptHashes()`: the page stays cacheable, and the hash is the one the browser prints in its console error.
 
 For text that differs per request, or a `<script src>` written in JSX, pass the response's nonce. Reading it makes the page dynamic, so neither result cache stores it.
 
@@ -63,15 +63,15 @@ A script React inserts on a soft navigation is added by a script that already ru
 
 Reports And Settings
 
-A report-only violation shows in the browser console as a [Report Only] line that names the script and the hash that would allow it. To collect them from real visitors, point the header at an endpoint that accepts the browser's JSON report.
+A refused script shows in the browser console as an error naming the directive and, for an inline script, the hash that would allow it. The browser also posts a report to /_akan/csp-report, which logs one [ScriptPolicy] warning per route, directive and blocked source, up to 512 kinds a process, keeping no query string. Every post gets the same empty answer.
 
-- AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY (string): `off` drops the report-only header. Any other value is sent as written in its place, with no hash or nonce added. — Example: `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off`
+- AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY (string, default off): `on` sends the script policy as `Content-Security-Policy-Report-Only` instead, so the browser reports what it would refuse and runs it. Any other value is sent as a report-only header of its own, as written. — Example: `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=on`
 
-- AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC (string): Source expressions added to every response's script-src, separated by spaces: `'wasm-unsafe-eval'` for a page that compiles WebAssembly, or the hash of a snippet every page carries. — Example: `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC='wasm-unsafe-eval'`
+- AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC (string, default 'wasm-unsafe-eval'): The source expressions that end every response's script-src, separated by spaces, in place of the default: keep `'wasm-unsafe-eval'` in it while a page compiles WebAssembly. `off` adds none. — Example: `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC="'wasm-unsafe-eval' 'sha256-…'"`
 
-- AKAN_CONTENT_SECURITY_POLICY_REPORT_URI (string): Where the browser posts each report: added as `report-uri` and `report-to`, with a `Reporting-Endpoints` header. — Example: `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI=https://reports.example.com/csp`
+- AKAN_CONTENT_SECURITY_POLICY_REPORT_URI (string, default /_akan/csp-report): Where the browser posts each report, as `report-uri` and `report-to` with a `Reporting-Endpoints` header. `off` asks for none. — Example: `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI=https://reports.example.com/csp`
 
-- AKAN_CONTENT_SECURITY_POLICY (string, default frame-ancestors 'self'; base-uri 'self'): The enforced policy, as before: a value replaces it and `off` drops it. It does not change the report-only header.
+- AKAN_CONTENT_SECURITY_POLICY (string, default frame-ancestors 'self'; base-uri 'self'): The enforced policy besides script-src. A value replaces the whole enforced policy as written and `off` drops it; either way the script policy then only reports.
 
 The Framework's Scripts
 
@@ -97,7 +97,7 @@ How the policy names it
 
 - Dev only: HMR client, the dev registry shim and shell, the error page's reload, Akan Studio — server/hmr/*, server/devtools/studio/* — The response's nonce (they import modules themselves); Studio's runtime by hash.
 
-- An MCP app view, a native app's index.html — server/mcp/McpAppShell.ts, @akanjs/native — Not served as a page: the MCP host's sandbox sets the view's policy, and a native build hashes its own index.html.
+- An MCP app view, a native app's index.html — server/mcp/McpAppShell.ts, server/mcp/McpAppFrame.ts, @akanjs/native — Not under this policy: an MCP host's sandbox sets a view's, a view a page draws runs in /_akan/app-frame, which sandboxes itself, and a native build hashes its own index.html.
 
 What Changes In A Page
 
@@ -109,13 +109,13 @@ For `DOMContentLoaded` the test is `document.readyState !== "loading"`.
 
 A browser test that clicks or types as soon as navigation reports `load` can meet a page that has not hydrated, and the event is lost. Wait for something only the hydrated page does: assert the result of the action and let the runner retry it, or wait for a marker a client component sets in an effect, such as `document.documentElement.dataset.hydrated`.
 
-What 3.5.0 Enforces
+Upgrading
 
-The script-src above joins the enforced Content-Security-Policy, so a script it does not name stops running instead of being reported.
+Load your pages with the console open, or deploy once with `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=on`, which only reports, and read the `[ScriptPolicy]` warnings until no new one comes.
 
-Before upgrading, load your pages on 3.4 with the console open (or collect reports for a release) until none is left.
+Name each inline script of your own with `scriptHashes()` or `nonce={scriptNonce()}`, and move `onclick="…"` attributes and `javascript:` URLs into a component's handler.
 
-`AKAN_CONTENT_SECURITY_POLICY` stays the override: a value replaces the enforced policy whole, and `off` drops it.
+An `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` from before replaces the default now: add `'wasm-unsafe-eval'` to it if a page compiles WebAssembly.
 
 ## Code Examples
 

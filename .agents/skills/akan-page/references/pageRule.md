@@ -48,20 +48,21 @@ What neither the `page` rule nor the `akan-page` skill says; nothing either of t
   `og:image` or `twitter:image` drops the `og:image:*` / `twitter:image:*` tags it inherits, and a
   `<meta name="theme-color">` replaces the root `.viewport({ themeColor })`'s. Only `.head()` merges: a `<title>` or
   `<meta>` written inside a component renders beside the merged head, so a second `<title>` can reach the document.
-- **The script policy.** An inline `<script>` in a `.head()` is named in the page's policy, reported now and refused
-  from 3.5.0: `scriptHashes("sha256-…")` for a constant snippet (the page stays cacheable), `nonce={scriptNonce()}`
-  for anything else; both from `akanjs/client`, called in the `.head()`. Every HTML response sends
-  `Content-Security-Policy-Report-Only: script-src … 'strict-dynamic'`. A `<script src>` in JSX needs
+- **The script policy.** An inline `<script>` in a `.head()` is refused unless the page's policy names it:
+  `scriptHashes("sha256-…")` for a constant snippet (the page stays cacheable), `nonce={scriptNonce()}` for anything
+  else; both from `akanjs/client`, called in the `.head()`. Every HTML response enforces
+  `Content-Security-Policy: … script-src … 'strict-dynamic' 'wasm-unsafe-eval'`. A `<script src>` in JSX needs
   `nonce={scriptNonce()}` too (its host in a policy does nothing under `'strict-dynamic'`); the hash `scriptHashes()`
-  takes is the one the browser prints in its console report; and reading `scriptNonce()` makes the page dynamic, so no
+  takes is the one the browser prints in its console error; and reading `scriptNonce()` makes the page dynamic, so no
   result cache keeps it. Both do nothing in the browser and are too late outside a `.head()`: the header leaves with
-  the first byte. An `onclick="…"` attribute and a `javascript:` URL have no such form.
-  `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off` drops the header, `AKAN_CONTENT_SECURITY_POLICY_REPORT_URI` names
-  where the browser posts reports, and `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` adds sources to every response
-  (`'wasm-unsafe-eval'` for a page that compiles WebAssembly). A response names at most 32 hashes (its header stays
-  under 2 KB, inside the 4 KB a proxy reads headers into): `scriptHashes()` past that are left out with one warning
-  per route, and a page whose cached replay would need more (one per streamed boundary) is rendered each time,
-  answering `X-Akan-Cache-Reason: script-hashes`.
+  the first byte. An `onclick="…"` attribute and a `javascript:` URL have no such form. Browsers post violations to
+  `/_akan/csp-report`, logged once per route, directive and blocked source (`AKAN_CONTENT_SECURITY_POLICY_REPORT_URI`
+  points them elsewhere, `off` asks for none). `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=on` only reports while a page
+  is fixed, and `AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC` replaces the trailing `'wasm-unsafe-eval'` (keep it while a
+  page compiles WebAssembly). A response names at most 32 hashes (its header stays under 2 KB, inside the 4 KB a
+  proxy reads headers into): `scriptHashes()` past that are left out with one warning per route, and a page whose
+  cached replay would need more (one per streamed boundary) is rendered each time, answering
+  `X-Akan-Cache-Reason: script-hashes`.
 - **`load` and `DOMContentLoaded` can fire before client code runs.** The client entry is a module the document's
   bootstrap script adds, not a tag in the markup, so neither event waits for it. A listener for either is added only
   after checking `document.readyState` (`"complete"` for `load`, not `"loading"` for `DOMContentLoaded`) and calling

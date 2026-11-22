@@ -730,6 +730,7 @@ window.addEventListener("unhandledrejection", (event) => loadDocumentForLazyChun
 const reportPageError = pageErrorReporter(() => currentRouterState?.routeId ?? null);
 const rootOptions = isBuildBundle() ? reportingRootErrors(loadDocumentForLazyChunkFailure, reportPageError) : undefined;
 const hydrate = () => {
+  for (const tag of document.head.querySelectorAll("script[data-akan-boot]")) tag.remove();
   hydrateRoot(document, createElement(Root), rootOptions);
   scrollRestoration.restoreDocumentLoad();
 };
