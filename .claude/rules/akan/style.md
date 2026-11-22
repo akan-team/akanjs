@@ -18,7 +18,8 @@ The theme, lib tokens, `cn`, recipes and component overrides: `cssRule`, `recipe
 
 - **Never hand-order Tailwind classes** — `nursery/useSortedClasses` sorts them, `cn()` arguments included.
 - **Plain CSS needs no Tailwind**: a stylesheet with no `@import "tailwindcss"`, `@theme`, `@apply` or `theme()` is
-  only inlined and minified.
+  only inlined and minified. The frame akan wraps around a page draws nothing on the web without Tailwind, so the
+  stylesheet starts from `body`.
 - **Stay inside the color vocabulary** (`no-raw-palette-class`, `no-arbitrary-color`, `no-interpolated-arbitrary-class`,
   `no-daisyui-legacy-class`, `no-inline-color`): no raw palette (`bg-blue-500`), arbitrary or interpolated color
   classes, daisyUI classes or slots, or `style={{}}` colors — they render no CSS. Use semantic tokens

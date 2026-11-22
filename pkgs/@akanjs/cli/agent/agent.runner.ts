@@ -142,7 +142,8 @@ ${conventions.core}
 ${renderPathRules(conventions.rules)}${sampleCleanup}## Generated Files
 
 Never hand-edit ${context.generatedFiles.map((file) => `\`${file}\``).join(", ")}. When one is stale or broken, fix the
-owning source file and run \`akan sync <app-or-lib>\` or \`akan repair generated\`.`;
+owning source file and run \`akan sync <app-or-lib>\` or \`akan repair generated\`. They, \`.akan/\` and the env files are
+git-ignored, and \`akan build\` writes them before it builds, so a fresh clone builds as it is.`;
   return version ? stampBlockVersion(block, version) : block;
 };
 

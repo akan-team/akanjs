@@ -72,11 +72,15 @@ File names, stages, the `.render()` order and what a route file must never do ar
 - `router.notFound()` from `.guard()`, `.head()` or `.render()` answers 404 with the nearest layout's `.notFound()`
   above it (an unmatched URL: the deepest layout covering it), else the built-in 404.
 - A layout's own 404 and error views: `.notFound(({ pathname }) => …)` and `.error(({ error }) => …)` on `layout()`
-  or `rootLayout()`. A `<title>` and `<meta>` at the top of what they return replace the page's head:
-  `.notFound(() => <><title>Not found</title>…</>)`, except below a `.loading()`, where the head is already out.
+  or `rootLayout()`. What they return is drawn as that layout's own `.render()` children, inside its frame, so it
+  holds only the content (no second `<main>` or header). A `<title>` and `<meta>` at the top of it replace the
+  page's head: `.notFound(() => <><title>Not found</title>…</>)`, except below a `.loading()`, where the head is
+  already out.
 - `<Link href="/books/OL45804W">`: write the path without the locale; Link adds it, or leaves it off for the default
   locale under `i18n.localePrefix: "as-needed"`. It renders an `<a>` and takes its attributes; `activeClassName`
   marks the current one from the press, before its page arrives; an `active` prop from a layout's render is late.
+  `replace` and `scrollToTop={false}` change its push; it has no `shallow`, so a shallow one is an `onClick` that
+  calls `event.preventDefault()` and `router.push(href, { shallow: true })`.
 - An SSR page still loading: `pendingClassName` / `data-pending` on its `Link`, and `usePendingNavigation()`
   (`akanjs/client`) for its `{ path, searchParams }`, `null` once the page is drawn and for a page already held.
 - From a handler: `router.push(href)` / `router.replace(href)`; in a server stage, `router.redirect(href)`.

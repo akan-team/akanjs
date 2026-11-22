@@ -5,10 +5,9 @@ description: "Add a service module — behaviour not centred on one stored model
 
 # Akan service modules
 
-Behaviour that is not centred on a single stored model lives in a **service module**: the folder is
-`lib/_<service>/` and its abstract file is `<service>.abstract.md` — the folder carries the underscore, the
-abstract drops it. Its UI surface is limited to `<Service>.Util.tsx` and `<Service>.Zone.tsx`, and its
-dictionary is a `serviceDictionary`.
+Behaviour not centred on one stored model lives in a **service module**, `lib/_<service>/`, whose abstract is
+`<service>.abstract.md` (no underscore). Its UI surface is limited to `<Service>.Util.tsx` and
+`<Service>.Zone.tsx`, and its dictionary is a `serviceDictionary`.
 
 ## Rules
 
@@ -19,10 +18,9 @@ dictionary is a `serviceDictionary`.
   `_preUpdate` / `_postCreate`, not inline. Fire-and-forget is explicitly `void`-ed.
 - Return `null` / `false` for "not allowed" or "not found" and let the signal decide whether that is an
   error.
-- `serve(name, { serverMode: "batch" }, …)` mounts the module, endpoints included, only in a `batch` or `all`
-  process; a `federation` replica, the one serving requests in a split deployment, skips it. The app's own
-  `lib/_<app>/` service is scaffolded with it for cron and queue work. Leave it off a service a page calls, as
-  `akan create-service` does.
+- `serve(name, { serverMode: "batch" }, …)`, on the app's own `lib/_<app>/` for cron and queue work, mounts the
+  module, endpoints included, only in a `batch` or `all` process, never on a `federation` replica. A service a page
+  calls leaves it off, as `akan create-service` does.
 
 ## Reaching other things
 
@@ -66,7 +64,11 @@ interface ApiWork {
 export class OpenlibraryService extends serve("openlibrary" as const, ({ plug }) => ({ bookApi: plug(BookApi) })) {
   async getBook(id: string) {
     const work = await this.bookApi.get<ApiWork>(`works/${id}.json`);
-    return work && { id, title: work.title };
+    return work && this.toBook(id, work);
+  }
+  // TypeScript `private`: lint refuses `#private` in a service.
+  private toBook(id: string, work: ApiWork) {
+    return { id, title: work.title };
   }
 }
 

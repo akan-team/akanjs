@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 import { type SpawnOptions, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import path, { delimiter } from "node:path";
 import { Command } from "commander";
 import { engines } from "./package.json";
@@ -28,13 +28,16 @@ const readGlobalBinDir = () => {
 //? Windows spells the key `Path`, and a spread copy of process.env loses its case-insensitive lookup.
 const getPathKey = (env: NodeJS.ProcessEnv) => Object.keys(env).find((key) => key.toUpperCase() === "PATH") ?? "PATH";
 const isOnPath = (env: NodeJS.ProcessEnv, dir: string) => (env[getPathKey(env)] ?? "").split(delimiter).includes(dir);
+const isInNodeModules = (file: string) => file.split(/[\\/]/).some((part) => part.toLowerCase() === "node_modules");
 //? npx and npm scripts put a package's `node_modules/.bin` on PATH for that one run, so the shell afterwards lacks it.
+//? A Bun linked from an npm package (`npm i -g bun`) counts as npm's too: a host that installs Bun that way runs on npm.
 export const isBunOnLastingPath = (env: NodeJS.ProcessEnv) => {
   const PATH = (env[getPathKey(env)] ?? "")
     .split(delimiter)
-    .filter((dir) => dir && !dir.split(/[\\/]/).some((part) => part.toLowerCase() === "node_modules"))
+    .filter((dir) => dir && !isInNodeModules(dir))
     .join(delimiter);
-  return Bun.which("bun", { PATH }) !== null;
+  const bun = Bun.which("bun", { PATH });
+  return bun !== null && !isInNodeModules(realpathSync(bun));
 };
 const prependToPath = (env: NodeJS.ProcessEnv, dir: string | undefined): NodeJS.ProcessEnv => {
   if (!dir || isOnPath(env, dir)) return env;
@@ -159,7 +162,7 @@ export const run = async ({
       );
       if (!bunOnPath)
         console.warn(
-          `\nBun ${bunVersion} is not on your PATH, so \`akan\` cannot run from the shell. The workspace lists bun in its dependencies instead: from the workspace, run \`npm run build\`, \`npm start\` or \`npx akan <command>\`.`,
+          `\nBun ${bunVersion} here comes from npm, so \`akan\` cannot run from the shell. The workspace lists bun in its dependencies instead: from the workspace, run \`npm run build\`, \`npm start\` or \`npx akan <command>\`.`,
         );
       else if (globalBinDir && !isOnPath(process.env, globalBinDir))
         console.warn(
