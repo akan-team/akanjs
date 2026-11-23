@@ -242,17 +242,30 @@ describe("dev stability integration harness", () => {
     hmr?.close();
   });
 
-  integrationTest("dictionary edits recycle runtime metadata and replace stale snapshots", async () => {
-    const harness = await createHarness();
-    const host = await harness.startHost();
-    const hmr = await harness.tryConnectHmrProbe();
-    await harness.waitForHttpText("initial-shared-marker", WAIT_MS);
-    const { mark } = await harness.editUntilSeen(
-      host,
-      (attempt) =>
-        harness.writeFile(
-          "lib/_fixture/fixture.dictionary.ts",
-          `import { serviceDictionary } from "akanjs/dictionary";
+  integrationTest(
+    "dictionary edits restart only the backend, onto dictionary assets the running builder rebuilt",
+    async () => {
+      const harness = await createHarness();
+      const host = await harness.startHost();
+      const hmr = await harness.tryConnectHmrProbe();
+      await harness.waitForHttpText("initial-shared-marker", WAIT_MS);
+      const builderPids = (since: number) => [
+        ...new Set(
+          [
+            ...host.logs
+              .join("")
+              .slice(since)
+              .matchAll(/\[IncrementalBuilder\] (\d+)/g),
+          ].map(([, pid]) => pid),
+        ),
+      ];
+      const [builderPid] = builderPids(0);
+      const { mark, attempts } = await harness.editUntilSeen(
+        host,
+        (attempt) =>
+          harness.writeFile(
+            "lib/_fixture/fixture.dictionary.ts",
+            `import { serviceDictionary } from "akanjs/dictionary";
 
 import type { FixtureEndpoint } from "./fixture.signal";
 
@@ -262,17 +275,29 @@ export const dictionary = serviceDictionary(["en", "ko"])
     hello: ["Updated Dictionary ${attempt}", "업데이트 사전 ${attempt}"],
   });
 `,
-        ),
-      // Each attempt recycles the builder and the backend, so patience is cheaper than a retry.
-      { evidence: /\[dev-plan\].*actions=.*restart-builder/, attempts: 2, evidenceTimeoutMs: 30_000 },
-    );
+          ),
+        { evidence: /\[dev-host\] runtime metadata generation=\d+/, attempts: 2, evidenceTimeoutMs: 30_000 },
+      );
 
-    await host.waitForLogSince(mark, /\[dev-host\] recycling builder\/backend for runtime metadata/);
-    await host.waitForLogSince(mark, /backend ready pid=(\d+)|AkanApp gateway is running on port/);
-    await harness.waitForHttpText("initial-shared-marker");
-    expect(host.proc.killed).toBe(false);
-    hmr?.close();
-  });
+      await host.waitForLogSince(mark, /\[dev-host\] runtime metadata generation=\d+ built at generation=\d+/);
+      await host.waitForLogSince(mark, /backend ready pid=(\d+)|AkanApp gateway is running on port/);
+      await harness.waitForHttpText("initial-shared-marker");
+      const artifact = (await Bun.file(path.join(harness.appDir, ".akan/artifact/base-artifact.json")).json()) as {
+        dictAssets: Record<string, { url: string; parts?: Record<string, { url: string }> }>;
+      };
+      const english = artifact.dictAssets.en;
+      const urls = [english?.url, ...Object.values(english?.parts ?? {}).map(({ url }) => url)].filter(Boolean);
+      const origin = `http://localhost:${await harness.resolvePort()}`;
+      const served = await Promise.all(
+        urls.map(async (url) => await fetch(`${origin}${url}`).then((res) => res.text())),
+      );
+      expect(served.some((text) => text.includes(`Updated Dictionary ${attempts}`))).toBe(true);
+      expect(host.logs.join("").slice(mark)).not.toMatch(/recycling builder\/backend/);
+      expect(builderPids(mark).every((pid) => pid === builderPid)).toBe(true);
+      expect(host.proc.killed).toBe(false);
+      hmr?.close();
+    },
+  );
 
   integrationTest("config edits restart the dev host and keep serving", async () => {
     const harness = await createHarness();

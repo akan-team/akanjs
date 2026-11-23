@@ -29,6 +29,7 @@ import { BuilderLanes } from "./builderLanes";
 import { BuilderWatch } from "./builderWatch";
 import type { BatchJob, DiscoveryJob } from "./builderWorkQueue";
 import { CsrRegistry } from "./csrRegistry";
+import { PendingMetadata } from "./pendingMetadata";
 import { SsrRegistry } from "./ssrRegistry";
 
 class IncrementalBuilder {
@@ -47,6 +48,7 @@ class IncrementalBuilder {
   readonly #delegations = new Map<string, number>();
   //? A route build bundles only entries no earlier route built: the dictionary walk reads every build's graph.
   readonly #dictionaryGraph = new Map<string, readonly ClientModuleImport[]>();
+  readonly #metadata = new PendingMetadata();
   readonly #lanes: BuilderLanes;
   readonly #csr: CsrRegistry;
   readonly #ssr: SsrRegistry;
@@ -86,7 +88,7 @@ class IncrementalBuilder {
     );
     this.#watcher = new BuilderWatch(
       options.app,
-      { logger, lanes, csr: this.#csr, ssr: this.#ssr, graphPayloads: this.#graphPayloads },
+      { logger, lanes, csr: this.#csr, ssr: this.#ssr, graphPayloads: this.#graphPayloads, metadata: this.#metadata },
       { nextGeneration: () => ++this.#generation, refreshDiscovery: (job) => this.#refreshDiscovery(job) },
     );
   }
@@ -248,7 +250,12 @@ class IncrementalBuilder {
   async #runBatch(work: BatchWork): Promise<BuildBatchResult> {
     const { generation, needs, changedFiles } = work;
     const started = Date.now();
-    const result = await this.#batchRunner.run(await this.#batchRequest(work), (msg) => BuilderChannel.emit(msg));
+    const request = await this.#batchRequest(work);
+    const result = await this.#batchRunner.run(request, (msg) => BuilderChannel.emit(msg));
+    //? A registry this batch failed to rebuild keeps the dev host's restart for a later batch, which then rewrites the
+    //? base artifact around its own pages bundle.
+    const built = !result.crashed && !result.errors.pages && !result.errors.csr && !result.errors.ssr;
+    if (request.metadata && built) this.#metadata.settle(generation);
     if (result.optimizedFonts) this.#optimizedFonts = result.optimizedFonts;
     if (result.cssAssets) this.#artifact = { ...this.#artifact, cssAssets: result.cssAssets };
     // A need the worker died before reporting goes red here instead of looking silently successful.
@@ -272,6 +279,7 @@ class IncrementalBuilder {
   }
 
   async #batchRequest({ generation, needs, changedFiles, trace }: BatchWork): Promise<BuildBatchRequest> {
+    const metadata = needs.includes("pages") ? this.#metadata.files : [];
     return {
       appName: this.#app.name,
       workspaceRoot: this.#app.workspace.workspaceRoot,
@@ -284,6 +292,7 @@ class IncrementalBuilder {
       cssAssets: this.#artifact.cssAssets ?? null,
       artifactDir: path.resolve(this.#artifactDir),
       ...(trace ? { trace } : {}),
+      ...(metadata.length > 0 ? { metadata } : {}),
     };
   }
 

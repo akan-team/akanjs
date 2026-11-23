@@ -8,6 +8,7 @@ import type { BuilderRssRecycler } from "./builderRssRecycler";
 import type { DevBackend } from "./devBackend";
 import type { DevBuilder } from "./devBuilder";
 import type { DevBuildStatusBoard } from "./devBuildStatusBoard";
+import type { DevMetadataRestart } from "./devMetadataRestart";
 import { DevRecycler } from "./devRecycler";
 
 const logger = { verbose: () => undefined, warn: () => undefined, info: () => undefined } as unknown as Logger;
@@ -53,6 +54,7 @@ describe("DevRecycler", () => {
       } as unknown as DevBuilder,
       gap: {} as BuilderGap,
       rss: { rearm: () => undefined } as unknown as BuilderRssRecycler,
+      metadata: { defers: () => false } as unknown as DevMetadataRestart,
     });
 
     await recycler.handleInvalidate(restartBuilder);

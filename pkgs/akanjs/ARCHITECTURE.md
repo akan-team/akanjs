@@ -128,9 +128,9 @@ Declared in [server/artifact/ipcTypes.ts](server/artifact/ipcTypes.ts).
 | `backend-ready` | `ChildSupervisor` | `DevBackend` |
 | `invalidate` | `DevRecycler`, `prepareDevWatchBatch` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost` |
 | `css-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
-| `pages-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
-| `csr-updated` | `BuildBatch`, `CsrRegistry` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
-| `ssr-updated` | `BuildBatch`, `SsrRegistry` | `AkanApp`, `BuilderRpc`, `IncrementalBuilderHost` |
+| `pages-updated` | `BuildBatch`, `IncrementalBuilder` | `AkanApp`, `AkanAppHost`, `BuilderRpc`, `DevBuilder`, `DevMetadataRestart`, `IncrementalBuilderHost`, `shouldRelayRecycledFrontendState` |
+| `csr-updated` | `BuildBatch`, `CsrRegistry` | `AkanApp`, `BuilderRpc`, `DevMetadataRestart`, `IncrementalBuilderHost` |
+| `ssr-updated` | `BuildBatch`, `SsrRegistry` | `AkanApp`, `BuilderRpc`, `DevMetadataRestart`, `IncrementalBuilderHost` |
 | `build-status` | `BuildBatch`, `BuilderBoot`, `DevBackend`, `DevHostChannel`, `sendBuildStatus` | `AkanApp`, `AkanAppHost`, `BuildBatchRunner`, `BuilderRpc`, `DevBackend`, `DevBuilder`, `IncrementalBuilderHost` |
 | `builder-metrics` | `BuilderLanes` | `AkanAppHost`, `DevBuilder`, `IncrementalBuilderHost` |
 | `boot-armed` | `BuilderBoot`, `IncrementalBuilder` | `AkanAppHost`, `IncrementalBuilderHost` |
