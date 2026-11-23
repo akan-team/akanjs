@@ -4,8 +4,5 @@
   },
   "akan.size.function": {
     "frontendBuild/csrDevPatcher.ts#CsrDevPatcher.#patch": 164
-  },
-  "akan.size.class": {
-    "codeAgent/agent/CodeAgent.ts#CodeAgent": 67
   }
 }

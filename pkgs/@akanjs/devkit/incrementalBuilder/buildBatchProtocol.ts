@@ -20,6 +20,7 @@ export interface BuildBatchRequest {
   cssAssets: PagesBatchCssAssets | null; // an unchanged compile skips the broadcast instead of busting hashes
   artifactDir: string;
   trace?: HmrTrace;
+  metadata?: string[]; // signal and dictionary saves no batch has built green yet; `pages` batches only
 }
 
 export type BatchWork = Pick<BuildBatchRequest, "generation" | "needs" | "changedFiles" | "trace">;

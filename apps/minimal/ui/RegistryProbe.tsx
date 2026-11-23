@@ -1,5 +1,5 @@
 "use client";
-import { usePage } from "@apps/minimal/client";
+import { fetch, usePage } from "@apps/minimal/client";
 import { registrySharedText } from "@apps/minimal/common";
 import { useContext, useEffect, useState } from "react";
 import { RegistryLabel } from "./RegistryLabel";
@@ -52,6 +52,10 @@ export const RegistryProbe = ({ className }: RegistryProbeProps) => {
       </button>
       <RegistryLabel where="client" />
       <output data-e2e="shared-client">{registrySharedText}</output>
+      <output data-e2e="dict-client">{l("minimal.healthy")}</output>
+      <button type="button" data-e2e="ping" onClick={() => void fetch.benchPing()}>
+        ping
+      </button>
     </section>
   );
 };

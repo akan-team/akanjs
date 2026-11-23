@@ -126,6 +126,8 @@ describe("rscClient patch fallback flow", () => {
     globalThis.__AKAN_RSC_SEGMENT_OUTLET_STORE__ = {
       entries: new Map(),
       listeners: new Map([["slot:layout:/docs:1:2", new Set([() => {}])]]),
+      drawn: new Map(),
+      drawWaiters: new WeakMap(),
     };
 
     try {
@@ -157,6 +159,8 @@ describe("rscClient patch fallback flow", () => {
     globalThis.__AKAN_RSC_SEGMENT_OUTLET_STORE__ = {
       entries: new Map(),
       listeners: new Map([["slot:layout:/docs:1:2", new Set([() => {}])]]),
+      drawn: new Map(),
+      drawWaiters: new WeakMap(),
     };
 
     try {

@@ -54,7 +54,8 @@ resolve되지 않습니다.
 - 가이드라인, 코드 생성, 그리고 `akan workflow`와 Akan MCP 서버 뒤의 계획 후 적용 워크플로.
 - 공유 Biome 설정(`@akanjs/devkit/biome.base.json`)과 모든 워크스페이스가 확장하는 grit lint 규칙.
 - Akan 네이티브 런타임 기반 앱 빌드(iOS, Android, macOS, Windows, Linux), 스토어 릴리스, 서명된 업데이트 릴리스.
-- `akan code` 에이전트 엔진, 에이전트가 쓰는 도구, 함께 배포되는 akan 스킬(`@akanjs/devkit/codeAgent`).
+- 함께 배포되는 akan 스킬과 `akan code`가 세션과 설정을 두는 폴더(`@akanjs/devkit/codeAgent`). 에이전트 자체는
+  `@akanjs/code`로 배포됩니다.
 
 ## 개발 서버 메모리
 

@@ -26,10 +26,10 @@ beforeAll(async () => {
 });
 
 describe("Signal.Doc without a fetch prop", () => {
-  test("renders a signal zone from the registered runtime", async () => {
+  test("renders a signal zone from the registered runtime, leaving its base URL to the browser", async () => {
     const html = await render(<Signal.Doc.Zone refName="ping" />);
-    expect(html).toContain("http://localhost:8080");
     expect(html).toContain("/ping/ping");
+    expect(html).not.toContain("http://localhost:8080");
   });
 
   test("lists the scoped signals and mounts only the default one", async () => {

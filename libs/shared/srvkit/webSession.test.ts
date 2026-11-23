@@ -24,16 +24,26 @@ describe("WebSession", () => {
     CrossSiteGuard.reset();
   });
 
-  test("is off until an app turns it on, and an app that names no session option keeps the default", () => {
-    expect(WebSession.cookieOnlyByDefault).toBe(false);
-    expect(WebSession.cookieOnly).toBe(WebSession.cookieOnlyByDefault);
-    WebSession.configure({ cookieOnly: true });
+  test("is on until an app turns it off, and an app that names no session option keeps the default", () => {
+    expect(WebSession.cookieOnlyByDefault).toBe(true);
     expect(WebSession.cookieOnly).toBe(true);
+    WebSession.configure({ cookieOnly: false });
+    expect(WebSession.cookieOnly).toBe(false);
     WebSession.configure({});
-    expect(WebSession.cookieOnly).toBe(WebSession.cookieOnlyByDefault);
+    expect(WebSession.cookieOnly).toBe(true);
+    WebSession.configure({ cookieOnly: false });
+    WebSession.configure();
+    expect(WebSession.cookieOnly).toBe(true);
   });
 
-  test("hands every caller the tokens while the option is off", () => {
+  test("hands a page no tokens by default, and only a caller that asks", () => {
+    expect(WebSession.handsTokensTo(undefined)).toBe(false);
+    expect(WebSession.handsTokensTo(requestWith())).toBe(false);
+    expect(WebSession.handsTokensTo(requestWith(asking))).toBe(true);
+  });
+
+  test("hands every caller the tokens once an app turns the option off", () => {
+    WebSession.configure({ cookieOnly: false });
     expect(WebSession.handsTokensTo(undefined)).toBe(true);
     expect(WebSession.handsTokensTo(requestWith({ cookie: `${authTokenKey()}=token` }))).toBe(true);
   });

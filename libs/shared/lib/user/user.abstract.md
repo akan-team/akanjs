@@ -88,9 +88,10 @@
 - 한 브라우저의 user·admin refresh는 한 번에 하나씩 나간다(탭 사이에서도). 만료 뒤에 둘이 함께 나가면 각자 자기 신원만
   담아 돌아오기 때문이다. 자기 앱의 만료된 Bearer 토큰이 온 호출은 세션 쿠키로 읽는다. 형식이 틀리거나 서명·앱·환경이
   다르거나 폐기된 토큰은 쿠키로 넘어가지 않는다.
-- `session.cookieOnly`를 켜면 로그인·SSO 완료·refresh가 서버 렌더 페이지에는 HttpOnly 쿠키만 주고 본문 `jwt`는 빈 문자열,
-  `refreshToken`은 없다. 본문 토큰은 세션 쿠키가 없고 `x-akan-session-tokens: body`로 청하거나 허용된 다른 오리진에서 온
-  호출자만 받으며, 그 응답은 세션 쿠키를 심지 않는다(`WebSession`). 기본값은 3.4.0에서 꺼짐, 3.5.0에서 켜짐이다.
+- `session.cookieOnly`는 기본으로 켜져 있다. 로그인·SSO 완료·refresh가 서버 렌더 페이지에는 HttpOnly 쿠키만 주고 본문
+  `jwt`는 빈 문자열, `refreshToken`은 없다. 본문 토큰은 세션 쿠키가 없고 `x-akan-session-tokens: body`로 청하거나 허용된 다른
+  오리진에서 온 호출자만 받으며, 그 응답은 세션 쿠키를 심지 않는다(`WebSession`). `false`로 끄면 모든 호출자가 본문 토큰과
+  세션 쿠키를 함께 받는다.
 - CSR 클라이언트(네이티브 셸)는 API와 오리진이 달라 HttpOnly refresh 쿠키를 받지도 보내지도 못한다. 로그인·refresh 응답
   본문의 refresh token을 user·admin 범위별로 OS 자격 증명 저장소(`secretStorage`)에 두고 refresh 본문으로 보낸다. 재설치한
   앱은 첫 실행에서 그 저장소를 비우므로 이전 설치의 로그인을 이어받지 않는다.

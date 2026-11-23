@@ -129,6 +129,8 @@ export class SsrInlineScripts {
 })();`;
   static readonly bootstrap = SsrInlineScripts.#bootstrapSource.replace(/\n\s*/g, "");
 
+  //? Removed before hydration: React would take the first <script> in <head> for a `.head()`'s own script.
+  static readonly bootAttr = "data-akan-boot";
   static readonly flushTag = "<script>self.__AKAN_FLUSH__()</script>";
   static readonly #staticHashes = [
     ScriptPolicy.hashOf(SsrInlineScripts.bootstrap),
@@ -161,16 +163,19 @@ export class SsrInlineScripts {
   static #headTags(options: SsrHeadScriptOptions): string {
     const { bootstrap, devInline, nonce, importmap, modulePreloads, theme, injectThemeInitScript } = options;
     const themeInit = theme === "system" || (theme === undefined && injectThemeInitScript);
+    const boot = SsrInlineScripts.bootAttr;
     const bootstrapTags = bootstrap
-      ? `<script type="application/json">${htmlEscapeJson(
+      ? `<script type="application/json" ${boot}>${htmlEscapeJson(
           JSON.stringify({ ...bootstrap, ...(themeInit ? { themeInit: 1 } : {}) }),
-        )}</script><script>${SsrInlineScripts.bootstrap}</script>`
+        )}</script><script ${boot}>${SsrInlineScripts.bootstrap}</script>`
       : "";
     const importmapJson = SsrInlineScripts.importmapJson(importmap);
-    const importmapTag = importmapJson ? `<script type="importmap">${importmapJson}</script>` : "";
+    const importmapTag = importmapJson ? `<script type="importmap" ${boot}>${importmapJson}</script>` : "";
     const nonceAttr = nonce ? ` nonce="${escapeHtmlAttr(nonce)}"` : "";
     //? After the import map: a script that starts a module load before the map is parsed makes the browser ignore it.
-    const devTag = devInline ? `<script${nonceAttr}>${devInline.replace(/<\/script/gi, "<\\/script")}</script>` : "";
+    const devTag = devInline
+      ? `<script${nonceAttr} ${boot}>${devInline.replace(/<\/script/gi, "<\\/script")}</script>`
+      : "";
     return `${bootstrapTags}${importmapTag}${devTag}${SsrInlineScripts.#preloadTags(modulePreloads)}`;
   }
 

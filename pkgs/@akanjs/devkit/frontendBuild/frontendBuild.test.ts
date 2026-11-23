@@ -3,6 +3,7 @@ import { readFile, rm } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { RoutesManifest } from "akanjs/server";
+import { runtimeMetadataFilesOf } from "../akanApp/devHostPolicy";
 import { tempDirs, writeText as write } from "../test/testHelpers";
 import { CsrArtifactBuilder } from "./csrArtifactBuilder";
 import { CssCompiler, declaredCustomProperties, isIgnoredNodeModuleSource } from "./cssCompiler";
@@ -434,7 +435,7 @@ describe("DevChangePlanner", () => {
     ).toEqual(["restart-dev-host"]);
   });
 
-  test("recycles builder for macro-backed dictionary and signal metadata changes", () => {
+  test("restarts only the backend for macro-backed dictionary and signal metadata, which the plan marks", () => {
     const root = path.resolve("/repo");
     const planner = new DevChangePlanner({ workspaceRoot: root });
     const dictionaryFile = path.join(root, "apps/demo/lib/_demo/demo.dictionary.ts");
@@ -449,9 +450,10 @@ describe("DevChangePlanner", () => {
       kinds: ["code"],
     });
 
-    expect(dictionaryPlan.actions).toEqual(["rebuild-client", "restart-backend", "restart-builder"]);
+    expect(dictionaryPlan.actions).toEqual(["rebuild-client", "restart-backend"]);
     expect(dictionaryPlan.reasonByFile[dictionaryFile]).toContain("runtime-metadata");
-    expect(signalPlan.actions).toContain("restart-builder");
+    expect(signalPlan.actions).toEqual(["rebuild-client", "restart-backend"]);
+    expect(runtimeMetadataFilesOf(signalPlan)).toEqual([path.join(root, "libs/shared/lib/admin/admin.signal.ts")]);
   });
 });
 

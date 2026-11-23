@@ -50,7 +50,6 @@ export class DevChangePlanner {
       const reasons = new Set<string>();
       const fileRoles = this.#rolesForFile(file, { isGenerated: generatedSet.has(path.resolve(file)), reasons });
       for (const role of fileRoles) roles.add(role);
-      if (reasons.has("runtime-metadata")) actions.add("restart-builder");
       if (reasons.size > 0) reasonByFile[path.resolve(file)] = [...reasons].sort();
     }
 

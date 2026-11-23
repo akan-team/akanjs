@@ -17,6 +17,7 @@ import {
   shouldRestartBuilderByDevPlan,
   shouldRestartDevHostByDevPlan,
 } from "./devHostPolicy";
+import type { DevMetadataRestart } from "./devMetadataRestart";
 
 type InvalidateMessage = Extract<BuilderMessage, { type: "invalidate" }>;
 
@@ -31,6 +32,7 @@ export class DevRecycler {
   readonly #builder: DevBuilder;
   readonly #gap: BuilderGap;
   readonly #rss: BuilderRssRecycler;
+  readonly #metadata: DevMetadataRestart;
   #pending: {
     message: InvalidateMessage;
     refreshConfig: boolean;
@@ -53,6 +55,7 @@ export class DevRecycler {
       builder: DevBuilder;
       gap: BuilderGap;
       rss: BuilderRssRecycler;
+      metadata: DevMetadataRestart;
     },
   ) {
     this.#app = app;
@@ -65,6 +68,7 @@ export class DevRecycler {
     this.#builder = parts.builder;
     this.#gap = parts.gap;
     this.#rss = parts.rss;
+    this.#metadata = parts.metadata;
   }
 
   get pending(): boolean {
@@ -92,6 +96,10 @@ export class DevRecycler {
         return;
       }
       await this.apply(merged, refreshConfig);
+      return;
+    }
+    if (this.#metadata.defers(message)) {
+      this.#backend.send(message);
       return;
     }
     if (await this.#shouldRestartBackend(message)) {
@@ -229,6 +237,7 @@ export class DevRecycler {
     this.#builder.cancelRecovery();
     this.#builder.resetRecovery();
     this.#backend.dropPendingRestart();
+    this.#metadata.drop();
     await this.#backend.restarting;
     this.#statuses.reset();
     this.#backend.dropQueuedStatuses();

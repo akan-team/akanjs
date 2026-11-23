@@ -9,6 +9,8 @@ const makeTempRoot = tempDirs("akan-vendor-narrowing-");
 const akanjsRoot = path.resolve(import.meta.dir, "../../../akanjs");
 const vendorFile = (name: string) => path.join(akanjsRoot, "server/vendor", `${name}.ts`);
 const agentOnlyText = "path must be an internal path starting with /.";
+const formFieldsText = "does not take null.";
+const fieldToolsText = "Leaves every existing row untouched.";
 
 const staticClosure = (absPath: string, seen = new Set<string>()): Set<string> => {
   if (seen.has(absPath)) return seen;
@@ -42,7 +44,11 @@ const buildVendors = async (storeNames: string[], plugins: Awaited<ReturnType<Ve
     if (!output) throw new Error(`no ${name}.js output`);
     return output.path;
   };
-  return { store: closureText(outputOf("store")), agent: closureText(outputOf("agent")) };
+  return {
+    store: closureText(outputOf("store")),
+    agent: closureText(outputOf("agent")),
+    all: result.outputs.map((output) => readFileSync(output.path, "utf8")).join("\n"),
+  };
 };
 
 describe("VendorNarrowing", () => {
@@ -58,8 +64,9 @@ describe("VendorNarrowing", () => {
     ).toEqual({ "/v/akanjs-store.ts": ["st"], "/v/akanjs-base.ts": [] });
   });
 
-  test("keeps the deprecated agent re-export when a route imports one of its names, or reads the store whole", async () => {
-    expect(await new VendorNarrowing(akanjsRoot, { "akanjs/store": ["AgentContext", "st"] }).plugins()).toEqual([]);
+  test("keeps each blankable re-export when a route imports one of its names, or reads the store whole", async () => {
+    const names = ["AgentContext", "FormFields", "st"];
+    expect(await new VendorNarrowing(akanjsRoot, { "akanjs/store": names }).plugins()).toEqual([]);
     expect(await new VendorNarrowing(akanjsRoot, {}).plugins()).toEqual([]);
   });
 
@@ -72,6 +79,29 @@ describe("VendorNarrowing", () => {
 
     expect(store).not.toContain(agentOnlyText);
     expect(agent).toContain(agentOnlyText);
+  }, 60_000);
+
+  test("a store vendor no route reads `FormFields` from loads the field tools only through a dynamic import", async () => {
+    const names = ["StoreRegistry", "store", "useFieldTool"];
+    const { store, all } = await buildVendors(
+      names,
+      await new VendorNarrowing(akanjsRoot, { "akanjs/store": names }).plugins(),
+    );
+
+    expect(store).not.toContain(formFieldsText);
+    expect(store).not.toContain(fieldToolsText);
+    expect(all).toContain(fieldToolsText);
+  }, 60_000);
+
+  test("a route that names `FormFields` keeps it in the store vendor, and the field tools still load apart", async () => {
+    const names = ["FormFields", "StoreRegistry", "store"];
+    const { store } = await buildVendors(
+      names,
+      await new VendorNarrowing(akanjsRoot, { "akanjs/store": names }).plugins(),
+    );
+
+    expect(store).toContain(formFieldsText);
+    expect(store).not.toContain(fieldToolsText);
   }, 60_000);
 
   test("without the blanking, the deprecated re-export drags the agent runtime into the store vendor", async () => {
@@ -93,6 +123,20 @@ describe("VendorNarrowing", () => {
     expect(VendorNarrowing.entriesIn(path.join(akanjsRoot, "server")).map(({ specifier }) => specifier)).toContain(
       "akanjs/store/agent",
     );
+  });
+
+  test("an akanjs from before the lazy field tools has nothing there to blank but its deprecated re-export", async () => {
+    const root = await makeTempRoot();
+    await write(path.join(root, "store/deprecatedAgent.ts"), 'export { AgentContext } from "./agent";\n');
+    await write(path.join(root, "store/agentic/formFields.ts"), "export class FormFields {}\n");
+
+    const [plugin, ...rest] = await new VendorNarrowing(root, { "akanjs/store": ["st"] }).plugins();
+    const filters: RegExp[] = [];
+    void plugin?.setup({ onLoad: ({ filter }: { filter: RegExp }) => void filters.push(filter) } as never);
+
+    expect(rest).toEqual([]);
+    expect(filters.map((filter) => filter.test("/w/node_modules/akanjs/store/deprecatedAgent.ts"))).toEqual([true]);
+    expect(filters.map((filter) => filter.test("/w/node_modules/akanjs/store/agentic/formFields.ts"))).toEqual([false]);
   });
 
   test("an alias narrowed to no names still loads its entry, so the entry's side effects run", () => {

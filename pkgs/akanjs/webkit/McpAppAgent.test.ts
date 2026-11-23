@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, jest, test } from "bun:test";
+import { Int } from "akanjs/base";
 import { csrLocation } from "akanjs/client";
 import { MCP_FAILURE_META } from "akanjs/common";
+import { ConstantRegistry, via } from "akanjs/constant";
 import { AgenticSurface, ToolReturn } from "use-agentic";
+import { loadFieldTools, mountFieldTools } from "../store/agentic/fieldTools";
 import { McpAppApprovals } from "./McpAppApprovals";
 import type { McpAppBridge, McpAppToolServer } from "./McpAppBridge";
 
@@ -171,6 +174,28 @@ describe("McpAppAgent", () => {
     settled();
     expect(sent.changed).toBe(2);
     expect(sent.contexts).toHaveLength(1);
+  });
+
+  test("lists a form control's setter once the field tools load, and tells the host its list moved", async () => {
+    const Input = via((f) => ({ title: f(String) }));
+    const Obj = via(Input, () => ({}));
+    const Light = via(Obj, ["title"] as const, () => ({}));
+    const Full = via(Obj, Light, () => ({}));
+    const Insight = via(Full, (f) => ({ count: f(Int, { default: 0 }) }));
+    ConstantRegistry.buildModel("mcpAppNote", Input, Obj, Full, Light, Insight, {});
+    jest.useFakeTimers();
+    const surface = new AgenticSurface();
+    const { bridge, sent } = fakeBridge();
+    new McpAppAgent(bridge, surface, new McpAppApprovals()).start();
+    const live = { current: { onChange: () => undefined, transform: undefined } };
+    const unmount = mountFieldTools(surface, [], (build) => build.fieldEntries("setTitleOnMcpAppNote", live, false));
+    expect(sent.server?.list()).toEqual([]);
+
+    await loadFieldTools();
+    settled();
+    expect(sent.changed).toBe(1);
+    expect(sent.server?.list().map((tool) => tool.name)).toEqual(["setTitleOnMcpAppNote"]);
+    unmount();
   });
 
   test("keeps the context to itself when the host does not take one", () => {

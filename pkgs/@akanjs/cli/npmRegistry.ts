@@ -69,13 +69,26 @@ export async function getPublishedPeerDependencies(
 
 export const akanReleasePackages = ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"] as const;
 
+//? @akanjs/code is installed only by a workspace that runs `akan code`, and releases before it was split out lack it.
+export const akanReleasePackagesOf = (packageJson: {
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}) => [
+  ...akanReleasePackages,
+  ...["@akanjs/code"].filter((name) => packageJson.dependencies?.[name] ?? packageJson.devDependencies?.[name]),
+];
+
 //? npm has served a release's packages up to an hour apart (@akanjs/cli after the rest, 3.3.0-rc.42 and rc.43), and an
 //? install that pins them all fails until the last one is there. The package document is asked too: an install
 //? resolves from it, and it can list a version minutes after the version's own document answers.
-export async function getServedReleasePeers(version: string, registryUrl?: string): Promise<Record<string, string>> {
+export async function getServedReleasePeers(
+  version: string,
+  registryUrl?: string,
+  packages: readonly string[] = akanReleasePackages,
+): Promise<Record<string, string>> {
   const registry = getNpmRegistryUrl(registryUrl);
   const served = await Promise.all(
-    akanReleasePackages.map(async (name) => {
+    packages.map(async (name) => {
       const res = await fetch(`${packageUrl(registry, name)}/${encodeURIComponent(version)}`);
       if (res.status === 404) return false;
       if (!res.ok) throw new Error(`Failed to fetch ${name}@${version} metadata from ${registry} (${res.status})`);
@@ -84,7 +97,7 @@ export async function getServedReleasePeers(version: string, registryUrl?: strin
       return !!(await getPublishedVersions(name, registry))?.versions.includes(version);
     }),
   );
-  const missing = akanReleasePackages.filter((_, idx) => !served[idx]).map((name) => `${name}@${version}`);
+  const missing = packages.filter((_, idx) => !served[idx]).map((name) => `${name}@${version}`);
   if (missing.length)
     throw new Error(
       `akanjs@${version} is published, but ${registry} does not serve ${missing.join(", ")} yet: a release's packages can appear up to an hour apart. Nothing was changed; run the update again once they are there.`,

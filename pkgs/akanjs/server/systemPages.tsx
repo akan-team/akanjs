@@ -41,13 +41,13 @@ export async function createSubRouteIndexResponse(options: SubRouteIndexResponse
   });
 }
 
-export function createSystemPageHeaders(scripts?: ScriptPolicySources): Headers {
+export function createSystemPageHeaders(scripts?: ScriptPolicySources, directives?: string): Headers {
   return applySecurityHeaders(
     new Headers({
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-store",
     }),
-    { html: true, scripts },
+    { html: true, scripts, directives },
   );
 }
 

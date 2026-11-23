@@ -3,7 +3,7 @@ import { cn, usePage } from "akanjs/client";
 import { decodeJwtPayload, mcpRefusalOf } from "akanjs/common";
 import { type Account, type FetchProxy, getDefaultAccount } from "akanjs/fetch";
 import { st } from "akanjs/store";
-import { type ReactNode, useState } from "react";
+import { type ReactNode, useState, useSyncExternalStore } from "react";
 import { AiOutlineCheck, AiOutlineCopy, AiOutlineSearch } from "react-icons/ai";
 import { BiChevronDown, BiLock } from "react-icons/bi";
 import { buttonRecipe } from "../Button";
@@ -39,6 +39,8 @@ import { guardCountText, signalText } from "./signalText";
 import { WebSocketEndpoints } from "./WebSocket";
 import "../modelRuntime";
 
+const noChange = () => () => undefined;
+
 interface GuardItemProps {
   active: boolean;
   label: string;
@@ -64,6 +66,12 @@ export const DocSetting = ({ fetch = runtimeFetch, search, onSearch }: DocSettin
   const { l } = usePage();
   const tryGuards = st.use.tryGuards({ agent: false });
   const tryJwt = st.use.tryJwt({ agent: false });
+  //? The server names the address it was configured with and the browser the page's own, so it is drawn once hydrated.
+  const origin = useSyncExternalStore(
+    noChange,
+    () => fetch.origin,
+    () => "",
+  );
   const guardNames = guardNamesOf(fetch);
   const selectionLabel =
     tryGuards.length === 0
@@ -74,12 +82,12 @@ export const DocSetting = ({ fetch = runtimeFetch, search, onSearch }: DocSettin
   return (
     <Toolbar>
       <ToolbarField label={l.trans(signalText.baseUrl)}>
-        <Copy text={fetch.origin}>
+        <Copy text={origin}>
           <button
             type="button"
             className={buttonRecipe({ variant: "ghost", size: "sm" }, "font-mono text-foreground/80")}
           >
-            {fetch.origin}
+            {origin}
             <AiOutlineCopy className="text-foreground/40" />
           </button>
         </Copy>

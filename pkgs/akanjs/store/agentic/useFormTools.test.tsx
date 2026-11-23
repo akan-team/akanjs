@@ -1,5 +1,5 @@
 import "../../test/registerDom";
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { enumOf, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -8,6 +8,7 @@ import { mount } from "../mount.fixture";
 import { store } from "../store";
 import { StoreInstance } from "../storeInstance";
 import { StoreRegistry } from "../storeRegistry";
+import { loadFieldTools } from "./fieldTools";
 import { useFieldTool } from "./useFieldTool";
 
 class FormTestRole extends enumOf("formTestRole", ["owner", "guest"] as const) {}
@@ -81,6 +82,8 @@ const screen = (
     </AgentProvider>
   );
 };
+
+beforeAll(loadFieldTools);
 
 describe("useFormTools", () => {
   test("subscribing a form publishes one patch tool describing every writable field", () => {

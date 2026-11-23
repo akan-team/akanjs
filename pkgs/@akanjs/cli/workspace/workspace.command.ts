@@ -50,7 +50,7 @@ export class WorkspaceCommand extends command("workspace", [WorkspaceScript], ({
       default: true,
     })
     .option("bunDependency", String, {
-      desc: "Bun version to list in the workspace's dependencies, for a host whose Bun is not on PATH",
+      desc: "Bun version to list in the workspace's dependencies, for a host whose Bun comes from npm",
       nullable: true,
     })
     .exec(async function (workspaceName, app, dir, libs, init, registry, owner, mcpInstall, agentInstall, sample, bun) {

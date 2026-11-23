@@ -5,6 +5,7 @@ import { renderToString } from "react-dom/server";
 import { mount } from "../store/mount.fixture";
 import { setTestEnv } from "../store/store.fixture";
 import { registerClientRuntime } from "./clientRuntime";
+import { pathContext } from "./csrTypes";
 import { PendingNavigation } from "./pendingNavigation";
 import { usePendingNavigation } from "./usePendingNavigation";
 
@@ -16,6 +17,7 @@ const Pending = () => {
 
 beforeAll(() => {
   setTestEnv("pendingtest");
+  process.env.AKAN_PUBLIC_RENDER_ENV = "csr";
   registerClientRuntime({ usePage: () => ({ path: "/", lang: "en", l: (key: string) => key }) } as never);
 });
 
@@ -54,6 +56,21 @@ describe("usePendingNavigation", () => {
       if (pending) PendingNavigation.end(pending);
     });
     expect(seen).toBeNull();
+    unmount();
+  });
+
+  test("on a CSR stack, whose addresses carry the basePath, its path leaves the basePath out", () => {
+    const unmount = mount(
+      <pathContext.Provider value={{ prefix: "shop" } as never}>
+        <Pending />
+      </pathContext.Provider>,
+    );
+
+    act(() => {
+      PendingNavigation.wait(PendingNavigation.begin("http://localhost/en/shop/chat/b"));
+    });
+
+    expect(seen).toMatchObject({ pathname: "/en/shop/chat/b", path: "/chat/b" });
     unmount();
   });
 });

@@ -26,20 +26,9 @@
       "types": "./index.ts",
       "default": "./index.ts"
     },
-    "./code": {
-      "import": "./code/akanCode.ts",
-      "types": "./code/akanCode.ts",
-      "default": "./code/akanCode.ts"
-    },
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.5.2",
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-codemode": "1.5.2",
-    "@earendil-works/pi-coding-agent": "1.5.2",
-    "@earendil-works/pi-mcp": "1.5.2",
-    "@earendil-works/pi-tui": "1.5.2",
     "@inquirer/prompts": "^8.7.3",
     "@tailwindcss/node": "^4.3.3",
     "akanjs": "3.2.0",
@@ -53,17 +42,19 @@
     "ora": "^9.4.1",
     "qrcode": "^1.5.4",
     "react": "19.3.1",
-    "string-width": "^8.3.0",
     "subset-font": "^2.9.0",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4.3.3",
-    "typebox": "1.3.37",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {
+    "@akanjs/code": "3.2.0",
     "ssh2": "^1.17.0"
   },
   "peerDependenciesMeta": {
+    "@akanjs/code": {
+      "optional": true
+    },
     "ssh2": {
       "optional": true
     }

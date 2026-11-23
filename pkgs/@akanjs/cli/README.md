@@ -158,9 +158,9 @@ from the framework source, and fails when the hand-kept part names a class the s
 - Use `@akanjs/cli` as the user-facing executable package.
 - `@akanjs/devkit` is bundled into the CLI for published CLI usage; it is not required as a separate
   runtime dependency for ordinary CLI users.
-- The `akan code` agent follows that same split: its engine, tools and skills are a devkit facet
-  (`@akanjs/devkit/codeAgent`), and `@akanjs/cli/code` is the terminal host plus the SDK entry that
-  re-exports both.
+- The `akan code` agent and its LLM provider SDKs ship as `@akanjs/code`, which a workspace installs only to run
+  `akan code`, at exactly the CLI's version: `bun add -d @akanjs/code@<akan version>`. `akan code` names that
+  command when the package is missing. Its skills stay in `@akanjs/devkit/codeAgent`.
 
 ## Requirements
 

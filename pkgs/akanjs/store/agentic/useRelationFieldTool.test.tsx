@@ -1,5 +1,5 @@
 import "../../test/registerDom";
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { DataList, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { AgenticSurface, AgentProvider } from "use-agentic";
@@ -7,6 +7,7 @@ import { mount } from "../mount.fixture";
 import { store } from "../store";
 import { StoreInstance } from "../storeInstance";
 import { StoreRegistry } from "../storeRegistry";
+import { loadFieldTools } from "./fieldTools";
 import { useRelationFieldTool } from "./useRelationFieldTool";
 
 const OrgInput = via((f) => ({ name: f(String) }));
@@ -85,6 +86,8 @@ const orgs: Org[] = [
   { id: "org-1", name: "Acme" },
   { id: "org-2", name: "Globex" },
 ];
+
+beforeAll(loadFieldTools);
 
 describe("useRelationFieldTool", () => {
   test("a relation picker publishes a listing tool and an id-taking setter", async () => {
