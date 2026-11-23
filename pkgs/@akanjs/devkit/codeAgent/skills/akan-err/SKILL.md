@@ -25,7 +25,7 @@ import path at all**, so keep throwing code out of them entirely rather than rea
 ## Where each error belongs
 
 Which file throws which error, and the sentinel best-effort code returns instead, are the `server` rule.
-`try/catch` is rare and always converts an exception into a decision: a guard catches, warns, and returns `false`; an adapter
+`try/catch` is rare and always converts an exception into a decision: a guard catches, warns, and returns `false`, or throws a keyed `Err.Forbidden` the caller must read; an adapter
 catches, logs (`logger.error`), and returns `null`; a UI `try/finally` resets a spinner. A store action never
 catches — let the framework toast the `Err`, or list it in the store's `static silent` when no screen waits on it
 and its caller handles the rejection.

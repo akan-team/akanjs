@@ -217,6 +217,7 @@ export declare class AgentService extends AgentService_base {
     loop(request: AgentLoopRequest): AsyncIterable<AgentLoopEvent>;
     runTurn(request: LlmTurnRequest, options?: ((delta: string) => void) | AgentTurnOptions): Promise<{
         limits?: import("./predefinedAdaptor").LlmLimits | undefined;
+        providerContent?: import("./predefinedAdaptor").AgentWireProviderContent | undefined;
         model?: string | undefined;
         usage?: import("./predefinedAdaptor").LlmUsage | undefined;
         text: string;
@@ -310,6 +311,12 @@ export interface AgentWireMessage {
     tainted?: boolean;
     toolkits?: string[];
     foundTools?: string[];
+    providerContent?: AgentWireProviderContent;
+}
+
+export interface AgentWireProviderContent {
+    dialect: string;
+    content: unknown[];
 }
 
 export interface AgentWireReference {
@@ -708,15 +715,20 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static readonly version = "2023-06-01";
     static readonly defaultMaxTokens = 8192;
     static readonly imageTypes: Set<string>;
+    static readonly dialect = "anthropic";
+    static readonly thinkingBindingBeta = "thinking-binding-controls-2026-08-01";
     get limits(): LlmLimits;
     get accepts(): LlmAccepts;
     chat(request: LlmTurnRequest, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<LlmTurnAnswer | null>;
+    static thinkingRetry(sent: AnthropicThinkingReplay | undefined, reason: string): AnthropicThinkingReplay | null;
+    static replaysThinking(messages: AnthropicMessage[]): boolean;
     static refusal(host: string, response: Response): Promise<Error>;
     static reasonOf(response: Response): Promise<string>;
-    static requestBody(model: string, request: LlmTurnRequest, { accepts, stream, maxTokens }?: {
+    static requestBody(model: string, request: LlmTurnRequest, { accepts, stream, maxTokens, thinking, }?: {
         accepts?: LlmAccepts;
         stream?: boolean;
         maxTokens?: number;
+        thinking?: AnthropicThinkingReplay;
     }): {
         tools?: undefined | {
             input_schema: Record<string, unknown>;
@@ -725,6 +737,12 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
         }[];
         system: string;
         messages: AnthropicMessage[];
+        thinking?: undefined | {
+            type: string;
+            block_binding: {
+                prefix_mismatch_behavior: string;
+            };
+        };
         stream?: boolean | undefined;
         model: string;
         max_tokens: number;
@@ -733,12 +751,14 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static contextual(messages: AnthropicMessage[], context: AgentWireContext[]): AnthropicMessage[];
     static providerMessages(messages: AgentWireMessage[], accepts?: LlmAccepts): AnthropicMessage[];
     static providerMessage(message: AgentWireMessage, accepts?: LlmAccepts): AnthropicMessage;
+    static replayed(message: AgentWireMessage): AnthropicBlock[] | null;
+    static providerContentOf(blocks: AnthropicAnswerBlock[]): AgentWireProviderContent | undefined;
     static userContent(message: AgentWireMessage, accepts?: LlmAccepts): AnthropicBlock[];
     static toolResult(result: AgentWireToolResult, accepts?: LlmAccepts): AnthropicBlock;
     static attachmentBlocks(attachments: AgentWireAttachment[], accepts: LlmAccepts | undefined, notes: string[]): AnthropicContentBlock[];
     static typed(source: AnthropicSource, mimeType: string): AnthropicSource;
     static sourceOf(attachment: AgentWireAttachment): AnthropicSource | null;
-    static turnAnswer(answer: AnthropicAnswer): LlmTurnAnswer;
+    static turnAnswer(answer: AnthropicAnswer, host?: string): LlmTurnAnswer;
     static usageOf(usage: AnthropicUsage): LlmUsage;
     static stopOf(reason: null | string | undefined, calls: number): LlmTurnAnswer["stop"];
     static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string, tools?: AgentWireTool[]): Promise<LlmTurnAnswer>;
@@ -1322,6 +1342,7 @@ export declare class LlmOverflow {
     static readonly measured: RegExp[];
     static match(reason: string): LlmOverflowFacts | null;
     static refusal(host: string, status: number, reason: string): Error;
+    static declined(host: string, category?: unknown, explanation?: unknown): Error;
 }
 
 export interface LlmOverflowFacts {
@@ -1356,6 +1377,7 @@ export interface LlmTurnAnswer {
     stop: "end" | "length" | "toolUse";
     usage?: LlmUsage;
     model?: string;
+    providerContent?: AgentWireProviderContent;
 }
 
 export interface LlmTurnRequest {
@@ -2545,18 +2567,24 @@ declare const AgentService_base: import("./serve").ServiceCls<"agent", {}, {
 }>;
 
 interface AnthropicAnswer {
-    content?: {
-        type?: string;
-        text?: string;
-        id?: string;
-        name?: string;
-        input?: Record<string, unknown>;
-    }[];
+    content?: AnthropicAnswerBlock[];
     stop_reason?: string;
+    stop_details?: AnthropicStopDetails | null;
     usage?: AnthropicUsage;
 }
 
-type AnthropicBlock = AnthropicContentBlock | {
+interface AnthropicAnswerBlock {
+    type?: string;
+    text?: string;
+    id?: string;
+    name?: string;
+    input?: Record<string, unknown>;
+    thinking?: string;
+    signature?: string;
+    data?: string;
+}
+
+type AnthropicBlock = AnthropicContentBlock | AnthropicThinkingBlock | {
     type: "tool_result";
     tool_use_id: string;
     content: AnthropicContentBlock[] | string;
@@ -2595,6 +2623,22 @@ type AnthropicSource = {
     type: "url";
     url: string;
 };
+
+interface AnthropicStopDetails {
+    category?: unknown;
+    explanation?: unknown;
+}
+
+type AnthropicThinkingBlock = {
+    type: "redacted_thinking";
+    data: string;
+} | {
+    type: "thinking";
+    thinking: string;
+    signature: string;
+};
+
+type AnthropicThinkingReplay = "drop" | "strip";
 
 interface AnthropicUsage {
     input_tokens?: number;

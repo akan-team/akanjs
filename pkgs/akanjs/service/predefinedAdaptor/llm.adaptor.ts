@@ -68,6 +68,17 @@ export interface AgentWireMessage {
   toolkits?: string[];
   /** On a summary `agentService.loop` wrote: the tools its run had found with `findTools` and still listed. */
   foundTools?: string[];
+  /** On an assistant message: what its provider must be sent back unchanged, which no other dialect reads. */
+  providerContent?: AgentWireProviderContent;
+}
+
+/**
+ * Anthropic's thinking blocks, signatures included, in answer order: replayed verbatim, the model keeps its reasoning
+ * across tool rounds; edited, the API refuses the turn. Store it with the message as it came.
+ */
+export interface AgentWireProviderContent {
+  dialect: string;
+  content: unknown[];
 }
 
 export interface AgentWireTool {
@@ -108,6 +119,7 @@ export interface LlmTurnAnswer {
   usage?: LlmUsage;
   /** The model that answered, as the adaptor named it to the provider. */
   model?: string;
+  providerContent?: AgentWireProviderContent;
 }
 
 /** `inputTokens` is the whole prompt, cached part included; `cachedTokens` is the share billed at the cache rate. */

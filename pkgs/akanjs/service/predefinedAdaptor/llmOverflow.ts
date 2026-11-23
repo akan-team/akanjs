@@ -60,6 +60,18 @@ export class LlmOverflow {
     return new Err("agent.error.llmRequestFailed", { provider, status: String(status) });
   }
 
+  /**
+   * A model that declined on a successful response (Anthropic's `stop_reason: "refusal"`), its partial answer
+   * discarded. `category` is the provider's policy class, kept for an app to branch on; `explanation` stays here.
+   */
+  static declined(host: string, category?: unknown, explanation?: unknown): Error {
+    const provider = llmProviderOf(host);
+    LlmOverflow.#logger.warn(
+      `${provider} declined a turn${typeof category === "string" ? ` (${category})` : ""}${typeof explanation === "string" && explanation ? `: ${explanation}` : ""}`,
+    );
+    return new Err("agent.error.llmDeclined", { provider, ...(typeof category === "string" ? { category } : {}) });
+  }
+
   static #count(text: string | undefined): number | undefined {
     const count = text ? Number(text.replace(/,/g, "")) : Number.NaN;
     return Number.isFinite(count) && count > 0 ? count : undefined;

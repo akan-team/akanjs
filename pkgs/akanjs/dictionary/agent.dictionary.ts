@@ -29,6 +29,10 @@ export const agentDictionary = serviceDictionary(["en", "ko"])
       "{provider} refused this turn with status {status}",
       "{provider}가 이번 턴을 거절했습니다 (status {status})",
     ],
+    llmDeclined: [
+      "The model at {provider} declined to answer this turn",
+      "{provider}의 모델이 이번 턴에 답하지 않겠다고 했습니다",
+    ],
     // Printed only once the chat has already summarized itself and been refused again, so it names what is left.
     contextOverflow: [
       "This conversation no longer fits the model's context window at {provider}. Use /compact to summarize it, or /new to start over",

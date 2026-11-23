@@ -23,6 +23,7 @@ export interface AppPreviewOptions {
   /** Handed to `preview.signIn`, for an app with more than one kind of account. */
   as?: string | null;
   anonymous?: boolean;
+  waitFor?: string | null;
 }
 
 export interface AppPreviewPage {
@@ -137,6 +138,7 @@ export class AppPreview {
             session,
             screenshot: options.screenshot ? path.join(previewDir, AppPreview.screenshotName(pagePath)) : null,
             timeoutMs: options.timeoutMs ?? 60_000,
+            waitFor: options.waitFor ?? undefined,
           });
           if (tail) await Bun.sleep(AppPreview.logGraceMs);
           AppPreview.attribute(page, records.slice(mark));
@@ -472,12 +474,14 @@ export class AppPreview {
       session,
       screenshot,
       timeoutMs,
+      waitFor,
     }: {
       engine: PreviewEngine;
       viewport: { width: number; height: number };
       session: PreviewSession | null;
       screenshot: string | null;
       timeoutMs: number;
+      waitFor?: string;
     },
   ): Promise<AppPreviewPage> {
     const url = AppPreview.probeUrlOf(origin, pagePath).toString();
@@ -508,6 +512,7 @@ export class AppPreview {
         screenshot: !!screenshot,
         timeoutMs,
         settleMs: AppPreview.settleMs,
+        waitFor,
       });
       Object.assign(page, {
         finalUrl: probe.finalUrl,

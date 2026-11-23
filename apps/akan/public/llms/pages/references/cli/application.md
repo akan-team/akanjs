@@ -270,7 +270,7 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 - in the console: `akan console` has the same filters as `.tail` and `.trace <id>`.
 
-`akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--format <format>] [--as <name>] [--anonymous]`
+`akan preview <app> [paths...] [--changed] [--csr] [--engine <engine>] [--screenshot] [--desktop] [--keep] [--timeout <s>] [--wait-for <selector>] [--format <format>] [--as <name>] [--anonymous]`
 
 Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
@@ -289,6 +289,8 @@ Open pages of the app's dev server in a headless browser and print one verdict l
 - --keep (Boolean, default false): Leave a server this command started running, and print how to stop it.
 
 - --timeout (Number, default 60): Seconds one page may take to load.
+
+- --wait-for (String): A CSS selector each page must match after load before it is read, within `--timeout`; a page where it never appears fails, naming it.
 
 - --format (String, default text, text | json): `json` prints the full report.
 

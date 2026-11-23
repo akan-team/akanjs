@@ -1676,6 +1676,18 @@ describe("FetchClient HTTP generation", () => {
     await expect(client.handler.renameSpecies()).rejects.toThrow("mutation renameSpecies answered null");
   });
 
+  test("refuses an empty or absent path argument by name before anything is sent", async () => {
+    setMockFetch();
+    const client = new FetchClient("https://api.example", {}, { service: serviceSignal });
+
+    for (const id of ["", undefined])
+      await expect(client.handler.getThing(id as never, [], null)).rejects.toMatchObject({
+        error: "base.error.requiredArgument",
+        data: { name: "id" },
+      });
+    expect(fetchCalls).toHaveLength(0);
+  });
+
   test("sends a mutation with the verb it declares", async () => {
     setMockFetch();
     jsonResponses.push("patched");

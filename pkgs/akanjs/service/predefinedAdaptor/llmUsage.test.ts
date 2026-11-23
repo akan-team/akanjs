@@ -125,8 +125,15 @@ describe("a stream that did not finish", () => {
 
     const stop = (reason: string) =>
       `data: ${JSON.stringify({ type: "message_delta", delta: { stop_reason: reason } })}`;
-    for (const reason of ["max_tokens", "refusal", "pause_turn", "stop_sequence"])
+    for (const reason of ["max_tokens", "pause_turn", "stop_sequence"])
       expect((await anthropic([...anthropicToolFrames('{"a":'), stop(reason)])).stop).toBe("length");
+    const declined = anthropic([...anthropicToolFrames('{"a":'), stop("refusal")]);
+    expect(
+      await declined.then(
+        () => null,
+        (error: Error) => error.message,
+      ),
+    ).toBe("agent.error.llmDeclined");
     for (const reason of ["tool_use", "end_turn"]) {
       const answer = await anthropic([...anthropicToolFrames('{"a":'), stop(reason)]);
       expect([answer.stop, !!answer.toolCalls?.[0]?.argsError]).toEqual(["toolUse", true]);

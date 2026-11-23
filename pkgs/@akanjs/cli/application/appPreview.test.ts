@@ -541,6 +541,55 @@ describe("AppPreview.run", () => {
       },
     });
 
+  test("passes --wait-for to every probed page and reports a selector that never appeared as that page's failure", async () => {
+    const root = await mkdtemp(path.join(tmpdir(), "akan-preview-wait-for-"));
+    const server = devServerOf(root);
+    const unavailable = spyOn(PreviewView, "unavailableReason").mockReturnValue(undefined);
+    const waited: (string | undefined)[] = [];
+    const probe = spyOn(PreviewView, "probe").mockImplementation(async (url, options) => {
+      waited.push(options?.waitFor);
+      if (url.endsWith("/en/slow"))
+        throw new Error(
+          `Timed out waiting for selector "#ready" on ${url}; the dev server may be rebuilding or stuck.`,
+        );
+      const empty: string[] = [];
+      return {
+        url,
+        finalUrl: url,
+        status: 200,
+        title: "",
+        text: "",
+        pageErrors: empty,
+        consoleErrors: empty,
+        consoleWarnings: empty,
+        domFindings: empty,
+      };
+    });
+    try {
+      const app = {
+        name: "demo",
+        cwdPath: root,
+        workspace: { workspaceRoot: root },
+        getDevPort: async () => server.port,
+        getConfig: async () => ({ i18n, api: { prefix: "/api" } }),
+      } as unknown as App;
+      const report = await AppPreview.run(app, { paths: ["/board", "/slow"], waitFor: "#ready" });
+      expect(waited).toEqual(["#ready", "#ready"]);
+      expect(report.pages.map((page) => [page.path, page.failed])).toEqual([
+        ["/en/board", false],
+        ["/en/slow", true],
+      ]);
+      expect(report.pages[1]?.error).toContain('selector "#ready"');
+      await AppPreview.run(app, { paths: ["/board"] });
+      expect(waited.at(-1)).toBeUndefined();
+    } finally {
+      unavailable.mockRestore();
+      probe.mockRestore();
+      server.stop(true);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("opens the pages --changed reaches from git and reports what it skipped and why --csr did not apply", async () => {
     const root = await mkdtemp(path.join(tmpdir(), "akan-preview-changed-"));
     const server = devServerOf(root);

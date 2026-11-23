@@ -118,7 +118,7 @@ const migrationTargets = ({ public: target }: ApplicationBuilderContext) => ({
     }),
 });
 
-const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
+const previewTargets = ({ public: target }: ApplicationBuilderContext) => ({
   preview: target({
     desc: "Open pages of the app's dev server in a headless browser and print what broke, starting a server if none runs",
     stdio: true,
@@ -147,6 +147,10 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .option("desktop", Boolean, { desc: "a 1280x800 viewport instead of the 390x844 phone one", default: false })
     .option("keep", Boolean, { desc: "leave a server this command started running", default: false })
     .option("timeout", Number, { desc: "seconds a page may take to load", default: 60 })
+    .option("waitFor", String, {
+      desc: "CSS selector each page must match, after load, before it is read; a page where it never appears within --timeout fails",
+      nullable: true,
+    })
     .option("format", String, { desc: "output format", default: "text", enum: ["text", "json"] })
     .option("as", String, {
       desc: "the account to sign in as, handed to preview.signIn of the app's akan.config.ts",
@@ -157,21 +161,41 @@ const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
       desc: "open the pages without the session preview.signIn opens",
       default: false,
     })
-    .exec(async function (app, paths, changed, csr, engine, screenshot, desktop, keep, timeout, format, as, anonymous) {
-      await this.applicationScript.preview(app, {
-        as,
-        anonymous,
+    .exec(
+      async function (
+        app,
         paths,
         changed,
         csr,
-        engine: engine === "webkit" || engine === "chrome" ? engine : null,
+        engine,
         screenshot,
         desktop,
         keep,
-        timeoutMs: timeout * 1000,
-        format: format === "json" ? "json" : "text",
-      });
-    }),
+        timeout,
+        waitFor,
+        format,
+        as,
+        anonymous,
+      ) {
+        await this.applicationScript.preview(app, {
+          as,
+          anonymous,
+          paths,
+          changed,
+          csr,
+          engine: engine === "webkit" || engine === "chrome" ? engine : null,
+          screenshot,
+          desktop,
+          keep,
+          timeoutMs: timeout * 1000,
+          waitFor: waitFor || null,
+          format: format === "json" ? "json" : "text",
+        });
+      },
+    ),
+});
+
+const inspectTargets = ({ public: target }: ApplicationBuilderContext) => ({
   studio: target({
     desc: "Print the Akan Studio URL of the app's running dev server: its ERD, each module's signals, the Change Map, the live DI graph and jobs, and the framework map",
     readOnly: true,
@@ -660,6 +684,7 @@ const databaseTargets = ({ public: target }: ApplicationBuilderContext) => ({
 export class ApplicationCommand extends command("application", [ApplicationScript], (context) => ({
   ...workspaceTargets(context),
   ...migrationTargets(context),
+  ...previewTargets(context),
   ...inspectTargets(context),
   ...buildAndTestTargets(context),
   ...nativeBuildTargets(context),

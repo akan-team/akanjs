@@ -277,7 +277,7 @@ export type DocumentConstantModelRef<Schema = any, FieldObj extends FieldObject 
     _ModelType: ModelType;
 }>;
 
-export type DocumentModel<T> = unknown extends T ? T : T extends (infer S)[] ? DocumentModel<S>[] : T extends Dayjs | File | Uint8Array | boolean | number | string ? T : T extends Map<infer K, infer V> ? Map<K, DocumentModel<V>> : Docify<T>;
+export type DocumentModel<T, Unset = undefined> = unknown extends T ? T : T extends (infer S)[] ? DocumentModel<S, Unset>[] : T extends Dayjs | File | Uint8Array | boolean | number | string ? T : T extends Map<infer K, infer V> ? Map<K, DocumentModel<V, Unset>> : Docify<T, Unset>;
 
 export type ExtractFieldInfoObject<Obj extends FieldInfoObject> = {
     [K in keyof Obj]: unknown extends Obj[K]["explicitType"] ? FieldToValue<Obj[K]["value"], Obj[K]["mapValue"]> : Obj[K]["explicitType"];
@@ -464,6 +464,8 @@ export type Serialized<O> = O extends (infer V)[] ? Serialized<V>[] : O extends 
 } : O;
 
 export type ServerArgModel<T> = unknown extends T ? T : T extends Uint8Array ? Uint8Array<ArrayBuffer> : T extends (infer S)[] ? ServerArgModel<S>[] : DocumentModel<T>;
+
+export type ServerReturnModel<T> = DocumentModel<T, null>;
 
 export declare class TextFieldPathSet {
     readonly title: Set<string>;
@@ -714,10 +716,10 @@ interface DeserializeOption {
     enum?: EnumInstance;
 }
 
-type Docify<T, _StateKeys extends keyof GetStateObject<T> = keyof GetStateObject<T>> = unknown extends T ? T : {
-    [K in _StateKeys as null extends T[K] ? never : K]-?: ObjectToId<NonNullable<T[K]>>;
+type Docify<T, Unset, _StateKeys extends keyof GetStateObject<T> = keyof GetStateObject<T>> = unknown extends T ? T : {
+    [K in _StateKeys as null extends T[K] ? never : K]-?: ObjectToId<NonNullable<T[K]>, Unset>;
 } & {
-    [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<NonNullable<T[K]>> | undefined;
+    [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<NonNullable<T[K]>, Unset> | Unset | undefined;
 };
 
 type EnumKeys<FieldObj extends FieldObject> = KeysByFlag<FieldObj, "_isEnum">;
@@ -791,7 +793,7 @@ type MergeWithOwnSchemas<Models extends object[], OwnSchema extends object> = Ob
     OwnSchema
 ]>;
 
-type ObjectToId<O> = O extends BaseObject ? string : O extends BaseObject[] ? string[] : O extends Dayjs ? Dayjs : O extends object ? DocumentModel<O> : O;
+type ObjectToId<O, Unset> = O extends BaseObject ? string : O extends BaseObject[] ? string[] : O extends Dayjs ? Dayjs : O extends object ? DocumentModel<O, Unset> : O;
 
 type OmitBase<T> = Omit<T, BaseFields>;
 

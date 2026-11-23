@@ -46,8 +46,9 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   can never pass for one, and a session middleware already reads the EdDSA token as anonymous. `.with(Machine)` hands
   the identity (401 without one; `{ nullable: true }` takes `null`), and a pubsub room's guards see it on subscribe
   and on every credential change. Revocation is the app's: a guard compares `machine.version` with the record's
-  `tokenVersion`, which a removal or a reinstall bumps. An endpoint taking `.with(Machine)` on a server with no key
-  is an error at boot. The calling side is `fetch.clone({ origin, jwt: token, connect: true })`.
+  `tokenVersion`, which a removal or a reinstall bumps, and refuses with a keyed `Err` (Writing A Guard). Renewing
+  is another `issue` with the same `version` and a later `expiresAt`, from an endpoint that guard admits. An
+  endpoint taking `.with(Machine)` on a server with no key is an error at boot. The calling side is `fetch.clone({ origin, jwt: token, connect: true })`.
 - **Every socket carries a `socketId`, and only the framework mints one.** `AppWsData` assigns it at the handshake, and a `message` / `pubsub` handler reads it off the `Ws` internal arg — `.with(Ws)` hands `{ ws, socketId, subscribe, on, off }`. Never mint your own from `ws.data`: the room bookkeeping keys on the framework's id, and a second one fails to match it silently. It identifies a **connection**, not a caller — a reconnect gets a new id and the federation gateway's own socket is a different one — so per-user state keys on the account, never on this.
 
 - **A socket that dropped comes back on a backoff, and asks for what it missed.** The client waits 1 s doubling to
@@ -79,6 +80,10 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
 - **Resource guards are `Can<Verb><Model>` classes in `srvkit/guards.ts`** that `implements Guard` with an
   `async canPass(context)`. They **fail closed**: no resource named ⇒ `false`; a load that throws ⇒ `logger.warn`
   then `false`. Admin bypass goes first.
+- **To tell the caller why, throw instead of returning `false`.** `false` is a bare 403; a module-keyed
+  `throw new Err.Forbidden("device.error.revoked")` from `canPass` reaches the client with its key, so a revoked
+  device knows to pair again. List it under the endpoint's `errors: { 403: [...] }`, and key only what the caller
+  may learn.
 - **Keep `static name = "User";` on guard classes.** `fetch` serializes guard names and the API explorer filters
   on them; it looks like dead code, and deleting it breaks the UI. Comment it so the next reader knows.
 - **Every guard class declares `static scope: GuardScope`, required with no default.** `"account"` means the
@@ -268,6 +273,10 @@ HTTP verb a mutation is mounted under. `conventions` carries the invariants — 
   of such a clone: it makes one-off calls to another server, and a socket it opened would reconnect forever with
   nobody to close it. It never carries the visitor's session either: a call to another origin sends only the `jwt`
   its caller gave the clone.
+- **In `srvkit/`, type a clone by the calls it makes, never as the app's `Fetch`.** `Fetch` types each endpoint by
+  what its service returns, so a service that uses that srvkit class closes a type cycle tsc reports as hundreds of
+  errors. Declare an `interface` of those calls, load `fetch` lazily (`await import("../lib/sig")`), and cast the
+  clone once: `fetch.clone({ origin }) as unknown as PeerCalls`.
 - **Retry a call with `retry`, never with a loop of your own.** `fetch.clone({ origin, retry: {} })` (or a call's
   own `{ retry }`) tries again on an unreachable server, a 408/502/503/504, a 429 after its Retry-After and a 409
   `idempotencyInFlight`, backing off with jitter until the call's one deadline runs out. A mutation retries under

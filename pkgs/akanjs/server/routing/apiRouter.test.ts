@@ -103,6 +103,41 @@ describe("ApiRouter.buildRoutes", () => {
     expect(await renderResponse.json()).toEqual({ url: "http://localhost/rendered", proxy: "1" });
   });
 
+  test("answers a path under the API prefix that names no endpoint with a JSON 404, not the page", async () => {
+    const routes = await buildRoutes({
+      routes: { "/ping": () => Response.json("api") } as HttpRoutes,
+      renderEnvRoutes: { "/*": () => new Response("<html>page</html>") } as HttpRoutes,
+    });
+    const catchAll = routes["/*"] as RouteFn;
+
+    for (const path of ["/api/device/", "/api/device//revoke", "/api"]) {
+      const answer = await catchAll(new Request(`http://localhost${path}`, { method: "POST" }));
+      expect(answer.status).toBe(404);
+      expect(answer.headers.get("content-type")).toContain("application/json");
+      expect(await answer.json()).toMatchObject({ statusCode: 404, code: "routeNotFound" });
+    }
+    expect(await (await catchAll(get("/apiary"))).text()).toBe("<html>page</html>");
+    expect(await (await catchAll(get("/ko/api/device"))).text()).toBe("<html>page</html>");
+  });
+
+  test("lets a web proxy answer a path under the API prefix before the JSON 404", async () => {
+    class LegacyApiProxy {
+      static refName = "legacyApiProxy";
+      use(req: Request) {
+        if (new URL(req.url).pathname.startsWith("/api/legacy/")) return Response.json({ legacy: true });
+        return AkanResponse.next();
+      }
+    }
+    const routes = await buildRoutes({
+      renderEnvRoutes: { "/*": () => new Response("page") } as HttpRoutes,
+      webProxyRunner: new WebProxyRunner([LegacyApiProxy]),
+    });
+    const catchAll = routes["/*"] as RouteFn;
+
+    expect(await (await catchAll(get("/api/legacy/items"))).json()).toEqual({ legacy: true });
+    expect((await catchAll(get("/api/missing"))).status).toBe(404);
+  });
+
   test("answers a native shell's preflight on a signal path and labels the answer", async () => {
     type MethodRoutes = Partial<Record<string, RouteFn>>;
     const routes = await buildRoutes({

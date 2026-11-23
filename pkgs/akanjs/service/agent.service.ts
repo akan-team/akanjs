@@ -51,6 +51,7 @@ export class AgentService extends serve("agent" as const, ({ plug }) => ({
       stop: answer.stop,
       ...(answer.usage ? { usage: answer.usage } : {}),
       ...(answer.model ? { model: answer.model } : {}),
+      ...(answer.providerContent ? { providerContent: answer.providerContent } : {}),
       ...(this.llm.limits ? { limits: this.llm.limits } : {}),
     };
   }

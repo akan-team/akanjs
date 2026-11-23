@@ -123,6 +123,37 @@ describe("PreviewView", () => {
   );
 
   test.skipIf(!PreviewView.available)(
+    "waits for a selector that a page draws after its first client-side read",
+    async () => {
+      const server = serve(
+        "<!doctype html><title>Late</title><body><script>setTimeout(() => { document.body.innerHTML = '<p id=\"ready\">drawn</p>'; }, 1500);</script></body>",
+      );
+      try {
+        const probe = await PreviewView.probe(`http://localhost:${server.port}/`, { waitFor: "#ready" });
+        expect(probe.text).toBe("drawn");
+      } finally {
+        server.stop(true);
+      }
+    },
+    browserTestMs,
+  );
+
+  test.skipIf(!PreviewView.available)(
+    "fails naming the selector when it never appears before the timeout",
+    async () => {
+      const server = serve("<!doctype html><title>Blank</title><body>blank</body>");
+      try {
+        await expect(
+          PreviewView.probe(`http://localhost:${server.port}/`, { waitFor: "#never", timeoutMs: 2_000 }),
+        ).rejects.toThrow('waiting for selector "#never"');
+      } finally {
+        server.stop(true);
+      }
+    },
+    browserTestMs,
+  );
+
+  test.skipIf(!PreviewView.available)(
     "gives up on a server that takes the connection and never answers",
     async () => {
       const server = Bun.serve({ port: 0, fetch: () => new Promise<Response>(() => undefined) });

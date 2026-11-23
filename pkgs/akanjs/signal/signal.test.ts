@@ -13,7 +13,7 @@ import {
   SLICE_META,
   Upload,
 } from "akanjs/base";
-import { Logger, type LoggerSinkEntry, type LogRecord } from "akanjs/common";
+import { Err, Logger, type LoggerSinkEntry, type LogRecord } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls, NoDocumentError } from "akanjs/document";
 import {
@@ -2565,6 +2565,22 @@ describe("SignalContext guards", () => {
     expect(guardTrace).not.toContain("exec");
   });
 
+  test("answers a keyed Err a guard throws with its key and status, as the caller restores it", async () => {
+    class RevokedDeviceGuard implements Guard {
+      static name = "Machine";
+      static scope: GuardScope = "account";
+      canPass(): boolean {
+        throw new Err.Forbidden("signalTestDevice.error.deviceRefused");
+      }
+    }
+    const refused = await execWithGuards([RevokedDeviceGuard as GuardCls]);
+
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ statusCode: 403, error: "signalTestDevice.error.deviceRefused" });
+    expect(Err.is(Err.fromJSON(refused.body as never), "signalTestDevice.error.deviceRefused")).toBe(true);
+    expect(guardTrace).not.toContain("exec");
+  });
+
   test("refuses an endpoint that declares no guards, unless the environment opens them as before", async () => {
     const refused = await execWithGuards([]);
     expect(refused.status).toBe(403);
@@ -2942,6 +2958,22 @@ describe("SignalContext return resolution", () => {
 
     expect(resolved).toEqual([{ label: "a", point: { x: 1 }, grid: [[{ x: 2 }, null]] }, null] as never);
     expect(resolved[0]?.point).not.toBe(rows[0]?.point);
+  });
+
+  test("returns a constant instance whose optional fields were never set", async () => {
+    const Kiosk = via((f) => ({ name: f(String), note: f(String).optional(), expiresAt: f(Date).optional() }));
+    ConstantRegistry.buildScalar("signalTestKiosk", Kiosk, { Kiosk });
+    const endpointInfo = buildEndpoint.query(Kiosk).exec(() => new Kiosk().set({ name: "kiosk" }));
+
+    const resolved = await SignalContext.resolveReturn(await endpointInfo.execFn?.(), {
+      signalContext: null,
+      returnRef: Kiosk,
+      arrDepth: 0,
+      registry: getDefaultInjectRegistry(),
+      live: getDefaultLiveRegistry(),
+    });
+
+    expect(resolved).toEqual({ name: "kiosk", note: null, expiresAt: null } as never);
   });
 
   test("loads and walks a relation once per response, however many rows name it", async () => {

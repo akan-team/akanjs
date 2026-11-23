@@ -371,7 +371,7 @@ export class FetchClient {
   }
   #makeHttpFn(key: string, endpoint: SerializedEndpoint, prefix?: string) {
     const argLength = endpoint.args.length;
-    const serializerMap = makeArgSerializer(endpoint.args);
+    const serializerMap = makeArgSerializer(endpoint.args, this.ErrorCls);
     const parseReturn = refusingUndeclaredNull(key, endpoint, makeReturnParser(endpoint.returns));
     const { bodyArgs, uploadArgs } = FetchClient.classifyHttpArgs(endpoint.args);
     const requestOf = (argData: unknown[]) => {
