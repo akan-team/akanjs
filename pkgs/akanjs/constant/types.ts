@@ -4,30 +4,31 @@ export type QueryOf<_T = any> = any;
 
 export type ConstantType = "input" | "object" | "full" | "light" | "insight" | "scalar";
 
-type ObjectToId<O> = O extends BaseObject
+type ObjectToId<O, Unset> = O extends BaseObject
   ? string
   : O extends BaseObject[]
     ? string[]
     : O extends Dayjs
       ? Dayjs
       : O extends object
-        ? DocumentModel<O>
+        ? DocumentModel<O, Unset>
         : O;
 
-type Docify<T, _StateKeys extends keyof GetStateObject<T> = keyof GetStateObject<T>> = unknown extends T
+type Docify<T, Unset, _StateKeys extends keyof GetStateObject<T> = keyof GetStateObject<T>> = unknown extends T
   ? T
-  : { [K in _StateKeys as null extends T[K] ? never : K]-?: ObjectToId<NonNullable<T[K]>> } & {
-      [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<NonNullable<T[K]>> | undefined;
+  : { [K in _StateKeys as null extends T[K] ? never : K]-?: ObjectToId<NonNullable<T[K]>, Unset> } & {
+      [K in _StateKeys as null extends T[K] ? K : never]?: ObjectToId<NonNullable<T[K]>, Unset> | Unset | undefined;
     };
-export type DocumentModel<T> = unknown extends T
+export type DocumentModel<T, Unset = undefined> = unknown extends T
   ? T
   : T extends (infer S)[]
-    ? DocumentModel<S>[]
+    ? DocumentModel<S, Unset>[]
     : T extends string | number | boolean | Dayjs | File | Uint8Array
       ? T
       : T extends Map<infer K, infer V>
-        ? Map<K, DocumentModel<V>>
-        : Docify<T>;
+        ? Map<K, DocumentModel<V, Unset>>
+        : Docify<T, Unset>;
+export type ServerReturnModel<T> = DocumentModel<T, null>;
 //? A received Binary is decoded from base64, so it is never a SharedArrayBuffer view; one the server sends may be.
 export type ServerArgModel<T> = unknown extends T
   ? T

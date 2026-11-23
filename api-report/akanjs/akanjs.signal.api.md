@@ -496,7 +496,7 @@ export declare class EndpointInfo<ReqType extends EndpointType = EndpointType, S
     exec<ExecFn extends (this: Srvs, ...args: [
         ...ServerArgs,
         ...InternalArgs
-    ]) => ReqType extends "pubsub" ? Promise<void> | void : PromiseOrObject<(Nullable extends true ? null | undefined : never) | DocumentModel<FieldToValue<Returns>>>>(execFn: ExecFn): EndpointInfo<ReqType, Srvs, ArgNames, Args, InternalArgs, ServerArgs, Returns, FieldToValue<Returns>, ReturnType<ExecFn>, Nullable>;
+    ]) => ReqType extends "pubsub" ? Promise<void> | void : PromiseOrObject<(Nullable extends true ? null | undefined : never) | ServerReturnModel<FieldToValue<Returns>>>>(execFn: ExecFn): EndpointInfo<ReqType, Srvs, ArgNames, Args, InternalArgs, ServerArgs, Returns, FieldToValue<Returns>, ReturnType<ExecFn>, Nullable>;
     getPath(key: string): string;
     getRoutePath(key: string, defaultPrefix?: string): string;
     static resolveServicePrefix(prefix: false | string | undefined, defaultPrefix?: string): string;
@@ -713,7 +713,7 @@ export declare class InternalInfo<ReqType extends InternalType = InternalType, S
         ...InternalArgs,
         arg: (Optional extends true ? null : ReqType extends "resolveField" ? null : never) | NonNullable<ArgType>
     ], DefaultArgs, Returns, ServerReturns, Nullable>;
-    exec<ExecReturn extends ReqType extends "process" | "resolveField" ? PromiseOrObject<(Nullable extends true ? null : never) | DocumentModel<FieldToValue<Returns>>> : PromiseOrObject<void>>(execFn: (this: Srvs, ...args: [
+    exec<ExecReturn extends ReqType extends "process" | "resolveField" ? PromiseOrObject<(Nullable extends true ? null : never) | ServerReturnModel<FieldToValue<Returns>>> : PromiseOrObject<void>>(execFn: (this: Srvs, ...args: [
         ...Args,
         ...DefaultArgs,
         ...InternalArgs

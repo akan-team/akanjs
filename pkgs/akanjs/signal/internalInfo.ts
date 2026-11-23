@@ -3,10 +3,10 @@ import type {
   ConstantCls,
   ConstantField,
   ConstantFieldTypeInput,
-  DocumentModel,
   FieldObject,
   FieldToValue,
   PlainTypeToFieldType,
+  ServerReturnModel,
 } from "akanjs/constant";
 import type { AkanJob, ServiceModel } from "akanjs/service";
 import { type ArgInfo, EndpointInfo, type InternalArgInfo, type ReturnInfo } from "./endpointInfo";
@@ -92,7 +92,7 @@ export class InternalInfo<
   }
   exec<
     ExecReturn extends ReqType extends "process" | "resolveField"
-      ? PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null : never)>
+      ? PromiseOrObject<ServerReturnModel<FieldToValue<Returns>> | (Nullable extends true ? null : never)>
       : PromiseOrObject<void>,
   >(execFn: (this: Srvs, ...args: [...Args, ...DefaultArgs, ...InternalArgs]) => ExecReturn) {
     if (this.execFn) throw new SignalDeclarationError("handlerAlreadySet", "Query function is already set");

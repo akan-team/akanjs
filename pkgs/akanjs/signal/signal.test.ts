@@ -2960,6 +2960,22 @@ describe("SignalContext return resolution", () => {
     expect(resolved[0]?.point).not.toBe(rows[0]?.point);
   });
 
+  test("returns a constant instance whose optional fields were never set", async () => {
+    const Kiosk = via((f) => ({ name: f(String), note: f(String).optional(), expiresAt: f(Date).optional() }));
+    ConstantRegistry.buildScalar("signalTestKiosk", Kiosk, { Kiosk });
+    const endpointInfo = buildEndpoint.query(Kiosk).exec(() => new Kiosk().set({ name: "kiosk" }));
+
+    const resolved = await SignalContext.resolveReturn(await endpointInfo.execFn?.(), {
+      signalContext: null,
+      returnRef: Kiosk,
+      arrDepth: 0,
+      registry: getDefaultInjectRegistry(),
+      live: getDefaultLiveRegistry(),
+    });
+
+    expect(resolved).toEqual({ name: "kiosk", note: null, expiresAt: null } as never);
+  });
+
   test("loads and walks a relation once per response, however many rows name it", async () => {
     const loaded: string[] = [];
     const live = getDefaultLiveRegistry();

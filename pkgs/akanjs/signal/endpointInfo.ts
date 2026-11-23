@@ -17,6 +17,7 @@ import type {
   PlainTypeToFieldType,
   PurifiedModel,
   ServerArgModel,
+  ServerReturnModel,
   UploadableClientArg,
 } from "akanjs/constant";
 import type { ServiceModel } from "akanjs/service";
@@ -293,7 +294,7 @@ export class EndpointInfo<
       ...args: [...ServerArgs, ...InternalArgs]
     ) => ReqType extends "pubsub"
       ? Promise<void> | void
-      : PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>,
+      : PromiseOrObject<ServerReturnModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>,
   >(
     execFn: ExecFn,
   ): EndpointInfo<
