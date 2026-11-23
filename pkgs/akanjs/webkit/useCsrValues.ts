@@ -16,7 +16,8 @@ import {
   type TransitionType,
 } from "akanjs/client";
 import { isNativeApp, openExternalUrl } from "akanjs/client/native";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { CsrPendingNavigation } from "./csrPendingNavigation";
 import { CsrRefresh } from "./csrRefresh";
 import { CsrSlide } from "./csrSlide";
 import { NativeNavigation } from "./nativeNavigation";
@@ -70,6 +71,7 @@ const useCsrRouter = ({
         //? Typed so the API report prints `NavigationIntent` bare; it spells out any type this file does not import.
         const cancelled: NavigationIntent | null = cancelPendingNavigation();
         if (location.href === href) {
+          CsrPendingNavigation.end();
           if (cancelled) NativeNavigation.turnedBack();
           if (!pageContentRef.current) return;
           pageContentRef.current.scrollTop = getScrollTop(location);
@@ -87,6 +89,7 @@ const useCsrRouter = ({
       },
       back: async ({ scrollToTop }: RouteOptions = {}) => {
         waitingNavigation.current = null;
+        CsrPendingNavigation.end();
         //? Back from a page still preparing returns to the one on screen, which is where the frame already is.
         if (cancelPendingNavigation()) return;
         const targetLocation = getPrevLocation();
@@ -118,6 +121,7 @@ const useCsrRouter = ({
       if (target === history.current.idx) return;
       //? The browser has moved already: a page the frame has not shown yet would be pushed onto the wrong entry.
       waitingNavigation.current = null;
+      CsrPendingNavigation.end();
       cancelPendingNavigation();
       if (target !== null) {
         if (target >= 0) setHistoryJump(target, scrollTop);
@@ -180,6 +184,7 @@ export const useCsrValues = (rootRouteGuide: RouteGuide, pathRoutes: PathRoute[]
     pageContentRef: refs.pageContentRef,
   });
   const navigation = useCsrNavigation({ viewport, slots, setTransitionPageStateSnapshot, refs, nav, frame, keyboard });
+  useLayoutEffect(() => CsrPendingNavigation.drawn(nav.location), [nav.location]);
   useCsrRenderTrace({ viewport, frameSlots: slots.frameSlots, refs, nav, frame, keyboard });
   const router = useCsrRouter({ refs, nav, navigation });
   useSyncNavigation({

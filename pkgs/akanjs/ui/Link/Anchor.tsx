@@ -29,7 +29,7 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   activeExact?: boolean;
   /** More paths under which the link counts as active, as a tab does for its detail pages. */
   activeMatch?: string[];
-  /** Applied, with `data-pending`, while a page this link would be active on loads from the server. */
+  /** Applied, with `data-pending`, while a page this link would be active on loads; never for one already held. */
   pendingClassName?: string;
   /** @deprecated Has no effect: neither renderer reads it. */
   noCache?: boolean;
@@ -37,6 +37,15 @@ export type CommonLinkProps = Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "hre
   prefetch?: LinkPrefetch;
 };
 type AnchorProps = Omit<CommonLinkProps, "href" | "disabled"> & { href: string };
+
+const usePendingLink = ({ href, ...active }: Omit<Parameters<typeof isActiveHref>[0], "pathname">) =>
+  PendingNavigation.use(
+    (pendingHref) =>
+      !!pendingHref &&
+      !Href.isExternal(href) &&
+      !href.startsWith("#") &&
+      isActiveHref({ pathname: new URL(pendingHref).pathname, href, ...active }),
+  );
 
 export const CsrLink = ({
   className,
@@ -59,9 +68,11 @@ export const CsrLink = ({
   const active =
     !!activeClassName &&
     isActiveHref({ pathname, href, lang, prefix: prefix ?? "", exact: activeExact, match: activeMatch });
+  const pending = usePendingLink({ href, lang, prefix: prefix ?? "", exact: activeExact, match: activeMatch });
   return (
     <a
-      className={cn("cursor-pointer", className, active && activeClassName)}
+      className={cn("cursor-pointer", className, active && activeClassName, pending && pendingClassName)}
+      data-pending={pending ? "" : undefined}
       {...props}
       onClick={(event) => {
         props.onClick?.(event);
@@ -103,20 +114,7 @@ export const SsrLink = ({
   const prefetchIntent = usePrefetchIntent(href, prefetch, props);
   const currentPath = getPathInfo(pathname, lang, prefix).path;
   const isExternal = Href.isExternal(href);
-  const pending = PendingNavigation.use(
-    (pendingHref) =>
-      !!pendingHref &&
-      !isExternal &&
-      !href.startsWith("#") &&
-      isActiveHref({
-        pathname: new URL(pendingHref).pathname,
-        href,
-        lang,
-        prefix,
-        exact: activeExact,
-        match: activeMatch,
-      }),
-  );
+  const pending = usePendingLink({ href, lang, prefix, exact: activeExact, match: activeMatch });
   const internalPathInfo = getPathInfo(href, lang, prefix);
   const requestHref = getEnv().operationMode === "local" ? internalPathInfo.href : getPathInfo(href, lang, "").href;
   const path = internalPathInfo.path;

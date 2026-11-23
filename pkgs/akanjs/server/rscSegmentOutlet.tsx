@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, use, useCallback } from "react";
+import { type ReactNode, use, useCallback, useLayoutEffect } from "react";
 import { RouteHead } from "../client/route/RouteHead";
 import { readRscRoutePatch, subscribeRscRoutePatch, writeRscRoutePatch } from "../client/rscRoutePatch";
 import { useTransitionStore } from "../webkit/useTransitionStore";
@@ -14,6 +14,8 @@ type RscSegmentThenable = PromiseLike<ReactNode>;
 interface RscSegmentOutletStore {
   entries: Map<string, RscSegmentThenable>;
   listeners: Map<string, Set<() => void>>;
+  drawn: Map<string, RscSegmentThenable | null>;
+  drawWaiters: WeakMap<RscSegmentThenable, () => void>;
 }
 
 declare global {
@@ -24,6 +26,8 @@ function getStore(): RscSegmentOutletStore {
   globalThis.__AKAN_RSC_SEGMENT_OUTLET_STORE__ ??= {
     entries: new Map(),
     listeners: new Map(),
+    drawn: new Map(),
+    drawWaiters: new WeakMap(),
   };
   return globalThis.__AKAN_RSC_SEGMENT_OUTLET_STORE__;
 }
@@ -54,6 +58,12 @@ export function commitAkanSegmentOutletPatch(segmentKey: string, thenable: RscSe
   return true;
 }
 
+export function whenAkanSegmentOutletDraws(segmentKey: string, thenable: RscSegmentThenable, done: () => void): void {
+  const store = getStore();
+  if (store.drawn.get(segmentKey) === thenable) done();
+  else store.drawWaiters.set(thenable, done);
+}
+
 export function resetAkanSegmentOutletPatches(): void {
   const store = getStore();
   store.entries.clear();
@@ -68,6 +78,14 @@ export function AkanSegmentOutlet({ segmentKey, children }: { segmentKey: string
     useCallback((listener: () => void) => subscribeSegment(segmentKey, listener), [segmentKey]),
     useCallback(() => getStore().entries.get(segmentKey) ?? null, [segmentKey]),
   );
+  useLayoutEffect(() => {
+    const { drawn, drawWaiters } = getStore();
+    drawn.set(segmentKey, patchedThenable);
+    if (!patchedThenable) return;
+    drawWaiters.get(patchedThenable)?.();
+    drawWaiters.delete(patchedThenable);
+  }, [segmentKey, patchedThenable]);
+  useLayoutEffect(() => () => void getStore().drawn.delete(segmentKey), [segmentKey]);
   return patchedThenable ? use(patchedThenable) : children;
 }
 

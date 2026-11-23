@@ -1441,6 +1441,32 @@ describe("rscClient patch cache", () => {
     expect(shown()).toBe("/held/b");
   });
 
+  test("a patch, fetched or replayed, is in flight until the page it lays is drawn", async () => {
+    framed("/hold/a", "hold");
+    framed("/hold/b", "hold");
+    framed("/hold-off", "holdoff");
+    await navigate("/hold/a");
+    const ends: (string | null | undefined)[] = [];
+    const unsubscribe = PendingNavigation.subscribe(() => {
+      if (!PendingNavigation.entry()) ends.push(shown());
+    });
+
+    await navigate("/hold/b");
+    await waitFor(() => shown() === "/hold/b patched");
+    expect(ends).toEqual(["/hold/b patched"]);
+    await navigate("/hold-off");
+    await navigate("/hold/a");
+    ends.length = 0;
+    await navigate("/hold/b");
+    await waitFor(() => shown() === "/hold/b patched");
+    await navigate("/hold/b");
+    unsubscribe();
+
+    expect(fetchCountOf("/hold/b")).toBe(1);
+    expect(ends).toEqual(["/hold/b patched", "/hold/b patched"]);
+    expect(PendingNavigation.entry()).toBeNull();
+  });
+
   test("a patch is replayed once a full commit brings back the page it went under, with its own title", async () => {
     framed("/deck/a", "deck");
     framed("/deck/b", "deck");
