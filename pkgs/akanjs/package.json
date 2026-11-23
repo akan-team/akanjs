@@ -417,6 +417,11 @@
       "types": "./server/lifecycle/buildEnv.ts",
       "default": "./server/lifecycle/buildEnv.ts"
     },
+    "./server/lifecycle/envProfile": {
+      "import": "./server/lifecycle/envProfile.ts",
+      "types": "./server/lifecycle/envProfile.ts",
+      "default": "./server/lifecycle/envProfile.ts"
+    },
     "./server/lifecycle/secretEnv": {
       "import": "./server/lifecycle/secretEnv.ts",
       "types": "./server/lifecycle/secretEnv.ts",
