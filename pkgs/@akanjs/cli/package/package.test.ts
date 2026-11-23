@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, mock, test } from "bun:test";
+import path from "node:path";
 import { CommandContainer } from "@akanjs/devkit/commandDecorators";
 import {
   createCallRecorder,
@@ -554,5 +555,37 @@ describe("PackageRunner", () => {
     );
 
     await expect(new PackageRunner().verifyDistPackage(pkg)).resolves.toMatchObject({ name: "@sample/tool" });
+  });
+});
+
+describe("release versioning", () => {
+  //? Changesets raises a package a major when a peer of it moves a minor, and the fixed group then takes every package
+  //? there. With this option it does so only once the peer leaves the range, which an exact pin does at every minor.
+  test("a minor release stays a minor, though a published package names a sibling as a peer", async () => {
+    const repoRoot = path.resolve(import.meta.dir, "../../../..");
+    const config = (await Bun.file(path.join(repoRoot, ".changeset/config.json")).json()) as {
+      ___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH?: { onlyUpdatePeerDependentsWhenOutOfRange?: boolean };
+    };
+    expect(config.___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH?.onlyUpdatePeerDependentsWhenOutOfRange).toBe(true);
+
+    const published = PackageRunner.publishableAkanPackages as readonly string[];
+    const siblingPeers = (
+      await Promise.all(
+        published.map(async (name) => {
+          const manifest = (await Bun.file(path.join(repoRoot, "pkgs", name, "package.json")).json()) as {
+            peerDependencies?: Record<string, string>;
+          };
+          return Object.entries(manifest.peerDependencies ?? {})
+            .filter(([peer]) => published.includes(peer))
+            .map(([peer, range]) => ({ name, peer, range }));
+        }),
+      )
+    ).flat();
+    expect(siblingPeers).toContainEqual({
+      name: "@akanjs/cli",
+      peer: "@akanjs/code",
+      range: expect.stringMatching(/^\^/),
+    });
+    expect(siblingPeers.filter(({ range }) => !range.startsWith("^"))).toEqual([]);
   });
 });
