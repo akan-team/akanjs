@@ -46,7 +46,6 @@ const workspace = async () => {
   await mkdir(path.join(root, "pkgs/@akanjs/devkit/node_modules/@sample/vendored"), { recursive: true });
   for (const file of [
     "pkgs/@akanjs/cli/index.ts",
-    "pkgs/@akanjs/cli/code/akanCode.ts",
     "pkgs/@akanjs/devkit/incrementalBuilder/incrementalBuilder.proc.ts",
     "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts",
     "pkgs/@akanjs/devkit/typecheck/typecheck.proc.ts",

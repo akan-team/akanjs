@@ -179,8 +179,6 @@ export class CliDistBuilder {
     const buildResult = await Bun.build({
       entrypoints: [
         `${this.#cliDir}/index.ts`,
-        // A second published entry; `naming.entry` is the bare basename, hence not `index.ts`.
-        `${this.#cliDir}/code/akanCode.ts`,
         `${this.#devkitDir}/incrementalBuilder/incrementalBuilder.proc.ts`,
         `${this.#devkitDir}/incrementalBuilder/buildBatch.proc.ts`,
         `${this.#devkitDir}/typecheck/typecheck.proc.ts`,
@@ -205,7 +203,6 @@ export class CliDistBuilder {
       bin: { akan: "./index.js" },
       exports: {
         ".": { import: "./index.js", default: "./index.js" },
-        "./code": { import: "./akanCode.js", default: "./akanCode.js" },
         "./package.json": "./package.json",
       },
     };

@@ -24,6 +24,7 @@ export class SlicePlanner {
   /** Never pruned: the toolchain a workspace runs on, which no source file imports. */
   static readonly toolchainDependencies = [
     "@akanjs/cli",
+    "@akanjs/code",
     "@akanjs/devkit",
     "@biomejs/biome",
     "@types/bun",

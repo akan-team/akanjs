@@ -1,5 +1,4 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
+import { devInstallCommand } from "../util/devInstallCommand";
 
 export type Ssh2 = typeof import("ssh2");
 
@@ -11,10 +10,7 @@ const resolveFrom = (dir: string) => {
   }
 };
 
-export const ssh2InstallCommand = (workspaceRoot: string) =>
-  existsSync(path.join(workspaceRoot, "package-lock.json")) && !existsSync(path.join(workspaceRoot, "bun.lock"))
-    ? "npm install -D ssh2"
-    : "bun add -d ssh2";
+export const ssh2InstallCommand = (workspaceRoot: string) => devInstallCommand(workspaceRoot, "ssh2").join(" ");
 
 //? A global akan resolves packages from its own install, so the workspace root is searched as well.
 export const loadSsh2 = async (

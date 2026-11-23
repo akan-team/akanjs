@@ -7,7 +7,9 @@
     "pkgs/@akanjs/devkit/**/*.ts",
     "pkgs/@akanjs/devkit/**/*.tsx",
     "pkgs/@akanjs/cli/**/*.ts",
-    "pkgs/@akanjs/cli/**/*.tsx"
+    "pkgs/@akanjs/cli/**/*.tsx",
+    "pkgs/@akanjs/code/**/*.ts",
+    "pkgs/@akanjs/code/**/*.tsx"
   ],
   "exclude": ["pkgs/@akanjs/devkit/lint/__fixtures__"]
 }

@@ -41,22 +41,18 @@
     "./app/applicationBuildRunner": "./app/applicationBuildRunner.ts",
     "./cloud/cloudApi": "./cloud/cloudApi.ts",
     "./cloud/cloudUpdates": "./cloud/cloudUpdates.ts",
+    "./cloud/configLock": "./cloud/configLock.ts",
     "./commandDecorators/exitCodeError": "./commandDecorators/exitCodeError.ts",
     "./mobile/desktopRelease": "./mobile/desktopRelease.ts",
     "./mobile/serverBundleSecrets": "./mobile/serverBundleSecrets.ts",
     "./transforms/serverEnvProfile": "./transforms/serverEnvProfile.ts",
     "./util/fileEditor": "./util/fileEditor.ts",
     "./util/selectModel": "./util/selectModel.ts",
+    "./util/stripAnsi": "./util/stripAnsi.ts",
     "./workspace/getRelatedCnsts": "./workspace/getRelatedCnsts.ts"
   },
   "dependencies": {
     "@akanjs/language": "3.2.0",
-    "@earendil-works/pi-agent-core": "1.5.2",
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-codemode": "1.5.2",
-    "@earendil-works/pi-coding-agent": "1.5.2",
-    "@earendil-works/pi-mcp": "1.5.2",
-    "@earendil-works/pi-tui": "1.5.2",
     "@inquirer/prompts": "^8.7.3",
     "@tailwindcss/node": "^4.3.3",
     "akanjs": "3.2.0",
@@ -70,7 +66,6 @@
     "subset-font": "^2.9.0",
     "tailwind-scrollbar": "^4.0.2",
     "tailwindcss": "^4.3.3",
-    "typebox": "1.3.37",
     "typescript": "^6.0.3"
   },
   "peerDependencies": {

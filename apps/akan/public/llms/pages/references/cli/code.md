@@ -17,6 +17,8 @@ Code CLI
 
 `akan code` runs an AI coding agent in your terminal that already knows this workspace. Ask it to add a field and run the validation loop, with no editor, no MCP client setup, and no explaining the module conventions first.
 
+Add the agent at your `akan` version: `bun add -d @akanjs/code@<version>`. Without it, `akan code` prints that command and offers to run it.
+
 Put a model key in the workspace `.env`, e.g. `DEEPSEEK_API_KEY` for the default model.
 
 Run `akan code` to start a session, or `akan code "<prompt>"` for one run.

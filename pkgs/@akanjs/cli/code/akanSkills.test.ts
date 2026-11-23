@@ -58,14 +58,6 @@ describe("akan skills", () => {
     expect([...named.guidelines].filter((name) => !guidelines.has(name))).toEqual([]);
   });
 
-  test("every slash command the host offers is in the manual", async () => {
-    const { CodeTuiCommands } = await import("./CodeTuiCommands");
-    const manual = bodyOf("akan-code");
-    expect(
-      [...CodeTuiCommands.all].filter((command) => !manual.includes(`/${command.name}`)).map((c) => c.name),
-    ).toEqual([]);
-  });
-
   test("nothing carries over the pod paths or tool names of the system these were ported from", () => {
     for (const name of names) {
       const body = bodyOf(name);
