@@ -11,6 +11,7 @@ import {
 import { useCallback } from "react";
 import { CsrStack } from "./CsrStack";
 import { CsrPageReadiness } from "./csrPageReadiness";
+import { CsrPendingNavigation } from "./csrPendingNavigation";
 import { CsrSlide } from "./csrSlide";
 import type { CsrKeyboard } from "./useCsrKeyboard";
 import type { CsrLocationState } from "./useCsrLocationState";
@@ -271,13 +272,13 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
       };
       //? A page the stack holds shows what it last drew. While another page slides in, the move is made at once as
       //? well: that slide's end clears the pending page, so one drawn ahead would be dropped and drawn again.
-      const isDrawnAtOnce =
-        navigationLocked.current ||
-        !CsrPageReadiness.drawsLater(toLocation) ||
-        CsrStack.holds(
-          { history: nav.history.current, location: fromLocation, prevLocation, pendingLocation: null, phase: "idle" },
-          toLocation,
-        );
+      const isHeld = CsrStack.holds(
+        { history: nav.history.current, location: fromLocation, prevLocation, pendingLocation: null, phase: "idle" },
+        toLocation,
+      );
+      const drawsLater = CsrPageReadiness.drawsLater(toLocation);
+      const isDrawnAtOnce = navigationLocked.current || !drawsLater || isHeld;
+      CsrPendingNavigation.begin(href, fromLocation, toLocation, slides ? drawsLater && !isHeld : !isDrawnAtOnce);
       if (!slides && isDrawnAtOnce) {
         commitInPlace();
         return;

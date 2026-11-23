@@ -81,7 +81,7 @@ activeClassName?: string;
 activeExact?: boolean;
 /** More paths under which the link counts as active, as a tab does for its detail pages. */
 activeMatch?: string[];
-/** Applied, with `data-pending`, while a page this link would be active on loads from the server. */
+/** Applied, with `data-pending`, while a page this link would be active on loads; never for one already held. */
 pendingClassName?: string;
 noCache?: boolean;
 /** `"hover"` (the default, or `true`) loads the page on hover or keyboard focus, `"viewport"` also once it shows. */
