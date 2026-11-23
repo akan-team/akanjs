@@ -516,6 +516,24 @@ akan code --rpc true`,
                 {l.trans({
                   en: (
                     <>
+                      Add the agent at your <code>akan</code> version:{" "}
+                      <code>bun add -d @akanjs/code@&lt;version&gt;</code>. Without it, <code>akan code</code> prints
+                      that command and offers to run it.
+                    </>
+                  ),
+                  ko: (
+                    <>
+                      <code>akan</code>과 같은 버전으로 에이전트를 추가합니다:{" "}
+                      <code>bun add -d @akanjs/code@&lt;version&gt;</code>. 없으면 <code>akan code</code>가 이 명령을
+                      보여 주고 대신 실행할지 묻습니다.
+                    </>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <>
                       Put a model key in the workspace <code>.env</code>, e.g. <code>DEEPSEEK_API_KEY</code> for the
                       default model.
                     </>

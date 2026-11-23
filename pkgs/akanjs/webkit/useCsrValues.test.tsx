@@ -3,6 +3,7 @@ import { afterEach, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import type { CsrContextType, PathRoute, RouteGuide, TransitionType } from "akanjs/client";
 import { Activity, act, useEffect } from "react";
 import { createRoot } from "react-dom/client";
+import { PendingNavigation } from "../client/pendingNavigation";
 import { setTestEnv } from "../ui/testHelpers.fixture";
 
 let useCsrValues: typeof import("./useCsrValues").useCsrValues;
@@ -794,5 +795,108 @@ describe("useCsrValues for an external http(s) URL", () => {
       assign.mockRestore();
       replace.mockRestore();
     }
+  });
+});
+
+describe("useCsrValues pending navigation", () => {
+  const endsOf = (frame: ReturnType<typeof mountFrame>) => {
+    const ends: (string | undefined)[] = [];
+    let inFlight = !!PendingNavigation.entry();
+    const unsubscribe = PendingNavigation.subscribe(() => {
+      if (inFlight && !PendingNavigation.entry()) ends.push(frame.seen.latest?.location.pathname);
+      inFlight = !!PendingNavigation.entry();
+    });
+    return { ends, unsubscribe };
+  };
+
+  test("a page switched in place is pending from the press until it takes the screen", async () => {
+    const frame = mountFrame("/en/home", [{ segment: "home" }, { segment: "news", drawsAfterMs: 80 }]);
+    const { ends, unsubscribe } = endsOf(frame);
+
+    await act(async () => void client.router.push("/news"));
+    expect(PendingNavigation.entry()).toMatchObject({
+      href: "http://localhost/en/news",
+      from: "http://localhost/en/home",
+      traversal: false,
+      waits: true,
+    });
+
+    await drawnWithin(200);
+    unsubscribe();
+    expect(PendingNavigation.entry()).toBeNull();
+    expect(ends).toEqual(["/en/news"]);
+    expect(frame.container.textContent).toContain("news");
+  });
+
+  test("a page that slides in is pending until it is on screen, showing its fallback", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "detail", transition: "stack", drawsAfterMs: 300 },
+    ]);
+    const { ends, unsubscribe } = endsOf(frame);
+
+    await act(async () => void client.router.push("/detail"));
+    expect(PendingNavigation.get()).toBe("http://localhost/en/detail");
+
+    await drawnWithin(150);
+    unsubscribe();
+    expect(PendingNavigation.entry()).toBeNull();
+    expect(ends).toEqual(["/en/detail"]);
+    expect(frame.container.textContent).not.toContain("detail");
+  });
+
+  test("a page the stack keeps, or one that draws as it mounts, is never pending", async () => {
+    mountFrame("/en/home", [
+      { segment: "home", cache: true },
+      { segment: "news", cache: true },
+      { segment: "faq", sync: true },
+    ]);
+    await act(async () => void client.router.push("/news"));
+    await drawnWithin(150);
+    const seen: (string | null)[] = [];
+    const unsubscribe = PendingNavigation.subscribe(() => seen.push(PendingNavigation.get()));
+
+    await act(async () => void client.router.push("/home"));
+    await act(async () => void client.router.push("/faq"));
+    unsubscribe();
+
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.filter(Boolean)).toEqual([]);
+    expect(PendingNavigation.entry()).toBeNull();
+  });
+
+  test("a back before the page shows ends its pending navigation, and a newer push takes its place", async () => {
+    mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "news", drawsAfterMs: 1000 },
+      { segment: "more", drawsAfterMs: 1000 },
+    ]);
+
+    await act(async () => void client.router.push("/news"));
+    await act(async () => void client.router.push("/more"));
+    expect(PendingNavigation.get()).toBe("http://localhost/en/more");
+
+    await act(async () => void client.router.back());
+    expect(PendingNavigation.entry()).toBeNull();
+  });
+
+  test("a push made while a page slides in is pending from the press until its own page slides in", async () => {
+    const frame = mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "detail", transition: "stack" },
+      { segment: "comments", transition: "stack", drawsAfterMs: 1000 },
+    ]);
+    await act(async () => void client.router.push("/detail"));
+    await elapse(150);
+    expect(frame.seen.latest?.phase).toBe("transitioning");
+    const { ends, unsubscribe } = endsOf(frame);
+
+    await act(async () => void client.router.push("/comments"));
+    expect(PendingNavigation.get()).toBe("http://localhost/en/comments");
+
+    await drawnWithin(800);
+    unsubscribe();
+    expect(PendingNavigation.entry()).toBeNull();
+    expect(ends).toEqual(["/en/comments"]);
   });
 });

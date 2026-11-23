@@ -54,7 +54,8 @@ from outside the package.
 - The shared Biome config (`@akanjs/devkit/biome.base.json`) and the grit lint rules every workspace extends.
 - Native app builds on the Akan native runtime (iOS, Android, macOS, Windows, Linux), store releases, and signed
   update releases.
-- The `akan code` agent engine, the tools it is given, and the shipped akan skills (`@akanjs/devkit/codeAgent`).
+- The shipped akan skills and the folders `akan code` keeps its sessions and settings in (`@akanjs/devkit/codeAgent`);
+  the agent itself ships as `@akanjs/code`.
 
 ## Dev Server Sizing
 

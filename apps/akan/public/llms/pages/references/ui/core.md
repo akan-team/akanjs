@@ -67,7 +67,7 @@ Navigates between internal routes. Use it for every internal link, and keep a ba
 
 - activeMatch (string[]): More paths under which the link counts as active, such as a tab lit on its detail pages.
 
-- pendingClassName (string): Class added, with a `data-pending` attribute, from the press until the page is drawn, on a link the loading page would make active. Not added for a page the browser already holds. SSR pages only: a CSR stack moves at once.
+- pendingClassName (string): Class added, with a `data-pending` attribute, from the press until the page is drawn or shows its `.loading()`, on a link the loading page would make active. Not added for a page the browser already holds, as `usePendingNavigation()` describes.
 
 - scrollToTop (boolean): Scrolls to the top after client-side navigation.
 

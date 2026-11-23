@@ -12,6 +12,7 @@ export class PackageRunner extends runner("package") {
   static readonly publishableAkanPackages = [
     "akanjs",
     "@akanjs/cli",
+    "@akanjs/code",
     "@akanjs/devkit",
     "@akanjs/language",
     "create-akan-workspace",
@@ -79,8 +80,8 @@ export class PackageRunner extends runner("package") {
     // The pi packages are pinned here: neither pi-coding-agent's own dependency ranges nor our `overrides` reach a
     // consumer's install, and a published dependency is the only pin its resolver honours.
     const packageRuntimeDependencies: Record<string, string[]> = {
-      "@akanjs/devkit": [
-        "tailwind-scrollbar",
+      "@akanjs/devkit": ["tailwind-scrollbar"],
+      "@akanjs/code": [
         "@earendil-works/pi-agent-core",
         "@earendil-works/pi-ai",
         "@earendil-works/pi-codemode",

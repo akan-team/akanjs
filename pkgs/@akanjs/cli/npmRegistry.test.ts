@@ -4,7 +4,13 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { Logger } from "akanjs/common";
 import { LocalRegistryRunner } from "./localRegistry/localRegistry.runner";
-import { getNpmRegistryUrl, getServedReleasePeers, npmRegistryFromEnv, warnIgnoredNpmRegistry } from "./npmRegistry";
+import {
+  akanReleasePackagesOf,
+  getNpmRegistryUrl,
+  getServedReleasePeers,
+  npmRegistryFromEnv,
+  warnIgnoredNpmRegistry,
+} from "./npmRegistry";
 
 const shellRegistry = "http://127.0.0.1:4900";
 
@@ -104,6 +110,20 @@ describe("getServedReleasePeers", () => {
     try {
       await expect(getServedReleasePeers("3.3.0-rc.9", `http://localhost:${registry.port}`)).rejects.toThrow(
         "does not serve @akanjs/cli@3.3.0-rc.9, @akanjs/language@3.3.0-rc.9 yet",
+      );
+    } finally {
+      await registry.stop(true);
+    }
+  });
+
+  test("waits for @akanjs/code as well in a workspace that lists it", async () => {
+    const released = ["akanjs", "@akanjs/devkit", "@akanjs/cli", "@akanjs/language"];
+    const registry = registryServing(released, [...released, "@akanjs/code"]);
+    const packages = akanReleasePackagesOf({ devDependencies: { "@akanjs/code": "3.3.0-rc.8" } });
+    try {
+      expect(akanReleasePackagesOf({ devDependencies: { "@akanjs/cli": "3.3.0-rc.8" } })).toEqual(released);
+      await expect(getServedReleasePeers("3.3.0-rc.9", `http://localhost:${registry.port}`, packages)).rejects.toThrow(
+        "does not serve @akanjs/code@3.3.0-rc.9 yet",
       );
     } finally {
       await registry.stop(true);

@@ -53,7 +53,7 @@ import {
 } from "./rscNavigationState";
 import { RscParkedRedirect } from "./rscParkedRedirect";
 import { RscScrollRestoration } from "./rscScrollRestoration";
-import { resetAkanSegmentOutletPatches } from "./rscSegmentOutlet";
+import { resetAkanSegmentOutletPatches, whenAkanSegmentOutletDraws } from "./rscSegmentOutlet";
 
 declare global {
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
@@ -609,8 +609,20 @@ function installNavigate(
       let notFound = false;
       let servedFromCache = !!nextNode;
       if (!nextNode) {
-        const commitPatch = (patch: RscPatched, fromCache: boolean) =>
-          commitRscPatchNavigation({ target, patch, fromCache, replace: options.replace, requestScroll });
+        const commitPatch = (patch: RscPatched, fromCache: boolean) => {
+          const committed = commitRscPatchNavigation({
+            target,
+            patch,
+            fromCache,
+            replace: options.replace,
+            requestScroll,
+          });
+          const { thenable } = patch.patchedNode;
+          if (!committed || !thenable) return committed;
+          endsPending = false;
+          whenAkanSegmentOutletDraws(patch.outletKey, thenable, () => PendingNavigation.end(pending));
+          return true;
+        };
         if (caches.replayPatch(target, navId, (patch) => commitPatch(patch, true))) return;
         const taken = caches.takePrefetch(target, signal);
         if (!taken?.arrived) PendingNavigation.wait(pending);

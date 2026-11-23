@@ -283,6 +283,39 @@ describe("CsrLink", () => {
     }
   });
 
+  test("a link a loading navigation would light carries pendingClassName and data-pending until it ends", () => {
+    const { container, unmount } = mount(
+      <>
+        <CsrLink href="/chat" pendingClassName="wait">
+          chat
+        </CsrLink>
+        <CsrLink href="/chat" pendingClassName="wait" activeExact>
+          chat home
+        </CsrLink>
+        <CsrLink href="/chat/c">c</CsrLink>
+        <CsrLink href="https://example.com/chat" pendingClassName="wait">
+          external
+        </CsrLink>
+      </>,
+    );
+    const anchors = [...container.querySelectorAll("a")];
+    const state = () =>
+      anchors.map((anchor) => `${anchor.classList.contains("wait")}|${anchor.hasAttribute("data-pending")}`);
+
+    let pending: ReturnType<typeof PendingNavigation.begin> | undefined;
+    act(() => {
+      pending = PendingNavigation.begin("http://localhost/en/chat/b");
+      PendingNavigation.wait(pending);
+    });
+    expect(state()).toEqual(["true|true", "false|false", "false|false", "false|false"]);
+
+    act(() => {
+      if (pending) PendingNavigation.end(pending);
+    });
+    expect(state()).toEqual(["false|false", "false|false", "false|false", "false|false"]);
+    unmount();
+  });
+
   test("routes a hostless network path in-app instead of throwing", () => {
     opens.length = 0;
     pushes.length = 0;
