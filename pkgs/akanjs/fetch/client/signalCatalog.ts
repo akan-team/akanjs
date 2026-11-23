@@ -1,6 +1,7 @@
 import { PrimitiveRegistry } from "akanjs/base";
 import { ConstantRegistry, deserialize, serialize } from "akanjs/constant";
 import type { SerializedArg, SerializedEndpoint, SerializedReturns, SerializedSignal } from "akanjs/signal";
+import { type ErrorConstructor, restoreRemoteError } from "./remoteError";
 
 interface SharedSignalRegistry {
   signal: { [key: string]: SerializedSignal };
@@ -83,7 +84,7 @@ export const helpersOf = (signal: SerializedSignal) => {
   const write = update || !!mountedGuards(signal, "create") || !!mountedGuards(signal, "remove");
   return { view: get, edit: get && write, merge: update };
 };
-export const makeArgSerializer = (args: SerializedArg[]) => {
+export const makeArgSerializer = (args: SerializedArg[], ErrorCls?: ErrorConstructor) => {
   const serializerMap = new Map(
     args.map((arg) => {
       const argRef = arg.modelType
@@ -91,10 +92,14 @@ export const makeArgSerializer = (args: SerializedArg[]) => {
         : PrimitiveRegistry.get(arg.refName);
       return [
         arg.name,
-        (value: unknown) =>
-          serialize(argRef, arg.arrDepth ?? 0, value, "input", {
+        (value: unknown) => {
+          //? "" is a value in a body or query string, but as a path segment it routes to no endpoint.
+          if (arg.type === "param" && (value ?? "") === "")
+            throw restoreRemoteError({ error: "base.error.requiredArgument", data: { name: arg.name } }, 400, ErrorCls);
+          return serialize(argRef, arg.arrDepth ?? 0, value, "input", {
             nullable: arg.nullable ?? arg.type === "search",
-          }),
+          });
+        },
       ] as const;
     }),
   );

@@ -119,7 +119,7 @@ export class ApiRouter {
       },
       ...Object.fromEntries(endpointEntries),
       ...Object.fromEntries(builtinEntries),
-      ...(renderEnvRoutes ?? {}),
+      ...ApiRouter.#refuseUnknownApiPaths(renderEnvRoutes ?? {}, prefix),
     } as NonNullHttpRoutes;
     const proxied = webProxyRunner
       ? ApiRouter.#wrapRoutesWithWebProxy(routeTable, webProxyRunner, prefix, endpointPaths)
@@ -444,6 +444,18 @@ export class ApiRouter {
   static #isApiRoute(path: string, apiPrefix: string): boolean {
     const normalized = apiPrefix.replace(/\/$/, "");
     return path === normalized || path.startsWith(`${normalized}/`);
+  }
+
+  //? In the page catch-all, not a `${prefix}/*` route of its own, so a web proxy still answers or rewrites it first.
+  static #refuseUnknownApiPaths(routes: NonNullHttpRoutes, apiPrefix: string): NonNullHttpRoutes {
+    const catchAll = routes["/*"];
+    if (!catchAll || !apiPrefix.replace(/\/$/, "")) return routes;
+    const refused = ApiRouter.#mapRoute(catchAll, (handler) => (req) => {
+      const { pathname } = new URL(req.url);
+      if (!ApiRouter.#isApiRoute(pathname, apiPrefix)) return handler(req);
+      return SignalFailure.response(new AkanError("routeNotFound", `No endpoint at ${pathname}`, { statusCode: 404 }));
+    });
+    return { ...routes, "/*": refused } as NonNullHttpRoutes;
   }
 
   static #isInternalRenderRoute(path: string): boolean {
