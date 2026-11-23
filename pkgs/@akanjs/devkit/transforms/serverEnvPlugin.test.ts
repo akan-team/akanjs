@@ -257,7 +257,7 @@ describe("createServerEnvPlugin", () => {
   });
 
   describe("profiles carried beside the environment's own file", () => {
-    const carry = async (secrets?: "read") => {
+    const carry = async (secrets?: "read", profile?: string) => {
       const root = await makeTempRoot();
       const libEnv = path.join(root, "libs/shared/env/env.server.testing.ts");
       await write(
@@ -277,13 +277,13 @@ describe("createServerEnvPlugin", () => {
           "",
         ].join("\n"),
       );
-      for (const profile of ["edge", "kiosk"])
+      for (const name of ["edge", "kiosk", "runtime"])
         await write(
-          path.join(envDir, `env.server.main.${profile}.ts`),
+          path.join(envDir, `env.server.main.${name}.ts`),
           [
             'import { libEnv } from "./env.server.type";',
-            `export const env = { ...libEnv, origin: "${profile}-origin" };`,
-            `export default "${profile}-default";`,
+            `export const env = { ...libEnv, origin: "${name}-origin" };`,
+            `export default "${name}-default";`,
             "",
           ].join("\n"),
         );
@@ -306,7 +306,8 @@ describe("createServerEnvPlugin", () => {
             envDir,
             environment: "main",
             environments,
-            profiles: ["edge", "kiosk"],
+            profile,
+            profiles: [...(profile ? [profile] : []), "edge", "kiosk"],
             secrets,
             onLibEnv: (file, report) => reports.push({ file: path.basename(file), ...report }),
           }),
@@ -357,6 +358,42 @@ describe("createServerEnvPlugin", () => {
       expect(proc.stderr.toString()).toContain(
         "AKAN_ENV_PROFILE=desk names a server env profile this build does not carry (it carries edge, kiosk).",
       );
+    });
+
+    test("a profile build carries them beside its own profile, which it starts on with none named", async () => {
+      const { start, reports, text } = await carry(undefined, "runtime");
+      expect(text).not.toContain("main-secret");
+      const runtime = {
+        app: { shared: "shared-value", origin: "runtime-origin" },
+        lib: { hostname: "lib-host", security: { accessTokenSeconds: 900 } },
+        fallback: "runtime-default",
+      };
+      for (const named of [[], ["runtime"]]) {
+        const proc = start(Object.fromEntries(named.map((name) => ["AKAN_ENV_PROFILE", name])));
+        expect(proc.stderr.toString()).toBe("");
+        expect(JSON.parse(proc.stdout.toString())).toEqual(runtime);
+      }
+      expect(JSON.parse(start({ AKAN_ENV_PROFILE: "edge" }).stdout.toString())).toEqual({
+        ...runtime,
+        app: { shared: "shared-value", origin: "edge-origin" },
+        fallback: "edge-default",
+      });
+      expect(JSON.parse(start({ AKAN_ENV_PROFILE: "kiosk" }).stdout.toString())).toEqual({
+        app: { shared: "shared-value", origin: "kiosk-origin" },
+        lib: { hostname: "lib-kiosk-host" },
+        fallback: "kiosk-default",
+      });
+      expect(start({ AKAN_ENV_PROFILE: "desk" }).stderr.toString()).toContain(
+        "AKAN_ENV_PROFILE=desk names a server env profile this build does not carry (it carries runtime, edge, kiosk).",
+      );
+      expect(reports).toEqual(
+        expect.arrayContaining([
+          { file: "env.server.testing.ts", profile: "runtime", profileFile: false, stripped: ["security.jwtSecret"] },
+          { file: "env.server.testing.ts", profile: "edge", profileFile: false, stripped: ["security.jwtSecret"] },
+          { file: "env.server.testing.ts", profile: "kiosk", profileFile: true, stripped: [] },
+        ]),
+      );
+      expect(reports).toHaveLength(3);
     });
 
     test("an image build still leaves every secret value out, the app's and a lib's", async () => {

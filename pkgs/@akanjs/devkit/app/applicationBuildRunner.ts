@@ -133,6 +133,7 @@ export class ApplicationBuildRunner {
   #environment?: string;
   #profile?: string;
   #secretEnv?: "read";
+  #image: boolean;
   #secrets: SecretEnvDeclared = { variables: [], unmoved: [], moved: [] };
   #budget: RouteJsBudgetMode;
   #modulesByRoute?: Record<string, string[]>;
@@ -159,6 +160,7 @@ export class ApplicationBuildRunner {
     this.#environment = environment;
     this.#profile = profile;
     this.#secretEnv = profile ? undefined : secretEnv;
+    this.#image = !!secretEnv;
     this.#budget = budget;
   }
 
@@ -198,9 +200,11 @@ export class ApplicationBuildRunner {
     const environment = this.#environment ?? baseDevEnv.env;
     WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, "akan build");
     this.#pinImageEnv(baseDevEnv, environment);
-    if (this.#secretEnv) this.#carriedProfiles = dockerProfilesOf(dockerVariants);
+    //? Under `--profile` too: each variant's Dockerfile names its profile whichever env file the build starts on.
+    if (this.#image)
+      this.#carriedProfiles = dockerProfilesOf(dockerVariants).filter((profile) => profile !== this.#profile);
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
-    for (const profile of this.#profile ? [this.#profile] : this.#carriedProfiles)
+    for (const profile of this.#envProfiles)
       await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile });
     if (this.#secretEnv) await this.#declareSecrets(environment);
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
@@ -494,6 +498,9 @@ export class ApplicationBuildRunner {
 
   #serverEnv: BunPlugin | null = null;
   #carriedProfiles: string[] = [];
+  get #envProfiles() {
+    return [...(this.#profile ? [this.#profile] : []), ...this.#carriedProfiles];
+  }
   #libEnvsLeftOut = new Map<string, Map<string, string[]>>();
   //? One plugin for every server-side bundle of the build: the backend, the RSC worker and the SSR route bundle.
   #serverEnvPlugin(baseEnv: string, branches: Iterable<string>): BunPlugin {
@@ -535,9 +542,7 @@ export class ApplicationBuildRunner {
       define: {
         // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
         "process.env.NODE_ENV": JSON.stringify("production"),
-        [`process.env.${EnvProfile.carriedKey}`]: JSON.stringify(
-          EnvProfile.format(this.#profile ? [this.#profile] : this.#carriedProfiles),
-        ),
+        [`process.env.${EnvProfile.carriedKey}`]: JSON.stringify(EnvProfile.format(this.#envProfiles)),
       },
     } satisfies Omit<Bun.BuildConfig, "entrypoints">;
     const serverEnvPlugin = this.#serverEnvPlugin(baseDevEnv.env, branches);

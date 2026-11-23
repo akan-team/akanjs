@@ -280,6 +280,14 @@ console.info(new SampleService().name);
         'The server env profile "edge" bundles env/env.server.main.edge.ts',
       );
       expect((await started({})).failure).toBe("stopped before the phases");
+      await writeFile(
+        path.join(root, "apps/portal/env/env.server.main.runtime.ts"),
+        'export const env = { hostname: "runtime-host" };\n',
+      );
+      expect((await started({ secretEnv: "read", profile: "runtime" })).failure).toContain(
+        'The server env profile "edge" bundles env/env.server.main.edge.ts',
+      );
+      expect((await started({ profile: "runtime" })).failure).toBe("stopped before the phases");
 
       await writeFile(profileFile, 'export const env = { mailer: { auth: { pass: "sentinel-edge-pass" } } };\n');
       const secret = await started({ secretEnv: "read" });
@@ -287,6 +295,7 @@ console.info(new SampleService().name);
       expect(secret.failure).not.toContain("sentinel-edge-pass");
 
       await writeFile(profileFile, 'export const env = { hostname: "edge-host" };\n');
+      expect((await started({ secretEnv: "read", profile: "runtime" })).failure).toBe("stopped before the phases");
       const { app, runner, failure } = await started({ secretEnv: "read" });
       expect(failure).toBe("stopped before the phases");
       await runner.buildAppMeta();
