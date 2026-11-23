@@ -1009,9 +1009,9 @@ describe("Cookie-only Web Sessions", () => {
     const [pair = ""] = claims.split(";");
     return decodeJwtPayload<{ exp: number; iat: number }>(decodeURIComponent(pair.slice(pair.indexOf("=") + 1)));
   };
-  const withCookieOnly = async (run: () => Promise<void>) => {
+  const withCookieOnly = async (cookieOnly: boolean, run: () => Promise<void>) => {
     const { WebSession } = await import("@libs/shared/srvkit");
-    WebSession.configure({ cookieOnly: true });
+    WebSession.configure({ cookieOnly });
     try {
       await run();
     } finally {
@@ -1033,47 +1033,47 @@ describe("Cookie-only Web Sessions", () => {
     fetch = await getOrSetupSignalTestFetch<typeof sharedFetch>();
   });
 
-  it("answers sign-in and refresh with the tokens in the body and in cookies while the option is off", async () => {
+  it("answers sign-in and refresh with the tokens in the body and in cookies once the app turns the option off", async () => {
     const { credentials } = await signup();
-    const signedIn = await post("signinWithPassword", credentials);
-    const body = (await signedIn.json()) as TokenBody;
-    expect(body.jwt).toBeTruthy();
-    expect(body.refreshToken).toBeTruthy();
-    expect(sessionCookieOf(signedIn)).toBeTruthy();
-    expect(refreshCookieOf(signedIn)).toBeTruthy();
-    const refreshed = await post("refreshJwt", { refreshToken: null }, { cookie: cookieOf(signedIn) });
-    const rotated = (await refreshed.json()) as TokenBody;
-    expect(rotated.jwt).toBeTruthy();
-    expect(rotated.refreshToken).toBeTruthy();
-    expect(sessionCookieOf(refreshed)).toBeTruthy();
-  });
-
-  it("answers a page's sign-in and refresh with the session cookies alone once the option is on", async () => {
-    const { userId, credentials } = await signup();
-    await withCookieOnly(async () => {
+    await withCookieOnly(false, async () => {
       const signedIn = await post("signinWithPassword", credentials);
-      expect(signedIn.ok).toBe(true);
       const body = (await signedIn.json()) as TokenBody;
-      expect(body.jwt).toBe("");
-      expect(body).not.toHaveProperty("refreshToken");
+      expect(body.jwt).toBeTruthy();
+      expect(body.refreshToken).toBeTruthy();
       expect(sessionCookieOf(signedIn)).toBeTruthy();
       expect(refreshCookieOf(signedIn)).toBeTruthy();
-      expect(await selfIdOf(cookieOf(signedIn))).toBe(userId);
-
       const refreshed = await post("refreshJwt", { refreshToken: null }, { cookie: cookieOf(signedIn) });
-      expect(refreshed.ok).toBe(true);
       const rotated = (await refreshed.json()) as TokenBody;
-      expect(rotated.jwt).toBe("");
-      expect(rotated).not.toHaveProperty("refreshToken");
-      expect(refreshCookieOf(refreshed)).toBeTruthy();
-      expect(refreshCookieOf(refreshed)).not.toBe(refreshCookieOf(signedIn));
-      expect(await selfIdOf(cookieOf(refreshed))).toBe(userId);
+      expect(rotated.jwt).toBeTruthy();
+      expect(rotated.refreshToken).toBeTruthy();
+      expect(sessionCookieOf(refreshed)).toBeTruthy();
     });
+  });
+
+  it("answers a page's sign-in and refresh with the session cookies alone in an app that names no session option", async () => {
+    const { userId, credentials } = await signup();
+    const signedIn = await post("signinWithPassword", credentials);
+    expect(signedIn.ok).toBe(true);
+    const body = (await signedIn.json()) as TokenBody;
+    expect(body.jwt).toBe("");
+    expect(body).not.toHaveProperty("refreshToken");
+    expect(sessionCookieOf(signedIn)).toBeTruthy();
+    expect(refreshCookieOf(signedIn)).toBeTruthy();
+    expect(await selfIdOf(cookieOf(signedIn))).toBe(userId);
+
+    const refreshed = await post("refreshJwt", { refreshToken: null }, { cookie: cookieOf(signedIn) });
+    expect(refreshed.ok).toBe(true);
+    const rotated = (await refreshed.json()) as TokenBody;
+    expect(rotated.jwt).toBe("");
+    expect(rotated).not.toHaveProperty("refreshToken");
+    expect(refreshCookieOf(refreshed)).toBeTruthy();
+    expect(refreshCookieOf(refreshed)).not.toBe(refreshCookieOf(signedIn));
+    expect(await selfIdOf(cookieOf(refreshed))).toBe(userId);
   });
 
   it("keeps the tokens out of the body for a caller that holds the session cookie, whatever it asks for", async () => {
     const { credentials } = await signup();
-    await withCookieOnly(async () => {
+    await withCookieOnly(true, async () => {
       const cookie = cookieOf(await post("signinWithPassword", credentials));
       for (const claim of [asking, { origin: "app://localhost" }, { ...asking, origin: "app://localhost" }]) {
         const refreshed = await post("refreshJwt", { refreshToken: null }, { ...claim, cookie });
@@ -1089,7 +1089,7 @@ describe("Cookie-only Web Sessions", () => {
 
   it("hands a caller with no cookie session the tokens in the body, and sets it no session cookie", async () => {
     const { userId, credentials } = await signup();
-    await withCookieOnly(async () => {
+    await withCookieOnly(true, async () => {
       for (const claim of [asking, { origin: "app://localhost" }]) {
         const signedIn = await post("signinWithPassword", credentials, claim);
         const body = (await signedIn.json()) as TokenBody;
@@ -1112,7 +1112,7 @@ describe("Cookie-only Web Sessions", () => {
 
   it("signs an access token for one hour, and renews an expired one from the refresh cookie alone", async () => {
     const { userId, credentials } = await signup();
-    await withCookieOnly(async () => {
+    await withCookieOnly(true, async () => {
       setSystemTime(dayjs().subtract(2, "hour").toDate());
       let signedIn: Response;
       try {
@@ -1159,8 +1159,8 @@ describe("Cookie-only Web Sessions", () => {
       expect(await bodySecondsOf(await post("signinWithPassword", credentials, ownHost))).toBe(hour);
     };
 
-    await bothKinds();
-    await withCookieOnly(bothKinds);
+    await withCookieOnly(false, bothKinds);
+    await withCookieOnly(true, bothKinds);
   });
 
   describe("a browser signed in as user and admin, one of whose sessions ended", () => {
@@ -1224,8 +1224,8 @@ describe("Cookie-only Web Sessions", () => {
     const adminEnded = (cookie: string) => without(cookie, /^(__Host-)?adminRefreshToken:/);
     const userEnded = (cookie: string) => without(cookie, /^(__Host-)?userRefreshToken:/);
     const eachOption = async (run: (cookieOnly: boolean) => Promise<void>) => {
-      await run(false);
-      await withCookieOnly(() => run(true));
+      await withCookieOnly(false, () => run(false));
+      await withCookieOnly(true, () => run(true));
     };
 
     it("keeps the user signed in when the admin refresh comes after the user's, past the token's expiry", async () => {
