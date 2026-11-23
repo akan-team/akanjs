@@ -2115,6 +2115,7 @@ declare const AgentEndpoint_base: import("./endpoint").EndpointCls<import("akanj
         arg: string | undefined
     ], typeof AgentTurn, AgentTurn, Promise<AgentTurn | {
         limits?: import("akanjs/service").LlmLimits | undefined;
+        providerContent?: import("akanjs/service").AgentWireProviderContent | undefined;
         model?: string | undefined;
         usage?: import("akanjs/service").LlmUsage | undefined;
         text: string;

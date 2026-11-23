@@ -506,3 +506,241 @@ describe("AnthropicLlm spend on a turn that does not finish", () => {
     expect(seen.map(({ aborted }) => aborted)).toEqual([true, true]);
   });
 });
+
+describe("AnthropicLlm thinking", () => {
+  const thinking = { type: "thinking" as const, thinking: "", signature: "sig-1" };
+  const redacted = { type: "redacted_thinking" as const, data: "enc-1" };
+  const answered = AnthropicLlm.turnAnswer({
+    content: [
+      thinking,
+      { type: "text", text: "Setting it." },
+      redacted,
+      { type: "tool_use", id: "c1", name: "setPreviewMode", input: { value: "fill" } },
+    ],
+    stop_reason: "tool_use",
+  });
+  const answering = (assistant: LlmTurnRequest["messages"][number]): LlmTurnRequest => ({
+    ...request,
+    messages: [request.messages[0], assistant, request.messages[2]],
+  });
+
+  test("an answer keeps its thinking blocks in order, signatures and all, and its calls by id", () => {
+    expect(answered.providerContent).toEqual({
+      dialect: "anthropic",
+      content: [thinking, { type: "text", text: "Setting it." }, redacted, { type: "tool_use", id: "c1" }],
+    });
+    expect(AnthropicLlm.turnAnswer({ content: [{ type: "text", text: "Done." }], stop_reason: "end_turn" })).toEqual({
+      text: "Done.",
+      stop: "end",
+    });
+  });
+
+  test("the next turn replays them unchanged where the model wrote them, the call named as this turn names it", () => {
+    const assistant = {
+      role: "assistant" as const,
+      text: answered.text,
+      toolCalls: answered.toolCalls,
+      providerContent: answered.providerContent,
+    };
+    expect(AnthropicLlm.requestBody("model", answering(assistant)).messages[1]).toEqual({
+      role: "assistant",
+      content: [
+        thinking,
+        { type: "text", text: "Setting it." },
+        redacted,
+        { type: "tool_use", id: "c1", name: "setPreviewMode", input: { value: "fill" } },
+      ],
+    });
+  });
+
+  test("a message that no longer matches its blocks, or a strip, posts its text and calls with no thinking", () => {
+    const plain = [
+      { type: "text" as const, text: "Setting it." },
+      { type: "tool_use" as const, id: "c1", name: "setPreviewMode", input: { value: "fill" } },
+    ];
+    const assistant = {
+      role: "assistant" as const,
+      text: "Setting it.",
+      toolCalls: answered.toolCalls,
+      providerContent: answered.providerContent,
+    };
+    expect(AnthropicLlm.requestBody("model", answering({ ...assistant, text: "Edited." })).messages[1].content).toEqual(
+      [{ type: "text", text: "Edited." }, plain[1]],
+    );
+    expect(AnthropicLlm.requestBody("model", answering({ ...assistant, toolCalls: [] })).messages[1].content).toEqual([
+      plain[0],
+    ]);
+    const smuggled = { dialect: "anthropic", content: [thinking, { type: "image", source: {} }] };
+    expect(
+      AnthropicLlm.requestBody("model", answering({ ...assistant, providerContent: smuggled })).messages[1].content,
+    ).toEqual(plain);
+    expect(AnthropicLlm.requestBody("model", answering(assistant), { thinking: "strip" }).messages[1].content).toEqual(
+      plain,
+    );
+    expect(AnthropicLlm.requestBody("model", answering(assistant))).not.toHaveProperty("thinking");
+  });
+
+  test("a stream assembles thinking from its deltas and signature, and a block cut before its signature is not kept", async () => {
+    const answer = await AnthropicLlm.consumeStream(
+      streamOf([
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":""}}\n',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"signature_delta","signature":"sig-1"}}\n',
+        'data: {"type":"content_block_start","index":1,"content_block":{"type":"redacted_thinking","data":"enc-1"}}\n',
+        'data: {"type":"content_block_start","index":2,"content_block":{"type":"tool_use","id":"c1","name":"refreshTask"}}\n',
+        'data: {"type":"message_delta","delta":{"stop_reason":"tool_use"}}\n',
+      ]),
+      () => undefined,
+    );
+    expect(answer.providerContent).toEqual({
+      dialect: "anthropic",
+      content: [thinking, redacted, { type: "tool_use", id: "c1" }],
+    });
+    const cut = await AnthropicLlm.consumeStream(
+      streamOf([
+        'data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}\n',
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"hm"}}\n',
+        'data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n',
+      ]),
+      () => undefined,
+    );
+    expect(cut).toEqual({ stop: "length" });
+  });
+});
+
+describe("AnthropicLlm refusal stop", () => {
+  test("a refusal on a 200 is a decline naming the host and category, carrying what it cost", async () => {
+    const failure = (() => {
+      try {
+        AnthropicLlm.turnAnswer(
+          {
+            content: [{ type: "text", text: "Here is half" }],
+            stop_reason: "refusal",
+            stop_details: { category: "cyber", explanation: "declined" },
+            usage: { input_tokens: 10, output_tokens: 3 },
+          },
+          "https://api.anthropic.com/v1",
+        );
+      } catch (error) {
+        return error as Error & { data?: unknown };
+      }
+      return new Error("no refusal") as Error & { data?: unknown };
+    })();
+    expect(failure.message).toBe("agent.error.llmDeclined");
+    expect(failure.data).toEqual({ provider: "api.anthropic.com", category: "cyber" });
+    expect(LlmSpend.of(failure)?.usage).toEqual({
+      inputTokens: 10,
+      outputTokens: 3,
+      cachedTokens: 0,
+      cacheWriteTokens: 0,
+    });
+  });
+
+  test("a streamed refusal fails after its partial text, with the final counts", async () => {
+    const deltas: string[] = [];
+    const failure = await AnthropicLlm.consumeStream(
+      streamOf([
+        'data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Here"}}\n',
+        'data: {"type":"message_delta","delta":{"stop_reason":"refusal","stop_details":{"type":"refusal","category":null}},"usage":{"output_tokens":4}}\n',
+      ]),
+      (delta) => deltas.push(delta),
+      "https://api.anthropic.com/v1",
+    ).then(
+      () => null,
+      (error: unknown) => error as Error & { data?: unknown },
+    );
+    expect(deltas).toEqual(["Here"]);
+    expect(failure?.message).toBe("agent.error.llmDeclined");
+    expect(failure?.data).toEqual({ provider: "api.anthropic.com" });
+    expect(LlmSpend.of(failure)?.usage?.outputTokens).toBe(4);
+  });
+});
+
+describe("AnthropicLlm history check", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const bound =
+    'messages.1.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation. Remove the block, or set `thinking.block_binding.prefix_mismatch_behavior` to "drop_block".';
+  const replaying: LlmTurnRequest = {
+    context: [{ kind: "route", path: "/task" }],
+    tools: [],
+    messages: [
+      { role: "user", text: "refresh" },
+      {
+        role: "assistant",
+        toolCalls: [{ id: "c1", name: "refreshTask", args: {} }],
+        providerContent: {
+          dialect: "anthropic",
+          content: [
+            { type: "thinking", thinking: "", signature: "s" },
+            { type: "tool_use", id: "c1" },
+          ],
+        },
+      },
+      { role: "tool", toolResults: [{ id: "c1", name: "refreshTask", result: "ok" }] },
+    ],
+  };
+  const llmOf = (answers: ((body: Record<string, unknown>) => Response)[]) => {
+    const sent: { beta: string | null; body: Record<string, unknown> }[] = [];
+    globalThis.fetch = (async (_url: string, init: { body: string; headers: Partial<Record<string, string>> }) => {
+      const body = JSON.parse(init.body) as Record<string, unknown>;
+      sent.push({ beta: init.headers["anthropic-beta"] ?? null, body });
+      return answers[Math.min(sent.length, answers.length) - 1](body);
+    }) as unknown as typeof fetch;
+    return { llm: Object.assign(new AnthropicLlm(), { llmOption: { apiKey: "k", model: "model-a" } }), sent };
+  };
+  const ok = () => Response.json({ content: [{ type: "text", text: "Done." }], stop_reason: "end_turn" });
+  const refused = (message: string) => () =>
+    Response.json({ error: { type: "invalid_request_error", message } }, { status: 400 });
+  const thinkingOf = (body: Record<string, unknown>) =>
+    (body.messages as { content: { type: string }[] }[])
+      .flatMap((message) => message.content)
+      .filter((block) => block.type === "thinking").length;
+
+  test("a history refusal is asked again with drop_block, and the model keeps it for later turns", async () => {
+    const { llm, sent } = llmOf([refused(bound), ok]);
+    expect((await llm.chat(replaying))?.text).toBe("Done.");
+    expect(await llm.chat({ ...replaying, messages: [{ role: "user", text: "hi" }] })).toMatchObject({ text: "Done." });
+    expect(sent.map(({ beta, body }) => [beta, body.thinking ?? null, thinkingOf(body)])).toEqual([
+      [null, null, 1],
+      [
+        "thinking-binding-controls-2026-08-01",
+        { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
+        1,
+      ],
+      [
+        "thinking-binding-controls-2026-08-01",
+        { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
+        0,
+      ],
+    ]);
+  });
+
+  test("a thinking refusal drop_block cannot fix is asked once more with no thinking, and then it fails", async () => {
+    const strip = llmOf([refused(bound), refused("Invalid `signature` in `thinking` block."), ok]);
+    expect((await strip.llm.chat(replaying))?.text).toBe("Done.");
+    expect(strip.sent.map(({ beta, body }) => [beta, thinkingOf(body)])).toEqual([
+      [null, 1],
+      ["thinking-binding-controls-2026-08-01", 1],
+      [null, 0],
+    ]);
+    const stuck = llmOf([refused("Invalid `signature` in `thinking` block.")]);
+    const failure = await stuck.llm.chat(replaying).then(
+      () => null,
+      (error: unknown) => error as Error,
+    );
+    expect(failure?.message).toBe("agent.error.llmRequestFailed");
+    expect(stuck.sent.map(({ body }) => thinkingOf(body))).toEqual([1, 0]);
+  });
+
+  test("any other refusal, or one on a turn replaying no thinking, is not asked again", async () => {
+    const other = llmOf([refused("messages.0: image too large")]);
+    await other.llm.chat(replaying).catch(() => undefined);
+    expect(other.sent).toHaveLength(1);
+    const none = llmOf([refused(bound)]);
+    await none.llm.chat({ ...replaying, messages: [{ role: "user", text: "hi" }] }).catch(() => undefined);
+    expect(none.sent).toHaveLength(1);
+  });
+});

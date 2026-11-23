@@ -7,6 +7,7 @@ import { AgentRelayPolicy, type AgentTurnContext } from "../agentRelayPolicy";
 import type { AgentTool, AgentToolsAdaptor } from "../predefinedAdaptor/agentTools.adaptor";
 import type {
   AgentWireMessage,
+  AgentWireProviderContent,
   AgentWireToolCall,
   AgentWireToolResult,
   LlmTurnRequest,
@@ -37,6 +38,7 @@ export interface AgentLoopAnswer {
   stop: "end" | "toolUse" | "length";
   usage?: LlmUsage;
   model?: string;
+  providerContent?: AgentWireProviderContent;
 }
 
 export interface AgentLoopPort {
@@ -161,6 +163,7 @@ export class AgentLoop {
       role: "assistant",
       ...(answer.text ? { text: answer.text } : {}),
       ...(answer.toolCalls.length ? { toolCalls: answer.toolCalls } : {}),
+      ...(answer.providerContent ? { providerContent: answer.providerContent } : {}),
       ...mark,
     };
     if (LoopTranscript.carries(message)) await this.#append(message);
