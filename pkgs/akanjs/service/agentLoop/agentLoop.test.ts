@@ -202,6 +202,49 @@ describe("AgentLoop rounds", () => {
     expect(busy.called).toHaveLength(2);
   });
 
+  test("an answer's thinking rides its stored message into the next round's Anthropic request, a cut answer's none", async () => {
+    const content = [
+      { type: "thinking", thinking: "", signature: "sig-1" },
+      { type: "tool_use", id: "c1" },
+    ];
+    const seen: LlmTurnRequest[] = [];
+    const answers = [
+      {
+        toolCalls: [callOf("c1", "readPage")],
+        stop: "toolUse" as const,
+        providerContent: { dialect: "anthropic", content },
+      },
+      { text: "Done.", stop: "end" as const },
+    ];
+    const service = Object.assign(new AgentService(), {
+      llm: {
+        chat: async (request: LlmTurnRequest) => {
+          seen.push(request);
+          return answers.shift();
+        },
+      },
+      agentTools: harness([]).port.tools,
+    });
+    const stored: AgentWireMessage[] = [];
+    for await (const _event of service.loop(ask("read it", { onMessage: (message) => void stored.push(message) })));
+    expect(stored[0]).toEqual({
+      role: "assistant",
+      toolCalls: [callOf("c1", "readPage")],
+      providerContent: { dialect: "anthropic", content },
+    });
+    expect(AnthropicLlm.requestBody("claude-opus-5-5", seen[1] as LlmTurnRequest).messages[1]?.content).toEqual([
+      { type: "thinking", thinking: "", signature: "sig-1" },
+      { type: "tool_use", id: "c1", name: "readPage", input: {} },
+    ]);
+
+    const cut = harness([
+      { text: "partial", toolCalls: [], stop: "length", providerContent: { dialect: "anthropic", content } },
+    ]);
+    const kept: AgentWireMessage[] = [];
+    await drain(cut.port, ask("go", { onMessage: (message) => void kept.push(message) }));
+    expect(kept).toEqual([{ role: "assistant", text: "partial" }]);
+  });
+
   test("clips a tool result where it enters the transcript", async () => {
     const huge = { data: "x".repeat(LoopToolOutput.limit * 2) };
     const { port, requests } = harness([calling(callOf("c1", "readPage")), saying("ok")], (_account, call) => ({

@@ -144,7 +144,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   log only, because it can quote an account id or part of a key and `Err` data reaches the browser.
   `LlmOverflow.refusal(host, status, reason)` builds it, and reads the one refusal a chat can undo — a prompt past
   the window, recognized from each provider's own sentence — as `agent.error.contextOverflow` with the `limit` and
-  `requested` it named, which the relay flags so the chat compacts and asks again. An adaptor an app wrote throws through the same function, so its refusals
+  `requested` it named, which the relay flags so the chat compacts and asks again. A model that declines on a
+  successful response (Anthropic's `stop_reason: "refusal"`) is `agent.error.llmDeclined` with `{ provider, category }`,
+  from `LlmOverflow.declined`, its partial answer discarded. An adaptor an app wrote throws through the same function, so its refusals
   translate and recover the way the shipped ones do without a key in the framework's dictionary it cannot add. An
   adaptor's own size cap throws that error with `{ limit, requested }` in its own unit, bytes included.
 - **`accepts` is answered per model, through `option.setLlm({ accepts })`.** An adaptor answers for an API and one

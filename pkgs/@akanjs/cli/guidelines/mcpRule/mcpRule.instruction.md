@@ -646,7 +646,8 @@ at every event.
   was given with, and one whose name the page lends taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
   the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the run
   and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal included, as a resume
-  cannot tell one from a result. Store every message whole, marks included. `compacted` says the first `replaced`
+  cannot tell one from a result. Store every message whole, marks and `providerContent` (Anthropic's signed thinking,
+  replayed verbatim) included. `compacted` says the first `replaced`
   messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary with no
   marker counts as tainted. A batch's results reach `onMessage` one tool message a call, as each call finishes, so a
   resume runs only the calls that had not finished, even after a crash mid-batch. It cannot tell a call that was
