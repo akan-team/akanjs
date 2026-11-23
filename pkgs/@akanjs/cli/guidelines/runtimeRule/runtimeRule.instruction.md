@@ -423,7 +423,8 @@ docker run -d --restart unless-stopped -p 80:8282 --env-file /etc/<app>.env \
   `-e AKAN_DATABASE_MODE=single`.
 - **Secrets come from the env file**, kept outside the image: whatever `akan secret-env <app> --env main` lists,
   and `JWT_SECRET` for an app on `libs/util`, whose boot stops with `jwtSecretRequired` outside operation mode
-  `local`.
+  `local`. A `docker.variants` image shares the build's bundle, so it asks for the same names: a device that
+  needs none of the cloud's is built on its own with `--profile edge`.
 - **Two directories hold the data**: `/workspace/sqlite` (the database, the cache and queue files, snapshots) and
   `/workspace/local` (uploads). `/workspace/data` is writable for the app's own files. A named volume takes uid
   1000 from the image; a host directory bound in needs `chown 1000:1000`.
