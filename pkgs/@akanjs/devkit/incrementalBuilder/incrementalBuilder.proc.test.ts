@@ -724,6 +724,86 @@ else {
     }
   }, 60_000);
 
+  test("a signal save rides every pages batch until one builds green, through the builder that saw it", async () => {
+    const { root } = track(await createTempApp("demo"));
+    const appDir = path.join(root, "apps/demo");
+    const ledger = path.join(root, "batches.log");
+    const tries = path.join(root, "metadata-tries");
+    // A stand-in batch: the first pages build carrying metadata fails, the second builds its pages but not its SSR
+    // registry, and every batch logs the metadata it carried.
+    await writeText(
+      path.join(root, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts"),
+      `import fs from "node:fs";
+import path from "node:path";
+const { generation, needs, metadata } = JSON.parse(process.argv[2]);
+fs.appendFileSync(${JSON.stringify(ledger)}, needs.join(",") + " " + (metadata ?? []).map((file) => path.basename(file)).join(",") + "\\n");
+const carried = needs.includes("pages") && !!metadata;
+const tried = carried && fs.existsSync(${JSON.stringify(tries)}) ? fs.readFileSync(${JSON.stringify(tries)}, "utf8").length : 0;
+if (carried) fs.appendFileSync(${JSON.stringify(tries)}, "x");
+const errors = !carried ? {} : tried === 0 ? { pages: "the pages build is broken" } : tried === 1 ? { ssr: "the SSR registry is broken" } : {};
+process.once("disconnect", () => {});
+if (needs.includes("pages")) process.send({ type: "build-status", data: { generation, phase: "pages", ok: !errors.pages, files: [] } });
+process.send({ type: "build-batch-result", data: { generation, errors, artifact: {}, optimizedFonts: { css: "", files: [] } } });
+`,
+    );
+    const page = path.join(appDir, "page/_index.tsx");
+    const signal = path.join(appDir, "lib/demo/demo.signal.ts");
+    await writeText(page, "export default () => null;\n");
+    await writeText(signal, "export const signal = 0;\n");
+    await writeText(
+      path.join(appDir, "tsconfig.json"),
+      JSON.stringify({ compilerOptions: { target: "ESNext", paths: { "@apps/*": ["./apps/*"] } } }),
+    );
+    const messages: BuilderMessage[] = [];
+    const proc = Bun.spawn(["bun", path.join(import.meta.dir, "incrementalBuilder.proc.ts")], {
+      cwd: appDir,
+      env: {
+        ...process.env,
+        AKAN_WORKSPACE_ROOT: root,
+        AKAN_PUBLIC_APP_NAME: "demo",
+        AKAN_PUBLIC_REPO_NAME: "repo",
+        AKAN_PUBLIC_SERVE_DOMAIN: "localhost",
+        AKAN_PUBLIC_ENV: "local",
+        AKAN_DEV_CSR_PATCHER: "off",
+      },
+      stdio: ["ignore", "ignore", "ignore"],
+      serialization: "advanced",
+      ipc: (message: BuilderMessage) => {
+        messages.push(message);
+      },
+    });
+    const pagesBatches = async () =>
+      (
+        await Bun.file(ledger)
+          .text()
+          .catch(() => "")
+      )
+        .split("\n")
+        .filter((line) => line.split(" ")[0]?.split(",").includes("pages"))
+        .map((line) => line.split(" ")[1] ?? "");
+    const pagesStatuses = () =>
+      messages.flatMap((message) =>
+        message.type === "build-status" && message.data.phase === "pages" ? [message.data.ok] : [],
+      );
+    try {
+      await until(proc, "boot-armed", () => messages.some((message) => message.type === "boot-armed"));
+      await writeText(signal, "export const signal = 1;\n");
+      await until(proc, "the signal save's pages status", () => pagesStatuses().length === 1);
+      await writeText(page, "export default () => 1;\n");
+      await until(proc, "the next save's pages status", () => pagesStatuses().length === 2);
+      await writeText(page, "export default () => 2;\n");
+      await until(proc, "the third save's pages status", () => pagesStatuses().length === 3);
+      await writeText(page, "export default () => 3;\n");
+      await until(proc, "the fourth save's pages status", () => pagesStatuses().length === 4);
+    } finally {
+      proc.kill();
+      await proc.exited;
+    }
+    expect(pagesStatuses()).toEqual([false, true, true, true]);
+    expect(await pagesBatches()).toEqual(["demo.signal.ts", "demo.signal.ts", "demo.signal.ts", ""]);
+    expect(messages.filter((message) => message.type === "builder-ready")).toHaveLength(1);
+  }, 60_000);
+
   test("a failed boot build waits for the save that fixes it, and the builder it recovers continues the generation and watches", async () => {
     const { root } = track(await createTempApp("demo"));
     const appDir = path.join(root, "apps/demo");

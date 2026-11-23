@@ -60,8 +60,7 @@ export class CsrDevPatcher {
   ): Promise<CsrDevPatchResult> {
     const context = await this.#bundler.context();
     if (!context) return { kind: "unchanged" };
-    const resident = this.#state;
-    const state = resident ?? (await this.#load());
+    const state = this.#state ?? (await this.#load());
     if (!state) {
       const manifest = await this.#bundler.writer.readJson<CsrDevManifest>(CSR_DEV_MANIFEST_FILE);
       const reason = !manifest
@@ -77,8 +76,9 @@ export class CsrDevPatcher {
     const metadataFile = changedFiles.find((file) => this.#bundler.isMetadataFile(file));
     // `lib/useClient.ts` and `lib/usePage.ts` inline signal and dictionary metadata through macros at build time.
     if (metadataFile) return this.#handBack(`${path.basename(metadataFile)} changed`, generation, context);
-    //? Only a registry read from disk: one held in memory saw every save since, and a metadata save was handed back.
-    if (!resident && state.graph.metadata !== (await this.#bundler.metadataFingerprint()))
+    //? One held in memory too: the builder outlives a metadata save, so a save that reached this registry through no
+    //? changed-file list would otherwise last as long as the builder. The stat of each file costs under a millisecond.
+    if (state.graph.metadata !== (await this.#bundler.metadataFingerprint()))
       return this.#handBack("signal or dictionary metadata changed since the registry was built", generation, context);
     this.#state = this.#resident ? state : null;
     //? Not over a module whose factory file is missing: this patch compiles it, and its commit writes app.js whole.

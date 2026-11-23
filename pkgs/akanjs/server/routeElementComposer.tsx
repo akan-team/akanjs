@@ -26,6 +26,7 @@ import { RouteHead } from "../client/route/RouteHead";
 import type { FallbackHead } from "./fallbackHead";
 import { resolveHeadResult } from "./head";
 import { isRouteCacheTrackingParam, type RouteCacheQueryForm, routeCacheTrackingParams } from "./routeCacheQuery";
+import { RouteLevelRuns } from "./routeLevelRuns";
 import { RouteShellGate } from "./routeShellGate";
 import {
   type AkanRouteSegmentState,
@@ -410,10 +411,14 @@ export class RouteElementComposer {
   }): ReactNode {
     const levelGates = gate ? RouteElementComposer.#gateLevels(renders, gate) : [];
     const ownerIndex = levelBoundary ? renders.indexOf(levelBoundary.owner) : -1;
+    //? The owner's System.Provider loads the dictionaries and starts the server router as it renders, before any level
+    //? inside it: those start together, once the first of them does.
+    const runs = new RouteLevelRuns({ params, searchParams, prestartFrom: ownerIndex + 1 });
     let element: ReactNode = null;
     for (let i = renders.length - 1; i >= 0; i--) {
       const routeRender = renders[i];
       if (!routeRender) continue;
+      runs.add(i, routeRender, element);
       const loadingFallback = RouteElementComposer.#composeLoadingFallback(renders.slice(i), params);
       const suspenseKey =
         navKey && loadingFallback != null && i === renders.length - 1 ? `akan-loading:${navKey}` : undefined;
@@ -430,6 +435,8 @@ export class RouteElementComposer {
           searchParams={searchParams}
           notFound={notFound ? { ...notFound, owners: [...owners, ...renders.slice(0, i)] } : undefined}
           gate={levelGate}
+          runs={runs}
+          index={i}
         >
           {element}
         </RouteElementComposer.AsyncRender>
@@ -464,6 +471,8 @@ export class RouteElementComposer {
     searchParams,
     notFound,
     gate,
+    runs,
+    index,
   }: {
     routeRender: RouteRender;
     children: ReactNode;
@@ -471,12 +480,14 @@ export class RouteElementComposer {
     searchParams: Record<string, string | string[]>;
     notFound?: RouteNotFoundInPlace & { owners: RouteRender[] };
     gate?: RouteShellGate;
+    runs: RouteLevelRuns;
+    index: number;
   }) => {
     gate?.enter();
     const levels = RscRenderLevels.begin();
     try {
       return RouteElementComposer.#normalizeReactNode(
-        await routeRender.render({ children, params, searchParams } as never),
+        await (runs.take(index) ?? routeRender.render({ children, params, searchParams } as never)),
       );
     } catch (error) {
       RouteElementComposer.#recordLevelError(error);

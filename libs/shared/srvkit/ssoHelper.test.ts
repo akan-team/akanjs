@@ -180,7 +180,8 @@ describe("ssoHelper cookie-only web sessions", () => {
     mock.restore();
   });
 
-  test("answers with the tokens in the body and in cookies while the option is off, whoever calls", async () => {
+  test("answers with the tokens in the body and in cookies once an app turns the option off, whoever calls", async () => {
+    WebSession.configure({ cookieOnly: false });
     for (const req of [undefined, pageRequest(), askingRequest(), askingRequest(`${authTokenKey()}=held`)]) {
       const response = makeAccessTokenResponse(tokens, { req });
       expect(await response.json()).toEqual(tokens);
@@ -189,8 +190,7 @@ describe("ssoHelper cookie-only web sessions", () => {
     }
   });
 
-  test("answers a page with the session cookies and a body that holds no token, once the option is on", async () => {
-    WebSession.configure({ cookieOnly: true });
+  test("answers a page with the session cookies and a body that holds no token, by default", async () => {
     for (const req of [undefined, pageRequest(), pageRequest(`${userRefreshTokenKey()}=held`)]) {
       const response = makeAccessTokenResponse(tokens, { req });
       expect(await response.json()).toEqual({ jwt: "", expiresAt: tokens.expiresAt });
@@ -231,6 +231,7 @@ describe("ssoHelper cookie-only web sessions", () => {
   test("an SSO code exchange follows the same rule, and a sign-up answer passes through untouched", async () => {
     const signin = { jwt: tokens.jwt, refreshToken: tokens.refreshToken, redirect: "/home" };
     const signup = { jwt: null, signupToken: "draft", redirect: "/signup" };
+    WebSession.configure({ cookieOnly: false });
     expect(makeSsoSigninResponse(signin, pageRequest())).toBe(signin);
     WebSession.configure({ cookieOnly: true });
     expect(makeSsoSigninResponse(signin, askingRequest())).toBe(signin);
