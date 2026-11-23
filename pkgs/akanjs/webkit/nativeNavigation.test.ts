@@ -151,6 +151,17 @@ describe("NativeNavigation", () => {
     expect(routerState.fallbacks).toEqual(["/explore"]);
   });
 
+  test("an index with a query is home by its path: back below it falls back to it whole, back on it leaves", async () => {
+    installShell();
+    Object.assign(window.__AKAN_MOBILE_TARGET__ ?? {}, { indexPath: "/explore?tab=new" });
+    (await navigationOf({ path: "/:lang/admin/orders/1" })).back();
+    (await navigationOf()).back();
+    await settle();
+
+    expect(routerState.fallbacks).toEqual(["/explore?tab=new"]);
+    expect(events.exits).toBe(1);
+  });
+
   const signinOf = async () => {
     const { NativeNavigation } = await import("./nativeNavigation");
     const state = { path: "/:lang/admin/signin" };

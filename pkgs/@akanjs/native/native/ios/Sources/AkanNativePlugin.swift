@@ -153,11 +153,20 @@ final class AkanNativeCall: @unchecked Sendable {
 /// sheet goes away) and only logs it; a completion handler or a plugin call waiting for that
 /// controller would then wait forever. So a request during a transition waits for it to end (up
 /// to three times), and `otherwise` runs when there is no window or the presentation was refused.
+/// A `.fullScreen` controller is presented `.overFullScreen`: `.fullScreen` takes the web view out of the
+/// window, iOS then suspends the page's process in the idle jetsam band, and a camera's memory ends it.
 @MainActor
 enum AkanNativePresent {
     static func present(_ controller: UIViewController, over root: UIViewController?, attempt: Int = 0,
                         completion: (@MainActor () -> Void)? = nil, otherwise: @escaping @MainActor () -> Void)
     {
+        if controller.modalPresentationStyle == .fullScreen {
+            controller.modalPresentationStyle = .overFullScreen
+            controller.modalPresentationCapturesStatusBarAppearance = true
+            if controller.presentationController?.shouldRemovePresentersView == true {
+                AkanNativeLog.info("\(type(of: controller)) still takes the page out of the window: its presentationController was read while it was .fullScreen, so set .overFullScreen before reading it")
+            }
+        }
         guard var top = root, top.viewIfLoaded?.window != nil else { return otherwise() }
         while let next = top.presentedViewController { top = next }
         if top.isBeingPresented || top.isBeingDismissed, attempt < 3, let coordinator = top.transitionCoordinator {
