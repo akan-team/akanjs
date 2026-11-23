@@ -46,14 +46,13 @@ generates a sample app. The app opens on `http://localhost:8282`.
 ### Inside an existing repository
 
 When a task fixes where the app lives and how it runs, for example a folder in another repository, a host with only
-Node and npm, or URLs given by a spec, a coding agent needs these, and nothing has to ask. A scaffold takes no more
-than these, so no other package's README has to be read first; the
-[`create-akan-workspace` README](https://www.npmjs.com/package/create-akan-workspace#what-it-does) lists what the
-command writes, runs and fetches.
+Node and npm, or URLs given by a spec, a coding agent needs these, and nothing has to ask. They are the whole
+scaffold: no other package's README or code has to be read first.
 
 - **Create the workspace in that folder:** `bunx create-akan-workspace@latest . --app <app> --dir <folder> --sample false`.
   It writes into `<folder>` itself, refuses to overwrite a file already there, and leaves out the sample module and
-  pages. Keep the `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.cursor/` and `.mcp.json` it writes: they carry
+  pages. It also puts the `akan` CLI in Bun's global folder (`~/.bun`, nothing on `PATH`) and runs `bun install`; it
+  builds and starts nothing, and in a folder another git repository tracks it neither runs `git init` nor commits. Keep the `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.cursor/` and `.mcp.json` it writes: they carry
   the rules and tools an agent works through.
 - **Work from `<folder>`.** `akan` runs only from the workspace root, and an agent session opened there loads the
   workspace's rules and MCP server.
@@ -63,9 +62,8 @@ command writes, runs and fetches.
   set `i18n: { defaultLocale: "en", locales: ["en"], localePrefix: "as-needed" }` in `akan.config.ts`; `<Link>`
   follows.
 - **A host with only Node and npm:** `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`,
-  then `npm run build` and `PORT=3000 npm start`. The
-  [`create-akan-workspace` README](https://www.npmjs.com/package/create-akan-workspace#with-only-node-and-npm) has the
-  scripts it writes and what a fresh clone needs.
+  then `npm run build` and `PORT=3000 npm start`, and `npx akan <command>` for the rest: the workspace lists `bun` in
+  its dependencies, as it does under a Bun from `npm i -g bun`. A fresh clone builds as is, since the build writes the git-ignored files it lacks.
 - **Build for where it runs.** A variable set in the shell, or in a `.env.local` Bun loads, outranks the workspace `.env`
   (an empty one counts as unset, and the build names each one it took), and `--env` outranks both for `AKAN_PUBLIC_ENV`. A new workspace's `.env` says `local`, which suits your own machine or a test runner, but the
   server runs without endpoint rate limits and on local defaults. For a host others can reach, run
