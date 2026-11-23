@@ -13,8 +13,8 @@ export interface ServerEnvPluginOptions {
   /** Bundled in place of the environment's own file: `env.server.<environment>.<profile>.ts`, read from the same folder. */
   profile?: string;
   /**
-   * Carried beside the environment's own file, each as `env.server.<environment>.<profile>.ts`: the server runs the
-   * one `AKAN_ENV_PROFILE` names when it starts, and the environment's own with none named.
+   * Carried beside the environment's own file, or beside `profile` when one is bundled in its place, each as
+   * `env.server.<environment>.<profile>.ts`: the server runs the one `AKAN_ENV_PROFILE` names when it starts.
    */
   profiles?: readonly string[];
   /** Under a profile, once per lib env file: whether the lib gave one of the profile's, and what was left out if not. */
@@ -34,11 +34,13 @@ const ORIGINAL_PREFIX = `${ORIGINAL_NAMESPACE}:`;
 const ORIGINAL_SUFFIX = ".original";
 
 //? Only the env the server starts on is evaluated: the environment's own file may not load without its variables.
-const selectorOf = (file: string, exports: string[], carried: { [profile: string]: string }) => {
+const selectorOf = (file: string, exports: string[], carried: { [profile: string]: string }, base?: string) => {
   const names = Object.keys(carried);
-  const refusal = ` names a server env profile this build does not carry (it carries ${names.join(", ")}).`;
+  const all = [...(base ? [base] : []), ...names];
+  const refusal = ` names a server env profile this build does not carry (it carries ${all.join(", ")}).`;
+  const named = `process.env.${EnvProfile.key}`;
   return [
-    `const profile = process.env.${EnvProfile.key};`,
+    `const profile = ${base ? `${named} === ${JSON.stringify(base)} ? undefined : ${named}` : named};`,
     `const carried = { ${names.map((name) => `${JSON.stringify(name)}: () => ${carried[name]}`).join(", ")} };`,
     `if (profile && !Object.hasOwn(carried, profile)) throw new Error("${EnvProfile.key}=" + profile + ${JSON.stringify(refusal)});`,
     `const picked = profile ? carried[profile]() : require(${JSON.stringify(`${ORIGINAL_PREFIX}${file}`)});`,
@@ -65,18 +67,40 @@ export const createServerEnvPlugin = ({
   const folder = `^(?:${[...dirs].map(escapeRegExp).join("|")})[\\\\/]env\\.server\\.`;
   const filter = new RegExp(`${folder}(?:${others.map(escapeRegExp).join("|")})\\.ts$`);
   const own = new RegExp(`${folder}${escapeRegExp(environment)}\\.ts$`);
+  const carriedNames = profiles.filter((name) => name !== profile);
   const libEnvs = new Map<string, Promise<OnLoadResult>>();
+  const libSelectors = new Map<string, Promise<OnLoadResult>>();
+  const once = (
+    cache: Map<string, Promise<OnLoadResult>>,
+    file: string,
+    load: (file: string) => Promise<OnLoadResult>,
+  ) => {
+    if (!cache.has(file)) cache.set(file, load(file));
+    return cache.get(file) as Promise<OnLoadResult>;
+  };
   const libEnv = async (file: string): Promise<OnLoadResult> => {
     const { loader, contents, profileFile, stripped } = await ServerEnvProfile.libEnvSource(file, profile ?? "");
     onLibEnv?.(file, { profile: profile ?? "", profileFile, stripped });
     return { loader, contents };
   };
+  const inPlace = async (file: string, name: string): Promise<OnLoadResult> => ({
+    loader: "ts",
+    contents: await ServerEnvProfile.sourceInPlaceOf(
+      path.join(path.dirname(file), ServerEnvProfile.fileName(environment, name)),
+      file,
+      name,
+    ),
+  });
   const exportsOf = async (file: string) =>
     new Bun.Transpiler({ loader: "ts" }).scan(await Bun.file(file).text()).exports;
   const original = async (file: string): Promise<OnLoadResult> =>
-    secrets
+    secrets && !profile
       ? await SecretEnvDeclaration.source(file, secrets)
       : { loader: "ts", contents: await Bun.file(file).text() };
+  const base = (file: string): Promise<OnLoadResult> => {
+    if (!profile) return original(file);
+    return own.test(file) ? inPlace(file, profile) : once(libEnvs, file, libEnv);
+  };
   const isAppEnv = (file: string) => {
     const name = path.basename(file, ".ts").slice("env.server.".length);
     return dirs.has(path.dirname(file)) || name === "type" || name === "example";
@@ -87,37 +111,30 @@ export const createServerEnvPlugin = ({
       file,
       await exportsOf(file),
       Object.fromEntries(
-        profiles.map((name) => [
+        carriedNames.map((name) => [
           name,
           `require(${JSON.stringify(path.join(path.dirname(file), ServerEnvProfile.fileName(environment, name)))})`,
         ]),
       ),
+      profile,
     ),
   });
   const libSelector = async (file: string): Promise<OnLoadResult> => {
     const carried: { [name: string]: string } = {};
-    for (const name of profiles) {
+    for (const name of carriedNames) {
       const { profileFile, stripped, value } = await ServerEnvProfile.libEnvSource(file, name);
       onLibEnv?.(file, { profile: name, profileFile, stripped });
       carried[name] = profileFile
         ? `require(${JSON.stringify(ServerEnvProfile.profileFileOf(file, name))})`
         : `({ env: ${JSON.stringify(value)} })`;
     }
-    return { loader: "js", contents: selectorOf(file, await exportsOf(file), carried) };
+    return { loader: "js", contents: selectorOf(file, await exportsOf(file), carried, profile) };
   };
   return {
     name: "akan-server-env",
     setup(build) {
       //* The environment's own file never enters a profile's bundle: its contents are the profile file's.
-      if (profile)
-        build.onLoad({ filter: own }, async (args) => ({
-          loader: "ts",
-          contents: await ServerEnvProfile.sourceInPlaceOf(
-            path.join(path.dirname(args.path), ServerEnvProfile.fileName(environment, profile)),
-            args.path,
-            profile,
-          ),
-        }));
+      if (profile && !carriedNames.length) build.onLoad({ filter: own }, (args) => inPlace(args.path, profile));
       if (others.length)
         build.onLoad({ filter }, async (args) => {
           const name = path.basename(args.path, ".ts").slice("env.server.".length);
@@ -132,7 +149,7 @@ export const createServerEnvPlugin = ({
             ].join("\n"),
           };
         });
-      if (profiles.length && !profile) {
+      if (carriedNames.length) {
         build.onResolve({ filter: new RegExp(`^${ORIGINAL_PREFIX}`) }, (args) => ({
           path: `${args.path.slice(ORIGINAL_PREFIX.length)}${ORIGINAL_SUFFIX}`,
           namespace: ORIGINAL_NAMESPACE,
@@ -142,13 +159,11 @@ export const createServerEnvPlugin = ({
           path: Bun.resolveSync(args.path, path.dirname(args.importer)),
         }));
         build.onLoad({ filter: /.*/, namespace: ORIGINAL_NAMESPACE }, (args) =>
-          original(args.path.slice(0, -ORIGINAL_SUFFIX.length)),
+          base(args.path.slice(0, -ORIGINAL_SUFFIX.length)),
         );
         build.onLoad({ filter: own }, (args) => ownSelector(args.path));
         build.onLoad({ filter: ServerEnvProfile.envFilePattern }, (args) => {
-          if (isAppEnv(args.path)) return original(args.path);
-          if (!libEnvs.has(args.path)) libEnvs.set(args.path, libSelector(args.path));
-          return libEnvs.get(args.path) as Promise<OnLoadResult>;
+          return isAppEnv(args.path) ? original(args.path) : once(libSelectors, args.path, libSelector);
         });
       }
       //? After the stubs, which take the other environments' files first; `env.server.ts` itself is the env file where
@@ -158,14 +173,10 @@ export const createServerEnvPlugin = ({
           SecretEnvDeclaration.source(args.path, secrets),
         );
       //? Last: the app's own env files above are taken by the handlers before it, which match them first.
-      if (profile)
-        build.onLoad({ filter: ServerEnvProfile.envFilePattern }, async (args) => {
-          const name = path.basename(args.path, ".ts").slice("env.server.".length);
-          if (dirs.has(path.dirname(args.path)) || name === "type" || name === "example")
-            return { loader: "ts", contents: await Bun.file(args.path).text() };
-          if (!libEnvs.has(args.path)) libEnvs.set(args.path, libEnv(args.path));
-          return (await libEnvs.get(args.path)) as OnLoadResult;
-        });
+      if (profile && !carriedNames.length)
+        build.onLoad({ filter: ServerEnvProfile.envFilePattern }, (args) =>
+          isAppEnv(args.path) ? original(args.path) : once(libEnvs, args.path, libEnv),
+        );
     },
   };
 };
