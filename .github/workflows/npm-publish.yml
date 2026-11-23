@@ -36,8 +36,15 @@ jobs:
         id: release
         run: |
           current=$(jq -r .version pkgs/akanjs/package.json)
+          # A published version is never taken back, and changesets can raise a major no changeset asks for: a
+          # package whose peer moves a minor is raised one, and the fixed group follows it.
+          asked_major=$(awk 'FNR == 1 { dashes = 0 } /^---$/ { dashes++; next } dashes == 1 && /: major$/ { print FILENAME }' .changeset/*.md)
           bun run changeset:version
           release=$(jq -r .version pkgs/akanjs/package.json)
+          if [ "${release%%.*}" != "${current%%.*}" ] && [ -z "$asked_major" ]; then
+            echo "::error::The pending changesets move akanjs from $current to $release, and none of them asks for a major. Run \`bun run changeset:version\` locally to find the package that raises it."
+            exit 1
+          fi
           if [ "$release" = "$current" ]; then
             echo "::notice::No pending changeset moves akanjs past $current, so there is no rc to publish."
           else
@@ -78,8 +85,19 @@ jobs:
       - name: Publish the tarballs, each after the packages it depends on
         run: |
           tag=$(jq -r .tag publish.json)
+          published() { curl -fs --max-time 30 -o /dev/null "https://registry.npmjs.org/$1/$2"; }
           for tarball in $(jq -r '.tarballs[]' publish.json); do
-            npm publish "$tarball" --tag "$tag" --provenance
+            name=$(tar -xzOf "$tarball" package/package.json | jq -r .name)
+            version=$(tar -xzOf "$tarball" package/package.json | jq -r .version)
+            # A rerun of this job after it stopped partway goes on from the first package that is missing.
+            if published "$name" "$version"; then
+              echo "$name@$version is already published"
+              continue
+            fi
+            npm publish "$tarball" --tag "$tag" --provenance && continue
+            # The registry has refused one package of a run with a 401 and taken the same tarball minutes later.
+            sleep 30
+            published "$name" "$version" || npm publish "$tarball" --tag "$tag" --provenance
           done
 
   # npm has served a release's packages up to an hour apart, and an install that pins them all fails until the last
