@@ -33,7 +33,7 @@ message<Returns extends ConstantFieldTypeInput = ConstantFieldTypeInput, Nullabl
 .msg<ArgName extends string, ExplicitType = unknown, Arg extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>, Optional extends boolean = false>(name: string, arg: Arg, option?: EndpointArgProps<Optional>)
 .search<ArgName extends string, ExplicitType = unknown, Arg extends ConstantFieldTypeInput = PlainTypeToFieldType<ExplicitType>>(name: string, arg: Arg, option?: Omit<EndpointArgProps, "nullable">)
 .with<ArgType, Optional extends boolean = false>(argRef: InternalArgCls<ArgType>, option?: InternalArgProps<Optional>)
-.exec<ExecFn extends (this: Srvs, ...args: [...ServerArgs, ...InternalArgs]) => ReqType extends "pubsub" ? Promise<void> | void : PromiseOrObject<DocumentModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>>(execFn: ExecFn)
+.exec<ExecFn extends (this: Srvs, ...args: [...ServerArgs, ...InternalArgs]) => ReqType extends "pubsub" ? Promise<void> | void : PromiseOrObject<ServerReturnModel<FieldToValue<Returns>> | (Nullable extends true ? null | undefined : never)>>(execFn: ExecFn)
 ```
 
 `.search()` is always optional and takes no `nullable`: the caller may omit it or pass `null`, and the handler gets `T | undefined`.
