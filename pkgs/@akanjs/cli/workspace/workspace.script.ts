@@ -96,7 +96,7 @@ export class WorkspaceScript extends script("workspace", [
     Logger.rawLog(`\n🎉 Welcome aboard! Workspace created in ${workspace.workspaceRoot}`);
     if (bunDependency)
       Logger.rawLog(
-        `🚀 Run \`cd ${workspace.workspaceRoot} && ${init ? "" : "npm install && "}npx akan start ${appName}\` to start the development server. Bun is not on your PATH, so the workspace runs bun ${bunDependency} from its dependencies: \`npm run build\` builds the app, \`npm start\` runs the build and \`npx akan <command>\` runs any other command.`,
+        `🚀 Run \`cd ${workspace.workspaceRoot} && ${init ? "" : "npm install && "}npx akan start ${appName}\` to start the development server. Bun here comes from npm, so the workspace runs bun ${bunDependency} from its dependencies: \`npm run build\` builds the app, \`npm start\` runs the build and \`npx akan <command>\` runs any other command.`,
       );
     else
       Logger.rawLog(

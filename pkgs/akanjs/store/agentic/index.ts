@@ -3,7 +3,7 @@ export { AgentAbort, AgentProgress, type AgentProgressStep, ToolReturn } from "u
 export * from "./AgentConfirm";
 export * from "./AgentValue";
 export * from "./attachAgentic";
-export * from "./formFields";
+export * from "./formFieldsReexport";
 export * from "./StExposeBuilder";
 export * from "./StExposeDraft";
 export * from "./StStateBuilder";

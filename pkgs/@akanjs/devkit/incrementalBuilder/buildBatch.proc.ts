@@ -1,6 +1,6 @@
 import path from "node:path";
 import { Logger } from "akanjs/common";
-import type { BuilderMessage, BuildPhase, HmrTrace } from "akanjs/server";
+import type { BaseBuildArtifact, BuilderMessage, BuildPhase, HmrTrace } from "akanjs/server";
 import { resolveDevCsrMode } from "akanjs/server/hmr/csrDevManifest";
 import { ApplicationBuildReporter } from "../app/applicationBuildReporter";
 import { resolveSsrPageEntriesForApp } from "../artifact/implicitRootLayout";
@@ -202,8 +202,12 @@ class BuildBatch {
       const pageEntries = await resolveSsrPageEntriesForApp(this.#app, await this.#app.getPageKeys());
       const seedIndex = computeRouteSeedIndex(pageEntries);
       const previousGraph = await ServerGraphFile.read(this.#request.artifactDir);
+      const dictionaries = this.#request.metadata
+        ? await new SsrBaseArtifactBuilder(this.#app).buildDictionaries()
+        : null;
       const next = await new PagesBundleBuilder(this.#app, "start", pageEntries).build();
       await saveRouteSeedIndex(this.#request.artifactDir, seedIndex);
+      if (dictionaries) await this.#rewriteBaseArtifact(next, dictionaries);
       const nextGraph = await ServerGraphFile.read(this.#request.artifactDir);
       const serverTouched = await ServerGraphFile.touches(
         previousGraph,
@@ -230,6 +234,28 @@ class BuildBatch {
         this.#logger.warn(`server graph carry failed; the next save may skip its RSC refresh: ${String(carryError)}`),
       );
     }
+  }
+
+  //? Before `pages-updated` and the pages status: the dev host restarts the backend on that status, and the backend
+  //? reads this file once, at its boot.
+  async #rewriteBaseArtifact(
+    pages: { bundlePath: string; buildId: number },
+    { assets, routes, groups }: Awaited<ReturnType<SsrBaseArtifactBuilder["buildDictionaries"]>>,
+  ): Promise<void> {
+    const artifactPath = path.join(this.#request.artifactDir, "base-artifact.json");
+    const { dictRoutes, dictGroups, ...artifact } = (await Bun.file(artifactPath).json()) as BaseBuildArtifact;
+    await SsrBaseArtifactBuilder.writeArtifact(this.#request.artifactDir, {
+      ...artifact,
+      cssAssets: this.#result.cssAssets ?? this.#request.cssAssets ?? artifact.cssAssets,
+      dictAssets: assets,
+      ...(routes ? { dictRoutes: routes } : {}),
+      ...(groups ? { dictGroups: groups } : {}),
+      pagesBundlePath: pages.bundlePath,
+      pagesBundleBuildId: pages.buildId,
+    });
+    this.#logger.verbose(
+      `base-artifact rewritten for ${this.#request.metadata?.length ?? 0} metadata file(s) buildId=${pages.buildId}`,
+    );
   }
 
   async #buildCss(): Promise<void> {

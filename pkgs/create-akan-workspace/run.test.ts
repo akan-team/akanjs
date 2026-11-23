@@ -1,6 +1,6 @@
 import { describe, expect, spyOn, test } from "bun:test";
 import type { SpawnOptions } from "node:child_process";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path, { delimiter } from "node:path";
 import { isBunOnLastingPath, run } from "./run";
@@ -354,6 +354,23 @@ describe("isBunOnLastingPath", () => {
 
       expect(isBunOnLastingPath({ PATH: npxBin })).toBe(false);
       expect(isBunOnLastingPath({ Path: [npxBin, installed].join(delimiter) })).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test.skipIf(process.platform === "win32")("counts a Bun linked from a global npm package as npm's", () => {
+    const root = mkdtempSync(path.join(tmpdir(), "create-akan-workspace-path-"));
+    try {
+      const packageBin = path.join(root, "npm-global", "lib", "node_modules", "bun", "bin");
+      const globalBin = path.join(root, "npm-global", "bin");
+      mkdirSync(packageBin, { recursive: true });
+      mkdirSync(globalBin, { recursive: true });
+      writeFileSync(path.join(packageBin, "bun.exe"), "");
+      chmodSync(path.join(packageBin, "bun.exe"), 0o755);
+      symlinkSync(path.join(packageBin, "bun.exe"), path.join(globalBin, "bun"));
+
+      expect(isBunOnLastingPath({ PATH: globalBin })).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
