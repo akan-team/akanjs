@@ -32,8 +32,9 @@ the server errors logged meanwhile, console errors and warnings, and layout smel
   name, and reads the account from `process.env`. `--as <name>` reaches it as `as`; `--anonymous` skips it.
   With none declared a guarded page shows its redirect: add it, or say "not opened signed in".
 - The viewport is a 390x844 phone; `--desktop` is 1280x800. `--csr` loads each page in the CSR boot the native
-  shells load. `--screenshot` saves a PNG per page under `local/apps/<app>/runtime/preview/`, for a model
-  that reads images. `--format json` gives the same report as data.
+  shells load. `--screenshot` saves a PNG per page under `local/apps/<app>/runtime/preview/`. `--format json`
+  gives the same report as data. `--wait-for <selector>` holds a page that draws after its first client read
+  until the selector matches, and fails it at `--timeout`.
 
 ### Which platforms that covers
 
