@@ -157,6 +157,9 @@ final class CameraPlugin: NSObject, CameraPluginSpec, UIImagePickerControllerDel
             picker.cameraDevice = .front
         }
         picker.delegate = self
+        //? Before presentationController is read, which fixes the style: .fullScreen would suspend the page (AkanNativePresent).
+        picker.modalPresentationStyle = .overFullScreen
+        picker.modalPresentationCapturesStatusBarAppearance = true
         picker.presentationController?.delegate = self
         pending = (reply, quality)
         context.present(picker) { [weak self] in

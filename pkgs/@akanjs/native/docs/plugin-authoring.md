@@ -218,7 +218,8 @@ final class ClipboardPlugin: AkanNativePlugin {
 ```
 - `call.resolve`/`call.reject`는 아무 스레드에서나 한 번 부른다. 결과는 JSONSerialization이 받는 값만 넣는다(`[String: Any]`, 배열, 문자열, NSNumber, NSNull). `reject(code, message, data:, retryable:)`로 페이지가 쓸 세부 정보를 붙일 수 있다.
 - 취소와 문서 범위: `call.onCancel { … }`(페이지가 포기했거나 사라짐, 셸이 이미 답함: 시트를 닫고 요청을 멈춘다), `call.isCancelled`, `call.document?.own { … }`(페이지가 끝날 때 닫을 자원, 토큰으로 `disown`). 플러그인의 `documentEnded(_ id:)`는 문서별 상태를 지울 때. App 서비스(`AkanNativeLinks`, `AkanNativeNotifications`, `AkanNativeRemoteNotifications`)에는 `context.owner`로 등록한다(창이 끝나면 셸이 지운다).
-- 화면 표시는 `context.presenter`, WebView는 `context.webView`, 이벤트는 `context.emit(event, data)`.
+- 화면 표시는 `context.present(controller) { 못 띄웠을 때 }`, WebView는 `context.webView`, 이벤트는 `context.emit(event, data)`.
+- 화면 전체를 덮는 컨트롤러(카메라, 스캐너)는 `.overFullScreen`으로 띄운다. `.fullScreen`은 WebView를 창에서 떼어 iOS가 페이지 프로세스를 멈추고(jetsam 유휴 대역), 카메라가 메모리를 쓰면 종료시켜 페이지가 다시 로드되고 호출 결과를 잃는다. `context.present`가 `.fullScreen`을 바꿔 주지만 `presentationController`를 먼저 읽었다면 스타일이 이미 굳으므로, 읽기 전에 정한다.
 - 파일: `context.temporaryFile("jpg")`(세션 임시 폴더), `context.registerFile(url, mime)` → FileRef, `context.file("/__akan_native/file/<id>")` → 등록된 파일.
 - 딥링크: `AkanNativeLinks.shared`(App 범위, plugins.md C11). `launchURL`은 프로세스 동안 바뀌지 않는다. `listen { url in … return true }`의 리스너는 전달했으면 true, 사라졌으면 false를 돌려준다(false면 셸이 다음 리스너까지 보관).
 - 알림 delegate: 셸의 `AkanNativeNotifications.shared.register(id, Handler(claims:willPresent:didReceive:))`(C5). `UNUserNotificationCenter.delegate`를 직접 바꾸지 않는다. 페이지가 듣지 않을 때 `didReceive`가 false를 돌려주면 셸이 보관하고, 들을 때 `replay(id)`로 다시 받는다.
