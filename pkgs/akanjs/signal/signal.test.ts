@@ -13,7 +13,7 @@ import {
   SLICE_META,
   Upload,
 } from "akanjs/base";
-import { Logger, type LoggerSinkEntry, type LogRecord } from "akanjs/common";
+import { Err, Logger, type LoggerSinkEntry, type LogRecord } from "akanjs/common";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { by, type DatabaseCls, DatabaseRegistry, from, into, type ModelCls, NoDocumentError } from "akanjs/document";
 import {
@@ -2562,6 +2562,22 @@ describe("SignalContext guards", () => {
     expect(syncThrow.body).toMatchObject({ statusCode: 401, error: "SyncThrow rejected" });
     expect(asyncThrow.status).toBe(401);
     expect(asyncThrow.body).toMatchObject({ statusCode: 401, error: "AsyncThrow rejected" });
+    expect(guardTrace).not.toContain("exec");
+  });
+
+  test("answers a keyed Err a guard throws with its key and status, as the caller restores it", async () => {
+    class RevokedDeviceGuard implements Guard {
+      static name = "Machine";
+      static scope: GuardScope = "account";
+      canPass(): boolean {
+        throw new Err.Forbidden("signalTestDevice.error.deviceRefused");
+      }
+    }
+    const refused = await execWithGuards([RevokedDeviceGuard as GuardCls]);
+
+    expect(refused.status).toBe(403);
+    expect(refused.body).toMatchObject({ statusCode: 403, error: "signalTestDevice.error.deviceRefused" });
+    expect(Err.is(Err.fromJSON(refused.body as never), "signalTestDevice.error.deviceRefused")).toBe(true);
     expect(guardTrace).not.toContain("exec");
   });
 
