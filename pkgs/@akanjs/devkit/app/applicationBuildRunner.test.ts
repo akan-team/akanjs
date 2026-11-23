@@ -127,6 +127,36 @@ console.info(new SampleService().name);
     }
   });
 
+  test("a variant on an env profile names it and asks for none of the secret env values the image's own lists", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
+    const config = new AkanAppConfig(
+      { name: "portal" } as never,
+      [],
+      { name: "repo", version: "1.0.0", description: "repo" },
+      { docker: { variants: { edge: { profile: "edge" }, mirror: {} } } },
+      { repoName: "akanjs", serveDomain: "akanjs.com", env: "local", portOffset: 0, workspaceRoot: root },
+    );
+    const app = {
+      getConfig: async () => config,
+      getScanInfo: () => ({ getLibs: () => [] }),
+      dist: new Executor("dist", root),
+      workspace: { workspaceRoot: root },
+      logger: { warn: () => undefined },
+    } as unknown as App;
+    const runner = new ApplicationBuildRunner(app, { environment: "debug" });
+    try {
+      await runner.buildAppMeta();
+      const [image, edge, mirror] = await Promise.all(
+        ["Dockerfile", "Dockerfile.edge", "Dockerfile.mirror"].map((name) => readFile(path.join(root, name), "utf8")),
+      );
+      expect(edge).toContain("ENV AKAN_ENV_PROFILE=edge\n");
+      expect(image).not.toContain("AKAN_ENV_PROFILE");
+      expect(mirror).toBe(image);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("writes beside main.js the env its Dockerfile sets, so a host without the image runs the build as is", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
     const config = new AkanAppConfig(
@@ -208,6 +238,66 @@ console.info(new SampleService().name);
     try {
       expect((await metaOf({ secretEnv: "read" })).AKAN_ENV_NAMES).toBe(names);
       expect(await metaOf({})).not.toHaveProperty("AKAN_ENV_NAMES");
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an image build checks each profile its variants name before any phase, and that variant's Dockerfile lists no secret env name", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeSecretEnvFixture(root, { app: "portal" });
+    await writeFile(
+      path.join(root, "apps/portal/akan.config.ts"),
+      'export default { docker: { variants: { edge: { profile: "edge" } } } };\n',
+    );
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    const started = async (options: ConstructorParameters<typeof ApplicationBuildRunner>[1]) => {
+      const app = AppExecutor.from(workspace, "portal");
+      spyOn(app.logger, "warn").mockImplementation(() => undefined);
+      app.prepareCommand = async () => {
+        throw new Error("stopped before the phases");
+      };
+      const runner = new ApplicationBuildRunner(app, options);
+      const failure = await runner.build().then(
+        () => "",
+        (error: Error) => error.message,
+      );
+      return { app, runner, failure };
+    };
+    const profileFile = path.join(root, "apps/portal/env/env.server.main.edge.ts");
+    try {
+      expect((await started({ secretEnv: "read" })).failure).toContain(
+        'The server env profile "edge" bundles env/env.server.main.edge.ts',
+      );
+      expect((await started({})).failure).toBe("stopped before the phases");
+
+      await writeFile(profileFile, 'export const env = { mailer: { auth: { pass: "sentinel-edge-pass" } } };\n');
+      const secret = await started({ secretEnv: "read" });
+      expect(secret.failure).toContain("env/env.server.main.edge.ts holds secret-named values");
+      expect(secret.failure).not.toContain("sentinel-edge-pass");
+
+      await writeFile(profileFile, 'export const env = { hostname: "edge-host" };\n');
+      const { app, runner, failure } = await started({ secretEnv: "read" });
+      expect(failure).toBe("stopped before the phases");
+      await runner.buildAppMeta();
+      const [image, edge] = await Promise.all(
+        ["Dockerfile", "Dockerfile.edge"].map((name) => readFile(path.join(app.dist.cwdPath, name), "utf8")),
+      );
+      expect(image).toContain("ENV AKAN_ENV_NAMES=JWT_SECRET,");
+      expect(image).not.toContain("AKAN_ENV_PROFILE");
+      expect(edge).toContain("ENV AKAN_ENV_PROFILE=edge\n");
+      expect(edge).not.toContain("AKAN_ENV_NAMES");
+      expect(edge.replace("ENV AKAN_ENV_PROFILE=edge\n", "")).toBe(image.replace(/ENV AKAN_ENV_NAMES=.*\n/, ""));
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];

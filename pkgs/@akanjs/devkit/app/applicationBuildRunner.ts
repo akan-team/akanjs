@@ -2,10 +2,11 @@ import path from "node:path";
 import { toError } from "akanjs/common";
 import { AppWorkerPath } from "akanjs/server/appWorkerPath";
 import { BUILD_ENV_FILE, BUILD_ENV_MODULE } from "akanjs/server/lifecycle/buildEnv";
+import { EnvProfile } from "akanjs/server/lifecycle/envProfile";
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
 import { AkanBin } from "../akanConfig/akanBin";
-import { DOCKER_IGNORED, DOCKER_VARIANT_FILE_PREFIX } from "../akanConfig/dockerImage";
+import { DOCKER_IGNORED, DOCKER_VARIANT_FILE_PREFIX, dockerProfilesOf } from "../akanConfig/dockerImage";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
 import type { App } from "../commandDecorators";
 import { LibExecutor, parseEnvFile, WorkspaceExecutor } from "../executors";
@@ -193,13 +194,14 @@ export class ApplicationBuildRunner {
     this.#spinner = spinner && process.stderr.isTTY;
     if (spinner && !this.#spinner) this.#reporter ??= ApplicationBuildReporter.create();
     if (this.#verify) this.#app.useVerifyDist();
-    const { web, assets, baseDevEnv } = await this.#app.getConfig();
+    const { web, assets, baseDevEnv, dockerVariants } = await this.#app.getConfig();
     const environment = this.#environment ?? baseDevEnv.env;
     WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, "akan build");
     this.#pinImageEnv(baseDevEnv, environment);
+    if (this.#secretEnv) this.#carriedProfiles = dockerProfilesOf(dockerVariants);
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
-    if (this.#profile)
-      await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile: this.#profile });
+    for (const profile of this.#profile ? [this.#profile] : this.#carriedProfiles)
+      await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile });
     if (this.#secretEnv) await this.#declareSecrets(environment);
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
     if (!this.#fast) await this.#runPhase("typecheck", "Typechecking", () => this.typecheck());
@@ -227,12 +229,10 @@ export class ApplicationBuildRunner {
             ? "skipped"
             : "disabled by akan.config.ts web.ssr",
     );
-    const leftOut = ServerEnvProfile.leftOutNotice(
-      this.#profile ?? "",
-      this.#app.workspace.workspaceRoot,
-      this.#libEnvsLeftOut,
-    );
-    if (leftOut) this.#app.logger.debug(leftOut);
+    for (const [profile, libEnvs] of this.#libEnvsLeftOut) {
+      const leftOut = ServerEnvProfile.leftOutNotice(profile, this.#app.workspace.workspaceRoot, libEnvs);
+      if (leftOut) this.#app.logger.debug(leftOut);
+    }
     if (this.#verify) {
       const routeJs = await this.#runBudgetPhase(environment);
       await this.#app.dist.writeJson(
@@ -312,6 +312,10 @@ export class ApplicationBuildRunner {
     const { logger, name } = this.#app;
     const names = variables.map((variable) => variable.name).join(", ");
     const count = `${variables.length} secret value${variables.length === 1 ? "" : "s"}`;
+    if (this.#carriedProfiles.length)
+      logger.info(
+        `The server also carries the env ${this.#carriedProfiles.length === 1 ? "profile" : "profiles"} ${this.#carriedProfiles.join(", ")}: ${EnvProfile.key}=<name> starts it on env/env.server.${environment}.<name>.ts, which reads no secret value.`,
+      );
     if (variables.length)
       logger.info(
         `The server reads ${count} from its process env when it starts, not from this build, and does not start while one is unset: ${names}. Set them where it is deployed; \`akan secret-env ${name} --env ${environment}\` lists them and writes them from the env file.`,
@@ -439,7 +443,14 @@ export class ApplicationBuildRunner {
       ...variants.map((variant) =>
         dist.writeFile(
           `${dist.cwdPath}/${DOCKER_VARIANT_FILE_PREFIX}${variant}`,
-          akanConfig.dockerfileFor(environment, { ...imageParts, variant }),
+          akanConfig.dockerfileFor(environment, {
+            ...imageParts,
+            //? A variant on a profile reads none of the names, so its Dockerfile asks a deployment for none.
+            ...(EnvProfile.key in akanConfig.dockerVariants[variant].env
+              ? { env: Object.fromEntries(Object.entries(imageParts.env).filter(([key]) => key !== SecretEnv.listKey)) }
+              : {}),
+            variant,
+          }),
           silent,
         ),
       ),
@@ -482,7 +493,8 @@ export class ApplicationBuildRunner {
   }
 
   #serverEnv: BunPlugin | null = null;
-  #libEnvsLeftOut = new Map<string, string[]>();
+  #carriedProfiles: string[] = [];
+  #libEnvsLeftOut = new Map<string, Map<string, string[]>>();
   //? One plugin for every server-side bundle of the build: the backend, the RSC worker and the SSR route bundle.
   #serverEnvPlugin(baseEnv: string, branches: Iterable<string>): BunPlugin {
     this.#serverEnv ??= createServerEnvPlugin({
@@ -490,9 +502,12 @@ export class ApplicationBuildRunner {
       environment: this.#environment ?? baseEnv,
       environments: ["local", "testing", ...branches],
       profile: this.#profile,
+      profiles: this.#carriedProfiles,
       secrets: this.#secretEnv,
-      onLibEnv: (file, { profileFile, stripped }) => {
-        if (!profileFile && stripped.length) this.#libEnvsLeftOut.set(file, stripped);
+      onLibEnv: (file, { profile, profileFile, stripped }) => {
+        if (profileFile || !stripped.length) return;
+        const libEnvs = this.#libEnvsLeftOut.get(profile) ?? new Map<string, string[]>();
+        this.#libEnvsLeftOut.set(profile, libEnvs.set(file, stripped));
       },
     });
     return this.#serverEnv;
@@ -517,8 +532,13 @@ export class ApplicationBuildRunner {
       target: "bun",
       minify: AKAN_BACKEND_MINIFY,
       naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" },
-      // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
-      define: { "process.env.NODE_ENV": JSON.stringify("production") },
+      define: {
+        // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
+        "process.env.NODE_ENV": JSON.stringify("production"),
+        [`process.env.${EnvProfile.carriedKey}`]: JSON.stringify(
+          EnvProfile.format(this.#profile ? [this.#profile] : this.#carriedProfiles),
+        ),
+      },
     } satisfies Omit<Bun.BuildConfig, "entrypoints">;
     const serverEnvPlugin = this.#serverEnvPlugin(baseDevEnv.env, branches);
     const backendConfig = {

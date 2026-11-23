@@ -18,6 +18,7 @@ import {
   dockerfileLayoutOf,
   dockerfileOf,
   dockerfileSections,
+  dockerProfilesOf,
 } from "./dockerImage";
 import type { LibConfigInput } from "./types";
 
@@ -515,6 +516,43 @@ describe("AkanAppConfig", () => {
       'declares no docker variant "kiosk"',
     );
     expect(configOf("FROM scratch").dockerVariants).toEqual({});
+  });
+
+  test("a variant's profile becomes its AKAN_ENV_PROFILE line and one of the profiles an image build carries", () => {
+    const configOf = (docker: string | object) => new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv);
+    const config = configOf({
+      env: { EDGE_MODE: "camera" },
+      variants: {
+        edge: { profile: "edge", env: { AKAN_PUBLIC_OPERATION_MODE: "edge" } },
+        kiosk: { profile: "edge" },
+        desk: { profile: "desk" },
+        plain: {},
+      },
+    });
+    expect(dockerProfilesOf(config.dockerVariants)).toEqual(["edge", "desk"]);
+    expect(config.dockerVariants.edge.env).toEqual({
+      EDGE_MODE: "camera",
+      AKAN_PUBLIC_OPERATION_MODE: "edge",
+      AKAN_ENV_PROFILE: "edge",
+    });
+    expect(config.dockerfileFor("main", { variant: "edge" })).toContain("ENV AKAN_ENV_PROFILE=edge\n");
+    expect(config.dockerfileFor("main", { variant: "plain" })).not.toContain("AKAN_ENV_PROFILE");
+    expect(config.dockerfileFor("main")).not.toContain("AKAN_ENV_PROFILE");
+    expect(dockerProfilesOf(configOf({}).dockerVariants)).toEqual([]);
+    expect(dockerProfilesOf(configOf("FROM scratch").dockerVariants)).toEqual([]);
+  });
+
+  test("refuses a profile that is no profile name, and AKAN_ENV_PROFILE set as a plain env line", () => {
+    const configOf = (docker: string | object) => new AkanAppConfig(app, [], packageJson, { docker }, baseDevEnv);
+    expect(() => configOf({ variants: { edge: { profile: "Edge Box" } } })).toThrow(
+      'docker.variants.edge.profile is "Edge Box", which is not a server env profile name',
+    );
+    expect(() => configOf({ env: { AKAN_ENV_PROFILE: "edge" } })).toThrow(
+      "docker.env sets AKAN_ENV_PROFILE, which the build has to know to carry the profile: name it as docker.variants.<name>.profile",
+    );
+    expect(() => configOf({ variants: { edge: { env: { AKAN_ENV_PROFILE: "edge" } } } })).toThrow(
+      "docker.variants.edge.env sets AKAN_ENV_PROFILE",
+    );
   });
 
   test("opens the Dockerfile with its format and marks each section it wrote, so a tool finds one without matching its instructions", () => {

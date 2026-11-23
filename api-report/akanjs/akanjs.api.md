@@ -400,7 +400,9 @@ export type DockerRun = string | {
     [key in Arch]?: string;
 };
 
-export type DockerVariantOption = Partial<DockerImageConfig>;
+export type DockerVariantOption = Partial<DockerImageConfig> & {
+    profile?: string;
+};
 
 export interface FileConventionScanResult {
     constant: {

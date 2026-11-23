@@ -151,3 +151,44 @@ test("a server that runs in one process exits non-zero before it loads the serve
   }
   expect(await readFile(outputPath, "utf8")).toContain("server module loaded");
 }, 20_000);
+
+test("a server started on an env profile its build carries owes none of the secret env values, and one it lacks refuses", async () => {
+  const root = await makeRoot();
+  const serverPath = path.join(root, "server.ts");
+  const mainPath = path.join(root, "main.ts");
+  const outputPath = path.join(root, "output.log");
+  await Bun.write(
+    serverPath,
+    'console.error("server module loaded");\nexport const server = { start: async () => undefined };\n',
+  );
+  await Bun.write(
+    mainPath,
+    `import { AkanApp } from ${JSON.stringify(path.join(import.meta.dir, "akanApp.ts"))};\nawait new AkanApp(${JSON.stringify(serverPath)}, { solo: true, runtimeDir: ${JSON.stringify(path.join(root, "runtime"))} }).start();\n`,
+  );
+  const output = openSync(outputPath, "a");
+  //? Unbundled, the variable stands in for the literal a build writes over the read of AKAN_BUILD_ENV_PROFILES.
+  const run = async (env: { [name: string]: string }) => {
+    const proc = Bun.spawn([process.execPath, mainPath], {
+      cwd: root,
+      env: { ...process.env, AKAN_ENV_NAMES: "FIXTURE__TOKEN", AKAN_BUILD_ENV_PROFILES: "edge", ...env },
+      stdout: output,
+      stderr: output,
+    });
+    return await proc.exited;
+  };
+  try {
+    expect(await run({ AKAN_ENV_PROFILE: "desk" })).not.toBe(0);
+    const refused = await readFile(outputPath, "utf8");
+    expect(refused).toContain(
+      "AKAN_ENV_PROFILE=desk names a server env profile this server was not built with (it carries edge)",
+    );
+    expect(refused).not.toContain("server module loaded");
+    expect(await run({ AKAN_ENV_PROFILE: "edge" })).toBe(0);
+    expect(await run({})).not.toBe(0);
+  } finally {
+    closeSync(output);
+  }
+  const logged = await readFile(outputPath, "utf8");
+  expect(logged.match(/server module loaded/g)).toHaveLength(1);
+  expect(logged).toContain("so it does not start: FIXTURE__TOKEN.");
+}, 20_000);

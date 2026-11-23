@@ -338,6 +338,8 @@ A library contributes to five of these: its own externalLibs, trustedDependencie
 
 **env sets the image's defaults, and variants writes a second image.** `env` is laid over the `ENV` lines the build writes, so the image starts with it unless the deployment says otherwise. It is tracked and readable in the image, so never a secret, and `bun main.js` on a host does not get it. Each entry of `variants` is written beside the Dockerfile as `Dockerfile.<name>` (`docker build -f Dockerfile.edge .`): the app's `docker` with every field the variant names replaced whole, so `preRuns: []` drops the app's steps there, while its `env` is laid over the app's key by key and a library's steps reach every variant. Split an image by what it is for, a device or a control plane, this way rather than by architecture.
 
+**A variant's profile gives that image its own server env.** `profile: "edge"` makes the one build carry `env/env.server.<env>.edge.ts` beside the environment's own env file and writes `ENV AKAN_ENV_PROFILE=edge` into `Dockerfile.edge`, which picks it as the server starts. A profile file may hold no secret, so that image asks for none of the secret values the other one reads from its process env, and the env file that was not picked is never evaluated. A server started with a profile its build did not carry refuses to start.
+
 **The build writes a .dockerignore.** A build started by hand in `dist/apps/<app>` writes its database beside `main.js`, so `sqlite`, `local`, `runtime`, `data`, the image cache and `node_modules` stay out of the image.
 
 **A tool that edits the generated Dockerfile finds its place by a marker.** The file opens with `# akan:dockerfile 1`, and each section starts at a comment: `# akan:install-stage` (only with `crossBuild`), `# akan:base`, `# akan:pre-runs`, `# akan:install`, `# akan:post-runs` and `# akan:app`, a section with no instruction left out. The number rises when the sections change, so a tool that meets one it does not know says so instead of skipping its edit. `dockerfileLayoutOf` from `@akanjs/devkit/akanConfig` reads them, and `dockerfileOf` there is the generator itself. A Dockerfile written as a string carries no marker.
@@ -783,7 +785,7 @@ const config: AppConfig = {
     crossBuild: true,
     env: { REGION: "seoul" },
     variants: {
-      edge: { preRuns: [], env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
+      edge: { preRuns: [], profile: "edge", env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
     },
   },
 };
