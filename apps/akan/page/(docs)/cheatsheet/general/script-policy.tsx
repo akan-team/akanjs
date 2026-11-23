@@ -9,8 +9,8 @@ export default page()
     const title = lang === "ko" ? "일반: 스크립트 정책 | Akan.js" : "General: Script Policy | Akan.js";
     const description =
       lang === "ko"
-        ? "페이지가 보내는 script-src 정책, 직접 쓴 인라인 스크립트를 해시나 nonce로 허용하는 방법, 위반 보고를 보는 방법."
-        : "The script-src policy a page sends, how to name your own inline scripts by hash or nonce, and how to see reports.";
+        ? "페이지가 강제하는 script-src 정책, 직접 쓴 인라인 스크립트를 해시나 nonce로 허용하는 방법, 위반 보고가 가는 곳."
+        : "The script-src policy a page enforces, how to name your own inline scripts by hash or nonce, and where reports go.";
     return (
       <>
         <title>{title}</title>
@@ -29,7 +29,7 @@ export default page()
       { key: "response", label: l.trans({ en: "Response", ko: "응답" }) },
       {
         key: "policy",
-        label: l.trans({ en: "script-src it reports against", ko: "보고 기준이 되는 script-src" }),
+        label: l.trans({ en: "script-src it enforces", ko: "강제하는 script-src" }),
         code: true,
       },
     ];
@@ -131,10 +131,10 @@ export default page()
           en: "An MCP app view, a native app's index.html",
           ko: "MCP 앱 뷰, 네이티브 앱의 index.html",
         }),
-        where: "server/mcp/McpAppShell.ts, @akanjs/native",
+        where: "server/mcp/McpAppShell.ts, server/mcp/McpAppFrame.ts, @akanjs/native",
         how: l.trans({
-          en: "Not served as a page: the MCP host's sandbox sets the view's policy, and a native build hashes its own index.html.",
-          ko: "페이지로 제공되지 않습니다: MCP 호스트의 샌드박스가 뷰의 정책을 정하고, 네이티브 빌드는 자기 index.html을 해시합니다.",
+          en: "Not under this policy: an MCP host's sandbox sets a view's, a view a page draws runs in /_akan/app-frame, which sandboxes itself, and a native build hashes its own index.html.",
+          ko: "이 정책 밖입니다: MCP 호스트의 샌드박스가 뷰의 정책을 정하고, 페이지가 그리는 뷰는 스스로 샌드박스되는 /_akan/app-frame 안에서 돌며, 네이티브 빌드는 자기 index.html을 해시합니다.",
         }),
       },
     ];
@@ -143,27 +143,30 @@ export default page()
       {
         key: "AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY",
         type: "string",
+        default: "off",
         desc: l.trans({
-          en: "`off` drops the report-only header. Any other value is sent as written in its place, with no hash or nonce added.",
-          ko: "`off`면 report-only 헤더를 보내지 않습니다. 다른 값은 해시나 nonce를 붙이지 않고 그대로 대신 보냅니다.",
+          en: "`on` sends the script policy as `Content-Security-Policy-Report-Only` instead, so the browser reports what it would refuse and runs it. Any other value is sent as a report-only header of its own, as written.",
+          ko: "`on`이면 스크립트 정책을 `Content-Security-Policy-Report-Only`로 대신 보내, 브라우저가 막았을 것을 보고만 하고 실행합니다. 다른 값은 그대로 별도의 report-only 헤더로 보냅니다.",
         }),
-        example: "AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=off",
+        example: "AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=on",
       },
       {
         key: "AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC",
         type: "string",
+        default: "'wasm-unsafe-eval'",
         desc: l.trans({
-          en: "Source expressions added to every response's script-src, separated by spaces: `'wasm-unsafe-eval'` for a page that compiles WebAssembly, or the hash of a snippet every page carries.",
-          ko: "모든 응답의 script-src에 추가할 source 표현식으로, 공백으로 구분합니다: WebAssembly를 컴파일하는 페이지라면 `'wasm-unsafe-eval'`, 모든 페이지에 있는 스니펫이라면 그 해시.",
+          en: "The source expressions that end every response's script-src, separated by spaces, in place of the default: keep `'wasm-unsafe-eval'` in it while a page compiles WebAssembly. `off` adds none.",
+          ko: "모든 응답의 script-src 끝에 붙는 source 표현식으로, 공백으로 구분하며 기본값을 대체합니다: WebAssembly를 컴파일하는 페이지가 있으면 `'wasm-unsafe-eval'`을 남겨 두세요. `off`면 아무것도 붙이지 않습니다.",
         }),
-        example: "AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC='wasm-unsafe-eval'",
+        example: "AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC=\"'wasm-unsafe-eval' 'sha256-…'\"",
       },
       {
         key: "AKAN_CONTENT_SECURITY_POLICY_REPORT_URI",
         type: "string",
+        default: "/_akan/csp-report",
         desc: l.trans({
-          en: "Where the browser posts each report: added as `report-uri` and `report-to`, with a `Reporting-Endpoints` header.",
-          ko: "브라우저가 보고를 보내는 곳: `report-uri`와 `report-to`로 추가되고 `Reporting-Endpoints` 헤더가 함께 갑니다.",
+          en: "Where the browser posts each report, as `report-uri` and `report-to` with a `Reporting-Endpoints` header. `off` asks for none.",
+          ko: "브라우저가 보고를 보내는 곳으로, `report-uri`와 `report-to`, `Reporting-Endpoints` 헤더로 들어갑니다. `off`면 보고를 받지 않습니다.",
         }),
         example: "AKAN_CONTENT_SECURITY_POLICY_REPORT_URI=https://reports.example.com/csp",
       },
@@ -172,8 +175,8 @@ export default page()
         type: "string",
         default: "frame-ancestors 'self'; base-uri 'self'",
         desc: l.trans({
-          en: "The enforced policy, as before: a value replaces it and `off` drops it. It does not change the report-only header.",
-          ko: "강제되는 정책으로 이전과 같습니다: 값을 주면 대체하고 `off`면 보내지 않습니다. report-only 헤더는 바꾸지 않습니다.",
+          en: "The enforced policy besides script-src. A value replaces the whole enforced policy as written and `off` drops it; either way the script policy then only reports.",
+          ko: "script-src를 뺀 강제 정책입니다. 값을 주면 강제 정책 전체를 그대로 대체하고 `off`면 보내지 않으며, 어느 쪽이든 스크립트 정책은 보고만 합니다.",
         }),
       },
     ];
@@ -187,19 +190,16 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    Every HTML response carries <code>Content-Security-Policy-Report-Only</code> with a{" "}
-                    <code>script-src</code> that names each script the framework writes. In 3.4 the browser only reports
-                    what the policy would refuse; 3.5.0 moves the same <code>script-src</code> into the enforced{" "}
-                    <code>Content-Security-Policy</code>. An app with no inline script of its own has nothing to do.
+                    Every HTML response's <code>Content-Security-Policy</code> carries a <code>script-src</code> that
+                    names each script the framework writes. The browser refuses any other inline script and reports it
+                    to the app. An app with no inline script of its own has nothing to do.
                   </span>
                 ),
                 ko: (
                   <span>
-                    모든 HTML 응답은 프레임워크가 쓰는 스크립트를 하나하나 허용하는 <code>script-src</code>를{" "}
-                    <code>Content-Security-Policy-Report-Only</code>로 보냅니다. 3.4에서는 정책이 막았을 것을 브라우저가
-                    보고만 하고, 3.5.0에서는 같은 <code>script-src</code>가 강제되는{" "}
-                    <code>Content-Security-Policy</code>로 옮겨집니다. 직접 쓴 인라인 스크립트가 없는 앱은 할 일이
-                    없습니다.
+                    모든 HTML 응답의 <code>Content-Security-Policy</code>에는 프레임워크가 쓰는 스크립트를 하나하나
+                    허용하는 <code>script-src</code>가 들어 있습니다. 브라우저는 그 밖의 인라인 스크립트를 막고 앱에
+                    보고합니다. 직접 쓴 인라인 스크립트가 없는 앱은 할 일이 없습니다.
                   </span>
                 ),
               })}
@@ -229,12 +229,16 @@ export default page()
                 {l.trans({
                   en: (
                     <span>
-                      The enforced header is unchanged: <code>frame-ancestors 'self'; base-uri 'self'</code>.
+                      It follows <code>frame-ancestors 'self'; base-uri 'self'</code> in the same header, and ends with{" "}
+                      <code>'wasm-unsafe-eval'</code>, so WebAssembly compiles, then{" "}
+                      <code>report-uri /_akan/csp-report; report-to akan-csp</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      강제되는 헤더는 그대로입니다: <code>frame-ancestors 'self'; base-uri 'self'</code>.
+                      같은 헤더에서 <code>frame-ancestors 'self'; base-uri 'self'</code> 뒤에 오고, WebAssembly가
+                      컴파일되도록 <code>'wasm-unsafe-eval'</code>로 끝난 다음{" "}
+                      <code>report-uri /_akan/csp-report; report-to akan-csp</code>가 붙습니다.
                     </span>
                   ),
                 })}
@@ -285,16 +289,16 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    An inline <code>{"<script>"}</code> a <code>.head()</code> or a layout writes is reported until the
+                    An inline <code>{"<script>"}</code> a <code>.head()</code> or a layout writes is refused until the
                     policy names it. Name a constant snippet by hash with <code>scriptHashes()</code>: the page stays
-                    cacheable, and the hash is the one the browser prints in its console report.
+                    cacheable, and the hash is the one the browser prints in its console error.
                   </span>
                 ),
                 ko: (
                   <span>
                     <code>.head()</code>나 레이아웃이 쓰는 인라인 <code>{"<script>"}</code>는 정책이 허용하기 전까지
-                    보고됩니다. 고정된 스니펫은 <code>scriptHashes()</code>로 해시를 알려 주세요: 페이지는 계속
-                    캐시되고, 해시는 브라우저가 콘솔 보고에 출력하는 그 값입니다.
+                    막힙니다. 고정된 스니펫은 <code>scriptHashes()</code>로 해시를 알려 주세요: 페이지는 계속 캐시되고,
+                    해시는 브라우저가 콘솔 오류에 출력하는 그 값입니다.
                   </span>
                 ),
               })}
@@ -397,8 +401,8 @@ export default layout()
           <Docs.Description>
             <div>
               {l.trans({
-                en: "A report-only violation shows in the browser console as a [Report Only] line that names the script and the hash that would allow it. To collect them from real visitors, point the header at an endpoint that accepts the browser's JSON report.",
-                ko: "report-only 위반은 브라우저 콘솔에 [Report Only] 줄로 나타나고, 스크립트와 그것을 허용할 해시를 알려 줍니다. 실제 방문자의 보고를 모으려면 브라우저의 JSON 보고를 받는 endpoint를 헤더에 지정하세요.",
+                en: "A refused script shows in the browser console as an error naming the directive and, for an inline script, the hash that would allow it. The browser also posts a report to /_akan/csp-report, which logs one [ScriptPolicy] warning per route, directive and blocked source, up to 512 kinds a process, keeping no query string. Every post gets the same empty answer.",
+                ko: "막힌 스크립트는 브라우저 콘솔에 지시어와, 인라인 스크립트라면 그것을 허용할 해시를 알려 주는 오류로 나타납니다. 브라우저는 /_akan/csp-report에도 보고를 보내고, 서버는 route, 지시어, 막힌 출처마다 [ScriptPolicy] 경고를 한 번 로그에 남깁니다 (프로세스마다 최대 512종류, 쿼리 문자열은 남기지 않음). 모든 요청에 같은 빈 응답을 돌려줍니다.",
               })}
             </div>
             <Docs.OptionTable items={settingRows} />
@@ -516,34 +520,58 @@ else window.addEventListener("load", onLoad, { once: true });`}
         </Scroll.Slide>
         <Divider />
 
-        <Scroll.Slide id="enforcement" title={l.trans({ en: "What 3.5.0 Enforces", ko: "3.5.0이 강제하는 것" })}>
-          <Docs.Title>{l.trans({ en: "What 3.5.0 Enforces", ko: "3.5.0이 강제하는 것" })}</Docs.Title>
+        <Scroll.Slide id="upgrading" title={l.trans({ en: "Upgrading", ko: "업그레이드" })}>
+          <Docs.Title>{l.trans({ en: "Upgrading", ko: "업그레이드" })}</Docs.Title>
           <Docs.Description>
             <ul className={bulletList}>
               <li>
                 {l.trans({
-                  en: "The script-src above joins the enforced Content-Security-Policy, so a script it does not name stops running instead of being reported.",
-                  ko: "위의 script-src가 강제되는 Content-Security-Policy에 들어가, 허용되지 않은 스크립트는 보고되는 대신 실행되지 않습니다.",
-                })}
-              </li>
-              <li>
-                {l.trans({
-                  en: "Before upgrading, load your pages on 3.4 with the console open (or collect reports for a release) until none is left.",
-                  ko: "업그레이드 전에 3.4에서 콘솔을 열고 페이지를 불러 (또는 한 릴리스 동안 보고를 모아) 보고가 남지 않게 하세요.",
+                  en: (
+                    <span>
+                      Load your pages with the console open, or deploy once with{" "}
+                      <code>AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=on</code>, which only reports, and read the{" "}
+                      <code>[ScriptPolicy]</code> warnings until no new one comes.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      콘솔을 열고 페이지를 불러 보거나, 보고만 하는{" "}
+                      <code>AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=on</code>으로 한 번 배포해{" "}
+                      <code>[ScriptPolicy]</code> 경고가 더 나오지 않을 때까지 확인하세요.
+                    </span>
+                  ),
                 })}
               </li>
               <li>
                 {l.trans({
                   en: (
                     <span>
-                      <code>AKAN_CONTENT_SECURITY_POLICY</code> stays the override: a value replaces the enforced policy
-                      whole, and <code>off</code> drops it.
+                      Name each inline script of your own with <code>scriptHashes()</code> or{" "}
+                      <code>nonce={"{scriptNonce()}"}</code>, and move <code>onclick="…"</code> attributes and{" "}
+                      <code>javascript:</code> URLs into a component's handler.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <code>AKAN_CONTENT_SECURITY_POLICY</code>는 계속 override입니다: 값을 주면 강제 정책 전체를
-                      대체하고 <code>off</code>면 보내지 않습니다.
+                      직접 쓴 인라인 스크립트는 <code>scriptHashes()</code>나 <code>nonce={"{scriptNonce()}"}</code>로
+                      허용하고, <code>onclick="…"</code> 속성과 <code>javascript:</code> URL은 컴포넌트의 핸들러로
+                      옮기세요.
+                    </span>
+                  ),
+                })}
+              </li>
+              <li>
+                {l.trans({
+                  en: (
+                    <span>
+                      An <code>AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC</code> from before replaces the default now: add{" "}
+                      <code>'wasm-unsafe-eval'</code> to it if a page compiles WebAssembly.
+                    </span>
+                  ),
+                  ko: (
+                    <span>
+                      이전부터 쓰던 <code>AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC</code>는 이제 기본값을 대체합니다:
+                      WebAssembly를 컴파일하는 페이지가 있으면 <code>'wasm-unsafe-eval'</code>을 넣으세요.
                     </span>
                   ),
                 })}

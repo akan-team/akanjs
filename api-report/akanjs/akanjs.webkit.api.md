@@ -30,6 +30,7 @@ export interface McpAppBootProps {
 export declare class McpAppHost {
     static readonly protocolVersion = "2026-01-26";
     static readonly maxHeight = 4000;
+    static readonly framePath: "/_akan/app-frame";
     constructor(props: McpAppHostProps);
     receive(data: unknown): void;
     contextChanged(): void;
@@ -44,6 +45,7 @@ export interface McpAppHostProps {
     context: () => McpHostContext;
     onSize?: (height: number) => void;
     name?: string;
+    html?: string;
 }
 
 export interface McpAppRootProps {

@@ -1,4 +1,4 @@
-import { isOff, ScriptPolicy, type ScriptPolicySources } from "./scriptPolicy";
+import { type DocumentPolicy, isOff, ScriptPolicy, type ScriptPolicySources } from "./scriptPolicy";
 
 export interface AssetHeaderOptions {
   contentType: string;
@@ -10,26 +10,23 @@ export interface AssetHeaderOptions {
 // Referrer-Policy: paths carry ids. X-Frame-Options (HTML only): stops clickjacking of cookie-authenticated pages.
 export const applySecurityHeaders = (
   headers: Headers,
-  { html = false, scripts }: { html?: boolean; scripts?: ScriptPolicySources } = {},
+  { html = false, scripts, directives }: { html?: boolean; scripts?: ScriptPolicySources; directives?: string } = {},
 ): Headers => {
   headers.set("X-Content-Type-Options", "nosniff");
   headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
   if (!html) return headers;
   headers.set("X-Frame-Options", "SAMEORIGIN");
-  const policy = htmlContentSecurityPolicy();
-  if (policy) headers.set("Content-Security-Policy", policy);
-  return ScriptPolicy.apply(headers, scripts);
+  return ScriptPolicy.apply(headers, scripts, directives ? { directives, own: true } : htmlContentSecurityPolicy());
 };
 
 export { isOff };
 
-//? No script-src in the enforced policy yet: the report-only header beside it carries one (`ScriptPolicy`).
 //? base-uri: an injected <base> would re-point the root-relative module scripts and import map at another origin.
 export const DEFAULT_HTML_CONTENT_SECURITY_POLICY = "frame-ancestors 'self'; base-uri 'self'";
 
-export const htmlContentSecurityPolicy = (raw = process.env.AKAN_CONTENT_SECURITY_POLICY?.trim()): string | null => {
-  if (!raw || /[\r\n]/.test(raw)) return DEFAULT_HTML_CONTENT_SECURITY_POLICY;
-  return isOff(raw) ? null : raw;
+export const htmlContentSecurityPolicy = (raw = process.env.AKAN_CONTENT_SECURITY_POLICY?.trim()): DocumentPolicy => {
+  if (!raw || /[\r\n]/.test(raw)) return { directives: DEFAULT_HTML_CONTENT_SECURITY_POLICY, own: true };
+  return { directives: isOff(raw) ? null : raw, own: false };
 };
 
 export const DEFAULT_STRICT_TRANSPORT_SECURITY = "max-age=31536000";

@@ -1,4 +1,4 @@
-import type { McpJsonRpcMessage, McpToolResult } from "../signal/mcp/mcpProtocol";
+import { MCP_APP_FRAME, type McpJsonRpcMessage, type McpToolResult } from "../signal/mcp/mcpProtocol";
 import type { McpHostContext } from "./McpAppBridge";
 
 export interface McpAppHostProps {
@@ -13,6 +13,8 @@ export interface McpAppHostProps {
   context: () => McpHostContext;
   onSize?: (height: number) => void;
   name?: string;
+  /** The view's document, for a frame at `McpAppHost.framePath`, which asks for it once it loads. */
+  html?: string;
 }
 
 // The host half of MCP Apps (SEP-1865) for one view: what `McpAppBridge` talks to. Security: every message is the
@@ -21,10 +23,12 @@ export interface McpAppHostProps {
 export class McpAppHost {
   static readonly protocolVersion = "2026-01-26";
   static readonly maxHeight = 4_000;
+  static readonly framePath = MCP_APP_FRAME.path;
 
   readonly #props: McpAppHostProps;
   readonly #calls = new Map<string | number, AbortController>();
   #started = false;
+  #written = false;
   #disposed = false;
 
   constructor(props: McpAppHostProps) {
@@ -50,7 +54,8 @@ export class McpAppHost {
   }
 
   #notified(method: string, params: Record<string, unknown>) {
-    if (method === "ui/notifications/initialized") void this.#start();
+    if (method === MCP_APP_FRAME.ready) this.#write();
+    else if (method === "ui/notifications/initialized") void this.#start();
     else if (method === "notifications/cancelled") this.#calls.get(params.requestId as string | number)?.abort();
     else if (method === "ui/notifications/size-changed") {
       const { height } = params;
@@ -107,6 +112,14 @@ export class McpAppHost {
       result = { isError: true, content: [{ type: "text", text }] };
     }
     this.#post({ method: "ui/notifications/tool-result", params: result as Record<string, unknown> });
+  }
+
+  //? Once: the view's document replaces the frame's, so a second ask comes from the view's own script.
+  #write() {
+    const { html } = this.#props;
+    if (html === undefined || this.#written) return;
+    this.#written = true;
+    this.#post({ method: MCP_APP_FRAME.document, params: { html } });
   }
 
   #post(message: Omit<McpJsonRpcMessage, "jsonrpc">) {

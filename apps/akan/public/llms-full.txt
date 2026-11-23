@@ -5747,17 +5747,17 @@ Headings:
 - Reports And Settings
 - The Framework's Scripts
 - What Changes In A Page
-- What 3.5.0 Enforces
+- Upgrading
 
 Script Policy
 
-Every HTML response carries `Content-Security-Policy-Report-Only` with a `script-src` that names each script the framework writes. In 3.4 the browser only reports what the policy would refuse; 3.5.0 moves the same `script-src` into the enforced `Content-Security-Policy`. An app with no inline script of its own has nothing to do.
+Every HTML response's `Content-Security-Policy` carries a `script-src` that names each script the framework writes. The browser refuses any other inline script and reports it to the app. An app with no inline script of its own has nothing to do.
 
 What each response sends
 
 Response
 
-script-src it reports against
+script-src it enforces
 
 - A server-rendered page — 'self' 'nonce-…' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<import map>' 'strict-dynamic'
 

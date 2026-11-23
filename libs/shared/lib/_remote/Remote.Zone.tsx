@@ -144,6 +144,7 @@ export const View = ({ className, url, tool, args, uri, href, height = 360 }: Vi
         ...(theme === "dark" || theme === "light" ? { theme } : {}),
       }),
       onSize: setSize,
+      html,
     });
     const receive = (event: MessageEvent) => {
       if (event.source === frame.current?.contentWindow) appHost.receive(event.data);
@@ -172,7 +173,7 @@ export const View = ({ className, url, tool, args, uri, href, height = 360 }: Vi
           sandbox="allow-scripts"
           referrerPolicy="no-referrer"
           height={size}
-          srcDoc={html}
+          src={McpAppHost.framePath}
         />
       ) : (
         <p className="px-3 py-4 text-center text-muted-foreground text-sm">

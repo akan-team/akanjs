@@ -29,7 +29,12 @@ import { RenderBusyResponse } from "./renderBusyResponse";
 import { RouteCacheTally } from "./routeCacheTally";
 import { RscRenderRefusal } from "./rscRenderRefusal";
 import { RscWorker } from "./rscWorkerHost";
-import { MAX_RESPONSE_SCRIPT_HASHES, SCRIPT_POLICY_REPORT_ONLY_HEADER, ScriptPolicy } from "./scriptPolicy";
+import {
+  MAX_RESPONSE_SCRIPT_HASHES,
+  SCRIPT_POLICY_HEADER,
+  SCRIPT_POLICY_REPORT_ONLY_HEADER,
+  ScriptPolicy,
+} from "./scriptPolicy";
 import { SsrInlineScripts } from "./ssrInlineScripts";
 import { createSubRouteIndexResponse, createSystemPageResponse } from "./systemPages";
 import { type BaseBuildArtifact, defaultAkanImageConfig } from "./types";
@@ -78,7 +83,7 @@ interface PageScripts {
 //* What a browser checks against `script-src … 'strict-dynamic'`: an inline script or import map needs its hash or
 //* the response's nonce, and a script the parser loads by URL needs the nonce, since 'self' no longer admits it.
 const scriptsOf = (html: string, { headers }: Response): PageScripts => {
-  const policy = headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "";
+  const policy = headers.get(SCRIPT_POLICY_HEADER) ?? "";
   const nonce = /'nonce-([^']+)'/.exec(policy)?.[1];
   const hashes = new Set(policy.match(/'sha256-[^']+'/g) ?? []);
   const nonced = (attrs: string) => nonce !== undefined && attrs.includes(`nonce="${nonce}"`);
@@ -431,123 +436,127 @@ describe("HTML response classes", () => {
     expect(sent).toEqual({
       "Akan Studio": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'sha256-<script of this page>' 'strict-dynamic' 'unsafe-eval'",
+        "content-security-policy":
+          "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'; script-src 'self' 'sha256-<script of this page>' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
       },
       "a page no route matches": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "a page that redirects after its first byte": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "a page that streams a boundary in": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "a page whose head declares a script hash": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'sha256-<declared by the page>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'sha256-<declared by the page>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "a page whose head reads the nonce": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "a server-rendered page": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "a server-rendered page in dev": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'unsafe-eval'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "a server-rendered page over https": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "strict-transport-security": "max-age=31536000",
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the CSR dev shell": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'nonce-<response>' 'strict-dynamic' 'unsafe-eval'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the CSR document": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'sha256-<script of this page>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'sha256-<script of this page>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the CSR document in dev": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'nonce-<response>' 'sha256-<script of this page>' 'strict-dynamic' 'unsafe-eval'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'sha256-<script of this page>' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the CSR route with no built document": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'nonce-<response>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the OAuth error page": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
@@ -559,50 +568,55 @@ describe("HTML response classes", () => {
       },
       "the error system page in dev": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'nonce-<response>' 'strict-dynamic' 'unsafe-eval'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'nonce-<response>' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the gateway status page": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'sha256-<script of this page>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'sha256-<script of this page>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the not-found system page": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the page a full render queue answers": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'sha256-<script of this page>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'sha256-<script of this page>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the same page replayed from the HTML cache": {
         "cache-control": "no-cache",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only":
-          "script-src 'self' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'sha256-<script of this page>' 'sha256-<script of this page>' 'sha256-<script of this page>' 'sha256-<script of this page>' 'strict-dynamic'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'sha256-<bootstrap>' 'sha256-<flush>' 'sha256-<importmap>' 'sha256-<script of this page>' 'sha256-<script of this page>' 'sha256-<script of this page>' 'sha256-<script of this page>' 'strict-dynamic' 'wasm-unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
       "the sub-route index": {
         "cache-control": "no-store",
-        "content-security-policy": "frame-ancestors 'self'; base-uri 'self'",
-        "content-security-policy-report-only": "script-src 'self' 'strict-dynamic' 'unsafe-eval'",
+        "content-security-policy":
+          "frame-ancestors 'self'; base-uri 'self'; script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval' 'unsafe-eval'; report-uri /_akan/csp-report; report-to akan-csp",
         "referrer-policy": "strict-origin-when-cross-origin",
+        "reporting-endpoints": 'akan-csp="/_akan/csp-report"',
         "x-content-type-options": "nosniff",
         "x-frame-options": "SAMEORIGIN",
       },
@@ -614,15 +628,15 @@ describe("HTML response classes", () => {
       const { get, cache } = documentsOf(true);
       const hashed = await get("/en/hashed");
       expect(await hashed.text()).toContain(`<script>${declaredSnippet}</script>`);
-      expect(hashed.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER)).toContain(`'${declaredHash}'`);
+      expect(hashed.headers.get(SCRIPT_POLICY_HEADER)).toContain(`'${declaredHash}'`);
       await stored(cache, 1);
       const replayed = await get("/en/hashed");
       expect(replayed.headers.get("X-Akan-Cache")).toBe("HIT");
-      expect(replayed.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER)).toContain(`'${declaredHash}'`);
+      expect(replayed.headers.get(SCRIPT_POLICY_HEADER)).toContain(`'${declaredHash}'`);
       expect(scriptsOf(await replayed.text(), replayed).uncovered).toEqual([]);
 
       const nonced = await get("/en/nonced");
-      const nonce = /'nonce-([^']+)'/.exec(nonced.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "")?.[1];
+      const nonce = /'nonce-([^']+)'/.exec(nonced.headers.get(SCRIPT_POLICY_HEADER) ?? "")?.[1];
       expect(await nonced.text()).toContain(`<script nonce="${nonce}">${noncedSnippet}</script>`);
       await (await get("/en/nonced")).text();
       await Bun.sleep(50);
@@ -635,11 +649,11 @@ describe("HTML response classes", () => {
       const { get, cache } = documentsOf(true);
       const first = await get("/en/streamed");
       const firstHtml = await first.text();
-      const firstPolicy = first.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "";
+      const firstPolicy = first.headers.get(SCRIPT_POLICY_HEADER) ?? "";
       const nonce = /'nonce-([^']+)'/.exec(firstPolicy)?.[1] ?? "";
       await stored(cache, 1);
       const replayed = await get("/en/streamed");
-      const policy = replayed.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "";
+      const policy = replayed.headers.get(SCRIPT_POLICY_HEADER) ?? "";
 
       expect(firstHtml).toContain(`<script nonce="${nonce}"`);
       expect(firstHtml).toContain('$RC("B:0","S:0")');
@@ -660,7 +674,7 @@ describe("HTML response classes", () => {
       const before = RouteCacheTally.snapshot().html.bypass["script-hashes"];
       const first = await get("/en/boundaries");
       const firstHtml = await first.text();
-      const nonce = /'nonce-([^']+)'/.exec(first.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "")?.[1] ?? "";
+      const nonce = /'nonce-([^']+)'/.exec(first.headers.get(SCRIPT_POLICY_HEADER) ?? "")?.[1] ?? "";
       const second = await get("/en/boundaries");
       const secondHtml = await second.text();
       const third = await get("/en/boundaries?from=another-url");
@@ -681,7 +695,7 @@ describe("HTML response classes", () => {
         "script-hashes",
       ]);
       expect(fourth.headers.get("X-Akan-Cache-Reason")).toBe("script-hashes");
-      expect(second.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER)).toContain("'nonce-");
+      expect(second.headers.get(SCRIPT_POLICY_HEADER)).toContain("'nonce-");
       expect(scriptsOf(secondHtml, second).uncovered).toEqual([]);
       expect(RouteCacheTally.snapshot().html.bypass["script-hashes"] - before).toBeGreaterThanOrEqual(2);
       expect(warnings).toHaveLength(1);
@@ -724,7 +738,7 @@ describe("HTML response classes", () => {
       await (await get("/en/declares?again=1")).text();
       const warnings = warn.mock.calls.map(([line]) => String(line)).filter((line) => line.includes("script policy"));
       warn.mockRestore();
-      const policy = first.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "";
+      const policy = first.headers.get(SCRIPT_POLICY_HEADER) ?? "";
       const kept = MAX_RESPONSE_SCRIPT_HASHES - SsrInlineScripts.policyHashes(vendorMap).length;
 
       expect(policy.match(/'sha256-[^']+'/g)).toHaveLength(MAX_RESPONSE_SCRIPT_HASHES);
@@ -743,7 +757,7 @@ describe("HTML response classes", () => {
       const stores = spyOn(cache, "storeWhileStreaming");
       const document = await get("/en/echoed", brought);
       const html = await document.text();
-      const nonce = /'nonce-([^']+)'/.exec(document.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER) ?? "")?.[1];
+      const nonce = /'nonce-([^']+)'/.exec(document.headers.get(SCRIPT_POLICY_HEADER) ?? "")?.[1];
       const hostRequest = stores.mock.calls[0]?.[1].hostRequestStore.request;
       stores.mockRestore();
       const navigation = await navigate("/en/echoed", brought);
@@ -758,38 +772,52 @@ describe("HTML response classes", () => {
     });
   }, 30_000);
 
-  test("the settings turn the report-only header off, replace it, add sources to it, and point reports somewhere", async () => {
+  test("the settings move the script policy to report-only, add a report-only policy, and change its sources and receiver", async () => {
     const policyOf = async (vars: Record<string, string>) =>
       await withEnv({ ...production, ...vars }, async () => {
         const response = await createSystemPageResponse({ kind: "not-found", pathname: "/x", homeHref: "/" });
         return [
+          response.headers.get(SCRIPT_POLICY_HEADER),
           response.headers.get(SCRIPT_POLICY_REPORT_ONLY_HEADER),
           response.headers.get("Reporting-Endpoints"),
-          response.headers.get("Content-Security-Policy"),
         ];
       });
-    const enforced = "frame-ancestors 'self'; base-uri 'self'";
+    const base = "frame-ancestors 'self'; base-uri 'self'";
+    const script = "script-src 'self' 'strict-dynamic' 'wasm-unsafe-eval'";
+    const report = "; report-uri /_akan/csp-report; report-to akan-csp";
+    const endpoint = 'akan-csp="/_akan/csp-report"';
 
-    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: "off" })).toEqual([null, null, enforced]);
+    expect(await policyOf({})).toEqual([`${base}; ${script}${report}`, null, endpoint]);
+    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: "on" })).toEqual([
+      base,
+      `${script}${report}`,
+      endpoint,
+    ]);
     expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY: "default-src 'self'" })).toEqual([
+      `${base}; ${script}${report}`,
       "default-src 'self'",
+      endpoint,
+    ]);
+    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY_REPORT_URI: "off" })).toEqual([
+      `${base}; ${script}`,
       null,
-      enforced,
+      null,
     ]);
     expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY_REPORT_URI: "/api/csp" })).toEqual([
-      "script-src 'self' 'strict-dynamic'; report-uri /api/csp; report-to akan-csp",
+      `${base}; ${script}; report-uri /api/csp; report-to akan-csp`,
+      null,
       'akan-csp="/api/csp"',
-      enforced,
     ]);
-    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC: "'wasm-unsafe-eval'" })).toEqual([
-      "script-src 'self' 'wasm-unsafe-eval' 'strict-dynamic'",
+    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY_SCRIPT_SRC: "off" })).toEqual([
+      `${base}; script-src 'self' 'strict-dynamic'${report}`,
       null,
-      enforced,
+      endpoint,
     ]);
-    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY: "off" })).toEqual([
-      "script-src 'self' 'strict-dynamic'",
-      null,
-      null,
+    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY: "off" })).toEqual([null, `${script}${report}`, endpoint]);
+    expect(await policyOf({ AKAN_CONTENT_SECURITY_POLICY: "frame-ancestors *" })).toEqual([
+      "frame-ancestors *",
+      `${script}${report}`,
+      endpoint,
     ]);
   });
 
@@ -806,6 +834,7 @@ describe("HTML response classes", () => {
       "devtools/devtoolsUnlockPage.ts",
       "gateway/gatewayHttpProxy.ts",
       "gateway/gatewayStatusPage.ts",
+      "mcp/McpAppFrame.ts",
       "mcp/McpApps.ts",
       "oauth/OAuthErrors.ts",
       "remote/RemoteSource.ts",

@@ -130,7 +130,7 @@ export class ClientErrorReport {
     if (!ClientErrorReport.#sameOrigin(req) && !ClientErrorReport.#shellOrigin(req)) return;
     if (req.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase() !== "text/plain") return;
     if (!ClientErrorReport.#admitAddress(req)) return;
-    const text = await ClientErrorReport.#read(req);
+    const text = await ClientErrorReport.readText(req, ClientErrorReport.maxBodyBytes);
     const body = text === null ? null : ClientErrorReport.#parse(text);
     const traceId = ClientReportId.verify(body?.requestId);
     if (!body || !traceId || typeof body.kind !== "string" || !ClientErrorReport.#kinds.has(body.kind)) return;
@@ -197,15 +197,15 @@ export class ClientErrorReport {
     return CrossSiteGuard.nativeOrigins.find((shell) => shell === origin) ?? null;
   }
 
-  static async #read(req: Request): Promise<string | null> {
-    if (Number(req.headers.get("content-length") ?? 0) > ClientErrorReport.maxBodyBytes) return null;
+  static async readText(req: Request, maxBytes: number): Promise<string | null> {
+    if (Number(req.headers.get("content-length") ?? 0) > maxBytes) return null;
     const reader = req.body?.getReader();
     if (!reader) return null;
     const chunks: Uint8Array[] = [];
     let bytes = 0;
     for (let chunk = await reader.read(); !chunk.done; chunk = await reader.read()) {
       bytes += chunk.value.byteLength;
-      if (bytes > ClientErrorReport.maxBodyBytes) {
+      if (bytes > maxBytes) {
         await reader.cancel().catch(() => undefined);
         return null;
       }
