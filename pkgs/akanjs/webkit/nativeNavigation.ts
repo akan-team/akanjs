@@ -195,7 +195,7 @@ export class NativeNavigation {
 
   //? a stack a deep link started has nothing under it, so back leaves the app rather than inventing a history
   #leavesApp(path: string) {
-    const fallbackPath = window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/";
+    const fallbackPath = (window.__AKAN_MOBILE_TARGET__?.indexPath ?? "/").split(/[?#]/, 1)[0] || "/";
     return this.#didResetStack || NativeNavigation.#homeRelative(path) === fallbackPath;
   }
 

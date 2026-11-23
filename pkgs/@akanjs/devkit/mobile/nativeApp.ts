@@ -568,13 +568,18 @@ export class NativeApp {
   startPath(lang: string, platform: NativePlatform) {
     const basePath = this.target.config.basePath?.replace(/^\/+|\/+$/g, "");
     const indexPath = this.indexPath(platform);
-    const params = new URLSearchParams({ csr: "true", akanMobileTarget: this.target.name, akanMobileLang: "device" });
+    const [indexHref = "", hash = ""] = (indexPath ?? "").split("#");
+    const [indexPathname = "", query = ""] = indexHref.split("?");
+    const params = new URLSearchParams(query);
+    params.set("csr", "true");
+    params.set("akanMobileTarget", this.target.name);
+    params.set("akanMobileLang", "device");
     if (basePath) params.set("akanMobileBasePath", basePath);
     if (indexPath) params.set("akanMobileIndexPath", indexPath);
-    const home = [lang, basePath, indexPath]
+    const home = [lang, basePath, indexPathname]
       .flatMap((part) => (part ?? "").split("/"))
       .filter((segment) => segment.length > 0);
-    return `/${home.join("/")}?${params}`;
+    return `/${home.join("/")}?${params}${hash ? `#${hash}` : ""}`;
   }
 
   //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS, an AppImage on Linux.
