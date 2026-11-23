@@ -18,6 +18,7 @@ export interface PreviewProbeOptions {
   timeoutMs?: number;
   /** Waited after the load, so the errors effects throw land before the page is read. */
   settleMs?: number;
+  waitFor?: string;
 }
 
 export interface PreviewProbeResult {
@@ -56,6 +57,7 @@ interface PageRead {
 export class PreviewView {
   /** A view's first navigation includes the browser's start, which took ~35 s on a cold CI runner. */
   static readonly startTimeoutMs = 120_000;
+  static readonly selectorPollMs = 100;
   static readonly #stalled = new Set<PreviewEngine>();
 
   static get available() {
@@ -83,6 +85,7 @@ export class PreviewView {
       startTimeoutMs = PreviewView.startTimeoutMs,
       timeoutMs = 30_000,
       settleMs = 0,
+      waitFor,
     }: PreviewProbeOptions = {},
   ): Promise<PreviewProbeResult> {
     const logs: string[] = [];
@@ -103,11 +106,11 @@ export class PreviewView {
         await within(view.navigate(session.url), "opening the session for");
         await within(view.evaluate(PreviewView.cookieExpression(session.cookies)), "opening the session for");
       }
-      let page = await PreviewView.#load(view, url, settleMs, within);
+      let page = await PreviewView.#load(view, url, { settleMs, waitFor }, within);
       //? Right after a save the first load can render nothing (`[rscClient] module not loaded`); the next one has it.
       if (page.empty) {
         logs.length = 0;
-        page = await PreviewView.#load(view, url, settleMs, within);
+        page = await PreviewView.#load(view, url, { settleMs, waitFor }, within);
       }
       const result: PreviewProbeResult = {
         url,
@@ -157,11 +160,12 @@ export class PreviewView {
   static async #load(
     view: WebViewLike,
     url: string,
-    settleMs: number,
+    { settleMs, waitFor }: { settleMs: number; waitFor?: string },
     within: <T>(work: Promise<T>, what: string) => Promise<T>,
   ): Promise<PageRead> {
     await within(view.navigate(url), "loading");
     if (settleMs > 0) await Bun.sleep(settleMs);
+    if (waitFor) await PreviewView.#waitForSelector(view, url, waitFor, within);
     const read = (await within(view.evaluate(readPageExpression), "reading")) as Partial<PageRead> | null;
     return {
       href: typeof read?.href === "string" ? read.href : url,
@@ -172,6 +176,17 @@ export class PreviewView {
       pageErrors: PreviewView.#strings(read?.pageErrors),
       domFindings: PreviewView.#strings(read?.domFindings),
     };
+  }
+
+  static async #waitForSelector(
+    view: WebViewLike,
+    url: string,
+    selector: string,
+    within: <T>(work: Promise<T>, what: string) => Promise<T>,
+  ) {
+    const expression = `document.querySelector(${JSON.stringify(selector)}) !== null`;
+    const what = `waiting for selector ${JSON.stringify(selector)} on`;
+    while (!(await within(view.evaluate(expression), what))) await within(Bun.sleep(PreviewView.selectorPollMs), what);
   }
 
   //? webkit has no Navigation Timing `responseStatus`, so the status comes from asking the server again, unredirected.
