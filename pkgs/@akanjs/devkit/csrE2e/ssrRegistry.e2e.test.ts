@@ -19,6 +19,8 @@ const registryManifest = path.join(workspaceRoot, "apps/minimal/.akan/artifact/s
 const configFile = path.join(workspaceRoot, "apps/minimal/akan.config.ts");
 const sharedFile = path.join(workspaceRoot, "apps/minimal/common/registrySharedText.ts");
 const signalFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.signal.ts");
+const dictionaryFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.dictionary.ts");
+const baseArtifact = path.join(workspaceRoot, "apps/minimal/.akan/artifact/base-artifact.json");
 const serviceFile = path.join(workspaceRoot, "apps/minimal/lib/_minimal/minimal.service.ts");
 const bootLogPrefix = "akan-e2e-boots:";
 const workerEntry = path.join(workspaceRoot, "pkgs/@akanjs/devkit/incrementalBuilder/buildBatch.proc.ts");
@@ -93,10 +95,10 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
         executed: w.__AKAN_CSR_LAST_UPDATE__?.executed ?? [],
       };
     });
-  const textIs = async (selector: string, expected: string) =>
+  const textIs = async (selector: string, expected: string, timeout = 20_000) =>
     await ssr.waitFor((target: string, text: string) => document.querySelector(target)?.textContent === text, {
       args: [selector, expected],
-      timeout: 20_000,
+      timeout,
     });
   const probeMarked = (marked: boolean) =>
     ssr.waitFor(
@@ -469,15 +471,35 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
         return typeof runtime?.runtime?.fetch?.[name] === "function";
       }, endpoint)
       .catch(() => false);
-  //? A new tab, reopened until one passes: after a metadata save's restart the dev server serves the registry before
-  //? until its builder rebuilds it, and a restarting backend refuses connections for a moment.
-  const reopenUntil = async (check: () => Promise<boolean>, timeout = 120_000) => {
+  const pongs = async (endpoint: string) =>
+    await ssr
+      .evaluate(async (name: string) => {
+        const runtime = (globalThis as unknown as Record<symbol, { runtime?: { fetch?: Record<string, unknown> } }>)[
+          Symbol.for("akanjs.client.runtime")
+        ];
+        const call = runtime?.runtime?.fetch?.[name];
+        return typeof call === "function" && (await (call as () => Promise<unknown>)()) === "pong";
+      }, endpoint)
+      .catch(() => false);
+  //? A new tab, reopened until one passes: until a metadata save's pages build is green the backend from before the
+  //? save answers, and a restarting backend refuses connections for a moment.
+  const reopenUntil = async (check: () => Promise<boolean>, { csr = false, timeout = 120_000 } = {}) => {
     const deadline = Date.now() + timeout;
-    while (!(await ssr.open(REGISTRY, { csr: false }).then(check, () => false))) {
+    while (!(await ssr.open(REGISTRY, { csr }).then(check, () => false))) {
       if (Date.now() > deadline) throw new Error("[ssr-registry-e2e] no page opened within the wait passed the check");
       await Bun.sleep(1_000);
     }
   };
+
+  //? This suite's process group only: another session's dev server in the same worktree runs a builder too.
+  const builderPids = () =>
+    Bun.spawnSync(["ps", "-axo", "pid=,pgid=,command="])
+      .stdout.toString()
+      .split("\n")
+      .filter((line) => line.includes("incrementalBuilder.proc"))
+      .map((line) => line.trim().split(/\s+/))
+      .filter(([, pgid]) => ssr.serverGroup === null || pgid === String(ssr.serverGroup))
+      .map(([pid]) => pid);
 
   const addEndpoint = (source: string) =>
     source.replace(
@@ -485,14 +507,15 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
       '  e2eRegistryPing: query(String, { guards: [Public], mcp: false }).exec(() => "pong"),\n  benchPing: query(',
     );
 
-  test("a signal save restarts the builder, and the open tab and a new one both get the new endpoint", async () => {
+  test("a signal save restarts only the backend, and the open tab and a new one both get the new endpoint", async () => {
     await open();
+    const builders = builderPids();
     const orphans = sampleOrphanWorkers(ssr.serverGroup);
-    //? The component save first keeps the slow lane busy, so the restart lands while a batch is in flight.
+    //? The component save first keeps the slow lane busy, so the signal save's batch queues behind one in flight.
     await ssr.editSource(probeFile, markProbe, async () => {
       await Bun.sleep(200);
       await ssr.editSource(signalFile, addEndpoint, async () => {
-        //? Not reopened: the rebuilt registry's reload, or hello's epoch once the backend is back, moves it on.
+        //? Not reopened: hello's epoch, once the restarted backend is back, moves it on.
         await ssr.waitFor(
           () =>
             typeof (globalThis as unknown as Record<symbol, { runtime?: { fetch?: Record<string, unknown> } }>)[
@@ -505,6 +528,64 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     });
     await reopenUntil(async () => !(await fetchHas("e2eRegistryPing")) && (await fetchHas("benchPing")));
     expect(await orphans()).toEqual([]);
+    expect(builderPids()).toEqual(builders);
+  }, 300_000);
+
+  test("a new signal field reaches a CSR and an SSR page, answered by the restarted backend under the same builder", async () => {
+    await ssr.open(REGISTRY, { csr: true });
+    await ssr.waitFor(() => document.querySelector('[data-e2e="ping"]') !== null, { timeout: 60_000 });
+    await open();
+    const builders = builderPids();
+    await ssr.editSource(signalFile, addEndpoint, async () => {
+      await reopenUntil(async () => await pongs("e2eRegistryPing"));
+      await reopenUntil(async () => await pongs("e2eRegistryPing"), { csr: true });
+    });
+    await reopenUntil(async () => !(await fetchHas("e2eRegistryPing")) && (await fetchHas("benchPing")));
+    expect(builderPids()).toEqual(builders);
+  }, 300_000);
+
+  const dictionaryUrls = async () => {
+    const { dictAssets } = (await Bun.file(baseArtifact).json()) as {
+      dictAssets: Record<string, { url: string; parts?: Record<string, { url: string }> }>;
+    };
+    return Object.values(dictAssets).flatMap((asset) => [
+      asset.url,
+      ...Object.values(asset.parts ?? {}).map(({ url }) => url),
+    ]);
+  };
+  const dictionaryShows = async (text: string) =>
+    await ssr
+      .waitFor(
+        (want: string) =>
+          ['[data-e2e="dict-server"]', '[data-e2e="dict-client"]'].every(
+            (selector) => document.querySelector(selector)?.textContent === want,
+          ),
+        { args: [text], timeout: 15_000 },
+      )
+      .then(
+        () => true,
+        () => false,
+      );
+  const retext = (source: string) => source.replace('healthy: ["Healthy", "정상"]', 'healthy: ["Healthy e2e", "정상"]');
+
+  test("a dictionary text reaches the open page, a CSR one and /_akan/dict/* under the same builder", async () => {
+    await open();
+    expect(await dictionaryShows("Healthy")).toBe(true);
+    const builders = builderPids();
+    const before = await dictionaryUrls();
+    await ssr.editSource(dictionaryFile, retext, async () => {
+      await textIs('[data-e2e="dict-server"]', "Healthy e2e", 120_000);
+      await textIs('[data-e2e="dict-client"]', "Healthy e2e", 30_000);
+      const after = await dictionaryUrls();
+      expect(after).not.toEqual(before);
+      const served = await Promise.all(
+        after.map(async (url) => await fetch(new URL(url, ssr.origin)).then((res) => res.text())),
+      );
+      expect(served.some((text) => text.includes("Healthy e2e"))).toBe(true);
+      await reopenUntil(async () => await dictionaryShows("Healthy e2e"), { csr: true });
+    });
+    await reopenUntil(async () => await dictionaryShows("Healthy"));
+    expect(builderPids()).toEqual(builders);
   }, 300_000);
 
   test("a whole build that fails on a broken client module keeps the registry, and the fix brings the endpoint", async () => {
@@ -519,9 +600,11 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
         });
         const mark = await ssr.serverLogMark();
         await ssr.editSource(signalFile, addEndpoint, async () => {
-          //? The replacement builder's whole build fails on the broken module, and says so before anything is written.
-          await waitForServerLog(mark, /ssr-registry boot build failed/);
+          //? The save's whole build fails on the broken module before anything is written, and the backend from before
+          //? the save keeps answering until the fix builds.
+          await waitForServerLog(mark, /ssr-dev failed/);
           expect(((await Bun.file(registryManifest).json()) as { epoch: number }).epoch).toBe(epoch);
+          expect(await ssr.serverLogSince(mark)).not.toMatch(/restarting the backend onto it/);
           await Bun.write(
             contextFile,
             (await Bun.file(contextFile).text()).replace("\nexport const registryBroken = ;\n", ""),
@@ -572,17 +655,20 @@ describe.skipIf(!CsrE2eHarness.enabled)("SSR dev registry (minimal)", () => {
     //? A tab that stopped hydrating shows the label but never counts: a new document is tried until one does. Within
     //? the save's own patch and pages build, not whenever a later build happens to heal the registry.
     const hydratesWith = async (label: string) =>
-      await reopenUntil(async () => {
-        const hydrated = async () => {
-          await textIs('[data-e2e="label-client"]', label);
-          await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
-          await textIs('[data-e2e="count"]', "1");
-        };
-        return await hydrated().then(
-          () => true,
-          () => false,
-        );
-      }, 15_000);
+      await reopenUntil(
+        async () => {
+          const hydrated = async () => {
+            await textIs('[data-e2e="label-client"]', label);
+            await ssr.evaluate(() => document.querySelector<HTMLButtonElement>('[data-e2e="bump"]')?.click());
+            await textIs('[data-e2e="count"]', "1");
+          };
+          return await hydrated().then(
+            () => true,
+            () => false,
+          );
+        },
+        { timeout: 15_000 },
+      );
     try {
       await rm(labelFile);
       await Bun.write(

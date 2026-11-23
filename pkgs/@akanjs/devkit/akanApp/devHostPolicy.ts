@@ -58,6 +58,11 @@ export const shouldRestartBackendByDevPlan = (
 export const shouldRestartBuilderByDevPlan = (message: Extract<BuilderMessage, { type: "invalidate" }>): boolean =>
   message.devPlan?.actions.includes("restart-builder") ?? false;
 
+export const runtimeMetadataFilesOf = (plan: DevChangePlan | undefined): string[] =>
+  Object.entries(plan?.reasonByFile ?? {}).flatMap(([file, reasons]) =>
+    reasons.includes("runtime-metadata") ? [file] : [],
+  );
+
 /** The gateway reports backend failures with `generation: -1`; the host assigns its own counter then. */
 export const normalizeBackendReportedGeneration = (generation: number): number | undefined =>
   generation >= 0 ? generation : undefined;

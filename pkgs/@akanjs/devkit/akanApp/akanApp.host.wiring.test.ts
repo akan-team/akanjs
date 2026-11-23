@@ -409,6 +409,117 @@ describe("AkanAppHost relays the builder to the backend", () => {
   });
 });
 
+describe("AkanAppHost through a signal or dictionary save", () => {
+  isolateEnv({ AKAN_PUBLIC_REPO_NAME: "repo", AKAN_PUBLIC_SERVE_DOMAIN: "localhost", AKAN_PUBLIC_ENV: "local" });
+
+  const signalFile = "/app/lib/a/a.signal.ts";
+  const metadataSave = (generation: number) =>
+    ({
+      type: "invalidate",
+      kinds: ["code"],
+      files: [signalFile],
+      generation,
+      devPlan: {
+        generation,
+        files: [signalFile],
+        generatedFiles: [],
+        roles: ["shared"],
+        actions: ["rebuild-client", "restart-backend"],
+        reasonByFile: { [signalFile]: ["runtime-metadata", "shared-path"] },
+      },
+    }) as unknown as BuilderMessage;
+  const registry = { type: "ssr-updated", data: { generation: 3, reload: true, epoch: 30 } } as BuilderMessage;
+  const css = (generation: number) =>
+    ({ type: "css-updated", data: { generation, cssAssets: {} } }) as unknown as BuilderMessage;
+  const phaseStatus = (generation: number, phase: DevBuildStatus["phase"], ok: boolean) =>
+    ({ type: "build-status", data: { ...status(generation, ok), phase } }) as BuilderMessage;
+  //? Css passes through the hold, and the host handles builder messages in order: once it lands, so did the ones before.
+  const handled = async (dev: DevHost, generation: number) => {
+    const marker = css(generation);
+    dev.builder().toHost(marker);
+    return await until(() => dev.backends[0].sent.includes(marker));
+  };
+
+  test("restarts the backend and not the builder once the save's pages build is green, and the running backend never takes that batch's updates", async () => {
+    const dev = await startedHost();
+
+    dev.builder().toHost(metadataSave(8));
+    dev.builder().toHost(registry);
+    dev.builder().toHost(pages(8));
+    expect(await handled(dev, 8)).toBe(true);
+    await Bun.sleep(300);
+    expect(dev.backends).toHaveLength(1);
+    expect(sentOf(dev.backends[0].sent, "invalidate")).toEqual([metadataSave(8)]);
+    expect(sentOf(dev.backends[0].sent, "ssr-updated")).toEqual([]);
+    expect(sentOf(dev.backends[0].sent, "pages-updated")).toEqual([]);
+
+    dev.builder().toHost({ type: "build-status", data: status(8, true) });
+
+    expect(await until(() => dev.backends.length === 2)).toBe(true);
+    readyBackend(dev);
+    expect(sentOf(dev.backend().sent, "pages-updated")).toEqual([pages(8)]);
+    expect(dev.builders).toHaveLength(1);
+    expect(dev.builder().stopped).toBe(0);
+    expect(dev.logged("recycling builder/backend")).toBe(false);
+  });
+
+  test("a red pages build hands the held updates to the running backend before its status, and the next green one restarts it", async () => {
+    const dev = await startedHost();
+    dev.builder().toHost(metadataSave(8));
+    dev.builder().toHost(registry);
+
+    dev.builder().toHost({ type: "build-status", data: status(8, false) });
+
+    expect(await until(() => statusesOf(dev.backends[0].sent).some((sent) => sent.generation === 8))).toBe(true);
+    const sent = dev.backends[0].sent;
+    expect(sent.indexOf(registry)).toBeGreaterThan(-1);
+    expect(sent.indexOf(registry)).toBeLessThan(
+      sent.findIndex((message) => message.type === "build-status" && message.data.generation === 8),
+    );
+    expect(dev.backends).toHaveLength(1);
+
+    dev.builder().toHost(invalidate(9, ["rebuild-client"]));
+    dev.builder().toHost(pages(9));
+    dev.builder().toHost({ type: "build-status", data: status(9, true) });
+
+    expect(await until(() => dev.backends.length === 2)).toBe(true);
+    expect(sentOf(dev.backends[0].sent, "pages-updated")).toEqual([]);
+    expect(dev.builders).toHaveLength(1);
+  });
+
+  test("a server save while the restart waits joins it instead of restarting the backend before the pages build", async () => {
+    const dev = await startedHost();
+    dev.builder().toHost(metadataSave(8));
+    dev.builder().toHost(invalidate(9, ["restart-backend"], ["/app/lib/a/a.service.ts"]));
+    expect(await handled(dev, 9)).toBe(true);
+    await Bun.sleep(300);
+    expect(dev.backends).toHaveLength(1);
+
+    dev.builder().toHost({ type: "build-status", data: status(9, true) });
+
+    expect(await until(() => dev.backends.length === 2)).toBe(true);
+    await Bun.sleep(300);
+    expect(dev.backends).toHaveLength(2);
+  });
+
+  test("a pages build older than the save, or green while a registry build since the save failed, keeps the backend", async () => {
+    const dev = await startedHost();
+    dev.builder().toHost(metadataSave(8));
+    dev.builder().toHost({ type: "build-status", data: status(7, true) });
+    dev.builder().toHost(phaseStatus(8, "ssr", false));
+    dev.builder().toHost({ type: "build-status", data: status(8, true) });
+    expect(await handled(dev, 8)).toBe(true);
+    await Bun.sleep(300);
+    expect(dev.backends).toHaveLength(1);
+
+    dev.builder().toHost(invalidate(9, ["rebuild-client"]));
+    dev.builder().toHost(phaseStatus(9, "ssr", true));
+    dev.builder().toHost({ type: "build-status", data: status(9, true) });
+
+    expect(await until(() => dev.backends.length === 2)).toBe(true);
+  });
+});
+
 describe("AkanAppHost through a builder's own restart", () => {
   isolateEnv({ AKAN_PUBLIC_REPO_NAME: "repo", AKAN_PUBLIC_SERVE_DOMAIN: "localhost", AKAN_PUBLIC_ENV: "local" });
 

@@ -45,6 +45,7 @@ describe("Model.New", () => {
     });
     await waitFor(() => names().includes("submitNewTestItem"));
     expect(names()).toContain("cancelEditOfNewTestItem");
+    await waitFor(() => names().includes("fillNewTestItemForm"));
     expect(names()).toContain("fillNewTestItemForm");
 
     await act(async () => {

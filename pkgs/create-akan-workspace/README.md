@@ -66,7 +66,8 @@ npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --s
 
 That Bun is not on `PATH` afterwards, nor is the `akan` it installed, so the creator lists `bun` in the workspace's
 `dependencies` and writes two package scripts. Build with `npm run build`, start the build with
-`PORT=3000 npm start`, and run any other command as `npx akan …`.
+`PORT=3000 npm start`, and run any other command as `npx akan …`. A Bun installed with `npm i -g bun` counts the
+same: it comes from npm, so the workspace gets both.
 
 ```json
 "build": "akan build <app>",

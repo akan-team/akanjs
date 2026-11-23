@@ -10,8 +10,8 @@ export interface SessionOptions {
 }
 
 export class WebSession {
-  static readonly cookieOnlyByDefault = false;
-  //? Nothing renews a refused token in a native shell or another origin's app, so it keeps the pre-3.4.0 lifetime.
+  static readonly cookieOnlyByDefault = true;
+  //? Nothing renews a refused token in a native shell or another origin's app, so it keeps the pre-3.3.0 lifetime.
   static readonly cookielessAccessTokenSeconds = 7 * 24 * 60 * 60;
   static #cookieOnly: boolean = WebSession.cookieOnlyByDefault;
   static readonly #accessTokenSeconds = new AsyncLocalStorage<number>();

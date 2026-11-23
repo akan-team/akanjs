@@ -1,5 +1,5 @@
 import "../../test/registerDom";
-import { describe, expect, test } from "bun:test";
+import { beforeAll, describe, expect, test } from "bun:test";
 import { enumOf, Int } from "akanjs/base";
 import { ConstantRegistry, via } from "akanjs/constant";
 import { act } from "react";
@@ -8,6 +8,7 @@ import { AgenticSurface, AgentProvider } from "use-agentic";
 import { mount } from "../mount.fixture";
 import { store } from "../store";
 import { StoreRegistry } from "../storeRegistry";
+import { loadFieldTools } from "./fieldTools";
 import { FormFields } from "./formFields";
 import { type FieldToolOptions, type FileFieldSource, useFieldTool, useFileFieldTool } from "./useFieldTool";
 
@@ -74,6 +75,8 @@ const control = (surface: AgenticSurface, onChange: unknown, options?: FieldTool
     </AgentProvider>
   );
 };
+
+beforeAll(loadFieldTools);
 
 describe("useFieldTool", () => {
   test("a control holding the setter by reference publishes it, and unmounting takes it back", async () => {
