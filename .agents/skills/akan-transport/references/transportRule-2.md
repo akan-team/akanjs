@@ -1,5 +1,29 @@
 <!-- akan:generated -->
 
+## Calling Another Server
+
+- **A server-side `fetch.clone({ origin })` opens no websocket unless `connect: true`**, and neither does a clone
+  of such a clone: it makes one-off calls to another server, and a socket it opened would reconnect forever with
+  nobody to close it. It never carries the visitor's session either: a call to another origin sends only the `jwt`
+  its caller gave the clone.
+- **In `srvkit/`, type a clone by the calls it makes, never as the app's `Fetch`.** `Fetch` types each endpoint by
+  what its service returns, so a service that uses that srvkit class closes a type cycle tsc reports as hundreds of
+  errors. Declare an `interface` of those calls, load `fetch` lazily (`await import("../lib/sig")`), and cast the
+  clone once: `fetch.clone({ origin }) as unknown as PeerCalls`.
+- **Retry a call with `retry`, never with a loop of your own.** `fetch.clone({ origin, retry: {} })` (or a call's
+  own `{ retry }`) tries again on an unreachable server, a 408/502/503/504, a 429 after its Retry-After and a 409
+  `idempotencyInFlight`, backing off with jitter until the call's one deadline runs out. A mutation retries under
+  one `Idempotency-Key` it mints, or the `idempotencyKey` you name, and the server runs it once per key, caller and
+  arguments (Repeated Mutations above); a signed-out call, one whose handler returns a `Response`, and a call
+  through MCP run every time. No other error is retried.
+- **A failure another process reported travels as itself.** A server-to-server `fetch.<endpoint>(..., { origin })`
+  restores the remote `Err` — the same class, key and `data` — so a hop that rethrows it answers its own caller
+  with that error and the dictionary translates it. Never wrap the catch in a `new Error`, and never re-key it as a
+  `new Err` of your own: both discard what the endpoint chose to say, and a bare `Error` is generalized to
+  `Internal Server Error` on the way out.
+- `String(err)` and `${err}` read `Err: <key> {…data}`, the data as one line of JSON with secret-named keys masked,
+  so a ``logger.warn(`…: ${String(error)}`)`` keeps the exit code or status the `Err` carried.
+
 ## Body Types And Bytes
 
 - `.body(...)` / `.param(...)` args accept `ConstantFieldTypeInput` only: scalars, model refs, or `enumOf(...)`.

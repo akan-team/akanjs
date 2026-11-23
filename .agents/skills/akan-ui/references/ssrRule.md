@@ -164,7 +164,8 @@ is the shape: `title` / `left` / `right` beside `back` and `children`, each fill
 
 **⑦ Let the server do the derived work.** Display and predicate logic belongs on `Light<Model>` (`isNew()`,
 `canWrite(user?)`, `formatTimes()`), and enum→class lookups belong in a module-scope `as const` map. Both sides call
-the same method, so a client component that exists only to compute a label is markup in the wrong place.
+the same method on what `fetch` returned, so a client component that exists only to compute a label is markup in
+the wrong place.
 
 **⑧ Gate auth on the server.** `.guard(() => signedIn())` (`@libs/shared/webkit`, which a new workspace has only
 with `create-workspace --libs true`) on `_layout.tsx` runs before any of the route renders, so the redirect is a

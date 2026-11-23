@@ -15,8 +15,9 @@ orchestration in `service`, client state in `store`; `Template` is forms, `Unit`
 
 - **`<model>.constant.ts`** — `enumOf("camelName", [...] as const)` classes, then
   `XInput → XObject → LightX → X → XInsight`, one blank line apart, `XInsight` even when empty. **Display and
-  predicate logic goes on `LightX`** (`isNew()`, `canWrite(user?)`), which server and client both hold, never a util
-  module — the most commonly missed rule. Collection helpers are `static` on `X`; a non-obvious field gets a short
+  predicate logic goes on `LightX`** (`isNew()`, `canWrite(user?)`), which every `fetch` result carries, never a
+  util module — the most commonly missed rule. A document (`by(cnst.X)`) lacks these methods and holds relation ids:
+  a rule a service shares is a `static` over plain values the method calls. Collection helpers are `static` on `X`; a non-obvious field gets a short
   trailing comment. `Date` fields are prototype accessors that a spread drops — copy with `new cnst.X().set(user)`
   (`fieldRule`).
 - **`<model>.document.ts`** — `XFilter extends from(...)` → `X extends by(...)` → `XModel extends into(...)`,
