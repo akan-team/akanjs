@@ -23,6 +23,7 @@ import {
   UNAVAILABLE_REDIS_HOST,
 } from "./devHostPolicy";
 import { DevIdleSuspend } from "./devIdleSuspend";
+import { DevMetadataRestart } from "./devMetadataRestart";
 import { DevRecycler } from "./devRecycler";
 import { DevStartTimeline } from "./devStartTimeline";
 import { ProcessRss } from "./processRss";
@@ -47,6 +48,7 @@ export class AkanAppHost {
   readonly #builder: DevBuilder;
   readonly #idle: DevIdleSuspend;
   readonly #recycler: DevRecycler;
+  readonly #metadata: DevMetadataRestart;
   readonly #timeline: DevStartTimeline;
   constructor(
     private readonly app: App,
@@ -85,6 +87,7 @@ export class AkanAppHost {
         toBuilder: (message) => this.#requests.send(message),
       },
     );
+    this.#metadata = new DevMetadataRestart({ logger, statuses, backend: this.#backend });
     this.#gap = new BuilderGap({ graph, backend: this.#backend, logger });
     this.#requests = new BuilderRequestRelay(
       { logger, env },
@@ -101,7 +104,7 @@ export class AkanAppHost {
       {
         builder: () => this.#builder.current,
         away: () => this.#idle.away,
-        restartQueued: () => this.#recycler.pending || this.#backend.restartScheduled,
+        restartQueued: () => this.#recycler.pending || this.#metadata.pending || this.#backend.restartScheduled,
         onRecycle: () => this.#gap.open("builder recycle"),
       },
     );
@@ -165,6 +168,7 @@ export class AkanAppHost {
       builder: this.#builder,
       gap: this.#gap,
       rss: this.#rss,
+      metadata: this.#metadata,
     });
   }
   #emitDevEvent(state: DevHostState, detail?: string) {
@@ -216,6 +220,7 @@ export class AkanAppHost {
     //? Nothing reapplies once it stops: a pages ok received meanwhile would bring children back after it.
     this.#stopping = true;
     this.#recycler.drop();
+    this.#metadata.drop();
     this.#idle.stop();
     this.#backend.cancelTimers();
     this.#builder.cancelRecovery();
@@ -260,6 +265,7 @@ export class AkanAppHost {
     this.#builder.trackGeneration(message);
     if (message.type === "build-status") {
       this.#statuses.record(message.data);
+      this.#metadata.settle(message.data);
       this.#backend.sendOrQueueStatus(message.data);
       this.#backend.reviveAfterGreenBuild(message.data);
       await this.#recycler.resumeFailed(message.data);
@@ -292,10 +298,17 @@ export class AkanAppHost {
       this.#backend.send(answer);
       return;
     }
+    if (this.#metadata.holds(message)) return;
     this.#backend.send(message);
   }
   get #restartPending(): boolean {
-    return this.#recycler.pending || this.#backend.restartPending || this.#builder.recovering || this.#rss.armed;
+    return (
+      this.#recycler.pending ||
+      this.#metadata.pending ||
+      this.#backend.restartPending ||
+      this.#builder.recovering ||
+      this.#rss.armed
+    );
   }
   /** Null when unreadable, meaning "no new information", never zero. */
   static async readProcessRssBytes(pid: number): Promise<number | null> {

@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { MCP_APP_META, type McpJsonRpcMessage, type McpToolResult } from "../signal/mcp/mcpProtocol";
+import { MCP_APP_FRAME, MCP_APP_META, type McpJsonRpcMessage, type McpToolResult } from "../signal/mcp/mcpProtocol";
 import { McpAppBridge } from "./McpAppBridge";
 import { McpAppHost, type McpAppHostProps } from "./McpAppHost";
 
@@ -145,5 +145,19 @@ describe("McpAppHost", () => {
     host.receive({ jsonrpc: "2.0", id: 99, method: "ping" });
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(posted).toHaveLength(before);
+  });
+
+  test("hands its frame the view's document once, when the frame asks", async () => {
+    const ready = { jsonrpc: "2.0", method: MCP_APP_FRAME.ready };
+    const { host, posted } = joined({ html: "<!doctype html><p>trips</p>" });
+    const { host: unframed, posted: unframedPosted } = joined();
+    host.receive(ready);
+    host.receive(ready);
+    unframed.receive(ready);
+
+    expect(posted).toEqual([
+      { jsonrpc: "2.0", method: MCP_APP_FRAME.document, params: { html: "<!doctype html><p>trips</p>" } },
+    ]);
+    expect(unframedPosted).toEqual([]);
   });
 });

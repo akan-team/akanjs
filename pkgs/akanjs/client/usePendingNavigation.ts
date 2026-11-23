@@ -16,7 +16,7 @@ export interface PendingLocation {
   searchParams: Record<string, string | string[]>;
 }
 
-/** The location a navigation is loading from the server, from the press until its page is drawn; else `null`. */
+/** The location a navigation is loading, from the press until its page is drawn or shows its fallback; else `null`. */
 export const usePendingNavigation = (): PendingLocation | null => {
   const pending = PendingNavigation.use((href) => href);
   const { lang } = usePage();
@@ -25,7 +25,9 @@ export const usePendingNavigation = (): PendingLocation | null => {
     if (!pending) return null;
     const url = new URL(pending);
     const href = `${url.pathname}${url.search}${url.hash}`;
-    const visiblePrefix = getEnv().operationMode === "local" ? prefix : "";
+    const { renderMode, operationMode } = getEnv();
+    //? A CSR stack pushes the basePath into every address; a server-rendered one shows it only in local mode.
+    const visiblePrefix = renderMode === "csr" || operationMode === "local" ? prefix : "";
     return {
       href,
       pathname: url.pathname,

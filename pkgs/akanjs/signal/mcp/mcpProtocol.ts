@@ -32,6 +32,13 @@ export const MCP_APP_META = {
   error: "akanjs/error",
 } as const;
 
+//* A view a page draws runs in the document at `path`, since a `srcdoc` frame keeps the page's policy and its refusals.
+export const MCP_APP_FRAME = {
+  path: "/_akan/app-frame",
+  ready: "akanjs/frameReady",
+  document: "akanjs/frameDocument",
+} as const;
+
 //? A host that runs no view asks a `static` app's call for HTML with `_meta[render]: "html"`, embedded as a resource.
 export const MCP_STATIC_APP_META = {
   static: "akanjs/static",

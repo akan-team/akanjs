@@ -14,13 +14,14 @@ const barrelFacets = async (): Promise<string[]> => {
   return [...barrel.matchAll(/^export (?:type )?\* from "\.\/([^"]+)";$/gm)].map((match) => `./${match[1]}`);
 };
 
-//? The CLI's dist inlines devkit: once installed, only devkit's own sources, the CLI's templates and the README
-//? examples a tool author copies import a subpath.
+//? The CLI's dist inlines devkit: once installed, only devkit's and @akanjs/code's sources, the CLI's templates and the
+//? README examples a tool author copies import a subpath.
 const importedSubpaths = async (): Promise<string[]> => {
   const repoRoot = path.resolve(packageDir, "../../..");
   const found = new Set<string>();
   const sources = [
     ...new Bun.Glob("pkgs/@akanjs/devkit/**/*.{ts,tsx}").scanSync({ cwd: repoRoot }),
+    ...new Bun.Glob("pkgs/@akanjs/code/**/*.{ts,tsx}").scanSync({ cwd: repoRoot }),
     ...new Bun.Glob("pkgs/@akanjs/devkit/README*.md").scanSync({ cwd: repoRoot }),
     ...new Bun.Glob("pkgs/@akanjs/cli/templates/**/*").scanSync({ cwd: repoRoot }),
   ];

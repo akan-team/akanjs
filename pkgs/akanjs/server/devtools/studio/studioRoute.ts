@@ -95,12 +95,12 @@ export class StudioRoute {
 
   //? The editor extension's panel frames Studio from a `vscode-webview:` document under a `vscode-file:` window; no
   //? web page has either scheme, so the page stays unframeable from the web.
+  static readonly #directives = "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'";
   static readonly #scripts = { hashes: [ScriptPolicy.hashOf(StudioDocument.runtimeScript)] };
 
   static #headers(): Headers {
-    const headers = createSystemPageHeaders(StudioRoute.#scripts);
+    const headers = createSystemPageHeaders(StudioRoute.#scripts, StudioRoute.#directives);
     headers.delete("X-Frame-Options");
-    headers.set("Content-Security-Policy", "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'");
     return headers;
   }
 

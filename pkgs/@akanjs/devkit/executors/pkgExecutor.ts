@@ -33,7 +33,8 @@ export class PkgExecutor extends Executor {
       ...rootPackageJson.devDependencies,
     };
     const rootVersion = rootDeps[dep];
-    if (rootVersion) return rootVersion;
+    //? A `workspace:` range resolves only inside this repo, so a sibling package is published at its own version.
+    if (rootVersion && !rootVersion.startsWith("workspace:")) return rootVersion;
     // Overrides never reach a consumer's install, so a pinned transitive dep is published as a dependency.
     const overrideVersion = rootPackageJson.overrides?.[dep];
     if (typeof overrideVersion === "string") return overrideVersion;

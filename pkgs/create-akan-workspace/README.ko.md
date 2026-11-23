@@ -67,6 +67,7 @@ npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --s
 그 Bun도, 그 Bun으로 설치한 `akan`도 이후 `PATH`에 없으므로 생성기가 워크스페이스의 `dependencies`에 `bun`을 넣고
 package script 두 개를 씁니다.
 `npm run build`로 빌드하고, `PORT=3000 npm start`로 빌드를 띄우고, 다른 명령은 `npx akan …`으로 실행하세요.
+`npm i -g bun`으로 설치한 Bun도 npm에서 온 것이므로 똑같이 둘 다 받습니다.
 
 ```json
 "build": "akan build <app>",

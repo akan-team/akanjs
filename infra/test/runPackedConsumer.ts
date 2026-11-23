@@ -10,9 +10,15 @@ import path from "node:path";
  */
 class PackedConsumer {
   static readonly #root = path.resolve(import.meta.dir, "../..");
-  static readonly #packages = ["akanjs", "@akanjs/devkit", "@akanjs/language"] as const;
-  //? devkit ships its source, so the consumer's tsc checks every devkit file these facets reach.
-  static readonly #imports = ["@akanjs/devkit/akanConfig", "@akanjs/devkit/mobile", "@akanjs/devkit/pipeline"] as const;
+  static readonly #packages = ["akanjs", "@akanjs/devkit", "@akanjs/language", "@akanjs/code"] as const;
+  //? devkit and @akanjs/code ship their source, so the consumer's tsc checks every file these entries reach.
+  static readonly #imports = [
+    "@akanjs/devkit/akanConfig",
+    "@akanjs/devkit/mobile",
+    "@akanjs/devkit/pipeline",
+    "@akanjs/code",
+    "@akanjs/code/host",
+  ] as const;
 
   async run() {
     const dir = await mkdtemp(path.join(tmpdir(), "akan-packed-consumer-"));
@@ -50,8 +56,9 @@ class PackedConsumer {
     const rootPackageJson = (await Bun.file(path.join(PackedConsumer.#root, "package.json")).json()) as {
       devDependencies: Record<string, string>;
     };
+    //? A created workspace carries @types/react, which @akanjs/code's terminal UI, written in .tsx, needs.
     const devDependencies = Object.fromEntries(
-      ["typescript", "@types/bun"].map((name) => [name, rootPackageJson.devDependencies[name]]),
+      ["typescript", "@types/bun", "@types/react"].map((name) => [name, rootPackageJson.devDependencies[name]]),
     );
     await Bun.write(
       path.join(dir, "package.json"),

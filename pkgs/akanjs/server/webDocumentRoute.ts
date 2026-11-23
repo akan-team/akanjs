@@ -168,7 +168,8 @@ export class WebDocumentRoute {
     if (hashes.length > MAX_RESPONSE_SCRIPT_HASHES && ScriptPolicy.firstReport("declared", route))
       this.#context.logger.warn(
         `script policy: route ${route} names ${hashes.length} script hashes and a response names ` +
-          `${MAX_RESPONSE_SCRIPT_HASHES}, so its last ${hashes.length - MAX_RESPONSE_SCRIPT_HASHES} are left out`,
+          `${MAX_RESPONSE_SCRIPT_HASHES}, so its last ${hashes.length - MAX_RESPONSE_SCRIPT_HASHES} are left out and ` +
+          "the browser refuses the scripts they name",
       );
     return { nonce, hashes: hashes.slice(0, MAX_RESPONSE_SCRIPT_HASHES) };
   }

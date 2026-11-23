@@ -62,6 +62,7 @@ export class DependencyAudit {
   static readonly publishedWorkspaces = [
     "pkgs/akanjs",
     "pkgs/@akanjs/cli",
+    "pkgs/@akanjs/code",
     "pkgs/@akanjs/devkit",
     "pkgs/@akanjs/language",
     "pkgs/create-akan-workspace",

@@ -100,13 +100,7 @@ export class SsrBaseArtifactBuilder {
       assets: dictAssets,
       routes: dictRoutes,
       groups: dictGroups,
-    } = await timed("dictionary", () =>
-      new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).buildAll(akanConfig.i18n, {
-        splitApi: true,
-        routes: this.#dictionaryRoutes,
-        everyGroupAlone: this.#command === "start",
-      }),
-    );
+    } = await timed("dictionary", () => this.buildDictionaries());
     const pagesBundle = await timed("pages", () =>
       new PagesBundleBuilder(this.#app, this.#command, pageEntries, this.#serverEnv).build(),
     );
@@ -161,6 +155,17 @@ export class SsrBaseArtifactBuilder {
     this.#app.verbose(`[base-artifact] complete in ${phaseMs.total}ms`);
 
     return { artifact, seedIndex, cssCompiler, optimizedFonts, runtimeChunks, phaseMs };
+  }
+
+  //? A dev build worker runs it again for a signal or dictionary save, in a process of its own: `lib/dict.ts` imported
+  //? into a long-lived one stays cached after its file changes.
+  async buildDictionaries(): ReturnType<DictionaryAssetBuilder["buildAll"]> {
+    const akanConfig = await this.#app.getConfig();
+    return await new DictionaryAssetBuilder(this.#app, this.#absArtifactDir).buildAll(akanConfig.i18n, {
+      splitApi: true,
+      routes: this.#dictionaryRoutes,
+      everyGroupAlone: this.#command === "start",
+    });
   }
 
   //? Renamed into place, last: a dev backend booted beside this build starts on the file the moment it exists.

@@ -48,11 +48,12 @@ akan start <app-name> --open
 
 앱이 놓일 폴더와 실행 방식이 정해진 작업이라면, 예를 들어 다른 저장소의 하위 폴더, Node와 npm만 있는 호스트, 스펙이 정한
 URL이라면, 코딩 에이전트는 묻지 않고 아래대로 진행하면 됩니다. 스캐폴드에 필요한 것은 아래가 전부라서 다른 패키지의
-README를 먼저 읽을 필요가 없습니다. 이 명령이 쓰는 파일, 실행하는 명령, 네트워크 접근은
-[`create-akan-workspace` README](https://www.npmjs.com/package/create-akan-workspace#이-명령이-하는-일)에 있습니다.
+README나 코드를 먼저 읽을 필요가 없습니다.
 
 - **그 폴더에 바로 만들기:** `bunx create-akan-workspace@latest . --app <app> --dir <folder> --sample false`.
-  `<folder>` 자체에 쓰고, 이미 있는 파일은 덮어쓰지 않고 멈추며, 샘플 모듈과 페이지는 만들지 않습니다. 함께 생기는
+  `<folder>` 자체에 쓰고, 이미 있는 파일은 덮어쓰지 않고 멈추며, 샘플 모듈과 페이지는 만들지 않습니다. `akan` CLI는
+  Bun의 전역 폴더(`~/.bun`, `PATH`에는 아무것도 넣지 않음)에 설치하고 `bun install`을 실행할 뿐, 빌드도 서버 실행도
+  하지 않으며, 다른 git 저장소가 추적하는 폴더에서는 `git init`도 커밋도 하지 않습니다. 함께 생기는
   `AGENTS.md`, `CLAUDE.md`, `.claude/`, `.agents/`, `.cursor/`, `.mcp.json`은 지우지 마세요. 에이전트가 따를 규칙과
   도구가 들어 있습니다.
 - **`<folder>`에서 작업하기.** `akan`은 워크스페이스 루트에서만 실행되고, 그곳에서 연 에이전트 세션이 워크스페이스의
@@ -63,9 +64,9 @@ README를 먼저 읽을 필요가 없습니다. 이 명령이 쓰는 파일, 실
   (`/books/OL45804W`)로 내보내려면 `akan.config.ts`에 `i18n: { defaultLocale: "en", locales: ["en"], localePrefix:
   "as-needed" }`를 두세요. `<Link>`도 따라갑니다.
 - **Node와 npm만 있는 호스트:** `npx -y bun@1.4.4 x create-akan-workspace@latest . --app <app> --dir <folder> --sample false`를
-  실행한 뒤 `npm run build`, `PORT=3000 npm start`로 빌드하고 띄웁니다. 생성기가 쓰는 script와 새로 clone한 사본에
-  필요한 것은 [`create-akan-workspace` README](https://github.com/akan-team/akanjs/blob/main/pkgs/create-akan-workspace/README.ko.md#node와-npm만-있을-때)에
-  있습니다.
+  실행한 뒤 `npm run build`, `PORT=3000 npm start`로 빌드하고 띄우고, 나머지는 `npx akan <command>`로 실행합니다.
+  워크스페이스가 `bun`을 의존성에 넣어 둡니다. `npm i -g bun`으로 설치한 Bun으로 실행해도 같습니다. 새로 clone한 사본도 그대로 빌드됩니다. 빌드가 git이 무시하는 파일 중 없는
+  것을 먼저 씁니다.
 - **실행할 곳에 맞게 빌드하기.** 셸이나 Bun이 읽는 `.env.local`에서 지정한 변수가 워크스페이스 `.env`보다 우선하고(빈
   값은 지정하지 않은 것으로 보며, 빌드는 그렇게 가져간 값을 하나씩 알려 줍니다), `AKAN_PUBLIC_ENV`는 `--env`가 둘보다
   우선합니다. 새 워크스페이스의 `.env`는 `local`이라 내 컴퓨터나 테스트 러너에서는 이대로 맞지만, 서버가

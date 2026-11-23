@@ -9,9 +9,11 @@ import { DevtoolsRouter } from "../devtools";
 import type { DiLifecycle } from "../di/diLifecycle";
 import type { ServerLogging } from "../logging/serverLogging";
 import { McpRouter } from "../mcp";
+import { McpAppFrame } from "../mcp/McpAppFrame";
 import { AppInfo } from "../ops/appInfo";
 import { OpsRoute } from "../ops/opsRoute";
 import { SqliteFiles } from "../ops/sqliteFiles";
+import { ScriptPolicyReport } from "../scriptPolicyReport";
 import type { ServerMetrics } from "../serverMetrics";
 import type { HttpRoutes } from "../types";
 import type { WebRouter } from "../webRouter";
@@ -133,7 +135,15 @@ export class BuiltinRoutes {
       getStatus: () => this.#owner.status,
       ...DevtoolsRouter.buildsFrom(webRouter),
     }).createRoutes();
-    return { ...openapiRoutes, ...mcpRoutes, ...devtoolsRoutes, ...soloRoutes, ...ClientErrorReport.routes() };
+    return {
+      ...openapiRoutes,
+      ...mcpRoutes,
+      ...devtoolsRoutes,
+      ...soloRoutes,
+      ...ClientErrorReport.routes(),
+      ...ScriptPolicyReport.routes((pathname) => webRouter?.routeIdOf(pathname)),
+      ...McpAppFrame.routes(),
+    };
   }
 
   // A lib's dictionaries fix their own locales, so an app's extra locale silently falls back to the default one.

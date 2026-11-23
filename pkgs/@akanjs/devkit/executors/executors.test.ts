@@ -1354,6 +1354,21 @@ describe("PkgExecutor package generation", () => {
     expect(await Bun.file(path.join(root, "dist/pkgs/@sample/tool/package.json")).json()).toEqual(distPackageJson);
     expect(await Bun.file(path.join(root, "pkgs/@sample/tool/package.json")).json()).toEqual(distPackageJson);
   });
+
+  test("names a sibling the root links as workspace:* at the sibling's own version", async () => {
+    const root = await makeTempRoot();
+    await writeJson(
+      path.join(root, "package.json"),
+      rootPackageJson({ devDependencies: { typescript: "6.0.0", "@sample/core": "workspace:*" } }),
+    );
+    await writeJson(path.join(root, "pkgs/@sample/core/package.json"), { name: "@sample/core", version: "0.2.0" });
+    await writeJson(path.join(root, "pkgs/@sample/tool/package.json"), { name: "@sample/tool", version: "0.2.0" });
+
+    const workspace = new WorkspaceExecutor({ workspaceRoot: root, repoName: "repo" });
+    const distPackageJson = await PkgExecutor.from(workspace, "@sample/tool").generateDistPackageJson(["@sample/core"]);
+
+    expect(distPackageJson.dependencies).toEqual({ "@sample/core": "0.2.0" });
+  });
 });
 
 describe("scan info construction", () => {

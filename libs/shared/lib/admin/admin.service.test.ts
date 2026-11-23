@@ -273,7 +273,10 @@ for (const kind of ConformanceEnv.cacheKinds("admin refresh token")) {
       ) => Promise<Response>;
       const endpoint = { adminService: service, userService: {} };
       const answer = async (refreshToken: string) => {
-        const req = new Request("https://app.example.com/api/admin/refreshAdminJwt", { method: "POST" });
+        const req = new Request("https://app.example.com/api/admin/refreshAdminJwt", {
+          method: "POST",
+          headers: sessionTokenContract.makeHeaders(),
+        });
         const response = await refreshAdminJwt.call(endpoint, refreshToken, undefined, req);
         return (await response.json()) as { refreshToken?: string };
       };

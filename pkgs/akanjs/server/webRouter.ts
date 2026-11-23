@@ -244,6 +244,10 @@ export class WebRouter {
     };
   }
 
+  routeIdOf(pathname: string): string | undefined {
+    return this.#context.exactRouteIdOf(pathname);
+  }
+
   /** Each `.app()`'s single-file view, which `akan build` writes beside the CSR shell. */
   mcpAppShell(): McpAppShellSource | undefined {
     if (!this.web.csr) return undefined;

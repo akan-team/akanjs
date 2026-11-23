@@ -2,10 +2,11 @@
   "$schema": "https://unpkg.com/@changesets/config@3.1.4/schema.json",
   "changelog": "@changesets/cli/changelog",
   "commit": false,
-  "fixed": [["akanjs", "@akanjs/cli", "@akanjs/devkit", "@akanjs/language", "create-akan-workspace"]],
+  "fixed": [["akanjs", "@akanjs/cli", "@akanjs/code", "@akanjs/devkit", "@akanjs/language", "create-akan-workspace"]],
   "linked": [],
   "access": "public",
   "baseBranch": "main",
   "updateInternalDependencies": "patch",
-  "ignore": []
+  "ignore": [],
+  "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": { "onlyUpdatePeerDependentsWhenOutOfRange": true }
 }

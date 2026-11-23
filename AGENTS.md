@@ -41,13 +41,26 @@ by `akan agent install`; edit anything outside the markers freely.
 - Repo: akanjs
 - Apps: akan, groupedroot, minimal
 - Libraries: shared, util
-- Packages: @akanjs/cli, @akanjs/devkit, @akanjs/language, @akanjs/native, @akanjs/vscode, akanjs, create-akan-workspace, use-agentic
+- Packages: @akanjs/cli, @akanjs/code, @akanjs/devkit, @akanjs/language, @akanjs/native, @akanjs/vscode, akanjs, create-akan-workspace, use-agentic
 
 ## Akan.js
 
 Akan.js is a full-stack TypeScript framework: business code written once reaches web, native apps, server, database
 and infrastructure. A workspace is Bun-first: `apps/<app>` holds pages, domain modules, UI, env files and
 `akan.config.ts`; `libs/<lib>` holds shared domain and utility code apps reuse.
+
+## Read First
+
+A common task's docs in one `cat` before writing code. With the path rules of the files you write, they are enough to
+start; `pageRule`, `ssrRule` and `cssRule` answer a question they leave open.
+
+- Pages over an outside HTTP API, no stored model: `.agents/skills/akan-{service,page}/SKILL.md
+  .agents/skills/akan-service/references/akanApi-{services-and-adapters,endpoints}.md
+  .agents/skills/akan-page/references/akanApi-routes.md .claude/rules/akan/{page,ssr,config,style}.md`
+- A stored model and its screens: `.agents/skills/akan-{scaffold,module,ui}/SKILL.md
+  .claude/rules/akan/{module,page,ssr,tsx}.md`
+- A page or layout alone: `.agents/skills/akan-page/SKILL.md .agents/skills/akan-page/references/akanApi-routes.md
+  .claude/rules/akan/{page,ssr,style}.md`
 
 ## Work Loop
 
@@ -60,7 +73,8 @@ and infrastructure. A workspace is Bun-first: `apps/<app>` holds pages, domain m
    `akan sync <app-or-lib>`.
 4. After editing, run `akan verify [<app-or-lib>]` once: it syncs, lints with fixes, typechecks, fast-builds and
    checks SSR over what changed. Fix and rerun until it prints `verify ok`; never run `akan lint`, `akan typecheck`
-   and `akan build` one by one.
+   and `akan build` one by one. Run it before a slow end-to-end suite (Playwright, `npm test`), so what it asks for
+   is fixed before that run rather than repeating it.
 5. After a page, UI or runtime change, run `akan preview <app> --changed` (or name the paths) and quote its verdict
    lines; it reuses the running dev server. Name any platform you could not open.
 6. Check an endpoint with a signal test (`akan test <app> [files]`), never raw HTTP against the dev server.
@@ -187,5 +201,6 @@ guideline.
 ## Generated Files
 
 Never hand-edit `apps/*/client.ts`, `apps/*/server.ts`, `*/lib/cnst.ts`, `*/lib/db.ts`, `*/lib/dict.ts`, `*/lib/sig.ts`, `*/lib/srv.ts`, `*/lib/st.ts`, `*/lib/usePage.ts`, `*/lib/useClient.ts`, `*/lib/useServer.ts`, `*/lib/__client/*.ts`, `*/lib/**/index.ts`, `*/ui/index.ts`, `*/webkit/index.ts`, `*/srvkit/index.ts`, `*/common/index.ts`. When one is stale or broken, fix the
-owning source file and run `akan sync <app-or-lib>` or `akan repair generated`.
+owning source file and run `akan sync <app-or-lib>` or `akan repair generated`. They, `.akan/` and the env files are
+git-ignored, and `akan build` writes them before it builds, so a fresh clone builds as it is.
 <!-- akan:agent:end -->

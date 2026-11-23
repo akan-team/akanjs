@@ -6,6 +6,10 @@ import { VENDOR_SPECIFIERS, type VendorSpecifier } from "./vendorSpecifiers";
 //? Bun puts a module in the chunk of every entry that reaches it, read or not, so a deprecated re-export would keep
 //? its target in a vendor every page loads; a narrowed build blanks it unless a route imports one of its names.
 const deprecatedReexports: Partial<Record<VendorSpecifier, string>> = { "akanjs/store": "store/deprecatedAgent.ts" };
+//? Blanked the same way, but kept out of the guard below: an akanjs older than the lazy field tools lacks the file.
+const lazyReexports: Partial<Record<VendorSpecifier, string>> = {
+  "akanjs/store": "store/agentic/formFieldsReexport.ts",
+};
 
 export interface VendorEntry {
   specifier: VendorSpecifier;
@@ -70,9 +74,13 @@ export class VendorNarrowing {
 
   async plugins(): Promise<BunPlugin[]> {
     const blanked: string[] = [];
-    for (const [specifier, file] of Object.entries(deprecatedReexports) as [VendorSpecifier, string][]) {
+    const reexports = [...Object.entries(deprecatedReexports), ...Object.entries(lazyReexports)] as [
+      VendorSpecifier,
+      string,
+    ][];
+    for (const [specifier, file] of reexports) {
       const used = this.#vendorExports[specifier];
-      if (!used) continue;
+      if (!used || !fs.existsSync(path.join(this.#akanjsRoot, file))) continue;
       const source = await Bun.file(path.join(this.#akanjsRoot, file)).text();
       const names = new Bun.Transpiler({ loader: "ts" }).scan(source).exports;
       if (!names.some((name) => used.includes(name))) blanked.push(`akanjs/${file}`);

@@ -193,8 +193,8 @@ describe("Akan Studio", () => {
       new Request("http://localhost/_akan/studio"),
     );
     expect(response.headers.get("X-Frame-Options")).toBeNull();
-    expect(response.headers.get("Content-Security-Policy")).toBe(
-      "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'",
+    expect(response.headers.get("Content-Security-Policy")).toStartWith(
+      "frame-ancestors 'self' vscode-webview: vscode-file:; base-uri 'self'; script-src 'self' 'sha256-",
     );
     const html = await response.text();
     expect(html).toContain("akan-studio:host");

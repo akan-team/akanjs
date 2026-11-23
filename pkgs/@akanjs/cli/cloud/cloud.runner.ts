@@ -28,12 +28,13 @@ import { confirm, input, select } from "@inquirer/prompts";
 import { Logger } from "akanjs/common";
 import chalk from "chalk";
 import {
-  akanReleasePackages,
+  akanReleasePackagesOf,
   getLatestPackageVersion,
   getNpmRegistryUrl,
   getPublishedVersions,
   getServedReleasePeers,
 } from "../npmRegistry";
+import { PackageRunner } from "../package/package.runner";
 import { EnvArchive } from "./envArchive";
 import { RemoteLogin } from "./remoteLogin";
 
@@ -67,13 +68,7 @@ const addRemoteEnvServerValue = "__addRemoteEnvServer";
 const removeRemoteEnvServerValue = "__removeRemoteEnvServer";
 
 export class CloudRunner extends runner("cloud") {
-  #akanFrameworkPackages = new Set([
-    "akanjs",
-    "@akanjs/devkit",
-    "@akanjs/cli",
-    "@akanjs/language",
-    "create-akan-workspace",
-  ]);
+  #akanFrameworkPackages = new Set<string>(PackageRunner.publishableAkanPackages);
 
   #getRegistryArgs(registryUrl?: string) {
     return registryUrl ? ["--registry", getNpmRegistryUrl(registryUrl)] : [];
@@ -489,7 +484,9 @@ export class CloudRunner extends runner("cloud") {
     const registry = registryUrl ? getNpmRegistryUrl(registryUrl) : undefined;
     const hasPackageJson = await workspace.exists("package.json");
     const version = hasPackageJson ? await getLatestPackageVersion("akanjs", tag, registry) : tag;
-    const peers = hasPackageJson ? await getServedReleasePeers(version, registry) : null;
+    const peers = hasPackageJson
+      ? await getServedReleasePeers(version, registry, akanReleasePackagesOf(await workspace.getPackageJson()))
+      : null;
     await Promise.all([
       workspace.spawn("bun", ["add", "-g", `@akanjs/cli@${version}`, ...this.#getRegistryArgs(registry)], {
         env: this.#getRegistryEnv(registry),
@@ -505,7 +502,7 @@ export class CloudRunner extends runner("cloud") {
   ) {
     const rootPackageJson = await workspace.getPackageJson();
     if (!rootPackageJson.dependencies) throw new Error("No dependencies found in package.json");
-    const pins: Record<string, string> = Object.fromEntries(akanReleasePackages.map((name) => [name, akanVersion]));
+    const pins = Object.fromEntries(akanReleasePackagesOf(rootPackageJson).map((name) => [name, akanVersion]));
     for (const peer of ["react", "react-dom", "react-server-dom-webpack"]) {
       const version = peers[peer];
       if (version) pins[peer] = version;
