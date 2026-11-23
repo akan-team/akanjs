@@ -232,7 +232,7 @@ export class ApplicationBuildRunner {
       this.#app.workspace.workspaceRoot,
       this.#libEnvsLeftOut,
     );
-    if (leftOut) this.#app.logger.warn(leftOut);
+    if (leftOut) this.#app.logger.debug(leftOut);
     if (this.#verify) {
       const routeJs = await this.#runBudgetPhase(environment);
       await this.#app.dist.writeJson(
