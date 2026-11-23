@@ -1608,7 +1608,7 @@ const config: AppConfig = {
     crossBuild: true,
     env: { REGION: "seoul" },
     variants: {
-      edge: { preRuns: [], env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
+      edge: { preRuns: [], profile: "edge", env: { AKAN_PUBLIC_OPERATION_MODE: "edge", EDGE_MODE: "camera" } },
     },
   },
 };`}
@@ -1764,6 +1764,32 @@ const config: AppConfig = {
                     통째로 바꾼 것이어서 <code>preRuns: []</code>는 앱의 단계를 그 이미지에서 뺍니다. <code>env</code>
                     만은 앱의 <code>env</code> 위에 키별로 덮이고, 라이브러리의 단계는 모든 variant에 들어갑니다.
                     기기용, 컨트롤 플레인용처럼 용도로 이미지를 가를 때 아키텍처 대신 이 방법을 씁니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>A variant's profile gives that image its own server env.</strong>{" "}
+                    <code>profile: "edge"</code> makes the one build carry{" "}
+                    <code>env/env.server.&lt;env&gt;.edge.ts</code> beside the environment's own env file and writes{" "}
+                    <code>ENV AKAN_ENV_PROFILE=edge</code> into <code>Dockerfile.edge</code>, which picks it as the
+                    server starts. A profile file may hold no secret, so that image asks for none of the secret values
+                    the other one reads from its process env, and the env file that was not picked is never evaluated. A
+                    server started with a profile its build did not carry refuses to start.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>variant의 profile은 그 이미지에 자기 서버 env를 줍니다.</strong>{" "}
+                    <code>profile: "edge"</code>를 적으면 한 번의 빌드가 환경의 env 파일 옆에{" "}
+                    <code>env/env.server.&lt;env&gt;.edge.ts</code>를 함께 싣고, <code>Dockerfile.edge</code>에{" "}
+                    <code>ENV AKAN_ENV_PROFILE=edge</code>를 써서 서버가 뜰 때 그 파일을 고르게 합니다. 프로파일
+                    파일에는 비밀 값을 둘 수 없으므로, 그 이미지는 다른 이미지가 프로세스 환경에서 읽는 비밀 값을 하나도
+                    요구하지 않으며, 고르지 않은 env 파일은 실행되지 않습니다. 빌드가 싣지 않은 프로파일로 띄운 서버는
+                    뜨지 않습니다.
                   </span>
                 ),
               })}

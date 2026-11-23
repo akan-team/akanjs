@@ -127,6 +127,36 @@ console.info(new SampleService().name);
     }
   });
 
+  test("a variant on an env profile names it and asks for none of the secret env values the image's own lists", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
+    const config = new AkanAppConfig(
+      { name: "portal" } as never,
+      [],
+      { name: "repo", version: "1.0.0", description: "repo" },
+      { docker: { variants: { edge: { profile: "edge" }, mirror: {} } } },
+      { repoName: "akanjs", serveDomain: "akanjs.com", env: "local", portOffset: 0, workspaceRoot: root },
+    );
+    const app = {
+      getConfig: async () => config,
+      getScanInfo: () => ({ getLibs: () => [] }),
+      dist: new Executor("dist", root),
+      workspace: { workspaceRoot: root },
+      logger: { warn: () => undefined },
+    } as unknown as App;
+    const runner = new ApplicationBuildRunner(app, { environment: "debug" });
+    try {
+      await runner.buildAppMeta();
+      const [image, edge, mirror] = await Promise.all(
+        ["Dockerfile", "Dockerfile.edge", "Dockerfile.mirror"].map((name) => readFile(path.join(root, name), "utf8")),
+      );
+      expect(edge).toContain("ENV AKAN_ENV_PROFILE=edge\n");
+      expect(image).not.toContain("AKAN_ENV_PROFILE");
+      expect(mirror).toBe(image);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test("writes beside main.js the env its Dockerfile sets, so a host without the image runs the build as is", async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), "akan-build-meta-"));
     const config = new AkanAppConfig(
@@ -204,18 +234,70 @@ console.info(new SampleService().name);
       return env;
     };
     const names =
-      "JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,MAILER__AUTH__PASS,OBJECT_STORAGE__ENDPOINT,DISCORD__TOKENS:json,DISCORD__WEBHOOK,PUSH_NOTI__FIREBASE__PRIVATE_KEY:multiline,MESSAGE__API_SECRET,MESSAGE__SENDER_PASSWORD,POSTGRES_URL";
+      "JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,MAILER__AUTH__PASS,OBJECT_STORAGE__ENDPOINT,DISCORD__TOKENS:json,DISCORD__WEBHOOK,PUSH_NOTI__FIREBASE__PRIVATE_KEY:multiline,MESSAGE__API_SECRET,MESSAGE__SENDER_PASSWORD,POSTGRES_URL|DATABASE_URL";
     try {
-      const read = await metaOf({ secretEnv: "read" });
-      expect(read.AKAN_ENV_NAMES).toBe(names);
-      expect(read).not.toHaveProperty("AKAN_ENV_FALLBACK");
-      expect(await metaOf({ secretEnv: "inline" })).toMatchObject({
-        AKAN_ENV_NAMES: names,
-        AKAN_ENV_FALLBACK: "image",
-      });
-      const carried = await metaOf({});
-      expect(carried).not.toHaveProperty("AKAN_ENV_NAMES");
-      expect(carried).not.toHaveProperty("AKAN_ENV_FALLBACK");
+      expect((await metaOf({ secretEnv: "read" })).AKAN_ENV_NAMES).toBe(names);
+      expect(await metaOf({})).not.toHaveProperty("AKAN_ENV_NAMES");
+    } finally {
+      for (const key of keys) {
+        if (shellEnv[key] === undefined) delete process.env[key];
+        else process.env[key] = shellEnv[key];
+      }
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  test("an image build checks each profile its variants name before any phase, and that variant's Dockerfile lists no secret env name", async () => {
+    const { root, workspace } = await createTempApp("portal");
+    await writeSecretEnvFixture(root, { app: "portal" });
+    await writeFile(
+      path.join(root, "apps/portal/akan.config.ts"),
+      'export default { docker: { variants: { edge: { profile: "edge" } } } };\n',
+    );
+    const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN"] as const;
+    const shellEnv = Object.fromEntries(keys.map((key) => [key, process.env[key]]));
+    for (const key of keys) delete process.env[key];
+    await writeFile(
+      path.join(root, ".env"),
+      "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
+    );
+    const started = async (options: ConstructorParameters<typeof ApplicationBuildRunner>[1]) => {
+      const app = AppExecutor.from(workspace, "portal");
+      spyOn(app.logger, "warn").mockImplementation(() => undefined);
+      app.prepareCommand = async () => {
+        throw new Error("stopped before the phases");
+      };
+      const runner = new ApplicationBuildRunner(app, options);
+      const failure = await runner.build().then(
+        () => "",
+        (error: Error) => error.message,
+      );
+      return { app, runner, failure };
+    };
+    const profileFile = path.join(root, "apps/portal/env/env.server.main.edge.ts");
+    try {
+      expect((await started({ secretEnv: "read" })).failure).toContain(
+        'The server env profile "edge" bundles env/env.server.main.edge.ts',
+      );
+      expect((await started({})).failure).toBe("stopped before the phases");
+
+      await writeFile(profileFile, 'export const env = { mailer: { auth: { pass: "sentinel-edge-pass" } } };\n');
+      const secret = await started({ secretEnv: "read" });
+      expect(secret.failure).toContain("env/env.server.main.edge.ts holds secret-named values");
+      expect(secret.failure).not.toContain("sentinel-edge-pass");
+
+      await writeFile(profileFile, 'export const env = { hostname: "edge-host" };\n');
+      const { app, runner, failure } = await started({ secretEnv: "read" });
+      expect(failure).toBe("stopped before the phases");
+      await runner.buildAppMeta();
+      const [image, edge] = await Promise.all(
+        ["Dockerfile", "Dockerfile.edge"].map((name) => readFile(path.join(app.dist.cwdPath, name), "utf8")),
+      );
+      expect(image).toContain("ENV AKAN_ENV_NAMES=JWT_SECRET,");
+      expect(image).not.toContain("AKAN_ENV_PROFILE");
+      expect(edge).toContain("ENV AKAN_ENV_PROFILE=edge\n");
+      expect(edge).not.toContain("AKAN_ENV_NAMES");
+      expect(edge.replace("ENV AKAN_ENV_PROFILE=edge\n", "")).toBe(image.replace(/ENV AKAN_ENV_NAMES=.*\n/, ""));
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];
@@ -257,7 +339,7 @@ console.info(new SampleService().name);
     }
   });
 
-  test("an env file that needs a variable of the shell to load builds with it set; without it a build stops at the place, and an --inline-secrets build warns and holds the env as written", async () => {
+  test("an env file that needs a variable of the shell to load builds with it set; without it a build stops at the place", async () => {
     const { root, workspace } = await createTempApp("portal");
     await writeSecretEnvFixture(root, { app: "portal", mainExtra: '\n  hosts: process.env.ZQ_HOSTS!.split(","),' });
     const keys = ["AKAN_PUBLIC_ENV", "AKAN_PUBLIC_REPO_NAME", "AKAN_PUBLIC_SERVE_DOMAIN", "ZQ_HOSTS"] as const;
@@ -267,7 +349,7 @@ console.info(new SampleService().name);
       path.join(root, ".env"),
       "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
     );
-    const started = async (secretEnv: "read" | "inline") => {
+    const started = async () => {
       const app = AppExecutor.from(workspace, "portal");
       const warnings: string[] = [];
       spyOn(app.logger, "warn").mockImplementation((message: string) => {
@@ -276,7 +358,7 @@ console.info(new SampleService().name);
       app.prepareCommand = async () => {
         throw new Error("stopped before the phases");
       };
-      const runner = new ApplicationBuildRunner(app, { secretEnv });
+      const runner = new ApplicationBuildRunner(app, { secretEnv: "read" });
       const failure = await runner.build().then(
         () => "",
         (error: Error) => error.message,
@@ -292,23 +374,16 @@ console.info(new SampleService().name);
     const place =
       /env\.server\.ts could not be evaluated to check it for secrets: TypeError at .*env\.server\.main\.ts:\d+/;
     try {
-      const stopped = await started("read");
+      const stopped = await started();
       expect(stopped.failure).toMatch(place);
-      expect(stopped.failure).toContain("Make the file load at that line");
+      expect(stopped.failure).toEndWith(
+        "by setting the variable it reads there in this shell or giving it a fallback, and build again.",
+      );
+      expect(stopped.warnings).toEqual([]);
       expect(holdsSentinel(stopped.failure)).toBe(false);
 
-      const inlined = await started("inline");
-      expect(inlined.failure).toBe("stopped before the phases");
-      expect(inlined.warnings).toHaveLength(1);
-      expect(inlined.warnings[0]).toMatch(place);
-      expect(inlined.warnings[0]).toStartWith("--inline-secrets: env.server.ts could not be evaluated");
-      expect(holdsSentinel(inlined.warnings.join())).toBe(false);
-      const written = await envOf(inlined);
-      expect(written).not.toHaveProperty("AKAN_ENV_NAMES");
-      expect(written).not.toHaveProperty("AKAN_ENV_FALLBACK");
-
       process.env.ZQ_HOSTS = "a.example.test,b.example.test";
-      const built = await started("read");
+      const built = await started();
       expect(built.failure).toBe("stopped before the phases");
       expect((await envOf(built)).AKAN_ENV_NAMES).toStartWith("JWT_SECRET,SECURITY__SSO__GOOGLE__CLIENT_SECRET,");
     } finally {
@@ -330,7 +405,7 @@ console.info(new SampleService().name);
       path.join(root, ".env"),
       "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
     );
-    const started = async (secretEnv: "read" | "inline") => {
+    const started = async () => {
       const app = AppExecutor.from(workspace, "portal");
       spyOn(app.logger, "warn").mockImplementation(() => undefined);
       let prepared = false;
@@ -338,23 +413,20 @@ console.info(new SampleService().name);
         prepared = true;
         throw new Error("stopped before the phases");
       };
-      const failure = await new ApplicationBuildRunner(app, { secretEnv }).build().then(
+      const failure = await new ApplicationBuildRunner(app, { secretEnv: "read" }).build().then(
         () => "",
         (error: Error) => error.message,
       );
       return { failure, prepared: () => prepared };
     };
     try {
-      const stopped = await started("read");
+      const stopped = await started();
       expect(stopped.prepared()).toBe(false);
       expect(stopped.failure).toStartWith(
         `The server env of portal (main) holds 4 secret values this build cannot leave out, so it stops here: ${computedSecretKeys.join(", ")} (apps/portal/env/env.server.ts and what it imports).\n`,
       );
       expect(holdsSentinel(stopped.failure)).toBe(false);
       for (const value of Object.values(computedSecrets)) expect(stopped.failure).not.toContain(value);
-      const inlined = await started("inline");
-      expect(inlined.prepared()).toBe(true);
-      expect(inlined.failure).toBe("stopped before the phases");
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];
@@ -374,7 +446,7 @@ console.info(new SampleService().name);
       path.join(root, ".env"),
       "AKAN_PUBLIC_ENV=main\nAKAN_PUBLIC_REPO_NAME=repo\nAKAN_PUBLIC_SERVE_DOMAIN=akanjs.com\n",
     );
-    const runnerOf = async (secretEnv: "read" | "inline") => {
+    const runnerOf = async () => {
       const app = AppExecutor.from(workspace, "portal");
       const warnings: string[] = [];
       spyOn(app.logger, "warn").mockImplementation((message: string) => {
@@ -383,12 +455,12 @@ console.info(new SampleService().name);
       app.prepareCommand = async () => {
         throw new Error("stopped before the phases");
       };
-      const runner = new ApplicationBuildRunner(app, { secretEnv });
+      const runner = new ApplicationBuildRunner(app, { secretEnv: "read" });
       await expect(runner.build()).rejects.toThrow("stopped before the phases");
       return { app, runner, warnings };
     };
     try {
-      const { app, runner, warnings } = await runnerOf("read");
+      const { app, runner, warnings } = await runnerOf();
       await mkdir(app.dist.cwdPath, { recursive: true });
       await writeFile(path.join(app.dist.cwdPath, "server.js"), 'const env = { hostname: "app.example.test" };\n');
       await runner.assertSecretsLeftOut();
@@ -420,9 +492,6 @@ console.info(new SampleService().name);
         ].join("\n"),
       );
       expect(holdsSentinel(failure)).toBe(false);
-      const inlined = await runnerOf("inline");
-      await inlined.runner.assertSecretsLeftOut();
-      expect(inlined.warnings.join("\n")).not.toContain("also in what this build wrote");
     } finally {
       for (const key of keys) {
         if (shellEnv[key] === undefined) delete process.env[key];

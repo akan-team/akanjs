@@ -37,6 +37,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `directoryNotWritable` | 500 | `DirectoryNotWritableError` | no | yes | `service/predefinedAdaptor/directoryNotWritableError.ts` |
 | `documentNotFound` | 404 | `NoDocumentError` | yes | no | `document/noDocumentError.ts` |
 | `duplicateRegistration` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `envProfileUnbuilt` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `failed` | 500 | `MigrationError` | no | yes | `server/migration/migrationError.ts` |
 | `fileGrantRefused` | 403 | `AkanError` | no | yes | `base/akanError.ts` |
 | `fileGrantUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
@@ -123,6 +124,7 @@ Generated from the akanjs sources of this release: every code a framework error 
 | `searchMisconfigured` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `searchUnavailable` | 500 | `DocumentStoreError` | no | yes | `service/documentStoreError.ts` |
 | `secretEnvInvalid` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
+| `secretEnvMissing` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `secretRefused` | 500 | `AkanError` | no | yes | `base/akanError.ts` |
 | `secretStoreUnavailable` | 503 | `AkanError` | no | yes | `base/akanError.ts` |
 | `serviceUnavailable` | 503 | `ImageOptimizerError` | no | yes | `server/imageOptimizerError.ts` |

@@ -1,6 +1,7 @@
 import { existsSync, realpathSync } from "node:fs";
 import path from "node:path";
 import { Logger, toError } from "akanjs/common";
+import { EnvProfile } from "akanjs/server/lifecycle/envProfile";
 import { ServerEnvEvaluationError } from "./serverEnvEvaluationError";
 
 export interface ServerEnvProfileProps {
@@ -17,6 +18,8 @@ export interface ServerEnvSource {
 export interface LibEnvSource extends ServerEnvSource {
   profileFile: boolean;
   stripped: string[];
+  /** The defaults `contents` exports when the lib has no profile file: the lib's own with each secret left out. */
+  value?: unknown;
 }
 
 type EnvLoad = (envFile: string) => Promise<ServerEnvSource>;
@@ -52,7 +55,7 @@ type EvaluatedMessage = { load: string } | { env: string; lossy: string[]; reads
 //* A server env profile is bundled in place of the environment's own file, for a server that runs where its bundle
 //* can be read: the computers a desktop app is installed on. So it may hold no secret.
 export class ServerEnvProfile {
-  static readonly namePattern = /^[a-z][a-zA-Z0-9-]*$/;
+  static readonly namePattern = EnvProfile.namePattern;
   static readonly envFilePattern = /[\\/]env[\\/]env\.server\.[A-Za-z0-9-]+\.ts$/;
   static readonly envModulePattern = /[\\/]env[\\/]env\.server(?:\.[A-Za-z0-9-]+)?\.ts$/;
   static readonly evaluationTimeoutMs = 60_000;
@@ -407,12 +410,13 @@ export class ServerEnvProfile {
       throw new Error(
         `${file} holds ${evaluated.lossy.join(", ")}, which a "${profile}" build cannot carry: it bundles a lib env's defaults as JSON, which keeps no function, Map, Set, Date or class instance. Give the lib ${path.basename(profileFile)}.`,
       );
-    const { value, stripped } = ServerEnvProfile.strip(evaluated.value);
+    const { value = {}, stripped } = ServerEnvProfile.strip(evaluated.value);
     return {
       loader: "js",
-      contents: `export const env = ${JSON.stringify(value ?? {})};\n`,
+      contents: `export const env = ${JSON.stringify(value)};\n`,
       profileFile: false,
       stripped,
+      value,
     };
   }
 

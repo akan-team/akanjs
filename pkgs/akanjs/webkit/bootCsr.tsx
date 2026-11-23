@@ -34,11 +34,7 @@ export const bootCsr = async (context: CsrRouteContext) => {
   const [device, jwt] = await Promise.all([Device.load({ supportLanguages: i18n.locales }), getStoredAuthToken()]);
   // A native shell opens its bundle at `/`, but every route sits under `/:lang`; a reload would parse the bundle twice.
   if (mobileTarget && window.location.pathname === "/")
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${mobileHomePath(device.lang, mobileTarget)}${window.location.search}${window.location.hash}`,
-    );
+    window.history.replaceState(window.history.state, "", mobileHomeHref(device.lang, mobileTarget, window.location));
   else if (isPathLangPlaceholder)
     window.history.replaceState(window.history.state, "", onLang(window.location, device.lang, i18n.locales));
   const pathname = csrLocation.pathname;
@@ -112,9 +108,13 @@ function onLang(location: Location, lang: string | null, locales: string[]) {
 }
 
 // `indexPath` is relative to the basePath, as the router's own stack root is.
-function mobileHomePath(lang: string, target: { basePath?: string; indexPath?: string }) {
-  const segments = [lang, target.basePath, target.indexPath]
+function mobileHomeHref(lang: string, target: { basePath?: string; indexPath?: string }, location: Location) {
+  const [indexHref = "", indexHash = ""] = (target.indexPath ?? "").split("#");
+  const [indexPathname = "", indexQuery = ""] = indexHref.split("?");
+  const segments = [lang, target.basePath, indexPathname]
     .flatMap((part) => (part ?? "").split("/"))
     .filter((segment) => segment.length > 0);
-  return `/${segments.join("/")}`;
+  const query = [indexQuery, location.search.slice(1)].filter(Boolean).join("&");
+  const hash = location.hash || (indexHash ? `#${indexHash}` : "");
+  return `/${segments.join("/")}${query ? `?${query}` : ""}${hash}`;
 }

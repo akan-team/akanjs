@@ -2,10 +2,11 @@ import path from "node:path";
 import { toError } from "akanjs/common";
 import { AppWorkerPath } from "akanjs/server/appWorkerPath";
 import { BUILD_ENV_FILE, BUILD_ENV_MODULE } from "akanjs/server/lifecycle/buildEnv";
+import { EnvProfile } from "akanjs/server/lifecycle/envProfile";
 import { SecretEnv } from "akanjs/server/lifecycle/secretEnv";
 import type { BunPlugin } from "bun";
 import { AkanBin } from "../akanConfig/akanBin";
-import { DOCKER_IGNORED, DOCKER_VARIANT_FILE_PREFIX } from "../akanConfig/dockerImage";
+import { DOCKER_IGNORED, DOCKER_VARIANT_FILE_PREFIX, dockerProfilesOf } from "../akanConfig/dockerImage";
 import { ProductionLockfile } from "../akanConfig/productionLockfile";
 import type { App } from "../commandDecorators";
 import { LibExecutor, parseEnvFile, WorkspaceExecutor } from "../executors";
@@ -76,10 +77,9 @@ export interface ApplicationBuildRunnerOptions {
   profile?: string;
   /**
    * An image build's: `read` leaves the server env's secret strings out of the server, which reads each from its process
-   * env, and `inline` keeps them in it as what an unset variable falls back to. Unset, as for the server a desktop app
-   * carries, or under a `profile`, the env files are bundled as written.
+   * env. Unset, as for the server a desktop app carries, or under a `profile`, the env files are bundled as written.
    */
-  secretEnv?: "read" | "inline";
+  secretEnv?: "read";
   /**
    * `enforce` fails on an overage, a route with no entry, or a missing or unreadable akan.budget.json; `update` and
    * `raise` rewrite the file first; `report` only warns.
@@ -132,7 +132,7 @@ export class ApplicationBuildRunner {
   #reporter?: BuildProgressReporter;
   #environment?: string;
   #profile?: string;
-  #secretEnv?: "read" | "inline";
+  #secretEnv?: "read";
   #secrets: SecretEnvDeclared = { variables: [], unmoved: [], moved: [] };
   #budget: RouteJsBudgetMode;
   #modulesByRoute?: Record<string, string[]>;
@@ -194,13 +194,14 @@ export class ApplicationBuildRunner {
     this.#spinner = spinner && process.stderr.isTTY;
     if (spinner && !this.#spinner) this.#reporter ??= ApplicationBuildReporter.create();
     if (this.#verify) this.#app.useVerifyDist();
-    const { web, assets, baseDevEnv } = await this.#app.getConfig();
+    const { web, assets, baseDevEnv, dockerVariants } = await this.#app.getConfig();
     const environment = this.#environment ?? baseDevEnv.env;
     WorkspaceExecutor.assertDeployableEnv(baseDevEnv, environment, "akan build");
     this.#pinImageEnv(baseDevEnv, environment);
+    if (this.#secretEnv) this.#carriedProfiles = dockerProfilesOf(dockerVariants);
     //? Before any phase: a profile that would ship a secret stops the build, not the image after it.
-    if (this.#profile)
-      await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile: this.#profile });
+    for (const profile of this.#profile ? [this.#profile] : this.#carriedProfiles)
+      await ServerEnvProfile.assertShippable({ envDir: this.#envDir, environment, profile });
     if (this.#secretEnv) await this.#declareSecrets(environment);
     await this.#runPhase("prepare", "Preparing output directory", () => this.#app.prepareCommand("build"));
     if (!this.#fast) await this.#runPhase("typecheck", "Typechecking", () => this.typecheck());
@@ -228,12 +229,10 @@ export class ApplicationBuildRunner {
             ? "skipped"
             : "disabled by akan.config.ts web.ssr",
     );
-    const leftOut = ServerEnvProfile.leftOutNotice(
-      this.#profile ?? "",
-      this.#app.workspace.workspaceRoot,
-      this.#libEnvsLeftOut,
-    );
-    if (leftOut) this.#app.logger.warn(leftOut);
+    for (const [profile, libEnvs] of this.#libEnvsLeftOut) {
+      const leftOut = ServerEnvProfile.leftOutNotice(profile, this.#app.workspace.workspaceRoot, libEnvs);
+      if (leftOut) this.#app.logger.debug(leftOut);
+    }
     if (this.#verify) {
       const routeJs = await this.#runBudgetPhase(environment);
       await this.#app.dist.writeJson(
@@ -274,24 +273,17 @@ export class ApplicationBuildRunner {
     return this.#resultOf(environment, routeJs);
   }
 
-  //* A build that cannot load the env file cannot say what it left out, so it stops; under --inline-secrets, which
-  //* leaves nothing out, it goes on as a build without the setting does.
   async #declareSecrets(environment: string) {
     try {
       this.#secrets = await SecretEnvDeclaration.of(this.#envDir, environment);
     } catch (error) {
       if (!(error instanceof ServerEnvEvaluationError)) throw error;
-      if (this.#secretEnv === "read")
-        throw new Error(
-          `${error.message}\nA build leaves the secret values of the server env out of what it writes, and names the variables the server reads them from by loading the env file: with no variable of this shell first, then with them. Make the file load at that line, by setting the variable it reads there in this shell or giving it a fallback, and build again. \`akan build --inline-secrets\` builds with the env files as written until akanjs 3.5.0 removes it.`,
-        );
-      this.#app.logger.warn(
-        `--inline-secrets: ${error.message}. The secret values of the server env could not be listed, so this build holds the env files as written: the server reads no secret from a variable of its process env, and names none at boot.`,
+      throw new Error(
+        `${error.message}\nA build leaves the secret values of the server env out of what it writes, and names the variables the server reads them from by loading the env file: with no variable of this shell first, then with them. Make the file load at that line, by setting the variable it reads there in this shell or giving it a fallback, and build again.`,
       );
-      this.#secretEnv = undefined;
     }
     //? Before any phase, and by the env's value alone: a search of the files written misses a short or a plain one.
-    if (this.#secretEnv === "read" && this.#secrets.unmoved.length)
+    if (this.#secrets.unmoved.length)
       throw new Error(
         SecretEnvFile.unmovedStop(
           this.#app.name,
@@ -306,7 +298,7 @@ export class ApplicationBuildRunner {
 
   //? Before the metadata phase: a build that still holds a secret gets no Dockerfile to build an image from.
   async assertSecretsLeftOut() {
-    if (this.#secretEnv !== "read" || !this.#secrets.moved.length) return;
+    if (!this.#secretEnv || !this.#secrets.moved.length) return;
     const { workspaceRoot } = this.#app.workspace;
     const note = await new ServerBundleSecrets(workspaceRoot, this.#app.cwdPath).assertImageClean(
       this.#app.dist.cwdPath,
@@ -320,13 +312,13 @@ export class ApplicationBuildRunner {
     const { logger, name } = this.#app;
     const names = variables.map((variable) => variable.name).join(", ");
     const count = `${variables.length} secret value${variables.length === 1 ? "" : "s"}`;
-    if (variables.length && this.#secretEnv === "inline")
-      logger.warn(
-        `--inline-secrets keeps ${count} of the server env in this build, where whoever can read the image reads them: ${names}. A variable the deployment sets still wins over the built-in value. akanjs 3.5.0 removes the flag: set them where the server is deployed and build without it.`,
-      );
-    else if (variables.length)
+    if (this.#carriedProfiles.length)
       logger.info(
-        `The server reads ${count} from its process env when it starts, not from this build: ${names}. Set them where it is deployed; \`akan secret-env ${name} --env ${environment}\` lists them and writes them from the env file.`,
+        `The server also carries the env ${this.#carriedProfiles.length === 1 ? "profile" : "profiles"} ${this.#carriedProfiles.join(", ")}: ${EnvProfile.key}=<name> starts it on env/env.server.${environment}.<name>.ts, which reads no secret value.`,
+      );
+    if (variables.length)
+      logger.info(
+        `The server reads ${count} from its process env when it starts, not from this build, and does not start while one is unset: ${names}. Set them where it is deployed; \`akan secret-env ${name} --env ${environment}\` lists them and writes them from the env file.`,
       );
   }
 
@@ -451,7 +443,14 @@ export class ApplicationBuildRunner {
       ...variants.map((variant) =>
         dist.writeFile(
           `${dist.cwdPath}/${DOCKER_VARIANT_FILE_PREFIX}${variant}`,
-          akanConfig.dockerfileFor(environment, { ...imageParts, variant }),
+          akanConfig.dockerfileFor(environment, {
+            ...imageParts,
+            //? A variant on a profile reads none of the names, so its Dockerfile asks a deployment for none.
+            ...(EnvProfile.key in akanConfig.dockerVariants[variant].env
+              ? { env: Object.fromEntries(Object.entries(imageParts.env).filter(([key]) => key !== SecretEnv.listKey)) }
+              : {}),
+            variant,
+          }),
           silent,
         ),
       ),
@@ -464,10 +463,7 @@ export class ApplicationBuildRunner {
   //? Names and kinds alone: the image carries the list of what its deployment owes, never a value.
   #secretEnvList(): Record<string, string> {
     if (!this.#secrets.variables.length) return {};
-    return {
-      [SecretEnv.listKey]: SecretEnv.format(this.#secrets.variables),
-      ...(this.#secretEnv === "inline" ? { [SecretEnv.fallbackKey]: "image" } : {}),
-    };
+    return { [SecretEnv.listKey]: SecretEnv.format(this.#secrets.variables) };
   }
 
   async #pruneLockfile(packageJson: PackageJson): Promise<string | null> {
@@ -497,7 +493,8 @@ export class ApplicationBuildRunner {
   }
 
   #serverEnv: BunPlugin | null = null;
-  #libEnvsLeftOut = new Map<string, string[]>();
+  #carriedProfiles: string[] = [];
+  #libEnvsLeftOut = new Map<string, Map<string, string[]>>();
   //? One plugin for every server-side bundle of the build: the backend, the RSC worker and the SSR route bundle.
   #serverEnvPlugin(baseEnv: string, branches: Iterable<string>): BunPlugin {
     this.#serverEnv ??= createServerEnvPlugin({
@@ -505,9 +502,12 @@ export class ApplicationBuildRunner {
       environment: this.#environment ?? baseEnv,
       environments: ["local", "testing", ...branches],
       profile: this.#profile,
+      profiles: this.#carriedProfiles,
       secrets: this.#secretEnv,
-      onLibEnv: (file, { profileFile, stripped }) => {
-        if (!profileFile && stripped.length) this.#libEnvsLeftOut.set(file, stripped);
+      onLibEnv: (file, { profile, profileFile, stripped }) => {
+        if (profileFile || !stripped.length) return;
+        const libEnvs = this.#libEnvsLeftOut.get(profile) ?? new Map<string, string[]>();
+        this.#libEnvsLeftOut.set(profile, libEnvs.set(file, stripped));
       },
     });
     return this.#serverEnv;
@@ -532,8 +532,13 @@ export class ApplicationBuildRunner {
       target: "bun",
       minify: AKAN_BACKEND_MINIFY,
       naming: { entry: "[name].[ext]", chunk: "chunk-[hash].[ext]" },
-      // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
-      define: { "process.env.NODE_ENV": JSON.stringify("production") },
+      define: {
+        // `akan build` must embed production react-server-dom regardless of the shell's NODE_ENV.
+        "process.env.NODE_ENV": JSON.stringify("production"),
+        [`process.env.${EnvProfile.carriedKey}`]: JSON.stringify(
+          EnvProfile.format(this.#profile ? [this.#profile] : this.#carriedProfiles),
+        ),
+      },
     } satisfies Omit<Bun.BuildConfig, "entrypoints">;
     const serverEnvPlugin = this.#serverEnvPlugin(baseDevEnv.env, branches);
     const backendConfig = {

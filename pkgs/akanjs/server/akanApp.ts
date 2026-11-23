@@ -15,6 +15,7 @@ import { GatewayRooms } from "./gateway/gatewayRooms";
 import { GatewayStatus } from "./gateway/gatewayStatus";
 import { GatewayWebSocketRelay, type GatewayWsData } from "./gateway/gatewayWebSocketRelay";
 import { ListeningPort } from "./gateway/listeningPort";
+import { EnvProfile } from "./lifecycle/envProfile";
 import { isPortInUseError } from "./lifecycle/portInUse";
 import { SecretEnv } from "./lifecycle/secretEnv";
 import { LogStreamRoute } from "./logging/logStreamRoute";
@@ -102,7 +103,8 @@ export class AkanApp {
         await OpsCommand.run(process.argv.slice(3), { importServer: async () => await this.#importServer() }),
       );
     }
-    SecretEnv.check(this.logger);
+    //? Security: a profile's env file holds no secret, which its build refuses, so it reads none of the declared names.
+    if (!EnvProfile.active()) SecretEnv.check(this.logger);
     if (this.#config.solo) return await this.#startSolo();
     if (SelfExec.carried)
       throw new AkanError(

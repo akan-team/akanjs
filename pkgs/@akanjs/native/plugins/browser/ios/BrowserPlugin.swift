@@ -1,11 +1,11 @@
 import SafariServices
 import UIKit
 
-/// SFSafariViewController, presented full screen from the topmost controller
+/// SFSafariViewController, presented over the full screen from the topmost controller (AkanNativePresent)
 /// (capacitor-plugins/browser/ios/Sources/BrowserPlugin/Browser.swift and BrowserPlugin.swift).
 /// - http/https only (Browser.swift:19): anything else crashes SFSafariViewController.
 /// - finished: safariViewControllerDidFinish, sent for Done and the edge swipe. It is not sent
-///   for a dismissal the app asks for, so close() never produces it. With .fullScreen there is no
+///   for a dismissal the app asks for, so close() never produces it. With .overFullScreen there is no
 ///   swipe-down dismissal that would bypass the delegate.
 /// - SFSafariViewController dismisses itself after Done; Capacitor dismisses the presenter again
 ///   in didFinish (BrowserPlugin.swift:31-39), which can dismiss an unrelated controller. Not here.
@@ -41,7 +41,8 @@ final class BrowserPlugin: NSObject, BrowserPluginSpec, @MainActor SFSafariViewC
         }
         let controller = SFSafariViewController(url: url)
         controller.delegate = self
-        controller.modalPresentationStyle = .fullScreen
+        controller.modalPresentationStyle = .overFullScreen
+        controller.modalPresentationCapturesStatusBarAppearance = true
         safari = controller
         context.present(controller, completion: { reply.resolve() }) { [weak self] in
             self?.safari = nil

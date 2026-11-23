@@ -5,11 +5,8 @@ export type SecretEnvKind = "string" | "json" | "multiline";
 export interface SecretEnvEntry {
   name: string;
   kind: SecretEnvKind;
-}
-
-export interface SecretEnvReport {
-  missing: string[];
-  escaped: string[];
+  /** The developer's own variables the env file reads first (`process.env.MY_URL ?? "…"`): one set stands in. */
+  ahead?: string[];
 }
 
 interface SecretEnvLogger {
@@ -20,8 +17,6 @@ interface SecretEnvLogger {
 export class SecretEnv {
   //? Not named for secrets: Docker's build check flags every ENV whose name says secret, and this one holds names only.
   static readonly listKey = "AKAN_ENV_NAMES";
-  //* `image` when `akan build --inline-secrets` kept the values in the build, which a variable left unset falls back to.
-  static readonly fallbackKey = "AKAN_ENV_FALLBACK";
   //? The database adaptor reads either spelling, so a deployment that sets the other one owes nothing new.
   static readonly #aliases: { readonly [name: string]: readonly string[] } = { POSTGRES_URL: ["POSTGRES_URI"] };
 
@@ -30,13 +25,13 @@ export class SecretEnv {
     return undefined;
   }
 
-  static read(name: string, inlined?: string): string | undefined {
-    return SecretEnv.#value(name, process.env) ?? inlined;
+  static read(name: string): string | undefined {
+    return SecretEnv.#value(name, process.env);
   }
 
-  static json(name: string, inlined?: unknown): unknown {
+  static json(name: string): unknown {
     const text = SecretEnv.#value(name, process.env);
-    return text === undefined ? inlined : SecretEnv.#parse(name, text);
+    return text === undefined ? undefined : SecretEnv.#parse(name, text);
   }
 
   //? No `cause`: the parser's own message quotes the text it stopped at, which is part of the secret.
@@ -55,7 +50,9 @@ export class SecretEnv {
   }
 
   static format(entries: readonly SecretEnvEntry[]): string {
-    return entries.map(({ name, kind }) => (kind === "string" ? name : `${name}:${kind}`)).join(",");
+    return entries
+      .map(({ name, kind, ahead = [] }) => `${[name, ...ahead].join("|")}${kind === "string" ? "" : `:${kind}`}`)
+      .join(",");
   }
 
   static parse(list: string | undefined): SecretEnvEntry[] {
@@ -64,37 +61,40 @@ export class SecretEnv {
       .map((entry) => entry.trim())
       .filter(Boolean)
       .map((entry) => {
-        const [name = "", kind] = entry.split(":");
-        return { name, kind: kind === "json" || kind === "multiline" ? kind : "string" };
+        const [names = "", kind] = entry.split(":");
+        const [name = "", ...ahead] = names.split("|");
+        return {
+          name,
+          kind: kind === "json" || kind === "multiline" ? kind : "string",
+          ...(ahead.length ? { ahead } : {}),
+        };
       });
   }
 
-  static check(logger: SecretEnvLogger, env: NodeJS.ProcessEnv = process.env): SecretEnvReport {
+  static check(logger: SecretEnvLogger, env: NodeJS.ProcessEnv = process.env): void {
     const missing: string[] = [];
     const escaped: string[] = [];
-    for (const { name, kind } of SecretEnv.parse(env[SecretEnv.listKey])) {
+    for (const { name, kind, ahead = [] } of SecretEnv.parse(env[SecretEnv.listKey])) {
       const value = SecretEnv.#value(name, env);
-      if (value === undefined) missing.push(name);
-      else if (kind === "json") SecretEnv.#parse(name, value);
+      if (value === undefined) {
+        if (!ahead.some((own) => env[own])) missing.push(name);
+      } else if (kind === "json") SecretEnv.#parse(name, value);
       else if (kind === "multiline" && value.includes("\\n") && !value.includes("\n")) escaped.push(name);
     }
     if (escaped.length)
       logger.warn(
         `${escaped.join(", ")} ${escaped.length === 1 ? "holds" : "hold"} a backslash and an n where a line should break, as a key pasted onto one line does. Set ${escaped.length === 1 ? "it" : "them"} with real line breaks; \`akan secret-env\` writes ${escaped.length === 1 ? "it" : "them"} so.`,
       );
-    if (missing.length) logger.warn(SecretEnv.#missingMessage(missing, env));
-    return { missing, escaped };
+    if (missing.length) throw new AkanError("secretEnvMissing", SecretEnv.#missingMessage(missing, env));
   }
 
   static #missingMessage(missing: string[], env: NodeJS.ProcessEnv) {
     const one = missing.length === 1;
     const subject = one
-      ? "1 secret env value this server declares is not set"
-      : `${missing.length} secret env values this server declares are not set`;
+      ? "1 secret env value this server reads from its process env is not set"
+      : `${missing.length} secret env values this server reads from its process env are not set`;
     const them = one ? "it" : "them";
-    if (env[SecretEnv.fallbackKey] === "image")
-      return `${subject}, so it uses the ${one ? "value" : "values"} built into this image (akan build --inline-secrets): ${missing.join(", ")}. Set ${them} in the deployment's environment and build without the flag; akanjs 3.5.0 removes it.`;
     const command = `akan secret-env ${env.AKAN_PUBLIC_APP_NAME || "<app>"} --env ${env.AKAN_PUBLIC_ENV || "<env>"}`;
-    return `${subject}: ${missing.join(", ")}. The framework does not stop for ${them} yet, though whatever reads ${them} may, and akanjs 3.5.0 will refuse to boot. Set ${them} in the deployment's environment; \`${command}\` lists every name.`;
+    return `${subject}, so it does not start: ${missing.join(", ")}. Its build left the ${one ? "value" : "values"} out of the image. Set ${them} in the deployment's environment; \`${command}\` lists every name and writes the values from the env file.`;
   }
 }

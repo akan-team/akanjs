@@ -114,10 +114,14 @@ value — a `process.env.X ?? "literal"` counts as the literal. Signing, encrypt
 secret under any key. The profile may spread `libEnv`, and the lib defaults it reaches are checked as the bundle
 carries them; a profile that imports the file it replaces is refused. Each lib's env defaults (`env.server.testing.ts`) are
 swapped the same way: for the lib's `env/env.server.testing.edge.ts`, held to the same check, or for the defaults with
-every secret-named value left out, which the build names in a warning — and a default a JSON snapshot cannot carry (a
-function, Map, Set, Date, class instance, bigint or non-finite number) is refused unless the lib has its profile file.
-`akan build <app> --profile edge` does the same for an image. A module listing only edge does not mount under `akan start` (local): list `local` too to develop
-it there.
+every secret-named value left out, which the build names in a debug line (`AKAN_PUBLIC_LOG_LEVEL=debug`) — and a
+default a JSON snapshot cannot carry (a function, Map, Set, Date, class instance, bigint or non-finite number) is
+refused unless the lib has its profile file.
+`akan build <app> --profile edge` does the same for an image. `docker.variants.<name>.profile` carries the
+checked profile beside the environment's own file, whose secret values still leave the image: the server evaluates
+one of the two, the profile's under `AKAN_ENV_PROFILE` (set by the variant, never by `docker.env`), and a profile the
+build did not carry stops the boot (`envProfileUnbuilt`). A module listing only edge does not mount under
+`akan start` (local): list `local` too to develop it there.
 
 **A file the user picks reaches the server as a grant, never as a copy or a path.** With `"file-picker"` in
 `native.plugins`, `filePicker.pickFiles({ forServer: true })` (also `pickDirectory` and `saveFile`,

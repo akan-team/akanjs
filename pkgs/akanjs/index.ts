@@ -40,9 +40,11 @@ export type DockerConfig = string | DockerImageConfig;
 
 /**
  * The app's `docker` with the fields it names replaced and its `env` laid over the app's key by key, written beside
- * the Dockerfile as `Dockerfile.<name>`.
+ * the Dockerfile as `Dockerfile.<name>`. `profile` names a server env profile: the build carries
+ * `env/env.server.<env>.<profile>.ts` beside the environment's own env file, and the variant's `AKAN_ENV_PROFILE`
+ * picks it when the server starts.
  */
-export type DockerVariantOption = Partial<DockerImageConfig>;
+export type DockerVariantOption = Partial<DockerImageConfig> & { profile?: string };
 
 export type DockerOption = string | (Partial<DockerImageConfig> & { variants?: Record<string, DockerVariantOption> });
 

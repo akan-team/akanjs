@@ -282,6 +282,12 @@ describe("NativeApp", () => {
     );
   });
 
+  test("an indexPath's query opens the dev build ahead of its own parameters, and its hash after them", () => {
+    expect(new NativeApp(fakeApp(), target({ indexPath: "/explore?tab=new#top" })).startPath("en", "ios")).toBe(
+      "/en/explore?tab=new&csr=true&akanMobileTarget=default&akanMobileLang=device&akanMobileIndexPath=%2Fexplore%3Ftab%3Dnew%23top#top",
+    );
+  });
+
   test("a platform section's indexPath wins on that platform, and the others keep the target's", () => {
     const app = new NativeApp(fakeApp(), target({ indexPath: "/mobile", desktop: { indexPath: "/", server: true } }));
 

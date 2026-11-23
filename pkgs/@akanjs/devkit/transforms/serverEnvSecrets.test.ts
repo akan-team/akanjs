@@ -32,11 +32,7 @@ interface Built {
   text: string;
 }
 
-const build = async (
-  root: string,
-  secrets?: "read" | "inline",
-  { mainExtra = "", overSwitch = false } = {},
-): Promise<Built> => {
+const build = async (root: string, secrets?: "read", { mainExtra = "", overSwitch = false } = {}): Promise<Built> => {
   const { appDir, envDir } = await writeSecretEnvFixture(root, { mainExtra });
   if (overSwitch)
     await writeText(path.join(envDir, "env.server.ts"), await Bun.file(path.join(envDir, "env.server.main.ts")).text());
@@ -110,29 +106,30 @@ describe("createServerEnvPlugin for an image", () => {
     });
   });
 
-  test("the developer's own variable still outranks the one the build reads", async () => {
+  test("the developer's own variable still outranks the one the build reads, and stands in for it at boot", async () => {
     const built = await build(await makeTempRoot(), "read");
     const { list, values } = await declare(built);
-    const booted = boot(built.file, {
-      AKAN_ENV_NAMES: list,
-      ...values,
-      DATABASE_URL: "postgres://own.example.test/app",
-    });
+    expect(list).toContain(",POSTGRES_URL|DATABASE_URL");
+    const own = { DATABASE_URL: "postgres://own.example.test/app" };
+    const booted = boot(built.file, { AKAN_ENV_NAMES: list, ...values, ...own });
     expect(booted.env).toMatchObject({ database: { postgres: { url: "postgres://own.example.test/app" } } });
+    const { POSTGRES_URL: _url, ...set } = values;
+    const instead = boot(built.file, { AKAN_ENV_NAMES: list, ...set, ...own });
+    expect({ exitCode: instead.exitCode, warnings: instead.warnings }).toEqual({ exitCode: 0, warnings: [] });
+    expect(instead.env).toMatchObject({ database: { postgres: { url: "postgres://own.example.test/app" } } });
   });
 
-  test("started without its variables, it names each one in a single warning and runs without them", async () => {
+  test("started without its variables, it exits non-zero, naming each one and no value", async () => {
     const built = await build(await makeTempRoot(), "read");
     const { list, values } = await declare(built);
     const { MAILER__AUTH__PASS: _pass, DISCORD__TOKENS: _tokens, ...set } = values;
     const booted = boot(built.file, { AKAN_ENV_NAMES: list, ...set });
-    expect(booted.exitCode).toBe(0);
-    expect(booted.warnings).toEqual([
-      "2 secret env values this server declares are not set: MAILER__AUTH__PASS, DISCORD__TOKENS. The framework does not stop for them yet, though whatever reads them may, and akanjs 3.5.0 will refuse to boot. Set them in the deployment's environment; `akan secret-env <app> --env main` lists every name.",
-    ]);
-    expect(booted.env).toMatchObject({ mailer: { address: "noreply@example.test", auth: { user: "mailer" } } });
-    expect((booted.env?.mailer as { auth: object } | undefined)?.auth).not.toHaveProperty("pass");
-    expect(booted.env?.discord).not.toHaveProperty("tokens");
+    expect(booted.exitCode).not.toBe(0);
+    expect(booted.env).toBeNull();
+    expect(booted.warnings.join("\n")).toContain(
+      "2 secret env values this server reads from its process env are not set, so it does not start: MAILER__AUTH__PASS, DISCORD__TOKENS. Its build left the values out of the image. Set them in the deployment's environment; `akan secret-env <app> --env main` lists every name and writes the values from the env file.",
+    );
+    expect(holdsSentinel(booted.warnings.join("\n"))).toBe(false);
   });
 
   test("after a key is renamed in the env file, a deployment still setting the old variable is told the new name", async () => {
@@ -146,32 +143,11 @@ describe("createServerEnvPlugin for an image", () => {
     });
     const { list } = await declare(renamed);
     const booted = boot(renamed.file, { AKAN_ENV_NAMES: list, ...old.values });
-    expect(booted.warnings).toEqual([
-      "1 secret env value this server declares is not set: LLM__ACCESS_KEY. The framework does not stop for it yet, though whatever reads it may, and akanjs 3.5.0 will refuse to boot. Set it in the deployment's environment; `akan secret-env <app> --env main` lists every name.",
-    ]);
-    expect(booted.env?.llm).toEqual({});
-  });
-
-  test("an --inline-secrets build keeps the values as what an unset variable falls back to, and a set one wins", async () => {
-    const built = await build(await makeTempRoot(), "inline");
-    expect(built.text).toContain(secretEnvSentinels.jwt);
-    const { list } = await declare(built);
-    const fallback = boot(built.file, { AKAN_ENV_NAMES: list, AKAN_ENV_FALLBACK: "image" });
-    expect(fallback.env).toEqual((await evaluated(built)) as { [key: string]: unknown });
-    expect(fallback.warnings).toHaveLength(1);
-    expect(fallback.warnings[0]).toStartWith(
-      "10 secret env values this server declares are not set, so it uses the values built into this image (akan build --inline-secrets): JWT_SECRET, ",
+    expect(booted.exitCode).not.toBe(0);
+    expect(booted.warnings.join("\n")).toContain(
+      "1 secret env value this server reads from its process env is not set, so it does not start: LLM__ACCESS_KEY.",
     );
-    const overridden = boot(built.file, {
-      AKAN_ENV_NAMES: list,
-      AKAN_ENV_FALLBACK: "image",
-      JWT_SECRET: "set-by-the-deployment",
-      DISCORD__TOKENS: '["set-by-the-deployment"]',
-    });
-    expect(overridden.env).toMatchObject({
-      security: { jwtSecret: "set-by-the-deployment", sso: { google: { clientSecret: secretEnvSentinels.google } } },
-      discord: { tokens: ["set-by-the-deployment"], webhook: secretEnvSentinels.webhook },
-    });
+    expect(holdsSentinel(booted.warnings.join("\n"))).toBe(false);
   });
 
   test("the env file a pipeline copies over the switch is read the same way", async () => {

@@ -307,6 +307,18 @@ describe("bootCsr", () => {
     }
   });
 
+  test("a release bundle starts on an indexPath's query and hash, the shell's own query after it", async () => {
+    installWindow({ href: "app://localhost/?from=launch" });
+    window.__AKAN_MOBILE_TARGET__ = { name: "default", basePath: "minimal", indexPath: "/explore?tab=new#top" };
+    const { bootCsr } = await import("./bootCsr");
+
+    await bootCsr({ "./_index.tsx": async () => ({ default: () => null }) });
+
+    expect(window.location.pathname).toBe("/en/minimal/explore");
+    expect(window.location.search).toBe("?tab=new&from=launch");
+    expect(window.location.hash).toBe("#top");
+  });
+
   test("leaves a path the shell opened below / to the router", async () => {
     installWindow({ href: "app://localhost/en/inbox?tab=1" });
     window.__AKAN_MOBILE_TARGET__ = { name: "default", indexPath: "/explore" };
