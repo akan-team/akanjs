@@ -106,9 +106,14 @@ export class SsrMemoryProbe {
     if (!fs.existsSync(path.join(distDir, "main.js")))
       throw new Error(`no built app at ${distDir} — run \`akan build ${appName}\` first`);
     await Bun.write(logPath, "");
+    const secretEnv = await DevResourceProbe.deployedSecretEnv(
+      distDir,
+      path.join(process.cwd(), "apps", appName, "env"),
+    );
     const gateway = Bun.spawn(["bun", "main.js"], {
       cwd: distDir,
       env: {
+        ...secretEnv,
         ...process.env,
         NODE_ENV: "production",
         USE_AKANJS_PKGS: "true",

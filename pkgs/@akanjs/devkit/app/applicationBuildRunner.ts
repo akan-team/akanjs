@@ -76,10 +76,9 @@ export interface ApplicationBuildRunnerOptions {
   profile?: string;
   /**
    * An image build's: `read` leaves the server env's secret strings out of the server, which reads each from its process
-   * env, and `inline` keeps them in it as what an unset variable falls back to. Unset, as for the server a desktop app
-   * carries, or under a `profile`, the env files are bundled as written.
+   * env. Unset, as for the server a desktop app carries, or under a `profile`, the env files are bundled as written.
    */
-  secretEnv?: "read" | "inline";
+  secretEnv?: "read";
   /**
    * `enforce` fails on an overage, a route with no entry, or a missing or unreadable akan.budget.json; `update` and
    * `raise` rewrite the file first; `report` only warns.
@@ -132,7 +131,7 @@ export class ApplicationBuildRunner {
   #reporter?: BuildProgressReporter;
   #environment?: string;
   #profile?: string;
-  #secretEnv?: "read" | "inline";
+  #secretEnv?: "read";
   #secrets: SecretEnvDeclared = { variables: [], unmoved: [], moved: [] };
   #budget: RouteJsBudgetMode;
   #modulesByRoute?: Record<string, string[]>;
@@ -274,24 +273,17 @@ export class ApplicationBuildRunner {
     return this.#resultOf(environment, routeJs);
   }
 
-  //* A build that cannot load the env file cannot say what it left out, so it stops; under --inline-secrets, which
-  //* leaves nothing out, it goes on as a build without the setting does.
   async #declareSecrets(environment: string) {
     try {
       this.#secrets = await SecretEnvDeclaration.of(this.#envDir, environment);
     } catch (error) {
       if (!(error instanceof ServerEnvEvaluationError)) throw error;
-      if (this.#secretEnv === "read")
-        throw new Error(
-          `${error.message}\nA build leaves the secret values of the server env out of what it writes, and names the variables the server reads them from by loading the env file: with no variable of this shell first, then with them. Make the file load at that line, by setting the variable it reads there in this shell or giving it a fallback, and build again. \`akan build --inline-secrets\` builds with the env files as written until akanjs 3.5.0 removes it.`,
-        );
-      this.#app.logger.warn(
-        `--inline-secrets: ${error.message}. The secret values of the server env could not be listed, so this build holds the env files as written: the server reads no secret from a variable of its process env, and names none at boot.`,
+      throw new Error(
+        `${error.message}\nA build leaves the secret values of the server env out of what it writes, and names the variables the server reads them from by loading the env file: with no variable of this shell first, then with them. Make the file load at that line, by setting the variable it reads there in this shell or giving it a fallback, and build again.`,
       );
-      this.#secretEnv = undefined;
     }
     //? Before any phase, and by the env's value alone: a search of the files written misses a short or a plain one.
-    if (this.#secretEnv === "read" && this.#secrets.unmoved.length)
+    if (this.#secrets.unmoved.length)
       throw new Error(
         SecretEnvFile.unmovedStop(
           this.#app.name,
@@ -306,7 +298,7 @@ export class ApplicationBuildRunner {
 
   //? Before the metadata phase: a build that still holds a secret gets no Dockerfile to build an image from.
   async assertSecretsLeftOut() {
-    if (this.#secretEnv !== "read" || !this.#secrets.moved.length) return;
+    if (!this.#secretEnv || !this.#secrets.moved.length) return;
     const { workspaceRoot } = this.#app.workspace;
     const note = await new ServerBundleSecrets(workspaceRoot, this.#app.cwdPath).assertImageClean(
       this.#app.dist.cwdPath,
@@ -320,13 +312,9 @@ export class ApplicationBuildRunner {
     const { logger, name } = this.#app;
     const names = variables.map((variable) => variable.name).join(", ");
     const count = `${variables.length} secret value${variables.length === 1 ? "" : "s"}`;
-    if (variables.length && this.#secretEnv === "inline")
-      logger.warn(
-        `--inline-secrets keeps ${count} of the server env in this build, where whoever can read the image reads them: ${names}. A variable the deployment sets still wins over the built-in value. akanjs 3.5.0 removes the flag: set them where the server is deployed and build without it.`,
-      );
-    else if (variables.length)
+    if (variables.length)
       logger.info(
-        `The server reads ${count} from its process env when it starts, not from this build: ${names}. Set them where it is deployed; \`akan secret-env ${name} --env ${environment}\` lists them and writes them from the env file.`,
+        `The server reads ${count} from its process env when it starts, not from this build, and does not start while one is unset: ${names}. Set them where it is deployed; \`akan secret-env ${name} --env ${environment}\` lists them and writes them from the env file.`,
       );
   }
 
@@ -464,10 +452,7 @@ export class ApplicationBuildRunner {
   //? Names and kinds alone: the image carries the list of what its deployment owes, never a value.
   #secretEnvList(): Record<string, string> {
     if (!this.#secrets.variables.length) return {};
-    return {
-      [SecretEnv.listKey]: SecretEnv.format(this.#secrets.variables),
-      ...(this.#secretEnv === "inline" ? { [SecretEnv.fallbackKey]: "image" } : {}),
-    };
+    return { [SecretEnv.listKey]: SecretEnv.format(this.#secrets.variables) };
   }
 
   async #pruneLockfile(packageJson: PackageJson): Promise<string | null> {

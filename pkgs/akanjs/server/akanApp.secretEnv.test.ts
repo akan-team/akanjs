@@ -3,6 +3,7 @@ import { closeSync, openSync } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { AkanError } from "../base/akanError";
 import { AkanApp } from "./akanApp";
 
 const sentinel = "sentinel-7b1e44-value";
@@ -65,36 +66,32 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-test("a gateway names the secret env values its deployment left unset before it spawns a replica", async () => {
+test("a gateway whose deployment left a secret env value unset refuses before it spawns a replica or listens", async () => {
   const root = await makeRoot();
   const serverPath = path.join(root, "server.ts");
   const bootsPath = path.join(root, "boots.json");
   await Bun.write(serverPath, replica(bootsPath, false));
   Object.assign(process.env, { AKAN_ENV_NAMES: "FIXTURE__TOKEN,FIXTURE__SET", FIXTURE__SET: sentinel });
-  const events: string[] = [];
-  const spawn = Bun.spawn;
-  const spawned = spyOn(Bun, "spawn").mockImplementation(((...args: Parameters<typeof Bun.spawn>) => {
-    events.push("spawn");
-    return spawn(...args);
-  }) as typeof Bun.spawn);
+  const spawned = spyOn(Bun, "spawn");
+  const served = spyOn(Bun, "serve");
   const app = new AkanApp(serverPath, { replica: 1, runtimeDir: path.join(root, "runtime"), port: 0 });
-  const warned = spyOn(app.logger, "warn").mockImplementation((message: string) => {
-    events.push(message);
-  });
-  const running = app.start();
   try {
-    expect(await waitForBoots(bootsPath, 1)).toEqual([null]);
-    expect(events).toHaveLength(2);
-    expect(events[0]).toStartWith(
-      "1 secret env value this server declares is not set: FIXTURE__TOKEN. The framework does not stop for it yet, though whatever reads it may, and akanjs 3.5.0 will refuse to boot.",
+    const failure = await app.start().then(
+      () => null,
+      (error: unknown) => error,
     );
-    expect(events[1]).toBe("spawn");
-    expect(events.join(" ")).not.toContain(sentinel);
+    expect(AkanError.is(failure, "secretEnvMissing")).toBe(true);
+    expect((failure as AkanError).message).toStartWith(
+      "1 secret env value this server reads from its process env is not set, so it does not start: FIXTURE__TOKEN.",
+    );
+    expect(`${(failure as AkanError).message}`).not.toContain(sentinel);
+    expect(spawned).not.toHaveBeenCalled();
+    expect(served).not.toHaveBeenCalled();
+    expect(await bootsOf(bootsPath)).toEqual([]);
   } finally {
     await app.stop();
-    await Promise.race([running, wait(1_000)]);
     spawned.mockRestore();
-    warned.mockRestore();
+    served.mockRestore();
   }
 }, 20_000);
 
@@ -117,7 +114,7 @@ test("a replica the gateway respawns reads the secret the gateway started with",
   }
 }, 20_000);
 
-test("a server that runs in one process names what is unset before it loads the server", async () => {
+test("a server that runs in one process exits non-zero before it loads the server, naming what is unset", async () => {
   const root = await makeRoot();
   const serverPath = path.join(root, "server.ts");
   const mainPath = path.join(root, "main.ts");
@@ -131,20 +128,26 @@ test("a server that runs in one process names what is unset before it loads the 
     `import { AkanApp } from ${JSON.stringify(path.join(import.meta.dir, "akanApp.ts"))};\nawait new AkanApp(${JSON.stringify(serverPath)}, { solo: true, runtimeDir: ${JSON.stringify(path.join(root, "runtime"))} }).start();\n`,
   );
   const output = openSync(outputPath, "a");
-  try {
+  const run = async (env: { [name: string]: string }) => {
     const proc = Bun.spawn([process.execPath, mainPath], {
       cwd: root,
-      env: { ...process.env, AKAN_ENV_NAMES: "FIXTURE__TOKEN,FIXTURE__SET", FIXTURE__SET: sentinel },
+      env: { ...process.env, AKAN_ENV_NAMES: "FIXTURE__TOKEN,FIXTURE__SET", FIXTURE__SET: sentinel, ...env },
       stdout: output,
       stderr: output,
     });
-    expect(await proc.exited).toBe(0);
+    return await proc.exited;
+  };
+  try {
+    expect(await run({})).not.toBe(0);
+    const refused = await readFile(outputPath, "utf8");
+    expect(refused).toContain(
+      "1 secret env value this server reads from its process env is not set, so it does not start: FIXTURE__TOKEN.",
+    );
+    expect(refused).not.toContain("server module loaded");
+    expect(refused).not.toContain(sentinel);
+    expect(await run({ FIXTURE__TOKEN: sentinel })).toBe(0);
   } finally {
     closeSync(output);
   }
-  const text = await readFile(outputPath, "utf8");
-  const warning = text.indexOf("1 secret env value this server declares is not set: FIXTURE__TOKEN.");
-  expect(warning).toBeGreaterThanOrEqual(0);
-  expect(text.indexOf("server module loaded")).toBeGreaterThan(warning);
-  expect(text).not.toContain(sentinel);
+  expect(await readFile(outputPath, "utf8")).toContain("server module loaded");
 }, 20_000);

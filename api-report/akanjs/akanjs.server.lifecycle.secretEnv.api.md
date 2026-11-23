@@ -5,25 +5,20 @@ Generated from the declaration emit by `bun run api:report`. Do not edit it by h
 ```ts
 export declare class SecretEnv {
     static readonly listKey = "AKAN_ENV_NAMES";
-    static readonly fallbackKey = "AKAN_ENV_FALLBACK";
-    static read(name: string, inlined?: string): string | undefined;
-    static json(name: string, inlined?: unknown): unknown;
+    static read(name: string): string | undefined;
+    static json(name: string): unknown;
     static format(entries: readonly SecretEnvEntry[]): string;
     static parse(list: string | undefined): SecretEnvEntry[];
-    static check(logger: SecretEnvLogger, env?: NodeJS.ProcessEnv): SecretEnvReport;
+    static check(logger: SecretEnvLogger, env?: NodeJS.ProcessEnv): void;
 }
 
 export interface SecretEnvEntry {
     name: string;
     kind: SecretEnvKind;
+    ahead?: string[];
 }
 
 export type SecretEnvKind = "json" | "multiline" | "string";
-
-export interface SecretEnvReport {
-    missing: string[];
-    escaped: string[];
-}
 ```
 
 ## Referenced, not exported

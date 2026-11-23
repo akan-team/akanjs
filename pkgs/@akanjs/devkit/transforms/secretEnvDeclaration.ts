@@ -77,7 +77,13 @@ export class SecretEnvDeclaration {
     }
     const computed = await SecretEnvDeclaration.#notRead(found.computed, file, envDir, environment, loaded);
     return {
-      variables: [...variables.values()].map(({ name, kind, path: at, value }) => ({ name, kind, path: at, value })),
+      variables: [...variables.values()].map(({ name, kind, path: at, value, ahead }) => ({
+        name,
+        kind,
+        path: at,
+        value,
+        ...(ahead ? { ahead } : {}),
+      })),
       unmoved: [...new Set(computed.map(({ at }) => at))],
       moved: [...variables.values()].flatMap(({ name, path: at, literal, underSecret }) =>
         ServerEnvProfile.movedTexts(literal, underSecret).map((value) => ({
@@ -194,11 +200,11 @@ export class SecretEnvDeclaration {
     }
     const mark = (value as { [key: string]: unknown })[SecretEnvSource.markKey];
     if (Array.isArray(mark)) {
-      const [name, kind, literal] = mark as [string, SecretEnvKind, unknown];
+      const [name, kind, literal, ahead] = mark as [string, SecretEnvKind, unknown, string[]?];
       //? A string a build moved is a secret wherever it sits: a credential URL is one under a plain key too.
       const held = underSecret || typeof literal === "string";
       const value = typeof literal === "string" ? literal : JSON.stringify(literal);
-      found.variables.push({ name, kind, path: at, value, literal, underSecret: held });
+      found.variables.push({ name, kind, path: at, value, ...(ahead ? { ahead } : {}), literal, underSecret: held });
       return;
     }
     for (const [key, child] of Object.entries(value))

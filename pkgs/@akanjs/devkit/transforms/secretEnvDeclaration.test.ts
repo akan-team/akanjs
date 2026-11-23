@@ -47,7 +47,7 @@ const shellOwn = {
 };
 
 describe("SecretEnvDeclaration", () => {
-  test("lists each secret of the environment's server env with its variable, kind and value, a lib's default included", async () => {
+  test("lists each secret of the environment's server env with its variable, kind and value, a lib's default included, and the developer's own variable read ahead of one", async () => {
     const { envDir } = await writeSecretEnvFixture(await makeTempRoot());
     const { variables, unmoved } = await SecretEnvDeclaration.of(envDir, "main");
     expect(unmoved).toEqual([]);
@@ -78,6 +78,9 @@ describe("SecretEnvDeclaration", () => {
         POSTGRES_URL: { kind: "string", at: "database.postgres.url", value: secretEnvSentinels.postgres },
       },
     );
+    expect(variables.flatMap(({ name, ahead }) => (ahead ? [[name, ahead]] : []))).toEqual([
+      ["POSTGRES_URL", ["DATABASE_URL"]],
+    ]);
   });
 
   test("the listing names every variable and its key, says which the shell sets, and holds no value", async () => {

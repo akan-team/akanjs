@@ -423,7 +423,8 @@ docker run -d --restart unless-stopped -p 80:8282 --env-file /etc/<app>.env \
   `-e AKAN_DATABASE_MODE=single`.
 - **Secrets come from the env file**, kept outside the image: whatever `akan secret-env <app> --env main` lists,
   and `JWT_SECRET` for an app on `libs/util`, whose boot stops with `jwtSecretRequired` outside operation mode
-  `local`.
+  `local`. A `docker.variants` image shares the build's bundle, so it asks for the same names: a device that
+  needs none of the cloud's is built on its own with `--profile edge`.
 - **Two directories hold the data**: `/workspace/sqlite` (the database, the cache and queue files, snapshots) and
   `/workspace/local` (uploads). `/workspace/data` is writable for the app's own files. A named volume takes uid
   1000 from the image; a host directory bound in needs `chown 1000:1000`.
@@ -455,9 +456,9 @@ place a developer writes them; the build turns each into a read of an environmen
 - **What the build rewrites** is source text: a string literal that is the value of a key in the object
   `export const env` holds, in the app's `env.server.<env>.ts`, in `env.server.ts` itself where a pipeline copies an
   env file over it, and in each lib's `env.server.<name>.ts`. In `process.env.MY_URL ?? "literal"` only the literal
-  becomes the read, so the developer's own variable comes first. Two keys that map to one name (`apiKey` and
-  `api_key`), and a name the platform or akan owns (`PATH`, `HOME`, `HOSTNAME`, `PORT`, `USER`, `PWD`, `TZ`,
-  `NODE_ENV`, `AKAN_*`, `BUN_*`), stop the build before it starts.
+  becomes the read, so the developer's own variable comes first, and set, it stands in for the read one at boot. Two
+  keys that map to one name (`apiKey` and `api_key`), and a name the platform or akan owns (`PATH`, `HOME`,
+  `HOSTNAME`, `PORT`, `USER`, `PWD`, `TZ`, `NODE_ENV`, `AKAN_*`, `BUN_*`), stop the build before it starts.
 - **What stops a build.** Before any phase the build loads the env file with each literal marked, to list the
   variables and to see what it cannot move. A secret-named key whose value is computed, imported or spread from
   another file stops it there, whatever the value's length or shape, naming the app, the env file and the keys:
@@ -474,14 +475,14 @@ place a developer writes them; the build turns each into a read of an environmen
   and its file and line, never its message, which could quote a value; loading has a 60 second limit, and a file
   that leaves a timer or a server open still ends when its answer is in.
 - **What the image carries** is the list: `AKAN_ENV_NAMES` in `akan.env.json` and the Dockerfile, names with
-  `:json` or `:multiline` after an array or a multi-line value, never a value. The build prints the names.
-- **At boot**, in `AkanApp.start` before the server is loaded or a replica is spawned, the list is compared with the
-  process env. A variable not set, or set empty, is one warning naming every such variable. The framework does not
-  stop for it, and what reads the value gets `undefined` and may stop (an app that requires its
-  JWT secret does); version 3.5.0 will refuse to boot. A `:json` variable that does not parse as an
-  array is refused (`secretEnvInvalid`). A `:multiline` variable holding a backslash and an n in place of its line
-  breaks is warned about by name. No message carries a value. `bun console.js` and `bun main.js ops …` do not
-  check.
+  `:json` or `:multiline` after an array or a multi-line value and `|MY_URL` after one the developer's own variable
+  comes ahead of, never a value. The build prints the names.
+- **At boot**, in `AkanApp.start` before the server is loaded, a replica is spawned or a port is opened, the list is
+  compared with the process env. A variable not set, or set empty, stops the server: it exits non-zero with
+  `secretEnvMissing`, naming every such variable and `akan secret-env <app> --env <env>`. A `:json` variable that
+  does not parse as an array is refused (`secretEnvInvalid`). A `:multiline` variable holding a backslash and an n
+  in place of its line breaks is warned about by name. No message carries a value. `bun console.js` and
+  `bun main.js ops …` do not check.
 - **`akan secret-env <app> [--env <env>]`** lists each variable with its kind, whether the shell sets it, and its key
   in the env file. `--out <file>` writes the values the env file evaluates to: `--format k8s` (the default) a
   `kind: Secret` with base64 `data`, named by `--name` (default `<app>-env`); `--format dotenv` `NAME=value` lines
@@ -494,15 +495,10 @@ place a developer writes them; the build turns each into a read of an environmen
   A host: `bun --env-file=<file> main.js`, with the file outside `dist/apps/<app>`, which an image copies whole.
   Every replica and the RSC worker inherit the gateway's env, so a changed Secret reaches a pod only when it
   restarts.
-- **`akan build <app> --inline-secrets`** keeps each value in the build as what its read falls back to, for a
-  deployment that does not set the variables yet; a variable that is set still wins, the boot warning says the
-  built-in values are in use, and nothing above stops it: a computed or imported secret stays, the files written are
-  not searched, and an env file that cannot be loaded is a warning, after which the env files are bundled as
-  written and no variable is read. Version 3.5.0 removes the flag.
 - **Read as written, as before:** `akan start` and `akan test` (the env file is imported from source), a
   `--profile` build (its profile file may hold no secret at all), and the server a desktop or mobile build carries.
 - **Not covered:** a key file an env value names by path (`security.sso.apple.keyFilePath` under `private/`) ships
-  with `private/`; mount it instead. Images built before 3.4.0 still hold the values: rotate the secrets once the
+  with `private/`; mount it instead. Images built before 3.3.0 still hold the values: rotate the secrets once the
   new images are live.
 
 ## Worker Processes — `workers` In `akan.config.ts`

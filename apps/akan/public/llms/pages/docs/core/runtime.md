@@ -137,9 +137,9 @@ Secret Variables
 
 - JWT_SECRET (string): `security.jwtSecret`. `database.postgres.url`, `.password` and `.insightUrl` likewise keep `POSTGRES_URL`, `POSTGRES_PASSWORD` and `POSTGRES_INSIGHT_URL`.
 
-- AKAN_ENV_NAMES (string, default written by the build): The names the built server reads, in `akan.env.json` and the Dockerfile. At boot a name that is not set is one warning naming it. The framework does not stop for it, though whatever reads the value may; version 3.5.0 will refuse to start.
+- AKAN_ENV_NAMES (string, default written by the build): The names the built server reads, in `akan.env.json` and the Dockerfile. A server with one of them unset or empty does not start: it exits, naming each one and `akan secret-env <app> --env <env>`.
 
-**A deployment must set these before it runs an image built with 3.4.0.** On Kubernetes, apply the Secret `akan secret-env --out` writes and name it in the container's `envFrom`. A deployment that cannot yet builds with `akan build --inline-secrets`, which keeps the values in the image for one more release.`akan start`, `akan test`, `--profile` builds and desktop and mobile builds read the env file as written.
+**A deployment must set these before it runs an image built with 3.3.0.** On Kubernetes, apply the Secret `akan secret-env --out` writes and name it in the container's `envFrom`. Images built before 3.3.0 still hold the values: rotate them once the new images are live. `akan start`, `akan test`, `--profile` builds and desktop and mobile builds read the env file as written.
 
 Text Search Variables
 

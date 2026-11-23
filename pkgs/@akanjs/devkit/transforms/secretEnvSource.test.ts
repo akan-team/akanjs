@@ -79,21 +79,25 @@ describe("SecretEnvSource", () => {
     expect(rewritten).toContain('apiKey: (process.env.LLM_KEY || __akanSecretEnv.read("LLM__API_KEY")) as string');
   });
 
-  test("a listing marks the literal with the developer's own variable beside it whole, so a shell that sets that variable lists it too", () => {
+  test("a listing marks the literal with the developer's own variable beside it whole, so a shell that sets that variable lists it too, and names the plain reads ahead of it", () => {
     const marked = SecretEnvSource.rewrite(
       file,
       [
         "export const env = {",
         '  database: { postgres: { url: process.env.DATABASE_URL ?? "postgres://app:sentinel@db.example.test/app" } },',
-        '  llm: { apiKey: (process.env.LLM_KEY || process.env.OTHER_KEY || "sentinel-llm") as string },',
+        '  llm: { apiKey: (process.env.LLM_KEY || process.env["OTHER_KEY"] || "sentinel-llm") as string },',
+        '  mailer: { pass: process.env.MAIL_PASS?.trim() || decode(process.env.RAW) || "sentinel-pass" },',
         "};",
       ].join("\n"),
       "mark",
     );
     expect(marked).toContain(
-      'url: ({ __akanSecretEnv: ["POSTGRES_URL", "string", "postgres://app:sentinel@db.example.test/app"] }) }',
+      'url: ({ __akanSecretEnv: ["POSTGRES_URL", "string", "postgres://app:sentinel@db.example.test/app", ["DATABASE_URL"]] }) }',
     );
-    expect(marked).toContain('apiKey: ({ __akanSecretEnv: ["LLM__API_KEY", "string", "sentinel-llm"] }) }');
+    expect(marked).toContain(
+      'apiKey: ({ __akanSecretEnv: ["LLM__API_KEY", "string", "sentinel-llm", ["LLM_KEY","OTHER_KEY"]] }) }',
+    );
+    expect(marked).toContain('pass: ({ __akanSecretEnv: ["MAILER__PASS", "string", "sentinel-pass"] }) }');
   });
 
   test("leaves a file alone that holds no secret literal, or whose env is not an object it can read", () => {
@@ -111,10 +115,10 @@ describe("SecretEnvSource", () => {
     expect(read(switched)).toBe(switched);
   });
 
-  test("an --inline-secrets build keeps the literal behind the read, and a listing marks it with its variable", () => {
+  test("a build keeps no literal behind the read, and a listing marks it with its variable", () => {
     const source = 'export const env = { llm: { apiKey: "sentinel-llm" }, discord: { tokens: ["sentinel-a"] } };\n';
-    expect(body(SecretEnvSource.rewrite(file, source, "inline"))).toBe(
-      'export const env = { llm: { apiKey: __akanSecretEnv.read("LLM__API_KEY", "sentinel-llm") }, discord: { tokens: __akanSecretEnv.json("DISCORD__TOKENS", ["sentinel-a"]) } };\n',
+    expect(body(read(source))).toBe(
+      'export const env = { llm: { apiKey: __akanSecretEnv.read("LLM__API_KEY") }, discord: { tokens: __akanSecretEnv.json("DISCORD__TOKENS") } };\n',
     );
     expect(SecretEnvSource.rewrite(file, source, "mark")).toBe(
       'export const env = { llm: { apiKey: ({ __akanSecretEnv: ["LLM__API_KEY", "string", "sentinel-llm"] }) }, discord: { tokens: ({ __akanSecretEnv: ["DISCORD__TOKENS", "json", ["sentinel-a"]] }) } };\n',
