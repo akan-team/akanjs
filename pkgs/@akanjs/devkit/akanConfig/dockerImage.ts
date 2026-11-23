@@ -1,3 +1,4 @@
+import { EnvProfile } from "akanjs/server/lifecycle/envProfile";
 import {
   type Arch,
   archs,
@@ -206,9 +207,20 @@ const resolveDockerImage = (
   };
 };
 
+//? A build carries a profile only when a variant names it; set as a plain `ENV`, the server would refuse to start.
+const assertProfileNamed = (env: Record<string, string> | undefined, owner: string) => {
+  if (env && EnvProfile.key in env)
+    throw new Error(
+      `[docker] ${owner}.env sets ${EnvProfile.key}, which the build has to know to carry the profile: name it as docker.variants.<name>.profile`,
+    );
+};
+
 /** A declared Dockerfile string is verbatim, so a lib's steps are dropped rather than silently unapplied. */
-export const resolveDocker = (docker: DockerOption | undefined, libDocker: LibDockerConfig): DockerConfig =>
-  typeof docker === "string" ? docker : resolveDockerImage(docker ?? {}, libDocker, "docker");
+export const resolveDocker = (docker: DockerOption | undefined, libDocker: LibDockerConfig): DockerConfig => {
+  if (typeof docker === "string") return docker;
+  assertProfileNamed(docker?.env, "docker");
+  return resolveDockerImage(docker ?? {}, libDocker, "docker");
+};
 
 export const resolveDockerVariants = (
   docker: DockerOption | undefined,
@@ -217,13 +229,22 @@ export const resolveDockerVariants = (
   if (typeof docker === "string" || !docker?.variants) return {};
   const { variants, ...base } = docker;
   return Object.fromEntries(
-    Object.entries(variants).map(([name, variant]) => {
+    Object.entries(variants).map(([name, { profile, ...variant }]) => {
       if (!dockerVariantNamePattern.test(name))
         throw new Error(
           `[docker] docker.variants names "${name}", which cannot end a file name: use lowercase letters, digits and "-"`,
         );
-      const env = { ...base.env, ...variant.env };
+      assertProfileNamed(variant.env, `docker.variants.${name}`);
+      if (profile !== undefined && !EnvProfile.namePattern.test(profile))
+        throw new Error(
+          `[docker] docker.variants.${name}.profile is "${profile}", which is not a server env profile name: a lowercase-first name of letters, digits and dashes`,
+        );
+      const env = { ...base.env, ...variant.env, ...(profile ? { [EnvProfile.key]: profile } : {}) };
       return [name, resolveDockerImage({ ...base, ...variant, env }, libDocker, `docker.variants.${name}`)];
     }),
   );
 };
+
+export const dockerProfilesOf = (variants: Record<string, DockerImageConfig>): string[] => [
+  ...new Set(Object.values(variants).flatMap(({ env }) => (env[EnvProfile.key] ? [env[EnvProfile.key]] : []))),
+];

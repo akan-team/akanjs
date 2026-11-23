@@ -134,6 +134,8 @@ const config: AppConfig = { docker: "FROM oven/bun:1.4.4-slim\n…" }; // verbat
   given to `bun main.js` on a host. `variants: { edge: { … } }` writes `Dockerfile.edge` (`docker build -f`): the
   app's `docker` with each field it names replaced whole (`preRuns: []` drops the app's steps) and its `env` laid
   over the app's by key; lib steps reach every variant. Split an image by purpose (a device, a control plane) this way, not by `{ amd64 }`.
+  A variant's `profile: "edge"` has the one build carry `env/env.server.<env>.edge.ts` too and sets that image's
+  `AKAN_ENV_PROFILE=edge`, which starts the server on it.
 - **`akan build` writes a `.dockerignore`**: `sqlite`, `local`, `runtime`, `data`, `.akan/artifact/image-cache` and
   `node_modules`, so the database a build run by hand wrote beside `main.js` stays out of `COPY . .`.
 - **The server runs as `USER 1000:1000`, oven/bun's `bun` user, and owns only the directories it writes.** The
@@ -206,8 +208,8 @@ docker run -d --restart unless-stopped -p 80:8282 --env-file /etc/<app>.env \
   `-e AKAN_DATABASE_MODE=single`.
 - **Secrets come from the env file**, kept outside the image: whatever `akan secret-env <app> --env main` lists,
   and `JWT_SECRET` for an app on `libs/util`, whose boot stops with `jwtSecretRequired` outside operation mode
-  `local`. A `docker.variants` image shares the build's bundle, so it asks for the same names: a device that
-  needs none of the cloud's is built on its own with `--profile edge`.
+  `local`. A `docker.variants` image shares the build's bundle, so it asks for the same names, unless it names a
+  `profile`: started on `AKAN_ENV_PROFILE`, the server reads none of them.
 - **Two directories hold the data**: `/workspace/sqlite` (the database, the cache and queue files, snapshots) and
   `/workspace/local` (uploads). `/workspace/data` is writable for the app's own files. A named volume takes uid
   1000 from the image; a host directory bound in needs `chown 1000:1000`.

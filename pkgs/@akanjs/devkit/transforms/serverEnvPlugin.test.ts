@@ -141,6 +141,7 @@ describe("createServerEnvPlugin", () => {
     expect(reports).toEqual([
       {
         file: "env.server.testing.ts",
+        profile: "edge",
         profileFile: false,
         stripped: ["security.jwtSecret", "mailer.auth.pass", "cloudflare.authKey"],
       },
@@ -253,6 +254,121 @@ describe("createServerEnvPlugin", () => {
     expect(printed).toMatch(/: ReferenceError at .*libs\/util\/env\/env\.server\.testing\.ts:3\n/);
     expect(printed).not.toContain("undefinedVar");
     expect(printed).not.toContain("lib-jwt-dummy-0123");
+  });
+
+  describe("profiles carried beside the environment's own file", () => {
+    const carry = async (secrets?: "read") => {
+      const root = await makeTempRoot();
+      const libEnv = path.join(root, "libs/shared/env/env.server.testing.ts");
+      await write(
+        libEnv,
+        'export const env = { hostname: "lib-host", security: { jwtSecret: "lib-jwt", accessTokenSeconds: 900 } };\n',
+      );
+      const kioskLibEnv = path.join(root, "libs/shared/env/env.server.testing.kiosk.ts");
+      await write(kioskLibEnv, 'export const env = { hostname: "lib-kiosk-host" };\n');
+      const { envDir, entry } = await writeApp(root);
+      await write(
+        path.join(envDir, "env.server.main.ts"),
+        [
+          'import { libEnv } from "./env.server.type";',
+          'if (process.env.CLOUD_REGION !== "seoul") throw new Error("the cloud env file was evaluated");',
+          'export const env = { ...libEnv, secret: "main-secret" };',
+          'export default "main-default";',
+          "",
+        ].join("\n"),
+      );
+      for (const profile of ["edge", "kiosk"])
+        await write(
+          path.join(envDir, `env.server.main.${profile}.ts`),
+          [
+            'import { libEnv } from "./env.server.type";',
+            `export const env = { ...libEnv, origin: "${profile}-origin" };`,
+            `export default "${profile}-default";`,
+            "",
+          ].join("\n"),
+        );
+      await write(
+        entry,
+        [
+          'import fallback, { env as app } from "./env/env.server.main";',
+          `import { env as lib } from ${JSON.stringify(libEnv)};`,
+          "console.info(JSON.stringify({ app, lib, fallback }));",
+          "",
+        ].join("\n"),
+      );
+      const reports: unknown[] = [];
+      const result = await Bun.build({
+        entrypoints: [entry],
+        outdir: path.join(root, "out"),
+        target: "bun",
+        plugins: [
+          createServerEnvPlugin({
+            envDir,
+            environment: "main",
+            environments,
+            profiles: ["edge", "kiosk"],
+            secrets,
+            onLibEnv: (file, report) => reports.push({ file: path.basename(file), ...report }),
+          }),
+        ],
+      });
+      expect(result.success).toBe(true);
+      const file = result.outputs.find((artifact) => artifact.kind === "entry-point")?.path ?? "";
+      const start = (env: { [name: string]: string }) =>
+        Bun.spawnSync([process.execPath, file], { env: { ...process.env, AKAN_PUBLIC_ENV: "main", ...env } });
+      return { reports, start, text: await Bun.file(file).text() };
+    };
+
+    test("the server starts on the environment's own file with no profile named", async () => {
+      const { start } = await carry();
+      const proc = start({ CLOUD_REGION: "seoul" });
+      expect(proc.exitCode).toBe(0);
+      expect(JSON.parse(proc.stdout.toString())).toEqual({
+        app: { shared: "shared-value", secret: "main-secret" },
+        lib: { hostname: "lib-host", security: { jwtSecret: "lib-jwt", accessTokenSeconds: 900 } },
+        fallback: "main-default",
+      });
+    });
+
+    test("AKAN_ENV_PROFILE starts it on that profile's file, and the environment's own is never evaluated", async () => {
+      const { start, reports } = await carry();
+      const edge = start({ AKAN_ENV_PROFILE: "edge" });
+      expect(edge.stderr.toString()).not.toContain("the cloud env file was evaluated");
+      expect(JSON.parse(edge.stdout.toString())).toEqual({
+        app: { shared: "shared-value", origin: "edge-origin" },
+        lib: { hostname: "lib-host", security: { accessTokenSeconds: 900 } },
+        fallback: "edge-default",
+      });
+      expect(JSON.parse(start({ AKAN_ENV_PROFILE: "kiosk" }).stdout.toString())).toEqual({
+        app: { shared: "shared-value", origin: "kiosk-origin" },
+        lib: { hostname: "lib-kiosk-host" },
+        fallback: "kiosk-default",
+      });
+      expect(reports).toEqual([
+        { file: "env.server.testing.ts", profile: "edge", profileFile: false, stripped: ["security.jwtSecret"] },
+        { file: "env.server.testing.ts", profile: "kiosk", profileFile: true, stripped: [] },
+      ]);
+    });
+
+    test("a profile the build does not carry refuses to start, naming the ones it does", async () => {
+      const { start } = await carry();
+      const proc = start({ AKAN_ENV_PROFILE: "desk", CLOUD_REGION: "seoul" });
+      expect(proc.exitCode).not.toBe(0);
+      expect(proc.stderr.toString()).toContain(
+        "AKAN_ENV_PROFILE=desk names a server env profile this build does not carry (it carries edge, kiosk).",
+      );
+    });
+
+    test("an image build still leaves every secret value out, the app's and a lib's", async () => {
+      const { start, text } = await carry("read");
+      for (const secret of ["main-secret", "lib-jwt"]) expect(text).not.toContain(secret);
+      const edge = start({ AKAN_ENV_PROFILE: "edge" });
+      expect(edge.exitCode).toBe(0);
+      expect(JSON.parse(edge.stdout.toString()).lib).toEqual({
+        hostname: "lib-host",
+        security: { accessTokenSeconds: 900 },
+      });
+    });
   });
 
   test("leaves env files outside the app's env directory alone", async () => {
