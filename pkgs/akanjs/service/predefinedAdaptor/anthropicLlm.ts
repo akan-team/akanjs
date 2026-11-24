@@ -87,10 +87,19 @@ interface AnthropicStreamEvent {
   };
 }
 
+export type AnthropicRequestBody = ReturnType<typeof AnthropicLlm.requestBody>;
+
+export interface AnthropicLlmOption extends LlmOption {
+  /** Has the last word on each body, after the retries chose its form: a `cache_control` breakpoint, an `effort`. */
+  body?: (body: AnthropicRequestBody, request: LlmTurnRequest) => AnthropicRequestBody & Record<string, unknown>;
+  /** `anthropic-beta` values what `body` adds needs, sent beside the ones a retry adds. */
+  betas?: string[];
+}
+
 /** Anthropic's Messages API, which reads images and PDFs. `model` is required and has no default. */
 export class AnthropicLlm
   extends adapt("akanAnthropicLlm" as const, ({ use }) => ({
-    llmOption: use<LlmOption>(),
+    llmOption: use<AnthropicLlmOption>(),
   }))
   implements LlmAdaptor
 {
@@ -114,6 +123,14 @@ export class AnthropicLlm
   //? Conversations the API refused under its history check: their older blocks stay bound to a history that changed.
   readonly #dropped = new Set<string>();
   readonly #plainTools = new Set<string>();
+
+  /**
+   * One with settings of its own, beside `option.setLlm`: an app's adaptor sending some turns here under another key
+   * keeps the retries, and what they learned about each model and conversation, by keeping the instance.
+   */
+  static of(option: AnthropicLlmOption): AnthropicLlm {
+    return Object.assign(new AnthropicLlm(), { llmOption: option });
+  }
 
   get #host() {
     return this.llmOption.host ?? "https://api.anthropic.com/v1";
@@ -142,13 +159,15 @@ export class AnthropicLlm
     }
     try {
       const { accepts } = this;
-      const maxTokens = this.llmOption.maxTokens;
+      const { maxTokens, body } = this.llmOption;
       const stream = !!onDelta;
       const response = await this.#send(
         model,
         AnthropicLlm.#conversationOf(request.messages),
-        (thinking, toolChanges) =>
-          AnthropicLlm.requestBody(model, request, { accepts, stream, maxTokens, thinking, toolChanges }),
+        (thinking, toolChanges) => {
+          const built = AnthropicLlm.requestBody(model, request, { accepts, stream, maxTokens, thinking, toolChanges });
+          return body ? body(built, request) : built;
+        },
         signal,
       );
       if (!onDelta)
@@ -193,10 +212,7 @@ export class AnthropicLlm
   async #send(
     model: string,
     conversation: string | null,
-    bodyOf: (
-      thinking: AnthropicThinkingReplay | undefined,
-      toolChanges: boolean,
-    ) => ReturnType<typeof AnthropicLlm.requestBody>,
+    bodyOf: (thinking: AnthropicThinkingReplay | undefined, toolChanges: boolean) => AnthropicRequestBody,
     signal?: AbortSignal,
   ): Promise<Response> {
     let thinking: AnthropicThinkingReplay | undefined =
@@ -207,8 +223,11 @@ export class AnthropicLlm
       const body = bodyOf(thinking, toolChanges);
       const engaged = AnthropicTools.engaged(body);
       const betas = [
-        ...(thinking === "drop" ? [AnthropicLlm.thinkingBindingBeta] : []),
-        ...(engaged ? [AnthropicTools.beta] : []),
+        ...new Set([
+          ...(thinking === "drop" ? [AnthropicLlm.thinkingBindingBeta] : []),
+          ...(engaged ? [AnthropicTools.beta] : []),
+          ...(this.llmOption.betas ?? []),
+        ]),
       ];
       const response: Response = await fetch(`${this.#host}/messages`, {
         method: "POST",

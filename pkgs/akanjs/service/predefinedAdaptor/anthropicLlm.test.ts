@@ -873,3 +873,60 @@ describe("AnthropicLlm tool changes", () => {
     ]);
   });
 });
+
+describe("AnthropicLlm.of", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  test("sends under its own key, with each body the hook changed and its betas beside the retry's own", async () => {
+    const sent: { key?: string; beta?: string; body: Record<string, unknown> }[] = [];
+    const answers = [
+      Response.json(
+        { error: { type: "invalid_request_error", message: "The block is bound to a different conversation." } },
+        { status: 400 },
+      ),
+      Response.json({ content: [{ type: "text", text: "Done." }], stop_reason: "end_turn" }),
+    ];
+    globalThis.fetch = (async (_url: string, init: { body: string; headers: Partial<Record<string, string>> }) => {
+      sent.push({
+        key: init.headers["x-api-key"],
+        beta: init.headers["anthropic-beta"],
+        body: JSON.parse(init.body) as Record<string, unknown>,
+      });
+      return answers[sent.length - 1] as Response;
+    }) as unknown as typeof fetch;
+    const llm = AnthropicLlm.of({
+      apiKey: "own-key",
+      model: "claude-opus-5-5",
+      betas: ["some-beta-2026-01-01"],
+      body: (body, turn) => ({ ...body, output_config: { effort: turn.model ? "low" : "high" } }),
+    });
+    const replaying: LlmTurnRequest = {
+      context: [],
+      tools: [],
+      messages: [
+        { role: "user", text: "refresh" },
+        {
+          role: "assistant",
+          toolCalls: [{ id: "c1", name: "refreshTask", args: {} }],
+          providerContent: {
+            dialect: "anthropic",
+            content: [
+              { type: "thinking", thinking: "", signature: "s" },
+              { type: "tool_use", id: "c1" },
+            ],
+          },
+        },
+        { role: "tool", toolResults: [{ id: "c1", name: "refreshTask", result: "ok" }] },
+      ],
+    };
+
+    expect((await llm.chat(replaying))?.text).toBe("Done.");
+    expect(sent.map(({ key, beta, body }) => [key, beta, body.output_config, !!body.thinking])).toEqual([
+      ["own-key", "some-beta-2026-01-01", { effort: "high" }, false],
+      ["own-key", "thinking-binding-controls-2026-08-01,some-beta-2026-01-01", { effort: "high" }, true],
+    ]);
+  });
+});

@@ -80,6 +80,11 @@ export interface AgentWireMessage {
    * provider that declares tools ahead can replay where each one was added or withdrawn.
    */
   listed?: string[];
+  /**
+   * On an assistant message `agentService.loop` wrote: the definitions of the page's tools that answer listed first,
+   * or listed changed. A later run declares them to a provider that keeps thinking, lent by the page or not.
+   */
+  lent?: AgentWireTool[];
 }
 
 /**
