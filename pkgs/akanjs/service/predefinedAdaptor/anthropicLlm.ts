@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import { FailureCode } from "akanjs/common";
 import { adapt } from "../adapt";
+import { type AnthropicToolMessage, AnthropicTools } from "./anthropicTools";
 import {
   type AgentWireAttachment,
   type AgentWireContext,
@@ -39,6 +41,7 @@ interface AnthropicMessage {
   role: "user" | "assistant";
   content: AnthropicBlock[];
 }
+type AnthropicTurn = AnthropicMessage | AnthropicToolMessage;
 interface AnthropicUsage {
   input_tokens?: number;
   output_tokens?: number;
@@ -106,7 +109,11 @@ export class AnthropicLlm
   /** The API refuses `thinking.block_binding` without it. */
   static readonly thinkingBindingBeta = "thinking-binding-controls-2026-08-01";
 
-  readonly #historyChecked = new Set<string>();
+  static readonly #droppedLimit = 500;
+
+  //? Conversations the API refused under its history check: their older blocks stay bound to a history that changed.
+  readonly #dropped = new Set<string>();
+  readonly #plainTools = new Set<string>();
 
   get #host() {
     return this.llmOption.host ?? "https://api.anthropic.com/v1";
@@ -139,7 +146,9 @@ export class AnthropicLlm
       const stream = !!onDelta;
       const response = await this.#send(
         model,
-        (thinking) => AnthropicLlm.requestBody(model, request, { accepts, stream, maxTokens, thinking }),
+        AnthropicLlm.#conversationOf(request.messages),
+        (thinking, toolChanges) =>
+          AnthropicLlm.requestBody(model, request, { accepts, stream, maxTokens, thinking, toolChanges }),
         signal,
       );
       if (!onDelta)
@@ -176,45 +185,96 @@ export class AnthropicLlm
     };
   }
 
-  //? A thinking block is bound to every turn before it, and those change: a turn's context rides only the newest user
-  //? turn, and the tools can change. An account the API holds to that check (per model, accounts from 2026-08-31)
-  //? refuses with a 400; `drop` then has the API drop those blocks, and the last resort sends none.
+  //? A thinking block is bound to every turn before it, and a history edited since refuses with a 400 on an account the
+  //? API holds to that check (per model, accounts from 2026-08-31); `drop` then has the API drop those blocks, and the
+  //? last resort sends none. A model without the tool-change form (Claude Sonnet 5 and older, Microsoft Foundry) refuses
+  //? it in words no one pattern matches, so any other 400 is asked again with the shown tools alone, and a model that
+  //? then answers is sent them alone from then on.
   async #send(
     model: string,
-    bodyOf: (thinking?: AnthropicThinkingReplay) => { messages: AnthropicMessage[] },
+    conversation: string | null,
+    bodyOf: (
+      thinking: AnthropicThinkingReplay | undefined,
+      toolChanges: boolean,
+    ) => ReturnType<typeof AnthropicLlm.requestBody>,
     signal?: AbortSignal,
   ): Promise<Response> {
-    let thinking: AnthropicThinkingReplay | undefined = this.#historyChecked.has(model) ? "drop" : undefined;
+    let thinking: AnthropicThinkingReplay | undefined =
+      conversation && this.#dropped.has(conversation) ? "drop" : undefined;
+    let toolChanges = !this.#plainTools.has(model);
+    let unproven: string | null = null;
     for (;;) {
-      const body = bodyOf(thinking);
+      const body = bodyOf(thinking, toolChanges);
+      const engaged = AnthropicTools.engaged(body);
+      const betas = [
+        ...(thinking === "drop" ? [AnthropicLlm.thinkingBindingBeta] : []),
+        ...(engaged ? [AnthropicTools.beta] : []),
+      ];
       const response: Response = await fetch(`${this.#host}/messages`, {
         method: "POST",
-        headers:
-          thinking === "drop"
-            ? { ...this.#headers, "anthropic-beta": AnthropicLlm.thinkingBindingBeta }
-            : this.#headers,
+        headers: betas.length ? { ...this.#headers, "anthropic-beta": betas.join(",") } : this.#headers,
         body: JSON.stringify(body),
         signal: llmCallSignal(signal),
       });
-      if (response.ok) return response;
+      if (response.ok) {
+        if (unproven) this.#sendPlain(model, unproven);
+        return response;
+      }
       const reason = await AnthropicLlm.reasonOf(response);
       const retry: AnthropicThinkingReplay | null =
         response.status === 400 && (thinking === "drop" || AnthropicLlm.replaysThinking(body.messages))
           ? AnthropicLlm.thinkingRetry(thinking, reason)
           : null;
+      if (response.status === 400 && engaged && !(retry && /thinking|block_binding/i.test(reason))) {
+        unproven = reason;
+        toolChanges = false;
+        continue;
+      }
       if (!retry) throw LlmOverflow.refusal(this.#host, response.status, reason);
-      if (retry === "drop") this.#historyChecked.add(model);
+      if (retry === "drop" && conversation) this.#remember(conversation);
       thinking = retry;
     }
   }
 
+  #sendPlain(model: string, reason: string) {
+    this.#plainTools.add(model);
+    this.logger.warn(
+      `Anthropic refused declared tool changes for ${model} (${reason}), so its turns list the shown tools alone.`,
+    );
+  }
+
+  #remember(conversation: string) {
+    this.#dropped.delete(conversation);
+    this.#dropped.add(conversation);
+    const oldest = this.#dropped.values().next().value;
+    if (this.#dropped.size > AnthropicLlm.#droppedLimit && oldest) this.#dropped.delete(oldest);
+  }
+
+  //? Its first signed block names a conversation: it stays where it is while the history only grows.
+  static #conversationOf(messages: readonly AgentWireMessage[]): string | null {
+    for (const message of messages) {
+      if (message.providerContent?.dialect !== AnthropicLlm.dialect || !Array.isArray(message.providerContent.content))
+        continue;
+      for (const block of message.providerContent.content as (AnthropicAnswerBlock | null)[]) {
+        const signed =
+          block?.type === "thinking" ? block.signature : block?.type === "redacted_thinking" ? block.data : "";
+        if (signed) return createHash("sha256").update(signed).digest("hex");
+      }
+    }
+    return null;
+  }
+
+  static #bound(reason: string): boolean {
+    return /block_binding|different conversation/i.test(reason);
+  }
+
   static thinkingRetry(sent: AnthropicThinkingReplay | undefined, reason: string): AnthropicThinkingReplay | null {
     if (sent === "strip") return null;
-    if (!sent && /block_binding|different conversation/i.test(reason)) return "drop";
+    if (!sent && AnthropicLlm.#bound(reason)) return "drop";
     return /thinking|beta/i.test(reason) ? "strip" : null;
   }
 
-  static replaysThinking(messages: AnthropicMessage[]): boolean {
+  static replaysThinking(messages: readonly { content: readonly { type: string }[] }[]): boolean {
     return messages.some((message) =>
       message.content.some((block) => block.type === "thinking" || block.type === "redacted_thinking"),
     );
@@ -236,7 +296,10 @@ export class AnthropicLlm
     return response.statusText || "no reason given";
   }
 
-  /** `thinking: "drop"` needs `thinkingBindingBeta` in the `anthropic-beta` header. */
+  /**
+   * `thinking: "drop"` needs `thinkingBindingBeta` in the `anthropic-beta` header, and a body that declares tools
+   * ahead (`AnthropicTools.engaged`) needs `AnthropicTools.beta`; `toolChanges: false` lists `request.tools` alone.
+   */
   static requestBody(
     model: string,
     request: LlmTurnRequest,
@@ -245,7 +308,14 @@ export class AnthropicLlm
       stream,
       maxTokens,
       thinking,
-    }: { accepts?: LlmAccepts; stream?: boolean; maxTokens?: number; thinking?: AnthropicThinkingReplay } = {},
+      toolChanges = true,
+    }: {
+      accepts?: LlmAccepts;
+      stream?: boolean;
+      maxTokens?: number;
+      thinking?: AnthropicThinkingReplay;
+      toolChanges?: boolean;
+    } = {},
   ) {
     const messages =
       thinking === "strip"
@@ -253,6 +323,7 @@ export class AnthropicLlm
             message.providerContent ? { ...message, providerContent: undefined } : message,
           )
         : request.messages;
+    const { tools, turns } = AnthropicLlm.#listing(request, messages, accepts, toolChanges);
     return {
       model,
       max_tokens: maxTokens ?? AnthropicLlm.defaultMaxTokens,
@@ -261,18 +332,60 @@ export class AnthropicLlm
         ? { thinking: { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } } }
         : {}),
       system: AnthropicLlm.systemPrompt(request),
-      messages: AnthropicLlm.contextual(AnthropicLlm.providerMessages(messages, accepts), request.context),
-      ...(request.tools.length
-        ? {
-            tools: request.tools.map((tool) => ({
-              name: tool.name,
-              ...(tool.description ? { description: tool.description } : {}),
-              // The API rejects a tool without an input schema; a no-argument tool sends an empty object one.
-              input_schema: tool.parameters ?? { type: "object", properties: {} },
-            })),
-          }
-        : {}),
+      messages: turns,
+      ...(tools.length ? { tools } : {}),
     };
+  }
+
+  //? The tools the conversation's first listed answer saw stay plain, in its order, and the rest deferred by name, so
+  //? the declaration reads the same on every round; each answer's own listing is replayed before it as tool changes.
+  static #listing(
+    request: LlmTurnRequest,
+    messages: AgentWireMessage[],
+    accepts: LlmAccepts | undefined,
+    toolChanges: boolean,
+  ) {
+    const plain = () => ({
+      tools: request.tools.map((tool) => AnthropicTools.definition(tool)),
+      turns: AnthropicLlm.contextual(
+        AnthropicLlm.providerMessages(messages, accepts),
+        request.context,
+      ) as AnthropicTurn[],
+    });
+    if (!toolChanges || (!request.deferred?.length && !messages.some((message) => message.listed))) return plain();
+    const declared = AnthropicTools.declared(request);
+    const shown = request.tools.map((tool) => tool.name);
+    const names = new Set(declared.map((tool) => tool.name));
+    const { turns, base, announced } = AnthropicLlm.#turns(messages, accepts, names);
+    const first = base ?? shown;
+    if (!declared.some((tool) => first.includes(tool.name))) return plain();
+    const rank = (name: string) => {
+      const at = first.indexOf(name);
+      return at < 0 ? first.length : at;
+    };
+    const ordered = [...declared].sort(
+      (a, b) => rank(a.name) - rank(b.name) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0),
+    );
+    const sent = AnthropicLlm.contextual(turns as AnthropicMessage[], request.context) as AnthropicTurn[];
+    if (announced) AnthropicLlm.#announce(sent, announced, new Set(shown), names);
+    return { tools: ordered.map((tool) => AnthropicTools.definition(tool, !first.includes(tool.name))), turns: sent };
+  }
+
+  //? Placed only after a user turn, which the API requires of a system message, so a change that has no place before
+  //? one answer is announced before the next.
+  static #announce(
+    turns: AnthropicTurn[],
+    from: ReadonlySet<string>,
+    to: ReadonlySet<string>,
+    declared: ReadonlySet<string>,
+  ): ReadonlySet<string> {
+    const changes = AnthropicTools.changes(from, to, declared);
+    if (!changes.length) return to;
+    const last = turns.at(-1);
+    if (last?.role === "system") last.content.push(...changes);
+    else if (last?.role === "user") turns.push({ role: "system", content: changes });
+    else return from;
+    return to;
   }
 
   //? Security: developer text only. A turn's context is data, and rides the last user turn inside a fence.
@@ -296,18 +409,29 @@ export class AnthropicLlm
 
   /** The API takes strictly alternating roles, so tool results and the user's next ask merge into one user turn. */
   static providerMessages(messages: AgentWireMessage[], accepts?: LlmAccepts): AnthropicMessage[] {
-    const merged: AnthropicMessage[] = [];
+    return AnthropicLlm.#turns(messages, accepts, null).turns as AnthropicMessage[];
+  }
+
+  static #turns(messages: AgentWireMessage[], accepts: LlmAccepts | undefined, declared: ReadonlySet<string> | null) {
+    const merged: AnthropicTurn[] = [];
+    let base: string[] | null = null;
+    let announced: ReadonlySet<string> | null = null;
     for (const message of messages) {
       const mapped = AnthropicLlm.providerMessage(message, accepts);
       if (!mapped.content.length) continue;
-      const last = merged[merged.length - 1];
-      if (last?.role === mapped.role) last.content.push(...mapped.content);
+      if (declared && mapped.role === "assistant" && message.listed) {
+        const now = new Set(message.listed);
+        if (!announced) base = [...message.listed];
+        announced = announced ? AnthropicLlm.#announce(merged, announced, now, declared) : now;
+      }
+      const last = merged.at(-1);
+      if (last && last.role !== "system" && last.role === mapped.role) last.content.push(...mapped.content);
       else merged.push(mapped);
     }
     // The API refuses a conversation opening on the assistant, and reads one ending there as a prefill to continue.
     if (merged[0]?.role === "assistant") merged.shift();
-    if (merged[merged.length - 1]?.role === "assistant") merged.pop();
-    return merged;
+    if (merged.at(-1)?.role === "assistant") merged.pop();
+    return { turns: merged, base, announced };
   }
 
   static providerMessage(message: AgentWireMessage, accepts?: LlmAccepts): AnthropicMessage {

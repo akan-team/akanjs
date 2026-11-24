@@ -2,6 +2,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { Logger } from "akanjs/common";
 import type { AgentTool, AgentToolsAdaptor } from "../predefinedAdaptor/agentTools.adaptor";
 import type { AgentWireMessage, AgentWireToolCall, AgentWireToolResult } from "../predefinedAdaptor/llm.adaptor";
+import { LlmContext } from "../predefinedAdaptor/llmContext";
 import { AgentLoop, type AgentLoopAnswer, type AgentLoopPort } from "./agentLoop";
 import type { AgentLoopEvent, AgentLoopRequest } from "./agentLoopTypes";
 import { LoopContext } from "./loopContext";
@@ -228,7 +229,11 @@ describe("AgentLoop after a run that read a marked block", () => {
 
   test("a run that read nothing marked stores no mark on what the model said", async () => {
     const { port } = harness([saying("There are three titles.")]);
-    const { stored } = await drain(port, ask({ context: [{ kind: "route", path: "/tickets" }] }));
-    expect(stored).toEqual([{ role: "assistant", text: "There are three titles." }]);
+    const context = [{ kind: "route", path: "/tickets" }];
+    const { stored } = await drain(port, ask({ context }));
+    expect(stored).toEqual([
+      { role: "user", text: LlmContext.of(context), context: true },
+      { role: "assistant", text: "There are three titles." },
+    ]);
   });
 });

@@ -118,7 +118,8 @@ pages declaring one name never clash, and a registry kept outside the surface re
   would decide the vision claim for the app.
 - **A turn's context is data in a user turn, never part of the system prompt.** Both adaptors send
   `request.context` as a `<turn-context …>` block that ends the turn's last user-role content, after that turn's
-  tool results, so the system prompt is the instructions alone and stays the same text from turn to turn. The
+  tool results, so the system prompt is the instructions alone and stays the same text from turn to turn.
+  `agentService.loop` stores it as a `context: true` user message, once, where it first sends it. The
   block closes on a delimiter chosen so its content cannot contain it. A block marked `untrusted: true` holds text
   someone other than the developer or the user may have written; it goes in a `<page-content …>` block of its own,
   the one a `readScreen` result arrives in, and the turn counts as an untrusted read. A compaction summary is

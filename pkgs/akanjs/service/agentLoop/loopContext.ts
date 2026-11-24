@@ -17,11 +17,14 @@ export class LoopContext {
     return Array.isArray(messages) && messages.some((message) => !!message?.references?.length);
   }
 
-  //? A block passed on an earlier ask is not stored, and leaves only the mark on what the model then said. Ahead of
-  //? the first tool result or summary nothing else sets that mark; after one, a result may have.
+  //? A marked block is stored with its context message; one passed before the loop stored context left only the mark
+  //? on what the model then said. Ahead of the first tool result or summary nothing else sets that mark.
   static carried(request: AgentLoopRequest, messages: readonly AgentWireMessage[]): boolean {
-    if (LoopContext.marked(request) || messages.some((message) => !!message.references?.length)) return true;
-    const first = messages.find(({ role, summary, tainted }) => role === "tool" || summary || tainted);
+    if (LoopContext.marked(request)) return true;
+    if (messages.some((message) => !!message.references?.length || (message.context && message.tainted))) return true;
+    const first = messages.find(
+      ({ role, summary, tainted, context }) => !context && (role === "tool" || summary || tainted),
+    );
     return first?.role === "assistant" && !first.summary;
   }
 

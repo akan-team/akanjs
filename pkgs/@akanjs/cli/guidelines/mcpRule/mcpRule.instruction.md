@@ -572,13 +572,16 @@ at every event.
   the account sees on `/mcp`, and a call to a name that round did not list is answered as an unknown tool, neither
   asked about nor run. A request with no `allow` array is an `error`.
 - **Toolkits.** `toolkits: { calendar: { description, tools } }` groups names of `allow` so a round need not carry
-  every tool. A tool in no toolkit is listed every round, beside `openToolkit({ name })`, whose description lists the
-  toolkits. An opened toolkit's tools are listed from the next round on, until a compaction keeps no message using
-  it; `openToolkit` never reaches `approve` and counts as no tool call. A resume reopens what stored calls and a
+  every tool. A tool in no toolkit is listed every round, beside `openToolkit({ name })`, whose description lists
+  every toolkit and reads the same on each round, open kits included. An opened toolkit's tools are listed from the
+  next round on, until a compaction keeps no message using it; `openToolkit` never reaches `approve` and counts as no tool call. A resume reopens what stored calls and a
   summary opened. A kit's `instructions` come back with what it lists; `asked: true` sends its open to `approve`.
   `listed: [kit or tool]` lists those from round one, for good. `search: { keywords?, limit?, rank? }` adds
-  `findTools({ query })`, which lists the closed kits' tools it ranks, as an open does; pass `keywords` in the words
-  members ask in. `toolBudget` caps the characters of loaded definitions, unlisting the least recently used.
+  `findTools({ query })`, listed every round, which lists the closed kits' tools it ranks, as an open does; pass
+  `keywords` in the words members ask in. `toolBudget` caps the characters of loaded definitions, unlisting the least
+  recently used. A run with toolkits stores `listed`, the tool names, on each assistant message, and sends the kits'
+  other tools as `deferred`: `AnthropicLlm` declares those from round one and lists or withdraws each with a tool
+  change before the answer it applied to, so opening a kit leaves earlier turns, their thinking included, as sent.
 - **The open screen's tools.** `clientTools` takes `new AgentClientTools().list()` from a page the member has open
   (`akanjs/ui`), sent over your own transport. It is client input: a name an endpoint holds is dropped, every one
   counts as a write whatever `readOnly` it was sent with, and past 128 tools, 200,000 characters of definitions or
@@ -622,8 +625,8 @@ at every event.
   records it points at. With no `approve`, a write in such a run is answered with the code `writeAfterPageText`
   for the rest of the conversation, as the stored messages keep the reference: only `approve` decides it.
   `context` reaches the model as data in a user turn, never in the system prompt, and a marked block is fenced as
-  page content. The run stores `tainted: true` on each assistant message it writes while tainted, so a resume and
-  the next ask in that conversation keep the taint without the block being passed again. A batch is judged before it runs, since the model wrote it
+  page content. The run stores a marked block's context message, and each assistant message it writes while
+  tainted, with `tainted: true`, so a resume and the next ask in that conversation keep the taint. A batch is judged before it runs, since the model wrote it
   before reading its results. Without `approve`, a `needsConfirm`
   tool — on this catalogue, a mutation with the `destructive` hint above — is refused, and so is every write once
   tainted: such a run writes only in the batch written before any result, and a later write is answered with the
@@ -646,8 +649,9 @@ at every event.
   was given with, and one whose name the page lends taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
   the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the run
   and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal included, as a resume
-  cannot tell one from a result. Store every message whole, marks and `providerContent` (Anthropic's signed thinking,
-  replayed verbatim) included. `compacted` says the first `replaced`
+  cannot tell one from a result. Store every message whole, marks, `listed` and `providerContent` (Anthropic's signed
+  thinking, replayed verbatim) included, and the `context: true` user messages: the run stores its `context` once,
+  where it was first sent, and again only when it changes. Such a message is the app's data, not the member's words. `compacted` says the first `replaced`
   messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary with no
   marker counts as tainted. A batch's results reach `onMessage` one tool message a call, as each call finishes, so a
   resume runs only the calls that had not finished, even after a crash mid-batch. It cannot tell a call that was

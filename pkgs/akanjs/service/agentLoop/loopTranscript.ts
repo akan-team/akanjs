@@ -15,7 +15,7 @@ export class LoopTranscript {
 
   //? A file a tool returned before the latest ask rides every later turn at over a thousand tokens; the tool can fetch it again.
   static seen(messages: readonly AgentWireMessage[]): AgentWireMessage[] {
-    const latest = messages.findLastIndex((message) => message.role === "user" && !message.summary);
+    const latest = messages.findLastIndex((message) => message.role === "user" && !message.summary && !message.context);
     if (latest <= 0) return [...messages];
     return messages.map((message, at) =>
       at < latest && message.toolResults?.some(LoopTranscript.#carriesFile)

@@ -14,6 +14,7 @@ import type {
   LlmTurnRequest,
   LlmUsage,
 } from "../predefinedAdaptor/llm.adaptor";
+import { LlmContext } from "../predefinedAdaptor/llmContext";
 import { LlmSpend } from "../predefinedAdaptor/llmSpend";
 import { OpenaiDialect } from "../predefinedAdaptor/openaiDialect";
 import { OpenaiLlm } from "../predefinedAdaptor/openaiLlm";
@@ -140,7 +141,7 @@ describe("AgentLoop rounds", () => {
     expect(texts(await drain(harness([saying("Hello")]).port, ask("hi")))).toEqual(["Hello"]);
   });
 
-  test("leaves the preamble out unless one is given, and passes instructions, context and model through", async () => {
+  test("leaves the preamble out unless one is given, and passes instructions, model and the context as a message", async () => {
     const seen: unknown[][] = [];
     const service = Object.assign(new AgentService(), {
       llm: {
@@ -158,7 +159,8 @@ describe("AgentLoop rounds", () => {
     const context = [{ kind: "org", name: "acme" }];
     const plain = await run(ask("hi", { instructions: "Be brief.", context, model: "m2" }));
     expect(plain.instructions).toBe("Be brief.");
-    expect(plain.context).toEqual(context);
+    expect(plain.context).toEqual([]);
+    expect(plain.messages.at(-1)).toEqual({ role: "user", text: LlmContext.of(context), context: true });
     expect(plain.model).toBe("m2");
     expect((await run(ask("hi", { preamble: "You run tasks." }))).instructions).toBe("You run tasks.");
   });

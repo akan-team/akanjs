@@ -66,5 +66,5 @@ The full guidelines, split where each part fits one read; `akan guideline show <
 
 - `.agents/skills/akan-mcp/references/mcpRule-1.md` — Purpose · Exposure Rule · Keeping An Endpoint Off The Shelf — `mcp: false` · Configuration · Declaring Endpoints · …
 - `.agents/skills/akan-mcp/references/mcpRule-2.md` — Authentication — The Authorization Server Is The Same Process · Fewer Tools Per Client — `shelves` And `search` · Page Prompts — `page().prompt()` · MCP Apps — One Component Of A Page, Drawn In The Chat · Progress Reporting · …
-- `.agents/skills/akan-mcp/references/mcpRule-3.md` — A Server Agent Loop — `agentService.loop` · Calling Another Server — `remotes` · Rolling MCP Out To An App · Choosing What To Open · Writing `instructions`
-- `.agents/skills/akan-mcp/references/mcpRule-4.md` — Verifying An App
+- `.agents/skills/akan-mcp/references/mcpRule-3.md` — A Server Agent Loop — `agentService.loop` · Calling Another Server — `remotes` · Rolling MCP Out To An App · Choosing What To Open
+- `.agents/skills/akan-mcp/references/mcpRule-4.md` — Writing `instructions` · Verifying An App
