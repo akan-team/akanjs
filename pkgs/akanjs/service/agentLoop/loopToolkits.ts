@@ -65,9 +65,19 @@ export class LoopToolkits {
       this.#unlist(over, loaded);
       ({ shown } = this.#arrange());
     }
-    const closed = this.#closed();
-    const searchable = this.#search && this.#unlisted(shown).length ? [this.#search.tool()] : [];
-    return [...shown, ...(closed.length ? [this.#metaTool(closed)] : []), ...searchable];
+    const offered = this.#offered();
+    const searchable = this.#search ? [this.#search.tool()] : [];
+    return [...shown, ...(offered.length ? [this.#metaTool(offered)] : []), ...searchable];
+  }
+
+  deferred(listed: readonly AgentTool[]): AgentTool[] {
+    if (!this.#any) return [];
+    const names = new Set(listed.map((tool) => tool.name));
+    return this.#visible.filter((tool) => this.#inKit(tool.name) && !names.has(tool.name));
+  }
+
+  get tracksListing(): boolean {
+    return this.#any;
   }
 
   #arrange(): Arranged {
@@ -251,6 +261,16 @@ export class LoopToolkits {
     return this.#visible.filter((tool) => tools.includes(tool.name)).map((tool) => tool.name);
   }
 
+  //? Every toolkit, open or not, so openToolkit reads the same on every round: a definition that changes between rounds
+  //? is a new prompt to a provider's cache, and to Anthropic a new conversation for the thinking it kept.
+  #offered(): string[] {
+    const pinned = (kit: string) => this.#pinned.some((entry) => entry.kind === "kit" && entry.name === kit);
+    return [
+      ...[...this.#kits.keys()].filter((kit) => !pinned(kit) && this.#toolsOf(kit).length),
+      ...this.#external.keys(),
+    ];
+  }
+
   //? A toolkit some of whose tools `toolBudget` took off the list is offered again, so they can be listed again.
   #closed(): string[] {
     const partial = (kit: string) => this.#toolsOf(kit).some((tool) => this.#evicted.has(tool));
@@ -262,8 +282,8 @@ export class LoopToolkits {
     ];
   }
 
-  #metaTool(closed: string[]): AgentTool {
-    const lines = closed.map((kit) =>
+  #metaTool(offered: string[]): AgentTool {
+    const lines = offered.map((kit) =>
       `- ${kit}: ${this.#kits.get(kit)?.description ?? this.#external.get(kit) ?? ""}`.trimEnd(),
     );
     return {
@@ -275,7 +295,7 @@ export class LoopToolkits {
       ].join("\n"),
       parameters: {
         type: "object",
-        properties: { name: { type: "string", enum: closed } },
+        properties: { name: { type: "string", enum: offered } },
         required: ["name"],
         additionalProperties: false,
       },

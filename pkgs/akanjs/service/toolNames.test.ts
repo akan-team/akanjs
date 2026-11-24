@@ -27,6 +27,17 @@ describe("ToolNames", () => {
     ]);
   });
 
+  test("renames a deferred tool and a stored listing the way it renames a listed one", () => {
+    const request = turn({
+      tools: [{ name: "shop.orderList" }],
+      deferred: [{ name: "shop.refundOrder" }],
+      messages: [{ role: "assistant", text: "Listed.", listed: ["shop.orderList", "shop.refundOrder"] }],
+    });
+    const encoded = ToolNames.of(request).encode(request);
+    expect(encoded.deferred?.map((tool) => tool.name)).toEqual(["shop__refundOrder"]);
+    expect(encoded.messages[0]?.listed).toEqual(["shop__orderList", "shop__refundOrder"]);
+  });
+
   test("renames the calls the transcript carries, including a tool that has left the screen", () => {
     const request = turn({
       tools: [{ name: "draft.save" }],

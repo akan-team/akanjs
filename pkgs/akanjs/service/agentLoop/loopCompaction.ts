@@ -21,7 +21,8 @@ export class LoopCompaction {
     return Math.ceil(chars / 4);
   }
 
-  static frameTokensOf({ messages: _messages, ...frame }: LlmTurnRequest): number {
+  //? A deferred tool's definition is sent but not read until a later round lists it.
+  static frameTokensOf({ messages: _messages, deferred: _deferred, ...frame }: LlmTurnRequest): number {
     return Math.ceil(JSON.stringify(frame).length / 4);
   }
 
@@ -84,7 +85,10 @@ export class LoopCompaction {
     const previous = messages
       .filter((message) => message.summary)
       .map((message) => `previous summary:\n${message.text ?? ""}`);
-    const lines = messages.filter((message) => !message.summary).map((message) => LoopCompaction.#line(message));
+    //? Security: a context message is the app's data, page text included, and the run stores it again after the cut.
+    const lines = messages
+      .filter((message) => !message.summary && !message.context)
+      .map((message) => LoopCompaction.#line(message));
     return [...previous, LoopCompaction.#fit(lines, budget)].filter(Boolean).join("\n");
   }
 

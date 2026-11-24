@@ -16,6 +16,7 @@ export class ToolNames {
   static of(request: LlmTurnRequest): ToolNames {
     return new ToolNames([
       ...request.tools.map((tool) => tool.name),
+      ...(request.deferred ?? []).map((tool) => tool.name),
       ...request.messages.flatMap((message) => ToolNames.#namesIn(message)),
     ]);
   }
@@ -51,6 +52,9 @@ export class ToolNames {
     return {
       ...request,
       tools: request.tools.map((tool) => ({ ...tool, name: this.wire(tool.name) })),
+      ...(request.deferred
+        ? { deferred: request.deferred.map((tool) => ({ ...tool, name: this.wire(tool.name) })) }
+        : {}),
       messages: request.messages.map((message) => this.#encoded(message)),
     };
   }
@@ -61,9 +65,10 @@ export class ToolNames {
   }
 
   #encoded(message: AgentWireMessage): AgentWireMessage {
-    if (!message.toolCalls?.length && !message.toolResults?.length) return message;
+    if (!message.toolCalls?.length && !message.toolResults?.length && !message.listed?.length) return message;
     return {
       ...message,
+      ...(message.listed?.length ? { listed: message.listed.map((name) => this.wire(name)) } : {}),
       ...(message.toolCalls?.length
         ? { toolCalls: message.toolCalls.map((call) => ({ ...call, name: this.wire(call.name) })) }
         : {}),
@@ -77,6 +82,7 @@ export class ToolNames {
     return [
       ...(message.toolCalls ?? []).map((call) => call.name),
       ...(message.toolResults ?? []).map((result) => result.name),
+      ...(message.listed ?? []),
     ];
   }
 

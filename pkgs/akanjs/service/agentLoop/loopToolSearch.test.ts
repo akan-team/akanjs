@@ -280,14 +280,14 @@ describe("AgentLoop toolBudget", () => {
     const events = await drain(port, ask({ toolBudget, allow: ["readPage", "eventList", "updateEvent", "noteList"] }));
     expect(namesOf(requests[1])).toEqual(["readPage", "eventList", "updateEvent", "openToolkit"]);
     expect(namesOf(requests[2])).toEqual(["readPage", "eventList", "noteList", "openToolkit"]);
-    expect(requests[2]?.tools.at(-1)?.parameters).toMatchObject({ properties: { name: { enum: ["calendar"] } } });
+    expect(requests[2]?.tools.at(-1)).toEqual(requests[0]?.tools.at(-1));
     const refused = resultsOf(events).find((result) => result.id === "c4");
     expect(refused).toMatchObject({ code: "toolkitClosed" });
     expect(refused?.error).toContain(
       'updateEvent was taken off your list to keep it short. Open the "calendar" toolkit again',
     );
     expect(namesOf(requests[4])).toEqual(["readPage", "eventList", "updateEvent", "openToolkit"]);
-    expect(requests[4]?.tools.at(-1)?.parameters).toMatchObject({ properties: { name: { enum: ["notes"] } } });
+    expect(requests[4]?.tools.at(-1)).toEqual(requests[0]?.tools.at(-1));
   });
 
   test("keeps what the last step loaded or called even past the budget", async () => {

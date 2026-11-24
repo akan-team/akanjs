@@ -699,22 +699,36 @@ describe("AnthropicLlm history check", () => {
       .flatMap((message) => message.content)
       .filter((block) => block.type === "thinking").length;
 
-  test("a history refusal is asked again with drop_block, and the model keeps it for later turns", async () => {
+  test("a history refusal is asked again with drop_block, which that conversation keeps and no other takes", async () => {
     const { llm, sent } = llmOf([refused(bound), ok]);
+    const dropped = { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } };
+    const other: LlmTurnRequest = {
+      ...replaying,
+      messages: replaying.messages.map((message) =>
+        message.providerContent
+          ? {
+              ...message,
+              providerContent: {
+                dialect: "anthropic",
+                content: [
+                  { type: "thinking", thinking: "", signature: "t" },
+                  { type: "tool_use", id: "c1" },
+                ],
+              },
+            }
+          : message,
+      ),
+    };
     expect((await llm.chat(replaying))?.text).toBe("Done.");
-    expect(await llm.chat({ ...replaying, messages: [{ role: "user", text: "hi" }] })).toMatchObject({ text: "Done." });
+    await llm.chat({ ...replaying, messages: [...replaying.messages, { role: "user", text: "and again" }] });
+    await llm.chat(other);
+    await llm.chat({ ...replaying, messages: [{ role: "user", text: "hi" }] });
     expect(sent.map(({ beta, body }) => [beta, body.thinking ?? null, thinkingOf(body)])).toEqual([
       [null, null, 1],
-      [
-        "thinking-binding-controls-2026-08-01",
-        { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
-        1,
-      ],
-      [
-        "thinking-binding-controls-2026-08-01",
-        { type: "adaptive", block_binding: { prefix_mismatch_behavior: "drop_block" } },
-        0,
-      ],
+      ["thinking-binding-controls-2026-08-01", dropped, 1],
+      ["thinking-binding-controls-2026-08-01", dropped, 1],
+      [null, null, 1],
+      [null, null, 0],
     ]);
   });
 
@@ -742,5 +756,120 @@ describe("AnthropicLlm history check", () => {
     const none = llmOf([refused(bound)]);
     await none.llm.chat({ ...replaying, messages: [{ role: "user", text: "hi" }] }).catch(() => undefined);
     expect(none.sent).toHaveLength(1);
+  });
+});
+
+describe("AnthropicLlm tool changes", () => {
+  const originalFetch = globalThis.fetch;
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+  const opened: LlmTurnRequest = {
+    context: [],
+    tools: [{ name: "readPage" }, { name: "eventList" }],
+    deferred: [{ name: "noteList" }],
+    messages: [
+      { role: "user", text: "What is on today?" },
+      { role: "assistant", toolCalls: [{ id: "c1", name: "openToolkit", args: {} }], listed: ["readPage"] },
+      { role: "tool", toolResults: [{ id: "c1", name: "openToolkit", result: "ok" }] },
+    ],
+  };
+  const llmOf = (answers: Response[]) => {
+    const sent: { beta: string | null; body: Record<string, unknown> }[] = [];
+    globalThis.fetch = (async (_url: string, init: { body: string; headers: Partial<Record<string, string>> }) => {
+      sent.push({
+        beta: init.headers["anthropic-beta"] ?? null,
+        body: JSON.parse(init.body) as Record<string, unknown>,
+      });
+      return (answers[Math.min(sent.length, answers.length) - 1] as Response).clone();
+    }) as unknown as typeof fetch;
+    return { llm: Object.assign(new AnthropicLlm(), { llmOption: { apiKey: "k", model: "claude-sonnet-5" } }), sent };
+  };
+  const ok = Response.json({ content: [{ type: "text", text: "Done." }], stop_reason: "end_turn" });
+  const refused = (message: string) =>
+    Response.json({ error: { type: "invalid_request_error", message } }, { status: 400 });
+  const shapeOf = ({ beta, body }: { beta: string | null; body: Record<string, unknown> }) => [
+    beta,
+    (body.tools as { name: string; defer_loading?: boolean }[]).map(
+      (tool) => `${tool.name}${tool.defer_loading ? "?" : ""}`,
+    ),
+    (body.messages as { role: string }[]).map((message) => message.role),
+  ];
+
+  test("declares what a later round may list, and names each change in a system message under its beta", async () => {
+    const { llm, sent } = llmOf([ok]);
+    await llm.chat(opened);
+    expect(sent.map(shapeOf)).toEqual([
+      [
+        "mid-conversation-tool-changes-2026-07-01",
+        ["readPage", "eventList?", "noteList?"],
+        ["user", "assistant", "user", "system"],
+      ],
+    ]);
+    expect((sent[0]?.body.messages as unknown[] | undefined)?.at(-1)).toEqual({
+      role: "system",
+      content: [{ type: "tool_addition", tool: { type: "tool_reference", name: "eventList" } }],
+    });
+  });
+
+  test("a model refusing the form is sent the shown tools alone, then and on its later turns", async () => {
+    const { llm, sent } = llmOf([refused("messages.3.role: Input should be 'user' or 'assistant'"), ok]);
+    expect((await llm.chat(opened))?.text).toBe("Done.");
+    await llm.chat(opened);
+    expect(sent.map(shapeOf)).toEqual([
+      [
+        "mid-conversation-tool-changes-2026-07-01",
+        ["readPage", "eventList?", "noteList?"],
+        ["user", "assistant", "user", "system"],
+      ],
+      [null, ["readPage", "eventList"], ["user", "assistant", "user"]],
+      [null, ["readPage", "eventList"], ["user", "assistant", "user"]],
+    ]);
+  });
+
+  test("a refusal the shown tools alone do not cure keeps the form for the model's next turn", async () => {
+    const { llm, sent } = llmOf([refused("messages.0: image too large"), refused("messages.0: image too large"), ok]);
+    const failure = await llm.chat(opened).then(
+      () => null,
+      (error: unknown) => error as Error,
+    );
+    expect(failure?.message).toBe("agent.error.llmRequestFailed");
+    await llm.chat(opened);
+    expect(sent.map(({ beta }) => beta)).toEqual([
+      "mid-conversation-tool-changes-2026-07-01",
+      null,
+      "mid-conversation-tool-changes-2026-07-01",
+    ]);
+  });
+
+  test("a history refusal under the form is answered with drop_block, not by giving the form up", async () => {
+    const thinking = {
+      ...opened,
+      messages: opened.messages.map((message) =>
+        message.role === "assistant"
+          ? {
+              ...message,
+              providerContent: {
+                dialect: "anthropic",
+                content: [
+                  { type: "thinking", thinking: "", signature: "s" },
+                  { type: "tool_use", id: "c1" },
+                ],
+              },
+            }
+          : message,
+      ),
+    };
+    const { llm, sent } = llmOf([
+      refused(
+        "messages.1.content.0: Invalid `signature` in `thinking` block. The block is bound to a different conversation.",
+      ),
+      ok,
+    ]);
+    await llm.chat(thinking);
+    expect(sent.map(({ beta }) => beta)).toEqual([
+      "mid-conversation-tool-changes-2026-07-01",
+      "thinking-binding-controls-2026-08-01,mid-conversation-tool-changes-2026-07-01",
+    ]);
   });
 });
