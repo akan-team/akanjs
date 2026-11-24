@@ -51,7 +51,10 @@ export class AnthropicTools {
     ];
   }
 
-  static engaged(body: { tools?: AnthropicTool[]; messages: { role: string }[] }): boolean {
+  static engaged(body: {
+    tools?: readonly { defer_loading?: true }[];
+    messages: readonly { role: string }[];
+  }): boolean {
     return (
       !!body.tools?.some((tool) => tool.defer_loading) || body.messages.some((message) => message.role === "system")
     );

@@ -771,11 +771,24 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
 }
 
 export interface AnthropicLlmOption extends LlmOption {
-    body?: (body: AnthropicRequestBody, request: LlmTurnRequest) => AnthropicRequestBody & Record<string, unknown>;
+    body?: (body: AnthropicRequestBody, request: LlmTurnRequest) => AnthropicSentBody;
     betas?: string[];
 }
 
 export type AnthropicRequestBody = ReturnType<typeof AnthropicLlm.requestBody>;
+
+export interface AnthropicSentBody {
+    messages: readonly {
+        role: string;
+        content: readonly {
+            type: string;
+        }[];
+    }[];
+    tools?: readonly {
+        defer_loading?: true;
+    }[];
+    [field: string]: unknown;
+}
 
 export interface AnthropicTool {
     name: string;
@@ -803,8 +816,10 @@ export declare class AnthropicTools {
     static declared({ tools, deferred }: Pick<LlmTurnRequest, "deferred" | "tools">): AgentWireTool[];
     static changes(from: ReadonlySet<string>, to: ReadonlySet<string>, declared: ReadonlySet<string>): AnthropicToolChange[];
     static engaged(body: {
-        tools?: AnthropicTool[];
-        messages: {
+        tools?: readonly {
+            defer_loading?: true;
+        }[];
+        messages: readonly {
             role: string;
         }[];
     }): boolean;
@@ -1388,6 +1403,7 @@ export declare class LlmOverflow {
     static match(reason: string): LlmOverflowFacts | null;
     static refusal(host: string, status: number, reason: string): Error;
     static declined(host: string, category?: unknown, explanation?: unknown): Error;
+    static failed(logger: Pick<Logger, "error" | "warn">, provider: string, error: unknown): void;
 }
 
 export interface LlmOverflowFacts {

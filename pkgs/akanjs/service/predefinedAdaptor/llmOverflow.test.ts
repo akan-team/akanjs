@@ -60,3 +60,28 @@ describe("LlmOverflow.refusal", () => {
     }
   });
 });
+
+describe("LlmOverflow.failed", () => {
+  test("logs a failure once: a refusal it classified stays at its own warning, an overflow warns, any other is an error", () => {
+    const lines: [string, string][] = [];
+    const logger = {
+      warn: (line: string) => lines.push(["warn", line]),
+      error: (line: string) => lines.push(["error", line]),
+    };
+    const warn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    try {
+      LlmOverflow.failed(logger, "Anthropic", LlmOverflow.refusal("https://api.anthropic.com/v1", 400, "bad tools"));
+      LlmOverflow.failed(logger, "Anthropic", LlmOverflow.declined("https://api.anthropic.com/v1", "cyber"));
+      LlmOverflow.failed(
+        logger,
+        "Anthropic",
+        LlmOverflow.refusal("https://api.anthropic.com/v1", 400, "prompt is too long: 213462 tokens > 200000 maximum"),
+      );
+      LlmOverflow.failed(logger, "Anthropic", new TypeError("fetch failed"));
+    } finally {
+      warn.mockRestore();
+    }
+    expect(lines.map(([level]) => level)).toEqual(["warn", "error"]);
+    expect(lines[1]?.[1]).toBe("Anthropic turn failed: fetch failed");
+  });
+});
