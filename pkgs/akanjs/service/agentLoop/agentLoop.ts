@@ -13,6 +13,8 @@ import type {
   LlmTurnRequest,
   LlmUsage,
 } from "../predefinedAdaptor/llm.adaptor";
+import { LlmContext } from "../predefinedAdaptor/llmContext";
+import { LlmFence } from "../predefinedAdaptor/llmFence";
 import type {
   AgentLoopApproval,
   AgentLoopCallAnswer,
@@ -149,14 +151,15 @@ export class AgentLoop {
 
   async *#runRound(): Events<AgentLoopStop | null> {
     const listed = await this.#listTools();
+    await this.#pinContext();
     const compacted = yield* this.#compact(listed);
     const { answer, tools } = yield* this.#ask(compacted ?? listed);
-    //? Security: what the model wrote after reading untrusted text is stored with the mark. A marked context block is
-    //? in no stored message, so without it a resume of these calls, or the next ask, would start untainted.
+    //? Security: what the model wrote after reading untrusted text is stored with the mark, which a resume reads back.
     const mark = this.#tainted ? { tainted: true } : {};
+    const shown = this.#toolkits.tracksListing ? { listed: tools.map((tool) => tool.name) } : {};
     if (answer.stop === "length") {
       //? Calls in an answer the provider cut off may be cut mid-argument, so only its text is kept.
-      if (answer.text) await this.#append({ role: "assistant", text: answer.text, ...mark });
+      if (answer.text) await this.#append({ role: "assistant", text: answer.text, ...shown, ...mark });
       return "length";
     }
     const message: AgentWireMessage = {
@@ -164,6 +167,7 @@ export class AgentLoop {
       ...(answer.text ? { text: answer.text } : {}),
       ...(answer.toolCalls.length ? { toolCalls: answer.toolCalls } : {}),
       ...(answer.providerContent ? { providerContent: answer.providerContent } : {}),
+      ...shown,
       ...mark,
     };
     if (LoopTranscript.carries(message)) await this.#append(message);
@@ -230,8 +234,18 @@ export class AgentLoop {
     };
   }
 
+  //? Stored where it was first sent, and again only once it differs: riding the newest turn, it would edit an earlier
+  //? turn every round, which a provider's cache and Anthropic's check of the thinking it kept read as a new conversation.
+  async #pinContext() {
+    const { context = [] } = this.#request;
+    const text = LlmContext.of(context);
+    if (!text || this.#messages.findLast((message) => message.context)?.text === text) return;
+    await this.#append({ role: "user", text, context: true, ...(LlmFence.marks(context) ? { tainted: true } : {}) });
+  }
+
   async *#ask(listed: AgentTool[]): Events<{ answer: AgentLoopAnswer; tools: AgentTool[] }> {
     const preamble = this.#request.preamble ?? false;
+    await this.#pinContext();
     const request = this.#turnOf(listed);
     let tools = listed;
     try {
@@ -244,21 +258,24 @@ export class AgentLoop {
       if (!compacted) throw error;
       tools = compacted;
     }
+    await this.#pinContext();
     return { answer: yield* this.#metered(this.#turnOf(tools), preamble, true), tools };
   }
 
   #turnOf(tools: AgentTool[]): LlmTurnRequest {
-    const { context = [], model, preamble } = this.#request;
+    const { model, preamble } = this.#request;
     const instructions = [
       this.#request.instructions || (preamble ? "" : AgentLoop.noInstructions),
       ...this.#toolkits.pinnedInstructions(),
     ]
       .filter(Boolean)
       .join("\n\n");
+    const deferred = this.#toolkits.deferred(tools).map(({ readOnly: _readOnly, ...tool }) => tool);
     return {
       messages: LoopTranscript.wire(this.#messages),
       tools: tools.map(({ readOnly: _readOnly, ...tool }) => tool),
-      context,
+      context: [],
+      ...(deferred.length ? { deferred } : {}),
       ...(instructions ? { instructions } : {}),
       ...(model ? { model } : {}),
     };

@@ -312,6 +312,8 @@ export interface AgentWireMessage {
     toolkits?: string[];
     foundTools?: string[];
     providerContent?: AgentWireProviderContent;
+    context?: boolean;
+    listed?: string[];
 }
 
 export interface AgentWireProviderContent {
@@ -721,22 +723,23 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     get accepts(): LlmAccepts;
     chat(request: LlmTurnRequest, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<LlmTurnAnswer | null>;
     static thinkingRetry(sent: AnthropicThinkingReplay | undefined, reason: string): AnthropicThinkingReplay | null;
-    static replaysThinking(messages: AnthropicMessage[]): boolean;
+    static replaysThinking(messages: readonly {
+        content: readonly {
+            type: string;
+        }[];
+    }[]): boolean;
     static refusal(host: string, response: Response): Promise<Error>;
     static reasonOf(response: Response): Promise<string>;
-    static requestBody(model: string, request: LlmTurnRequest, { accepts, stream, maxTokens, thinking, }?: {
+    static requestBody(model: string, request: LlmTurnRequest, { accepts, stream, maxTokens, thinking, toolChanges, }?: {
         accepts?: LlmAccepts;
         stream?: boolean;
         maxTokens?: number;
         thinking?: AnthropicThinkingReplay;
+        toolChanges?: boolean;
     }): {
-        tools?: undefined | {
-            input_schema: Record<string, unknown>;
-            description?: string | undefined;
-            name: string;
-        }[];
+        tools?: import("./anthropicTools").AnthropicTool[] | undefined;
         system: string;
-        messages: AnthropicMessage[];
+        messages: AnthropicTurn[];
         thinking?: undefined | {
             type: string;
             block_binding: {
@@ -763,6 +766,39 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static stopOf(reason: null | string | undefined, calls: number): LlmTurnAnswer["stop"];
     static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string, tools?: AgentWireTool[]): Promise<LlmTurnAnswer>;
     static parsedArgs(raw: string): Record<string, unknown>;
+}
+
+export interface AnthropicTool {
+    name: string;
+    description?: string;
+    input_schema: Record<string, unknown>;
+    defer_loading?: true;
+}
+
+export interface AnthropicToolChange {
+    type: "tool_addition" | "tool_removal";
+    tool: {
+        type: "tool_reference";
+        name: string;
+    };
+}
+
+export interface AnthropicToolMessage {
+    role: "system";
+    content: AnthropicToolChange[];
+}
+
+export declare class AnthropicTools {
+    static readonly beta = "mid-conversation-tool-changes-2026-07-01";
+    static definition(tool: AgentWireTool, deferred?: boolean): AnthropicTool;
+    static declared({ tools, deferred }: Pick<LlmTurnRequest, "deferred" | "tools">): AgentWireTool[];
+    static changes(from: ReadonlySet<string>, to: ReadonlySet<string>, declared: ReadonlySet<string>): AnthropicToolChange[];
+    static engaged(body: {
+        tools?: AnthropicTool[];
+        messages: {
+            role: string;
+        }[];
+    }): boolean;
 }
 
 export declare class BaseService extends BaseService_base {
@@ -1384,6 +1420,7 @@ export interface LlmTurnRequest {
     messages: AgentWireMessage[];
     tools: AgentWireTool[];
     context: AgentWireContext[];
+    deferred?: AgentWireTool[];
     instructions?: string;
     model?: string;
 }
@@ -2639,6 +2676,8 @@ type AnthropicThinkingBlock = {
 };
 
 type AnthropicThinkingReplay = "drop" | "strip";
+
+type AnthropicTurn = AnthropicMessage | AnthropicToolMessage;
 
 interface AnthropicUsage {
     input_tokens?: number;

@@ -79,7 +79,7 @@ const resultsOf = (events: AgentLoopEvent[]): AgentWireToolResult[] =>
   events.flatMap((event) => (event.type === "toolResult" ? [event.result] : []));
 
 describe("AgentLoop toolkits", () => {
-  test("lists the core and openToolkit first, and an opened toolkit's tools from the next round", async () => {
+  test("lists the core and openToolkit first, an opened toolkit's tools from the next round, and openToolkit as it was", async () => {
     const { port, requests, called } = harness([
       calling(callOf("c1", "openToolkit", { name: "calendar" })),
       calling(callOf("c2", "eventList")),
@@ -91,7 +91,7 @@ describe("AgentLoop toolkits", () => {
     expect(metaOf(requests[0])?.description).toContain("- notes: Read meeting notes");
     expect(metaOf(requests[0])?.parameters).toMatchObject({ properties: { name: { enum: ["calendar", "notes"] } } });
     expect(namesOf(requests[1])).toEqual(["readPage", "eventList", "updateEvent", "openToolkit"]);
-    expect(metaOf(requests[1])?.parameters).toMatchObject({ properties: { name: { enum: ["notes"] } } });
+    expect(metaOf(requests[1])).toEqual(metaOf(requests[0]));
     expect(resultsOf(events)[0]).toEqual({
       id: "c1",
       name: "openToolkit",
@@ -106,7 +106,7 @@ describe("AgentLoop toolkits", () => {
     const events = await drain(port, ask({ allow: ["readPage", "eventList"] }));
     expect(metaOf(requests[0])?.parameters).toMatchObject({ properties: { name: { enum: ["calendar"] } } });
     expect(resultsOf(events)[0]?.result).toEqual({ opened: "calendar", tools: ["eventList"] });
-    expect(namesOf(requests[1])).toEqual(["readPage", "eventList"]);
+    expect(namesOf(requests[1])).toEqual(["readPage", "eventList", "openToolkit"]);
   });
 
   test("answers a closed toolkit's tool with the toolkit to open, and one outside allow as unknown", async () => {
@@ -189,7 +189,7 @@ describe("AgentLoop toolkits", () => {
     ]);
     await drain(port, ask());
     expect(namesOf(requests[1])).toEqual(["readPage", "noteList", "openToolkit"]);
-    expect(namesOf(requests[2])).toEqual(["readPage", "noteList", "eventList", "updateEvent"]);
+    expect(namesOf(requests[2])).toEqual(["readPage", "noteList", "eventList", "updateEvent", "openToolkit"]);
   });
 
   test("closes on compaction a toolkit the kept messages neither opened nor used, and a resume keeps it closed", async () => {
@@ -222,7 +222,7 @@ describe("AgentLoop toolkits", () => {
     expect(compacted).toMatchObject({ replaced: 5, summary: { toolkits: ["notes"] } });
     if (compacted?.type === "compacted") transcript.splice(0, compacted.replaced, compacted.summary);
     expect(namesOf(requests[1])).toEqual(["readPage", "noteList", "openToolkit"]);
-    expect(metaOf(requests[1])?.parameters).toMatchObject({ properties: { name: { enum: ["calendar"] } } });
+    expect(metaOf(requests[1])?.parameters).toMatchObject({ properties: { name: { enum: ["calendar", "notes"] } } });
     const { port: resumed, requests: later } = harness([saying("Done.")]);
     await drain(resumed, ask({ messages: [...transcript, { role: "user", text: "Thanks." }] }));
     expect(namesOf(later[0])).toEqual(["readPage", "noteList", "openToolkit"]);

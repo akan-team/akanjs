@@ -18,6 +18,7 @@ import {
   type MetafileOutput,
   type OpaqueEntryAliases,
 } from "./clientBuildTypes";
+import { WorkerChunks } from "./workerChunks";
 
 export class ClientEntriesBundler {
   #app: BundleClientEntriesInternalOptions["app"];
@@ -92,6 +93,7 @@ export class ClientEntriesBundler {
       Object.entries(metafile.outputs).map(([k, v]) => [this.#absFromOutdir(k), v as MetafileOutput]),
     );
     this.#metafileInputs = metafile.inputs as Record<string, MetafileInput>;
+    if (this.#target === "browser") await this.#sealWorkerChunks();
 
     for (const artifact of result.outputs.filter((a) => a.kind === "entry-point"))
       this.#addEntryArtifact(artifact.path);
@@ -108,6 +110,25 @@ export class ClientEntriesBundler {
       clientReferenceIdByAbsPath: this.#clientReferenceIdByAbsPath,
       graph: this.#graph(),
     };
+  }
+
+  async #sealWorkerChunks(): Promise<void> {
+    const entries = new Set(this.#opaqueEntries?.entries.map((entry) => path.resolve(entry)));
+    const sealed = await WorkerChunks.seal(
+      this.#metafileOutputsByAbs,
+      entries,
+      (entryPoint) => this.#absFromEntryPoint(entryPoint),
+      {
+        outdir: this.#outdir,
+        define: bundleDefine(this.#app, this.#command, "ssr"),
+        conditions: bundleConditions(this.#command),
+        minify: this.#command === "build",
+      },
+    );
+    for (const chunk of sealed) {
+      const info = this.#metafileOutputsByAbs.get(chunk);
+      if (info) this.#metafileOutputsByAbs.set(chunk, { ...info, imports: [] });
+    }
   }
 
   #graph(): ClientBundleGraph {

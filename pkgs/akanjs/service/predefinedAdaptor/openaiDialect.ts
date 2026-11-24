@@ -121,23 +121,38 @@ export class OpenaiDialect {
     return [...messages.slice(0, -1), { ...last, content }];
   }
 
-  //? A summary whose cut lands on the user's ask would be two user messages in a row, so it opens that ask's message.
+  //? A summary whose cut lands on the user's ask would be two user messages in a row, so it opens that ask's message;
+  //? a context message joins the user message next to it the same way.
   static #conversation(messages: AgentWireMessage[], accepts?: LlmAccepts): OpenaiMessage[] {
     const asks = (message?: AgentWireMessage) => message?.role === "user" && !message.summary;
-    return messages.flatMap((message, at) => {
-      if (message.summary && asks(messages[at + 1])) return [];
-      const mapped = OpenaiDialect.providerMessages(message, accepts);
+    const conversation: OpenaiMessage[] = [];
+    for (const [at, message] of messages.entries()) {
+      if (message.summary && asks(messages[at + 1])) continue;
       const before = messages[at - 1];
-      if (!before?.summary || !asks(message)) return mapped;
-      const summary = LlmContext.summary(before.text ?? "");
-      return mapped.map(({ role, content }) => ({
-        role,
-        content:
-          typeof content === "string"
-            ? [summary, content].filter(Boolean).join("\n\n")
-            : [{ type: "text" as const, text: summary }, ...content],
-      }));
-    });
+      const mapped = OpenaiDialect.providerMessages(message, accepts);
+      const last = conversation.at(-1);
+      if ((message.context || before?.context) && asks(message) && last?.role === "user" && mapped.length === 1) {
+        conversation[conversation.length - 1] = OpenaiDialect.#joined(last, mapped[0]?.content ?? "");
+        continue;
+      }
+      if (!before?.summary || !asks(message)) conversation.push(...mapped);
+      else
+        conversation.push(
+          ...mapped.map((part) =>
+            OpenaiDialect.#joined({ role: part.role, content: LlmContext.summary(before.text ?? "") }, part.content),
+          ),
+        );
+    }
+    return conversation;
+  }
+
+  static #joined(first: OpenaiMessage, content: OpenaiMessage["content"]): OpenaiMessage {
+    const head = first.content;
+    if (typeof head === "string" && typeof content === "string")
+      return { ...first, content: [head, content].filter(Boolean).join("\n\n") };
+    const parts = (part: OpenaiMessage["content"]) =>
+      typeof part === "string" ? (part ? [{ type: "text" as const, text: part }] : []) : (part ?? []);
+    return { ...first, content: [...parts(head), ...parts(content)] };
   }
 
   static providerMessages(message: AgentWireMessage, accepts?: LlmAccepts): OpenaiMessage[] {

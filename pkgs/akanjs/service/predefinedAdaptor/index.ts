@@ -1,5 +1,6 @@
 export * from "./agentTools.adaptor";
 export * from "./anthropicLlm";
+export * from "./anthropicTools";
 export * from "./cache.adaptor";
 export * from "./compress.adaptor";
 export * from "./database.adaptor";

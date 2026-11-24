@@ -70,6 +70,16 @@ export interface AgentWireMessage {
   foundTools?: string[];
   /** On an assistant message: what its provider must be sent back unchanged, which no other dialect reads. */
   providerContent?: AgentWireProviderContent;
+  /**
+   * On a user-role message `agentService.loop` wrote: `text` is the run's context as `LlmContext.of` rendered it, data
+   * and not an ask. It stays where it was first sent, so the turns after it reach the provider as they were.
+   */
+  context?: boolean;
+  /**
+   * On an assistant message `agentService.loop` wrote: the names of the tools listed when the model wrote it, so a
+   * provider that declares tools ahead can replay where each one was added or withdrawn.
+   */
+  listed?: string[];
 }
 
 /**
@@ -102,6 +112,11 @@ export interface LlmTurnRequest {
   messages: AgentWireMessage[];
   tools: AgentWireTool[];
   context: AgentWireContext[];
+  /**
+   * Tools the run may list on a later round, beside `tools`. A provider that can declare a tool before it shows one
+   * sends these unlisted, so a tool opened later leaves the earlier turns as they were; any other sends `tools` alone.
+   */
+  deferred?: AgentWireTool[];
   instructions?: string;
   /**
    * This turn's model in place of `LlmOption.model`. `accepts`, `maxTokens` and `contextWindow` stay the option's, so a
