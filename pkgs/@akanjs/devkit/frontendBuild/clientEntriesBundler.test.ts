@@ -80,3 +80,82 @@ describe("ClientEntriesBundler", () => {
     expect(await bundle("start")).toContain("switch-build");
   });
 });
+
+describe("ClientEntriesBundler worker chunks", () => {
+  const drawApp = async () => {
+    const root = await realpath(await makeTempRoot());
+    const lib = (file: string, source: string) => writeText(path.join(root, "node_modules/drawlib", file), source);
+    await lib("package.json", '{ "name": "drawlib", "type": "module", "exports": "./index.js" }\n');
+    await lib("shared.js", "export const scale = (value) => value * 2;\n");
+    await lib(
+      "index.js",
+      [
+        'import { useState } from "react";',
+        'import { scale } from "./shared.js";',
+        "const ratio = window.devicePixelRatio;",
+        "export const useRatio = () => useState(scale(ratio));",
+        'export const loadWorker = () => import("./worker.js");',
+        'export const loadLazy = () => import("./lazy.js");',
+        "",
+      ].join("\n"),
+    );
+    await lib(
+      "worker.js",
+      [
+        'import { scale } from "./shared.js";',
+        "export const WorkerUrl = new URL(import.meta.url);",
+        'if (typeof window === "undefined") self.onmessage = (event) => self.postMessage(scale(event.data));',
+        "",
+      ].join("\n"),
+    );
+    await lib(
+      "lazy.js",
+      'import { scale } from "./shared.js";\nexport const own = new URL(import.meta.url);\nexport const big = scale(4);\n',
+    );
+    const entry = path.join(root, "Draw.tsx");
+    await writeText(
+      entry,
+      '"use client";\nimport { loadLazy, loadWorker, useRatio } from "drawlib";\nexport const Draw = () => [useRatio, loadLazy, loadWorker];\n',
+    );
+    const app = {
+      name: "probe",
+      cwdPath: path.join(root, "app"),
+      dist: { cwdPath: path.join(root, "dist") },
+      workspace: { workspaceRoot: root },
+      getConfig: async () => ({ optimizeImports: [] }),
+      getPublicEnv: () => ({}),
+    };
+    const result = await new ClientEntriesBundler({
+      app: app as never,
+      entries: [entry],
+      command: "build",
+      external: ["react"],
+    }).bundle();
+    const outdir = path.join(root, "dist/.akan/artifact/client");
+    const chunks = await Promise.all(
+      [...new Bun.Glob("chunks/*.js").scanSync(outdir)].map(async (file) => ({
+        file: path.join(outdir, file),
+        text: await Bun.file(path.join(outdir, file)).text(),
+      })),
+    );
+    return { result, chunks };
+  };
+  const staticImportsOf = (text: string) =>
+    [...text.matchAll(/(?:\bfrom|\bimport)\s*["']([^"']+)["']/g)].map((m) => m[1]);
+
+  test("rebuilds a module that hands its own URL to a worker into its chunk alone, so a worker can load it", async () => {
+    const { result, chunks } = await drawApp();
+    const worker = chunks.find((chunk) => chunk.text.includes("onmessage"));
+    expect(worker && staticImportsOf(worker.text)).toEqual([]);
+    expect(result.graph.importsByChunk.get(worker?.file ?? "")).toEqual([]);
+    const loaded = (await import(worker?.file ?? "")) as { WorkerUrl: URL };
+    expect(loaded.WorkerUrl.href).toEndWith(path.basename(worker?.file ?? ""));
+    expect(typeof (globalThis as { onmessage?: unknown }).onmessage).toBe("function");
+  }, 30_000);
+
+  test("leaves a lazy chunk that only reads its own URL sharing what the page loaded", async () => {
+    const { chunks } = await drawApp();
+    const lazy = chunks.find((chunk) => chunk.text.includes("own"));
+    expect(lazy && staticImportsOf(lazy.text).length).toBeGreaterThan(0);
+  }, 30_000);
+});
