@@ -592,7 +592,8 @@ at every event.
   the run's: `run(call)` asks the member through `host.approve` when a call that changes something follows a `taint:
   "source"` read. The run's rule below is the wider one, counting every result, the page's included, so with no
   `approve` a client call is refused once the run has read anything; an `approve` that allows a client call leaves
-  that question to the page.
+  that question to the page. Each answer stores `listed`, and `lent` holds a lent definition once, so a later run
+  whose page lends other tools still declares the earlier ones to `AnthropicLlm`, withdrawn.
 - **Asking the member.** `ask: true` lists `askUser({ question, choices?, multiple? })`, the in-page chat's own tool.
   A call ends the run `awaiting` with `question: true`; put the question to the member and resume with
   `answer: { id, result }` — or `{ id, error }` when they dismiss it. It never reaches `approve`, counts as no tool
@@ -649,7 +650,7 @@ at every event.
   was given with, and one whose name the page lends taints. Trailing calls nothing answered go to `approve` again before any model call, and the taint is rebuilt from
   the `tainted` marks on stored messages and by re-applying `untrusted`, which sees a result whole during the run
   and clipped on a resume; with no `untrusted` every stored tool result taints, a refusal included, as a resume
-  cannot tell one from a result. Store every message whole, marks, `listed` and `providerContent` (Anthropic's signed
+  cannot tell one from a result. Store every message whole, marks, `listed`, `lent` and `providerContent` (Anthropic's signed
   thinking, replayed verbatim) included, and the `context: true` user messages: the run stores its `context` once,
   where it was first sent, and again only when it changes. Such a message is the app's data, not the member's words. `compacted` says the first `replaced`
   messages are now `summary`; its `tainted` marker stands in for the results it replaced, and a summary with no
