@@ -18,6 +18,18 @@ describe("CssCandidateCache token extraction", () => {
     expect(candidates).toEqual(expect.arrayContaining(["w-full", "hover:bg-muted", "md:w-1/2", "text-[#fff]"]));
   });
 
+  test("keeps Tailwind's important mark on the candidate, leading or trailing, and reads code's `!` as code", async () => {
+    const candidates = await scan(
+      `const c = "h-0! w-0! !h-0 md:!w-1 md:w-1! -mt-2! !-mt-2 w-[10px]!"; if (a !== b && x!==y) ref!.focus();`,
+    );
+    expect(candidates).toEqual(
+      expect.arrayContaining(["h-0!", "w-0!", "!h-0", "md:!w-1", "md:w-1!", "-mt-2!", "!-mt-2", "w-[10px]!"]),
+    );
+    expect(candidates).toEqual(expect.arrayContaining(["a", "b", "x", "y", "ref", "focus"]));
+    expect(candidates).not.toContain("h-0");
+    expect(candidates).not.toContain("x!");
+  });
+
   test("keeps an arbitrary variant that starts with a bracket", async () => {
     const candidates = await scan(`const c = "[&_td]:px-3 [&>*]:gap-2 [&_tbody_tr]:border-t";`);
     expect(candidates).toEqual(expect.arrayContaining(["[&_td]:px-3", "[&>*]:gap-2", "[&_tbody_tr]:border-t"]));

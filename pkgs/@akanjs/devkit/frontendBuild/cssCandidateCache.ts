@@ -6,9 +6,11 @@ import { type BuildCacheStamp, buildCacheStamp, isBuildCacheStamp } from "./buil
 // bracket (`[&_[data-slot=x]]:p-2`, `has-[[aria-expanded=true]]:x`), or the candidate is cut at the inner `]` and the
 // rule silently never compiles. Brackets hold no whitespace: a labelled tuple type scanned as a class compiles to a
 // rule lightningcss cannot parse, and it then drops every variant rule. Parentheses pass only as Tailwind v4's
-// variable shorthand, `(--x)` or `(length:--x)`, so `cn("flex")` still yields `flex` on its own.
+// variable shorthand, `(--x)` or `(length:--x)`, so `cn("flex")` still yields `flex` on its own. Tailwind's important
+// mark stays on the candidate, leading (`!h-0`, `md:!h-0`) or trailing (`h-0!`): a candidate cut off it compiles
+// without `!important`, silently. A trailing `!` followed by `=` or a word is code (`a !== b`, `ref!.x`), not a mark.
 const CANDIDATE_RE =
-  /-?(?:[\w@]|\[(?:[^[\]\s]|\[[^[\]\s]+\])+\])[\w:/.-]*(?:(?:\[(?:[^[\]\s]|\[[^[\]\s]+\])+\]|\((?:[a-z-]+:)?--[^)\s]+\))[\w:/.-]*)*/g;
+  /!?-?(?:[\w@]|\[(?:[^[\]\s]|\[[^[\]\s]+\])+\])(?:[\w:/.-]|(?<=:)!)*(?:(?:\[(?:[^[\]\s]|\[[^[\]\s]+\])+\]|\((?:[a-z-]+:)?--[^)\s]+\))(?:[\w:/.-]|(?<=:)!)*)*(?:!(?![\w=.([]))?/g;
 
 interface CachedFile {
   mtimeMs: number;
@@ -24,7 +26,7 @@ interface CacheFile extends BuildCacheStamp {
 /** Tailwind candidates per source file, on disk: the batch worker that compiles CSS exits before the next save. */
 export class CssCandidateCache {
   // Bump when the token regex or the entry shape changes, so stale extractions are not reused.
-  static readonly #version = 6;
+  static readonly #version = 7;
   readonly #path: string;
   readonly #stamp: BuildCacheStamp;
   readonly #entries = new Map<string, CachedFile>();
