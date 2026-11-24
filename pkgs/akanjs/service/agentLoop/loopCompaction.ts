@@ -1,4 +1,5 @@
 import type { AgentWireAttachment, AgentWireMessage, LlmTurnRequest } from "../predefinedAdaptor/llm.adaptor";
+import { LoopLent } from "./loopLent";
 import { LoopTranscript } from "./loopTranscript";
 
 //? A server twin of use-agentic's Compaction; keep the estimate, the cut and the digest in step with it.
@@ -17,7 +18,7 @@ export class LoopCompaction {
 
   static tokensOf(messages: readonly AgentWireMessage[]): number {
     let chars = 0;
-    for (const message of LoopTranscript.seen(messages)) chars += LoopCompaction.#charsOf(message);
+    for (const message of LoopLent.unlent(LoopTranscript.seen(messages))) chars += LoopCompaction.#charsOf(message);
     return Math.ceil(chars / 4);
   }
 

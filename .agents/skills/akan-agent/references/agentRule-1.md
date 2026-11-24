@@ -109,7 +109,9 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `option.applyAdaptor(LlmAdaptorRole, AnthropicLlm)`. An app may still write its own — an `adapt()` class in a
   `srvkit/` implementing `LlmAdaptor.chat(request, onDelta?)`, where ignoring `onDelta` still answers whole — and
   whatever settings it needs beyond `LlmOption` travel through the same `setLlm`, read back with
-  `use<MyLlmOption>()` from an interface extending it.
+  `use<MyLlmOption>()` from an interface extending it. One that sends some turns to Anthropic under another key
+  keeps `AnthropicLlm.of({ apiKey, model, body, betas })` and calls its `chat`: `body` changes each request last
+  (a cache breakpoint, an `effort`), and the instance keeps what its retries learned.
 - **Two adaptors ship, one per wire — a vendor is a host and a model name, not a protocol.** `OpenaiLlm` is the
   chat-completions dialect (`OpenaiDialect`) pointed at whatever `host` names, so OpenAI, DeepSeek, Groq,
   Together, OpenRouter, Ollama and a self-hosted vLLM are all one class and one `option.setLlm({ host, model })`.

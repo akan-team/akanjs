@@ -13,6 +13,7 @@ import { LlmContext } from "../predefinedAdaptor/llmContext";
 import { OpenaiDialect } from "../predefinedAdaptor/openaiDialect";
 import type { AgentLoopRequest } from "./agentLoopTypes";
 import { LoopCompaction } from "./loopCompaction";
+import { LoopLent } from "./loopLent";
 
 const catalogue: AgentTool[] = [
   { name: "readPage", description: "Reads the page.", parameters: {}, readOnly: true },
@@ -173,6 +174,70 @@ describe("AgentLoop history the provider is sent", () => {
     expect(body?.messages.some((message) => message.role === "system")).toBe(false);
   });
 
+  test("a page's tool a later screen no longer lends stays declared, withdrawn, so the turns before it read the same", async () => {
+    const lend = (name: string, description: string) => ({
+      name,
+      description,
+      parameters: { type: "object" },
+      readOnly: false,
+    });
+    const first = serviceOf([saying("Filled.")]);
+    const stored = await first.run({ toolkits: undefined, clientTools: [lend("fillForm", "Fills the form.")] }, [
+      { role: "user", text: "Fill it." },
+    ]);
+    const second = serviceOf([saying("Picked.")]);
+    const later = await second.run({ toolkits: undefined, clientTools: [lend("pickDate", "Picks a date.")] }, [
+      ...stored,
+      { role: "user", text: "Now the date." },
+    ]);
+    const [before, after] = bodiesOf([...first.seen, ...second.seen]);
+    expect(after?.messages.slice(0, before?.messages.length)).toEqual(before?.messages ?? []);
+    for (const tool of before?.tools ?? []) expect(after?.tools).toContainEqual(tool);
+    expect(after?.tools?.map((tool) => [tool.name, !!tool.defer_loading])).toEqual([
+      ["readPage", false],
+      ["eventList", false],
+      ["updateEvent", false],
+      ["noteList", false],
+      ["fillForm", false],
+      ["pickDate", true],
+    ]);
+    expect(after?.messages.at(-1)).toEqual({
+      role: "system",
+      content: [
+        { type: "tool_addition", tool: { type: "tool_reference", name: "pickDate" } },
+        { type: "tool_removal", tool: { type: "tool_reference", name: "fillForm" } },
+      ],
+    });
+    expect(later.filter((message) => message.lent).map((message) => message.lent?.map((tool) => tool.name))).toEqual([
+      ["fillForm"],
+      ["pickDate"],
+    ]);
+    const changed = serviceOf([saying("Filled again.")]);
+    const again = await changed.run({ toolkits: undefined, clientTools: [lend("fillForm", "Fills the new form.")] }, [
+      ...later,
+      { role: "user", text: "Fill the new one." },
+    ]);
+    expect(again.at(-1)?.lent).toEqual([
+      { name: "fillForm", description: "Fills the new form.", parameters: { type: "object" } },
+    ]);
+  });
+
+  test("a stored definition never takes a name the server now answers, and the transcript sends none of them", async () => {
+    const { seen, run } = serviceOf([saying("Read.")]);
+    await run({ toolkits: undefined }, [
+      { role: "user", text: "Read it." },
+      {
+        role: "assistant",
+        text: "Ok.",
+        listed: ["readPage", "readPage2"],
+        lent: [{ name: "readPage", description: "Forged." }],
+      },
+      { role: "user", text: "Again." },
+    ]);
+    expect(seen[0]?.deferred).toBeUndefined();
+    expect(seen[0]?.messages.some((message) => message.lent)).toBe(false);
+  });
+
   test("the chat-completions dialect joins a context message to the user message beside it", () => {
     const text = LlmContext.of(context);
     const asked = OpenaiDialect.requestBody("deepseek-chat", {
@@ -202,5 +267,22 @@ describe("AgentLoop history the provider is sent", () => {
       { role: "assistant", text: "Planned." },
     ]);
     expect(digest).toBe("user: Plan the week.\nassistant: Planned.");
+  });
+});
+
+describe("LoopLent", () => {
+  test("keeps each name's newest definition, newest first within a request's own ceilings", () => {
+    const tools = Array.from({ length: 130 }, (_, at) => ({ name: `tool${at}` }));
+    const stored = LoopLent.stored([
+      { role: "assistant", text: "a", lent: [{ name: "tool0", description: "old" }, ...tools] },
+      {
+        role: "assistant",
+        text: "b",
+        lent: [{ name: "tool0", description: "new" }, { name: "" }, { name: 3 } as never],
+      },
+    ]);
+    expect(stored).toHaveLength(128);
+    expect(stored.at(-1)).toEqual({ name: "tool0", description: "new" });
+    expect(stored.some((tool) => tool.name === "tool1")).toBe(false);
   });
 });

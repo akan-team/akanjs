@@ -314,6 +314,7 @@ export interface AgentWireMessage {
     providerContent?: AgentWireProviderContent;
     context?: boolean;
     listed?: string[];
+    lent?: AgentWireTool[];
 }
 
 export interface AgentWireProviderContent {
@@ -719,6 +720,7 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static readonly imageTypes: Set<string>;
     static readonly dialect = "anthropic";
     static readonly thinkingBindingBeta = "thinking-binding-controls-2026-08-01";
+    static of(option: AnthropicLlmOption): AnthropicLlm;
     get limits(): LlmLimits;
     get accepts(): LlmAccepts;
     chat(request: LlmTurnRequest, onDelta?: (delta: string) => void, signal?: AbortSignal): Promise<LlmTurnAnswer | null>;
@@ -767,6 +769,13 @@ export declare class AnthropicLlm extends AnthropicLlm_base implements LlmAdapto
     static consumeStream(body: ReadableStream<Uint8Array>, onDelta: (delta: string) => void, host?: string, tools?: AgentWireTool[]): Promise<LlmTurnAnswer>;
     static parsedArgs(raw: string): Record<string, unknown>;
 }
+
+export interface AnthropicLlmOption extends LlmOption {
+    body?: (body: AnthropicRequestBody, request: LlmTurnRequest) => AnthropicRequestBody & Record<string, unknown>;
+    betas?: string[];
+}
+
+export type AnthropicRequestBody = ReturnType<typeof AnthropicLlm.requestBody>;
 
 export interface AnthropicTool {
     name: string;
@@ -2644,7 +2653,7 @@ type AnthropicContentBlock = {
 };
 
 declare const AnthropicLlm_base: import("..").AdaptorCls<{}, {
-    llmOption: import("..").InjectInfo<"use", LlmOption, never, never>;
+    llmOption: import("..").InjectInfo<"use", AnthropicLlmOption, never, never>;
 }>;
 
 interface AnthropicMessage {

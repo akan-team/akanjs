@@ -27,6 +27,7 @@ import { LoopAnswer, type LoopPark } from "./loopAnswer";
 import { LoopAsk } from "./loopAsk";
 import { LoopCompaction } from "./loopCompaction";
 import { LoopContext } from "./loopContext";
+import { LoopLent } from "./loopLent";
 import { LoopRemotes } from "./loopRemotes";
 import { LoopRequest } from "./loopRequest";
 import { LoopStored } from "./loopStored";
@@ -82,7 +83,7 @@ export class AgentLoop {
   readonly #remotes: LoopRemotes;
   readonly #toolkits: LoopToolkits;
   readonly #askUser: LoopAsk;
-  #clientNames = new Set<string>();
+  readonly #lent = new LoopLent();
   #account: unknown = null;
   #round = 0;
   #tokens = 0;
@@ -156,7 +157,8 @@ export class AgentLoop {
     const { answer, tools } = yield* this.#ask(compacted ?? listed);
     //? Security: what the model wrote after reading untrusted text is stored with the mark, which a resume reads back.
     const mark = this.#tainted ? { tainted: true } : {};
-    const shown = this.#toolkits.tracksListing ? { listed: tools.map((tool) => tool.name) } : {};
+    const tracks = this.#toolkits.tracksListing || this.#lent.tracks(this.#messages);
+    const shown = tracks ? this.#lent.listingOf(tools, this.#messages) : {};
     if (answer.stop === "length") {
       //? Calls in an answer the provider cut off may be cut mid-argument, so only its text is kept.
       if (answer.text) await this.#append({ role: "assistant", text: answer.text, ...shown, ...mark });
@@ -190,13 +192,14 @@ export class AgentLoop {
     const taken = new Set(visible.map((tool) => tool.name));
     //? Security: client input, so a browser's definition never takes a name the server answers, in a closed toolkit too,
     //? nor one under a remote's prefix, which `approve` would read as that remote's.
+    const free = (name: string) =>
+      !taken.has(name) && !this.#toolkits.isMeta(name) && !this.#askUser.isMeta(name) && !this.#remotes.ownerOf(name);
     const client = (this.#request.clientTools ?? []).filter((tool) => {
-      if (taken.has(tool.name) || this.#toolkits.isMeta(tool.name) || this.#askUser.isMeta(tool.name)) return false;
-      if (this.#remotes.ownerOf(tool.name)) return false;
+      if (!free(tool.name)) return false;
       taken.add(tool.name);
       return true;
     });
-    this.#clientNames = new Set(client.map((tool) => tool.name));
+    this.#lent.lend(client, this.#messages, free);
     this.#judgeStored(visible);
     return [...listed, ...remote.tools, ...client.map(AgentLoop.#clientTool), ...this.#askUser.listed()];
   }
@@ -270,9 +273,12 @@ export class AgentLoop {
     ]
       .filter(Boolean)
       .join("\n\n");
-    const deferred = this.#toolkits.deferred(tools).map(({ readOnly: _readOnly, ...tool }) => tool);
+    const deferred = [
+      ...this.#toolkits.deferred(tools).map(({ readOnly: _readOnly, ...tool }) => tool),
+      ...this.#lent.left,
+    ];
     return {
-      messages: LoopTranscript.wire(this.#messages),
+      messages: LoopLent.unlent(LoopTranscript.wire(this.#messages)),
       tools: tools.map(({ readOnly: _readOnly, ...tool }) => tool),
       context: [],
       ...(deferred.length ? { deferred } : {}),
@@ -395,7 +401,7 @@ export class AgentLoop {
           stop = "awaiting";
           break;
         }
-        if (verdict === "allow" && this.#clientNames.has(call.name)) {
+        if (verdict === "allow" && this.#lent.has(call.name)) {
           this.#toolCalls += 1;
           yield { type: "awaiting", call, client: true };
           stop = "awaiting";
@@ -436,7 +442,7 @@ export class AgentLoop {
   async *#accept(answer: AgentLoopCallAnswer): Events<void> {
     const whole = LoopAnswer.resultOf(answer, this.#messages, (call) => this.#parks(call));
     const result = LoopToolOutput.clipped(whole);
-    if (this.#clientNames.has(whole.name)) this.#tainted = true;
+    if (this.#lent.has(whole.name)) this.#tainted = true;
     await this.#record([result]);
     yield { type: "toolResult", result, round: this.#round };
   }
@@ -445,7 +451,7 @@ export class AgentLoop {
     if (call.argsError) return null;
     const kit = this.#toolkits.externalOf(call);
     if (kit) return { refusal: LoopRemotes.declined(kit), code: LoopRemotes.declinedCode };
-    const parked = this.#askUser.isMeta(call.name) ? !LoopAsk.refusalOf(call) : this.#clientNames.has(call.name);
+    const parked = this.#askUser.isMeta(call.name) ? !LoopAsk.refusalOf(call) : this.#lent.has(call.name);
     return parked ? "answer" : null;
   }
 
@@ -487,7 +493,7 @@ export class AgentLoop {
     const state = {
       tainted: this.#tainted,
       tool,
-      ...(this.#clientNames.has(call.name) ? { client: true as const } : {}),
+      ...(this.#lent.has(call.name) ? { client: true as const } : {}),
       ...(remote ? { remote } : {}),
     };
     if (approve) return AgentLoop.#judged(await this.#untilHalted(approve(call, state)));
