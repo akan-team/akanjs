@@ -98,6 +98,20 @@ describe("CssCompiler on a stylesheet that uses no Tailwind", () => {
     expect(compiled).toContain(".flex {");
   });
 
+  test("compiles a utility marked important, leading or trailing, as `!important`", async () => {
+    const root = await makeTempRoot();
+    await write(path.join(root, "styles.css"), '@import "tailwindcss";\n');
+    await write(path.join(root, "Page.tsx"), 'export const Page = () => <main className="h-0! !w-0" />;\n');
+
+    const compiled = await cssCompilerFor(root, root).compileCss(
+      [path.join(root, "styles.css")],
+      [path.join(root, "Page.tsx")],
+    );
+
+    expect(compiled).toMatch(/\.h-0\\! \{\s*height: 0px !important;/);
+    expect(compiled).toMatch(/\.\\!w-0 \{\s*width: 0px !important;/);
+  });
+
   test("switches to Tailwind on the next rebuild once a stylesheet gains a directive, and back", async () => {
     const root = await makeTempRoot();
     const stylesPath = path.join(root, "page/styles.css");
