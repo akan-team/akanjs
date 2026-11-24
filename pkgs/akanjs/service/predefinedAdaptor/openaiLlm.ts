@@ -78,8 +78,7 @@ export class OpenaiLlm
       return { ...(await OpenaiDialect.consumeStream(body, onDelta, this.#host, request.tools)), model };
     } catch (error) {
       // Rethrown, not `null`: the user needs the provider's refusal, and `null` reads as "no model is configured".
-      if (!signal?.aborted)
-        this.logger.error(`LLM turn failed: ${error instanceof Error ? error.message : String(error)}`);
+      if (!signal?.aborted) LlmOverflow.failed(this.logger, "LLM", error);
       throw LlmSpend.attach(error, { model });
     }
   }

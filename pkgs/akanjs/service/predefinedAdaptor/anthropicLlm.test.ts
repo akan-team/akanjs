@@ -1,4 +1,6 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import { Logger } from "akanjs/common";
+import { Err } from "akanjs/dictionary";
 import type { LlmOption, LlmTurnRequest } from "akanjs/service";
 import { AnthropicLlm } from "./anthropicLlm";
 import { LlmSpend } from "./llmSpend";
@@ -928,5 +930,75 @@ describe("AnthropicLlm.of", () => {
       ["own-key", "some-beta-2026-01-01", { effort: "high" }, false],
       ["own-key", "thinking-binding-controls-2026-08-01,some-beta-2026-01-01", { effort: "high" }, true],
     ]);
+  });
+
+  test("takes a hook's body with `system` as blocks and a breakpoint on the last tool, as written", async () => {
+    let sent: Record<string, unknown> = {};
+    globalThis.fetch = (async (_url: string, init: { body: string }) => {
+      sent = JSON.parse(init.body) as Record<string, unknown>;
+      return Response.json({ content: [{ type: "text", text: "Done." }], stop_reason: "end_turn" });
+    }) as unknown as typeof fetch;
+    const breakpoint = { type: "ephemeral" } as const;
+    const llm = AnthropicLlm.of({
+      apiKey: "own-key",
+      model: "claude-opus-5-5",
+      body: (body) => ({
+        ...body,
+        system: [{ type: "text", text: body.system, cache_control: breakpoint }],
+        tools: body.tools?.map((tool, at, all) =>
+          at === all.length - 1 ? { ...tool, cache_control: breakpoint } : tool,
+        ),
+      }),
+    });
+
+    await llm.chat({
+      context: [],
+      tools: [{ name: "readPage", description: "Reads the page." }],
+      messages: [{ role: "user", text: "hi" }],
+    });
+
+    expect(sent.system).toEqual([{ type: "text", text: AnthropicLlm.systemPrompt({}), cache_control: breakpoint }]);
+    expect(sent.tools).toEqual([
+      {
+        name: "readPage",
+        description: "Reads the page.",
+        input_schema: { type: "object", properties: {} },
+        cache_control: breakpoint,
+      },
+    ]);
+  });
+
+  test("names its own setting in what it logs, and leaves a refusal it already logged out of the turn's error", async () => {
+    const llm = AnthropicLlm.of({ model: "claude-opus-5-5" });
+    const warn = spyOn(llm.logger, "warn").mockImplementation(() => undefined);
+    const error = spyOn(llm.logger, "error").mockImplementation(() => undefined);
+    const refusalWarn = spyOn(Logger.prototype, "warn").mockImplementation(() => undefined);
+    const turn: LlmTurnRequest = { context: [], tools: [], messages: [{ role: "user", text: "hi" }] };
+    try {
+      expect(await llm.chat(turn)).toBeNull();
+      llm.llmOption.apiKey = "own-key";
+      globalThis.fetch = (async () =>
+        Response.json({ content: [], stop_reason: "end_turn" })) as unknown as typeof fetch;
+      await llm.chat(turn);
+      globalThis.fetch = (async () =>
+        Response.json(
+          { error: { type: "invalid_request_error", message: "bad request" } },
+          { status: 400 },
+        )) as unknown as typeof fetch;
+      const refused = await llm.chat(turn).catch((failure: unknown) => failure);
+      expect(Err.is(refused, "agent.error.llmRequestFailed")).toBe(true);
+      expect(error).not.toHaveBeenCalled();
+      globalThis.fetch = (async () => {
+        throw new TypeError("fetch failed");
+      }) as unknown as typeof fetch;
+      await expect(llm.chat(turn)).rejects.toThrow("fetch failed");
+    } finally {
+      refusalWarn.mockRestore();
+    }
+    expect(warn.mock.calls.map(([line]) => String(line).match(/AnthropicLlm\.of\(|option\.setLlm/)?.[0])).toEqual([
+      "AnthropicLlm.of(",
+      "AnthropicLlm.of(",
+    ]);
+    expect(error.mock.calls.map(([line]) => line)).toEqual(["Anthropic turn failed: fetch failed"]);
   });
 });

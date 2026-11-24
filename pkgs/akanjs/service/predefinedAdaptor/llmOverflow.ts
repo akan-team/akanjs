@@ -72,6 +72,15 @@ export class LlmOverflow {
     return new Err("agent.error.llmDeclined", { provider, ...(typeof category === "string" ? { category } : {}) });
   }
 
+  //? Once per failed turn: `refusal` and `declined` logged theirs with the provider's sentence, and an overflow is the
+  //? chat's to compact, so neither is a server fault.
+  static failed(logger: Pick<Logger, "warn" | "error">, provider: string, error: unknown) {
+    if (Err.is(error, "agent.error.llmRequestFailed", "agent.error.llmDeclined")) return;
+    const line = `${provider} turn failed: ${error instanceof Error ? error.message : String(error)}`;
+    if (Err.is(error, "agent.error.contextOverflow")) logger.warn(line);
+    else logger.error(line);
+  }
+
   static #count(text: string | undefined): number | undefined {
     const count = text ? Number(text.replace(/,/g, "")) : Number.NaN;
     return Number.isFinite(count) && count > 0 ? count : undefined;

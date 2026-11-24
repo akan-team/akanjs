@@ -89,9 +89,19 @@ interface AnthropicStreamEvent {
 
 export type AnthropicRequestBody = ReturnType<typeof AnthropicLlm.requestBody>;
 
+/** A body as `body` hands it on: the retries read `messages` and `tools`, and the API judges the rest. */
+export interface AnthropicSentBody {
+  messages: readonly { role: string; content: readonly { type: string }[] }[];
+  tools?: readonly { defer_loading?: true }[];
+  [field: string]: unknown;
+}
+
 export interface AnthropicLlmOption extends LlmOption {
-  /** Has the last word on each body, after the retries chose its form: a `cache_control` breakpoint, an `effort`. */
-  body?: (body: AnthropicRequestBody, request: LlmTurnRequest) => AnthropicRequestBody & Record<string, unknown>;
+  /**
+   * Has the last word on each body, after the retries chose its form: a `cache_control` breakpoint, `system` as
+   * blocks, an `effort`.
+   */
+  body?: (body: AnthropicRequestBody, request: LlmTurnRequest) => AnthropicSentBody;
   /** `anthropic-beta` values what `body` adds needs, sent beside the ones a retry adds. */
   betas?: string[];
 }
@@ -123,13 +133,16 @@ export class AnthropicLlm
   //? Conversations the API refused under its history check: their older blocks stay bound to a history that changed.
   readonly #dropped = new Set<string>();
   readonly #plainTools = new Set<string>();
+  #setting = "option.setLlm";
 
   /**
    * One with settings of its own, beside `option.setLlm`: an app's adaptor sending some turns here under another key
    * keeps the retries, and what they learned about each model and conversation, by keeping the instance.
    */
   static of(option: AnthropicLlmOption): AnthropicLlm {
-    return Object.assign(new AnthropicLlm(), { llmOption: option });
+    const llm = Object.assign(new AnthropicLlm(), { llmOption: option });
+    llm.#setting = "AnthropicLlm.of";
+    return llm;
   }
 
   get #host() {
@@ -153,7 +166,7 @@ export class AnthropicLlm
     const model = request.model || this.llmOption.model;
     if (!this.llmOption.apiKey || !model) {
       this.logger.warn(
-        "AnthropicLlm needs both apiKey and model — set them with option.setLlm(). Agent turns are unavailable.",
+        `AnthropicLlm needs both apiKey and model — set them with ${this.#setting}(). Agent turns are unavailable.`,
       );
       return null;
     }
@@ -181,8 +194,7 @@ export class AnthropicLlm
         model,
       };
     } catch (error) {
-      if (!signal?.aborted)
-        this.logger.error(`Anthropic turn failed: ${error instanceof Error ? error.message : String(error)}`);
+      if (!signal?.aborted) LlmOverflow.failed(this.logger, "Anthropic", error);
       throw LlmSpend.attach(error, { model });
     }
   }
@@ -191,7 +203,7 @@ export class AnthropicLlm
   #reported(answer: LlmTurnAnswer): LlmTurnAnswer {
     if (!answer.text && !answer.toolCalls?.length && answer.stop !== "length")
       this.logger.warn(
-        `Anthropic answered with no text and no tool call. If this repeats, raise option.setLlm({ maxTokens }) — currently ${this.llmOption.maxTokens ?? AnthropicLlm.defaultMaxTokens}.`,
+        `Anthropic answered with no text and no tool call. If this repeats, raise ${this.#setting}({ maxTokens }) — currently ${this.llmOption.maxTokens ?? AnthropicLlm.defaultMaxTokens}.`,
       );
     return answer;
   }
@@ -212,7 +224,7 @@ export class AnthropicLlm
   async #send(
     model: string,
     conversation: string | null,
-    bodyOf: (thinking: AnthropicThinkingReplay | undefined, toolChanges: boolean) => AnthropicRequestBody,
+    bodyOf: (thinking: AnthropicThinkingReplay | undefined, toolChanges: boolean) => AnthropicSentBody,
     signal?: AbortSignal,
   ): Promise<Response> {
     let thinking: AnthropicThinkingReplay | undefined =
