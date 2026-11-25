@@ -424,6 +424,18 @@ describe("useCsrValues when a page is refused as it slides in", () => {
     turnedBack.mockRestore();
   });
 
+  test("a page that redirected keeps its redirect on its way when a page out of sight redirects back to it", async () => {
+    const frame = mountFrame("/en/org", [{ segment: "org" }, { segment: "home", drawsAfterMs: 300 }]);
+
+    act(() => void client.router.redirect("/home"));
+    await elapse(100);
+    act(() => void client.router.redirect("/org"));
+    await drawnWithin(700);
+
+    expect(frame.seen.latest?.location.pathname).toBe("/en/home");
+    expect(frame.stack()).toEqual(["/en/home"]);
+  });
+
   test("a redirect back to the page the visitor is on leaves the stack as it was", async () => {
     const frame = mountFrame("/en/home", [
       { segment: "home" },
@@ -530,6 +542,65 @@ describe("useCsrValues while a page slides in", () => {
 
     expect(frame.seen.latest?.location.pathname).toBe("/en/comments");
     expect(frame.stack()).toEqual(["/en/home", "/en/detail", "/en/comments"]);
+  });
+});
+
+describe("router.navigation() on the CSR stack", () => {
+  const landing = () => {
+    const seen: { at?: string } = {};
+    void client.router.navigation().then(() => {
+      seen.at = client.csrLocation.pathname;
+    });
+    return seen;
+  };
+
+  test("settles once the page has slid in, on the page it moved to, not when the move is asked", async () => {
+    mountFrame("/en/home", [{ segment: "home" }, { segment: "detail", transition: "stack" }]);
+    let landed: { at?: string } = {};
+
+    await act(async () => {
+      client.router.push("/detail");
+      landed = landing();
+    });
+    expect(landed.at).toBeUndefined();
+    await elapse(600);
+
+    expect(landed.at).toBe("/en/detail");
+  });
+
+  test("a push made while another page slides in settles once it has run", async () => {
+    mountFrame("/en/home", [
+      { segment: "home" },
+      { segment: "detail", transition: "stack" },
+      { segment: "comments", transition: "stack" },
+    ]);
+    await act(async () => void client.router.push("/detail"));
+    await elapse(150);
+    let landed: { at?: string } = {};
+
+    await act(async () => {
+      client.router.push("/comments");
+      landed = landing();
+    });
+    await elapse(100);
+    expect(landed.at).toBeUndefined();
+    await elapse(1000);
+
+    expect(landed.at).toBe("/en/comments");
+  });
+
+  test("a push a back drops before its page shows settles where the page stayed", async () => {
+    mountFrame("/en/home", [{ segment: "home" }, { segment: "detail", transition: "stack" }]);
+    let landed: { at?: string } = {};
+
+    await act(async () => {
+      client.router.push("/detail");
+      landed = landing();
+      client.router.back();
+    });
+    await elapse(600);
+
+    expect(landed.at).toBe("/en/home");
   });
 });
 

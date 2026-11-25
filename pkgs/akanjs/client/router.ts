@@ -15,6 +15,7 @@ import { CsrRuntimeParams } from "./csrRuntimeParams";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
 import { type NavigationAttempt, type NavigationGuard, NavigationGuards, NavigationRefused } from "./navigationGuards";
+import { redirectMoveOptions } from "./redirectMove";
 import type { PrefetchPriority } from "./rscNavigation";
 
 export interface RouteOptions {
@@ -311,9 +312,9 @@ class Router {
         const { path, pathname, hash, href: fullHref } = this.#getPathInfo(href);
         this.postPathChange({ path, pathname, hash });
         // for avoiding set state while rendering in redirect
-        setTimeout(() => {
-          options.router.replace(CsrRuntimeParams.carry(fullHref), routeOptions);
-        }, 0);
+        return new Promise<void>((made) => {
+          setTimeout(() => made(options.router.replace(CsrRuntimeParams.carry(fullHref), routeOptions)), 0);
+        });
       },
       back: (routeOptions) => {
         this.#postPathAfterBack();
@@ -728,7 +729,7 @@ class Router {
     } else {
       this.#redirects += 1;
       this.#navigations += 1;
-      this.#instance[method](href);
+      this.#instance[method](href, redirectMoveOptions());
     }
     return undefined as never;
   }
@@ -740,7 +741,7 @@ class Router {
     this.#checkInitialized();
     this.#redirects += 1;
     this.#navigations += 1;
-    this.#instance.replace("/404");
+    this.#instance.replace("/404", redirectMoveOptions());
     return undefined as never;
   }
   setLang(lang: string) {

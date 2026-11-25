@@ -133,6 +133,56 @@ describe("StoreSurfaceSource", () => {
     resetEnvCache();
   });
 
+  test("navigate refuses a path the app answers with its not-found page, and takes the page back", async () => {
+    const { router } = await import("akanjs/client");
+    const priorWindow = globalThis.window;
+    Object.defineProperty(globalThis, "window", {
+      value: {
+        parent: { postMessage: () => undefined },
+        location: { origin: "https://example.test", host: "example.test", hostname: "example.test", port: "" },
+      },
+      configurable: true,
+    });
+    const shown = ["/en/docs/intro"];
+    Object.defineProperty(globalThis.window, "history", {
+      value: {
+        get state() {
+          return { __akanRouter: { idx: shown.length - 1 } };
+        },
+      },
+      configurable: true,
+    });
+    router.init({
+      type: "ssr",
+      side: "client",
+      lang: "en",
+      router: {
+        push: (href: string) => {
+          shown.push(href);
+        },
+        replace: () => undefined,
+        back: () => {
+          shown.pop();
+        },
+        refresh: () => undefined,
+      },
+    } as never);
+    globalThis.__AKAN_NOT_FOUND_VIEW__ = () => shown.at(-1)?.includes("/setting/repository") ?? false;
+    const surface = new AgenticSurface();
+    surface.addSource(source);
+
+    await expect(surface.call("navigate", { path: "/org/o1/setting/repository" })).rejects.toThrow(
+      "There is no route at /org/o1/setting/repository, so the page went back.",
+    );
+    expect(shown).toEqual(["/en/docs/intro"]);
+    expect(await surface.call("navigate", { path: "/org/o1/setting" })).toContain("Now on /org/o1/setting.");
+
+    globalThis.__AKAN_NOT_FOUND_VIEW__ = undefined;
+    router.init({ side: "server", routeManifest: [] } as never);
+    Object.defineProperty(globalThis, "window", { value: priorWindow, configurable: true });
+    resetEnvCache();
+  });
+
   test("navigate says where the page landed when the app sent it somewhere else", async () => {
     const { router } = await import("akanjs/client");
     const priorWindow = globalThis.window;

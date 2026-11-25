@@ -156,6 +156,7 @@ describe("CsrRouteTable's not-found routes", () => {
     if (!route) throw new Error("the settings layout has no not-found route");
 
     expect(route.path).toBe("/:lang/org/settings/*");
+    expect(route.notFound).toBe(true);
     expect(await labelsOf(route.renderRootLayouts)).toEqual(["root"]);
     expect(route.renderLayouts.map((render) => !!render.NotFound)).toEqual([true]);
     expect(route.pageState.cache).toBe(false);

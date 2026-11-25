@@ -651,6 +651,7 @@ export interface PathContextType {
 export interface PathRoute {
     path: string;
     pathSegments: string[];
+    notFound?: true;
     shadowedBy?: string[];
     renderPage: RouteRender;
     pageState: PageState;
@@ -1324,7 +1325,11 @@ export declare const isNativeShell: () => boolean;
 
 export declare const isNativeTarget: () => boolean;
 
+export declare const isNotFoundView: () => boolean;
+
 export declare const isPageKeyboardAvoidance: () => boolean;
+
+export declare const isRedirectMove: (options: RouteOptions | undefined) => boolean;
 
 export declare const isRouteControl: (error: unknown) => boolean;
 

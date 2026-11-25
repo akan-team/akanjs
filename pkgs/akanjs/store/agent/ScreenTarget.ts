@@ -80,8 +80,8 @@ export class ScreenTarget {
     const scope = root ?? ScreenTarget.#body();
     if (!scope) return [];
     const routes = new Set<string>();
-    for (const link of scope.querySelectorAll<HTMLAnchorElement>("a[href]")) {
-      const route = ScreenTarget.visible(link) ? ScreenTarget.routeOf(link.getAttribute("href") ?? "") : "";
+    for (const link of scope.querySelectorAll<HTMLAnchorElement>(ScreenReader.links)) {
+      const route = ScreenTarget.visible(link) ? ScreenTarget.routeOf(ScreenReader.hrefOf(link)) : "";
       if (route) routes.add(route);
       if (routes.size >= nameCap) break;
     }

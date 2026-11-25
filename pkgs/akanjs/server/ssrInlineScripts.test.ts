@@ -158,6 +158,8 @@ describe("the document's bootstrap script", () => {
       closed: false,
     });
     expect(boot({}).self.__AKAN_PREFIX__).toBeUndefined();
+    expect(boot({}).self.__AKAN_RSC_INITIAL_NOT_FOUND__).toBeUndefined();
+    expect(boot({ notFound: true }).self.__AKAN_RSC_INITIAL_NOT_FOUND__).toBe(true);
   });
 
   test("sets the system theme before the body paints, unless a theme cookie already chose", () => {

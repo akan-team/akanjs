@@ -289,6 +289,7 @@ export class CsrRouteTable {
       routeOf: (pathname) => ({
         path,
         pathSegments,
+        notFound: true,
         renderRootLayouts: layer.renderRootLayouts,
         renderLayouts,
         pageState,
