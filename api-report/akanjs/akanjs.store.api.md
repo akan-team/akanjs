@@ -76,6 +76,16 @@ export declare class AgentCursor {
 
 export type AgentFieldType = AgentSingleType | AgentSingleType[];
 
+export declare class AgentNavigate {
+    static get options(): AgentNavigateOptions;
+    static set(options: AgentNavigateOptions): void;
+}
+
+export interface AgentNavigateOptions {
+    description?: string;
+    settle?: (settled: () => Promise<void>) => Promise<void>;
+}
+
 export declare class AgentProgress {
     static report(message: string, amount?: {
         done?: number;

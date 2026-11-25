@@ -99,14 +99,15 @@
   control that starts the work, and let it await the work.
 - **A tool that changes the screen waits for the screen before it answers.** `router.push` returns while the RSC
   payload is still in flight and a store action that fires `void fetch.*` commits a tick later, so `navigate` and
-  `goBack` await `router.navigation()`, then `ScreenSettle.wait()` — DOM quiescence, bounded — and
-  `ScreenSettle.loaded()`, which waits out every `Load.*` fallback still in view (each draws a
-  `template[data-akan-loading]`), so a section streamed in later and the tools it mounts are on the screen they
-  report. The session awaits `ScreenSettle.wait()` after every tool that did not declare `settle: false` before taking
-  the change report.
+  `goBack` await `router.navigation()`, then `ScreenSettle.wait()` (bounded DOM quiet) and
+  `ScreenSettle.loaded()`, which waits out every `Load.*` and route `.loading()` fallback still in view (each
+  draws a `template[data-akan-loading]`), so a section streamed in later and the tools it mounts are on the screen they
+  report. `AgentNavigate.set({ settle, description })` (`akanjs/store`) replaces both app-wide; `settle`
+  gets the runtime's wait to wrap. The session awaits `ScreenSettle.wait()` after every tool that did not declare
+  `settle: false` before taking the change report.
   Without it the report describes the moment before the change landed and the `readScreen` that follows reads the
-  page the user left. The reading built-ins (`readScreen`, `readState`, `highlight`, `viewImage`) declare it,
-  because a wait costs 120ms of quiet at the very least and they change nothing a resource holds.
+  page the user left. The reading built-ins (`readScreen`, `readState`, `highlight`, `viewImage`) declare it:
+  they change nothing, and a wait costs at least 120ms of quiet.
   New tools and state from a fresh route are still only listed from the next turn: the catalogue is snapshotted
   when the turn starts. **So a navigation ends the model's turn, and a name nobody listed is answered with the names
   that exist.** A call is looked up when it runs, so one batched behind `navigate` already reaches the new screen —

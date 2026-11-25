@@ -43,12 +43,15 @@ export class FetchHandle {
   }
 
   //? A field is the read a route hands a `Load.*` unawaited, so its failure is the stream's to show, not the page's.
+  //? One read and never handed on, as by a render that threw first, would otherwise reject with nobody listening.
   static #streamed(field: unknown): unknown {
     if (!(field instanceof Promise)) return field;
-    return field.catch((reason: unknown) => {
+    const streamed = field.catch((reason: unknown) => {
       StreamedRead.mark(reason);
       throw reason;
     });
+    void streamed.catch(() => undefined);
+    return streamed;
   }
 
   /** The awaited shape's fields stay lazy for the same reason the handle's do: a caller reads one, not all. */

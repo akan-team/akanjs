@@ -258,7 +258,7 @@ describe("SSR of a route with a .loading()", () => {
     await withRouteContentWorker(async (render) => {
       const { html } = await render("section/inner");
       expect(html).toContain(
-        '<main>root:<!--$?--><template id="B:0"></template><i>section loading</i><!--/$--></main>',
+        '<main>root:<!--$?--><template id="B:0"></template><i>section loading</i><template data-akan-loading=""></template><!--/$--></main>',
       );
       //? Each level below keeps its own boundary, revealed inside the still-hidden one, so only `B:0` changes the page.
       const reveals = html.match(/\$RC\("B:\d+"/g) ?? [];
@@ -451,7 +451,9 @@ describe("The root layout's own level", () => {
       await withRouteContentWorker(async (render) => {
         const late = await render("rootlate");
         expect(late.status).toBe(200);
-        expect(late.html).toContain('<body><!--$?--><template id="B:0"></template><i>root loading</i><!--/$-->');
+        expect(late.html).toContain(
+          '<body><!--$?--><template id="B:0"></template><i>root loading</i><template data-akan-loading=""></template><!--/$-->',
+        );
         expect(late.html).toContain('$RX("B:0"');
         const widget = await render("rootwidget");
         expect(widget.status).toBe(200);

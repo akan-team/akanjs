@@ -65,6 +65,20 @@ describe("ScreenSettle", () => {
     parked.remove();
   });
 
+  test("loaded waits for a load under a `display: contents` wrapper, which has no box of its own", async () => {
+    const section = document.createElement("section");
+    section.innerHTML =
+      '<div style="display: contents"><div style="display: contents"><template data-akan-loading></template></div></div>';
+    document.body.appendChild(section);
+    setTimeout(() => {
+      section.innerHTML = "<p>board</p>";
+    }, 80);
+    const took = await elapsed(async () => void (await ScreenSettle.loaded({ timeoutMs: 2000 })));
+    expect(took).toBeGreaterThanOrEqual(80);
+    expect(took).toBeLessThan(1000);
+    section.remove();
+  });
+
   test("loaded is bounded by its timeout when a load never lands", async () => {
     const section = document.createElement("section");
     section.innerHTML = "<template data-akan-loading></template>";

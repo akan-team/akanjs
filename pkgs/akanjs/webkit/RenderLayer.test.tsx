@@ -966,6 +966,37 @@ describe("RenderLayer", () => {
     expect(started).toEqual(["org", "workspace", "chat"]);
   });
 
+  test("logs a render that fails while its layer is mounted, and not one that fails after the layer is gone", async () => {
+    routerOf();
+    const logged = spyOn(Logger, "error").mockImplementation(() => undefined);
+    const fails: (() => void)[] = [];
+    const inbox: RouteRender = {
+      kind: "page",
+      isAsync: true,
+      render: (async () => {
+        await new Promise<void>((_, reject) => fails.push(() => reject(new UnreachableErr())));
+        return <p>inbox</p>;
+      }) as RouteRender["render"],
+    };
+    const pathRoute = { path: "/inbox", renderRootLayouts: [], renderLayouts: [], renderPage: inbox };
+    try {
+      const { show } = stackOf([inbox], pathRoute);
+      await show({ isStrict: true });
+      await act(async () => mounted?.root.unmount());
+      await act(async () => fails.shift()?.());
+      await settle();
+      expect(logged).not.toHaveBeenCalled();
+
+      const again = stackOf([inbox], pathRoute);
+      await again.show({ entryId: "e2" });
+      await act(async () => fails.shift()?.());
+      await settle();
+      expect(logged).toHaveBeenCalledTimes(1);
+    } finally {
+      logged.mockRestore();
+    }
+  });
+
   test("renders a layer again once it mounts when the run started ahead of it failed, logging only the one it shows", async () => {
     routerOf();
     const logged = spyOn(Logger, "error").mockImplementation(() => undefined);
