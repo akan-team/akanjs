@@ -61,9 +61,11 @@ describe("Load.Stream", () => {
       </Stream>,
     );
     expect(container.textContent).toBe("pending");
+    expect(container.querySelector("template[data-akan-loading]")).not.toBeNull();
     settle({ label: "arrived" });
     await flush();
     expect(container.textContent).toBe("arrived");
+    expect(container.querySelector("template[data-akan-loading]")).toBeNull();
     await unmount();
   });
 

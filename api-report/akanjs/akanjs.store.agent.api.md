@@ -119,6 +119,9 @@ export declare class ScreenReader {
 
 export declare class ScreenSettle {
     static wait({ quietMs, appearMs, timeoutMs }?: ScreenSettleOptions): Promise<void>;
+    static loaded({ timeoutMs }?: {
+        timeoutMs?: number;
+    }): Promise<boolean>;
 }
 
 export interface ScreenSettleOptions {

@@ -1,6 +1,7 @@
 "use client";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 
+import { LoadingMark } from "./LoadingMark";
 import type { PageProps } from "./Page";
 
 const CacheMap = new WeakMap<object, Record<string, unknown>>();
@@ -35,6 +36,7 @@ export const PageCSR = <Return,>({ of, loader, render, loading, noCache = false 
       }
     })();
   }, []);
-  if (!fetchState.fulfilled || !fetchState.value) return loading ? loading() : null;
+  if (!fetchState.fulfilled) return <LoadingMark>{loading?.()}</LoadingMark>;
+  if (!fetchState.value) return loading ? loading() : null;
   else return <>{render(fetchState.value)}</>;
 };

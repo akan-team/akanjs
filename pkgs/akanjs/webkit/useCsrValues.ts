@@ -118,7 +118,7 @@ const useCsrRouter = ({
         const scrollTop = pageContentRef.current?.scrollTop ?? 0;
         setHistoryBack({ type: "back", location, scrollTop, scrollToTop });
         settle(getPrevLocation());
-        csrLocation.back();
+        await csrLocation.back();
       },
     };
     window.onpopstate = async (event) => {

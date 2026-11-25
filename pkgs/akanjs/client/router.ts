@@ -43,7 +43,8 @@ export interface RouterInstance {
   /** May answer a promise that rejects when the route refused to move — see `Router.navigation`. */
   push: (href: string, routeOptions?: RouteOptions) => void | Promise<void>;
   replace: (href: string, routeOptions?: RouteOptions) => void | Promise<void>;
-  back: (routeOptions?: RouteOptions) => void;
+  /** May answer a promise that settles once the back has landed. */
+  back: (routeOptions?: RouteOptions) => void | Promise<void>;
   refresh: () => void;
   /** Whether `back` has a page to return to; left out, the router reads the index stamped on the history entry. */
   canGoBack?: () => boolean;
@@ -680,7 +681,9 @@ class Router {
     this.#checkInitialized();
     this.#guarded("back", null, () => {
       this.#navigations += 1;
-      csrLocation.leaving(this.#instance.back(routeOptions));
+      const moving = this.#instance.back(routeOptions);
+      csrLocation.leaving(moving);
+      return moving;
     });
     return undefined as never;
   }

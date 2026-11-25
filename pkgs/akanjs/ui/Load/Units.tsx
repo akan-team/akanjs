@@ -13,6 +13,7 @@ import { Empty } from "../Empty";
 import { Loading } from "../Loading";
 import { More } from "../More";
 import { sliceNamesOf } from "../sliceNamesOf";
+import { LoadingMark } from "./LoadingMark";
 import Stream from "./Stream";
 import type { StreamError } from "./StreamBoundary";
 import { SliceClaim } from "./sliceClaim";
@@ -231,7 +232,7 @@ function Render<RefName extends string, Light extends { id: string }>({
         ) : typeof renderEmpty === "function" ? (
           renderEmpty()
         ) : null}
-        {showLoading ? loading : null}
+        {showLoading ? <LoadingMark>{loading}</LoadingMark> : null}
       </>
     );
   else if (!renderItem) throw new Error("renderItem is required");
@@ -258,7 +259,7 @@ function Render<RefName extends string, Light extends { id: string }>({
               ? renderEmpty()
               : null}
       </ContainerWrapper>
-      {showLoading ? loading : null}
+      {showLoading ? <LoadingMark>{loading}</LoadingMark> : null}
     </>
   );
 }
