@@ -186,7 +186,9 @@ const recordingRouter = (calls: unknown[]): RouterInstance => ({
   replace: (href, options) => {
     calls.push(["replace", href, options]);
   },
-  back: (options) => calls.push(["back", options]),
+  back: (options) => {
+    calls.push(["back", options]);
+  },
   refresh: () => calls.push(["refresh"]),
 });
 
@@ -1060,13 +1062,32 @@ describe("router backOrReplace", () => {
       },
       back: () => {
         calls.push(["back"]);
-        csrLocation.back();
+        return csrLocation.back();
       },
     };
     if (type === "csr") router.init({ type, lang: "en", router: { ...instance, canGoBack: () => true } });
     else router.init({ type, side: "client", lang: "en", router: instance });
     return router;
   };
+
+  test("router.navigation() after a back settles once its pop has moved the address, not when it is asked", async () => {
+    envState.side = "client";
+    envState.basePaths = "";
+    const { settle } = installSessionHistory("/en/board");
+    const router = await stackRouter("ssr", []);
+    router.push("/board/1");
+    const landed: { at?: string } = {};
+
+    router.back();
+    void router.navigation().then(() => {
+      landed.at = window.location.pathname;
+    });
+    await Promise.resolve();
+    expect(landed.at).toBeUndefined();
+    await settle();
+
+    expect(landed.at).toBe("/en/board");
+  });
 
   test("steps back from a state a push stacked, as the browser's back does", async () => {
     envState.side = "client";

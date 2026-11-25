@@ -98,9 +98,12 @@
   asked to park. Waiting belongs to the screen that knows what is worth waiting for — publish an `st.tool` beside the
   control that starts the work, and let it await the work.
 - **A tool that changes the screen waits for the screen before it answers.** `router.push` returns while the RSC
-  payload is still in flight and a store action that fires `void fetch.*` commits a tick later, so `navigate`
-  awaits `ScreenSettle.wait()` — DOM quiescence, bounded, because the client router hands its promise to nobody —
-  and the session awaits it after every tool that did not declare `settle: false` before taking the change report.
+  payload is still in flight and a store action that fires `void fetch.*` commits a tick later, so `navigate` and
+  `goBack` await `router.navigation()`, then `ScreenSettle.wait()` — DOM quiescence, bounded — and
+  `ScreenSettle.loaded()`, which waits out every `Load.*` fallback still in view (each draws a
+  `template[data-akan-loading]`), so a section streamed in later and the tools it mounts are on the screen they
+  report. The session awaits `ScreenSettle.wait()` after every tool that did not declare `settle: false` before taking
+  the change report.
   Without it the report describes the moment before the change landed and the `readScreen` that follows reads the
   page the user left. The reading built-ins (`readScreen`, `readState`, `highlight`, `viewImage`) declare it,
   because a wait costs 120ms of quiet at the very least and they change nothing a resource holds.

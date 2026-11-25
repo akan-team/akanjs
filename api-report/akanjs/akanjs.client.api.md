@@ -75,7 +75,7 @@ export declare class CsrLocation {
     onBack(listener: (idx: number) => void): void;
     leaving(moving: unknown): void;
     isLeaving(): boolean;
-    back(): void;
+    back(): Promise<void>;
     assign(href: string): void;
     reload(): void;
 }
@@ -1020,7 +1020,7 @@ export interface RouteViewport {
 export interface RouterInstance {
     push: (href: string, routeOptions?: RouteOptions) => Promise<void> | void;
     replace: (href: string, routeOptions?: RouteOptions) => Promise<void> | void;
-    back: (routeOptions?: RouteOptions) => void;
+    back: (routeOptions?: RouteOptions) => Promise<void> | void;
     refresh: () => void;
     canGoBack?: () => boolean;
     prefetch?: (href: string, priority?: PrefetchPriority) => (() => void) | void;

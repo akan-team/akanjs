@@ -66,7 +66,7 @@ export class StoreSurfaceSource implements SurfaceSource {
           throw new Error(`There is no route at ${path}, so the page did not move. ${StoreSurfaceSource.#linked()}`);
         }
         // `push` returns before the new route's payload lands; without this the next readScreen reads the old page.
-        await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
+        await StoreSurfaceSource.#settled();
         if (isNotFoundView()) {
           const left = await StoreSurfaceSource.#leaveNotFound();
           throw new Error(
@@ -79,6 +79,12 @@ export class StoreSurfaceSource implements SurfaceSource {
     };
   }
 
+  //? A section streamed in after the page, a board's list and the tools it mounts, lands past the quiet the draw left.
+  static async #settled() {
+    await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
+    if (await ScreenSettle.loaded({ timeoutMs: 5000 })) await ScreenSettle.wait({ timeoutMs: 2000 });
+  }
+
   //? The not-found view is drawn at the address asked for, on a history entry of its own, so the move is undone.
   static async #leaveNotFound(): Promise<boolean> {
     if (!router.canGoBack()) return false;
@@ -87,7 +93,7 @@ export class StoreSurfaceSource implements SurfaceSource {
       () => true,
       () => false,
     );
-    await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
+    await StoreSurfaceSource.#settled();
     return left;
   }
 
@@ -134,7 +140,7 @@ export class StoreSurfaceSource implements SurfaceSource {
         await router.navigation().catch((error: unknown) => {
           if (StoreSurfaceSource.#isKept(error)) throw new Error(StoreSurfaceSource.#kept);
         });
-        await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
+        await StoreSurfaceSource.#settled();
         return `Back on ${router.getPath()}. ${StoreSurfaceSource.#arrived}`;
       },
     };

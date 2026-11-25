@@ -466,9 +466,7 @@ export const ClientSsrBridge = ({ lang, prefix = "", initialPageState }: ClientS
           syncHref(href);
           return navigateRscWithFallback(href, { ...routeOptions, replace: true }, () => window.location.replace(href));
         },
-        back: () => {
-          csrLocation.back();
-        },
+        back: () => csrLocation.back(),
         refresh: () => {
           syncHref(window.location.href);
           void refreshRsc();

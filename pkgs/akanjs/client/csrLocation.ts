@@ -4,6 +4,8 @@ declare global {
   var __AKAN_EMBED__: { kind: "mcp-app"; origin?: string; account?: Record<string, unknown> | null } | undefined;
 }
 
+const popWaitMs = 1000;
+
 /** The document's location and history, as the routers read and move them. */
 export class CsrLocation {
   //? An MCP App view's document sits at its host's sandbox address, so it reads the screen it draws instead.
@@ -119,12 +121,28 @@ export class CsrLocation {
     return entry === this.#backAsked || entry === this.#backSent;
   }
 
-  back() {
+  /** Settles once the back's pop has moved the address, or at once when no entry of this document is under it. */
+  back(): Promise<void> {
     const entry = this.entry();
     if (entry.idx !== undefined) this.#onBack?.(entry.idx - 1);
     //? With no entry of this document under it a back may move nothing and send no pop, which would hold it for good.
-    if (entry.idx !== undefined && entry.idx > 0) this.#backSent = entry;
+    const pops = entry.idx !== undefined && entry.idx > 0;
+    if (pops) this.#backSent = entry;
+    const landed = pops ? CsrLocation.#nextPop() : Promise.resolve();
     window.history.back();
+    return landed;
+  }
+
+  //? The address moves at the pop, a task or more after `history.back()`; a shell that swallows the back sends none.
+  static #nextPop() {
+    return new Promise<void>((resolve) => {
+      const land = () => {
+        clearTimeout(cap);
+        resolve();
+      };
+      const cap = setTimeout(land, popWaitMs);
+      window.addEventListener("popstate", land, { once: true });
+    });
   }
 
   assign(href: string) {
