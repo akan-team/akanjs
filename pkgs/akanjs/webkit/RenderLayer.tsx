@@ -90,6 +90,13 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
   //? current one (`prev`) is not the one the visitor is on: a guard run for either would move the router off it.
   const mayAsk = activity !== "hidden" && activity !== "prev";
   useEffect(() => (guardKey ? CsrGuards.hold(guardKey) : undefined), [guardKey]);
+  //? A run that fails once its layer is gone draws nowhere, as when a sign-out leaves the page mid-read: not logged.
+  useEffect(() => {
+    if (renderedRef.current) renderedRef.current.owned = true;
+    return () => {
+      if (renderedRef.current) renderedRef.current.owned = false;
+    };
+  }, []);
   //? A verdict lasts while a layer of its location is on screen. One that lapsed while the page was away, or a key that
   //? moved on args this layer does not read, is asked in the background: what the layer drew stays until a refusal,
   //? which moves the router and blanks the layer, or a failure, which shows as a render's would.

@@ -3042,6 +3042,26 @@ describe("FetchClient database signal helpers", () => {
     }
   });
 
+  test("does not leave an unhandled rejection for a field read and never handed on, as by a render that threw first", async () => {
+    setMockFetch();
+    rawResponses.push(new Error("list down"), new Error("insight down"));
+    const rejections: unknown[] = [];
+    const collect = (reason: unknown) => rejections.push(reason);
+    process.on("unhandledRejection", collect);
+    try {
+      const client = new FetchClient("https://api.example", {}, { fetchTestItem: databaseSignal });
+      const handle = client.handler.initFetchTestItemByOwner("abcdefabcdefabcdefabcdef") as unknown as {
+        fetchTestItemInitByOwner: Promise<unknown>;
+      };
+      const { fetchTestItemInitByOwner } = handle;
+      await new Promise((resolve) => originalSetTimeout(resolve, 10));
+      expect(rejections).toEqual([]);
+      await expect(fetchTestItemInitByOwner).rejects.toThrow();
+    } finally {
+      process.off("unhandledRejection", collect);
+    }
+  });
+
   test("reports a failed request to whoever awaits the handle", async () => {
     setMockFetch();
     rawResponses.push(new Error("list down"), new Error("insight down"));

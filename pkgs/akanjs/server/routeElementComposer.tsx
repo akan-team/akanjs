@@ -618,6 +618,13 @@ export class RouteElementComposer {
       if (!Loading) continue;
       element = Loading({ params, children: element } as never) as ReactNode;
     }
-    return element;
+    if (element === null) return null;
+    //? The mark a `Load.*` fallback draws too: the in-page agent's navigate waits until none is left in view.
+    return (
+      <>
+        {element}
+        <template data-akan-loading="" />
+      </>
+    );
   }
 }

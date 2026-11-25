@@ -49,10 +49,13 @@ export class ScreenSettle {
     });
   }
 
-  //? A parked page keeps its pending loads mounted, hidden; a `<template>` itself never reads as visible.
+  //? A parked page keeps its pending loads mounted, hidden; a `<template>` itself never reads as visible, nor does a
+  //? `display: contents` wrapper, which has no box of its own, so the first holder with one is asked.
   static #loading(body: HTMLElement) {
     for (const mark of body.querySelectorAll("template[data-akan-loading]")) {
-      const holder = mark.parentElement;
+      let holder = mark.parentElement;
+      while (holder && holder !== body && getComputedStyle(holder).display === "contents")
+        holder = holder.parentElement;
       if (!holder || holder.closest('[hidden], [aria-hidden="true"], [inert]')) continue;
       if (typeof holder.checkVisibility !== "function" || holder.checkVisibility()) return true;
     }

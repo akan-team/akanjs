@@ -255,7 +255,9 @@ describe("The generated System root layout, built and rendered", () => {
         await withBuiltPages({ routes }, async (render) => {
           const late = await render("late");
           expect(late.status).toBe(200);
-          expect(late.html).toContain('<body><!--$?--><template id="B:0"></template><i>root loading</i><!--/$-->');
+          expect(late.html).toContain(
+            '<body><!--$?--><template id="B:0"></template><i>root loading</i><template data-akan-loading=""></template><!--/$-->',
+          );
           expect(late.html).toContain('$RX("B:0"');
 
           //? Only the hydrated ClientSsrBridge can start it: the server's own init ran in the worker.
