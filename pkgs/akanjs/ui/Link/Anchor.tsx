@@ -64,7 +64,7 @@ export const CsrLink = ({
   const { prefix } = usePathCtx();
   const pathname = ShellState.use("pathname");
   const { lang } = usePage();
-  const { hash } = getPathInfo(href, lang, prefix ?? "");
+  const { hash, href: shownHref } = getPathInfo(href, lang, prefix ?? "");
   const active =
     !!activeClassName &&
     isActiveHref({ pathname, href, lang, prefix: prefix ?? "", exact: activeExact, match: activeMatch });
@@ -73,6 +73,7 @@ export const CsrLink = ({
     <a
       className={cn("cursor-pointer", className, active && activeClassName, pending && pendingClassName)}
       data-pending={pending ? "" : undefined}
+      data-href={Href.isExternal(href) || href.startsWith("#") ? href : shownHref}
       {...props}
       onClick={(event) => {
         props.onClick?.(event);

@@ -57,6 +57,7 @@ import { resetAkanSegmentOutletPatches, whenAkanSegmentOutletDraws } from "./rsc
 
 declare global {
   var __AKAN_RSC_INITIAL_STATE__: string | undefined;
+  var __AKAN_RSC_INITIAL_NOT_FOUND__: boolean | undefined;
   var __AKAN_DICT_URL__: string | undefined;
   var __AKAN_IMPORT__: ((id: string) => Promise<unknown>) | undefined;
   var __webpack_chunk_load__: ((chunkId: string) => Promise<unknown>) | undefined;
@@ -345,6 +346,7 @@ let shownNode: RscCacheNode | null = initialNode;
 const parkedRedirect = new RscParkedRedirect<RscCacheNode>();
 let currentCommitKind: "full" | "patch" = "full";
 let currentCommitFromCache = false;
+let shownNotFound = globalThis.__AKAN_RSC_INITIAL_NOT_FOUND__ === true;
 let navigationSeq = 0;
 let pendingRequest: { navId: number; controller: AbortController; target: string } | null = null;
 let latestPageNavId = 0;
@@ -433,6 +435,7 @@ function loadDocumentForLazyChunkFailure(error: unknown, goneKey?: string): void
 
 // Read by akanjs/client's isRscNavigationFromCache: data that must be current refetches instead of trusting a replay.
 globalThis.__AKAN_RSC_IS_FROM_CACHE__ = () => currentCommitFromCache;
+globalThis.__AKAN_NOT_FOUND_VIEW__ = () => shownNotFound;
 
 function rememberCommittedRouteState(node: RscCacheNode): void {
   currentFullNode = node;
@@ -442,6 +445,7 @@ function rememberCommittedRouteState(node: RscCacheNode): void {
   currentRouterState = node.routerState;
   currentSegmentTree = createAkanSegmentCacheTree(node);
   currentCommitKind = "full";
+  shownNotFound = false;
 }
 
 //? A not-found view is never replayed or patched onto, so the page after it is rendered whole.
@@ -452,12 +456,14 @@ function forgetCommittedRouteState(): void {
   currentSegmentTree = null;
   currentFullNode = null;
   currentCommitKind = "full";
+  shownNotFound = true;
 }
 
 function rememberPatchedRouteState(tree: RscSegmentCacheNode, patchedNode: RscSegmentCacheNode): void {
   currentRouterState = patchedNode.routerState;
   currentSegmentTree = tree;
   currentCommitKind = "patch";
+  shownNotFound = false;
 }
 
 function forgetPagesOfAnotherAccount(): void {

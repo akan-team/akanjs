@@ -49,6 +49,10 @@ describe("ScreenReader", () => {
     expect(text).not.toContain("/docs (/docs)");
   });
 
+  test("prints a CSR link's path, which it names as `data-href`", () => {
+    expect(readOf('<p>See <a data-href="/en/faq">the FAQ</a></p>')).toContain("See the FAQ (/en/faq)");
+  });
+
   test("never prints a script or data href, whatever its case", () => {
     const text = readOf(
       '<p><a href="JavaScript:void(0)">menu</a> <a href="data:text/csv;base64,AAAA">export</a> ' +

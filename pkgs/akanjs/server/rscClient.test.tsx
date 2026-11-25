@@ -1171,6 +1171,24 @@ describe("rscClient not-found", () => {
     expect(window.location.pathname).toBe("/here");
   });
 
+  test("reads as the not-found view while one is shown, and not once a page or a bare not-found keeps another", async () => {
+    const isNotFound = () => globalThis.__AKAN_NOT_FOUND_VIEW__?.();
+    served.set("/desk/3", notFoundViewOf("desk missing"));
+    served.set("/gone", bareNotFound);
+    await navigate("/desks");
+    expect(isNotFound()).toBe(false);
+
+    await navigate("/desk/3");
+    expect(isNotFound()).toBe(true);
+
+    await navigate("/desks");
+    expect(isNotFound()).toBe(false);
+    await act(async () => {
+      await globalThis.__AKAN_RSC_NAVIGATE__?.("/gone")?.catch(() => undefined);
+    });
+    expect(isNotFound()).toBe(false);
+  });
+
   test("a refresh answered with a not-found view shows it, while a bare one keeps the page", async () => {
     await navigate("/report");
     served.set("/report", bareNotFound);

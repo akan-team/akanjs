@@ -1,4 +1,4 @@
-import { csrLocation, router } from "akanjs/client";
+import { csrLocation, isNotFoundView, router } from "akanjs/client";
 import { AgenticSurface, type SurfaceSource, type ToolEntry, ToolReturn } from "use-agentic";
 import { InlineToken } from "../../common/inlineToken";
 import { AgentBridge } from "./AgentBridge";
@@ -67,10 +67,28 @@ export class StoreSurfaceSource implements SurfaceSource {
         }
         // `push` returns before the new route's payload lands; without this the next readScreen reads the old page.
         await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
+        if (isNotFoundView()) {
+          const left = await StoreSurfaceSource.#leaveNotFound();
+          throw new Error(
+            `There is no route at ${path}, so ${left ? "the page went back" : "the page shows the app's not-found page"}. ${StoreSurfaceSource.#linked()}`,
+          );
+        }
         const landed = StoreSurfaceSource.#redirected(path);
         return `${landed ? `Asked for ${path}, but the app sent the page to ${landed} instead.` : `Now on ${path}.`} ${StoreSurfaceSource.#arrived}`;
       },
     };
+  }
+
+  //? The not-found view is drawn at the address asked for, on a history entry of its own, so the move is undone.
+  static async #leaveNotFound(): Promise<boolean> {
+    if (!router.canGoBack()) return false;
+    router.back();
+    const left = await router.navigation().then(
+      () => true,
+      () => false,
+    );
+    await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
+    return left;
   }
 
   static readonly #arrived =
@@ -91,7 +109,7 @@ export class StoreSurfaceSource implements SurfaceSource {
       : "Call readScreen — it prints each link on this screen with its own path — and navigate to one of those.";
   }
 
-  /** A redirect or the app's not-found page moves the page somewhere other than the path it was sent to. */
+  /** A redirect moves the page somewhere other than the path it was sent to. */
   static #redirected(path: string): string | null {
     const trimmed = (route: string) => (route.length > 1 ? route.replace(/\/+$/, "") : route);
     try {

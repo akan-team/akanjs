@@ -4,6 +4,7 @@ import {
   csrLocation,
   debugFrame,
   Href,
+  isRedirectMove,
   type Location,
   type NavigationIntent,
   type PageState,
@@ -17,6 +18,7 @@ import {
 } from "akanjs/client";
 import { isNativeApp, openExternalUrl } from "akanjs/client/native";
 import { useCallback, useLayoutEffect, useMemo, useState } from "react";
+import { CsrMoves } from "./CsrMoves";
 import { CsrPendingNavigation } from "./csrPendingNavigation";
 import { CsrRefresh } from "./csrRefresh";
 import { CsrSlide } from "./csrSlide";
@@ -31,6 +33,10 @@ import { useCsrTransitions } from "./useCsrTransitions";
 import { FRAME_Z_INDEX, useFrameSlots, useFrameViewport } from "./useFrameRuntime";
 import { useResolvedFrame } from "./useResolvedFrame";
 import { getSyncRouteHref, useSyncNavigation } from "./useSyncNavigation";
+
+//? A redirect says the page it left draws nothing, so a move back to that page while the redirect is on its way, as a
+//? page drawn out of sight sends when its render redirects too, would leave the visitor on a blank page.
+const sentByRedirect = new WeakSet<NavigationIntent>();
 
 const useCsrRouter = ({
   refs: { pendingNavigation, pageContentRef, waitingNavigation, onBack, latestRouter },
@@ -47,38 +53,44 @@ const useCsrRouter = ({
   const { shouldPrepareFrameTransition, startFrameTransition } = navigation;
   const getRouter = useCallback((): RouterInstance => {
     const playBack = (transition: TransitionType) => onBack.current[transition]?.();
-    const forward =
-      (kind: "push" | "replace") =>
-      (href: string, { scrollToTop }: RouteOptions = {}) => {
-        const location = getCurrentLocation();
-        debugFrame(`router.${kind}`, { from: location.href, to: href, scrollToTop });
-        //? Another document, which pushState refuses. The tab leaves rather than opening a new one as `CsrLink` does: a
-        //? redirect has no click for a popup blocker to let through. A native app keeps `CsrLink`'s in-app browser.
-        if (Href.hasWebScheme(href)) {
-          const target = Href.toExternalUrl(href, document.baseURI);
-          //? A refusal by the app's capabilities is final; window.open is not a second way out.
-          if (isNativeApp())
-            void openExternalUrl(target).catch((error: unknown) => {
-              if (!(error instanceof Error && "code" in error && error.code === "NOT_ALLOWED"))
-                window.open(target, "_blank", "noopener,noreferrer");
-            });
-          else if (kind === "push") csrLocation.assign(target);
-          else window.location.replace(target);
-          return;
-        }
-        if (pendingNavigation.current?.to.href === href) return;
-        //? A replace takes the place of the move it cancels, as a guard refusing the page on its way redirects.
-        //? Typed so the API report prints `NavigationIntent` bare; it spells out any type this file does not import.
-        const cancelled: NavigationIntent | null = cancelPendingNavigation();
-        if (location.href === href) {
-          CsrPendingNavigation.end();
-          if (cancelled) NativeNavigation.turnedBack();
-          if (!pageContentRef.current) return;
-          pageContentRef.current.scrollTop = getScrollTop(location);
-          return;
-        }
-        runForwardNavigation(cancelled?.kind === "push" ? "push" : kind, href, { scrollToTop });
-      };
+    const forward = (kind: "push" | "replace") => (href: string, options?: RouteOptions) => {
+      const scrollToTop = options?.scrollToTop;
+      const location = getCurrentLocation();
+      debugFrame(`router.${kind}`, { from: location.href, to: href, scrollToTop });
+      //? Another document, which pushState refuses. The tab leaves rather than opening a new one as `CsrLink` does: a
+      //? redirect has no click for a popup blocker to let through. A native app keeps `CsrLink`'s in-app browser.
+      if (Href.hasWebScheme(href)) {
+        const target = Href.toExternalUrl(href, document.baseURI);
+        //? A refusal by the app's capabilities is final; window.open is not a second way out.
+        if (isNativeApp())
+          void openExternalUrl(target).catch((error: unknown) => {
+            if (!(error instanceof Error && "code" in error && error.code === "NOT_ALLOWED"))
+              window.open(target, "_blank", "noopener,noreferrer");
+          });
+        else if (kind === "push") csrLocation.assign(target);
+        else window.location.replace(target);
+        return;
+      }
+      const pending = pendingNavigation.current;
+      if (pending?.to.href === href || (pending && location.href === href && sentByRedirect.has(pending)))
+        return CsrMoves.of(pending);
+      //? A replace takes the place of the move it cancels, as a guard refusing the page on its way redirects.
+      //? Typed so the API report prints `NavigationIntent` bare; it spells out any type this file does not import.
+      const cancelled: NavigationIntent | null = cancelPendingNavigation();
+      if (location.href === href) {
+        CsrMoves.settle(cancelled);
+        CsrPendingNavigation.end();
+        if (cancelled) NativeNavigation.turnedBack();
+        if (!pageContentRef.current) return;
+        pageContentRef.current.scrollTop = getScrollTop(location);
+        return;
+      }
+      const made = runForwardNavigation(cancelled?.kind === "push" ? "push" : kind, href, { scrollToTop });
+      if (!cancelled && pendingNavigation.current && isRedirectMove(options))
+        sentByRedirect.add(pendingNavigation.current);
+      CsrMoves.follow(cancelled, made);
+      return made;
+    };
     const router: RouterInstance = {
       push: forward("push"),
       replace: forward("replace"),
@@ -88,10 +100,13 @@ const useCsrRouter = ({
         CsrRefresh.request(location);
       },
       back: async ({ scrollToTop }: RouteOptions = {}) => {
+        CsrMoves.settle(waitingNavigation.current);
         waitingNavigation.current = null;
         CsrPendingNavigation.end();
         //? Back from a page still preparing returns to the one on screen, which is where the frame already is.
-        if (cancelPendingNavigation()) return;
+        const cancelled = cancelPendingNavigation();
+        CsrMoves.settle(cancelled);
+        if (cancelled) return;
         const targetLocation = getPrevLocation();
         if (!targetLocation) return;
         const location = getCurrentLocation();
@@ -120,9 +135,10 @@ const useCsrRouter = ({
       const target = routeType ? null : history.current.locations.findIndex((candidate) => isAt(candidate));
       if (target === history.current.idx) return;
       //? The browser has moved already: a page the frame has not shown yet would be pushed onto the wrong entry.
+      CsrMoves.settle(waitingNavigation.current);
       waitingNavigation.current = null;
       CsrPendingNavigation.end();
-      cancelPendingNavigation();
+      CsrMoves.settle(cancelPendingNavigation());
       if (target !== null) {
         if (target >= 0) setHistoryJump(target, scrollTop);
         else {

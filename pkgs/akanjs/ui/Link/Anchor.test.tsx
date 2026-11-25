@@ -253,6 +253,20 @@ describe("CsrLink", () => {
     unmount();
   });
 
+  test("names its path as data-href, under /<lang>, for the in-page agent, and draws no href", () => {
+    const { container, unmount } = mount(
+      <>
+        <CsrLink href="/faq">faq</CsrLink>
+        <CsrLink href="https://example.com/x">docs</CsrLink>
+      </>,
+    );
+    const [inApp, external] = [...container.querySelectorAll("a")];
+    expect(inApp?.getAttribute("data-href")).toBe("/en/faq");
+    expect(inApp?.hasAttribute("href")).toBe(false);
+    expect(external?.getAttribute("data-href")).toBe("https://example.com/x");
+    unmount();
+  });
+
   test("routes an in-app path through the router", () => {
     opens.length = 0;
     pushes.length = 0;

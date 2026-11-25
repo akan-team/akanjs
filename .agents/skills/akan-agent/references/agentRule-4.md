@@ -113,8 +113,9 @@
   session answers an unknown name with the tools listed now — saying, when the catalogue moved since the turn's
   list was written, that the call was written against the screen it left and the new one's tools arrive with their
   arguments next turn. `navigate`'s own answer says the same, reports the path the page actually landed on when a
-  redirect or the not-found page moved it elsewhere, and a path with no route is refused with the internal links on
-  screen (`ScreenTarget.linkedRoutes`) rather than an invitation to compose another. Layout-level tools — a channel
+  redirect moved it elsewhere, and a path with no route is refused with the internal links on screen
+  (`ScreenTarget.linkedRoutes`) rather than an invitation to compose another. That covers a path the app answers
+  with its not-found view, on the web and in an app alike (`isNotFoundView()`): the page goes back first. Layout-level tools — a channel
   post, a new wiki page — stay listed across routes, which is why the cross-screen requests that use only them never
   hit this.
 - **A tool that waits for its own work costs no model turns; one that returns early costs one round trip per

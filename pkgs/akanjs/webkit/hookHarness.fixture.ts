@@ -3,6 +3,8 @@ import { csrLocation } from "../client/csrLocation";
 import { Href } from "../client/href";
 import { isMcpView } from "../client/mcpView";
 import { isNativeApp } from "../client/nativeHost";
+import { isNotFoundView } from "../client/notFoundView";
+import { isRedirectMove } from "../client/redirectMove";
 import { ShellState } from "../client/shellState";
 
 export const hooks = {
@@ -89,6 +91,8 @@ export const csrClientBase = () => ({
   IOS_KEYBOARD_ANIMATION_EASING: "ease",
   isMcpView,
   isNativeApp,
+  isNotFoundView,
+  isRedirectMove,
   isPageKeyboardAvoidance: () => false,
   pageActivityContext: createContext({ activity: "current", focused: true }),
   router: { redirectCount: () => 0 },

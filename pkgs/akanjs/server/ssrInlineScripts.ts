@@ -10,6 +10,7 @@ export interface SsrBootstrapData {
   token: string;
   modules: string[];
   routeState?: string;
+  notFound?: boolean;
   /** The page dictionary file, or where the dictionary is cut by route the route's files, comma-separated. */
   dictionaryUrl?: string;
   importMapKey?: string;
@@ -99,6 +100,7 @@ export class SsrInlineScripts {
   self.__RSC_PUSH__ = function(type,data){ self.__RSC_CHUNKS__.push([type,data]); };
   self.__RSC_CLOSE__ = function(){ self.__RSC_CLOSED__ = true; };
   if (d.routeState) self.__AKAN_RSC_INITIAL_STATE__ = d.routeState;
+  if (d.notFound) self.__AKAN_RSC_INITIAL_NOT_FOUND__ = true;
   if (d.dictionaryUrl) self.__AKAN_DICT_URL__ = d.dictionaryUrl;
   if (d.importMapKey) self.__AKAN_IMPORT_MAP_KEY__ = d.importMapKey;
   if (d.prefix) self.__AKAN_PREFIX__ = d.prefix;

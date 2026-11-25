@@ -162,6 +162,8 @@ export {
   type NavigationKind,
   NavigationRefused,
 } from "./navigationGuards";
+export { isNotFoundView } from "./notFoundView";
+export { isRedirectMove } from "./redirectMove";
 export { resolveServerUrl } from "./resolveServerUrl";
 export {
   assertGuardOnChain,
