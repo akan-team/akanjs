@@ -1,6 +1,7 @@
 import { csrLocation, isNotFoundView, router } from "akanjs/client";
 import { AgenticSurface, type SurfaceSource, type ToolEntry, ToolReturn } from "use-agentic";
 import { InlineToken } from "../../common/inlineToken";
+import { AgentNavigate } from "../agentic/AgentNavigate";
 import { AgentBridge } from "./AgentBridge";
 import { ScreenFlash } from "./ScreenFlash";
 import { ScreenImage } from "./ScreenImage";
@@ -44,7 +45,12 @@ export class StoreSurfaceSource implements SurfaceSource {
     return {
       name: "navigate",
       taint: "exempt",
-      description: "Navigate this page to an internal path of this app, e.g. /docs/intro/quickstart.",
+      get description() {
+        return (
+          AgentNavigate.options.description ??
+          "Navigate this page to an internal path of this app, such as one a link on this screen points to."
+        );
+      },
       parameters: {
         type: "object",
         properties: { path: { type: "string" } },
@@ -58,19 +64,23 @@ export class StoreSurfaceSource implements SurfaceSource {
           : "path must be an internal path starting with /.",
       run: async (args) => {
         const path = String(args.path);
+        //? Read before the move: a page the stack slides back to may draw its links without a box for a while.
+        const linkedBefore = ScreenTarget.linkedRoutes();
         try {
           router.push(path);
           await router.navigation();
         } catch (error) {
           if (StoreSurfaceSource.#isKept(error)) throw new Error(StoreSurfaceSource.#kept);
-          throw new Error(`There is no route at ${path}, so the page did not move. ${StoreSurfaceSource.#linked()}`);
+          throw new Error(
+            `There is no route at ${path}, so the page did not move. ${StoreSurfaceSource.#linked(linkedBefore)}`,
+          );
         }
         // `push` returns before the new route's payload lands; without this the next readScreen reads the old page.
         await StoreSurfaceSource.#settled();
         if (isNotFoundView()) {
           const left = await StoreSurfaceSource.#leaveNotFound();
           throw new Error(
-            `There is no route at ${path}, so ${left ? "the page went back" : "the page shows the app's not-found page"}. ${StoreSurfaceSource.#linked()}`,
+            `There is no route at ${path}, so ${left ? "the page went back" : "the page shows the app's not-found page"}. ${StoreSurfaceSource.#linked(left ? linkedBefore : [])}`,
           );
         }
         const landed = StoreSurfaceSource.#redirected(path);
@@ -81,8 +91,12 @@ export class StoreSurfaceSource implements SurfaceSource {
 
   //? A section streamed in after the page, a board's list and the tools it mounts, lands past the quiet the draw left.
   static async #settled() {
-    await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
-    if (await ScreenSettle.loaded({ timeoutMs: 5000 })) await ScreenSettle.wait({ timeoutMs: 2000 });
+    const settled = async () => {
+      await ScreenSettle.wait({ appearMs: 800, timeoutMs: 5000 });
+      if (await ScreenSettle.loaded({ timeoutMs: 5000 })) await ScreenSettle.wait({ timeoutMs: 2000 });
+    };
+    const { settle } = AgentNavigate.options;
+    await (settle ? settle(settled) : settled());
   }
 
   //? The not-found view is drawn at the address asked for, on a history entry of its own, so the move is undone.
@@ -108,8 +122,8 @@ export class StoreSurfaceSource implements SurfaceSource {
     return error instanceof Error && error.name === "NavigationRefused";
   }
 
-  static #linked() {
-    const routes = ScreenTarget.linkedRoutes();
+  static #linked(before: string[] = []) {
+    const routes = before.length ? before : ScreenTarget.linkedRoutes();
     return routes.length
       ? `Paths this screen links to: ${routes.join(", ")}. Navigate to one of those rather than composing a path.`
       : "Call readScreen — it prints each link on this screen with its own path — and navigate to one of those.";

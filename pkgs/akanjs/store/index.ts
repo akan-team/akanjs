@@ -6,6 +6,8 @@ export {
   AgentConfirm,
   type AgentConfirmPolicy,
   type AgentFieldType,
+  AgentNavigate,
+  type AgentNavigateOptions,
   AgentProgress,
   type AgentProgressStep,
   type AgentReferenceInput,
