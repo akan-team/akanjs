@@ -9,6 +9,7 @@ import {
   type RouteOptions,
 } from "akanjs/client";
 import { useCallback } from "react";
+import { CsrMoves } from "./CsrMoves";
 import { CsrStack } from "./CsrStack";
 import { CsrPageReadiness } from "./csrPageReadiness";
 import { CsrPendingNavigation } from "./csrPendingNavigation";
@@ -116,6 +117,7 @@ const commitWhenFrameReady = ({
     });
     if (kind === "push") csrLocation.push({ akanEntryId: toLocation.entryId }, href);
     else csrLocation.replace({ akanEntryId: toLocation.entryId }, href);
+    CsrMoves.settle(intent);
     debugFrame("navigation.commit", { id: intent.id, kind, to: href });
     window.setTimeout(
       () => {
@@ -133,7 +135,11 @@ const commitWhenFrameReady = ({
         debugFrame("transition.actionEnd", { id: plan.id, phase: "idle" });
         const waiting = waitingNavigation.current;
         waitingNavigation.current = null;
-        if (waiting) currentRouter(latestRouter)[waiting.kind](waiting.href, { scrollToTop: waiting.scrollToTop });
+        if (waiting)
+          CsrMoves.follow(
+            waiting,
+            currentRouter(latestRouter)[waiting.kind](waiting.href, { scrollToTop: waiting.scrollToTop }),
+          );
       },
       Math.max(360, plan.duration),
     );
@@ -173,6 +179,21 @@ const commitWhenDrawn = (
     commit();
   };
   window.setTimeout(waitUntilDrawn, 16);
+};
+
+//? Run once the page sliding in has settled: dropped, a redirect from that page's guard would leave it blank.
+const queueAfterSlide = (
+  waitingNavigation: CsrRefs["waitingNavigation"],
+  move: { kind: "push" | "replace"; href: string; scrollToTop?: boolean },
+  from: string,
+) => {
+  const waiting = waitingNavigation.current;
+  const queued = { ...move, kind: waiting?.kind === "push" ? ("push" as const) : move.kind };
+  waitingNavigation.current = queued;
+  debugFrame("navigation.wait", { kind: move.kind, from, to: move.href });
+  const made = CsrMoves.open(queued);
+  CsrMoves.follow(waiting, made);
+  return made;
 };
 
 interface CsrNavigationInput {
@@ -283,13 +304,8 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
         commitInPlace();
         return;
       }
-      if (slides && navigationLocked.current) {
-        //? Run once the page sliding in has settled: dropped, a redirect from that page's guard would leave it blank.
-        const waiting = waitingNavigation.current;
-        waitingNavigation.current = { kind: waiting?.kind === "push" ? "push" : kind, href, scrollToTop };
-        debugFrame("navigation.wait", { kind, from: fromLocation.href, to: href });
-        return;
-      }
+      if (slides && navigationLocked.current)
+        return queueAfterSlide(waitingNavigation, { kind, href, scrollToTop }, fromLocation.href);
       if (slides) navigationLocked.current = true;
       const intent: NavigationIntent = {
         id: ++navigationIntentId.current,
@@ -301,6 +317,7 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
         createdAt: Date.now(),
       };
       pendingNavigation.current = intent;
+      const made = CsrMoves.open(intent);
       debugFrame(slides ? "navigation.intent" : "navigation.drawAhead", {
         id: intent.id,
         kind,
@@ -319,8 +336,9 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
         commitWhenDrawn(intent, pendingNavigation, () => {
           commitInPlace();
           promotePendingSlots();
+          CsrMoves.settle(intent);
         });
-        return;
+        return made;
       }
       commitWhenFrameReady({
         kind,
@@ -337,6 +355,7 @@ export const useCsrNavigation = (input: CsrNavigationInput) => {
         nav,
         frame,
       });
+      return made;
     },
     [
       clearPendingSlots,

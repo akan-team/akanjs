@@ -4,7 +4,7 @@ import { LocalePath } from "../common/localePath";
 import { pathGetLoose } from "../common/objectPath";
 import { originFromRequest } from "../common/requestOrigin";
 import { trimSlashes } from "../common/trimSlashes";
-import type { RouterInstance } from "./router";
+import type { RouteOptions, RouterInstance } from "./router";
 
 type Side = "server" | "client";
 
@@ -694,12 +694,17 @@ describe("router", () => {
     const { router } = await import("./router");
     router.init({ type: "ssr", side: "client", lang: "en", router: recordingRouter(calls), indexPath: "/home" });
 
+    const { isRedirectMove } = await import("./redirectMove");
     router.redirect("https://evil.example/after-signin");
     router.redirect("https://sso.example/authorize", { external: true });
 
     expect(calls).toEqual([
-      ["replace", "/en/home", undefined],
-      ["replace", "https://sso.example/authorize", undefined],
+      ["replace", "/en/home", {}],
+      ["replace", "https://sso.example/authorize", {}],
+    ]);
+    expect((calls as [string, string, RouteOptions][]).map(([, , options]) => isRedirectMove(options))).toEqual([
+      true,
+      true,
     ]);
     expect(warnings.filter((warning) => warning.includes("redirects to /home instead"))).toHaveLength(1);
   });
@@ -738,13 +743,18 @@ describe("router", () => {
 
     router.init({ type: "csr", lang: "en", prefix: "admin", router: recordingRouter(calls) });
 
+    const { isRedirectMove } = await import("./redirectMove");
     router.push("https://pay.example.com/checkout?sig=abc#top", { external: true });
     router.redirect("HTTPS://auth.example.com/signin", { external: true });
     flushTimeouts();
 
     expect(calls).toEqual([
       ["push", "https://pay.example.com/checkout?sig=abc#top", { external: true }],
-      ["replace", "HTTPS://auth.example.com/signin", undefined],
+      ["replace", "HTTPS://auth.example.com/signin", {}],
+    ]);
+    expect((calls as [string, string, RouteOptions][]).map(([, , options]) => isRedirectMove(options))).toEqual([
+      false,
+      true,
     ]);
     restoreTimeout();
   });
@@ -1356,8 +1366,8 @@ describe("router navigation guards", () => {
 
     expect(asks).toBe(0);
     expect(calls).toEqual([
-      ["replace", "/en/admin/signin", undefined],
-      ["replace", "/en/admin/404", undefined],
+      ["replace", "/en/admin/signin", {}],
+      ["replace", "/en/admin/404", {}],
       ["replace", "/ko/admin/doc/1", undefined],
       ["push", "https://sso.example/authorize"],
     ]);

@@ -1,6 +1,7 @@
 import type { ToolActivity } from "use-agentic";
 import { AgentCursor } from "./AgentCursor";
 import { ScreenFlash } from "./ScreenFlash";
+import { ScreenReader } from "./ScreenReader";
 import { ScreenTarget } from "./ScreenTarget";
 
 export interface AgentVisualOption {
@@ -110,9 +111,9 @@ export class AgentVisual {
   static #linkTo(path: unknown): HTMLElement[] {
     const wanted = ScreenTarget.routeOf(typeof path === "string" ? path : "");
     if (!wanted || !document.body) return [];
-    const links = [...document.body.querySelectorAll<HTMLAnchorElement>("a[href]")].filter(
+    const links = [...document.body.querySelectorAll<HTMLAnchorElement>(ScreenReader.links)].filter(
       (link) =>
-        ScreenTarget.routeOf(link.getAttribute("href") ?? "") === wanted &&
+        ScreenTarget.routeOf(ScreenReader.hrefOf(link)) === wanted &&
         ScreenTarget.visible(link) &&
         ScreenFlash.inView(link),
     );

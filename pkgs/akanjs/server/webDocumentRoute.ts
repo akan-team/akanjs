@@ -199,6 +199,7 @@ export class WebDocumentRoute {
       modulePreloadPlan: this.#modulePreloadPlan,
       bootstrapData: {
         routeState: rscResult.trace?.routeState,
+        ...(rscResult.status === 404 ? { notFound: true } : {}),
         dictionaryUrl: dictionaryUrls.join(",") || undefined,
         importMapKey: this.#importMapKey,
       },

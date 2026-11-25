@@ -176,6 +176,7 @@ const CSRWrapper = ({
       routeManifest: pathRoutes.map((pathRoute) => pathRoute.path),
       indexPath: window.__AKAN_MOBILE_TARGET__?.indexPath,
     });
+    globalThis.__AKAN_NOT_FOUND_VIEW__ = () => !!history.current.locations[history.current.idx]?.pathRoute.notFound;
     st.do.setCsrLoaded(true);
     const onVisibilityChange = () => debugFrame("document.visibility", { visibilityState: document.visibilityState });
     const onPageHide = (event: PageTransitionEvent) => debugFrame("window.pagehide", { persisted: event.persisted });

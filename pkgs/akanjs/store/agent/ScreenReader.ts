@@ -67,6 +67,12 @@ export interface ScreenReadOptions {
  * reads a password, a one-time code or a card number. */
 export class ScreenReader {
   static readonly limit = 8000;
+  //? A CSR link draws no `href`, and names its path as `data-href` instead.
+  static readonly links = "a[href], a[data-href]";
+
+  static hrefOf(link: Element): string {
+    return link.getAttribute("href") ?? link.getAttribute("data-href") ?? "";
+  }
 
   static read(root?: HTMLElement | null, options: ScreenReadOptions = {}): string {
     if (typeof document === "undefined") return "No rendered document is available.";
@@ -282,7 +288,7 @@ export class ScreenReader {
   }
 
   #anchor(el: HTMLElement) {
-    const href = el.getAttribute("href") ?? "";
+    const href = ScreenReader.hrefOf(el);
     const before = this.#buffer;
     this.#walkChildren(el);
     const text = this.#buffer.slice(before.length).replace(/\s+/g, " ").trim();

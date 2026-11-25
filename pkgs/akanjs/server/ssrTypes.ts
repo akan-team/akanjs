@@ -77,7 +77,7 @@ export interface SsrFromRscInput {
   modulePreloads?: string[];
   /** Preloads the chunks of each client reference the shell's flight names, with the runtime and their vendors. */
   modulePreloadPlan?: ModulePreloadPlan;
-  bootstrapData?: Pick<SsrBootstrapData, "routeState" | "dictionaryUrl" | "importMapKey">;
+  bootstrapData?: Pick<SsrBootstrapData, "routeState" | "notFound" | "dictionaryUrl" | "importMapKey">;
   /** Dev only: script text that runs after the bootstrap, under the response's nonce. */
   devBootstrapInline?: string;
   /** The response's script nonce: React's own inline scripts carry it. */

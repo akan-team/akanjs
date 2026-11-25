@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { ScreenReader } from "./ScreenReader";
 import { ScreenTarget } from "./ScreenTarget";
 
+// `router.*` reads `getEnv()`, which refuses to answer without the three public names a build injects.
+process.env.AKAN_PUBLIC_APP_NAME ??= "targettest";
+process.env.AKAN_PUBLIC_REPO_NAME ??= "targettest";
+process.env.AKAN_PUBLIC_SERVE_DOMAIN ??= "targettest.local";
+// A registered DOM starts on `about:blank`, which `new URL(href, base)` refuses to resolve a rooted href against.
+(window as unknown as { happyDOM?: { setURL?: (url: string) => void } }).happyDOM?.setURL?.("http://localhost/en");
+
 const render = (html: string) => {
   document.body.innerHTML = html;
 };
@@ -20,6 +27,11 @@ describe("ScreenTarget", () => {
         <button data-akan-action="submitTask">Save</button>
       </section>
     `);
+  });
+
+  test("lists the paths of the links on screen, a CSR link's `data-href` among them", () => {
+    render('<a href="/en/docs">Docs</a><a data-href="/en/faq">FAQ</a><a>no path</a>');
+    expect(ScreenTarget.linkedRoutes()).toEqual(["/docs", "/faq"]);
   });
 
   test("finds a control by the annotation readScreen prints beside it", () => {

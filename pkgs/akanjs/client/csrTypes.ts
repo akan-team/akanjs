@@ -433,6 +433,8 @@ export const pageActivityContext = sharedContext<PageActivityState>("pageActivit
 export interface PathRoute {
   path: string;
   pathSegments: string[];
+  /** The not-found view a path no page matches draws, under the layouts it reached. */
+  notFound?: true;
   /** The pages matched ahead of this one that take some of its paths, as `/:lang/chat/new` does of `/:lang/chat/:id`. */
   shadowedBy?: string[];
   renderPage: RouteRender;

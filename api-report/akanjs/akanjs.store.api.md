@@ -446,6 +446,8 @@ export interface ScreenReadOptions {
 
 export declare class ScreenReader {
     static readonly limit = 8000;
+    static readonly links = "a[href], a[data-href]";
+    static hrefOf(link: Element): string;
     static read(root?: HTMLElement | null, options?: ScreenReadOptions): string;
     static readFrom(heading: HTMLElement, root?: HTMLElement | null, options?: ScreenReadOptions): string;
     static anchorOf(heading: HTMLElement): string;
