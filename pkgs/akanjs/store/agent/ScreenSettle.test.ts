@@ -43,6 +43,38 @@ describe("ScreenSettle", () => {
     node.remove();
   });
 
+  test("loaded waits while a load on screen is pending, and not for one on a page parked out of view", async () => {
+    const section = document.createElement("section");
+    section.innerHTML = "<template data-akan-loading></template>";
+    const parked = document.createElement("div");
+    parked.setAttribute("inert", "");
+    parked.innerHTML = "<p><template data-akan-loading></template></p>";
+    document.body.append(section, parked);
+    let waited: boolean | undefined;
+    const took = await elapsed(async () => {
+      setTimeout(() => {
+        section.innerHTML = "<ul><li>card</li></ul>";
+      }, 120);
+      waited = await ScreenSettle.loaded({ timeoutMs: 2000 });
+    });
+    expect(waited).toBe(true);
+    expect(took).toBeGreaterThanOrEqual(120);
+    expect(took).toBeLessThan(1000);
+    expect(await ScreenSettle.loaded({ timeoutMs: 2000 })).toBe(false);
+    section.remove();
+    parked.remove();
+  });
+
+  test("loaded is bounded by its timeout when a load never lands", async () => {
+    const section = document.createElement("section");
+    section.innerHTML = "<template data-akan-loading></template>";
+    document.body.appendChild(section);
+    const took = await elapsed(async () => void (await ScreenSettle.loaded({ timeoutMs: 150 })));
+    expect(took).toBeGreaterThanOrEqual(150);
+    expect(took).toBeLessThan(600);
+    section.remove();
+  });
+
   test("a screen that never holds still is bounded by the timeout", async () => {
     const node = document.createElement("div");
     document.body.appendChild(node);

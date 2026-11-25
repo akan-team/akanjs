@@ -2966,7 +2966,7 @@ interface StateKeyProps {
     live?: boolean;
 }
 
-declare function Stream<Value>({ of, fallback, error, children }: StreamProps<Value>): Iterable<ReactNode> | Promise<Iterable<ReactNode> | bigint | boolean | import("react").ReactElement<unknown, import("react").JSXElementConstructor<any> | string> | import("react").ReactPortal | null | number | string | undefined> | bigint | boolean | import("react").JSX.Element | null | number | string | undefined;
+declare function Stream<Value>({ of, fallback: shown, error, children }: StreamProps<Value>): Iterable<ReactNode> | Promise<Iterable<ReactNode> | bigint | boolean | import("react").ReactElement<unknown, import("react").JSXElementConstructor<any> | string> | import("react").ReactPortal | null | number | string | undefined> | bigint | boolean | import("react").JSX.Element | null | number | string | undefined;
 
 type StreamError = ((error: unknown, retry: () => void) => ReactNode) | ReactNode;
 

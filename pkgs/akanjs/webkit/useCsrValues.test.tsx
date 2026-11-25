@@ -568,6 +568,22 @@ describe("router.navigation() on the CSR stack", () => {
     expect(landed.at).toBe("/en/detail");
   });
 
+  test("a back settles once the page under has slid back in, on that page", async () => {
+    mountFrame("/en/home", [{ segment: "home" }, { segment: "detail", transition: "stack" }]);
+    await act(async () => void client.router.push("/detail"));
+    await elapse(600);
+    let landed: { at?: string } = {};
+
+    await act(async () => {
+      client.router.back();
+      landed = landing();
+    });
+    expect(landed.at).toBeUndefined();
+    await elapse(600);
+
+    expect(landed.at).toBe("/en/home");
+  });
+
   test("a push made while another page slides in settles once it has run", async () => {
     mountFrame("/en/home", [
       { segment: "home" },

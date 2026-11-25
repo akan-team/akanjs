@@ -192,7 +192,13 @@ export const RenderLayer = memo((props: RenderLayerProps) => {
     );
   if (drawn) return createElement(routeRender.render as never, { children, ...drawn } as never);
   if (!value || !isAsyncRender || isRefused)
-    return <>{Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}</>;
+    return (
+      <>
+        {Translator.renderAt(renderPath, () => composeLoadingFallback(renders.slice(index), params))}
+        {/* The mark a `Load.*` fallback draws too, which the in-page agent's navigate waits out. */}
+        {isLoading ? <template data-akan-loading="" /> : null}
+      </>
+    );
   return <layerChildContext.Provider value={children}>{value}</layerChildContext.Provider>;
 });
 

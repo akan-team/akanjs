@@ -30,4 +30,32 @@ export class ScreenSettle {
       else rearm();
     });
   }
+
+  /** Resolves once no load on a page in view is pending, each `Load.*` fallback marking itself; `false` when none was. */
+  static loaded({ timeoutMs = 5000 }: { timeoutMs?: number } = {}): Promise<boolean> {
+    const body = typeof document === "undefined" ? null : (document.body ?? document.documentElement);
+    if (!body || typeof MutationObserver === "undefined" || !ScreenSettle.#loading(body)) return Promise.resolve(false);
+    return new Promise((resolve) => {
+      const done = () => {
+        clearTimeout(deadline);
+        observer.disconnect();
+        resolve(true);
+      };
+      const observer = new MutationObserver(() => {
+        if (!ScreenSettle.#loading(body)) done();
+      });
+      const deadline = setTimeout(done, timeoutMs);
+      observer.observe(body, { attributes: true, childList: true, subtree: true });
+    });
+  }
+
+  //? A parked page keeps its pending loads mounted, hidden; a `<template>` itself never reads as visible.
+  static #loading(body: HTMLElement) {
+    for (const mark of body.querySelectorAll("template[data-akan-loading]")) {
+      const holder = mark.parentElement;
+      if (!holder || holder.closest('[hidden], [aria-hidden="true"], [inert]')) continue;
+      if (typeof holder.checkVisibility !== "function" || holder.checkVisibility()) return true;
+    }
+    return false;
+  }
 }
