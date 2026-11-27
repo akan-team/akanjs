@@ -236,6 +236,8 @@ export interface AkanNativeConfig {
      * release app. Deep links and app links must list the suffixed id for debug builds.
      */
     debugAppIdSuffix?: string;
+    /** Appended to app.name in debug builds (e.g. " Dev"), so the launcher tells a debug build from the release app. */
+    debugAppNameSuffix?: string;
     /**
      * The Firebase project's google-services.json (relative to the app folder), for the push plugin's
      * FCM module: its values become the string resources Firebase initializes from, as the
@@ -275,6 +277,8 @@ export interface AkanNativeConfig {
      * App Store app instead of replacing it. A device build then signs with a profile for the suffixed id.
      */
     debugAppIdSuffix?: string;
+    /** Appended to app.name in debug builds (e.g. " Dev"), so the home screen tells a debug build from the App Store app. */
+    debugAppNameSuffix?: string;
   };
   desktop?: {
     /**

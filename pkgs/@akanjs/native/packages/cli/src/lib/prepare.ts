@@ -182,6 +182,12 @@ export function iosAppId(ctx: BuildContext): string {
   return app.id + (ctx.dev ? (ios?.debugAppIdSuffix ?? "") : "");
 }
 
+/** The home-screen name: app.name, plus the platform's debugAppNameSuffix in debug builds. */
+export function nativeAppName(ctx: BuildContext, platform: "ios" | "android"): string {
+  const { config } = ctx.project;
+  return config.app.name + (ctx.dev ? (config[platform]?.debugAppNameSuffix ?? "") : "");
+}
+
 /** A dev start path: a path on the app's origin, not one of akan-native's (/__akan_native/*). */
 export function checkStartPath(path: string): string {
   if (!path.startsWith("/") || path.startsWith("//") || /^\/__akan_native(\/|$|\?)/.test(path) || /\s/.test(path)) {

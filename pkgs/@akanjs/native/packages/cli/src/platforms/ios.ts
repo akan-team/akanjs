@@ -50,7 +50,7 @@ import {
 } from "../lib/native-plugins.ts";
 import { permissionPlist } from "../lib/permissions.ts";
 import { type PlistValue, toPlist } from "../lib/plist.ts";
-import { type BuildContext, iosAppId, SigningError } from "../lib/prepare.ts";
+import { type BuildContext, iosAppId, nativeAppName, SigningError } from "../lib/prepare.ts";
 import { privacyApiProblems, privacyManifest } from "../lib/privacy.ts";
 import type { IosManifest } from "../lib/project.ts";
 import { PACKAGE_ROOT } from "../lib/root.ts";
@@ -235,7 +235,7 @@ export async function buildIos(ctx: BuildContext): Promise<string> {
     CFBundleExecutable: module,
     CFBundleIdentifier: iosAppId(ctx),
     CFBundleName: module,
-    CFBundleDisplayName: config.app.name,
+    CFBundleDisplayName: nativeAppName(ctx, "ios"),
     CFBundleInfoDictionaryVersion: "6.0",
     CFBundlePackageType: "APPL",
     CFBundleShortVersionString: config.app.version,
