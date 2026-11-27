@@ -270,6 +270,11 @@ export interface AkanNativeConfig {
   ios?: {
     /** Hide the bar with previous / next / Done above the keyboard for form fields. Default false. */
     hideFormAccessoryBar?: boolean;
+    /**
+     * Appended to app.id in debug builds (e.g. ".debug"), so a debug build installs next to the
+     * App Store app instead of replacing it. A device build then signs with a profile for the suffixed id.
+     */
+    debugAppIdSuffix?: string;
   };
   desktop?: {
     /**

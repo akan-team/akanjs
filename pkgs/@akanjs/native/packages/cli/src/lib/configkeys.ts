@@ -68,7 +68,7 @@ const KNOWN: Shape = {
   push: {
     android: { channel: { id: true, name: true, importance: true, description: true }, smallIcon: true, color: true },
   },
-  ios: { hideFormAccessoryBar: true },
+  ios: { hideFormAccessoryBar: true, debugAppIdSuffix: true },
   icon: { image: true, backgroundColor: true },
   splash: { backgroundColor: { light: true, dark: true }, image: true, autoHide: true, timeout: true },
 };

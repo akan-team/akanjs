@@ -259,8 +259,8 @@ export class NativeConfig {
           }
         : {}),
       ...(target.ios?.privacy ? { privacy: target.ios.privacy } : {}),
-      ...(target.ios?.hideFormAccessoryBar ? { ios: { hideFormAccessoryBar: true } } : {}),
-      //? assetlinks.json vouches for `<appId>.debug` outside main, the suffix a debug build installs under.
+      //? A dev build installs as `<appId>.debug` next to the store app; AASA and assetlinks.json vouch for it outside main.
+      ios: { debugAppIdSuffix: ".debug", ...(target.ios?.hideFormAccessoryBar ? { hideFormAccessoryBar: true } : {}) },
       android: {
         debugAppIdSuffix: ".debug",
         ...(googleServices ? { googleServices: abs(googleServices) } : {}),

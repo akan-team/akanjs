@@ -176,6 +176,12 @@ export interface BuildContext {
   iosSigning?: IosSigningResult;
 }
 
+/** The bundle id: app.id, plus ios.debugAppIdSuffix in debug builds so they install next to the App Store app. */
+export function iosAppId(ctx: BuildContext): string {
+  const { app, ios } = ctx.project.config;
+  return app.id + (ctx.dev ? (ios?.debugAppIdSuffix ?? "") : "");
+}
+
 /** A dev start path: a path on the app's origin, not one of akan-native's (/__akan_native/*). */
 export function checkStartPath(path: string): string {
   if (!path.startsWith("/") || path.startsWith("//") || /^\/__akan_native(\/|$|\?)/.test(path) || /\s/.test(path)) {
