@@ -3,7 +3,6 @@ import { interpolateTranslation } from "../common/interpolateTranslation";
 import { LocalePath } from "../common/localePath";
 import { pathGetLoose } from "../common/objectPath";
 import { originFromRequest } from "../common/requestOrigin";
-import { compareRouteSpecificity, matchRoutePattern } from "../common/routeConvention";
 import { trimSlashes } from "../common/trimSlashes";
 import type { RouteOptions, RouterInstance } from "./router";
 
@@ -60,8 +59,6 @@ beforeAll(() => {
     ),
     parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en", localePrefix: envState.localePrefix }),
     LocalePath,
-    compareRouteSpecificity,
-    matchRoutePattern,
     parseBasePaths: (value?: string) => (value ? value.split(",").filter(Boolean) : []),
     pathGet: (path: string, obj: Record<string, unknown>, separator = ".", fallback?: unknown) =>
       path.split(separator).reduce<unknown>((acc, key) => {

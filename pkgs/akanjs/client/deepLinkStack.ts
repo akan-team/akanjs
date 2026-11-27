@@ -1,5 +1,3 @@
-import { compareRouteSpecificity, matchRoutePattern } from "akanjs/common";
-
 interface RouteMatch {
   path: string;
   route: string;
@@ -10,11 +8,11 @@ interface RouteMatch {
 export class DeepLinkStack {
   //? Each step resolves the screen under the one before, so a cycle of stackOn routes ends here.
   static readonly #depthLimit = 8;
-  readonly #routes: string[];
+  readonly #routes: string[][];
   readonly #stackOn: Map<string, string>;
 
   constructor(routes: string[], stackOn: [route: string, under: string][] = []) {
-    this.#routes = [...new Set(routes)].sort(compareRouteSpecificity);
+    this.#routes = [...new Set(routes)].map(DeepLinkStack.#segmentsOf).sort(DeepLinkStack.#bySpecificity);
     this.#stackOn = new Map(stackOn);
   }
 
@@ -29,7 +27,7 @@ export class DeepLinkStack {
   /** The concrete paths of `path`'s leading segments that are routes themselves, `path` last; with no routes, `path`. */
   prefixesOf(path: string) {
     if (this.#routes.length === 0) return [path];
-    const segments = path.split("/").filter(Boolean);
+    const segments = DeepLinkStack.#segmentsOf(path);
     if (segments.length === 0) return this.has("/") ? ["/"] : [];
     return segments
       .map((_, idx) => `/${segments.slice(0, idx + 1).join("/")}`)
@@ -60,22 +58,40 @@ export class DeepLinkStack {
   }
 
   #match(path: string): RouteMatch | null {
+    const segments = DeepLinkStack.#segmentsOf(path);
     for (const route of this.#routes) {
-      const params = matchRoutePattern(route, path);
-      if (params) return { path, route, params };
+      if (route.length !== segments.length) continue;
+      const params: { [param: string]: string } = {};
+      const isMatch = route.every((part, idx) => {
+        const value = segments[idx] ?? "";
+        if (!part.startsWith(":")) return part === value;
+        params[part.slice(1)] = value;
+        return true;
+      });
+      if (isMatch) return { path, route: `/${route.join("/")}`, params };
     }
     return null;
   }
 
+  static #segmentsOf(path: string) {
+    return path.split("/").filter(Boolean);
+  }
+
+  //? Of two routes that match one path, a static segment wins over a param at the first place they differ.
+  static #bySpecificity(a: string[], b: string[]) {
+    for (let idx = 0; idx < Math.min(a.length, b.length); idx++) {
+      const isParamA = (a[idx] ?? "").startsWith(":");
+      if (isParamA !== (b[idx] ?? "").startsWith(":")) return isParamA ? 1 : -1;
+    }
+    return 0;
+  }
+
   static #fill(pattern: string, params: { [param: string]: string }) {
     const segments: string[] = [];
-    for (const segment of pattern.split("/").filter(Boolean)) {
-      if (!segment.startsWith(":")) segments.push(segment);
-      else {
-        const value = params[segment.slice(1)];
-        if (value === undefined) return null;
-        segments.push(encodeURIComponent(value));
-      }
+    for (const segment of DeepLinkStack.#segmentsOf(pattern)) {
+      const value = segment.startsWith(":") ? params[segment.slice(1)] : segment;
+      if (value === undefined) return null;
+      segments.push(value);
     }
     return `/${segments.join("/")}`;
   }
