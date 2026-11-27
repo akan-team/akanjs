@@ -333,6 +333,7 @@ PageConfig
 - prefetch (boolean, default true): `false` answers a Link's prefetch of the page without rendering it; the click renders it. On a layout, it covers every page below.
 
 - canonicalQuery (boolean, default true): `false` keys the page in the RSC and HTML result caches on its query exactly as requested, instead of sorted and without the `AKAN_ROUTE_CACHE_TRACKING_PARAMS`. On a layout, it covers every page below.
+- stackOn (string, default the link's leading routes): The screen a native app's deep link lays under the page when it opens the app on it with nothing behind: a route pattern whose params come from the link (`/org/:orgId`), and its own `stackOn` chains on. On a layout, it covers every page below, the route it names included, where the chain ends.
 
 - devOnly (boolean, default false): Keeps the route out of `akan build`. It still serves under `akan start`.
 

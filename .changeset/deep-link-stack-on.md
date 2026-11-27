@@ -1,0 +1,10 @@
+---
+"akanjs": minor
+---
+
+A deep link that opens a native app on a route with params lands on its page, and a route can say which screen lies under it when it opens that way (`.config({ stackOn })`).
+
+- A link or a push tapped while the app was closed (on iOS, also after the system ended it in the background) opened nothing when its page had a param: the app's first deep link resets the stack with the route manifest, and the manifest holds patterns (`/org/:orgId/chat/:channelId`) that the link's concrete path (`/org/o1/chat/c1`) was compared to as a string, so every such link resolved to no stack and the app stayed on its index. The link now matches the patterns, the most specific one first, as the CSR route table does, and its leading segments that are routes stack under it as they did for a static link.
+- `PageConfig.stackOn` names the screen laid under the page when a deep link opens the app on it with nothing behind, so Back and the edge swipe go where a person who walked there would rather than up the URL: a route pattern whose params come from the link, `layout().config({ stackOn: "/org/:orgId" })` on an org's layout putting the org's home under every page in it. The screen it names stacks on its own `stackOn`, so a thread page with `stackOn: "/org/:orgId/chat/:channelId"` opens over its channel over the org's home. On a layout it holds for every page below it, the route it names included, where the chain ends. A route that matches nothing, or a cycle, ends the chain where it is. `RouteManifest.stackOn` carries it to the router, keyed by route.
+
+**Upgrading.** Nothing to change: a route with no `stackOn` stacks as before, now also when it has params. A link into a page with params that used to leave the app on its index now opens that page with its leading routes under it; set `stackOn` on the routes whose screen hierarchy is not their URL's.

@@ -3,6 +3,7 @@ import { interpolateTranslation } from "../common/interpolateTranslation";
 import { LocalePath } from "../common/localePath";
 import { pathGetLoose } from "../common/objectPath";
 import { originFromRequest } from "../common/requestOrigin";
+import { compareRouteSpecificity, matchRoutePattern } from "../common/routeConvention";
 import { trimSlashes } from "../common/trimSlashes";
 import type { RouteOptions, RouterInstance } from "./router";
 
@@ -59,6 +60,8 @@ beforeAll(() => {
     ),
     parseAkanI18nEnv: () => ({ locales: ["en", "ko"], defaultLocale: "en", localePrefix: envState.localePrefix }),
     LocalePath,
+    compareRouteSpecificity,
+    matchRoutePattern,
     parseBasePaths: (value?: string) => (value ? value.split(",").filter(Boolean) : []),
     pathGet: (path: string, obj: Record<string, unknown>, separator = ".", fallback?: unknown) =>
       path.split(separator).reduce<unknown>((acc, key) => {
@@ -324,6 +327,88 @@ describe("router", () => {
       ["push", "/en/admin/profile/self/edit", {}],
     ]);
     expect(router.canGoBack()).toBe(true);
+    restoreTimeout();
+  });
+
+  const orgRoutes = [
+    "/",
+    "/:lang/office/home",
+    "/:lang/office/org/:orgId",
+    "/:lang/office/org/:orgId/chat",
+    "/:lang/office/org/:orgId/chat/:channelId",
+    "/:lang/office/org/:orgId/chat/:channelId/thread/:threadId",
+    "/:lang/office/org/:orgId/pageBlock/archive",
+    "/:lang/office/org/:orgId/pageBlock/:pageBlockId",
+  ];
+  const initOrgRouter = async (calls: unknown[], stackOn?: { [route: string]: string }) => {
+    envState.side = "client";
+    envState.basePaths = "office";
+    installClientWindow("/en/office/home");
+    const historyStub = {
+      state: null as unknown,
+      replaceState: (state: unknown) => {
+        historyStub.state = state;
+      },
+    };
+    Object.assign(window, { history: historyStub, addEventListener: () => undefined });
+    const { router } = await import("./router");
+    router.init({
+      type: "csr",
+      lang: "en",
+      prefix: "office",
+      routeManifest: { routes: orgRoutes, ...(stackOn ? { stackOn } : {}) },
+      indexPath: "/home",
+      router: recordingRouter(calls),
+    });
+    return router;
+  };
+
+  test("resolves a deep link to a route with params, which a cold start used to drop", async () => {
+    const router = await initOrgRouter([]);
+
+    expect(router.resolveDeepLinkStack("/org/o1/chat/c1")).toEqual(["/org/o1", "/org/o1/chat", "/org/o1/chat/c1"]);
+    expect(router.resolveDeepLinkStack("angelo://org/o1/chat/c1?threadId=t1")).toEqual([
+      "/org/o1",
+      "/org/o1/chat",
+      "/org/o1/chat/c1?threadId=t1",
+    ]);
+    expect(router.resolveDeepLinkStack("/org/o1/pageBlock/archive")).toEqual(["/org/o1", "/org/o1/pageBlock/archive"]);
+    expect(router.resolveDeepLinkStack("/org/o1/pageBlock/p1")).toEqual(["/org/o1", "/org/o1/pageBlock/p1"]);
+    expect(router.resolveDeepLinkStack("/org/o1")).toEqual(["/home", "/org/o1"]);
+    expect(router.resolveDeepLinkStack("/org/o1/missing/x")).toEqual([]);
+  });
+
+  test("lays the screens a route's stackOn names under a deep link, and stops at a route naming itself", async () => {
+    const calls: unknown[] = [];
+    const restoreTimeout = queueTimeouts();
+    const router = await initOrgRouter(calls, {
+      "/:lang/office/org/:orgId": "/org/:orgId",
+      "/:lang/office/org/:orgId/chat": "/org/:orgId",
+      "/:lang/office/org/:orgId/chat/:channelId": "/org/:orgId",
+      "/:lang/office/org/:orgId/chat/:channelId/thread/:threadId": "/org/:orgId/chat/:channelId",
+      "/:lang/office/org/:orgId/pageBlock/:pageBlockId": "/org/:orgId/missing",
+    });
+
+    expect(router.resolveDeepLinkStack("/org/o1/chat/c1?threadId=t1")).toEqual([
+      "/org/o1",
+      "/org/o1/chat/c1?threadId=t1",
+    ]);
+    expect(router.resolveDeepLinkStack("/org/o1/chat/c1/thread/t1")).toEqual([
+      "/org/o1",
+      "/org/o1/chat/c1",
+      "/org/o1/chat/c1/thread/t1",
+    ]);
+    expect(router.resolveDeepLinkStack("/org/o1")).toEqual(["/home", "/org/o1"]);
+    expect(router.resolveDeepLinkStack("/org/o1/pageBlock/p1")).toEqual(["/org/o1", "/org/o1/pageBlock/p1"]);
+
+    expect(router.enterDeepLink("/org/o1/chat/c1/thread/t1", { resetStack: true })).toBe(true);
+    flushTimeouts();
+    flushTimeouts();
+    expect(calls).toEqual([
+      ["replace", "/en/office/org/o1", {}],
+      ["push", "/en/office/org/o1/chat/c1", {}],
+      ["push", "/en/office/org/o1/chat/c1/thread/t1", {}],
+    ]);
     restoreTimeout();
   });
 

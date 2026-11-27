@@ -54,6 +54,7 @@ const pageConfigKeys = new Set<keyof PageConfig>([
   "rscPatchHeadSafe",
   "prefetch",
   "canonicalQuery",
+  "stackOn",
   "topSafeAreaColor",
   "bottomSafeAreaColor",
 ]);
@@ -96,6 +97,11 @@ export const validatePageConfig = (routeKey: string, config?: PageConfig) => {
         `[route-convention] pageConfig.${key} in ${routeKey} must be a boolean, a non-negative px number, or { base, sm?, md?, lg?, xl?, "2xl"? } of them.`,
       );
   }
+  if (
+    pageConfig.stackOn !== undefined &&
+    (typeof pageConfig.stackOn !== "string" || !pageConfig.stackOn.startsWith("/"))
+  )
+    throw new Error(`[route-convention] pageConfig.stackOn in ${routeKey} must be a route path starting with "/".`);
   const { overlay } = pageConfig;
   if (overlay !== undefined && typeof overlay !== "boolean" && overlay !== "top" && overlay !== "bottom")
     throw new Error(`[route-convention] pageConfig.overlay in ${routeKey} must be a boolean, "top" or "bottom".`);
