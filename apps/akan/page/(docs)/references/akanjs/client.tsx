@@ -716,6 +716,15 @@ export default page()
         }),
       },
       {
+        key: "stackOn",
+        type: "string",
+        default: l.trans({ en: "the link's leading routes", ko: "링크 앞쪽 경로의 route" }),
+        desc: l.trans({
+          en: "The screen a native app's deep link lays under the page when it opens the app on it with nothing behind: a route pattern whose params come from the link (`/org/:orgId`), and its own `stackOn` chains on. On a layout, it covers every page below, the route it names included, where the chain ends.",
+          ko: "딥링크가 뒤에 아무것도 없이 네이티브 앱을 이 페이지로 열 때 그 밑에 깔 화면입니다. 링크에서 param을 받는 route 패턴(`/org/:orgId`)이며, 그 화면의 `stackOn`이 이어집니다. layout에 두면 그 아래 모든 페이지에 적용되고, 자신이 가리키는 route에서 끝납니다.",
+        }),
+      },
+      {
         key: "devOnly",
         type: "boolean",
         default: "false",
