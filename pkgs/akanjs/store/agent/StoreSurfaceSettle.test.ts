@@ -2,6 +2,7 @@ import "../../test/registerDom";
 import { beforeAll, describe, expect, test } from "bun:test";
 import { Translator } from "akanjs/client/translator";
 import { AgenticSurface } from "use-agentic";
+import { PendingNavigation } from "../../client/pendingNavigation";
 import { AgentNavigate } from "../agentic/AgentNavigate";
 import { setTestEnv } from "../store.fixture";
 import { StoreSurfaceSource } from "./StoreSurfaceSource";
@@ -77,6 +78,71 @@ describe("StoreSurfaceSource on a page that streams in", () => {
     expect(await surface.call("navigate", { path: "/docs/intro" })).toContain("Now on /docs/intro.");
     expect(performance.now() - started).toBeGreaterThanOrEqual(1200);
     section.remove();
+  });
+
+  test("navigate tells a redirect back to the page it was on from a move that did not land, and a load still showing", async () => {
+    const { router } = await import("akanjs/client");
+    const setURL = (path: string) =>
+      (window as unknown as { happyDOM: { setURL: (url: string) => void } }).happyDOM.setURL(`http://localhost${path}`);
+    const moves: Record<string, () => void> = {
+      "/org": () => {
+        PendingNavigation.begin("http://localhost/en/org");
+        PendingNavigation.begin("http://localhost/en/home");
+        PendingNavigation.clear();
+      },
+      "/tickets": () => {
+        PendingNavigation.begin("http://localhost/en/tickets");
+        PendingNavigation.begin("http://localhost/en/signin");
+        setURL("/en/signin");
+        PendingNavigation.clear();
+      },
+      "/stuck": () => undefined,
+      "/board": () => {
+        setURL("/en/board");
+        document.body.innerHTML = "<section><template data-akan-loading></template></section>";
+      },
+    };
+    router.init({
+      type: "ssr",
+      side: "client",
+      lang: "en",
+      router: {
+        push: (href: string) => moves[href.replace(/^\/en/, "")]?.(),
+        replace: () => undefined,
+        back: () => undefined,
+        refresh: () => undefined,
+      },
+    } as never);
+    const surface = new AgenticSurface();
+    surface.addSource(new StoreSurfaceSource());
+    AgentNavigate.set({ settle: async () => undefined });
+    try {
+      setURL("/en/home");
+      expect(await surface.call("navigate", { path: "/org" })).toStartWith(
+        "Asked for /org, but the app sent the page back to /home, the page it was on.",
+      );
+      setURL("/en/home");
+      expect(await surface.call("navigate", { path: "/tickets" })).toStartWith(
+        "Asked for /tickets, but the app sent the page to /signin instead.",
+      );
+      setURL("/en/home");
+      const stuck = await surface.call("navigate", { path: "/stuck" });
+      expect(stuck).toStartWith("Asked for /stuck, but the page stayed on /home: the move did not land.");
+      expect(stuck).not.toContain("still loading");
+      expect(await surface.call("navigate", { path: "/board" })).toStartWith(
+        "Now on /board. Part of this page is still loading",
+      );
+    } finally {
+      AgentNavigate.set({ settle: undefined });
+      document.body.innerHTML = "";
+      const nowhere = () => undefined;
+      router.init({
+        type: "ssr",
+        side: "client",
+        lang: "en",
+        router: { push: nowhere, replace: nowhere, back: nowhere, refresh: nowhere },
+      } as never);
+    }
   });
 
   test("an app's own description and wait replace navigate's, read at every call", async () => {
