@@ -959,6 +959,7 @@ void     akan_native_shell(uint64_t id, const char* json);   // {"op":"window.se
 - 버전: versionName = `app.version`, versionCode = `app.build`(최대 2100000000, 빌드가 검사).
 - `android.debugAppIdSuffix`(예: `.debug`): debug 빌드의 applicationId에 붙는다. manifest의 `package`, `${applicationId}` 치환, FileProvider authority, 설치·실행(adb)에 쓰인다. akanjs 서버 assetlinks의 `.debug` 항목과 맞춘다.
 - `ios.debugAppIdSuffix`(예: `.debug`): debug 빌드의 번들 ID(CFBundleIdentifier, entitlements의 application-identifier, 서명 프로파일 선택, 설치·실행)에 붙는다. akanjs 서버 AASA의 `.debug` appID와 맞춘다. akanjs devkit은 두 플랫폼 모두 `.debug`를 넣는다.
+- `ios.debugAppNameSuffix`·`android.debugAppNameSuffix`(예: ` Dev`): debug 빌드의 홈 화면 이름에 붙는다. 번들 ID가 달라 두 앱이 함께 설치될 때 이름으로도 구분된다. akanjs devkit은 두 플랫폼 모두 ` Dev`를 넣는다.
 - R8·d8이 dex를 여러 개 쓰면(`classes2.dex`…) 모두 담는다(FCM·Billing을 켜면 64K 메서드 한도를 넘는다, S2).
 - Play 업로드(Developer API)는 뒤로 둔다(O1-6).
 

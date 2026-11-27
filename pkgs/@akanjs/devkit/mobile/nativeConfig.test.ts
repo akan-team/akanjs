@@ -137,9 +137,10 @@ describe("NativeConfig.build", () => {
       ],
       security: { csp: policy() },
       deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
-      ios: { debugAppIdSuffix: ".debug" },
+      ios: { debugAppIdSuffix: ".debug", debugAppNameSuffix: " Dev" },
       android: {
         debugAppIdSuffix: ".debug",
+        debugAppNameSuffix: " Dev",
         googleServices: path.resolve("/repo/apps/minimal", "secrets/google-services.json"),
       },
       keyboard: { resize: "none" },
@@ -186,8 +187,8 @@ describe("NativeConfig.build", () => {
         android: { manifest: ['<queries><package android:name="com.kakao.talk" /></queries>'] },
         resources: [{ from: path.resolve("/repo/apps/portal", "assets/chime.mp3"), to: "android/res/raw/chime.mp3" }],
       },
-      ios: { debugAppIdSuffix: ".debug" },
-      android: { debugAppIdSuffix: ".debug" },
+      ios: { debugAppIdSuffix: ".debug", debugAppNameSuffix: " Dev" },
+      android: { debugAppIdSuffix: ".debug", debugAppNameSuffix: " Dev" },
       keyboard: { resize: "none" },
       icon: path.resolve("/repo/apps/portal", "assets/icon.png"),
       splash: { image: path.resolve("/repo/apps/portal", "assets/splash.png"), autoHide: false },
@@ -475,7 +476,7 @@ describe("NativeConfig.build", () => {
       webview2: "standalone",
       bin: root,
     });
-    expect(config.android).toEqual({ debugAppIdSuffix: ".debug", autoplay: true });
+    expect(config.android).toEqual({ debugAppIdSuffix: ".debug", debugAppNameSuffix: " Dev", autoplay: true });
     await mkdir(path.join(root, "web"), { recursive: true });
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
     expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
@@ -518,9 +519,10 @@ describe("NativeConfig.build", () => {
       }).config;
     const config = build({ hideFormAccessoryBar: true });
 
-    expect(config.ios).toEqual({ debugAppIdSuffix: ".debug", hideFormAccessoryBar: true });
-    expect(build().ios).toEqual({ debugAppIdSuffix: ".debug" });
-    expect(build({ hideFormAccessoryBar: false }).ios).toEqual({ debugAppIdSuffix: ".debug" });
+    const debugSuffixes = { debugAppIdSuffix: ".debug", debugAppNameSuffix: " Dev" };
+    expect(config.ios).toEqual({ ...debugSuffixes, hideFormAccessoryBar: true });
+    expect(build().ios).toEqual(debugSuffixes);
+    expect(build({ hideFormAccessoryBar: false }).ios).toEqual(debugSuffixes);
     await mkdir(path.join(root, "web"), { recursive: true });
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
     expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);

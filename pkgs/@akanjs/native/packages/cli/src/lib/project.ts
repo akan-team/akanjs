@@ -7,6 +7,7 @@ import type { AkanNativeConfig } from "../config.ts";
 import { manifestPermissionProblems, type PermissionSet, resolveAcl } from "./acl.ts";
 import { unknownConfigKeys } from "./configkeys.ts";
 import { validateCsp, validateExternalSchemes } from "./csp.ts";
+import { checkDebugSuffixes } from "./debugsuffix.ts";
 import { type DesktopServerConfig, validateDesktopServer } from "./desktop-server.ts";
 import { type ResolvedDmg, validateDmg } from "./dmg.ts";
 import { type EnvConfig, validateEnvConfig } from "./env.ts";
@@ -712,11 +713,7 @@ const HOST = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
 
 /** deepLinks.domains, native.ios, native.android and native.resources (akanjs readiness O5). */
 function checkNative(raw: AkanNativeConfig, appDir: string, problems: string[]): void {
-  for (const platform of ["android", "ios"] as const) {
-    const suffix = raw[platform]?.debugAppIdSuffix;
-    if (suffix !== undefined && (typeof suffix !== "string" || !/^(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(suffix)))
-      problems.push(`${platform}.debugAppIdSuffix must look like ".debug" (got ${JSON.stringify(suffix)})`);
-  }
+  checkDebugSuffixes(raw, problems);
   for (const domain of raw.deepLinks?.domains ?? []) {
     const host = typeof domain === "string" ? domain : domain?.host;
     if (typeof host !== "string" || !HOST.test(host))

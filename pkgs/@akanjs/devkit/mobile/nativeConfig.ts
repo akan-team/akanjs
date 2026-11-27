@@ -15,6 +15,8 @@ import { type NativePlatform, resolveAppId } from "./mobileTarget";
 import type { NativePluginFolder } from "./nativePluginFolders";
 import { toIosInfoPlistUsageDescriptions } from "./usageDescriptions";
 
+const DEBUG_SUFFIXES = { debugAppIdSuffix: ".debug", debugAppNameSuffix: " Dev" };
+
 export interface NativeConfigInput {
   /** The app folder; every relative path in the target resolves against it. */
   appPath: string;
@@ -259,10 +261,13 @@ export class NativeConfig {
           }
         : {}),
       ...(target.ios?.privacy ? { privacy: target.ios.privacy } : {}),
-      //? A dev build installs as `<appId>.debug` next to the store app; AASA and assetlinks.json vouch for it outside main.
-      ios: { debugAppIdSuffix: ".debug", ...(target.ios?.hideFormAccessoryBar ? { hideFormAccessoryBar: true } : {}) },
+      //? A dev build installs as `<appId>.debug` named "<appName> Dev" next to the store app; AASA and assetlinks.json vouch for it outside main.
+      ios: {
+        ...DEBUG_SUFFIXES,
+        ...(target.ios?.hideFormAccessoryBar ? { hideFormAccessoryBar: true } : {}),
+      },
       android: {
-        debugAppIdSuffix: ".debug",
+        ...DEBUG_SUFFIXES,
         ...(googleServices ? { googleServices: abs(googleServices) } : {}),
         ...(target.android?.autoplay ? { autoplay: true } : {}),
       },
