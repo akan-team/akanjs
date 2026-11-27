@@ -50,7 +50,7 @@ import {
 } from "../lib/native-plugins.ts";
 import { permissionPlist } from "../lib/permissions.ts";
 import { type PlistValue, toPlist } from "../lib/plist.ts";
-import { type BuildContext, SigningError } from "../lib/prepare.ts";
+import { type BuildContext, iosAppId, SigningError } from "../lib/prepare.ts";
 import { privacyApiProblems, privacyManifest } from "../lib/privacy.ts";
 import type { IosManifest } from "../lib/project.ts";
 import { PACKAGE_ROOT } from "../lib/root.ts";
@@ -99,12 +99,6 @@ function sha(parts: (string | Uint8Array)[]): string {
   const hash = createHash("sha256");
   for (const part of parts) hash.update(part);
   return hash.digest("hex");
-}
-
-/** The bundle id: app.id, plus ios.debugAppIdSuffix in debug builds so they install next to the App Store app. */
-export function iosAppId(ctx: BuildContext): string {
-  const { app, ios } = ctx.project.config;
-  return app.id + (ctx.dev ? (ios?.debugAppIdSuffix ?? "") : "");
 }
 
 export async function buildIos(ctx: BuildContext): Promise<string> {

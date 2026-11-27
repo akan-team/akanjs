@@ -3,8 +3,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type AkanNativeConfig, validateConfig } from "../src/api.ts";
-import type { BuildContext } from "../src/lib/prepare.ts";
-import { iosAppId } from "../src/platforms/ios.ts";
+import { type BuildContext, iosAppId } from "../src/lib/prepare.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "akan-native-ios-debug-id-"));
 mkdirSync(join(dir, "web"), { recursive: true });

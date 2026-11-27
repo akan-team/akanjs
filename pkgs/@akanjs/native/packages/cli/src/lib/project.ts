@@ -178,11 +178,6 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   checkIconAndSplash(raw, appDir, problems);
   checkPrivacy(raw.privacy, problems);
   checkNative(raw, appDir, problems);
-  for (const platform of ["android", "ios"] as const) {
-    const suffix = raw[platform]?.debugAppIdSuffix;
-    if (suffix !== undefined && (typeof suffix !== "string" || !/^(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(suffix)))
-      problems.push(`${platform}.debugAppIdSuffix must look like ".debug" (got ${JSON.stringify(suffix)})`);
-  }
   if (raw.app?.build !== undefined && raw.app.build > 2_100_000_000)
     problems.push("app.build must be at most 2100000000 (Android versionCode)");
   const googleServices = raw.android?.googleServices;
@@ -717,6 +712,11 @@ const HOST = /^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/
 
 /** deepLinks.domains, native.ios, native.android and native.resources (akanjs readiness O5). */
 function checkNative(raw: AkanNativeConfig, appDir: string, problems: string[]): void {
+  for (const platform of ["android", "ios"] as const) {
+    const suffix = raw[platform]?.debugAppIdSuffix;
+    if (suffix !== undefined && (typeof suffix !== "string" || !/^(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(suffix)))
+      problems.push(`${platform}.debugAppIdSuffix must look like ".debug" (got ${JSON.stringify(suffix)})`);
+  }
   for (const domain of raw.deepLinks?.domains ?? []) {
     const host = typeof domain === "string" ? domain : domain?.host;
     if (typeof host !== "string" || !HOST.test(host))
