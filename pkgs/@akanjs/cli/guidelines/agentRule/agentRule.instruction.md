@@ -738,12 +738,11 @@ pages declaring one name never clash, and a registry kept outside the surface re
   `AgentService.preamble` therefore says that a navigation ends the turn and that names are never guessed, and the
   session answers an unknown name with the tools listed now — saying, when the catalogue moved since the turn's
   list was written, that the call was written against the screen it left and the new one's tools arrive with their
-  arguments next turn. `navigate`'s own answer says the same, reports the path the page actually landed on when a
-  redirect moved it elsewhere, and a path with no route is refused with the internal links on screen
-  (`ScreenTarget.linkedRoutes`) rather than an invitation to compose another. That covers a path the app answers
-  with its not-found view, on the web and in an app alike (`isNotFoundView()`): the page goes back first. Layout-level tools — a channel
-  post, a new wiki page — stay listed across routes, which is why the cross-screen requests that use only them never
-  hit this.
+  arguments next turn. `navigate`'s own answer says the same, names where a redirect sent the page (back where it
+  was, too) or that the move never landed, says a load is still on screen (`ScreenSettle.isLoading()`), and refuses a
+  path with no route with the internal links on screen (`ScreenTarget.linkedRoutes`), never an invitation to compose
+  another — a path the app answers with its not-found view (`isNotFoundView()`) too, after going back. Layout-level
+  tools — a channel post, a new wiki page — stay listed across routes, so requests that use only them never hit this.
 - **A tool that waits for its own work costs no model turns; one that returns early costs one round trip per
   look.** The session awaits `run`, so a `.exec` that awaits the store action finishing the job simply makes the
   turn take that long — and the change report that follows carries whatever landed, so the model needs no second
