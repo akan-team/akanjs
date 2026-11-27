@@ -1,8 +1,9 @@
-import { csrLocation, isNotFoundView, router } from "akanjs/client";
+import { isNotFoundView, router } from "akanjs/client";
 import { AgenticSurface, type SurfaceSource, type ToolEntry, ToolReturn } from "use-agentic";
 import { InlineToken } from "../../common/inlineToken";
 import { AgentNavigate } from "../agentic/AgentNavigate";
 import { AgentBridge } from "./AgentBridge";
+import { NavigateMove } from "./NavigateMove";
 import { ScreenFlash } from "./ScreenFlash";
 import { ScreenImage } from "./ScreenImage";
 import { ScreenReader } from "./ScreenReader";
@@ -66,25 +67,29 @@ export class StoreSurfaceSource implements SurfaceSource {
         const path = String(args.path);
         //? Read before the move: a page the stack slides back to may draw its links without a box for a while.
         const linkedBefore = ScreenTarget.linkedRoutes();
+        const move = new NavigateMove();
         try {
-          router.push(path);
-          await router.navigation();
-        } catch (error) {
-          if (StoreSurfaceSource.#isKept(error)) throw new Error(StoreSurfaceSource.#kept);
-          throw new Error(
-            `There is no route at ${path}, so the page did not move. ${StoreSurfaceSource.#linked(linkedBefore)}`,
-          );
+          try {
+            router.push(path);
+            await router.navigation();
+          } catch (error) {
+            if (StoreSurfaceSource.#isKept(error)) throw new Error(StoreSurfaceSource.#kept);
+            throw new Error(
+              `There is no route at ${path}, so the page did not move. ${StoreSurfaceSource.#linked(linkedBefore)}`,
+            );
+          }
+          // `push` returns before the new route's payload lands; without this the next readScreen reads the old page.
+          await StoreSurfaceSource.#settled();
+          if (isNotFoundView()) {
+            const left = await StoreSurfaceSource.#leaveNotFound();
+            throw new Error(
+              `There is no route at ${path}, so ${left ? "the page went back" : "the page shows the app's not-found page"}. ${StoreSurfaceSource.#linked(left ? linkedBefore : [])}`,
+            );
+          }
+          return `${move.arrival(path)} ${StoreSurfaceSource.#arrived()}`;
+        } finally {
+          move.stop();
         }
-        // `push` returns before the new route's payload lands; without this the next readScreen reads the old page.
-        await StoreSurfaceSource.#settled();
-        if (isNotFoundView()) {
-          const left = await StoreSurfaceSource.#leaveNotFound();
-          throw new Error(
-            `There is no route at ${path}, so ${left ? "the page went back" : "the page shows the app's not-found page"}. ${StoreSurfaceSource.#linked(left ? linkedBefore : [])}`,
-          );
-        }
-        const landed = StoreSurfaceSource.#redirected(path);
-        return `${landed ? `Asked for ${path}, but the app sent the page to ${landed} instead.` : `Now on ${path}.`} ${StoreSurfaceSource.#arrived}`;
       },
     };
   }
@@ -111,8 +116,14 @@ export class StoreSurfaceSource implements SurfaceSource {
     return left;
   }
 
-  static readonly #arrived =
-    "This screen's own tools and state replace the previous screen's and are listed on your next turn — call them then, by the names listed. Call readScreen to see the page.";
+  //? A wait that ran out, or an app's own `settle`, can answer with a load still on screen and its tools still to mount.
+  static #arrived() {
+    const listed =
+      "This screen's own tools and state replace the previous screen's and are listed on your next turn — call them then, by the names listed. Call readScreen to see the page.";
+    return ScreenSettle.isLoading()
+      ? `Part of this page is still loading, so what it shows and the tools it mounts may arrive after your next turn's list. ${listed}`
+      : listed;
+  }
 
   static readonly #kept =
     "The app asked before leaving this page and kept it, so the page did not move. Tell the user why you could not move, and do not try again unless they ask.";
@@ -129,18 +140,6 @@ export class StoreSurfaceSource implements SurfaceSource {
       : "Call readScreen — it prints each link on this screen with its own path — and navigate to one of those.";
   }
 
-  /** A redirect moves the page somewhere other than the path it was sent to. */
-  static #redirected(path: string): string | null {
-    const trimmed = (route: string) => (route.length > 1 ? route.replace(/\/+$/, "") : route);
-    try {
-      const landed = router.routeOf(csrLocation.pathname);
-      const wanted = router.routeOf(new URL(path, "http://route.invalid").pathname);
-      return trimmed(landed) === trimmed(wanted) ? null : landed;
-    } catch {
-      return null;
-    }
-  }
-
   static #goBack(): ToolEntry {
     return {
       name: "goBack",
@@ -155,7 +154,7 @@ export class StoreSurfaceSource implements SurfaceSource {
           if (StoreSurfaceSource.#isKept(error)) throw new Error(StoreSurfaceSource.#kept);
         });
         await StoreSurfaceSource.#settled();
-        return `Back on ${router.getPath()}. ${StoreSurfaceSource.#arrived}`;
+        return `Back on ${router.getPath()}. ${StoreSurfaceSource.#arrived()}`;
       },
     };
   }

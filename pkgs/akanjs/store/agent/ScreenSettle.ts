@@ -31,6 +31,12 @@ export class ScreenSettle {
     });
   }
 
+  /** Whether a load on a page in view is still pending, as `loaded()` reads it. */
+  static isLoading(): boolean {
+    const body = typeof document === "undefined" ? null : (document.body ?? document.documentElement);
+    return !!body && ScreenSettle.#loading(body);
+  }
+
   /** Resolves once no load on a page in view is pending, each `Load.*` fallback marking itself; `false` when none was. */
   static loaded({ timeoutMs = 5000 }: { timeoutMs?: number } = {}): Promise<boolean> {
     const body = typeof document === "undefined" ? null : (document.body ?? document.documentElement);
