@@ -178,9 +178,10 @@ export function projectFromConfig(raw: AkanNativeConfig, appDir: string, options
   checkIconAndSplash(raw, appDir, problems);
   checkPrivacy(raw.privacy, problems);
   checkNative(raw, appDir, problems);
-  const suffix = raw.android?.debugAppIdSuffix;
-  if (suffix !== undefined && (typeof suffix !== "string" || !/^(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(suffix))) {
-    problems.push(`android.debugAppIdSuffix must look like ".debug" (got ${JSON.stringify(suffix)})`);
+  for (const platform of ["android", "ios"] as const) {
+    const suffix = raw[platform]?.debugAppIdSuffix;
+    if (suffix !== undefined && (typeof suffix !== "string" || !/^(\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(suffix)))
+      problems.push(`${platform}.debugAppIdSuffix must look like ".debug" (got ${JSON.stringify(suffix)})`);
   }
   if (raw.app?.build !== undefined && raw.app.build > 2_100_000_000)
     problems.push("app.build must be at most 2100000000 (Android versionCode)");

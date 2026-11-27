@@ -137,6 +137,7 @@ describe("NativeConfig.build", () => {
       ],
       security: { csp: policy() },
       deepLinks: { schemes: ["minimal"], domains: ["example.com"] },
+      ios: { debugAppIdSuffix: ".debug" },
       android: {
         debugAppIdSuffix: ".debug",
         googleServices: path.resolve("/repo/apps/minimal", "secrets/google-services.json"),
@@ -185,6 +186,7 @@ describe("NativeConfig.build", () => {
         android: { manifest: ['<queries><package android:name="com.kakao.talk" /></queries>'] },
         resources: [{ from: path.resolve("/repo/apps/portal", "assets/chime.mp3"), to: "android/res/raw/chime.mp3" }],
       },
+      ios: { debugAppIdSuffix: ".debug" },
       android: { debugAppIdSuffix: ".debug" },
       keyboard: { resize: "none" },
       icon: path.resolve("/repo/apps/portal", "assets/icon.png"),
@@ -503,7 +505,7 @@ describe("NativeConfig.build", () => {
     expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);
   });
 
-  test("ios.hideFormAccessoryBar reaches the iOS shell, and the runtime accepts it; left out, the bar stays", async () => {
+  test("ios.hideFormAccessoryBar reaches the iOS shell next to the dev build's id suffix, and the runtime accepts it", async () => {
     const root = await makeTempRoot();
     const build = (ios?: { hideFormAccessoryBar?: boolean }) =>
       NativeConfig.build({
@@ -516,9 +518,9 @@ describe("NativeConfig.build", () => {
       }).config;
     const config = build({ hideFormAccessoryBar: true });
 
-    expect(config.ios).toEqual({ hideFormAccessoryBar: true });
-    expect(build().ios).toBeUndefined();
-    expect(build({ hideFormAccessoryBar: false }).ios).toBeUndefined();
+    expect(config.ios).toEqual({ debugAppIdSuffix: ".debug", hideFormAccessoryBar: true });
+    expect(build().ios).toEqual({ debugAppIdSuffix: ".debug" });
+    expect(build({ hideFormAccessoryBar: false }).ios).toEqual({ debugAppIdSuffix: ".debug" });
     await mkdir(path.join(root, "web"), { recursive: true });
     await writeFile(path.join(root, "web/index.html"), "<html><head></head><body></body></html>");
     expect((await NativeApi.load(repoApp)).validateConfig(config, { appDir: root })).toEqual([]);

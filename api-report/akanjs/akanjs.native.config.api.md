@@ -109,6 +109,7 @@ export interface AkanNativeConfig {
     };
     ios?: {
         hideFormAccessoryBar?: boolean;
+        debugAppIdSuffix?: string;
     };
     desktop?: {
         quitOnLastWindowClosed?: boolean;

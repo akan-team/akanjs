@@ -101,6 +101,12 @@ function sha(parts: (string | Uint8Array)[]): string {
   return hash.digest("hex");
 }
 
+/** The bundle id: app.id, plus ios.debugAppIdSuffix in debug builds so they install next to the App Store app. */
+export function iosAppId(ctx: BuildContext): string {
+  const { app, ios } = ctx.project.config;
+  return app.id + (ctx.dev ? (ios?.debugAppIdSuffix ?? "") : "");
+}
+
 export async function buildIos(ctx: BuildContext): Promise<string> {
   if (process.platform !== "darwin") throw new CliError("iOS apps can only be built on macOS");
   const { project, outDir } = ctx;
@@ -127,7 +133,7 @@ export async function buildIos(ctx: BuildContext): Promise<string> {
   const entitlements = join(gen, "Entitlements.plist");
   writeFileSync(
     entitlements,
-    toPlist(iosEntitlements(config.app.id, plugins, config.deepLinks.domains, config.native?.ios?.entitlements)),
+    toPlist(iosEntitlements(iosAppId(ctx), plugins, config.deepLinks.domains, config.native?.ios?.entitlements)),
   );
 
   // 1. compile, skipped when no source changed
@@ -233,7 +239,7 @@ export async function buildIos(ctx: BuildContext): Promise<string> {
   const base: Record<string, PlistValue> = {
     CFBundleDevelopmentRegion: "en",
     CFBundleExecutable: module,
-    CFBundleIdentifier: config.app.id,
+    CFBundleIdentifier: iosAppId(ctx),
     CFBundleName: module,
     CFBundleDisplayName: config.app.name,
     CFBundleInfoDictionaryVersion: "6.0",
@@ -266,7 +272,7 @@ export async function buildIos(ctx: BuildContext): Promise<string> {
     ],
     UIViewControllerBasedStatusBarAppearance: true,
     ...(config.deepLinks.schemes.length
-      ? { CFBundleURLTypes: [{ CFBundleURLName: config.app.id, CFBundleURLSchemes: config.deepLinks.schemes }] }
+      ? { CFBundleURLTypes: [{ CFBundleURLName: iosAppId(ctx), CFBundleURLSchemes: config.deepLinks.schemes }] }
       : {}),
     ...assets.infoPlist, // CFBundleIcons from actool
     // O4-3: a dev build for an iPhone fetches pages from the Mac over the LAN (plain http, and the
@@ -348,7 +354,7 @@ async function signForDevice(
   const entitlementsFor = (profile: ProvisioningProfile): Record<string, PlistValue> => {
     const requested: Record<string, PlistValue> = {
       ...iosEntitlements(
-        config.app.id,
+        iosAppId(ctx),
         plugins,
         config.deepLinks.domains,
         config.native?.ios?.entitlements,
@@ -367,7 +373,7 @@ async function signForDevice(
     await signingIdentities(),
     profilePath ? [await readProfile(profilePath)] : await localProfiles(),
     {
-      bundleId: config.app.id,
+      bundleId: iosAppId(ctx),
       kinds,
       identityKind: release ? "distribution" : "development",
       teamId: signing?.teamId ?? env.AKAN_NATIVE_IOS_TEAM,
@@ -683,7 +689,7 @@ async function launchOnDevice(
     throw new CliError(
       `${device.name} is not reachable: connect it with a cable or put it on the same network, and unlock it`,
     );
-  const appId = ctx.project.config.app.id;
+  const appId = iosAppId(ctx);
   log.step(`install on ${device.name} (iOS ${device.os})`);
   await execOrThrow(["xcrun", "devicectl", "device", "install", "app", "--device", device.id, appPath], {
     echo: false,
@@ -738,7 +744,7 @@ export async function launchIos(
   }
   const sim = await ensureSimulator(opts.device, opts.headless);
   const udid = sim.udid;
-  const appId = ctx.project.config.app.id;
+  const appId = iosAppId(ctx);
   log.step(`install on ${udid}`);
   await execOrThrow(["xcrun", "simctl", "install", udid, appPath], { echo: false });
   // simctl passes SIMCTL_CHILD_* to the app without the prefix; dev builds read AKAN_NATIVE_PUBLIC_*.
@@ -772,7 +778,7 @@ export async function runIos(ctx: BuildContext, appPath: string, args: ParsedArg
     headless: args.flags.headless === true,
     device: typeof args.flags.device === "string" ? args.flags.device : undefined,
   });
-  log.ok(`launched ${ctx.project.config.app.id}, logs below. Ctrl+C to stop.`);
+  log.ok(`launched ${iosAppId(ctx)}, logs below. Ctrl+C to stop.`);
   return follow(app);
 }
 
