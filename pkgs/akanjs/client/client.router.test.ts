@@ -412,6 +412,42 @@ describe("router", () => {
     restoreTimeout();
   });
 
+  test("a running app keeps the screen on view under a deep link and lays only the stackOn screens it lacks", async () => {
+    const calls: unknown[] = [];
+    const restoreTimeout = queueTimeouts();
+    const router = await initOrgRouter(calls, {
+      "/:lang/office/org/:orgId": "/org/:orgId",
+      "/:lang/office/org/:orgId/chat/:channelId": "/org/:orgId",
+      "/:lang/office/org/:orgId/chat/:channelId/thread/:threadId": "/org/:orgId/chat/:channelId",
+    });
+    const openOn = (pathname: string, href: string) => {
+      Object.assign(window.location, { pathname });
+      calls.length = 0;
+      expect(router.enterDeepLink(href)).toBe(true);
+      flushTimeouts();
+      flushTimeouts();
+      return (calls as [string, string][]).map(([kind, to]) => `${kind} ${to}`);
+    };
+
+    expect(openOn("/en/office/home", "/org/o1/chat/c1/thread/t1")).toEqual([
+      "push /en/office/org/o1",
+      "push /en/office/org/o1/chat/c1",
+      "push /en/office/org/o1/chat/c1/thread/t1",
+    ]);
+    expect(openOn("/en/office/org/o1", "/org/o1/chat/c1")).toEqual(["push /en/office/org/o1/chat/c1"]);
+    expect(openOn("/en/office/org/o1/chat/c1", "/org/o1/chat/c1/thread/t1")).toEqual([
+      "push /en/office/org/o1/chat/c1/thread/t1",
+    ]);
+    expect(openOn("/en/office/org/o1/chat/c1", "/org/o1/chat/c1?threadId=t1")).toEqual([
+      "push /en/office/org/o1/chat/c1?threadId=t1",
+    ]);
+    expect(openOn("/en/office/org/o2/chat/c9", "/org/o1/chat/c1")).toEqual([
+      "push /en/office/org/o1",
+      "push /en/office/org/o1/chat/c1",
+    ]);
+    restoreTimeout();
+  });
+
   test("an SSR push leaves the entry it departs unstamped, and canGoBack reads the entry the RSC commit writes", async () => {
     envState.side = "client";
     installClientWindow("/en/org");

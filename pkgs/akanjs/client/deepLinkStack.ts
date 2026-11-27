@@ -52,6 +52,13 @@ export class DeepLinkStack {
     return under;
   }
 
+  /** The part of `path`'s `stackOn` chain above `currentPath`, the screen on view: all of it when that is not in it. */
+  missingUnder(path: string, currentPath: string) {
+    if (currentPath === path) return [];
+    const under = this.underOf(path);
+    return under.slice(under.indexOf(currentPath) + 1);
+  }
+
   #match(path: string): RouteMatch | null {
     for (const route of this.#routes) {
       const params = matchRoutePattern(route, path);

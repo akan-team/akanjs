@@ -519,16 +519,20 @@ class Router {
   enterDeepLink(href: string, options: DeepLinkOptions = {}) {
     if (this.#deferredUntilInit(() => this.enterDeepLink(href, options))) return true;
     this.#checkInitialized();
-    if (!options.resetStack) {
-      this.push(normalizeDeepLinkHref(href), options);
-      return true;
-    }
-    const stack = this.resolveDeepLinkStack(href);
+    const { resetStack, ...routeOptions } = options;
+    const linkHref = normalizeDeepLinkHref(href);
+    const [linkPath, currentPath] = [splitHref(linkHref).path, csrLocation.pathname].map((path) =>
+      this.#routePathOfLink(path),
+    );
+    //? A running app keeps the screen on view under the link and lays above it only the `stackOn` screens it lacks.
+    const stack = resetStack
+      ? this.resolveDeepLinkStack(href)
+      : [...this.#deepLinks.missingUnder(linkPath, currentPath), linkHref];
     if (stack.length === 0) return false;
-    const { resetStack: _resetStack, ...routeOptions } = options;
+    const kind = resetStack ? "replace" : "push";
     //? Asked once: the steps under the page are one move.
-    this.#guarded("replace", normalizeDeepLinkHref(href), () => {
-      const moved = this.#move("replace", stack[0], routeOptions);
+    this.#guarded(kind, linkHref, () => {
+      const moved = this.#move(kind, stack[0], routeOptions);
       stack.slice(1).forEach((target, index) => {
         setTimeout(
           () => this.#track(this.#move("push", target, routeOptions)),
