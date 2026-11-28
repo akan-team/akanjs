@@ -60,7 +60,8 @@ export class PipelineDefinition {
   static #mayTakeOta(pipeline: AppPipelineConfig | null) {
     if (typeof pipeline === "function") return true;
     const stages: unknown = pipeline?.stages;
-    return Array.isArray(stages) && stages.some((stage) => (stage as { use?: unknown } | null)?.use === "ota");
+    const uses = Array.isArray(stages) ? stages.map((stage) => (stage as { use?: unknown } | null)?.use) : [];
+    return uses.includes("ota") || uses.includes("desktop-ota");
   }
 
   //? The whole app config, libs included: a target's `updates` may come from `native.updates` or its own section.

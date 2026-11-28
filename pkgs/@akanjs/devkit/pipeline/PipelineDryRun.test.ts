@@ -103,6 +103,60 @@ describe("PipelineDryRun", () => {
     );
   });
 
+  test("an ota and a desktop-ota stage say what they pack, a desktop build as os-arch", () => {
+    const result = PipelineCompiler.compile({
+      context: { ...context, apps: ["web"] },
+      workspaceApps: ["web"],
+      workspace: null,
+      apps: new Map([
+        [
+          "web",
+          {
+            file: "apps/web/akan.config.ts",
+            sha256: sha,
+            pipeline: {
+              stages: [
+                { use: "ota", platforms: ["android"] },
+                {
+                  use: "desktop-ota",
+                  targets: ["store"],
+                  platforms: [
+                    { os: "macos", arch: "arm64" },
+                    { os: "windows", arch: "x64" },
+                  ],
+                  when: { branch: "main" },
+                },
+              ],
+            },
+          },
+        ],
+      ]),
+      nativeTargets: new Map([
+        [
+          "web",
+          {
+            targets: [
+              { name: "store", updates: true },
+              { name: "pilot", updates: true },
+            ],
+          },
+        ],
+      ]),
+      akanVersion: "3.0.3",
+    });
+    expect(PipelineDryRun.render(result)).toBe(
+      [
+        "plan v1 · branch develop · env develop · trigger push · apps web",
+        "from apps/web/akan.config.ts",
+        "",
+        "prepare  (executor)                checkout · env · install · plan",
+        "deploy   ota          OTA          web (store, pilot × android)  action ota",
+        'deploy   desktop-ota  Desktop OTA  web (store × macos-arm64, windows-x64; skipped: branch "develop" does not match "main")  action desktop-ota',
+        "finish   (executor)                cleanup",
+      ].join("\n"),
+    );
+  });
+
   test("a failed plan prints its diagnostics", () => {
     const rendered = PipelineDryRun.render({
       ok: false,

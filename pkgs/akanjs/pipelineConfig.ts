@@ -1,5 +1,6 @@
 import type {
   PipelineActionName,
+  PipelineDesktopOtaPlatform,
   PipelineMilestone,
   PipelineOtaPlatform,
   PipelinePlanContext,
@@ -62,7 +63,7 @@ export interface PipelineShellStageInput extends PipelineStageBase {
 
 /** No action parameters yet: rollout wait and prepull stay the executor's settings. */
 export interface PipelineActionStageInput extends PipelineStageBase {
-  use: Exclude<PipelineActionName, "ota">;
+  use: Exclude<PipelineActionName, "ota" | "desktop-ota">;
   name?: string;
   retry?: number;
   targets?: never;
@@ -91,7 +92,29 @@ export interface PipelineOtaStageInput extends PipelineStageBase {
   matrix?: never;
 }
 
-export type AppPipelineStageInput = PipelineActionStageInput | PipelineOtaStageInput | PipelineShellStageInput;
+/**
+ * A desktop app's update, packed whole per target and platform entry for the executor to sign and publish. Every target
+ * named must declare `native.updates`.
+ */
+export interface PipelineDesktopOtaStageInput extends PipelineStageBase {
+  use: "desktop-ota";
+  name?: string;
+  retry?: number;
+  /** Default: every native target that declares `native.updates`. */
+  targets?: readonly string[];
+  /** No default: each entry is packed on a build host of its own OS. A macOS app is arm64 only. */
+  platforms: readonly PipelineDesktopOtaPlatform[];
+  sh?: never;
+  steps?: never;
+  parallel?: never;
+  matrix?: never;
+}
+
+export type AppPipelineStageInput =
+  | PipelineActionStageInput
+  | PipelineOtaStageInput
+  | PipelineDesktopOtaStageInput
+  | PipelineShellStageInput;
 
 export interface AppPipelineInput {
   schemaVersion?: 1;

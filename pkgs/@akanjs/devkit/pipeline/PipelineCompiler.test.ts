@@ -550,6 +550,230 @@ describe("PipelineCompiler", () => {
     });
   });
 
+  describe("desktop-ota", () => {
+    const webTargets: Record<string, PipelineNativeTargets> = {
+      web: {
+        targets: [
+          { name: "default", updates: true },
+          { name: "pilot", updates: true },
+          { name: "kiosk", updates: false },
+        ],
+      },
+    };
+    const mac = { os: "macos", arch: "arm64" } as const;
+    const windows = { os: "windows", arch: "x64" } as const;
+    const desktopPhase = (plan: PipelinePlan) => plan.phases.find((phase) => phase.action === "desktop-ota");
+
+    test("is opt-in: zero-config and an app that takes only ota never pack a desktop update", () => {
+      expect(desktopPhase(planOf(compile({ nativeTargets: webTargets })))).toBeUndefined();
+      const phones = planOf(compile({ nativeTargets: webTargets, apps: { web: { stages: [{ use: "ota" }] } } }));
+      expect(desktopPhase(phones)).toBeUndefined();
+    });
+
+    test("runs after ota, one pack per target with updates and platform entry, with its own slot behind it", () => {
+      const plan = planOf(
+        compile({
+          nativeTargets: webTargets,
+          apps: {
+            web: {
+              stages: [
+                { use: "build" },
+                { use: "docker" },
+                { use: "deploy" },
+                { use: "ota" },
+                { name: "Notify phones", sh: "echo phones" },
+                { use: "desktop-ota", platforms: [mac, windows, { os: "linux", arch: "arm64" }] },
+                { name: "Notify desktops", sh: "echo desktops" },
+                { name: "Announce", sh: "echo released" },
+              ],
+            },
+          },
+        }),
+      );
+      expect(phaseIds(plan)).toEqual([
+        "build",
+        "docker",
+        "deploy",
+        "ota",
+        "after-ota",
+        "desktop-ota",
+        "after-desktop-ota",
+        "after-desktop-ota-2",
+      ]);
+      expect(desktopPhase(plan)).toMatchObject({
+        slot: "desktop-ota",
+        milestone: "deploy",
+        name: "Desktop OTA",
+        order: "parallel",
+      });
+      expect(desktopPhase(plan)?.stages).toEqual([
+        {
+          id: "web:desktop-ota",
+          name: "web",
+          description: null,
+          app: "web",
+          milestone: "deploy",
+          skip: null,
+          runtimeWhen: null,
+          allowFailure: false,
+          timeoutSeconds: null,
+          steps: [
+            {
+              id: "web:desktop-ota/desktop-ota",
+              name: "desktop ota web",
+              timeoutSeconds: null,
+              retry: null,
+              allowFailure: false,
+              kind: "action",
+              actionVersion: 1,
+              action: "desktop-ota",
+              with: {
+                app: "web",
+                targets: ["default", "pilot"],
+                platforms: [mac, windows, { os: "linux", arch: "arm64" }],
+              },
+            },
+          ],
+        },
+      ]);
+      const stagesOf = (id: string) => plan.phases.find((phase) => phase.id === id)?.stages.map((stage) => stage.id);
+      expect(stagesOf("after-ota")).toEqual(["web:notify-phones"]);
+      expect(stagesOf("after-desktop-ota")).toEqual(["web:notify-desktops"]);
+      expect(stagesOf("after-desktop-ota-2")).toEqual(["web:announce"]);
+      expect(plan.phases.find((phase) => phase.id === "after-desktop-ota")).toMatchObject({
+        slot: "after-desktop-ota",
+        name: "After desktop OTA",
+        milestone: "deploy",
+        action: null,
+      });
+    });
+
+    test("an app with no other action packs on its own, and named targets, retry and timeout are kept", () => {
+      const plan = planOf(
+        compile({
+          ctx: context({ apps: ["web"] }),
+          nativeTargets: webTargets,
+          apps: {
+            web: {
+              stages: [{ use: "desktop-ota", targets: ["pilot"], platforms: [windows], timeout: "30m", retry: 2 }],
+            },
+          },
+        }),
+      );
+      expect(phaseIds(plan)).toEqual(["desktop-ota"]);
+      expect(desktopPhase(plan)?.stages[0]).toMatchObject({ skip: null, timeoutSeconds: 1800 });
+      expect(desktopPhase(plan)?.stages[0]?.steps[0]).toMatchObject({
+        retry: { attempts: 2, delaySeconds: 0 },
+        with: { app: "web", targets: ["pilot"], platforms: [windows] },
+      });
+    });
+
+    test("is skipped with the app's earlier action, ota included, and takes when.changed like any action", () => {
+      const plan = planOf(
+        compile({
+          ctx: context({ branch: "develop", env: "develop", apps: ["web"] }),
+          nativeTargets: webTargets,
+          apps: {
+            web: {
+              stages: [
+                { use: "ota", when: { branch: "main" } },
+                { use: "desktop-ota", platforms: [mac], when: { changed: ["apps/web/**"] } },
+              ],
+            },
+          },
+        }),
+      );
+      expect(desktopPhase(plan)?.stages[0]).toMatchObject({
+        skip: { reason: "ota of web is skipped" },
+        runtimeWhen: { changed: ["apps/web/**"] },
+      });
+    });
+
+    test("a workspace stage may not take the id of its phase or of the slot behind it", () => {
+      for (const name of ["Desktop OTA", "After desktop OTA", "After desktop OTA 2"])
+        expect(codes(compile({ workspace: { before: [{ name, sh: "x" }] } }))).toEqual(["pipeline.id.reserved"]);
+    });
+
+    const desktopOta = (
+      stage: Record<string, unknown>,
+      nativeTargets: Record<string, PipelineNativeTargets> = webTargets,
+    ) =>
+      compile({
+        ctx: context({ apps: ["web"] }),
+        nativeTargets,
+        apps: { web: { stages: [{ use: "desktop-ota", platforms: [mac], ...stage } as never] } },
+      });
+
+    test("refuses targets without native.updates, unknown targets, and apps whose targets could not be read", () => {
+      const without = desktopOta({ targets: ["default", "kiosk"] });
+      expect(without.ok).toBe(false);
+      expect(without.diagnostics).toEqual([
+        expect.objectContaining({ code: "pipeline.desktopOta.noUpdates", path: "pipeline.stages[0].targets" }),
+      ]);
+      expect(without.diagnostics[0]?.message).toContain("`desktop-ota` packs updates");
+      expect(without.diagnostics[0]?.message).toContain('"kiosk"');
+      expect(codes(desktopOta({ targets: ["ghost"] }))).toEqual(["pipeline.desktopOta.unknownTarget"]);
+      expect(codes(desktopOta({}, { web: { targets: [{ name: "default", updates: false }] } }))).toEqual([
+        "pipeline.desktopOta.noUpdates",
+      ]);
+      expect(codes(desktopOta({}, { web: { error: "boom" } }))).toEqual(["pipeline.desktopOta.targets"]);
+      expect(codes(desktopOta({}, {}))).toEqual(["pipeline.desktopOta.targets"]);
+      expect(codes(desktopOta({ targets: [] }))).toEqual(["pipeline.schema.invalid"]);
+    });
+
+    test("refuses a stage with no platforms, a platform listed twice, and a macOS x64 build", () => {
+      const refused = (platforms: unknown, code: string, path: string) => {
+        const result = desktopOta({ platforms });
+        expect(result.ok).toBe(false);
+        expect(result.diagnostics).toEqual([expect.objectContaining({ severity: "error", code, path })]);
+        return result.diagnostics[0]?.message;
+      };
+      const at = "pipeline.stages[0].platforms";
+      expect(refused(undefined, "pipeline.desktopOta.noPlatforms", at)).toContain("no default");
+      const untyped: AppPipelineConfig = {
+        // @ts-expect-error `platforms` is required: `desktop-ota` has no default
+        stages: [{ use: "desktop-ota" }],
+      };
+      expect(codes(compile({ nativeTargets: webTargets, apps: { web: untyped } }))).toEqual([
+        "pipeline.desktopOta.noPlatforms",
+      ]);
+      refused([], "pipeline.desktopOta.noPlatforms", at);
+      expect(refused([mac, windows, { ...mac }], "pipeline.desktopOta.duplicatePlatform", `${at}[2]`)).toBe(
+        '{ os: "macos", arch: "arm64" } is listed twice',
+      );
+      expect(
+        refused([windows, { os: "macos", arch: "x64" }], "pipeline.desktopOta.unsupportedPlatform", `${at}[1]`),
+      ).toContain("a macOS app is built for arm64 only");
+      expect(refused([{ os: "ios", arch: "arm64" }], "pipeline.schema.invalid", `${at}[0].os`)).toBe(
+        '"ios" is not one of macos, windows, linux',
+      );
+      expect(refused([mac, { os: "linux", arch: "ia32" }], "pipeline.schema.invalid", `${at}[1].arch`)).toBe(
+        '"ia32" is not one of arm64, x64',
+      );
+      refused(["macos"], "pipeline.schema.invalid", `${at}[0]`);
+      refused("macos", "pipeline.schema.invalid", at);
+      refused([{ ...mac, sign: true }], "pipeline.schema.unknownKey", `${at}[0].sign`);
+    });
+
+    test("keeps its own place and keys: once, after ota, and no platform objects on ota", () => {
+      const stages = (...list: Record<string, unknown>[]) =>
+        codes(
+          compile({
+            ctx: context({ apps: ["web"] }),
+            nativeTargets: webTargets,
+            apps: { web: { stages: list as never } },
+          }),
+        );
+      expect(stages({ use: "desktop-ota", platforms: [mac] }, { use: "ota" })).toEqual(["pipeline.action.order"]);
+      expect(stages({ use: "desktop-ota", platforms: [mac] }, { use: "desktop-ota", platforms: [windows] })).toContain(
+        "pipeline.action.duplicate",
+      );
+      expect(stages({ use: "ota", platforms: [mac] })).toContain("pipeline.schema.invalid");
+      expect(stages({ use: "desktop-ota", platforms: ["ios"] })).toEqual(["pipeline.schema.invalid"]);
+      expect(stages({ use: "desktop-ota", platforms: [mac], arch: "arm64" })).toContain("pipeline.schema.unknownKey");
+    });
+  });
+
   test("the context is echoed, and an unknown or doubled app is refused rather than corrected", () => {
     expect(planOf(compile({ ctx: context({ apps: ["web", "api"] }) })).context.apps).toEqual(["web", "api"]);
     expect(codes(compile({ ctx: context({ apps: ["web", "web"] }) }))).toContain("pipeline.context.duplicateApp");

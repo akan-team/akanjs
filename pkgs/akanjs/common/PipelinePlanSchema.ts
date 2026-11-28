@@ -7,6 +7,7 @@ import {
   type PipelinePlan,
   type PipelinePlanActionStep,
   type PipelinePlanContext,
+  type PipelinePlanDesktopOtaStep,
   type PipelinePlanOtaStep,
   type PipelinePlanPhase,
   type PipelinePlanPost,
@@ -18,6 +19,8 @@ import {
   type PipelinePlanStep,
   pipelineActionNames,
   pipelineActions,
+  pipelineDesktopOtaArchs,
+  pipelineDesktopOtaSystems,
   pipelineMilestones,
   pipelineOtaPlatforms,
   pipelinePlanLimits,
@@ -366,6 +369,8 @@ export class PipelinePlanSchema {
     const actionVersion = pipelineActions[action].version;
     if (action === "ota")
       return { ...base, kind: "action", action, actionVersion, with: this.#otaWith(step.with, path) };
+    if (action === "desktop-ota")
+      return { ...base, kind: "action", action, actionVersion, with: this.#desktopOtaWith(step.with, path) };
     const app = this.#read.object(step.with, `${path}.with`, ["app"]).app;
     return {
       ...base,
@@ -382,14 +387,33 @@ export class PipelinePlanSchema {
     const platforms = this.#read
       .list(raw.platforms, `${path}.with.platforms`)
       .map((platform, idx) => this.#read.oneOf(platform, `${path}.with.platforms[${idx}]`, pipelineOtaPlatforms));
-    for (const [key, list] of [
-      ["targets", targets],
-      ["platforms", platforms],
-    ] as const) {
-      if (!list.length) this.#fail(`${path}.with.${key}`, "may not be empty");
-      if (new Set(list).size !== list.length) this.#fail(`${path}.with.${key}`, "lists one twice");
-    }
+    this.#eachOnce(targets, `${path}.with.targets`);
+    this.#eachOnce(platforms, `${path}.with.platforms`);
     return { app: this.#read.string(raw.app, `${path}.with.app`), targets, platforms };
+  }
+
+  #desktopOtaWith(value: unknown, path: string): PipelinePlanDesktopOtaStep["with"] {
+    const raw = this.#read.object(value, `${path}.with`, ["app", "targets", "platforms"]);
+    const targets = this.#stringList(raw.targets, `${path}.with.targets`);
+    const platforms = this.#read.list(raw.platforms, `${path}.with.platforms`).map((platform, idx) => {
+      const entryPath = `${path}.with.platforms[${idx}]`;
+      const entry = this.#read.object(platform, entryPath, ["os", "arch"]);
+      const os = this.#read.oneOf(entry.os, `${entryPath}.os`, pipelineDesktopOtaSystems);
+      const arch = this.#read.oneOf(entry.arch, `${entryPath}.arch`, pipelineDesktopOtaArchs);
+      if (os === "macos" && arch === "x64") this.#fail(entryPath, "a macOS app is built for arm64 only");
+      return { os, arch };
+    });
+    this.#eachOnce(targets, `${path}.with.targets`);
+    this.#eachOnce(
+      platforms.map(({ os, arch }) => `${os}-${arch}`),
+      `${path}.with.platforms`,
+    );
+    return { app: this.#read.string(raw.app, `${path}.with.app`), targets, platforms };
+  }
+
+  #eachOnce(items: readonly string[], path: string) {
+    if (!items.length) this.#fail(path, "may not be empty");
+    if (new Set(items).size !== items.length) this.#fail(path, "lists one twice");
   }
 
   #post(value: unknown, path: string): PipelinePlanPost {

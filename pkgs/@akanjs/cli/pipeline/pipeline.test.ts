@@ -258,6 +258,53 @@ describe("akan pipeline", () => {
     expect(dryRun.stdout).toContain("web (store × android)");
   });
 
+  test("desktop-ota reads the app's native targets, plans a pack per target and platform, and refuses macOS x64", async () => {
+    const updates = `{ url: "https://cdn.example.com/ota", publicKey: "${Buffer.alloc(32, 7).toString("base64")}" }`;
+    const root = await workspaceWith({
+      "apps/web/akan.config.ts": `export default {
+  native: { targets: { store: { updates: ${updates} }, kiosk: {} } },
+  pipeline: {
+    stages: [
+      { use: "build" },
+      { use: "desktop-ota", platforms: [{ os: "macos", arch: "arm64" }, { os: "windows", arch: "x64" }] },
+      { name: "Announce", sh: "echo released" },
+    ],
+  },
+};
+`,
+      "apps/api/akan.config.ts": `export default {
+  native: { targets: { store: { updates: ${updates} } } },
+  pipeline: { stages: [{ use: "desktop-ota", platforms: [{ os: "macos", arch: "x64" }] }] },
+};
+`,
+    });
+    const out = path.join(root, "plan.json");
+    const both = await cli(root, ["plan", "--out", out, ...runFlags]);
+    expect(both.code).toBe(1);
+    const failed = PipelinePlanSchema.parseText(await readFile(out, "utf8"));
+    expect(failed.diagnostics.map(({ code, file, path: where }) => [code, file, where])).toEqual([
+      ["pipeline.desktopOta.unsupportedPlatform", "apps/api/akan.config.ts", "pipeline.stages[0].platforms[0]"],
+    ]);
+    const web = await cli(root, ["plan", "--out", out, ...runFlags.slice(0, 2), "--apps", "web"]);
+    expect({ code: web.code, stderr: web.stderr }).toEqual({ code: 0, stderr: "" });
+    const result = PipelinePlanSchema.parseText(await readFile(out, "utf8"));
+    if (!result.ok) throw new Error(JSON.stringify(result.diagnostics));
+    expect(result.plan.phases.map((phase) => phase.id)).toEqual(["build", "desktop-ota", "after-desktop-ota"]);
+    expect(result.plan.phases.find((phase) => phase.id === "desktop-ota")?.stages[0]?.steps[0]).toMatchObject({
+      action: "desktop-ota",
+      with: {
+        app: "web",
+        targets: ["store"],
+        platforms: [
+          { os: "macos", arch: "arm64" },
+          { os: "windows", arch: "x64" },
+        ],
+      },
+    });
+    const dryRun = await cli(root, ["dry-run", "--branch", "main", "--apps", "web"]);
+    expect(dryRun.stdout).toContain("web (store × macos-arm64, windows-x64)");
+  });
+
   test("plan without --out keeps stdout to the envelope: what loading the configs logs goes to stderr", async () => {
     const updates = `{ url: "https://cdn.example.com/ota", publicKey: "${Buffer.alloc(32, 7).toString("base64")}" }`;
     const root = await workspaceWith({

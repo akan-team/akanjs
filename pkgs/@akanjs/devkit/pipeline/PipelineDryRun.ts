@@ -68,16 +68,23 @@ export class PipelineDryRun {
 
   static #stage(phase: PipelinePlanPhase, stage: PipelinePlanStage) {
     const label = stage.app && !phase.action && stage.name !== stage.app ? `${stage.app}:${stage.name}` : stage.name;
-    const ota = stage.steps.find((step) => step.kind === "action" && step.action === "ota");
     const notes = [
-      ota?.kind === "action" && ota.action === "ota"
-        ? `${ota.with.targets.join(", ")} × ${ota.with.platforms.join(", ")}`
-        : null,
+      PipelineDryRun.#packs(stage),
       stage.skip ? `skipped: ${stage.skip.reason}` : null,
       stage.allowFailure ? "may fail" : null,
       stage.runtimeWhen ? `if changed: ${stage.runtimeWhen.changed.join(", ")}` : null,
     ].filter(Boolean);
     return notes.length ? `${label} (${notes.join("; ")})` : label;
+  }
+
+  static #packs(stage: PipelinePlanStage) {
+    for (const step of stage.steps) {
+      if (step.kind !== "action" || (step.action !== "ota" && step.action !== "desktop-ota")) continue;
+      const platforms =
+        step.action === "ota" ? step.with.platforms : step.with.platforms.map(({ os, arch }) => `${os}-${arch}`);
+      return `${step.with.targets.join(", ")} × ${platforms.join(", ")}`;
+    }
+    return null;
   }
 
   static diagnostics(diagnostics: readonly PipelineDiagnostic[]) {

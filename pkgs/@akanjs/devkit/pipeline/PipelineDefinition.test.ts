@@ -79,6 +79,31 @@ describe("PipelineDefinition", () => {
     );
   });
 
+  test("an app's native targets are read when its pipeline takes ota or desktop-ota, and only then", async () => {
+    const updates = `{ url: "https://cdn.example.com/ota", publicKey: "${Buffer.alloc(32, 7).toString("base64")}" }`;
+    const native = `native: { targets: { store: { updates: ${updates} }, kiosk: {} } }`;
+    const appConfig = (stage: string) => `export default { ${native}, pipeline: { stages: [${stage}] } };\n`;
+    await withWorkspace(
+      {
+        "package.json": '{ "name": "repo", "version": "1.0.0" }\n',
+        "apps/desk/akan.config.ts": appConfig('{ use: "desktop-ota", platforms: [{ os: "linux", arch: "x64" }] }'),
+        "apps/phone/akan.config.ts": appConfig('{ use: "ota" }'),
+        "apps/web/akan.config.ts": appConfig('{ use: "build" }'),
+      },
+      async (workspace) => {
+        const definition = await PipelineDefinition.load(workspace, ["desk", "phone", "web"]);
+        const targets = [
+          { name: "store", updates: true },
+          { name: "kiosk", updates: false },
+        ];
+        expect([...definition.nativeTargets]).toEqual([
+          ["desk", { targets }],
+          ["phone", { targets }],
+        ]);
+      },
+    );
+  });
+
   test("a config that cannot load is an error naming the file, never a silent default", async () => {
     await withWorkspace(
       {
