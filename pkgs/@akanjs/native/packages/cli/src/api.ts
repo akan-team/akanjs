@@ -2,51 +2,50 @@
 // another tool (the akanjs devkit first). The config is an object, results and failures are values,
 // and output goes to the caller's log sink; nothing prints, exits or depends on the working folder.
 
-import { mkdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
+import {
+  checkPublishUpdate,
+  compareBundles,
+  packAppUpdate,
+  packUpdate,
+  publishUpdate,
+  republishUpdate,
+  updateKeygen,
+} from "./api-updates.ts";
 import { type DoctorCheck, doctorChecks, hostPlatforms, runFixes } from "./commands/doctor.ts";
 import type { AkanNativeConfig } from "./config.ts";
-import { makeNativeBoot } from "./lib/boot.ts";
-import { BUNDLE_FILE, compatProblems, readBundleInfo } from "./lib/compat.ts";
+import {
+  AkanNativeError,
+  type AkanNativeErrorCode,
+  type Artifact,
+  type BuildResult,
+  buildIn,
+  type TaskOptions,
+  task,
+  toAkanNativeError,
+} from "./lib/api-task.ts";
 import { requestedDistribution } from "./lib/distribution.ts";
-import { CancelledError, withSignal } from "./lib/exec.ts";
 import { type HmrContext, lanAddress, resolveDevEntry, startHmrServer } from "./lib/hmr.ts";
 import type { Device, DeviceSelector, Launched } from "./lib/launch.ts";
-import { CliError, type LogEvent, type LogSink, log, ToolchainError, ToolError, withLogSink } from "./lib/log.ts";
+import { CliError, type LogEvent, type LogSink, log } from "./lib/log.ts";
 import {
   type MacosBuild,
   type MacosNotarization,
   type MacosSigning,
   macosDistributionFromEnv,
 } from "./lib/macossigning.ts";
-import {
-  type AndroidSigning,
-  type BuildContext,
-  type BuildOptions,
-  type BuildProfile,
-  type IosBuild,
-  type IosSigning,
-  type IosSigningResult,
-  type LinuxBuild,
-  prepare,
-  SigningError,
-  WebBuildError,
-  WebInputError,
-  type WindowsBuild,
+import type {
+  AndroidSigning,
+  BuildContext,
+  BuildProfile,
+  IosBuild,
+  IosSigning,
+  IosSigningResult,
+  LinuxBuild,
+  WindowsBuild,
 } from "./lib/prepare.ts";
 import { ConfigError, type Project, projectFromConfig } from "./lib/project.ts";
-import { assertServerOfChannel, assertSigningKey, publishRelease, releaseRevocations } from "./lib/publish.ts";
-import {
-  assertChannel,
-  type DesktopArch,
-  generateUpdateKey,
-  keyIdOf,
-  type UpdateManifest,
-  updateKeyPath,
-  validateUpdates,
-  webManifest,
-  writeWebBundle,
-} from "./lib/updates.ts";
+import type { DesktopArch } from "./lib/updates.ts";
 import { type WindowsSigning, windowsSigningFromEnv } from "./lib/windowssigning.ts";
 import { androidDevices, launchAndroid } from "./platforms/android.ts";
 import { PLATFORM_TARGETS, type TargetPlatform } from "./platforms/index.ts";
@@ -56,12 +55,14 @@ export {
   MAX_REVOKE_KEYS,
   MAX_UPDATE_MANIFEST,
   UPDATE_REPORT_BATCH,
+  UPDATE_REPORT_DESKTOP_REASONS,
   UPDATE_REPORT_EVENTS,
   UPDATE_REPORT_LIMIT,
   UPDATE_REPORT_REASONS,
   type UpdateDecision,
   type UpdateDecisionInput,
   type UpdateReportBody,
+  type UpdateReportDesktopReason,
   type UpdateReportEntry,
   type UpdateReportEvent,
   type UpdateReportOutcome,
@@ -71,17 +72,32 @@ export {
 } from "../../core/src/kernel.ts";
 /** How a desktop app's launcher keeps the server it carries running: desktop.server's restart and watchdog. */
 export type { ServerPolicy } from "../../desktop/src/server.ts";
+export type { AppUpdatePack, PublishCheckOptions, PublishResult, RepublishResult } from "./api-updates.ts";
 /** A build's bundle.json, and the manifest and envelope of a release, as a signer or server reads them. */
 export type { BundleInfo, NativeApi } from "./lib/compat.ts";
-export type { UpdateEnvelope, UpdateFile, UpdateManifest } from "./lib/updates.ts";
+export type { ManifestRelease, UpdateEnvelope, UpdateFile, UpdateManifest } from "./lib/updates.ts";
 /**
- * A phone's update protocol as the apps run it, for a signer or a server that checks what it publishes or registers:
- * the envelope's verification, the keyId of a public key, and what a verified manifest means to a binary.
+ * The update protocol as the apps run it, for a signer or a server that checks what it publishes or registers: the
+ * envelope's verification, the keyId of a public key, and what a verified manifest means to a binary. And what signs
+ * a pack: its template made a release's manifest (fillManifest), that manifest's exact bytes (manifestBytes), and
+ * their envelope from a key file (sealManifest) or from a signature made elsewhere (updateEnvelope).
  */
-export { keyIdOf, openEnvelope, verifyManifest } from "./lib/updates.ts";
+export {
+  fillManifest,
+  keyIdOf,
+  manifestBytes,
+  openEnvelope,
+  sealManifest,
+  updateEnvelope,
+  verifyManifest,
+} from "./lib/updates.ts";
+export type { AppSigner } from "./platforms/desktop-update.ts";
 export type {
   AkanNativeConfig,
+  AkanNativeErrorCode,
   AndroidSigning,
+  Artifact,
+  BuildResult,
   DesktopArch,
   Device,
   DeviceSelector,
@@ -95,6 +111,7 @@ export type {
   MacosNotarization,
   MacosSigning,
   TargetPlatform,
+  TaskOptions,
   WindowsBuild,
   WindowsSigning,
 };
@@ -103,88 +120,22 @@ export type {
  * environment (the API itself reads no variable): pass the result as `macos`.
  */
 /** The Authenticode settings the AKAN_NATIVE_WINDOWS_* variables name: pass the result as `windows.signing`. */
-export { macosDistributionFromEnv, requestedDistribution, windowsSigningFromEnv };
+export {
+  AkanNativeError,
+  checkPublishUpdate,
+  compareBundles,
+  macosDistributionFromEnv,
+  packAppUpdate,
+  packUpdate,
+  publishUpdate,
+  republishUpdate,
+  requestedDistribution,
+  updateKeygen,
+  windowsSigningFromEnv,
+};
 
 /** semver of this API. A caller checks the major before it relies on anything here. */
-export const API_VERSION = "0.13.0";
-
-export type AkanNativeErrorCode =
-  | "CONFIG_INVALID"
-  | "TOOLCHAIN_MISSING"
-  | "WEB_INPUT_INVALID"
-  | "WEB_BUILD_FAILED"
-  | "NATIVE_BUILD_FAILED"
-  | "SIGNING_FAILED"
-  | "DEVICE_FAILED"
-  | "CANCELLED"
-  | "INTERNAL";
-
-export class AkanNativeError extends Error {
-  constructor(
-    readonly code: AkanNativeErrorCode,
-    message: string,
-    readonly details: { problems?: string[]; hint?: string; logTail?: string[]; cause?: unknown } = {},
-  ) {
-    super(message);
-    this.name = "AkanNativeError";
-  }
-  get problems(): string[] | undefined {
-    return this.details.problems;
-  }
-  get hint(): string | undefined {
-    return this.details.hint;
-  }
-  get logTail(): string[] | undefined {
-    return this.details.logTail;
-  }
-}
-
-export interface TaskOptions {
-  /** Base of the config's relative paths (web.dir, icon, relative plugin folders). */
-  appDir: string;
-  /** What akan-native.config.ts would export. No file is read. */
-  config: AkanNativeConfig;
-  platform: TargetPlatform;
-  /** Default <appDir>/.akan/native/build/<platform>. */
-  outDir?: string;
-  /** Picks .env.<mode>. Default "production" for build, "development" for run. */
-  mode?: string;
-  /** false: no .env files from appDir. Default true. */
-  envFiles?: boolean;
-  /** PUBLIC_ values above .env files and config.env. */
-  env?: Record<string, string>;
-  /** Skip config.web.build and use web.dir as it is. */
-  skipWebBuild?: boolean;
-  /** Where plugin package names resolve from. Default appDir. */
-  resolveFrom?: string;
-  /** Receives the log. Without it nothing is logged. */
-  log?: LogSink;
-  /** Kills the running tools and rejects with CANCELLED. */
-  signal?: AbortSignal;
-}
-
-export interface Artifact {
-  kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
-  path: string;
-  signing: "none" | "adhoc" | "debug" | "development" | "distribution";
-  device?: "simulator" | "device";
-}
-
-export interface BuildResult {
-  platform: TargetPlatform;
-  profile: BuildProfile;
-  outDir: string;
-  artifacts: Artifact[];
-  warnings: string[];
-  durationMs: number;
-  /** iPhone builds: the identity and provisioning profile found (docs/api.md §3 "Finding the signing"). */
-  signing?: IosSigningResult;
-  /**
-   * Android builds that contain pinned libraries (push's FCM module, iap): the license notices file
-   * (akan-native-licenses.json, also served in the app at /akan-native-licenses.json).
-   */
-  licenses?: string;
-}
+export const API_VERSION = "0.14.0";
 
 export interface RunningApp {
   build: BuildResult;
@@ -259,182 +210,6 @@ export function release(
     const android = { signing: options.signing, bundle: formats.includes("aab") };
     return (await buildIn(options, "release", options.mode ?? "production", warnings, { android })).result;
   });
-}
-
-/**
- * An unsigned web bundle update (UP-2), for a signer that keeps the key off the build machine. Writes
- * `<out>/files/<sha256>`, `<out>/manifest.template.json` (the manifest with `channel`, `sequence` and `bundle` left
- * empty for the signer) and `<out>/bundle.json` (the native API the bundle needs, UP-3). Prepares the web bundle as a
- * release build does, without building the native app.
- */
-export function packUpdate(
-  options: TaskOptions & { platform: "ios" | "android"; out: string },
-): Promise<{ manifest: UpdateManifest; out: string }> {
-  return task(options, async () => {
-    const appDir = resolve(options.appDir);
-    let project: Project;
-    try {
-      project = projectFromConfig(options.config, appDir, { resolveFrom: options.resolveFrom });
-    } catch (error) {
-      throw toAkanNativeError(error, "CONFIG_INVALID");
-    }
-    //? Not the build folder: its bundle.json is the store build's, which `compareBundles` checks an update against.
-    const out = resolve(options.out);
-    mkdirSync(out, { recursive: true });
-    const ctx = await prepare(project, options.platform, {
-      mode: options.mode ?? "production",
-      profile: "release",
-      skipWebBuild: options.skipWebBuild ?? false,
-      outDir: out,
-      envFiles: options.envFiles,
-      env: options.env,
-      api: true,
-    }).catch((error) => {
-      throw toAkanNativeError(error, "CONFIG_INVALID");
-    });
-    makeNativeBoot(ctx, options.platform);
-    const info = readBundleInfo(join(out, BUNDLE_FILE));
-    const manifest = webManifest({
-      app: project.config.app,
-      platform: options.platform,
-      channel: "",
-      nativeApi: info.nativeApi.hash,
-      sequence: 0,
-      bundle: "",
-      files: writeWebBundle(out, ctx.webDir, ctx.html, ctx.env),
-    });
-    writeFileSync(join(out, "manifest.template.json"), `${JSON.stringify(manifest, null, 2)}\n`);
-    return { manifest, out };
-  });
-}
-
-export interface PublishResult {
-  build: BuildResult;
-  /** `<out>/<os>-<arch>` (desktop) or `<out>/<platform>` (a phone's web bundle): what to upload under updates.url. */
-  dir: string;
-  bundle: string;
-  channel: string;
-  files: number;
-  /** Bytes of the files the manifest names. */
-  size: number;
-}
-
-export interface PublishCheckOptions extends Pick<TaskOptions, "appDir" | "config"> {
-  platform: Exclude<TargetPlatform, "web">;
-  channel?: string;
-  out?: string;
-  /** Whether the release will carry a server; the config's `desktop.server` by default. */
-  server?: boolean;
-  /** A desktop release's CPU, which names its feed folder: this computer's by default. */
-  arch?: DesktopArch;
-  /**
-   * keyIds of updates.publicKeys the release starts revoking, beside updates.revokedKeys and what the channel's releases
-   * revoke. It is signed with a key listed after every key it revokes.
-   */
-  revoke?: string[];
-  /** A release that revokes a key: apps compare it with their own build instead of the running release. */
-  resetSequence?: boolean;
-}
-
-/**
- * What publishUpdate() refuses before it builds, without building (CONFIG_INVALID): no updates settings, a channel no
- * app could be configured for, no signing key on this machine or another app's, a desktop release whose server
- * presence is not the channel's previous release's, and a release whose revocations no app would take. For a
- * caller with a long build of its own before publishUpdate.
- */
-export function checkPublishUpdate(options: PublishCheckOptions): { channel: string; out: string } {
-  if (!options.config.updates)
-    throw new AkanNativeError("CONFIG_INVALID", "the config has no updates: { url, publicKeys } to publish for");
-  const channel = options.channel ?? options.config.updates.channel ?? "production";
-  const out = resolve(options.out ?? resolve(options.appDir, ".akan", "native", "updates"));
-  const problems: string[] = [];
-  const updates = validateUpdates(options.config.updates, problems);
-  if (!updates || problems.length)
-    throw new AkanNativeError("CONFIG_INVALID", "the config's updates are not valid", { problems });
-  try {
-    if (options.channel !== undefined) assertChannel(options.channel);
-    const target = { app: options.config.app, updates };
-    assertSigningKey(target);
-    releaseRevocations(target, options.platform, out, channel, options, options.arch);
-    const server = options.server ?? !!options.config.desktop?.server;
-    assertServerOfChannel({ desktop: server ? { server } : {} }, options.platform, out, channel, options.arch);
-  } catch (error) {
-    throw toAkanNativeError(error, "CONFIG_INVALID");
-  }
-  return { channel, out };
-}
-
-/**
- * A signed release for the updates plugin (UP-1, UP-2): a release build, then its envelope and its files under `out`
- * (default <appDir>/.akan/native/updates), signed with the key updateKeygen() made.
- */
-export function publishUpdate(
-  options: TaskOptions & {
-    platform: Exclude<TargetPlatform, "web">;
-    channel?: string;
-    out?: string;
-    /** The signature a macOS release carries: the installed app's own, or the updater refuses it. No dmg is made. */
-    macos?: Pick<MacosBuild, "signing" | "notarize">;
-    /** Authenticode for a Windows release's files. No setup program is made. */
-    windows?: Pick<WindowsBuild, "signing">;
-    /** A desktop release's CPU, of the same OS: an x64 release from an arm64 machine. Default this computer's. */
-    arch?: DesktopArch;
-    /** keyIds of updates.publicKeys the release starts revoking (PublishCheckOptions.revoke). */
-    revoke?: string[];
-    /** A release that revokes a key: apps compare it with their own build instead of the running release. */
-    resetSequence?: boolean;
-  },
-): Promise<PublishResult> {
-  return task(options, async (warnings) => {
-    const { channel, out } = checkPublishUpdate(options);
-    const { ctx, artifact, result } = await buildIn(options, "release", options.mode ?? "production", warnings, {
-      ...(options.macos ? { macos: { ...options.macos, dmg: false } } : {}),
-      ...(options.windows?.signing ? { windows: { signing: options.windows.signing } } : {}),
-      ...(options.arch ? { arch: options.arch } : {}),
-    });
-    const { dir, manifest } = await publishRelease(ctx, options.platform, artifact, out, channel, options).catch(
-      (error) => {
-        throw toAkanNativeError(error, "CONFIG_INVALID");
-      },
-    );
-    return {
-      build: result,
-      dir,
-      bundle: manifest.bundle,
-      channel,
-      files: manifest.files.length,
-      size: manifest.files.reduce((n, f) => n + f.size, 0),
-    };
-  });
-}
-
-/**
- * Whether a web bundle can run in the binary a store release shipped (UP-3): `shipped` is that build's bundle.json,
- * `bundle` the one `packUpdate` wrote. Anything in `problems` means a new binary.
- */
-export function compareBundles(shipped: string, bundle: string): { compatible: boolean; problems: string[] } {
-  const [before, now] = [readBundleInfo(resolve(shipped)), readBundleInfo(resolve(bundle))];
-  const problems =
-    before.app.id !== now.app.id
-      ? [`${shipped} is for ${before.app.id}, the bundle for ${now.app.id}`]
-      : compatProblems(before.nativeApi.inputs, now.nativeApi.inputs);
-  return { compatible: problems.length === 0, problems };
-}
-
-/**
- * The app's update signing key: made once (AKAN_NATIVE_UPDATE_KEY, else ~/.akan/native/keys/<app id>.update.key),
- * then read. `publicKey` goes into the config's `updates.publicKeys`; the key file never leaves the machine. `keyId`
- * is what a revocation names it by (`publishUpdate({ revoke })`, `updates.revokedKeys`).
- */
-export function updateKeygen(options: { config: AkanNativeConfig }): {
-  publicKey: string;
-  keyId: string;
-  keyPath: string;
-  created: boolean;
-} {
-  const keyPath = updateKeyPath(options.config.app.id);
-  const key = generateUpdateKey(keyPath);
-  return { ...key, keyId: keyIdOf(key.publicKey), keyPath };
 }
 
 /** Builds (default profile debug) and launches the app on a simulator, emulator, desktop or browser. */
@@ -728,131 +503,4 @@ async function selectDevice(
   const problem = why[found.state];
   if (problem) throw new AkanNativeError("DEVICE_FAILED", `${found.name} ${problem}`);
   return found.id;
-}
-
-/** Builds with one outDir at a time: a second call for the same folder waits for the first. */
-const outDirLocks = new Map<string, Promise<unknown>>();
-
-async function buildIn(
-  options: TaskOptions,
-  profile: BuildProfile,
-  mode: string,
-  warnings: string[],
-  extra: Pick<
-    BuildOptions,
-    "android" | "ios" | "windows" | "macos" | "linux" | "arch" | "devServer" | "startPath"
-  > = {},
-): Promise<{ ctx: BuildContext; artifact: string; result: BuildResult }> {
-  const started = performance.now();
-  const appDir = resolve(options.appDir);
-  let project: Project;
-  try {
-    project = projectFromConfig(options.config, appDir, { resolveFrom: options.resolveFrom });
-  } catch (error) {
-    throw toAkanNativeError(error, "CONFIG_INVALID");
-  }
-  const outDir = resolve(options.outDir ?? resolve(appDir, ".akan", "native", "build", options.platform));
-  const previous = outDirLocks.get(outDir) ?? Promise.resolve();
-  const mine = previous
-    .catch(() => {})
-    .then(async () => {
-      const ctx = await prepare(project, options.platform, {
-        mode,
-        profile,
-        skipWebBuild: options.skipWebBuild ?? false,
-        outDir,
-        envFiles: options.envFiles,
-        env: options.env,
-        api: true,
-        ...extra,
-      }).catch((error) => {
-        throw toAkanNativeError(error, "CONFIG_INVALID");
-      });
-      const artifact = await PLATFORM_TARGETS[options.platform].build(ctx).catch((error) => {
-        throw toAkanNativeError(error, "NATIVE_BUILD_FAILED");
-      });
-      return { ctx, artifact };
-    });
-  outDirLocks.set(outDir, mine);
-  try {
-    const { ctx, artifact } = await mine;
-    const artifacts = [
-      describe(options.platform, artifact, ctx),
-      ...ctx.artifacts.map((a): Artifact => ({ kind: a.kind, path: a.path, signing: ctx.signedAs ?? "none" })),
-    ];
-    const result: BuildResult = {
-      platform: options.platform,
-      profile,
-      outDir: ctx.outDir,
-      artifacts,
-      warnings,
-      durationMs: Math.round(performance.now() - started),
-      ...(ctx.iosSigning ? { signing: ctx.iosSigning } : {}),
-      ...(ctx.licenses ? { licenses: ctx.licenses } : {}),
-    };
-    return { ctx, artifact, result };
-  } finally {
-    if (outDirLocks.get(outDir) === mine) outDirLocks.delete(outDir);
-  }
-}
-
-function describe(platform: TargetPlatform, path: string, ctx: BuildContext): Artifact {
-  switch (platform) {
-    case "web":
-      return { kind: "web", path, signing: "none" };
-    case "macos":
-      return { kind: "app", path, signing: ctx.signedAs ?? "adhoc" };
-    case "windows":
-    case "linux":
-      return { kind: "folder", path, signing: ctx.signedAs ?? "none" };
-    case "ios":
-      return ctx.ios?.device
-        ? { kind: "app", path, signing: ctx.signedAs ?? "development", device: "device" }
-        : { kind: "app", path, signing: "adhoc", device: "simulator" };
-    case "android":
-      return { kind: "apk", path, signing: ctx.signedAs ?? "debug" };
-  }
-}
-
-/** Runs an API call with its own log sink (warnings collected) and abort signal; failures become AkanNativeError. */
-async function task<T>(
-  options: { log?: LogSink; signal?: AbortSignal },
-  fn: (warnings: string[]) => Promise<T>,
-): Promise<T> {
-  const warnings: string[] = [];
-  const sink: LogSink = (event) => {
-    if (event.level === "warn") warnings.push(event.message);
-    options.log?.(event);
-  };
-  if (options.signal?.aborted) throw new AkanNativeError("CANCELLED", "cancelled before it started");
-  try {
-    return await withLogSink(sink, () => withSignal(options.signal, () => fn(warnings)));
-  } catch (error) {
-    throw toAkanNativeError(error, "INTERNAL");
-  }
-}
-
-/** An error as an AkanNativeError: its own kind decides the code, else the phase it happened in. */
-function toAkanNativeError(error: unknown, phase: AkanNativeErrorCode): AkanNativeError {
-  if (error instanceof AkanNativeError) return error;
-  if (error instanceof CancelledError || (error as Error)?.name === "AbortError")
-    return new AkanNativeError("CANCELLED", "cancelled", { cause: error });
-  if (error instanceof ConfigError)
-    return new AkanNativeError("CONFIG_INVALID", error.message, { problems: error.problems, cause: error });
-  if (error instanceof ToolchainError)
-    return new AkanNativeError("TOOLCHAIN_MISSING", error.message, { hint: "akan-native doctor", cause: error });
-  if (error instanceof WebBuildError) return new AkanNativeError("WEB_BUILD_FAILED", error.message, { cause: error });
-  if (error instanceof WebInputError) return new AkanNativeError("WEB_INPUT_INVALID", error.message, { cause: error });
-  if (error instanceof SigningError)
-    return new AkanNativeError("SIGNING_FAILED", error.message, {
-      ...(error.problems.length ? { problems: error.problems } : {}),
-      cause: error,
-    });
-  if (error instanceof ToolError)
-    return new AkanNativeError(phase === "CONFIG_INVALID" ? "NATIVE_BUILD_FAILED" : phase, error.message, {
-      logTail: error.tail,
-      cause: error,
-    });
-  if (error instanceof CliError) return new AkanNativeError(phase, error.message, { cause: error });
-  return new AkanNativeError("INTERNAL", (error as Error)?.message ?? String(error), { cause: error });
 }

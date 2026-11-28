@@ -2,9 +2,10 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { NativeEnv } from "akanjs";
-import type { BundleInfo, UpdateManifest } from "akanjs/native/api";
+import type { AppSigner, BundleInfo, UpdateManifest } from "akanjs/native/api";
 import { ExitCodeError } from "../commandDecorators/exitCodeError";
-import type { MobilePlatform } from "./mobileTarget";
+import type { DesktopArch } from "./desktopBin";
+import type { DesktopPlatform, MobilePlatform } from "./mobileTarget";
 
 export interface NativeUpdatePackCompat {
   /** The store build's bundle.json the pack was compared with. */
@@ -35,6 +36,37 @@ export interface NativeUpdatePack {
   compat?: NativeUpdatePackCompat;
 }
 
+/**
+ * `<out>/pack.json` of a desktop pack: what whoever signs it needs to know of the app in `app/`. Schema 2, so a reader
+ * of a phone's pack refuses it by its number.
+ */
+export interface DesktopUpdatePack {
+  schema: 2;
+  kind: "app";
+  /** The @akanjs/cli version that packed it. */
+  cli?: string;
+  builtAt: string;
+  app: string;
+  target: string;
+  platform: DesktopPlatform;
+  arch: DesktopArch;
+  env: NativeEnv;
+  /** The target's `updates.channel`; the signer decides the release's. */
+  channel: string;
+  appId: string;
+  appVersion: string;
+  /** The manifest's `build`: the packed app's own sequence, by which an installed copy knows a release is itself. */
+  build: number;
+  server: boolean;
+  /** Who signed the app's files (not the update key); null for an app signed ad hoc or not at all. */
+  signer: AppSigner | null;
+  archive: { url: string; tarSha256: string; tarSize: number; gzSha256: string; gzSize: number };
+  /** With --previous: the delta the manifest template names in `patches`. */
+  patch?: { from: string; url: string; sha256: string; size: number };
+  /** The folder it was packed to; pack.json leaves it out. */
+  out: string;
+}
+
 //* The folder `akan pack-update` writes for a signer or Akan Cloud: the native build API writes `files/<sha256>`,
 //* bundle.json and manifest.template.json, and akan writes pack.json and compat.json beside them.
 export class UpdatePackFolder {
@@ -63,14 +95,18 @@ export class UpdatePackFolder {
     const file = Bun.file(path.join(dir, UpdatePackFolder.packFile));
     if (!(await file.exists()))
       throw new Error(`${dir} holds no ${UpdatePackFolder.packFile}: give the folder \`akan pack-update\` wrote.`);
-    const pack = (await file.json()) as NativeUpdatePack;
+    const pack = (await file.json()) as NativeUpdatePack | DesktopUpdatePack;
+    if (pack.schema === 2 && pack.kind === "app")
+      throw new Error(
+        `${dir} holds a desktop app's pack, which whoever holds the update key signs (fillManifest, manifestBytes and updateEnvelope of akanjs/native/api); a phone's pack is read here.`,
+      );
     if (pack.schema !== 1)
       throw new Error(`${dir}/${UpdatePackFolder.packFile} is schema ${pack.schema}, and this akan reads schema 1.`);
     return { ...pack, out: path.resolve(dir) };
   }
 
   //? Without `out`: the record travels in the pack's archive, and the folder is wherever it is read from.
-  static async write({ out, ...record }: NativeUpdatePack) {
+  static async write({ out, ...record }: NativeUpdatePack | DesktopUpdatePack) {
     await Bun.write(path.join(out, UpdatePackFolder.packFile), `${JSON.stringify(record, null, 2)}\n`);
   }
 

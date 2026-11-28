@@ -430,7 +430,7 @@ export function lastPort(dataDir: string): number | undefined {
   }
 }
 
-const pipeLines = async (stream: ReadableStream<Uint8Array>, onLine: (line: string) => void) => {
+export const pipeLines = async (stream: ReadableStream<Uint8Array>, onLine: (line: string) => void) => {
   const decoder = new TextDecoder();
   let pending = "";
   for await (const chunk of stream) {

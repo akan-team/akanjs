@@ -1221,6 +1221,68 @@ describe("ApplicationScript desktop", () => {
   });
 });
 
+describe("pack-update", () => {
+  test("packs a desktop app through its own path, and each kind refuses the other's flags", async () => {
+    const script = CommandContainer.get(ApplicationScript);
+    const recorder = createCallRecorder();
+    const app = createFakeExecutor(
+      "demo",
+      { scanSync: async (...args: unknown[]) => recorder.record("scanSync", ...args) },
+      recorder,
+    );
+    const { packAppUpdate, packUpdate } = script.applicationRunner;
+    script.applicationRunner.packAppUpdate = async (...args: unknown[]) => {
+      recorder.record("runner.packAppUpdate", ...args);
+      return undefined as never;
+    };
+    script.applicationRunner.packUpdate = async (...args: unknown[]) => {
+      recorder.record("runner.packUpdate", ...args);
+      return undefined as never;
+    };
+    const command = CommandContainer.get(ApplicationCommand);
+    const handler = getTargetMetas(ApplicationCommand).find((meta) => meta.key === "packUpdate")?.handler;
+    const pack = async (
+      platform: string,
+      flags: { against?: string; arch?: string; sign?: boolean; previous?: string },
+    ) =>
+      await handler?.call(
+        command,
+        app,
+        platform,
+        "default",
+        "main",
+        null,
+        flags.against ?? null,
+        false,
+        false,
+        null,
+        flags.arch ?? null,
+        flags.sign ?? false,
+        false,
+        flags.previous ?? null,
+      );
+    try {
+      await pack("desktop", { arch: "x64", sign: true, previous: "app/previous.tar.gz" });
+      await expect(pack("desktop", { against: "store/bundle.json" })).rejects.toThrow(
+        "--against and --public-env compare a phone's web bundle with its store build; a desktop app is packed whole.",
+      );
+      await expect(pack("android", { arch: "x64" })).rejects.toThrow(
+        "--arch, --sign, --notarize and --previous pack a desktop app; android packs its web bundle.",
+      );
+    } finally {
+      Object.assign(script.applicationRunner, { packAppUpdate, packUpdate });
+    }
+
+    expect(recorder.calls).toContainEqual({
+      name: "runner.packAppUpdate",
+      args: [app, { target: "default", env: "main", arch: "x64", sign: true, previous: "app/previous.tar.gz" }],
+    });
+    expect(recorder.names()).not.toContain("runner.packUpdate");
+    const optionNames = getArgMetas(ApplicationCommand, "packUpdate")[1].map((meta) => meta.name);
+    expect(optionNames.slice(-4)).toEqual(["arch", "sign", "notarize", "previous"]);
+  });
+});
+
 describe("ApplicationRunner mobile", () => {
   const mobileApp = (targets: Record<string, object>) =>
     ({
@@ -1304,6 +1366,27 @@ describe("ApplicationRunner mobile", () => {
     } finally {
       for (const server of [own, other, unnamed]) server.stop(true);
     }
+  });
+
+  test("--republish signs one desktop target's release again and builds nothing, and a desktop pack takes one target", async () => {
+    const app = mobileApp({ store: target("store"), admin: target("admin") });
+    const runner = new ApplicationRunner();
+    const republish = "1.0.0-1";
+    await expect(runner.publishUpdate(app, "android", { target: "store", republish })).rejects.toThrow(
+      "--republish signs a desktop release again; android publishes its web bundle from a build.",
+    );
+    await expect(runner.publishUpdate(app, "desktop", { target: "all", republish })).rejects.toThrow(
+      "--republish signs one target's release again; pass --target <name>.",
+    );
+    await expect(runner.publishUpdate(app, "desktop", { target: "store", republish, sign: true })).rejects.toThrow(
+      "--republish builds nothing: --sign and --notarize sign a build's app.",
+    );
+    await expect(runner.publishUpdate(app, "desktop", { target: "store", republish })).rejects.toThrow(
+      "Native target 'store' has no updates",
+    );
+    await expect(runner.packAppUpdate(app, { target: "all" })).rejects.toThrow(
+      "pack-update packs one native target at a time; pass --target <name>.",
+    );
   });
 
   test("publish-update checks every target's updates settings and signing key before it builds anything", async () => {

@@ -1703,8 +1703,8 @@ akan start-desktop myapp --target kiosk --release true --env debug`,
             type: "Boolean",
             defaultValue: "false",
             desc: l.trans({
-              en: "Also what a person downloads: on Windows `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`), on macOS a `.dmg`, on Linux an `.AppImage` (needs `mksquashfs`).",
-              ko: "내려받을 파일도 만듭니다. Windows는 NSIS로 `<file>-<version>-<arch>-setup.exe`(`winget install NSIS.NSIS`), macOS는 `.dmg`, Linux는 `.AppImage`(`mksquashfs` 필요)입니다.",
+              en: "Also what a person downloads: on Windows `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`), on macOS a `.dmg`, on Linux an `.AppImage` (needs `mksquashfs`) and a `.tar.gz` whose `install.sh` installs the folder that updates itself.",
+              ko: "내려받을 파일도 만듭니다. Windows는 NSIS로 `<file>-<version>-<arch>-setup.exe`(`winget install NSIS.NSIS`), macOS는 `.dmg`, Linux는 `.AppImage`(`mksquashfs` 필요)와, `install.sh`가 스스로 업데이트하는 폴더를 설치하는 `.tar.gz`입니다.",
             }),
           },
           {
@@ -1840,7 +1840,7 @@ akan update-keygen myapp --platform android`,
       {
         name: "publish-update",
         signature:
-          "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>]",
+          "akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>] [--republish <bundle>]",
         desc: l.trans({
           en: "Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<os>-<arch>/<channel>/app.json`, plus `<channel>.json` and its `.sig` for apps built before it when the first key signs, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.",
           ko: "릴리스를 빌드해 설치된 앱용으로 서명합니다. 데스크톱은 앱 전체(이 컴퓨터의 OS와 CPU, 이전 릴리스와의 delta 포함), Android와 iOS는 웹 번들입니다. `dist/native/<app>/<target>/updates` 아래에 서명한 매니페스트와 파일을 씁니다. 이 릴리스의 파일을 `native.updates.url`에 올리고 매니페스트는 마지막에 올리거나, `--upload`에 맡깁니다. 폴더를 통째로 올리지는 않습니다. 폰의 폴더는 `pack-update`가 기본으로 쓰는 곳이기도 하기 때문입니다. 폰의 매니페스트는 바이너리 세대마다 봉투 하나(`<platform>/<channel>/<nativeApi>.json`), 데스크톱은 `<os>-<arch>/<channel>/app.json`입니다. 첫 키로 서명하면 그 이전에 빌드한 앱을 위해 `<channel>.json`과 `.sig`도 쓰며, CDN이 이 둘을 따로 캐시하지 않게 합니다. 서버를 싣는 타깃의 데스크톱 릴리스에는 서버도 들어갑니다.",
@@ -1912,6 +1912,15 @@ akan update-keygen myapp --platform android`,
           },
           writeOption,
           allowLocalReleaseOption,
+          {
+            name: "--republish",
+            type: "String",
+            enumOrFlag: "-b",
+            desc: l.trans({
+              en: "Desktop only: the bundle id of a release this target published, signed again as the channel's newest — a rollback, with no build. Apps on a later build take its archive whole. The release is read from the updates folder, else from `updates.url`.",
+              ko: "데스크톱 전용입니다. 이 타깃이 게시한 릴리스의 번들 id이며, 빌드 없이 그 채널의 최신 릴리스로 다시 서명합니다(롤백). 더 새 빌드를 실행 중인 앱은 그 아카이브 전체를 받습니다. 릴리스는 updates 폴더에서, 없으면 `updates.url`에서 읽습니다.",
+            }),
+          },
         ],
         notes: [
           serverSwitchNote,
@@ -1976,22 +1985,26 @@ akan update-keygen myapp --platform android`,
 akan publish-update myapp --target pilot --env main
 akan publish-update myapp --env main --sign true --notarize true --upload s3://releases/myapp
 akan publish-update myapp --platform android --env main
+akan publish-update myapp --env main --republish 1.4.0-1795000000 --upload s3://releases/myapp
 AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform ios --env main --revoke 0123456789abcdef`,
       },
       {
         name: "pack-update",
         signature:
-          "akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>] [--public-env <file>]",
+          "akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>] [--public-env <file>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--previous <archive>]",
         desc: l.trans({
-          en: "Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json`, `manifest.template.json` with `channel`, `sequence` and `bundle` left for the signer, and `pack.json`, the record a pipeline reads. The signer uploads `files/` first, then the signed envelope at `<platform>/<channel>/<nativeApi>.json`. Exits 2 when `--against` says the bundle needs a new store build; any other failure, its web build included, exits 1 and leaves no `pack.json` behind. `publish-update` does the same with a key on this machine.",
-          ko: "Android·iOS 웹 번들 업데이트를 서명 없이 묶습니다. 키를 이 컴퓨터 밖에 두는 서명자를 위한 것입니다. `files/<sha256>`, `bundle.json`, 서명자가 `channel`·`sequence`·`bundle`을 채울 `manifest.template.json`, 파이프라인이 읽는 기록 `pack.json`을 씁니다. 서명자는 `files/`를 먼저 올리고 서명한 봉투를 `<platform>/<channel>/<nativeApi>.json`에 올립니다. `--against`가 새 스토어 빌드가 필요하다고 하면 종료 코드 2로 끝나고, 웹 빌드를 포함한 그 밖의 실패는 1로 끝나며 `pack.json`을 남기지 않습니다. 이 컴퓨터의 키로 하는 것이 `publish-update`입니다.",
+          en: "Pack an update unsigned, for a signer that keeps the key off this machine. Android and iOS pack the web bundle: `files/<sha256>`, `bundle.json` and `manifest.template.json`, whose signed envelope goes to `<platform>/<channel>/<nativeApi>.json`. `--platform desktop` packs this computer's app: `app/<tar sha256>.tar.gz` and its template, whose envelope goes to `<os>-<arch>/<channel>/app.json`. The signer fills `channel`, `sequence` and `bundle` — `fillManifest`, `manifestBytes` and `updateEnvelope` of `akanjs/native/api` do it — and uploads the files before the envelope. `pack.json` is the record a pipeline reads. Exits 2 when `--against` says the bundle needs a new store build; any other failure, its build included, exits 1 and leaves no `pack.json` behind. `publish-update` does the same with a key on this machine.",
+          ko: "키를 이 컴퓨터 밖에 두는 서명자를 위해 업데이트를 서명 없이 묶습니다. Android·iOS는 웹 번들을 묶습니다. `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓰고, 서명한 봉투는 `<platform>/<channel>/<nativeApi>.json`으로 갑니다. `--platform desktop`은 이 컴퓨터의 앱을 묶습니다. `app/<tar sha256>.tar.gz`와 템플릿을 쓰고, 봉투는 `<os>-<arch>/<channel>/app.json`으로 갑니다. 서명자는 `channel`·`sequence`·`bundle`을 채우고(`akanjs/native/api`의 `fillManifest`·`manifestBytes`·`updateEnvelope`), 파일을 봉투보다 먼저 올립니다. `pack.json`은 파이프라인이 읽는 기록입니다. `--against`가 새 스토어 빌드가 필요하다고 하면 종료 코드 2로 끝나고, 빌드를 포함한 그 밖의 실패는 1로 끝나며 `pack.json`을 남기지 않습니다. 이 컴퓨터의 키로 하는 것이 `publish-update`입니다.",
         }),
         options: [
           {
             name: "--platform",
             type: "String",
-            enumOrFlag: "ios | android",
-            desc: l.trans({ en: "The app it updates.", ko: "업데이트할 앱입니다." }),
+            enumOrFlag: "ios | android | desktop",
+            desc: l.trans({
+              en: "The app it updates; `desktop` is this computer's OS.",
+              ko: "업데이트할 앱입니다. `desktop`은 이 컴퓨터의 OS입니다.",
+            }),
           },
           targetOption,
           releaseEnvOption,
@@ -1999,16 +2012,16 @@ AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform i
             name: "--out",
             type: "String",
             desc: l.trans({
-              en: "Default `dist/native/<app>/<target>/updates/<platform>`.",
-              ko: "기본값은 `dist/native/<app>/<target>/updates/<platform>`입니다.",
+              en: "Default `dist/native/<app>/<target>/updates/<platform>`; a desktop's is `<os>-<arch>`.",
+              ko: "기본값은 `dist/native/<app>/<target>/updates/<platform>`이며, 데스크톱은 `<os>-<arch>`입니다.",
             }),
           },
           {
             name: "--against",
             type: "String",
             desc: l.trans({
-              en: "The `bundle.json` of the store build it must run in: writes `compat.json`, and fails when the bundle needs a new binary.",
-              ko: "이 번들이 돌아야 할 스토어 빌드의 `bundle.json`입니다. `compat.json`을 쓰고, 새 바이너리가 필요하면 실패합니다.",
+              en: "Phones: the `bundle.json` of the store build it must run in: writes `compat.json`, and fails when the bundle needs a new binary.",
+              ko: "폰 전용입니다. 이 번들이 돌아야 할 스토어 빌드의 `bundle.json`입니다. `compat.json`을 쓰고, 새 바이너리가 필요하면 실패합니다.",
             }),
           },
           writeOption,
@@ -2021,9 +2034,37 @@ AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform i
               ko: "정확히 이 `AKAN_PUBLIC_*` 값만 넣습니다. JSON 맵이나 `bundle.json`이며, 생략하면 `--against` 빌드의 값입니다.",
             }),
           },
+          {
+            name: "--arch",
+            type: "String",
+            defaultValue: l.trans({ en: "this computer's", ko: "이 컴퓨터의 CPU" }),
+            enumOrFlag: "arm64 | x64",
+            desc: l.trans({
+              en: "Desktop only: the CPU of the apps it updates. A macOS app is arm64 only.",
+              ko: "데스크톱 전용입니다. 업데이트할 앱의 CPU이며, macOS 앱은 arm64만 됩니다.",
+            }),
+          },
+          {
+            ...signOption,
+            desc: l.trans({
+              en: "Desktop only: sign the packed app as `publish-update --sign` does. `pack.json` records who signed it.",
+              ko: "데스크톱 전용입니다. `publish-update --sign`처럼 묶는 앱에 서명합니다. 누가 서명했는지는 `pack.json`에 남습니다.",
+            }),
+          },
+          notarizeOption,
+          {
+            name: "--previous",
+            type: "String",
+            enumOrFlag: "-f",
+            desc: l.trans({
+              en: "Desktop only: the archive of the release the channel has now, a path or a URL of `<tar sha256>.tar.gz`. The pack then carries the delta from it.",
+              ko: "데스크톱 전용입니다. 그 채널의 현재 릴리스 아카이브(`<tar sha256>.tar.gz`)의 경로나 URL이며, 주면 그로부터의 delta도 묶습니다.",
+            }),
+          },
         ],
         examples: `akan pack-update myapp --platform android --env main
-akan pack-update myapp --platform ios --env main --against store/bundle.json`,
+akan pack-update myapp --platform ios --env main --against store/bundle.json
+akan pack-update myapp --platform desktop --env main --sign true`,
       },
       {
         name: "push-update",

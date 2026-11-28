@@ -11,9 +11,14 @@ import {
   checkPublishUpdate,
   compareBundles,
   doctor,
+  fillManifest,
   type LogEvent,
+  manifestBytes,
+  packAppUpdate,
   packUpdate,
   publishUpdate,
+  republishUpdate,
+  updateEnvelope,
   updateKeygen,
   validateConfig,
 } from "../src/api.ts";
@@ -373,10 +378,56 @@ describe("programmatic API", () => {
       manifest: new Uint8Array(bytes),
       keyId: keyIdOf(raw),
     });
+    const filled = fillManifest(manifest, { channel: "main", sequence: 1_790_700_000, bundle: "1790700000-a1b2c3d4" });
+    expect(manifestBytes(filled)).toEqual(new Uint8Array(bytes));
+    expect(updateEnvelope(manifestBytes(filled), raw, sign(null, bytes, privateKey))).toEqual(envelope);
     expect(compareBundles(join(out, "bundle.json"), join(out, "bundle.json"))).toEqual({
       compatible: true,
       problems: [],
     });
+  });
+
+  test("packAppUpdate and republishUpdate refuse before any build what could not become a release", async () => {
+    const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
+    process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "keys", "desktop-pack.update.key");
+    const feed = Bun.serve({ port: 0, fetch: () => new Response("gone", { status: 404 }) });
+    try {
+      const { publicKey } = updateKeygen({ config: config() });
+      const updates = { url: `http://localhost:${feed.port}`, publicKey };
+      const dir = app("desktop-pack");
+      const out = join(dir, "out");
+      const bare = await failure(packAppUpdate({ appDir: dir, config: config(), platform: "linux", out }));
+      expect([bare.code, bare.message]).toEqual(["CONFIG_INVALID", expect.stringContaining("has no updates")]);
+      const misnamed = await failure(
+        packAppUpdate({
+          appDir: dir,
+          config: config({ updates }),
+          platform: "linux",
+          out,
+          previous: join(dir, "web", "index.html"),
+        }),
+      );
+      expect(misnamed.code).toBe("CONFIG_INVALID");
+      expect(misnamed.message).toContain("is not named as a release archive is");
+      expect(existsSync(out)).toBe(false);
+
+      const republish = { appDir: dir, config: config({ updates }), platform: "linux" as const, out };
+      const unknown = await failure(republishUpdate({ ...republish, bundle: "1.0.0-1790000000" }));
+      expect(unknown.code).toBe("CONFIG_INVALID");
+      expect(unknown.message).toContain("holds no release 1.0.0-1790000000");
+      expect(unknown.message).toContain("/production/releases/1.0.0-1790000000.json answered 404");
+      await feed.stop(true);
+      const unreachable = await failure(republishUpdate({ ...republish, bundle: "1.0.0-1790000000" }));
+      expect(unreachable.code).toBe("CONFIG_INVALID");
+      expect(unreachable.message).toContain("holds no release 1.0.0-1790000000");
+      expect(unreachable.message).toContain("could not be read");
+      const unkeyed = await failure(republishUpdate({ ...republish, config: config(), bundle: "1.0.0-1" }));
+      expect(unkeyed.message).toContain("the config has no updates");
+    } finally {
+      await feed.stop(true);
+      if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
+      else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
+    }
   });
 
   //? `akan test-platforms` runs this in a slim Linux image with no Xcode, Android SDK or JDK: a build pod's.

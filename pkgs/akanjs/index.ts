@@ -157,7 +157,8 @@ export interface AkanNativeDeepLinks {
 /**
  * Where an installed app looks for newer releases of itself (the native runtime's updates plugin): the whole app on a
  * desktop, the web bundle on a phone. `akan publish-update` writes and signs a release with a key on this machine;
- * `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign.
+ * `akan pack-update` writes an unsigned pack, a phone's web bundle or a desktop app's archive, for whoever holds the
+ * key to sign.
  */
 export interface AkanNativeUpdatesConfig {
   /**
@@ -167,8 +168,8 @@ export interface AkanNativeUpdatesConfig {
   url: string;
   /**
    * The keys a binary trusts, raw 32-byte Ed25519 public keys in base64 (`akan update-keygen` prints one), 1 to 3:
-   * the online signing key first, offline spares after it, since a key may revoke only keys listed before it. A desktop
-   * app built before protocol v2 trusts the first.
+   * the online signing key first, offline spares after it, since a key may revoke only keys listed before it. A phone
+   * and a desktop app trust all of them; only a desktop app built before protocol v2 (akanjs 3.1.1) trusts the first.
    */
   publicKeys?: string[];
   /** The one-key form of `publicKeys`, never beside it: a target overriding native.updates' keys keeps its form. */
@@ -187,8 +188,9 @@ export interface AkanNativeUpdatesConfig {
   /** How long a newly applied release has to call notifyReady() before it is rolled back, ms. Default 10000. */
   readyTimeout?: number;
   /**
-   * Where a phone posts what became of each release (downloaded, applied, confirmed, rolled back, failed) at its next
-   * launch or return to the foreground, so rollback rates are visible. Left out, nothing is sent.
+   * Where an app posts what became of each release (downloaded, applied, confirmed, rolled back, failed), so rollback
+   * rates are visible: a phone at its next launch or return to the foreground, a desktop app at launch and with each
+   * check, with its CPU and the key that signed each release. Left out, nothing is sent.
    */
   report?: { url: string };
   /**

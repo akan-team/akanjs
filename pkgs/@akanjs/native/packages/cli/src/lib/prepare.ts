@@ -70,7 +70,7 @@ export interface BuildOptions {
   windows?: WindowsBuild;
   /** macOS: Developer ID signing, notarization and a dmg (lib/macossigning.ts). */
   macos?: MacosBuild;
-  /** Linux: an AppImage beside the app folder (platforms/linux-appimage.ts). */
+  /** Linux: an AppImage (platforms/linux-appimage.ts) and a per-user installer (platforms/linux-install.ts). */
   linux?: LinuxBuild;
   /** Desktop builds: the CPU the app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
   arch?: DesktopArch;
@@ -276,13 +276,8 @@ export async function prepare(project: Project, platform: Platform, options: Bui
     );
   }
   const reportUrl = config.updates?.reportUrl;
-  //? Only a phone posts reports, and its release shell posts none in cleartext: an http receiver would get nothing.
-  if (
-    options.profile === "release" &&
-    reportUrl &&
-    (platform === "ios" || platform === "android") &&
-    !secureUpdateUrl(reportUrl)
-  )
+  //? A release shell and the desktop updates plugin post none in cleartext: an http receiver would get nothing.
+  if (options.profile === "release" && reportUrl && platform !== "web" && !secureUpdateUrl(reportUrl))
     throw new CliError(
       `updates.report.url must be https in a release build (http only for this machine): ${reportUrl}`,
     );

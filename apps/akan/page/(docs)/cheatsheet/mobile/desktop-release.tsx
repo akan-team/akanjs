@@ -85,6 +85,7 @@ jobs:
             dist/native/myapp/*/build/*/*.dmg
             dist/native/myapp/*/build/*/*-setup.exe
             dist/native/myapp/*/build/*/*.AppImage
+            dist/native/myapp/*/build/*/*.tar.gz
           if-no-files-found: error`;
 
 export default page()
@@ -189,6 +190,14 @@ export default page()
         desc: l.trans({
           en: "One executable file for any distribution with WebKitGTK 4.1 and GTK 3. The build needs `mksquashfs` (squashfs-tools). An AppImage cannot update itself.",
           ko: "WebKitGTK 4.1과 GTK 3이 있는 어느 배포판에서나 도는 실행 파일 하나입니다. 빌드에는 `mksquashfs`(squashfs-tools)가 필요합니다. AppImage는 스스로 업데이트하지 못합니다.",
+        }),
+      },
+      {
+        os: "Linux",
+        file: "<fileName>-<version>-<arch>.tar.gz",
+        desc: l.trans({
+          en: "The app folder with `install.sh`, which installs it for the user in `~/.local/opt/<app id>` with its launcher entry, no root needed. This install takes `updates`; `uninstall.sh --purge` removes its data too.",
+          ko: "앱 폴더와 `install.sh`입니다. root 없이 사용자의 `~/.local/opt/<app id>`에 설치하고 런처 항목을 만듭니다. `updates`를 받는 설치이며, `uninstall.sh --purge`는 데이터까지 지웁니다.",
         }),
       },
     ];

@@ -21,7 +21,7 @@ import { NativePluginFolders } from "./nativePluginFolders";
 import { NativePublicEnv, type PublicEnv } from "./nativePublicEnv";
 import { NativeWebDir } from "./nativeWebDir";
 import { ServerBundleSecrets } from "./serverBundleSecrets";
-import { type NativeUpdatePack, UpdatePackFolder } from "./updatePackFolder";
+import { type DesktopUpdatePack, type NativeUpdatePack, UpdatePackFolder } from "./updatePackFolder";
 
 type TaskOptions = Parameters<NativeBuildApiModule["build"]>[0];
 type DeviceSelector = NonNullable<Parameters<NativeBuildApiModule["run"]>[0]["device"]>;
@@ -44,7 +44,7 @@ export interface NativeBuildOptions {
   profile?: "debug" | "release";
   /** The server a desktop app carries (the target's `desktop.server`), staged by DesktopServerStage. */
   server?: DesktopServerBundle;
-  /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg, a Linux AppImage. */
+  /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg, a Linux AppImage and tar.gz. */
   installer?: boolean;
   /** The CPU the desktop app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
   arch?: DesktopArch;
@@ -376,6 +376,122 @@ export class NativeApp {
     });
   }
 
+  //? Beside the releases publishUpdate signs for the same OS and CPU: both name an archive by its hash, so one a pack
+  //? wrote is the one a later publish or --previous finds.
+  appPackDir(platform: DesktopPlatform, arch: DesktopArch = process.arch as DesktopArch) {
+    return path.join(this.updatesDir, `${platform}-${arch}`);
+  }
+
+  /**
+   * A desktop release this target's updates folder published, signed again as its channel's newest: the same archive
+   * under a new sequence, so installs on a later build go back to it. Nothing is built.
+   */
+  async republishUpdate(
+    platform: DesktopPlatform,
+    {
+      bundle,
+      channel,
+      arch,
+      revoke,
+      resetSequence,
+    }: { bundle: string; channel?: string; arch?: DesktopArch } & ReleaseRevocation,
+  ) {
+    this.#assertUpdates();
+    const [api, { config }] = await Promise.all([
+      NativeApi.load(this.app.cwdPath),
+      this.config({ platform, stageBin: false }),
+    ]);
+    this.#assertValid(api, config);
+    const { log } = this.#task(platform, config);
+    return await api.republishUpdate({
+      appDir: this.app.cwdPath,
+      config,
+      platform,
+      bundle,
+      out: this.updatesDir,
+      log,
+      ...(channel ? { channel } : {}),
+      ...(arch ? { arch } : {}),
+      ...(revoke?.length ? { revoke } : {}),
+      ...(resetSequence ? { resetSequence } : {}),
+    });
+  }
+
+  /**
+   * An unsigned update of this target's desktop app: a release build as publishUpdate makes it, its archive and the
+   * manifest template whoever holds the update key fills and signs, and the record `pack.json` keeps of it.
+   */
+  async packAppUpdate(
+    platform: DesktopPlatform,
+    {
+      out,
+      server,
+      arch,
+      sign = false,
+      notarize = false,
+      previous,
+    }: {
+      out?: string;
+      server?: DesktopServerBundle;
+      arch?: DesktopArch;
+      sign?: boolean;
+      notarize?: boolean;
+      /** The archive of the release the channel has now, a path or a URL: the pack carries the delta from it. */
+      previous?: string;
+    } = {},
+  ) {
+    this.#assertUpdates();
+    await this.assembleWeb(platform);
+    const { api, config } = await this.prepare(platform, server, arch);
+    const distribution = await this.#distribution(api, platform, "release", { sign, notarize }, server);
+    const packed = await api.packAppUpdate({
+      ...this.#task(platform, config, { env: await this.#runtimeEnv(server) }),
+      platform,
+      out: path.resolve(out ?? this.appPackDir(platform, arch)),
+      ...(arch ? { arch } : {}),
+      ...(distribution.macos ? { macos: distribution.macos } : {}),
+      ...(distribution.windows ? { windows: distribution.windows } : {}),
+      ...(previous ? { previous } : {}),
+    });
+    const { manifest } = packed;
+    const { archive } = manifest;
+    const [file] = manifest.files;
+    if (!archive || !file || !manifest.arch || manifest.build === undefined)
+      throw new Error(`The native build API packed no app archive for '${this.target.name}'.`);
+    const [patch] = manifest.patches ?? [];
+    const tool = (await Bun.file(path.join(import.meta.dir, "..", "package.json"))
+      .json()
+      .catch(() => null)) as { version?: string } | null;
+    const pack: DesktopUpdatePack = {
+      schema: 2,
+      kind: "app",
+      ...(tool?.version ? { cli: tool.version } : {}),
+      builtAt: new Date().toISOString(),
+      app: this.app.name,
+      target: this.target.name,
+      platform,
+      arch: manifest.arch,
+      env: this.env ?? "main",
+      channel: config.updates?.channel ?? "production",
+      appId: manifest.app,
+      appVersion: manifest.version,
+      build: manifest.build,
+      server: manifest.server === true,
+      signer: packed.signer,
+      archive: {
+        url: archive.url,
+        tarSha256: archive.sha256,
+        tarSize: file.size,
+        gzSha256: archive.gzSha256,
+        gzSize: archive.size,
+      },
+      ...(patch ? { patch } : {}),
+      out: packed.out,
+    };
+    await UpdatePackFolder.write(pack);
+    return { ...packed, pack };
+  }
+
   //* Only what the command asked for is signed or uploaded. A release's server is searched for the workspace's secret
   //* values first, signed or not: an unsigned app is handed out too, and an update is published to every install. The
   //* one line naming the identity and the service comes right before the build.
@@ -582,7 +698,8 @@ export class NativeApp {
     return `/${home.join("/")}?${params}${hash ? `#${hash}` : ""}`;
   }
 
-  //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS, an AppImage on Linux.
+  //* `installer` is what a person downloads: a setup program on Windows, a disk image on macOS, and on Linux an
+  //* AppImage and a tar.gz whose install.sh installs the folder that updates itself.
   static assertInstaller(platform: NativePlatform, installer: boolean) {
     if (installer && (platform === "ios" || platform === "android"))
       throw new Error(`An installer is built for a desktop app (Windows, macOS, Linux), not for ${platform}.`);

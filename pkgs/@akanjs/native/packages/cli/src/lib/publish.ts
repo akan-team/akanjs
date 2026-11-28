@@ -4,8 +4,10 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { isUpdateKeyId, MAX_REVOKE_KEYS, updateDecision } from "../../../core/src/kernel.ts";
+import type { DesktopOs } from "../platforms/desktop.ts";
 import { assertSameServer, publishAppUpdate } from "../platforms/desktop-update.ts";
 import { BUNDLE_FILE, readBundleInfo } from "./compat.ts";
+import { currentSignal } from "./exec.ts";
 import { CliError, log } from "./log.ts";
 import type { BuildContext } from "./prepare.ts";
 import {
@@ -13,12 +15,15 @@ import {
   type DesktopArch,
   hostArch,
   keyIdOf,
+  manifestBytes,
   openEnvelope,
   sealManifest,
+  sha256,
   signingKey,
   signManifest,
   type UpdateEnvelope,
   type UpdateManifest,
+  type UpdatesConfig,
   updateKeyPath,
   webManifest,
   writeWebBundle,
@@ -253,11 +258,41 @@ function writeEnvelope(dir: string, channel: string, nativeApi: string, envelope
   return file;
 }
 
+/** Where a desktop release's envelope stays once a later one took its place: what `--republish <bundle>` signs again. */
+const keptEnvelope = (dir: string, channel: string, bundle: string) => join(dir, channel, "releases", `${bundle}.json`);
+
 /**
- * Writes the release of `artifact` (the app a release build made) and its envelope under `out`. A desktop release also
- * gets the v1 pair when signed with the first key, the only one an app built before protocol v2 trusts: that is how
- * such an app takes a binary that reads envelopes.
+ * Signs `manifest` and writes its envelope. A desktop release (`legacy`: the same release as schema 1) also gets the
+ * v1 pair when signed with the first key, the only one an app built before protocol v2 trusts: that is how such an app
+ * takes a binary that reads envelopes. Its envelope is kept under releases/ too.
  */
+function writeRelease(
+  dir: string,
+  channel: string,
+  manifest: UpdateManifest,
+  legacy: UpdateManifest | null,
+  { publicKeys }: Pick<UpdatesConfig, "publicKeys">,
+  keyPath: string,
+): string {
+  mkdirSync(dir, { recursive: true });
+  const envelope = sealManifest(manifestBytes(manifest), keyPath, publicKeys);
+  const file = writeEnvelope(dir, channel, legacy ? "app" : (manifest.nativeApi ?? ""), envelope);
+  if (!legacy) return file;
+  const kept = keptEnvelope(dir, channel, manifest.bundle);
+  mkdirSync(join(kept, ".."), { recursive: true });
+  writeFileSync(kept, `${JSON.stringify(envelope)}\n`);
+  const { index, keyId } = signingKey(keyPath, publicKeys);
+  if (index === 0) {
+    const v1 = manifestBytes(legacy);
+    writeSigned(dir, channel, v1, `${signManifest(v1, keyPath, publicKeys)}\n`);
+  } else
+    log.warn(
+      `this release is signed with ${keyId}, not the first of updates.publicKeys: desktop apps built before protocol v2 trust only that key, so they do not see it`,
+    );
+  return file;
+}
+
+/** Writes the release of `artifact` (the app a release build made) and its envelope under `out`. */
 export async function publishRelease(
   ctx: BuildContext,
   platform: ReleasePlatform,
@@ -308,22 +343,129 @@ export async function publishRelease(
   }
   const { expiresIn } = config.updates;
   if (expiresIn) manifest = { ...manifest, expiresAt: Math.floor(Date.now() / 1000) + expiresIn };
-  const encode = (value: UpdateManifest) => new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`);
-  const bytes = encode(manifest);
-  const { publicKeys } = config.updates;
-  mkdirSync(dir, { recursive: true });
-  const name = desktop ? "app" : (manifest.nativeApi ?? "");
-  const file = writeEnvelope(dir, channel, name, sealManifest(bytes, keyPath, publicKeys));
-  if (legacy) {
-    const { index, keyId } = signingKey(keyPath, publicKeys);
-    if (index === 0) {
-      const v1 = encode(legacy);
-      writeSigned(dir, channel, v1, `${signManifest(v1, keyPath, publicKeys)}\n`);
-    } else
-      log.warn(
-        `this release is signed with ${keyId}, not the first of updates.publicKeys: desktop apps built before protocol v2 trust only that key, so they do not see it`,
-      );
-  }
+  const file = writeRelease(dir, channel, manifest, legacy, config.updates, keyPath);
   for (const leftover of leftovers) rmSync(leftover, { force: true });
   return { dir, manifest, file };
+}
+
+/** The bundle id an envelope file claims, unverified; undefined when it is no envelope. */
+function claimedBundle(file: string): string | undefined {
+  try {
+    const { manifest } = JSON.parse(readFileSync(file, "utf8")) as Partial<UpdateEnvelope>;
+    return (JSON.parse(Buffer.from(manifest ?? "", "base64").toString("utf8")) as Partial<UpdateManifest>).bundle;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The envelope of `bundle` in `dir`: the one kept at its publish, or a channel's newest when it is that release. */
+function publishedEnvelope(dir: string, channel: string, bundle: string): string | null {
+  const others = existsSync(dir)
+    ? readdirSync(dir, { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && entry.name !== channel)
+        .map((entry) => entry.name)
+    : [];
+  for (const name of [channel, ...others]) {
+    const kept = keptEnvelope(dir, name, bundle);
+    if (existsSync(kept)) return kept;
+    const newest = join(dir, name, "app.json");
+    if (claimedBundle(newest) === bundle) return newest;
+  }
+  return null;
+}
+
+async function fromFeed(url: string, missing: string, hint = ""): Promise<Response> {
+  log.info(`${missing}: fetching ${url}`);
+  const signal = currentSignal();
+  const response = await fetch(url, { signal }).catch((error: unknown) => {
+    if (signal?.aborted) throw error;
+    throw new CliError(
+      `${missing}, and ${url} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  if (!response.ok) throw new CliError(`${missing}, and ${url} answered ${response.status}${hint}`);
+  return response;
+}
+
+//? A fresh checkout has no updates folder, and CI is one: an upload sends the kept envelope beside the release, so the
+//? feed answers for it. It is opened against the trusted keys like a local one.
+async function feedEnvelope(dir: string, feed: string, channel: string, bundle: string): Promise<string> {
+  const hint = `: --republish signs again a release this target published (${join(dir, channel, "releases")} keeps their envelopes, and an upload sends them)`;
+  const url = `${feed}/${channel}/releases/${bundle}.json`;
+  return await (await fromFeed(url, `${dir} holds no release ${bundle}`, hint)).text();
+}
+
+/** The archive a manifest names, in `dir` or else fetched there from the feed, refused unless it is the one named. */
+async function releaseArchive(dir: string, feed: string, archive: NonNullable<UpdateManifest["archive"]>) {
+  const file = join(dir, archive.url);
+  if (!existsSync(file)) {
+    const url = `${feed}/${archive.url}`;
+    const bytes = await (await fromFeed(url, `${file} is not here`)).bytes();
+    if (sha256(bytes) !== archive.gzSha256) throw new CliError(`${url} is not the archive the release names`);
+    mkdirSync(join(file, ".."), { recursive: true });
+    writeFileSync(file, bytes);
+    return;
+  }
+  if (sha256(readFileSync(file)) !== archive.gzSha256)
+    throw new CliError(`${file} is not the archive the release names: nothing was signed`);
+}
+
+/**
+ * Signs a desktop release this folder published again, as its channel's newest: the same archive under a new sequence
+ * and bundle id, with no patch. Every app of the channel on another build takes it whole, one on a later build too,
+ * which is how a release is rolled back. The archive is the one in `out`, or fetched from updates.url when it is gone.
+ */
+export async function republishRelease(
+  project: { config: { app: { id: string }; updates?: UpdatesConfig | null } },
+  platform: DesktopOs,
+  bundle: string,
+  out: string,
+  channel: string,
+  request: RevocationRequest = {},
+  arch: DesktopArch = hostArch(),
+): Promise<PublishedRelease & { from: UpdateManifest }> {
+  const { config } = project;
+  if (!config.updates)
+    throw new CliError("akan-native.config.ts has no updates: { url, publicKeys } (run `akan-native update keygen`)");
+  const { updates } = config;
+  const dir = releaseDir(out, platform, arch);
+  const feed = `${updates.url}/${platform}-${arch}`;
+  assertChannel(channel);
+  assertSigningKey(config);
+  if (!/^[A-Za-z0-9][A-Za-z0-9._+-]*$/.test(bundle))
+    throw new CliError(`--republish takes a release's bundle id (<version>-<sequence>), not ${JSON.stringify(bundle)}`);
+  const envelope = publishedEnvelope(dir, channel, bundle) ?? `${feed}/${channel}/releases/${bundle}.json`;
+  const text = existsSync(envelope) ? readFileSync(envelope, "utf8") : await feedEnvelope(dir, feed, channel, bundle);
+  const opened = openEnvelope(text, updates.publicKeys, updates.revokedKeys);
+  const from = JSON.parse(new TextDecoder().decode(opened.manifest)) as UpdateManifest;
+  const { archive } = from;
+  if (from.bundle !== bundle || from.kind !== "app" || from.app !== config.app.id || !archive)
+    throw new CliError(`${envelope} is not release ${bundle} of ${config.app.id}`);
+  if (from.platform !== platform || from.arch !== arch)
+    throw new CliError(`${envelope} is a ${from.platform} ${from.arch} release, not a ${platform} ${arch} one`);
+  if (typeof from.server === "boolean") assertSameServer(dir, channel, from.server);
+  const { revokeKeys, resetSequence } = releaseRevocations(config, platform, out, channel, request, arch);
+  warnRevocations(updates, revokeKeys);
+  await releaseArchive(dir, feed, archive);
+  //? A folder that never held the channel knows only its clock, which the release it signs again may be ahead of.
+  const sequence = Math.max(nextSequence(dir, channel), from.sequence + 1);
+  const { target: _target, revokeKeys: _revoked, resetSequence: _reset, expiresAt: _expires, ...kept } = from;
+  const legacy: UpdateManifest = {
+    ...kept,
+    schema: 1,
+    channel,
+    sequence,
+    bundle: `${from.version}-${sequence}`,
+    patches: [],
+  };
+  const manifest: UpdateManifest = {
+    ...legacy,
+    schema: 2,
+    ...(updates.target ? { target: updates.target } : {}),
+    ...(revokeKeys.length ? { revokeKeys } : {}),
+    ...(resetSequence ? { resetSequence: true } : {}),
+    ...(updates.expiresIn ? { expiresAt: Math.floor(Date.now() / 1000) + updates.expiresIn } : {}),
+  };
+  const file = writeRelease(dir, channel, manifest, legacy, updates, updateKeyPath(config.app.id));
+  return { dir, manifest, file, from };
 }

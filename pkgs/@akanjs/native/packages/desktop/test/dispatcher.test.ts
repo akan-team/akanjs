@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import preferences from "../../../plugins/preferences/src/desktop.ts";
@@ -715,6 +715,67 @@ describe("capabilities (PL-11, plugins.md C7)", () => {
     await call(d, "read", { path: "y" }, 3);
     expect(seen).toEqual([{ window: 3, scope: undefined }]);
   });
+});
+
+test("a plugin reaches the user's tools through its context, and a page's child is tied to its document", async () => {
+  const spawned: { cmd: string[]; document: unknown }[] = [];
+  interface Tools {
+    where(): Promise<{ path: string; found: unknown }>;
+    run(): Promise<void>;
+  }
+  const plugin = defineDesktopPlugin<Tools>({
+    id: "tools",
+    methods: {
+      where: async (_args, ctx) => ({ path: await ctx.userPath(), found: await ctx.resolveCommand("tool") }),
+      run: async (_args, ctx) => void (await ctx.spawn(["tool", "--version"], { document: ctx.document })),
+    },
+  });
+  const local = join(mkdtempSync(join(tmpdir(), "akan-native-dispatcher-")), "local");
+  const dispatcher = createDispatcher([plugin], {
+    app: { id: "t", name: "T", version: "1" },
+    appDataDir: "/nonexistent",
+    appLocalDataDir: local,
+    emit: () => {},
+    registerFile: () => ({ url: "", mime: "", size: 0 }),
+    commands: {
+      userPath: async () => "/home/u/.bun/bin:/usr/bin",
+      resolveCommand: async (name) => ({ path: `/home/u/.bun/bin/${name}`, shell: false }),
+      spawn: async (cmd, options) => {
+        spawned.push({ cmd, document: options?.document });
+        throw new AkanNativeError("NOT_FOUND", "no such tool");
+      },
+    },
+  });
+  await dispatcher.launched;
+  const call = (id: number, method: string) =>
+    dispatcher.handle(JSON.stringify({ v: 1, id, plugin: "tools", method }), 1);
+  expect(await call(1, "where")).toMatchObject({
+    ok: true,
+    result: { path: "/home/u/.bun/bin:/usr/bin", found: { path: "/home/u/.bun/bin/tool", shell: false } },
+  });
+  expect(await call(2, "run")).toMatchObject({ ok: false, error: { code: "NOT_FOUND", message: "no such tool" } });
+  expect(spawned).toEqual([{ cmd: ["tool", "--version"], document: expect.objectContaining({ window: 1 }) }]);
+});
+
+test("each data folder is made at a plugin's first read of it, and not before", async () => {
+  const root = mkdtempSync(join(tmpdir(), "akan-native-dispatcher-"));
+  const read: string[] = [];
+  const plugin = defineDesktopPlugin<{ dirs(): Promise<void> }>({
+    id: "dirs",
+    methods: { dirs: (_args, ctx) => void read.push(ctx.appDataDir, ctx.appLocalDataDir, ctx.appDataDir) },
+  });
+  const dispatcher = createDispatcher([plugin], {
+    app: { id: "t", name: "T", version: "1" },
+    appDataDir: join(root, "roaming"),
+    appLocalDataDir: join(root, "local"),
+    emit: () => {},
+    registerFile: () => ({ url: "", mime: "", size: 0 }),
+  });
+  await dispatcher.launched;
+  expect(readdirSync(root)).toEqual([]);
+  await dispatcher.handle(JSON.stringify({ v: 1, id: 1, plugin: "dirs", method: "dirs" }), 1);
+  expect(read).toEqual([join(root, "roaming"), join(root, "local"), join(root, "roaming")]);
+  expect(readdirSync(root).sort()).toEqual(["local", "roaming"]);
 });
 
 test("plugins' external opens: at most one a second (L0)", () => {

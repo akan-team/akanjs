@@ -7,6 +7,7 @@ import {
 } from "akanjs";
 import {
   type PipelineActionName,
+  type PipelineDesktopOtaPlatform,
   type PipelineDiagnostic,
   type PipelineMilestone,
   type PipelineOtaPlatform,
@@ -56,7 +57,7 @@ export interface PipelineCompileInput {
   workspaceApps: readonly string[];
   workspace: PipelineSourceFile<WorkspacePipelineConfig> | null;
   apps: ReadonlyMap<string, PipelineSourceFile<AppPipelineConfig>>;
-  /** Read only for an app whose pipeline takes `ota`. */
+  /** Read only for an app whose pipeline takes `ota` or `desktop-ota`. */
   nativeTargets?: ReadonlyMap<string, PipelineNativeTargets>;
   akanVersion: string;
   /** Function forms run against a sample context (`validate`), which is said once per file. */
@@ -64,7 +65,9 @@ export interface PipelineCompileInput {
   diagnostics?: readonly PipelineDiagnostic[];
 }
 
-type CustomSlot = "before-build" | "after-build" | "after-docker" | "after-deploy" | "after-ota";
+type CustomSlot = "before-build" | "after-build" | "after-docker" | "after-deploy" | "after-ota" | "after-desktop-ota";
+
+type OtaAction = Extract<PipelineActionName, "ota" | "desktop-ota">;
 
 interface AppLane {
   file: string;
@@ -74,6 +77,7 @@ interface AppLane {
   skips: Map<PipelineActionName, PipelineSkip | null>;
   slots: Record<CustomSlot, PipelineShellStageRule[]>;
   ota: { targets: string[]; platforms: PipelineOtaPlatform[] } | null;
+  desktopOta: { targets: string[]; platforms: PipelineDesktopOtaPlatform[] } | null;
 }
 
 interface StageOptions {
@@ -94,6 +98,7 @@ export class PipelineCompiler {
     docker: "after-docker",
     deploy: "after-deploy",
     ota: "after-ota",
+    "desktop-ota": "after-desktop-ota",
   } as const;
   static readonly #slotMilestones = {
     "before-build": "prepare",
@@ -101,6 +106,7 @@ export class PipelineCompiler {
     "after-docker": "package",
     "after-deploy": "deploy",
     "after-ota": "deploy",
+    "after-desktop-ota": "deploy",
   } as const;
   static readonly #slotNames = {
     "before-build": "Before build",
@@ -108,10 +114,18 @@ export class PipelineCompiler {
     "after-docker": "After docker",
     "after-deploy": "After deploy",
     "after-ota": "After OTA",
+    "after-desktop-ota": "After desktop OTA",
   } as const;
   static readonly #reservedPhaseId =
-    /^(?:build|docker|deploy|ota|(?:before-build|after-build|after-docker|after-deploy|after-ota)(?:-\d+)?)$/;
-  static readonly #actionStepNames = { build: "akan build", docker: "image", deploy: "deploy", ota: "ota" } as const;
+    /^(?:build|docker|deploy|ota|desktop-ota|(?:before-build|after-(?:build|docker|deploy|ota|desktop-ota))(?:-\d+)?)$/;
+  static readonly #actionStepNames = {
+    build: "akan build",
+    docker: "image",
+    deploy: "deploy",
+    ota: "ota",
+    "desktop-ota": "desktop ota",
+  } as const;
+  static readonly #otaCodes = { ota: "pipeline.ota", "desktop-ota": "pipeline.desktopOta" } as const;
   //? PipelinePlanSchema reads at most 1024 characters of a skip reason.
   static readonly #reasonChars = 1024;
 
@@ -265,8 +279,16 @@ export class PipelineCompiler {
       after: rule.after,
       actions: new Map(),
       skips: new Map(),
-      slots: { "before-build": [], "after-build": [], "after-docker": [], "after-deploy": [], "after-ota": [] },
+      slots: {
+        "before-build": [],
+        "after-build": [],
+        "after-docker": [],
+        "after-deploy": [],
+        "after-ota": [],
+        "after-desktop-ota": [],
+      },
       ota: null,
+      desktopOta: null,
     };
     let last: PipelineActionName | null = null;
     let lastMilestone = -1;
@@ -320,7 +342,10 @@ export class PipelineCompiler {
         deploy.path,
       );
     const ota = lane.actions.get("ota");
-    if (ota) lane.ota = this.#otaTargets(app, ota, file);
+    if (ota) lane.ota = this.#otaTargets(app, "ota", ota, file, ota.platforms ?? [...pipelineOtaPlatforms]);
+    const desktopOta = lane.actions.get("desktop-ota");
+    if (desktopOta)
+      lane.desktopOta = this.#otaTargets(app, "desktop-ota", desktopOta, file, desktopOta.desktopPlatforms);
     if (!lane.actions.size)
       this.#warning(
         "pipeline.app.noActions",
@@ -339,14 +364,20 @@ export class PipelineCompiler {
     return lane;
   }
 
-  //? Checked here, not by the executor: a pack for a target without updates fails in the build pod after its CSR build.
-  #otaTargets(app: string, stage: PipelineActionStageRule, file: string): AppLane["ota"] {
-    const platforms = stage.platforms ?? [...pipelineOtaPlatforms];
+  //? Checked here, not by the executor: a pack for a target without updates fails only where it runs, after its build.
+  #otaTargets<Platform>(
+    app: string,
+    action: OtaAction,
+    stage: PipelineActionStageRule,
+    file: string,
+    platforms: Platform[] | null,
+  ): { targets: string[]; platforms: Platform[] } | null {
+    const code = PipelineCompiler.#otaCodes[action];
     const native = this.#input.nativeTargets?.get(app);
     if (!native || "error" in native) {
       this.#error(
-        "pipeline.ota.targets",
-        `\`ota\` needs the native targets of ${app}, which could not be read${native ? `: ${native.error}` : ""}`,
+        `${code}.targets`,
+        `\`${action}\` needs the native targets of ${app}, which could not be read${native ? `: ${native.error}` : ""}`,
         file,
         stage.path,
       );
@@ -355,10 +386,10 @@ export class PipelineCompiler {
     const known = new Map(native.targets.map((target) => [target.name, target.updates]));
     if (!stage.targets) {
       const targets = native.targets.filter((target) => target.updates).map((target) => target.name);
-      if (targets.length) return { targets, platforms };
+      if (targets.length) return platforms && { targets, platforms };
       this.#error(
-        "pipeline.ota.noUpdates",
-        `\`ota\` packs updates for targets that declare native.updates, and no native target of ${app} does`,
+        `${code}.noUpdates`,
+        `\`${action}\` packs updates for targets that declare native.updates, and no native target of ${app} does`,
         file,
         stage.path,
       );
@@ -368,19 +399,19 @@ export class PipelineCompiler {
     const withoutUpdates = stage.targets.filter((name) => known.get(name) === false);
     if (unknown.length)
       this.#error(
-        "pipeline.ota.unknownTarget",
+        `${code}.unknownTarget`,
         `${unknown.map((name) => `"${name}"`).join(", ")} ${unknown.length > 1 ? "are not native targets" : "is not a native target"} of ${app}: ${[...known.keys()].join(", ")}`,
         file,
         `${stage.path}.targets`,
       );
     if (withoutUpdates.length)
       this.#error(
-        "pipeline.ota.noUpdates",
-        `\`ota\` packs updates for targets that declare native.updates, and ${withoutUpdates.map((name) => `"${name}"`).join(", ")} of ${app} ${withoutUpdates.length > 1 ? "do" : "does"} not`,
+        `${code}.noUpdates`,
+        `\`${action}\` packs updates for targets that declare native.updates, and ${withoutUpdates.map((name) => `"${name}"`).join(", ")} of ${app} ${withoutUpdates.length > 1 ? "do" : "does"} not`,
         file,
         `${stage.path}.targets`,
       );
-    return unknown.length || withoutUpdates.length ? null : { targets: stage.targets, platforms };
+    return unknown.length || withoutUpdates.length || !platforms ? null : { targets: stage.targets, platforms };
   }
 
   #appOrder(lanes: ReadonlyMap<string, AppLane>): string[] {
@@ -461,7 +492,16 @@ export class PipelineCompiler {
               actionVersion: pipelineActions[action].version,
               ...(action === "ota"
                 ? { action, with: { app, targets: lane.ota?.targets ?? [], platforms: lane.ota?.platforms ?? [] } }
-                : { action, with: { app } }),
+                : action === "desktop-ota"
+                  ? {
+                      action,
+                      with: {
+                        app,
+                        targets: lane.desktopOta?.targets ?? [],
+                        platforms: lane.desktopOta?.platforms ?? [],
+                      },
+                    }
+                  : { action, with: { app } }),
             },
           ],
         },

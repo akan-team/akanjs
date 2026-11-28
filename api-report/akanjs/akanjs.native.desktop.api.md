@@ -23,6 +23,9 @@ export interface DesktopContext {
     readonly appDataDir: string;
     readonly appLocalDataDir: string;
     readonly binDir: null | string;
+    userPath(): Promise<string>;
+    resolveCommand(name: string): Promise<ResolvedCommand | null>;
+    spawn(cmd: string[], options?: DesktopSpawnOptions): Promise<DesktopProcess>;
     readonly server: DesktopServerStatus | null;
     emit(event: string, data?: unknown, target?: EmitTarget): number[];
     registerFile(path: string, mime: string): FileRef;
@@ -105,12 +108,34 @@ interface CallScope {
     deny: ScopeEntry[];
 }
 
+interface DesktopProcess {
+    readonly pid: number;
+    readonly exited: Promise<number>;
+    readonly stdin: DesktopProcessInput | null;
+    readonly stdout: ReadableStream<Uint8Array> | null;
+    readonly stderr: ReadableStream<Uint8Array> | null;
+    kill(signal?: NodeJS.Signals): void;
+}
+
+interface DesktopProcessInput {
+    write(chunk: Uint8Array | string): void;
+    end(): void;
+}
+
 type DesktopServerState = "gaveUp" | "restarting" | "starting" | "stopped" | "up";
 
 interface DesktopServerStatus {
     readonly ready: Promise<boolean>;
     readonly state: DesktopServerState;
     onState(listener: (state: DesktopServerState) => void): () => void;
+}
+
+interface DesktopSpawnOptions {
+    cwd?: string;
+    env?: Record<string, string | undefined>;
+    stdin?: "ignore" | "pipe";
+    onLine?(line: string, stream: "stderr" | "stdout"): void;
+    document?: DocumentScope;
 }
 
 interface DocumentInfo {
@@ -169,6 +194,11 @@ interface PageVeto<D> {
 }
 
 type QuitReason = "lastWindowClosed" | "session" | "user";
+
+interface ResolvedCommand {
+    path: string;
+    shell: boolean;
+}
 
 type ScopeEntry = Record<string, string>;
 

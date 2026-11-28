@@ -1,4 +1,5 @@
 import {
+  type PipelineDesktopOtaPlatform,
   type PipelineDiagnostic,
   PipelineNames,
   PipelinePattern,
@@ -6,6 +7,8 @@ import {
   type PipelineValueProblem,
   PipelineValueReader,
   pipelineActionNames,
+  pipelineDesktopOtaArchs,
+  pipelineDesktopOtaSystems,
   pipelineMilestones,
   pipelineOtaPlatforms,
   pipelinePlanLimits,
@@ -136,7 +139,7 @@ export class PipelineInputReader {
         "use",
         ...PipelineInputReader.#stageKeys,
         "retry",
-        ...(raw.use === "ota" ? ["targets", "platforms"] : []),
+        ...(raw.use === "ota" || raw.use === "desktop-ota" ? ["targets", "platforms"] : []),
       ])
     )
       return null;
@@ -165,7 +168,7 @@ export class PipelineInputReader {
           ? null
           : this.#nonEmptySet(this.#strings(raw.targets, `${path}.targets`), `${path}.targets`),
       platforms:
-        raw.platforms === undefined
+        action !== "ota" || raw.platforms === undefined
           ? null
           : this.#nonEmptySet(
               this.#list(raw.platforms, `${path}.platforms`).flatMap((platform, idx) => {
@@ -174,8 +177,45 @@ export class PipelineInputReader {
               }),
               `${path}.platforms`,
             ),
+      desktopPlatforms: action === "desktop-ota" ? this.#desktopPlatforms(raw.platforms, `${path}.platforms`) : null,
       path,
     };
+  }
+
+  #desktopPlatforms(value: unknown, path: string): PipelineDesktopOtaPlatform[] | null {
+    if (value === undefined || (Array.isArray(value) && !value.length)) {
+      this.#report(
+        "pipeline.desktopOta.noPlatforms",
+        '`desktop-ota` names the `platforms` it packs for, like { os: "macos", arch: "arm64" }: it has no default, since each needs a build host of its own OS',
+        path,
+      );
+      return null;
+    }
+    const seen = new Set<string>();
+    const platforms = this.#list(value, path).flatMap((entry, idx): PipelineDesktopOtaPlatform[] => {
+      const entryPath = `${path}[${idx}]`;
+      const raw = this.#read.object(entry, entryPath, ["os", "arch"]);
+      if (!raw) return [];
+      const os = this.#read.oneOf(raw.os, `${entryPath}.os`, pipelineDesktopOtaSystems);
+      const arch = this.#read.oneOf(raw.arch, `${entryPath}.arch`, pipelineDesktopOtaArchs);
+      if (!os || !arch) return [];
+      const shown = `{ os: "${os}", arch: "${arch}" }`;
+      if (os === "macos" && arch === "x64") {
+        this.#report(
+          "pipeline.desktopOta.unsupportedPlatform",
+          `${shown} cannot be packed: a macOS app is built for arm64 only`,
+          entryPath,
+        );
+        return [];
+      }
+      if (seen.has(shown)) {
+        this.#report("pipeline.desktopOta.duplicatePlatform", `${shown} is listed twice`, entryPath);
+        return [];
+      }
+      seen.add(shown);
+      return [{ os, arch }];
+    });
+    return platforms.length ? platforms : null;
   }
 
   #nonEmptySet<T>(items: T[], path: string): T[] | null {

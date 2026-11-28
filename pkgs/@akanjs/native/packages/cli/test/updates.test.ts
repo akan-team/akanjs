@@ -416,6 +416,25 @@ describe("updates config (UP-1, UP-2)", () => {
     expect(Math.abs(resource.embeddedSequence - Date.now() / 1000)).toBeLessThan(5);
   });
 
+  test("a desktop build bakes the report address a phone build does", () => {
+    const updates = {
+      url: "https://u",
+      publicKeys: ["k"],
+      revokedKeys: [],
+      channel: "main",
+      readyTimeout: 3000,
+      reportUrl: "https://r/p",
+      target: null,
+      automatic: true,
+    };
+    const app = { id: "dev.x", version: "1.2.0" };
+    for (const os of ["macos", "windows", "linux"] as const)
+      expect(JSON.parse(updatesResource(updates, app, os, "abc", false)).reportUrl).toBe("https://r/p");
+    expect(JSON.parse(updatesResource({ ...updates, reportUrl: null }, app, "linux", "abc", false)).reportUrl).toBe(
+      undefined,
+    );
+  });
+
   test("a phone build's bundle.json names the report address a registering server checks", () => {
     const out = mkdtempSync(join(tmpdir(), "akan-phone-updates-"));
     try {
@@ -761,7 +780,7 @@ describe("release builds", () => {
       expect(secureUpdateUrl(url)).toBe(false);
   });
 
-  test("of a phone take an https report address, or http to this machine", async () => {
+  test("take an https report address, or http to this machine", async () => {
     const { prepare } = await import("../src/lib/prepare.ts");
     const dir = mkdtempSync(join(tmpdir(), "akan-native-report-"));
     try {
@@ -788,7 +807,7 @@ describe("release builds", () => {
         api: true,
         envFiles: false,
       };
-      for (const platform of ["android", "ios"] as const)
+      for (const platform of ["android", "ios", "macos", "windows", "linux"] as const)
         await expect(prepare(project("http://reports.example.com/r/"), platform, release)).rejects.toThrow(
           "updates.report.url must be https in a release build",
         );

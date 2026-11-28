@@ -18,6 +18,7 @@ import {
   UNLISTEN,
   validateRequest,
 } from "../../core/src/protocol.ts";
+import { createCommands, type DesktopCommands } from "./commands.ts";
 import type { Lifecycle } from "./lifecycle.ts";
 import type {
   DesktopContext,
@@ -53,6 +54,8 @@ export interface HostServices {
   appLocalDataDir?: string;
   /** desktop.bin in the app's resources, or null. */
   binDir?: string | null;
+  /** ctx.userPath, resolveCommand and spawn; made for `binDir` when not given. */
+  commands?: DesktopCommands;
   /** The carried server (resources/server.json), or null. */
   server?: DesktopServerStatus | null;
   /** Sends an event (numbered for its document) to a window's page. */
@@ -206,6 +209,24 @@ export interface DispatcherOptions {
   declarations?: Record<string, unknown>;
 }
 
+/** ctx.appDataDir and ctx.appLocalDataDir, each made at its first read. */
+function dataDirs(services: HostServices): Pick<DesktopContext, "appDataDir" | "appLocalDataDir"> {
+  const made = new Set<string>();
+  const ensured = (dir: string) => {
+    if (!made.has(dir)) mkdirSync(dir, { recursive: true });
+    made.add(dir);
+    return dir;
+  };
+  return {
+    get appDataDir() {
+      return ensured(services.appDataDir);
+    },
+    get appLocalDataDir() {
+      return ensured(services.appLocalDataDir ?? services.appDataDir);
+    },
+  };
+}
+
 /** Only the plugin's own members: "constructor" or "toString" must not reach Object.prototype. */
 function own<T>(record: Record<string, T> | undefined, key: string): T | undefined {
   return record && Object.hasOwn(record, key) ? record[key] : undefined;
@@ -217,8 +238,8 @@ export function createDispatcher(
   options: DispatcherOptions = {},
 ): Dispatcher {
   const byId = new Map(plugins.map((p) => [p.id, p]));
-  let dataDirReady = false;
-  let localDataDirReady = false;
+  const dirs = dataDirs(services);
+  const commands = services.commands ?? createCommands({ binDir: services.binDir ?? null });
   const launch: Launch = { window: {} };
   let launching = true;
   const duringLaunch = (plugin: DesktopPlugin, what: string, apply: () => void) => {
@@ -234,21 +255,15 @@ export function createDispatcher(
         app: services.app,
         dev: services.dev === true,
         get appDataDir() {
-          if (!dataDirReady) {
-            mkdirSync(services.appDataDir, { recursive: true });
-            dataDirReady = true;
-          }
-          return services.appDataDir;
+          return dirs.appDataDir;
         },
         get appLocalDataDir() {
-          const dir = services.appLocalDataDir ?? services.appDataDir;
-          if (!localDataDirReady) {
-            mkdirSync(dir, { recursive: true });
-            localDataDirReady = true;
-          }
-          return dir;
+          return dirs.appLocalDataDir;
         },
         binDir: services.binDir ?? null,
+        userPath: commands.userPath,
+        resolveCommand: commands.resolveCommand,
+        spawn: commands.spawn,
         server: services.server ?? null,
         emit: (event, data, target) => deliver(plugin.id, event, data, target),
         registerFile: (path, mime) => services.registerFile(path, mime),

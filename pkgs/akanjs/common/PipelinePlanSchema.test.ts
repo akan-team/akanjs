@@ -1,18 +1,21 @@
 import { describe, expect, test } from "bun:test";
 import path from "node:path";
 import { PipelinePlanSchema } from "./PipelinePlanSchema";
-import type {
-  PipelineActionName,
-  PipelinePlan,
-  PipelinePlanPhase,
-  PipelinePlanResult,
-  PipelinePlanShellStep,
+import {
+  type PipelineActionName,
+  type PipelinePlan,
+  type PipelinePlanPhase,
+  type PipelinePlanResult,
+  type PipelinePlanShellStep,
+  pipelineActionNames,
+  pipelineOtaPlatforms,
+  pipelinePlanSlots,
 } from "./pipelinePlan";
 
 const sha = (char: string) => char.repeat(64);
 
 const actionPhase = (
-  action: Exclude<PipelineActionName, "ota">,
+  action: Exclude<PipelineActionName, "ota" | "desktop-ota">,
   milestone: PipelinePlanPhase["milestone"],
 ): PipelinePlanPhase => ({
   id: action,
@@ -242,6 +245,95 @@ describe("PipelinePlanSchema", () => {
     refusedOta({ app: "api", targets: ["a", "a"], platforms: ["ios"] }, "lists one twice");
     refusedOta({ app: "api", targets: ["a"], platforms: ["macos"] }, '"macos" is not one of');
     refusedOta({ app: "web", targets: ["a"], platforms: ["ios"] }, "for the stage's own app");
+    refusedOta({ app: "api", targets: ["a"], platforms: [{ os: "macos", arch: "arm64" }] }, "is not one of");
+  });
+
+  test("desktop-ota joins the vocabulary after ota, and the phones an ota packs for stay ios and android", () => {
+    expect(pipelineOtaPlatforms).toEqual(["ios", "android"]);
+    expect(pipelineActionNames).toEqual(["build", "docker", "deploy", "ota", "desktop-ota"]);
+    expect(pipelinePlanSlots.slice(-5)).toEqual(["ota", "after-ota", "desktop-ota", "after-desktop-ota", "after"]);
+  });
+
+  test("a desktop-ota step names its targets and its builds, an os and an arch each, once", () => {
+    const mac = { os: "macos", arch: "arm64" } as const;
+    const desktopOtaPlan = () => {
+      const plan = zeroConfigPlan();
+      const [stage] = actionPhase("deploy", "deploy").stages;
+      if (!stage) throw new Error("no stage");
+      plan.phases.push({
+        ...actionPhase("deploy", "deploy"),
+        id: "desktop-ota",
+        name: "Desktop OTA",
+        slot: "desktop-ota",
+        action: "desktop-ota",
+        order: "parallel",
+        stages: [
+          {
+            ...stage,
+            id: "api:desktop-ota",
+            steps: [
+              {
+                id: "api:desktop-ota/desktop-ota",
+                name: "desktop ota api",
+                timeoutSeconds: null,
+                retry: null,
+                allowFailure: false,
+                kind: "action",
+                action: "desktop-ota",
+                actionVersion: 1,
+                with: {
+                  app: "api",
+                  targets: ["default"],
+                  platforms: [mac, { os: "windows", arch: "x64" }, { os: "windows", arch: "arm64" }],
+                },
+              },
+            ],
+          },
+        ],
+      });
+      plan.phases.push({
+        ...actionPhase("deploy", "deploy"),
+        id: "after-desktop-ota",
+        name: "After desktop OTA",
+        slot: "after-desktop-ota",
+        action: null,
+        order: "parallel",
+        stages: [{ ...stage, id: "api:announce", steps: [shellStep("api:announce/1")] }],
+      });
+      return plan;
+    };
+    expect(PipelinePlanSchema.parse(desktopOtaPlan())).toEqual(desktopOtaPlan());
+    const refusedPlan = (mutate: (plan: PipelinePlan) => void, message: string) => {
+      const plan = desktopOtaPlan();
+      mutate(plan);
+      expect(() => PipelinePlanSchema.parse(plan)).toThrow(message);
+    };
+    const refusedWith = (with_: unknown, message: string) =>
+      refusedPlan((plan) => Object.assign(plan.phases[3]?.stages[0]?.steps[0] ?? {}, { with: with_ }), message);
+    const refusedPlatforms = (platforms: unknown, message: string) =>
+      refusedWith({ app: "api", targets: ["a"], platforms }, message);
+    refusedWith({ app: "api", targets: ["a"] }, '"platforms" is missing');
+    refusedWith({ app: "api", targets: [], platforms: [mac] }, "targets: may not be empty");
+    refusedWith({ app: "api", targets: ["a", "a"], platforms: [mac] }, "targets: lists one twice");
+    refusedWith({ app: "api", targets: ["a"], platforms: [mac], channel: "beta" }, '"channel" is not a known key');
+    refusedWith({ app: "web", targets: ["a"], platforms: [mac] }, "for the stage's own app");
+    refusedPlatforms([], "platforms: may not be empty");
+    refusedPlatforms([mac, { os: "linux", arch: "x64" }, { ...mac }], "platforms: lists one twice");
+    refusedPlatforms([{ os: "ios", arch: "arm64" }], 'platforms[0].os: "ios" is not one of macos, windows, linux');
+    refusedPlatforms([mac, { os: "linux", arch: "ia32" }], 'platforms[1].arch: "ia32" is not one of arm64, x64');
+    refusedPlatforms([{ os: "macos", arch: "x64" }], "platforms[0]: a macOS app is built for arm64 only");
+    refusedPlatforms(["macos"], "platforms[0]: must be an object");
+    refusedPlatforms([{ os: "macos" }], '"arch" is missing');
+    refusedPlatforms([{ ...mac, sign: true }], '"sign" is not a known key');
+    refusedPlan((plan) => Object.assign(plan.phases[3] ?? {}, { slot: "ota" }), 'sits in the "desktop-ota" slot');
+    refusedPlan(
+      (plan) => Object.assign(plan.phases[4] ?? {}, { slot: "desktop-ota" }),
+      "holds the desktop-ota action phase only",
+    );
+    refusedPlan(
+      (plan) => Object.assign(plan.phases[3]?.stages[0]?.steps[0] ?? {}, { actionVersion: 2 }),
+      "is not a version of desktop-ota",
+    );
   });
 
   test("holds the structure every executor relies on", () => {

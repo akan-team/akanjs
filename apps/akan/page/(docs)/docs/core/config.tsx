@@ -280,8 +280,8 @@ const nativeFields = [
   {
     key: "updates.report",
     type: "{ url: string }",
-    en: "Where a phone posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.",
-    ko: "폰이 릴리스마다 어떻게 됐는지(되돌림 등) 보내는 주소이며, 되돌림 비율을 볼 수 있습니다. 적지 않으면 보내지 않습니다.",
+    en: "Where an app, phone or desktop, posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.",
+    ko: "폰과 데스크톱 앱이 릴리스마다 어떻게 됐는지(되돌림 등) 보내는 주소이며, 되돌림 비율을 볼 수 있습니다. 적지 않으면 보내지 않습니다.",
   },
   {
     key: "updates.automatic",
@@ -602,24 +602,24 @@ const pipelineKeys = [
 const stageKeys = [
   {
     key: "use",
-    type: '"build" | "docker" | "deploy" | "ota"',
+    type: '"build" | "docker" | "deploy" | "ota" | "desktop-ota"',
     tags: ["use"],
-    en: "A built-in action. Each appears at most once per app, in this order; `ota` runs only when listed.",
-    ko: "내장 액션입니다. 앱마다 각각 한 번까지, 이 순서로 씁니다. `ota`는 적었을 때만 돕니다.",
+    en: "A built-in action. Each appears at most once per app, in this order; `ota` and `desktop-ota` run only when listed.",
+    ko: "내장 액션입니다. 앱마다 각각 한 번까지, 이 순서로 씁니다. `ota`와 `desktop-ota`는 적었을 때만 돕니다.",
   },
   {
     key: "targets",
     type: "string[]",
     tags: ["use"],
-    en: "`ota` only: native targets to pack. Default: every target with `native.updates`.",
-    ko: "`ota` 전용: 업데이트를 묶을 네이티브 타깃입니다. 기본값은 `native.updates`가 있는 타깃 전부입니다.",
+    en: "`ota` and `desktop-ota`: native targets to pack. Default: every target with `native.updates`.",
+    ko: "`ota`·`desktop-ota`: 업데이트를 묶을 네이티브 타깃입니다. 기본값은 `native.updates`가 있는 타깃 전부입니다.",
   },
   {
     key: "platforms",
-    type: '("ios" | "android")[]',
+    type: '("ios" | "android")[] | { os, arch }[]',
     tags: ["use"],
-    en: "`ota` only: phones to pack for. Default: both.",
-    ko: "`ota` 전용: 업데이트를 묶을 휴대폰 플랫폼입니다. 기본값은 둘 다입니다.",
+    en: "`ota`: phones to pack for, both by default. `desktop-ota`: required `{ os, arch }` entries, each packed on a host of that OS.",
+    ko: "`ota`: 업데이트를 묶을 휴대폰 플랫폼이며 기본값은 둘 다입니다. `desktop-ota`: 필수인 `{ os, arch }` 목록이며, 각각 그 OS의 호스트에서 묶습니다.",
   },
   {
     key: "name",
@@ -898,6 +898,16 @@ const phaseRows = [
   { phase: "after-deploy", en: "App stages written after `deploy`.", ko: "`deploy` 뒤에 적은 앱 stage입니다." },
   { phase: "ota", en: "Over-the-air packs of apps that list `ota`.", ko: "`ota`를 적은 앱의 OTA 업데이트를 묶습니다." },
   { phase: "after-ota", en: "App stages written after `ota`.", ko: "`ota` 뒤에 적은 앱 stage입니다." },
+  {
+    phase: "desktop-ota",
+    en: "Desktop app packs of apps that list `desktop-ota`.",
+    ko: "`desktop-ota`를 적은 앱의 데스크톱 앱 업데이트를 묶습니다.",
+  },
+  {
+    phase: "after-desktop-ota",
+    en: "App stages written after `desktop-ota`.",
+    ko: "`desktop-ota` 뒤에 적은 앱 stage입니다.",
+  },
   { phase: "after", en: "Each root `after` stage.", ko: "루트 `after`의 stage입니다." },
   {
     phase: "post",

@@ -1,5 +1,6 @@
 import type {
   PipelineActionName,
+  PipelineDesktopOtaPlatform,
   PipelineMilestone,
   PipelineOtaPlatform,
   PipelinePlanRetry,
@@ -49,9 +50,12 @@ export interface PipelineActionStageRule extends PipelineStageRuleBase {
   action: PipelineActionName;
   named: boolean;
   retry: PipelinePlanRetry | null;
-  /** `ota` only; `null` takes the default. */
+  /** `ota` and `desktop-ota` only; `null` takes the default. */
   targets: string[] | null;
+  /** `ota` only; `null` takes the default. */
   platforms: PipelineOtaPlatform[] | null;
+  /** `desktop-ota` only, which has no default: `null` there was reported by the reader. */
+  desktopPlatforms: PipelineDesktopOtaPlatform[] | null;
 }
 
 export interface PipelineParallelStageRule extends PipelineStageRuleBase {

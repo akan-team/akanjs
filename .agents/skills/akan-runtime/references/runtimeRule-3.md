@@ -116,8 +116,9 @@ const config: AppConfig = {
   answers. `--release true` runs a release build of the app's own bundle instead.
 - **A desktop app builds only for the computer that builds it** — a `.app` on macOS, and an unsigned folder on
   Windows and Linux. `build-desktop --installer true` adds what a person downloads: a per-user NSIS setup on Windows
-  (`/S` installs silently), a dmg on macOS, an AppImage on Linux (it needs `mksquashfs`; an AppImage cannot update
-  itself, so a release with `updates` ships a new one). The dmg opens on a drag-to-Applications window with the app's
+  (`/S` installs silently), a dmg on macOS, and on Linux an AppImage (it needs `mksquashfs`, and cannot update
+  itself) beside a `.tar.gz` whose `install.sh` installs the app folder for the user in `~/.local/opt/<app id>`, the
+  install `updates` replaces. The dmg opens on a drag-to-Applications window with the app's
   icon on the mounted disk, laid out without Finder so CI builds it too; `native.desktop.dmg` (per target as well)
   replaces the background (`background`, `background2x` for Retina) and moves the window and the icons (`window`,
   `iconSize`, `textSize`, `app`, `applications`, in points) — the default background lines up with the default icon
@@ -148,20 +149,24 @@ const config: AppConfig = {
 - **`updates: { url, publicKeys }` lets an installed app update itself** — the whole app on a desktop, the web
   bundle on a phone. `akan update-keygen <app>` makes the signing key once
   (`~/.akan/native/keys/<app id>.update.key`, or the path `AKAN_NATIVE_UPDATE_KEY` names) and prints its public
-  key. List the online signing key first and offline spares after it (up to three): a phone binary trusts all of
-  them, and a key may revoke only the keys listed before it, so a leaked key cannot lock out its spares. A desktop
-  app trusts the first; `publicKey` is the one-key form. `akan publish-update <app>` builds and signs a release
+  key. List the online signing key first and offline spares after it (up to three): a binary trusts all of
+  them, phone or desktop, and a key may revoke only the keys listed before it, so a leaked key cannot lock out its
+  spares. Only a desktop app built before protocol v2 (akanjs 3.1.1) trusts the first alone; `publicKey` is the one-key
+  form. `akan publish-update <app>` builds and signs a release
   into `updates/`: upload that release's files to `url` and its manifest last, or let
   `--upload s3://<bucket>/<prefix>` do it (credentials and endpoint from `S3_*` or `AWS_*`; a release file the bucket
   holds is skipped), which sends that release alone, and nothing when it is missing or fails a check. Never upload the
   folder whole: a phone's is also where `pack-update` writes by default.
   A phone reads only `<url>/<platform>/<channel>/<nativeApi>.json`, so each store generation on a channel takes its
   own fixes.
-  `akan pack-update` writes an unsigned phone bundle for whoever holds the key to sign and records it in
-  `<out>/pack.json`, exiting 2 when `--against` says it needs a new store build; `akan push-update` packs and uploads to
-  the Akan Cloud project that holds the key, and `akan register-binary` registers a store build after `release-*`. A
-  release that hangs is rolled back while the app runs, and `report: { url }` has a phone post what became of each
-  release (applied, confirmed, rolled back and why) at its next launch, so rollback rates are visible. `devtools: true`
+  `akan pack-update` writes an unsigned pack for whoever holds the key and records it in `<out>/pack.json`: a phone's
+  web bundle (exit 2 when `--against` says it needs a new store build), or with `--platform desktop` this OS's app
+  archive, with the delta from `--previous <archive>`; the holder signs its template with `fillManifest`,
+  `manifestBytes` and `updateEnvelope` of `akanjs/native/api`. `publish-update --republish <bundle>` signs an earlier
+  desktop release again as the newest: a rollback with no build. `akan push-update` packs and uploads to the Akan
+  Cloud project that holds the key, and `akan register-binary` registers a store build after `release-*`. A release
+  that hangs is rolled back while the app runs, and `report: { url }` has an app, phone or desktop, post what became
+  of each release (applied, confirmed, rolled back and why) at its next launch, so rollback rates are visible. `devtools: true`
   opens the web inspector of a release build for an internal test target. The channel is the backend env the binary was built for unless `channel` names one;
   on a desktop, `updates.setChannel({ channel })` moves the installed app to another manifest until set back with
   `null` — a server putting a device on a pilot channel — and never to a release older than the one running. A

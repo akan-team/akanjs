@@ -41,7 +41,6 @@ import {
   openSync,
   readdirSync,
   readFileSync,
-  readSync,
   renameSync,
   rmSync,
   writeFileSync,
@@ -71,6 +70,8 @@ import {
 } from "../../../packages/desktop/src/plugin.ts";
 import { type RelaunchOptions, relaunchAfterExit } from "../../../packages/desktop/src/relaunch.ts";
 import type { UpdateCheck, UpdateState, UpdatesApi, UpdatesEvents } from "./index.ts";
+import { claimedRelease, createUpdateReports, type ReportedRelease, type ReportReason } from "./reports.ts";
+import { codesignProblem, runSignatureTool, type SignatureTool, signerRefusal } from "./signer.ts";
 
 export interface UpdatesConfig {
   app: string;
@@ -92,6 +93,8 @@ export interface UpdatesConfig {
   automatic?: boolean;
   /** Windows (updates.windowsSigners): SHA-1 thumbprints a release's Authenticode certificate must be one of. */
   windowsSigners?: string[];
+  /** updates.report.url: where what became of each release is posted (reports.ts). */
+  reportUrl?: string;
 }
 
 interface Entry {
@@ -162,6 +165,9 @@ interface Manifest {
   expiresAt?: number;
 }
 
+/** Why a release on trial is put back, as its report says it; only `server` may pass at another try. */
+type Undone = "timeout" | "relaunch" | "server";
+
 /** A verified manifest and, in protocol v2, the keyId of its envelope's signer. */
 interface Release {
   m: Manifest;
@@ -216,80 +222,6 @@ const tarBinary = () =>
     ? join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe")
     : (["/usr/bin/tar", "/bin/tar"].find((path) => existsSync(path)) ?? "tar");
 
-const powershell = () =>
-  join(process.env.SystemRoot ?? "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
-
-/**
- * Whether the release's executable is signed by the installed one's signer, decided in PowerShell and printed as one
- * ASCII verdict line: `unsigned` (the installed one has no valid signature), `same` or `other`. With thumbprints in
- * AKAN_NATIVE_SIGNERS, `same` only for a valid signature by one of them, whatever signed the installed one. Constrained
- * Language Mode (WDAC, AppLocker) refuses .NET type literals and method calls, so the script makes none, and an error
- * ends it before any verdict.
- */
-const AUTHENTICODE = `$ErrorActionPreference = 'Stop'
-$ProgressPreference = 'SilentlyContinue'
-$release = Get-AuthenticodeSignature -LiteralPath $env:AKAN_NATIVE_RELEASE_EXE
-$pins = @("$env:AKAN_NATIVE_SIGNERS" -split ',' | Where-Object { $_ })
-if ($pins.Count -gt 0) {
-  if ("$($release.Status)" -ceq 'Valid' -and $pins -contains "$($release.SignerCertificate.Thumbprint)") { 'akan-signer: same' }
-  else { 'akan-signer: other' }
-} else {
-  $own = Get-AuthenticodeSignature -LiteralPath $env:AKAN_NATIVE_INSTALLED_EXE
-  if ("$($own.Status)" -cne 'Valid') { 'akan-signer: unsigned' }
-  elseif ("$($release.Status)" -ceq 'Valid' -and "$($release.SignerCertificate.Subject)" -ceq "$($own.SignerCertificate.Subject)") { 'akan-signer: same' }
-  else { 'akan-signer: other' }
-}`;
-
-/**
- * Whether an executable is unsigned, read from its PE header without PowerShell: an x64 or arm64 image (PE32+) whose
- * certificate table, where Authenticode embeds a signature, is empty.
- */
-function isUnsignedImage(exe: string): boolean {
-  let fd: number | undefined;
-  try {
-    fd = openSync(exe, "r");
-    const head = Buffer.alloc(4096);
-    const size = readSync(fd, head, 0, head.length, 0);
-    if (size < 64 || head.toString("latin1", 0, 2) !== "MZ") return false;
-    const pe = head.readUInt32LE(0x3c);
-    if (pe + 176 > size || head.toString("latin1", pe, pe + 4) !== "PE\0\0") return false;
-    //? The optional header follows the signature and the 20-byte COFF header. Its data directories start 112 bytes in,
-    //? 8 bytes each, after their count; the certificate table (IMAGE_DIRECTORY_ENTRY_SECURITY) is the fifth.
-    const optional = pe + 24;
-    if (head.readUInt16LE(optional) !== 0x20b) return false;
-    if (head.readUInt32LE(optional + 108) < 5) return true;
-    return head.readUInt32LE(optional + 112 + 32) === 0 && head.readUInt32LE(optional + 112 + 36) === 0;
-  } catch {
-    return false;
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-}
-
-/** A signature tool's exit code and what it printed; -1 when it could not start. */
-async function runSignatureTool(
-  cmd: string[],
-  env?: Record<string, string>,
-): Promise<{ code: number; output: string }> {
-  try {
-    const p = Bun.spawn(cmd, {
-      stdin: "ignore",
-      stdout: "pipe",
-      stderr: "pipe",
-      windowsHide: true,
-      ...(env ? { env: { ...process.env, ...env } } : {}),
-    });
-    const [out, err, code] = await Promise.all([
-      new Response(p.stdout).text(),
-      new Response(p.stderr).text(),
-      p.exited,
-    ]);
-    return { code, output: `${out}${err}` };
-  } catch (error) {
-    return { code: -1, output: String(error) };
-  }
-}
-
 /** fsync of a file, or of a folder on macOS and Linux; Windows flushes only a handle opened for writing. */
 function flush(path: string, folder = false): void {
   if (folder && process.platform === "win32") return;
@@ -331,6 +263,23 @@ function appPath(mac: boolean): string | null {
 }
 
 const resourcesOf = (app: string, mac: boolean) => (mac ? join(app, "Contents", "Resources") : join(app, "resources"));
+
+function appIdOf(app: string, mac: boolean): string {
+  if (mac) {
+    const plist = join(app, "Contents", "Info.plist");
+    return Bun.spawnSync(["/usr/bin/plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-", plist])
+      .stdout.toString()
+      .trim();
+  }
+  try {
+    const boot = JSON.parse(readFileSync(join(resourcesOf(app, mac), "boot.json"), "utf8")) as {
+      app?: { id?: string };
+    };
+    return boot.app?.id ?? "";
+  } catch {
+    return "";
+  }
+}
 
 /**
  * Windows: the version Settings > Apps shows for an app the installer put here (windows-installer.ts writes the key
@@ -379,7 +328,7 @@ export interface DesktopUpdatesOptions {
   autoCheckDelay?: number;
   autoCheckInterval?: number;
   /** Runs codesign (macOS) or PowerShell (Windows) on a signature; runSignatureTool by default. */
-  signatureTool?(cmd: string[], env?: Record<string, string>): Promise<{ code: number; output: string }>;
+  signatureTool?: SignatureTool;
 }
 
 export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): DesktopPlugin<UpdatesApi, UpdatesEvents> {
@@ -395,9 +344,16 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
   const settleTime = options.serverSettle ?? SERVER_SETTLE;
   const autoCheckDelay = options.autoCheckDelay ?? AUTO_CHECK_DELAY;
   const autoCheckInterval = options.autoCheckInterval ?? AUTO_CHECK_INTERVAL;
-  const signatureTool = options.signatureTool ?? runSignatureTool;
   /** The executable inside an app with the running one's name. */
   const executableIn = (app: string) => (mac ? join(app, "Contents", "MacOS", exeName) : join(app, exeName));
+  const signing = {
+    mac,
+    windows,
+    tool: options.signatureTool ?? runSignatureTool,
+    pins: config?.windowsSigners ?? [],
+    executableIn,
+  };
+  const reports = createUpdateReports({ url: config?.reportUrl, platform });
   const resources = (app: string) => resourcesOf(app, mac);
   const carries = (app: string) => existsSync(join(resources(app), "server.json"));
   let dir = "";
@@ -517,6 +473,11 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     fail(state, bundle, limit > 1 ? `${why} (${tries} tries)` : why);
     return true;
   };
+  /** The error of a release refused before any of it is downloaded, which its reports name under `reason`. */
+  const refused = (reason: ReportReason, release: ReportedRelease, message: string) => {
+    reports.record("failed", release, reason);
+    return new AkanNativeError("INTERNAL", message);
+  };
   const entryOf = ({ bundle, sequence, version, tar, build, keyId }: Entry): Entry => ({
     bundle,
     sequence,
@@ -532,14 +493,15 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     relaunch(executableIn(app), moves, recover(), start);
 
   /**
-   * Puts .previous back, then relaunches it. A release that may pass another time (`retry`) stays downloaded as the
-   * pending update until it had MAX_STRIKES; any other is failed.
+   * Puts .previous back, then relaunches it. A release whose server did not come up may pass another time: it stays
+   * downloaded as the pending update until it had MAX_STRIKES; any other is failed.
    */
-  const rollBack = async (state: State, quit: (code: number) => void, why: string, retry = false): Promise<void> => {
+  const rollBack = async (state: State, quit: (code: number) => void, why: string, reason: Undone): Promise<void> => {
     const trial = state.trial;
     if (!trial || !installed) return; // settled meanwhile (another instance, notifyReady)
     const app = installed;
-    const failed = strike(state, trial.bundle, why, retry ? MAX_STRIKES : 1);
+    reports.record("rolledBack", trial, reason);
+    const failed = strike(state, trial.bundle, why, reason === "server" ? MAX_STRIKES : 1);
     const tries = failed ? "" : `, to be tried again (${state.strikes?.[trial.bundle]} of ${MAX_STRIKES})`;
     console.warn(`[akan-native] updates: ${trial.bundle} ${why}; rolling back${tries}`);
     state.trial = undefined;
@@ -657,7 +619,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       "too-large": "holds a manifest larger than 1 MiB",
       signature: "has a signature that does not verify",
     }[opened.verdict];
-    throw new AkanNativeError("INTERNAL", `the release envelope ${why}`);
+    throw refused("signature", claimedRelease(manifest, keyId), `the release envelope ${why}`);
   };
 
   const fetchRelease = async (c: UpdatesConfig, state: State): Promise<Release> => {
@@ -670,6 +632,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       throw new AkanNativeError("INTERNAL", "invalid release manifest: not JSON");
     }
     const hex = (s: unknown) => typeof s === "string" && /^[0-9a-f]{64}$/.test(s);
+    const named = { ...m, keyId: signer };
     if (
       m.schema !== (v2 ? 2 : 1) ||
       m.kind !== "app" ||
@@ -679,8 +642,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       m.channel !== c.channel ||
       (v2 && (m.target ?? null) !== (c.target ?? null))
     ) {
-      throw new AkanNativeError(
-        "INTERNAL",
+      throw refused(
+        "manifest",
+        named,
         "invalid release manifest: made for another app, platform, CPU, channel or target",
       );
     }
@@ -701,13 +665,14 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         )) ||
       (m.resetSequence !== undefined && typeof m.resetSequence !== "boolean")
     ) {
-      throw new AkanNativeError("INTERNAL", "invalid release manifest");
+      throw refused("manifest", named, "invalid release manifest");
     }
     const expiry = manifestExpiry(m.expiresAt, Date.now() / 1000);
-    if (expiry === "invalid") throw new AkanNativeError("INTERNAL", "invalid release manifest: expiresAt");
+    if (expiry === "invalid") throw refused("manifest", named, "invalid release manifest: expiresAt");
     if (expiry === "expired")
-      throw new AkanNativeError(
-        "INTERNAL",
+      throw refused(
+        "manifest",
+        named,
         `the release manifest expired at ${m.expiresAt}: its server has to sign it again`,
       );
     return { m, signer };
@@ -734,8 +699,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     });
     //? Never untrusted or revoked: the envelope was opened against the same ring and revocations.
     if (decision.kind !== "take" && decision.kind !== "stale")
-      throw new AkanNativeError(
-        "INTERNAL",
+      throw refused(
+        "manifest",
+        { ...m, keyId: signer },
         `invalid release manifest: key ${signer} may not revoke ${(m.revokeKeys ?? []).join(", ")}`,
       );
     return { newer: offered && decision.kind === "take", revoke: decision.revoke };
@@ -763,54 +729,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     release === carries(app)
       ? null
       : `the release ${release ? "carries a server, and this app does not" : "carries no server, and this app does"}; install it instead`;
-  //? A release signed otherwise would lose the app's TCC grants and Keychain items (macOS) or its publisher (Windows).
-  //? An app signed ad hoc or not at all (a development build) still takes any release.
-  const signerRefusal = async (staged: string, app: string): Promise<string | null> => {
-    if (mac) {
-      const shown = await signatureTool(["/usr/bin/codesign", "--display", "--verbose=2", app]);
-      const team = shown.code === 0 ? /^TeamIdentifier=([A-Z0-9]{10})$/m.exec(shown.output)?.[1] : undefined;
-      if (!team) return null;
-      const requirement = `anchor apple generic and certificate leaf[subject.OU] = "${team}"`;
-      const { code } = await signatureTool(["/usr/bin/codesign", "--verify", `-R=${requirement}`, staged]);
-      return code === 0 ? null : `the release is not signed by team ${team}, as this app is; publish it with --sign`;
-    }
-    if (!windows) return null;
-    const pins = config?.windowsSigners ?? [];
-    const { code, output } = await signatureTool(
-      [
-        powershell(),
-        "-NoProfile",
-        "-NonInteractive",
-        "-EncodedCommand",
-        Buffer.from(AUTHENTICODE, "utf16le").toString("base64"),
-      ],
-      {
-        AKAN_NATIVE_INSTALLED_EXE: executableIn(app),
-        AKAN_NATIVE_RELEASE_EXE: executableIn(staged),
-        AKAN_NATIVE_SIGNERS: pins.join(","),
-      },
-    );
-    const verdict = code === 0 ? /^akan-signer: (unsigned|same|other)\r?$/m.exec(output)?.[1] : undefined;
-    if (verdict === "same" || (verdict === "unsigned" && !pins.length)) return null;
-    if (verdict && pins.length)
-      return "the release is not Authenticode-signed by a certificate of updates.windowsSigners; publish it with --sign";
-    if (verdict) return "the release is not Authenticode-signed by the signer of this app; publish it with --sign";
-    if (pins.length)
-      return "PowerShell could not check the release's signer against updates.windowsSigners; install the release with its installer";
-    //? No verdict (PowerShell blocked by AppLocker, SRP or WDAC, or a script it refused) does not make this app unsigned:
-    //? only its PE header shows that. Any other app refuses, so a leaked update key alone cannot replace it.
-    if (isUnsignedImage(executableIn(app))) return null;
-    return "PowerShell could not check the release's signer against this app's; install the release with its installer";
-  };
-
-  const codesignProblem = async (staged: string): Promise<string | null> => {
-    if (!mac) return null;
-    const verified = await signatureTool(["/usr/bin/codesign", "--verify", "--deep", "--strict", staged]);
-    return verified.code === 0 ? null : `codesign failed: ${verified.output.trim()}`;
-  };
   //? A staged download sits in a folder this user can write until it installs, so it is checked again right before.
   const stagedRefusal = async (staged: string, app: string): Promise<string | null> =>
-    (await codesignProblem(staged)) ?? (await signerRefusal(staged, app));
+    (await codesignProblem(signing, staged)) ?? (await signerRefusal(signing, staged, app));
   //? What the install at quit reads instead of checking: made as a download is staged, at the start for one an
   //? earlier run left, and when a quit is asked for, before the quit hooks' time starts.
   let checked: { staged: string; refusal: Promise<string | null> } | undefined;
@@ -826,6 +747,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     return Promise.race([refusal, late]).finally(() => clearTimeout(timer));
   };
   const dropChanged = (pending: NonNullable<State["pending"]>, why: string) => {
+    reports.record("failed", pending, "verify");
     rmSync(dirname(pending.staged), { recursive: true, force: true });
     const latest = readState();
     if (latest.pending?.staged === pending.staged) latest.pending = undefined;
@@ -866,16 +788,16 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
 
   const watchTrial = (ctx: DesktopContext, c: UpdatesConfig) => {
     onTrial = true;
-    const failTrial = (why: string, retry: boolean) => {
+    const failTrial = (why: string, reason: Undone) => {
       if (!onTrial) return;
       onTrial = false;
       clearTimeout(timer);
-      void rollBack(readState(), (code) => ctx.quit(code), why, retry);
+      void rollBack(readState(), (code) => ctx.quit(code), why, reason);
     };
     const server = ctx.server;
     serverAnswered = server ? serverVerdict(server) : Promise.resolve(null);
-    void serverAnswered.then((why) => why !== null && failTrial(why, true));
-    server?.onState((state) => state === "gaveUp" && failTrial("its server gave up", true));
+    void serverAnswered.then((why) => why !== null && failTrial(why, "server"));
+    server?.onState((state) => state === "gaveUp" && failTrial("its server gave up", "server"));
     ctx.onNativeEvent("pageLoad", (e) => {
       if (e.event !== "finished" || (e.window ?? 1) !== 1 || !onTrial) return;
       //? A carried server still starting (a new release's first run, its files being scanned) is not the release
@@ -883,7 +805,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       void serverAnswered.then((why) => {
         if (why !== null || !onTrial) return;
         clearTimeout(timer);
-        timer = setTimeout(() => failTrial("did not call notifyReady() in time", false), c.readyTimeout);
+        timer = setTimeout(() => failTrial("did not call notifyReady() in time", "timeout"), c.readyTimeout);
       });
     });
   };
@@ -900,6 +822,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     if (refusal && !refusalsTold.has(m.bundle)) {
       refusalsTold.add(m.bundle);
       console.warn(`[akan-native] updates: ${m.bundle}: ${refusal}`);
+      if (newer) reports.record("failed", { ...m, keyId: release.signer }, "server");
     }
     const available = !refusal && newer && !rollingBack;
     return {
@@ -915,6 +838,9 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     const c = need();
     const app = installed as string;
     const awake = await stayAwake(ctx, "Downloading an update");
+    //? What a failure from here on is reported under, once the release is one this app would take.
+    let named: ReportedRelease | undefined;
+    let step: ReportReason = "server";
     try {
       const release = await fetchRelease(c, readState());
       const { m } = release;
@@ -923,12 +849,14 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       revokeKeys(c, revoke);
       const state = readState();
       if (!newer) throw new AkanNativeError("NOT_FOUND", "no newer release for this app");
+      named = { ...m, keyId: release.signer };
       const refusal = typeof m.server === "boolean" ? serverRefusal(m.server, app) : null;
       if (refusal) throw new AkanNativeError("NOT_ALLOWED", refusal);
       if (state.pending?.bundle === m.bundle && existsSync(state.pending.staged)) return { bundle: m.bundle };
       //? Unpacked beside the app, where the swap is a rename. An app installed where this user cannot write is
       //? updated by its installer, and finding that out must not cost the whole download at every check.
       const staging = `${app}.update-${m.bundle}`;
+      step = "disk";
       try {
         rmSync(staging, { recursive: true, force: true });
         mkdirSync(staging, { recursive: true });
@@ -962,14 +890,18 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         }
       }
       if (!tar) {
+        step = "download";
         const gz = await fetchBytes(`${releases(c)}/${archive.url}`, archive.size, ctx);
+        step = "verify";
         if (sha256(gz) !== archive.gzSha256)
           throw new AkanNativeError("INTERNAL", "the release archive does not match its hash");
         tar = Bun.gunzipSync(gz as Uint8Array<ArrayBuffer>);
       }
+      step = "verify";
       if (sha256(tar) !== archive.sha256) throw new AkanNativeError("INTERNAL", "the release does not match its hash");
 
       // Unpack next to the app and check it before anything points at it.
+      step = "disk";
       const tarFile = join(staging, "release.tar");
       writeFileSync(tarFile, tar);
       const run = async (cmd: string[]) => {
@@ -982,41 +914,22 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       rmSync(tarFile);
       //? The release's app is named for its build; the installed one may be named otherwise (the installer's /D=,
       //? a renamed .app), and the swap gives it the installed one's name.
+      step = "verify";
       const unpacked = readdirSync(staging);
       const staged = unpacked.length === 1 ? join(staging, unpacked[0] as string) : "";
       if (!staged || !existsSync(executableIn(staged)))
         throw new AkanNativeError("INTERNAL", `the release is not one app with ${exeName}`);
-      let id = "";
-      if (mac) {
-        id = Bun.spawnSync([
-          "/usr/bin/plutil",
-          "-extract",
-          "CFBundleIdentifier",
-          "raw",
-          "-o",
-          "-",
-          join(staged, "Contents", "Info.plist"),
-        ])
-          .stdout.toString()
-          .trim();
-      } else {
-        try {
-          id =
-            (
-              JSON.parse(readFileSync(join(resources(staged), "boot.json"), "utf8")) as {
-                app?: { id?: string };
-              }
-            ).app?.id ?? "";
-        } catch {}
-      }
+      const id = appIdOf(staged, mac);
       if (id !== c.app)
         throw new AkanNativeError("INTERNAL", `the release is ${id || "not an akan-native app"}, not ${c.app}`);
       // The manifest signature already vouches for the bytes; macOS also checks the code signature, and an app
       // signed by a team or with Authenticode takes only its own signer's release (Linux packages: CLI-9).
-      const codesign = await codesignProblem(staged);
+      const codesign = await codesignProblem(signing, staged);
       if (codesign) throw new AkanNativeError("INTERNAL", codesign);
-      const unpackedRefusal = (await signerRefusal(staged, app)) ?? serverRefusal(carries(staged), app);
+      const otherSigner = await signerRefusal(signing, staged, app);
+      const unpackedRefusal = otherSigner ?? serverRefusal(carries(staged), app);
       if (unpackedRefusal) {
+        step = otherSigner ? "signer" : "server";
         rmSync(staging, { recursive: true, force: true });
         const latest = readState();
         fail(latest, m.bundle, unpackedRefusal);
@@ -1028,6 +941,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         rmSync(staging, { recursive: true, force: true });
         throw new AkanNativeError("CANCELLED", "the channel changed during the download");
       }
+      step = "disk";
       flushTree(staged);
 
       // Keep this release's tar for the next delta, and only that one.
@@ -1046,8 +960,12 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         staged,
       };
       writeState(latest);
+      reports.record("downloaded", latest.pending);
       checked = { staged, refusal: Promise.resolve(null) };
       return { bundle: m.bundle };
+    } catch (error) {
+      reports.failed(error, named, step);
+      throw error;
     } finally {
       awake();
     }
@@ -1198,6 +1116,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
     dir = join(ctx.appLocalDataDir, ctx.dev ? "akan-native-updates-debug" : "akan-native-updates");
     const app = installed;
     if (!config || !app) return;
+    reports.start({ dir, dev: ctx.dev, appVersion: ctx.app.version, config: need });
     const automatic = config.automatic !== false && !ctx.dev;
     if (automatic) {
       ctx.onBeforeQuit(checkBeforeQuit);
@@ -1268,6 +1187,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       //? never ran (a logoff right after apply, PowerShell refused). The release waits for the next apply.
       if (trial.from === config.embeddedSequence) {
         const failed = strike(state, trial.bundle, "could not be moved into place");
+        if (failed) reports.record("failed", trial, "disk");
         const tries = failed
           ? ""
           : `; it is tried again at the next apply (${state.strikes?.[trial.bundle]} of ${MAX_STRIKES})`;
@@ -1312,10 +1232,11 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       return;
     }
     if (++trial.attempts > 1)
-      return rollBack(state, (code) => ctx.launch.exit(code), "was started again without notifyReady()");
+      return rollBack(state, (code) => ctx.launch.exit(code), "was started again without notifyReady()", "relaunch");
     trial.pid = process.pid;
     trial.boot = boot;
     writeState(state);
+    reports.record("applied", trial);
     watchTrial(ctx, config);
   };
 
@@ -1364,6 +1285,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
           state.pending = undefined;
           fail(state, pending.bundle, refusal);
           writeState(state);
+          reports.record("failed", pending, "server");
           throw new AkanNativeError("NOT_ALLOWED", refusal);
         }
         const changed = await stagedRefusal(pending.staged, app);
@@ -1395,6 +1317,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
         state.rolledBack = undefined;
         if (state.strikes) delete state.strikes[entry.bundle];
         writeState(state);
+        reports.record("confirmed", entry);
         try {
           rmSync(trial.previous, { recursive: true, force: true });
         } catch (error) {

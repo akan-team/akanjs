@@ -223,6 +223,111 @@ describe("NativeApp", () => {
     });
   });
 
+  describe("a desktop app's unsigned pack", () => {
+    const updates = { url: "https://releases.example.com/portal", publicKey: `${"a".repeat(43)}=` };
+    const sha = (char: string) => char.repeat(64);
+    const packing = async (config: Partial<AkanNativeTarget>) => {
+      const root = await makeTempRoot();
+      const app = {
+        ...fakeApp(),
+        workspace: { workspaceRoot: root },
+        logger: { info: () => undefined, warn: () => undefined },
+      } as unknown as App;
+      const nativeApp = new NativeApp(app, target(config), "main");
+      const asked: Record<string, unknown>[] = [];
+      nativeApp.assembleWeb = async () => undefined as never;
+      nativeApp.prepare = async () =>
+        ({
+          config: { updates: { channel: "pilot" } },
+          api: {
+            requestedDistribution: () => ({ macos: { sign: true }, unused: [] }),
+            packAppUpdate: async (options: Record<string, unknown> & { out: string; previous?: string }) => {
+              asked.push(options);
+              return {
+                build: { artifacts: [], warnings: [] },
+                out: options.out,
+                signer: { teamId: "TEAM123456" },
+                manifest: {
+                  schema: 2,
+                  kind: "app",
+                  app: "com.portal.app",
+                  platform: "macos",
+                  arch: "arm64",
+                  version: "1.0.0",
+                  build: 1700000000,
+                  server: true,
+                  files: [{ path: "app.tar", sha256: sha("b"), size: 4096 }],
+                  archive: { url: `app/${sha("b")}.tar.gz`, sha256: sha("b"), gzSha256: sha("c"), size: 1024 },
+                  patches: options.previous
+                    ? [{ from: sha("a"), url: `app/${sha("a")}-${sha("b")}.delta.gz`, sha256: sha("d"), size: 64 }]
+                    : [],
+                },
+              };
+            },
+          },
+        }) as never;
+      return { root, nativeApp, asked };
+    };
+
+    test("is recorded in pack.json: the archive, the app's signer and build, and the delta --previous asked for", async () => {
+      const { root, nativeApp, asked } = await packing({ updates });
+      const out = nativeApp.appPackDir("macos", "arm64");
+      expect(out).toBe(path.join(root, "dist/native/portal/default/updates/macos-arm64"));
+
+      const { pack } = await nativeApp.packAppUpdate("macos", { arch: "arm64", sign: true });
+      expect(asked[0]).toMatchObject({ platform: "macos", out, arch: "arm64", macos: { sign: true } });
+      expect(asked[0]).not.toHaveProperty("previous");
+      const record = await Bun.file(path.join(out, "pack.json")).json();
+      expect(record).toEqual({ ...pack, out: undefined });
+      expect(record).toMatchObject({
+        schema: 2,
+        kind: "app",
+        app: "portal",
+        target: "default",
+        platform: "macos",
+        arch: "arm64",
+        env: "main",
+        channel: "pilot",
+        appId: "com.portal.app",
+        appVersion: "1.0.0",
+        build: 1700000000,
+        server: true,
+        signer: { teamId: "TEAM123456" },
+        archive: {
+          url: `app/${sha("b")}.tar.gz`,
+          tarSha256: sha("b"),
+          tarSize: 4096,
+          gzSha256: sha("c"),
+          gzSize: 1024,
+        },
+      });
+      expect(record).not.toHaveProperty("patch");
+      expect(typeof record.cli).toBe("string");
+      expect(Number.isNaN(Date.parse(record.builtAt))).toBe(false);
+
+      const elsewhere = path.join(root, "elsewhere");
+      const previous = `https://releases.example.com/portal/macos-arm64/app/${sha("a")}.tar.gz`;
+      const delta = await nativeApp.packAppUpdate("macos", { out: elsewhere, previous });
+      expect(asked[1]).toMatchObject({ out: elsewhere, previous });
+      expect(delta.pack.patch).toEqual({
+        from: sha("a"),
+        url: `app/${sha("a")}-${sha("b")}.delta.gz`,
+        sha256: sha("d"),
+        size: 64,
+      });
+      expect((await Bun.file(path.join(elsewhere, "pack.json")).json()).patch).toEqual(delta.pack.patch);
+    });
+
+    test("is refused, like a republish, for a target with no updates before anything builds", async () => {
+      const { nativeApp, asked } = await packing({});
+      await expect(nativeApp.packAppUpdate("macos")).rejects.toThrow("Native target 'default' has no updates");
+      await expect(nativeApp.republishUpdate("macos", { bundle: "1.0.0-1" })).rejects.toThrow(
+        "Native target 'default' has no updates",
+      );
+      expect(asked).toEqual([]);
+    });
+  });
+
   test("a dev build bundles no page a release build left, and builds apart from the release it would empty", async () => {
     const root = await makeTempRoot();
     const app = {

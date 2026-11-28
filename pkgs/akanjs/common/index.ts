@@ -186,6 +186,9 @@ export { parseSearchParams } from "./parseSearchParams";
 export { formatPhone, isPhoneNumber } from "./phone";
 export {
   type PipelineActionName,
+  type PipelineDesktopOtaArch,
+  type PipelineDesktopOtaPlatform,
+  type PipelineDesktopOtaSystem,
   type PipelineDiagnostic,
   type PipelineMilestone,
   type PipelineOtaPlatform,
@@ -193,6 +196,7 @@ export {
   type PipelinePlanActionStep,
   type PipelinePlanAppActionStep,
   type PipelinePlanContext,
+  type PipelinePlanDesktopOtaStep,
   type PipelinePlanOtaStep,
   type PipelinePlanPhase,
   type PipelinePlanPost,
@@ -207,6 +211,8 @@ export {
   type PipelineTrigger,
   pipelineActionNames,
   pipelineActions,
+  pipelineDesktopOtaArchs,
+  pipelineDesktopOtaSystems,
   pipelineMilestones,
   pipelineOtaPlatforms,
   pipelinePlanLimits,

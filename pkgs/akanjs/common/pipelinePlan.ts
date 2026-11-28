@@ -21,24 +21,42 @@ export type PipelineTrigger = (typeof pipelineTriggers)[number];
  * previous action in the run was skipped or did not succeed is skipped, never run. `deploy` is the only way any part
  * of a plan reaches the master host, and its phase runs the apps one at a time. `ota` packs an over-the-air update of
  * the app's native web bundle per target and platform (`akan pack-update`) for the executor to sign and publish; it
- * makes its own CSR build, so it needs no `build` before it.
+ * makes its own CSR build, so it needs no `build` before it. `desktop-ota` is the same for a desktop app, which is
+ * replaced whole: per target and platform entry the executor runs, on a build host of that entry's OS,
+ * `akan pack-update <app> --platform desktop --arch <arch> --target <target>`, which writes an unsigned app archive and
+ * a manifest template for the executor to sign and publish. The runner holds no signing key.
  */
 export const pipelineActions = {
   build: { version: 1, milestone: "build", name: "Build" },
   docker: { version: 1, milestone: "package", name: "Docker" },
   deploy: { version: 1, milestone: "deploy", name: "Deploy" },
   ota: { version: 1, milestone: "deploy", name: "OTA" },
+  "desktop-ota": { version: 1, milestone: "deploy", name: "Desktop OTA" },
 } as const satisfies Record<string, { version: number; milestone: PipelineMilestone; name: string }>;
 export type PipelineActionName = keyof typeof pipelineActions;
 export const pipelineActionNames = /* @__PURE__ */ Object.keys(pipelineActions) as readonly PipelineActionName[];
 
-/** The phones an `ota` action packs for; a desktop app updates itself whole, outside a pipeline. */
+/** The phones an `ota` action packs for; a desktop app's update is the `desktop-ota` action's. */
 export const pipelineOtaPlatforms = ["ios", "android"] as const;
 export type PipelineOtaPlatform = (typeof pipelineOtaPlatforms)[number];
 
+export const pipelineDesktopOtaSystems = ["macos", "windows", "linux"] as const;
+export type PipelineDesktopOtaSystem = (typeof pipelineDesktopOtaSystems)[number];
+export const pipelineDesktopOtaArchs = ["arm64", "x64"] as const;
+export type PipelineDesktopOtaArch = (typeof pipelineDesktopOtaArchs)[number];
+
+/**
+ * One desktop build a `desktop-ota` action packs for. A desktop app is packed only on its own OS, so `os` names the
+ * build host the executor needs and `arch` is the pack's `--arch`. A macOS app is arm64 only.
+ */
+export interface PipelineDesktopOtaPlatform {
+  os: PipelineDesktopOtaSystem;
+  arch: PipelineDesktopOtaArch;
+}
+
 /**
  * Where a phase came from. Workspace `before`/`after` stages become a phase each; app stages fill the slots around the
- * three action phases, the k-th custom stage of every app in a slot sharing one phase (`after-build`, `after-build-2`…).
+ * action phases, the k-th custom stage of every app in a slot sharing one phase (`after-build`, `after-build-2`…).
  */
 export const pipelinePlanSlots = [
   "before",
@@ -51,6 +69,8 @@ export const pipelinePlanSlots = [
   "after-deploy",
   "ota",
   "after-ota",
+  "desktop-ota",
+  "after-desktop-ota",
   "after",
 ] as const;
 export type PipelinePlanSlot = (typeof pipelinePlanSlots)[number];
@@ -164,7 +184,7 @@ interface PipelinePlanActionStepBase extends PipelinePlanStepBase {
 }
 
 export interface PipelinePlanAppActionStep extends PipelinePlanActionStepBase {
-  action: Exclude<PipelineActionName, "ota">;
+  action: Exclude<PipelineActionName, "ota" | "desktop-ota">;
   with: { app: string };
 }
 
@@ -174,7 +194,13 @@ export interface PipelinePlanOtaStep extends PipelinePlanActionStepBase {
   with: { app: string; targets: string[]; platforms: PipelineOtaPlatform[] };
 }
 
-export type PipelinePlanActionStep = PipelinePlanAppActionStep | PipelinePlanOtaStep;
+/** One pack per target and platform entry, each on a build host of the entry's OS; the targets are as `ota`'s. */
+export interface PipelinePlanDesktopOtaStep extends PipelinePlanActionStepBase {
+  action: "desktop-ota";
+  with: { app: string; targets: string[]; platforms: PipelineDesktopOtaPlatform[] };
+}
+
+export type PipelinePlanActionStep = PipelinePlanAppActionStep | PipelinePlanOtaStep | PipelinePlanDesktopOtaStep;
 
 export type PipelinePlanStep = PipelinePlanShellStep | PipelinePlanActionStep;
 

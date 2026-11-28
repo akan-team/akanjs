@@ -54,6 +54,8 @@ Installers And CPU
 
 - Linux — <fileName>-<version>-<arch>.AppImage — One executable file for any distribution with WebKitGTK 4.1 and GTK 3. The build needs `mksquashfs` (squashfs-tools). An AppImage cannot update itself.
 
+- Linux — <fileName>-<version>-<arch>.tar.gz — The app folder with `install.sh`, which installs it for the user in `~/.local/opt/<app id>` with its launcher entry, no root needed. This install takes `updates`; `uninstall.sh --purge` removes its data too.
+
 `--arch arm64` or `--arch x64` builds a Windows or Linux app for that CPU of the OS: the Rust library, Bun's executable, the server's `bun install --cpu` and each `bin` file follow it. A macOS app is Apple silicon (arm64) only; Intel Macs are not a target.
 
 Native Addons
@@ -160,6 +162,7 @@ jobs:
             dist/native/myapp/*/build/*/*.dmg
             dist/native/myapp/*/build/*/*-setup.exe
             dist/native/myapp/*/build/*/*.AppImage
+            dist/native/myapp/*/build/*/*.tar.gz
           if-no-files-found: error
 ```
 
