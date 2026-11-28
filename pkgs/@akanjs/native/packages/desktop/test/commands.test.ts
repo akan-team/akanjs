@@ -5,7 +5,7 @@ import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAkanNativeError } from "../../core/src/index.ts";
-import { appBinFirst, batchCommandLine, createCommands, findCommand } from "../src/commands.ts";
+import { appBinFirst, batchCommandLine, createCommands, findCommand, usualToolDirs } from "../src/commands.ts";
 
 const posix = process.platform !== "win32";
 const dirs: string[] = [];
@@ -136,20 +136,26 @@ describe.if(posix)("userPath", () => {
     expect(startsOf(dir).map((line) => line.split(" /bin/sh")[0])).toEqual(["-l -i -c", "-l -c"]);
   });
 
-  test("a shell that hangs or tells nothing leaves the app's own PATH, and a daemon it started holds nothing up", async () => {
+  test("a shell that hangs or tells nothing leaves the app's own PATH and the usual tool folders, and a daemon it started holds nothing up", async () => {
     const hung = folder();
+    mkdirSync(join(hung, ".bun", "bin"), { recursive: true });
+    mkdirSync(join(hung, ".local", "bin"), { recursive: true });
+    const system = usualToolDirs(undefined);
+    expect(usualToolDirs(hung)).toEqual([join(hung, ".local", "bin"), join(hung, ".bun", "bin"), ...system]);
     const stuck = createCommands({
       binDir: null,
       shell: fakeShell(hung, "sleep 30"),
-      env: { PATH: "/usr/bin:/bin" },
+      env: { PATH: `/usr/bin:${hung}/.bun/bin:/bin`, HOME: hung },
       probeTimeout: 150,
     });
     const started = performance.now();
-    expect(await stuck.userPath()).toBe("/usr/bin:/bin");
+    expect(await stuck.userPath()).toBe(
+      [`/usr/bin:${hung}/.bun/bin:/bin`, join(hung, ".local", "bin"), ...system].join(":"),
+    );
     expect(performance.now() - started).toBeLessThan(3000);
 
     const quiet = createCommands({ binDir: null, shell: "/usr/bin/true", env: { PATH: "/opt/app:/bin" } });
-    expect(await quiet.userPath()).toBe("/opt/app:/bin");
+    expect(await quiet.userPath()).toBe(["/opt/app:/bin", ...system].join(":"));
 
     const dir = folder();
     const daemon = createCommands({

@@ -271,8 +271,22 @@ export async function loginShellPath(
     const path = await askShell(asked, flags, env, timeout);
     if (path) return path;
   }
-  console.warn(`[akan-native] ${asked} did not tell its PATH; commands are looked up on the app's own`);
+  console.warn(
+    `[akan-native] ${asked} did not tell its PATH; commands are looked up on the app's own and in the usual folders`,
+  );
   return null;
+}
+
+/**
+ * Where a user's own tools usually are, for a shell that did not tell its PATH (a profile slower than the timeout on a
+ * loaded machine): after the app's own PATH, and only the folders that exist. Homebrew, the per-user bin folders and
+ * the shims of the version managers that put one folder on PATH.
+ */
+export function usualToolDirs(home: string | undefined): string[] {
+  const own = [".local/bin", ".bun/bin", ".cargo/bin", ".volta/bin", ".asdf/shims", ".local/share/mise/shims"];
+  return [...(home ? own.map((dir) => join(home, dir)) : []), "/opt/homebrew/bin", "/usr/local/bin"].filter((dir) =>
+    existsSync(dir),
+  );
 }
 
 export function createCommands(options: CommandsOptions): DesktopCommands {
@@ -295,7 +309,9 @@ export function createCommands(options: CommandsOptions): DesktopCommands {
       { ...env, PATH: inherited },
       { shell: options.shell, timeout: options.probeTimeout },
     );
-    return told === null ? inherited : withoutBin(told);
+    if (told !== null) return withoutBin(told);
+    const known = inherited.split(separator);
+    return [...known, ...usualToolDirs(env.HOME).filter((dir) => !known.includes(dir))].filter(Boolean).join(separator);
   };
   let user: Promise<string> | undefined;
   const userPath = () => (user ??= readUserPath());

@@ -62,8 +62,9 @@ export interface DesktopContext {
   /**
    * The PATH of the user's own shell, without the app's bin folder: an app started from the Finder or a launcher has
    * only the session's. Read from the user's login shell at the first call and kept; that call takes as long as the
-   * shell's profile does (seconds, 10 at most), so a plugin that will need it asks in its setup without waiting.
-   * Windows: the PATH the app started with.
+   * shell's profile does (seconds, 10 at most), so a plugin that will need it asks in its setup without waiting. A
+   * shell that does not answer leaves the PATH the app started with, then the usual tool folders (Homebrew's,
+   * ~/.local/bin, ~/.bun/bin and the like). Windows: the PATH the app started with.
    */
   userPath(): Promise<string>;
   /**
