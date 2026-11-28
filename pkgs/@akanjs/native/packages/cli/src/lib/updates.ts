@@ -8,6 +8,8 @@
 //   <os>-<arch>/<channel>.json(.sig)        the same desktop release for apps built before protocol v2: the manifest
 //                                           and its base64 signature, written only when signed with the first key
 //   <os>-<arch>/app/<sha256>                desktop app archives
+//   <os>-<arch>/<channel>/releases/<bundle>.json   every desktop envelope the folder signed, kept for
+//                                           `update publish --republish`; no app reads them
 //
 // The whole manifest is signed, not only the artifact: Tauri signs the artifact and leaves the
 // manifest open, then has to compare a signed version string to stop downgrades
@@ -22,11 +24,13 @@ import { dirname, join } from "node:path";
 import type { Platform } from "../../../core/src/index.ts";
 import {
   checkUpdateEnvelope,
+  isBundleId,
   isChannelName,
   isStrictBase64,
   isUpdateKeyId,
   isUpdatePublicKey,
   MAX_REVOKE_KEYS,
+  MAX_UPDATE_MANIFEST,
   RESERVED_CHANNELS,
 } from "../../../core/src/kernel.ts";
 import { runtimeVersion } from "./boot.ts";
@@ -394,7 +398,7 @@ export function signManifest(bytes: Uint8Array, keyPath: string, publicKeys: rea
   return sign(null, bytes, key).toString("base64");
 }
 
-/** A phone's envelope (protocol v2) for the manifest's exact bytes, signed with any key of `publicKeys`. */
+/** The envelope (protocol v2) of the manifest's exact bytes, signed with the key at `keyPath`, any key of `publicKeys`. */
 export function sealManifest(bytes: Uint8Array, keyPath: string, publicKeys: readonly string[]): UpdateEnvelope {
   const { key, keyId } = signingKey(keyPath, publicKeys);
   return {
@@ -442,6 +446,91 @@ export function openEnvelope(
     case "signature":
       throw new CliError("the update envelope's signature does not verify");
   }
+}
+
+/** What whoever signs a pack decides: the rest of its manifest is the pack's `manifest.template.json`. */
+export interface ManifestRelease {
+  channel: string;
+  /** Larger than every release the channel had; apps take no other. */
+  sequence: number;
+  /** A desktop app's defaults to `<version>-<sequence>`; a web bundle's is `<sequence>-<first 8 of web.hash>`. */
+  bundle?: string;
+  /** A desktop app: the deltas this release offers, instead of the template's. */
+  patches?: NonNullable<UpdateManifest["patches"]>;
+  revokeKeys?: readonly string[];
+  resetSequence?: boolean;
+  /** Unix seconds after which apps refuse the manifest. */
+  expiresAt?: number;
+}
+
+/**
+ * A pack's manifest template made the manifest of one release. Refuses what no app would take: a channel none could
+ * be configured for, a sequence or a bundle id that is not one, a revocation list a manifest may not hold.
+ */
+export function fillManifest(template: UpdateManifest, release: ManifestRelease): UpdateManifest {
+  assertChannel(release.channel);
+  const { sequence, revokeKeys = [], patches } = release;
+  if (!Number.isSafeInteger(sequence) || sequence <= 0)
+    throw new CliError(`a release's sequence is a positive whole number, not ${sequence}`);
+  const bundle = release.bundle ?? (template.kind === "app" ? `${template.version}-${sequence}` : "");
+  if (!isBundleId(bundle))
+    throw new CliError(
+      bundle
+        ? `${JSON.stringify(bundle)} cannot name a release's bundle`
+        : "a web bundle's release needs its bundle id: <sequence>-<the first 8 of bundle.json's web.hash>",
+    );
+  if (revokeKeys.length > MAX_REVOKE_KEYS || !revokeKeys.every(isUpdateKeyId))
+    throw new CliError(`revokeKeys holds at most ${MAX_REVOKE_KEYS} keyIds, 16 hex digits each`);
+  if (release.resetSequence && !revokeKeys.length)
+    throw new CliError("resetSequence counts only in a release that revokes a key");
+  if (patches && template.kind !== "app") throw new CliError("only a desktop app's release has patches");
+  const { expiresAt } = release;
+  if (expiresAt !== undefined && (!Number.isSafeInteger(expiresAt) || expiresAt <= 0))
+    throw new CliError(`expiresAt is Unix seconds, not ${expiresAt}`);
+  const {
+    revokeKeys: _revokeKeys,
+    resetSequence: _resetSequence,
+    expiresAt: _expiresAt,
+    ...rest
+  } = { ...template, schema: 2 as const, channel: release.channel, sequence, bundle, ...(patches ? { patches } : {}) };
+  return {
+    ...rest,
+    ...(revokeKeys.length ? { revokeKeys: [...revokeKeys].sort((a, b) => a.localeCompare(b)) } : {}),
+    ...(release.resetSequence ? { resetSequence: true } : {}),
+    ...(expiresAt === undefined ? {} : { expiresAt }),
+  };
+}
+
+/** A manifest's exact bytes as `update publish` writes them: what the signature is over and the envelope holds. */
+export function manifestBytes(manifest: UpdateManifest): Uint8Array {
+  const bytes = new TextEncoder().encode(`${JSON.stringify(manifest, null, 2)}\n`);
+  if (bytes.length > MAX_UPDATE_MANIFEST)
+    throw new CliError(`the manifest is ${bytes.length} bytes, and an app reads at most ${MAX_UPDATE_MANIFEST}`);
+  return bytes;
+}
+
+/**
+ * The envelope of manifest bytes signed elsewhere (a key service, a host that signs in process): `signature` is Ed25519
+ * over `bytes` by the private half of `publicKey`. Verified as an app verifies it before it is returned, so another
+ * key's signature, or one over other bytes, is refused here and not by every installed app.
+ */
+export function updateEnvelope(bytes: Uint8Array, publicKey: string, signature: string | Uint8Array): UpdateEnvelope {
+  if (!isUpdatePublicKey(publicKey)) throw new CliError("the public key is not a raw 32-byte Ed25519 key in base64");
+  if (bytes.length > MAX_UPDATE_MANIFEST)
+    throw new CliError(`the manifest is ${bytes.length} bytes, and an app reads at most ${MAX_UPDATE_MANIFEST}`);
+  const raw =
+    typeof signature !== "string"
+      ? signature
+      : isStrictBase64(signature)
+        ? Buffer.from(signature, "base64")
+        : new Uint8Array();
+  if (raw.length !== 64 || !verifySignature(bytes, raw, publicKey))
+    throw new CliError(`the signature is not key ${keyIdOf(publicKey)}'s over these manifest bytes`);
+  return {
+    manifest: Buffer.from(bytes).toString("base64"),
+    keyId: keyIdOf(publicKey),
+    signature: Buffer.from(raw).toString("base64"),
+  };
 }
 
 /** Verifies like the apps do: raw public key, base64 signature over the exact manifest bytes. */

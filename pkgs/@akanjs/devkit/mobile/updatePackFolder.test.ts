@@ -31,6 +31,11 @@ describe("a pack read back from its folder", () => {
     const later = path.join(root, "later");
     await writeText(path.join(later, "pack.json"), JSON.stringify({ ...pack, schema: 2 }));
     await expect(UpdatePackFolder.read(later)).rejects.toThrow("schema 2");
+    const desktop = path.join(root, "desktop");
+    await writeText(path.join(desktop, "pack.json"), JSON.stringify({ schema: 2, kind: "app", platform: "macos" }));
+    await expect(UpdatePackFolder.read(desktop)).rejects.toThrow(
+      `${desktop} holds a desktop app's pack, which whoever holds the update key signs`,
+    );
     const refused = path.join(root, "refused");
     const compat = { against: "store/bundle.json", compatible: false, problems: ["deepLinks differ"] };
     await writeText(path.join(refused, "pack.json"), JSON.stringify({ ...pack, compat }));

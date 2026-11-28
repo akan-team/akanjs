@@ -18,7 +18,7 @@ import { ApplicationScript } from "./application.script";
 import { allowLocalOption, nativeTargetOption, publicEnvOption, releaseEnvOption, writeOption } from "./commandOptions";
 
 const packUpdateDesc =
-  "Pack an unsigned over-the-air update of the mobile web bundle for a signer; records it in <out>/pack.json. Exits 2 when --against needs a new store build, 1 on any other failure";
+  "Pack an unsigned update for whoever holds the update key: a phone's web bundle, or with --platform desktop this OS's app as an archive; records it in <out>/pack.json. Exits 2 when --against needs a new store build, 1 on any other failure";
 
 const migrationFailureOf = (error: unknown, usage: boolean) => {
   const message = MigrationError.messageOf(error);
@@ -540,31 +540,88 @@ const releaseTargets = ({ public: target }: ApplicationBuilderContext) => ({
 const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
   packUpdate: target({ desc: packUpdateDesc, usageExitCode: 1 })
     .with(App)
-    .option("platform", String, { enum: ["ios", "android"], desc: "the app it updates" })
+    .option("platform", String, {
+      enum: ["ios", "android", "desktop"],
+      desc: "the app it updates; desktop is this computer's OS",
+    })
     .option("target", String, nativeTargetOption)
     .option("env", String, releaseEnvOption)
     .option("out", String, {
-      desc: "output folder (default: dist/native/<app>/<target>/updates/<platform>)",
+      desc: "output folder (default: dist/native/<app>/<target>/updates/<platform>, a desktop's <os>-<arch>)",
       nullable: true,
     })
     .option("against", String, {
-      desc: "bundle.json of the store build it must run in; fails when it needs a new one",
+      desc: "phones: bundle.json of the store build it must run in; fails when it needs a new one",
       nullable: true,
     })
     .option("write", Boolean, writeOption)
     .option("allowLocalRelease", Boolean, allowLocalOption("packing"))
     .option("publicEnv", String, publicEnvOption("the update (default: what --against recorded)"))
-    .exec(async function (app, platform, target, env, out, against, write, allowLocalRelease, publicEnv) {
-      await this.applicationScript.packUpdate(app, platform as "ios" | "android", {
+    .option("arch", String, {
+      flag: "c",
+      desc: "desktop: the CPU of the apps it updates, arm64 or x64 of this OS (default this computer's)",
+      enum: ["arm64", "x64"] as const,
+      nullable: true,
+    })
+    .option("sign", Boolean, {
+      desc: `desktop: ${signDesc}; a signed app takes only a release signed the same way`,
+      default: false,
+    })
+    .option("notarize", Boolean, { desc: notarizeDesc, default: false })
+    .option("previous", String, {
+      flag: "f",
+      desc: "desktop: the archive of the release the channel has now (<tar sha256>.tar.gz, a path or a URL of the feed); the pack then carries the delta from it",
+      nullable: true,
+    })
+    .exec(
+      async function (
+        app,
+        platform,
         target,
         env,
-        out: out ?? undefined,
-        against: against ?? undefined,
+        out,
+        against,
         write,
         allowLocalRelease,
-        publicEnv: publicEnv ?? undefined,
-      });
-    }),
+        publicEnv,
+        arch,
+        sign,
+        notarize,
+        previous,
+      ) {
+        if (platform === "desktop") {
+          if (against || publicEnv)
+            throw new Error(
+              "--against and --public-env compare a phone's web bundle with its store build; a desktop app is packed whole.",
+            );
+          await this.applicationScript.packAppUpdate(app, {
+            target,
+            env,
+            ...(out ? { out } : {}),
+            ...(arch ? { arch } : {}),
+            ...(sign ? { sign } : {}),
+            ...(notarize ? { notarize } : {}),
+            ...(previous ? { previous } : {}),
+            write,
+            allowLocalRelease,
+          });
+          return;
+        }
+        if (arch || sign || notarize || previous)
+          throw new Error(
+            `--arch, --sign, --notarize and --previous pack a desktop app; ${platform} packs its web bundle.`,
+          );
+        await this.applicationScript.packUpdate(app, platform as "ios" | "android", {
+          target,
+          env,
+          out: out ?? undefined,
+          against: against ?? undefined,
+          write,
+          allowLocalRelease,
+          publicEnv: publicEnv ?? undefined,
+        });
+      },
+    ),
   updateKeygen: target({ desc: "Make (once) the key an app's update releases are signed with; print its public key" })
     .with(App)
     .option("platform", String, {
@@ -576,7 +633,9 @@ const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .exec(async function (app, platform, target) {
       await this.applicationScript.updateKeygen(app, platform as "desktop" | "android" | "ios", { target });
     }),
-  publishUpdate: target({ desc: "Build and sign an update release installed apps take (desktop, android or ios)" })
+  publishUpdate: target({
+    desc: "Build and sign an update release installed apps take (desktop, android or ios), or with --republish sign an earlier desktop release again",
+  })
     .with(App)
     .option("platform", String, {
       enum: ["desktop", "android", "ios"],
@@ -614,6 +673,11 @@ const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
     })
     .option("write", Boolean, writeOption)
     .option("allowLocalRelease", Boolean, allowLocalOption("release"))
+    .option("republish", String, {
+      flag: "b",
+      desc: "desktop: the bundle id of a release already published from this workspace, signed again as the channel's newest with no build and no patch (a rollback)",
+      nullable: true,
+    })
     .exec(
       async function (
         app,
@@ -629,6 +693,7 @@ const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
         resetSequence,
         write,
         allowLocalRelease,
+        republish,
       ) {
         const revoked = revoke
           ?.split(",")
@@ -644,6 +709,7 @@ const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
           ...(arch ? { arch } : {}),
           ...(revoked?.length ? { revoke: revoked } : {}),
           ...(resetSequence ? { resetSequence } : {}),
+          ...(republish ? { republish } : {}),
           write,
           allowLocalRelease,
         });

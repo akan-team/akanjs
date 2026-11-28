@@ -29,6 +29,9 @@ export interface PublishedUpdate {
 //* hash), so one the bucket holds is skipped; a manifest is always written.
 export class UpdateUploader {
   static readonly #manifest = /\.json(?:\.sig)?$/;
+  //? `<channel>/releases/<bundle>.json`: a desktop release's envelope as it was signed, which `--republish` reads back
+  //? from the feed on a computer that never published it. Named by its bundle, it never changes either.
+  static readonly #kept = /\/releases\/[^/]+\.json$/;
 
   /** `s3://bucket/prefix`: the credentials and endpoint come from S3_* (or AWS_*) in the environment. */
   static parseTarget(target: string): { bucket: string; prefix: string } {
@@ -38,9 +41,10 @@ export class UpdateUploader {
   }
 
   static order(files: string[]): { releases: string[]; manifests: string[] } {
-    const manifests = files.filter((file) => UpdateUploader.#manifest.test(file));
+    const live = (file: string) => UpdateUploader.#manifest.test(file) && !UpdateUploader.#kept.test(file);
+    const manifests = files.filter(live);
     return {
-      releases: files.filter((file) => !UpdateUploader.#manifest.test(file)).sort((a, b) => a.localeCompare(b)),
+      releases: files.filter((file) => !live(file)).sort((a, b) => a.localeCompare(b)),
       manifests: manifests.sort(
         (a, b) => Number(a.endsWith(".json")) - Number(b.endsWith(".json")) || a.localeCompare(b),
       ),
@@ -61,8 +65,11 @@ export class UpdateUploader {
           ? UpdateUploader.#parse<UpdateManifest>(Buffer.from(envelope.manifest, "base64").toString("utf8"))
           : null;
       if (manifest?.bundle !== bundle) continue;
-      if (manifest.kind === "app")
-        return [...UpdateUploader.#appFiles(manifest), ...pair, `${channel}/${name}`].map(keyOf);
+      if (manifest.kind === "app") {
+        const kept = `${channel}/releases/${bundle}.json`;
+        const history = (await Bun.file(path.join(dir, kept)).exists()) ? [kept] : [];
+        return [...UpdateUploader.#appFiles(manifest), ...history, ...pair, `${channel}/${name}`].map(keyOf);
+      }
       const hashes = [...new Set(UpdateUploader.#field(manifest.files, "sha256"))];
       if (!hashes.every((hash): hash is string => typeof hash === "string" && /^[0-9a-f]{64}$/.test(hash)))
         throw new Error(

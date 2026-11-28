@@ -83,12 +83,14 @@ describe("UpdateUploader", () => {
     );
   });
 
-  test("uploads a desktop release's envelope, with the v1 pair only when the pair is that release", async () => {
+  test("uploads a desktop release's envelope and the copy kept of it, with the v1 pair only when the pair is that release", async () => {
     const manifest = { kind: "app", bundle: "1.3.0-3000", archive: { url: `app/${sha("c")}.tar.gz` }, patches: [] };
     await inUpdatesDir(
       {
         [`macos-arm64/app/${sha("c")}.tar.gz`]: "tar",
         "macos-arm64/main/app.json": envelope(manifest),
+        "macos-arm64/main/releases/1.3.0-3000.json": envelope(manifest),
+        "macos-arm64/main/releases/1.2.0-2000.json": envelope({ ...manifest, bundle: "1.2.0-2000" }),
         "macos-arm64/main.json": JSON.stringify({ ...manifest, bundle: "1.2.0-2000" }),
         "macos-arm64/main.json.sig": "sig",
         "macos-arm64/beta/app.json": envelope({ ...manifest, bundle: "1.4.0-4000" }),
@@ -97,13 +99,18 @@ describe("UpdateUploader", () => {
       },
       async (updatesDir) => {
         const dir = path.join(updatesDir, "macos-arm64");
-        const upload = async (channel: string, bundle: string) => {
-          const { bucket, writes } = fakeBucket();
+        const upload = async (channel: string, bundle: string, held: string[] = []) => {
+          const { bucket, writes } = fakeBucket(held);
           await new UpdateUploader(bucket, "").upload(updatesDir, { dir, channel, bundle });
           return writes.map(({ key }) => key);
         };
 
         expect(await upload("main", "1.3.0-3000")).toEqual([
+          `macos-arm64/app/${sha("c")}.tar.gz`,
+          "macos-arm64/main/releases/1.3.0-3000.json",
+          "macos-arm64/main/app.json",
+        ]);
+        expect(await upload("main", "1.3.0-3000", ["macos-arm64/main/releases/1.3.0-3000.json"])).toEqual([
           `macos-arm64/app/${sha("c")}.tar.gz`,
           "macos-arm64/main/app.json",
         ]);

@@ -44,6 +44,7 @@ import { DevPortReclaimer } from "./devPortReclaimer";
 import { DevStreamView } from "./devStreamView";
 import { DevSupervisor, type DevUiMode } from "./devSupervisor";
 import { InterruptTeardown } from "./interruptTeardown";
+import type { DesktopUpdatePackOptions } from "./updateRelease";
 
 interface StartOptions {
   open?: boolean;
@@ -598,6 +599,18 @@ export class ApplicationScript extends script("application", [ApplicationRunner,
     await app.scanSync({ write });
     ApplicationScript.#assertReleaseEnv("packUpdate", options.env ?? "main", allowLocalRelease);
     return await this.applicationRunner.packUpdate(app, platform, options);
+  }
+  async packAppUpdate(
+    app: App,
+    {
+      write = true,
+      allowLocalRelease = false,
+      ...options
+    }: DesktopUpdatePackOptions & MobileWriteOptions & MobileReleaseGate = {},
+  ) {
+    await app.scanSync({ write });
+    ApplicationScript.#assertReleaseEnv("packUpdate", options.env ?? "main", allowLocalRelease);
+    return await this.applicationRunner.packAppUpdate(app, options);
   }
   async updateKeygen(app: App, platform: "desktop" | "android" | "ios", { target }: { target?: string } = {}) {
     await this.applicationRunner.updateKeygen(app, platform, target);

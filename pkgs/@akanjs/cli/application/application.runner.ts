@@ -19,7 +19,6 @@ import {
   NativePublicEnv,
   type PublicEnv,
   type ResolvedMobileTarget,
-  resolveAppId,
   resolveMobileTargets,
   UpdatePackFolder,
   UpdateUploader,
@@ -31,6 +30,13 @@ import { openBrowser } from "../openBrowser";
 import { type CarriedServer, carriedServerOf } from "./carriedServer";
 import type { InterruptTeardown } from "./interruptTeardown";
 import { reportsNoTestFile, signalTestEnv, testOwnerOf, testTargetOf } from "./testTarget";
+import {
+  type DesktopUpdatePackOptions,
+  packDesktopUpdate,
+  printUpdateKeys,
+  reportUpload,
+  republishDesktopUpdate,
+} from "./updateRelease";
 
 export interface LogsOptions {
   level?: string | null;
@@ -76,6 +82,8 @@ export interface MobilePublishOptions extends MobileTargetOptions, MobileSignOpt
   revoke?: string[];
   /** A release that revokes a key: apps compare it with their own build instead of the running release. */
   resetSequence?: boolean;
+  /** Desktop: the bundle id of a release already published here, signed again as the newest instead of a build. */
+  republish?: string;
 }
 export interface MobileBuildOptions extends MobileTargetOptions, MobileSignOptions {
   profile?: "debug" | "release";
@@ -574,33 +582,15 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
     return pack;
   }
 
-  //* A target that shares its app id with another shares its key too, so each id is answered once.
+  async packAppUpdate(app: App, options: DesktopUpdatePackOptions) {
+    return await packDesktopUpdate(app, options, async (platform, mobileTarget, env) => {
+      const carried = await this.#stageMobile(app, platform, [mobileTarget], env, options.arch);
+      return ApplicationRunner.carriesServer(mobileTarget, platform) ? carried : undefined;
+    });
+  }
+
   async updateKeygen(app: App, platform: "desktop" | "android" | "ios", target?: string) {
-    const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
-    const seen = new Set<string>();
-    for (const mobileTarget of await resolveMobileTargets(app, target ?? "all")) {
-      const appId = resolveAppId(mobileTarget.config.appId, nativePlatform);
-      if (seen.has(appId)) continue;
-      seen.add(appId);
-      const { publicKey, keyId, keyPath, created } = await new NativeApp(app, mobileTarget).updateKeygen(
-        nativePlatform,
-      );
-      app.log(
-        `${appId}: ${created ? "made" : "read"} ${keyPath}${created ? " (keep it private and backed up: without it, installed apps take no more updates)" : ""}`,
-      );
-      app.log(`  native: { updates: { url: "https://…/${app.name}", publicKeys: [${JSON.stringify(publicKey)}] } }`);
-      if (platform === "desktop")
-        app.log(
-          "  url: hosted on Akan Cloud, register this public key as an external key on the release screen and use the URL it gives; self-hosted, the public address you upload the release to",
-        );
-      app.log(`  keyId ${keyId}: what publish-update --revoke and updates.revokedKeys name this key by`);
-      const { publicKey: one, publicKeys } = mobileTarget.config.updates ?? {};
-      const declared = publicKeys ?? (one ? [one] : null);
-      if (declared && !declared.includes(publicKey))
-        app.logger.warn(
-          `native.targets.${mobileTarget.name}.updates.publicKeys does not hold this key; releases it signs would not verify.`,
-        );
-    }
+    await printUpdateKeys(app, platform, target);
   }
 
   async publishUpdate(
@@ -616,10 +606,13 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       notarize = false,
       revoke,
       resetSequence,
+      republish,
     }: MobilePublishOptions = {},
   ) {
     if (arch && platform !== "desktop")
       throw new Error(`--arch picks a desktop release's CPU; ${platform} publishes its web bundle.`);
+    if (republish && platform !== "desktop")
+      throw new Error(`--republish signs a desktop release again; ${platform} publishes its web bundle from a build.`);
     const targets = await resolveMobileTargets(app, target);
     //? One prefix holds one target's feed: two targets there would overwrite each other's manifests.
     if (upload && targets.length > 1)
@@ -630,6 +623,12 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
     const nativePlatform = platform === "desktop" ? NativeApp.desktopPlatform() : platform;
     if (arch === "x64" && nativePlatform === "macos")
       throw new Error("A macOS app is built for Apple silicon (arm64) only.");
+    if (republish && nativePlatform !== "ios" && nativePlatform !== "android") {
+      if (sign || notarize) throw new Error("--republish builds nothing: --sign and --notarize sign a build's app.");
+      const release = { bundle: republish, channel, arch, revoke, resetSequence };
+      await republishDesktopUpdate(app, targets, env, nativePlatform, release, { uploader, upload });
+      return;
+    }
     //? Every target before anything builds: one refused after the build would leave the targets before it published.
     for (const mobileTarget of targets)
       await new NativeApp(app, mobileTarget, env).assertPublishable(nativePlatform, {
@@ -655,16 +654,7 @@ if (loaded) process.exitCode = await loaded.migrations.command(loaded.server, ar
       app.log(
         `${app.name}/${mobileTarget.name} ${published.bundle}: ${published.dir}/${published.channel}.json, ${published.files} files, ${Math.round(published.size / 1024)} KiB`,
       );
-      if (!uploader) {
-        app.log(
-          `Upload ${nativeApp.updatesDir} to ${mobileTarget.config.updates?.url}, the manifests last, without pack-update's records (pack.json, compat.json, manifest.template.json, bundle.json); --upload s3://… sends just this release.`,
-        );
-        continue;
-      }
-      const { uploaded, skipped } = await uploader.upload(nativeApp.updatesDir, published);
-      app.log(
-        `Uploaded ${uploaded} file(s) to ${upload}, the manifests last; ${skipped} the bucket already held. Installed apps read ${mobileTarget.config.updates?.url}.`,
-      );
+      await reportUpload(app, nativeApp, mobileTarget, published, { uploader, upload });
     }
   }
 
