@@ -1,6 +1,0 @@
----
-"akanjs": patch
-"@akanjs/native": patch
----
-
-An Android app's page now meets the keyboard the way the iOS app's does: the keys rise over the page and only what the page moves rides up with them. In keyboard mode "none" (what akan apps ship) the Android WebView still heard of the keyboard through the window insets, shrank its visual viewport to the space above the keys and panned the whole page so the focused field showed, which lifted a chat composer far above the keys, dragged whatever sat under it (a tab bar's room) up too, and slid the top of the page under the status bar. The Android shell now hands the WebView its insets with the keyboard taken out in "none" (and its animation callbacks too), keeps the bottom safe area while the keys are up, reports the keys' whole overlap with the screen as the iOS shell does, and tells the page through `__AKAN_NATIVE__.keyboardAvoidance = "page"`. Under such a shell the frame ends the content at the keys and `KeyboardRide` carries what is marked `data-akan-keyboard-ride` with them, on the duration the shell reports and Android's IME curve (`ANDROID_KEYBOARD_ANIMATION_EASING`, added to `akanjs/client`). A page under an older shell, which still pans, keeps today's behavior; an Android app gets the new behavior once it is built with this shell.

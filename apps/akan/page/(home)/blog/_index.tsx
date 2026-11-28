@@ -16,6 +16,22 @@ interface BlogPost {
 
 const posts: BlogPost[] = [
   {
+    href: "/blog/v3-3release",
+    eyebrow: { en: "Release Note", ko: "Release Note" },
+    title: {
+      en: "Akan.js 3.3: lighter pages, safer by default",
+      ko: "Akan.js 3.3: 가볍게, 안전하게",
+    },
+    desc: {
+      en: "Pages load only the code they use, secrets leave the build, every page enforces a script policy, and the server shows what it is doing. Plus what to check when you upgrade from 3.2.",
+      ko: "페이지는 쓰는 코드만 불러오고, 시크릿은 빌드에서 빠지며, 모든 페이지에 스크립트 정책이 적용되고, 서버가 무엇을 하는지 보입니다. 3.2에서 올릴 때 확인할 것도 함께 정리했습니다.",
+    },
+    meta: { en: "Product", ko: "제품" },
+    date: { en: "Nov 28, 2026", ko: "2026년 11월 28일" },
+    image: "/akanjsImage/diagrams/client-leaf.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
+  },
+  {
     href: "/blog/v3-1release",
     eyebrow: { en: "Release Note", ko: "Release Note" },
     title: {

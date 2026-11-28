@@ -2,7 +2,7 @@
   "name": "@akanjs/vscode",
   "displayName": "Akan.js",
   "description": "Go from Akan.js derived names (initMemoInPublic, listByName, setNameOnMemo, srv.memo) to the slice, query, field or class that produces them, see where each source key is used, run akan verify and workflows, and open Akan Studio from the editor.",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "publisher": "akanjs",
   "license": "MIT",
