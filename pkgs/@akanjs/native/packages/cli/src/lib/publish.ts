@@ -374,17 +374,25 @@ function publishedEnvelope(dir: string, channel: string, bundle: string): string
   return null;
 }
 
+async function fromFeed(url: string, missing: string, hint = ""): Promise<Response> {
+  log.info(`${missing}: fetching ${url}`);
+  const signal = currentSignal();
+  const response = await fetch(url, { signal }).catch((error: unknown) => {
+    if (signal?.aborted) throw error;
+    throw new CliError(
+      `${missing}, and ${url} could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  });
+  if (!response.ok) throw new CliError(`${missing}, and ${url} answered ${response.status}${hint}`);
+  return response;
+}
+
 //? A fresh checkout has no updates folder, and CI is one: an upload sends the kept envelope beside the release, so the
 //? feed answers for it. It is opened against the trusted keys like a local one.
 async function feedEnvelope(dir: string, feed: string, channel: string, bundle: string): Promise<string> {
+  const hint = `: --republish signs again a release this target published (${join(dir, channel, "releases")} keeps their envelopes, and an upload sends them)`;
   const url = `${feed}/${channel}/releases/${bundle}.json`;
-  log.info(`${dir} holds no release ${bundle}: fetching ${url}`);
-  const response = await fetch(url, { signal: currentSignal() });
-  if (!response.ok)
-    throw new CliError(
-      `${dir} holds no release ${bundle}, and ${url} answered ${response.status}: --republish signs again a release this target published (${join(dir, channel, "releases")} keeps their envelopes, and an upload sends them)`,
-    );
-  return await response.text();
+  return await (await fromFeed(url, `${dir} holds no release ${bundle}`, hint)).text();
 }
 
 /** The archive a manifest names, in `dir` or else fetched there from the feed, refused unless it is the one named. */
@@ -392,10 +400,7 @@ async function releaseArchive(dir: string, feed: string, archive: NonNullable<Up
   const file = join(dir, archive.url);
   if (!existsSync(file)) {
     const url = `${feed}/${archive.url}`;
-    log.info(`${file} is not here: fetching ${url}`);
-    const response = await fetch(url, { signal: currentSignal() });
-    if (!response.ok) throw new CliError(`${file} is not here, and ${url} answered ${response.status}`);
-    const bytes = await response.bytes();
+    const bytes = await (await fromFeed(url, `${file} is not here`)).bytes();
     if (sha256(bytes) !== archive.gzSha256) throw new CliError(`${url} is not the archive the release names`);
     mkdirSync(join(file, ".."), { recursive: true });
     writeFileSync(file, bytes);

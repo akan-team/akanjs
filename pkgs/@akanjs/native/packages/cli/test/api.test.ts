@@ -390,9 +390,10 @@ describe("programmatic API", () => {
   test("packAppUpdate and republishUpdate refuse before any build what could not become a release", async () => {
     const previous = process.env.AKAN_NATIVE_UPDATE_KEY;
     process.env.AKAN_NATIVE_UPDATE_KEY = join(root, "keys", "desktop-pack.update.key");
+    const feed = Bun.serve({ port: 0, fetch: () => new Response("gone", { status: 404 }) });
     try {
       const { publicKey } = updateKeygen({ config: config() });
-      const updates = { url: "https://updates.example.com", publicKey };
+      const updates = { url: `http://localhost:${feed.port}`, publicKey };
       const dir = app("desktop-pack");
       const out = join(dir, "out");
       const bare = await failure(packAppUpdate({ appDir: dir, config: config(), platform: "linux", out }));
@@ -414,9 +415,16 @@ describe("programmatic API", () => {
       const unknown = await failure(republishUpdate({ ...republish, bundle: "1.0.0-1790000000" }));
       expect(unknown.code).toBe("CONFIG_INVALID");
       expect(unknown.message).toContain("holds no release 1.0.0-1790000000");
+      expect(unknown.message).toContain("/production/releases/1.0.0-1790000000.json answered 404");
+      await feed.stop(true);
+      const unreachable = await failure(republishUpdate({ ...republish, bundle: "1.0.0-1790000000" }));
+      expect(unreachable.code).toBe("CONFIG_INVALID");
+      expect(unreachable.message).toContain("holds no release 1.0.0-1790000000");
+      expect(unreachable.message).toContain("could not be read");
       const unkeyed = await failure(republishUpdate({ ...republish, config: config(), bundle: "1.0.0-1" }));
       expect(unkeyed.message).toContain("the config has no updates");
     } finally {
+      await feed.stop(true);
       if (previous === undefined) delete process.env.AKAN_NATIVE_UPDATE_KEY;
       else process.env.AKAN_NATIVE_UPDATE_KEY = previous;
     }

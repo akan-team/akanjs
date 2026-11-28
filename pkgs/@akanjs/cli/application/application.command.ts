@@ -537,7 +537,7 @@ const releaseTargets = ({ public: target }: ApplicationBuilderContext) => ({
     }),
 });
 
-const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
+const packTargets = ({ public: target }: ApplicationBuilderContext) => ({
   packUpdate: target({ desc: packUpdateDesc, usageExitCode: 1 })
     .with(App)
     .option("platform", String, {
@@ -622,6 +622,9 @@ const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
         });
       },
     ),
+});
+
+const updateTargets = ({ public: target }: ApplicationBuilderContext) => ({
   updateKeygen: target({ desc: "Make (once) the key an app's update releases are signed with; print its public key" })
     .with(App)
     .option("platform", String, {
@@ -756,6 +759,7 @@ export class ApplicationCommand extends command("application", [ApplicationScrip
   ...nativeBuildTargets(context),
   ...startTargets(context),
   ...releaseTargets(context),
+  ...packTargets(context),
   ...updateTargets(context),
   ...databaseTargets(context),
 })) {}

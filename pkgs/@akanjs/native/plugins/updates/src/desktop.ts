@@ -264,6 +264,23 @@ function appPath(mac: boolean): string | null {
 
 const resourcesOf = (app: string, mac: boolean) => (mac ? join(app, "Contents", "Resources") : join(app, "resources"));
 
+function appIdOf(app: string, mac: boolean): string {
+  if (mac) {
+    const plist = join(app, "Contents", "Info.plist");
+    return Bun.spawnSync(["/usr/bin/plutil", "-extract", "CFBundleIdentifier", "raw", "-o", "-", plist])
+      .stdout.toString()
+      .trim();
+  }
+  try {
+    const boot = JSON.parse(readFileSync(join(resourcesOf(app, mac), "boot.json"), "utf8")) as {
+      app?: { id?: string };
+    };
+    return boot.app?.id ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /**
  * Windows: the version Settings > Apps shows for an app the installer put here (windows-installer.ts writes the key
  * and puts the uninstaller beside the folder). A copy of the app elsewhere leaves the installed one's entry alone.
@@ -902,29 +919,7 @@ export function createDesktopUpdates(options: DesktopUpdatesOptions = {}): Deskt
       const staged = unpacked.length === 1 ? join(staging, unpacked[0] as string) : "";
       if (!staged || !existsSync(executableIn(staged)))
         throw new AkanNativeError("INTERNAL", `the release is not one app with ${exeName}`);
-      let id = "";
-      if (mac) {
-        id = Bun.spawnSync([
-          "/usr/bin/plutil",
-          "-extract",
-          "CFBundleIdentifier",
-          "raw",
-          "-o",
-          "-",
-          join(staged, "Contents", "Info.plist"),
-        ])
-          .stdout.toString()
-          .trim();
-      } else {
-        try {
-          id =
-            (
-              JSON.parse(readFileSync(join(resources(staged), "boot.json"), "utf8")) as {
-                app?: { id?: string };
-              }
-            ).app?.id ?? "";
-        } catch {}
-      }
+      const id = appIdOf(staged, mac);
       if (id !== c.app)
         throw new AkanNativeError("INTERNAL", `the release is ${id || "not an akan-native app"}, not ${c.app}`);
       // The manifest signature already vouches for the bytes; macOS also checks the code signature, and an app
