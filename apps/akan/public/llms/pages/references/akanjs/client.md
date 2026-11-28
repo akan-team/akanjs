@@ -52,7 +52,7 @@ Export
 
 - resolveServerUrl: Puts a stored `/api/…` URL on the server's origin when a CSR page is served elsewhere, such as in a desktop app.
 
-- usePendingNavigation, PendingLocation: The `{ href, pathname, path, searchParams }` a navigation is loading, from the press until its page is drawn or shows its `.loading()`, and `null` otherwise. A page the browser already holds is never reported: under SSR one drawn before or a prefetch that has arrived, on a CSR stack one the stack keeps or one with no async layer or guard. A redirect moves it to where it leads. For a skeleton or a dimmed pane shown before the page.
+- usePendingNavigation, PendingLocation: The `{ href, pathname, path, searchParams }` a navigation is loading, from the press until its page or `.loading()` shows, for a skeleton or dimmed pane. `null` otherwise, and for a page the browser already holds.
 
 - Device: Platform, safe area, keyboard, haptics and scroll of the device.
 
@@ -86,7 +86,7 @@ Method
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.
 
-- backOrReplace(href): Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.
+- backOrReplace(href): Leaves a page state a `push` opened in the query (a record in `?id=`): goes back when the entry under this one is `href`, else replaces this entry with `href`, keeping the scroll. Browser only.
 
 - refresh(): Renders the current route again. Browser only.
 
@@ -196,7 +196,7 @@ rootLayout
 
   - .guard(fn): Runs before anything on the route renders, and refuses with a redirect or a not-found.
 
-  - .loading(fn, option?): Shown while render awaits. It gets path values but no search values. On a page(), { atPress: true } shows it once a press to another path of the same page (/chat/a to /chat/b) has waited 150 ms on the server, where the page being left would stay until the answer; { atPress: { delayMs } } sets the wait. Back, Forward and a page the browser already holds keep the page. The fallback shown is the one drawn for the path being left, so it should not draw from its arguments.
+  - .loading(fn, option?): Shown while render awaits, with path values but no search values. On a page(), { atPress: true } also shows it once a press to another path of the same page (/chat/a to /chat/b) has waited 150 ms; { atPress: { delayMs } } sets the wait. It is the fallback drawn for the path being left, so draw nothing from its arguments.
 
   - .render(fn): The last stage. Draws the route from the typed arguments.
 
@@ -334,7 +334,7 @@ PageConfig
 
 - canonicalQuery (boolean, default true): `false` keys the page in the RSC and HTML result caches on its query exactly as requested, instead of sorted and without the `AKAN_ROUTE_CACHE_TRACKING_PARAMS`. On a layout, it covers every page below.
 
-- stackOn (string, default the link's leading routes): The screen a native app's deep link lays under the page when it opens the app on it with nothing behind: a route pattern whose params come from the link (`/org/:orgId`), and its own `stackOn` chains on. On a layout, it covers every page below, the route it names included, where the chain ends.
+- stackOn (string, default the link's leading routes): The screen a native app's deep link lays under the page with nothing behind it: a route pattern taking the link's params (`/org/:orgId`), whose `stackOn` chains on. On a layout, it covers every page below.
 
 - devOnly (boolean, default false): Keeps the route out of `akan build`. It still serves under `akan start`.
 

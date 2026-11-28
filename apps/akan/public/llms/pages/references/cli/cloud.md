@@ -152,7 +152,7 @@ Move the global `akan` CLI and this workspace's Akan.js packages to the newest v
 
 - package.json: In a workspace, pins root `akanjs`, `@akanjs/devkit` and `@akanjs/cli` to that version, moves `react`, `react-dom` and `react-server-dom-webpack` to the versions that release of `akanjs` declares as peers, and runs `bun install`.
 
-- release not served yet: Before it changes anything, it checks that the registry serves that version of `akanjs`, `@akanjs/devkit`, `@akanjs/cli` and `@akanjs/language`, tarball included. The registry can show the packages of one release up to an hour apart; until the last one is there it stops, naming the missing ones, and leaves `package.json` alone.
+- release not served yet: The registry can show one release's packages (`akanjs`, `@akanjs/devkit`, `@akanjs/cli`, `@akanjs/language`) up to an hour apart. Until it serves all four, `akan update` stops and leaves `package.json` alone.
 
 - global install: Installs `@akanjs/cli@<tag>` globally with `bun add -g`, and prints `akan --version` at the end.
 

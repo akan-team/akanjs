@@ -1623,8 +1623,8 @@ const config: AppConfig = {
           />
           <div>
             {l.trans({
-              en: "A library contributes to five of these: its own externalLibs, trustedDependencies, docker.preRuns, docker.installRuns and docker.postRuns, and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs ca-certificates and tzdata and nothing else, which is why an app that needs ffmpeg or a headless browser declares it.",
-              ko: "라이브러리가 이 중 다섯에 값을 더합니다. 라이브러리 자신의 externalLibs, trustedDependencies, docker.preRuns·docker.installRuns·docker.postRuns, assets.keepFonts는 그 라이브러리를 마운트하는 모든 앱에, bin은 그 라이브러리에 의존하는 앱에 적용됩니다. 생성되는 이미지에는 ca-certificates와 tzdata만 설치되므로, ffmpeg나 헤드리스 브라우저가 필요한 앱은 직접 선언해야 합니다.",
+              en: "A library's externalLibs, trustedDependencies, docker.preRuns, docker.installRuns, docker.postRuns and assets.keepFonts carry into every app that mounts it, and its bin into the apps that depend on it. The generated image installs only ca-certificates, tzdata and tini, so an app that needs ffmpeg or a headless browser declares it.",
+              ko: "라이브러리의 externalLibs, trustedDependencies, docker.preRuns·docker.installRuns·docker.postRuns, assets.keepFonts는 그 라이브러리를 마운트하는 모든 앱에, bin은 그 라이브러리에 의존하는 앱에 적용됩니다. 생성되는 이미지에는 ca-certificates, tzdata, tini만 설치되므로, ffmpeg나 헤드리스 브라우저가 필요한 앱은 직접 선언해야 합니다.",
             })}
           </div>
           <ul className="my-4 list-disc space-y-2 pl-5">
@@ -1650,22 +1650,19 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>The server runs as the image's bun user, uid 1000, and owns only what it writes.</strong>{" "}
-                    apt-get, preRuns, bun install and postRuns still run as root, and the app files,{" "}
-                    <code>node_modules</code> included, stay root's and read-only to the server. bun owns{" "}
+                    <strong>The server runs as uid 1000, the image's bun user.</strong> It owns only{" "}
                     <code>/workspace/sqlite</code>, <code>/workspace/local</code>, <code>/workspace/runtime</code>,{" "}
-                    <code>/workspace/data</code> and <code>/workspace/.akan/artifact/image-cache</code>. A directory a
-                    postRuns step makes for the server to write needs <code>chown 1000:1000</code>.
+                    <code>/workspace/data</code> and <code>/workspace/.akan/artifact/image-cache</code>. preRuns and
+                    postRuns still run as root, so <code>chown 1000:1000</code> a directory one makes for the server.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>서버는 이미지의 bun 사용자(uid 1000)로 실행되며, 자기가 쓰는 곳만 소유합니다.</strong>{" "}
-                    apt-get, preRuns, bun install, postRuns는 그대로 root로 실행되고, <code>node_modules</code>를 포함한
-                    앱 파일은 root 소유로 남아 서버는 읽기만 합니다. bun은 <code>/workspace/sqlite</code>,{" "}
-                    <code>/workspace/local</code>, <code>/workspace/runtime</code>, <code>/workspace/data</code>,{" "}
-                    <code>/workspace/.akan/artifact/image-cache</code>를 소유합니다. postRuns 단계가 서버가 쓸
-                    디렉터리를 만든다면 <code>chown 1000:1000</code>을 붙입니다.
+                    <strong>서버는 이미지의 bun 사용자인 uid 1000으로 실행됩니다.</strong> 서버가 소유하는 곳은{" "}
+                    <code>/workspace/sqlite</code>, <code>/workspace/local</code>, <code>/workspace/runtime</code>,{" "}
+                    <code>/workspace/data</code>, <code>/workspace/.akan/artifact/image-cache</code>뿐입니다. preRuns와
+                    postRuns는 그대로 root로 실행되므로, 서버가 쓸 디렉터리를 거기서 만든다면{" "}
+                    <code>chown 1000:1000</code>을 붙입니다.
                   </span>
                 ),
               })}
@@ -1674,18 +1671,16 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>installRuns prune what the image never loads.</strong> They run in the same layer as{" "}
-                    <code>bun install</code>, so a file a step deletes from <code>node_modules</code> is in no layer.
-                    Use them for a package that ships every platform's binary; an <code>rm</code> in postRuns is a later
-                    layer and leaves the image as large.
+                    <strong>installRuns prune what the image never loads.</strong> They run in the{" "}
+                    <code>bun install</code> layer, so deleting from <code>node_modules</code> there shrinks the image;
+                    an <code>rm</code> in postRuns does not. Use them for a package that ships every platform's binary.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>installRuns는 이미지가 쓰지 않는 파일을 덜어냅니다.</strong> <code>bun install</code>과 같은
-                    레이어에서 실행되므로, 여기서 <code>node_modules</code>에서 지운 파일은 어느 레이어에도 남지
-                    않습니다. 모든 플랫폼의 바이너리를 한 패키지에 담아 배포하는 의존성에 씁니다. postRuns의{" "}
-                    <code>rm</code>은 다음 레이어라서 이미지 크기가 줄지 않습니다.
+                    레이어에서 실행되므로 여기서 <code>node_modules</code>의 파일을 지우면 이미지가 줄어들고, postRuns의{" "}
+                    <code>rm</code>으로는 줄지 않습니다. 모든 플랫폼의 바이너리를 담아 배포하는 패키지에 씁니다.
                   </span>
                 ),
               })}
@@ -1694,20 +1689,18 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>crossBuild builds for another architecture without emulating Bun.</strong> For{" "}
-                    <code>docker buildx build --platform linux/arm64</code> on an amd64 host, a stage on the build
-                    machine's own architecture runs <code>bun install --os linux --cpu &lt;target&gt;</code>, and the
-                    target's stage copies the result and runs only apt-get, preRuns and postRuns. A dependency's
-                    lifecycle script then runs on the build machine's CPU, and the build needs BuildKit.
+                    <strong>crossBuild builds for another architecture without emulating Bun.</strong> With{" "}
+                    <code>docker buildx build --platform linux/arm64</code> on an amd64 host, <code>bun install</code>{" "}
+                    runs on the build machine's architecture, and so does a dependency's lifecycle script. The build
+                    needs BuildKit.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>crossBuild는 Bun을 에뮬레이션하지 않고 다른 아키텍처용으로 빌드합니다.</strong> amd64
-                    호스트에서 <code>docker buildx build --platform linux/arm64</code>를 할 때, 빌드 머신 아키텍처의
-                    단계가 <code>bun install --os linux --cpu &lt;target&gt;</code>을 실행하고, 대상 아키텍처 단계는 그
-                    결과를 복사한 뒤 apt-get, preRuns, postRuns만 실행합니다. 이때 의존성의 라이프사이클 스크립트는 빌드
-                    머신의 CPU에서 실행되며, 빌드에는 BuildKit이 필요합니다.
+                    호스트에서 <code>docker buildx build --platform linux/arm64</code>를 하면 <code>bun install</code>이
+                    빌드 머신의 아키텍처에서 실행되고, 의존성의 라이프사이클 스크립트도 그렇습니다. 빌드에는 BuildKit이
+                    필요합니다.
                   </span>
                 ),
               })}
@@ -1716,24 +1709,18 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>baseSetup: false leaves the base step to the image.</strong> Every generated image runs{" "}
-                    <code>apt-get</code> for <code>ca-certificates</code>, <code>tzdata</code> and <code>tini</code> and
-                    sets the time zone, which a builder with no layer cache repeats on every build. Build an image once
-                    from <code>DOCKER_BASE_RUNS</code> in <code>@akanjs/devkit/akanConfig</code> (
-                    <code>DOCKER_BASE_PACKAGES</code> is its package list), name it in <code>image</code>, for every
-                    architecture when it is an object, and set <code>baseSetup: false</code>. Tag that image by the
-                    steps it ran, so a release that changes them builds a new one.
+                    <strong>baseSetup: false leaves the base step to the image.</strong> Without a layer cache, build
+                    that image once from <code>DOCKER_BASE_RUNS</code> in <code>@akanjs/devkit/akanConfig</code> (
+                    <code>DOCKER_BASE_PACKAGES</code> lists its packages), name it in <code>image</code> and tag it by
+                    the steps it ran.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>baseSetup: false는 기본 단계를 베이스 이미지에 맡깁니다.</strong> 생성된 이미지는 모두{" "}
-                    <code>apt-get</code>으로 <code>ca-certificates</code>, <code>tzdata</code>, <code>tini</code>를
-                    설치하고 시간대를 맞추는데, 레이어 캐시가 없는 빌더는 빌드마다 이를 반복합니다.{" "}
-                    <code>@akanjs/devkit/akanConfig</code>의 <code>DOCKER_BASE_RUNS</code>로 이미지를 한 번 만들어 두고(
-                    <code>DOCKER_BASE_PACKAGES</code>가 패키지 목록입니다) <code>image</code>에 지정한 뒤{" "}
-                    <code>baseSetup: false</code>로 둡니다. <code>image</code>가 객체라면 모든 아키텍처를 지정해야
-                    합니다. 그 이미지의 태그는 실행한 단계에서 만들어, 단계가 바뀌는 릴리스에서 새로 빌드되게 합니다.
+                    <strong>baseSetup: false는 기본 단계를 베이스 이미지에 맡깁니다.</strong> 레이어 캐시가 없는
+                    빌더라면 <code>@akanjs/devkit/akanConfig</code>의 <code>DOCKER_BASE_RUNS</code>로 그 이미지를 한 번
+                    만들어(<code>DOCKER_BASE_PACKAGES</code>가 패키지 목록입니다) <code>image</code>에 지정하고, 태그는
+                    실행한 단계에서 만듭니다.
                   </span>
                 ),
               })}
@@ -1742,28 +1729,36 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>env sets the image's defaults, and variants writes a second image.</strong> <code>env</code>{" "}
-                    is laid over the <code>ENV</code> lines the build writes, so the image starts with it unless the
-                    deployment says otherwise. It is tracked and readable in the image, so never a secret, and{" "}
-                    <code>bun main.js</code> on a host does not get it. Each entry of <code>variants</code> is written
-                    beside the Dockerfile as <code>Dockerfile.&lt;name&gt;</code> (
-                    <code>docker build -f Dockerfile.edge .</code>): the app's <code>docker</code> with every field the
-                    variant names replaced whole, so <code>preRuns: []</code> drops the app's steps there, while its{" "}
-                    <code>env</code> is laid over the app's key by key and a library's steps reach every variant. Split
-                    an image by what it is for, a device or a control plane, this way rather than by architecture.
+                    <strong>env sets the image's defaults.</strong> The image starts with them unless the deployment
+                    says otherwise. They are tracked and readable in the image, so never a secret, and{" "}
+                    <code>bun main.js</code> on a host does not get them.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>env는 이미지의 기본값을 정하고, variants는 두 번째 이미지를 씁니다.</strong>{" "}
-                    <code>env</code>는 빌드가 쓰는 <code>ENV</code> 줄 위에 덮이므로, 배포에서 따로 정하지 않으면
-                    이미지는 그 값으로 뜹니다. 설정 파일에 남고 이미지에서 읽히므로 비밀 값을 넣지 않으며, 호스트에서{" "}
-                    <code>bun main.js</code>로 실행할 때는 적용되지 않습니다. <code>variants</code>의 각 항목은
-                    Dockerfile 옆에 <code>Dockerfile.&lt;name&gt;</code>으로 쓰입니다(
-                    <code>docker build -f Dockerfile.edge .</code>). 앱의 <code>docker</code>에서 variant가 적은 필드를
-                    통째로 바꾼 것이어서 <code>preRuns: []</code>는 앱의 단계를 그 이미지에서 뺍니다. <code>env</code>
-                    만은 앱의 <code>env</code> 위에 키별로 덮이고, 라이브러리의 단계는 모든 variant에 들어갑니다.
-                    기기용, 컨트롤 플레인용처럼 용도로 이미지를 가를 때 아키텍처 대신 이 방법을 씁니다.
+                    <strong>env는 이미지의 기본값을 정합니다.</strong> 배포에서 따로 정하지 않으면 이미지는 그 값으로
+                    뜹니다. 설정 파일에 남고 이미지에서 읽히므로 비밀 값을 넣지 않으며, 호스트에서{" "}
+                    <code>bun main.js</code>로 실행할 때는 적용되지 않습니다.
+                  </span>
+                ),
+              })}
+            </li>
+            <li>
+              {l.trans({
+                en: (
+                  <span>
+                    <strong>variants writes a second image.</strong> Each entry becomes{" "}
+                    <code>Dockerfile.&lt;name&gt;</code>, the app's <code>docker</code> with each field it names
+                    replaced whole: <code>preRuns: []</code> drops the app's steps. Its <code>env</code> merges key by
+                    key, and a library's steps reach every variant.
+                  </span>
+                ),
+                ko: (
+                  <span>
+                    <strong>variants는 두 번째 이미지를 씁니다.</strong> 각 항목은 <code>Dockerfile.&lt;name&gt;</code>
+                    이 되며, 앱의 <code>docker</code>에서 그 항목이 적은 필드를 통째로 바꾼 것이어서{" "}
+                    <code>preRuns: []</code>는 앱의 단계를 뺍니다. <code>env</code>는 키별로 덮이고, 라이브러리의 단계는
+                    모든 variant에 들어갑니다.
                   </span>
                 ),
               })}
@@ -1773,23 +1768,17 @@ const config: AppConfig = {
                 en: (
                   <span>
                     <strong>A variant's profile gives that image its own server env.</strong>{" "}
-                    <code>profile: "edge"</code> makes the one build carry{" "}
-                    <code>env/env.server.&lt;env&gt;.edge.ts</code> beside the environment's own env file and writes{" "}
-                    <code>ENV AKAN_ENV_PROFILE=edge</code> into <code>Dockerfile.edge</code>, which picks it as the
-                    server starts. A profile file may hold no secret, so that image asks for none of the secret values
-                    the other one reads from its process env, and the env file that was not picked is never evaluated. A
-                    server started with a profile its build did not carry refuses to start.
+                    <code>profile: "edge"</code> sets <code>AKAN_ENV_PROFILE=edge</code> in <code>Dockerfile.edge</code>
+                    , and its server reads <code>env/env.server.&lt;env&gt;.edge.ts</code> instead of the environment's
+                    own file. A profile file may hold no secret, so its image needs none.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>variant의 profile은 그 이미지에 자기 서버 env를 줍니다.</strong>{" "}
-                    <code>profile: "edge"</code>를 적으면 한 번의 빌드가 환경의 env 파일 옆에{" "}
-                    <code>env/env.server.&lt;env&gt;.edge.ts</code>를 함께 싣고, <code>Dockerfile.edge</code>에{" "}
-                    <code>ENV AKAN_ENV_PROFILE=edge</code>를 써서 서버가 뜰 때 그 파일을 고르게 합니다. 프로파일
-                    파일에는 비밀 값을 둘 수 없으므로, 그 이미지는 다른 이미지가 프로세스 환경에서 읽는 비밀 값을 하나도
-                    요구하지 않으며, 고르지 않은 env 파일은 실행되지 않습니다. 빌드가 싣지 않은 프로파일로 띄운 서버는
-                    뜨지 않습니다.
+                    <code>profile: "edge"</code>는 <code>Dockerfile.edge</code>에 <code>AKAN_ENV_PROFILE=edge</code>를
+                    넣고, 그 서버는 환경의 env 파일 대신 <code>env/env.server.&lt;env&gt;.edge.ts</code>를 읽습니다.
+                    프로파일 파일에는 비밀 값을 둘 수 없으므로 그 이미지는 비밀 값이 필요 없습니다.
                   </span>
                 ),
               })}
@@ -1818,27 +1807,19 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>A tool that edits the generated Dockerfile finds its place by a marker.</strong> The file
-                    opens with <code># akan:dockerfile 1</code>, and each section starts at a comment:{" "}
-                    <code># akan:install-stage</code> (only with <code>crossBuild</code>), <code># akan:base</code>,{" "}
-                    <code># akan:pre-runs</code>, <code># akan:install</code>, <code># akan:post-runs</code> and{" "}
-                    <code># akan:app</code>, a section with no instruction left out. The number rises when the sections
-                    change, so a tool that meets one it does not know says so instead of skipping its edit.{" "}
-                    <code>dockerfileLayoutOf</code> from <code>@akanjs/devkit/akanConfig</code> reads them, and{" "}
-                    <code>dockerfileOf</code> there is the generator itself. A Dockerfile written as a string carries no
-                    marker.
+                    <strong>Tools edit the generated Dockerfile by its markers.</strong> The file opens with{" "}
+                    <code># akan:dockerfile 1</code> and each section with a <code># akan:&lt;section&gt;</code>{" "}
+                    comment; the number rises when the sections change. <code>dockerfileLayoutOf</code> from{" "}
+                    <code>@akanjs/devkit/akanConfig</code> reads them; <code>dockerfileOf</code> there is the generator.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>생성된 Dockerfile을 고치는 도구는 표식으로 자리를 찾습니다.</strong> 파일은{" "}
-                    <code># akan:dockerfile 1</code>로 시작하고, 구간마다 주석으로 시작합니다.{" "}
-                    <code># akan:install-stage</code>(<code>crossBuild</code>일 때만), <code># akan:base</code>,{" "}
-                    <code># akan:pre-runs</code>, <code># akan:install</code>, <code># akan:post-runs</code>,{" "}
-                    <code># akan:app</code>이며, 명령이 없는 구간은 쓰지 않습니다. 구간 구성이 바뀌면 번호가 올라가므로,
-                    모르는 번호를 만난 도구는 수정을 조용히 건너뛰지 않고 그 사실을 알릴 수 있습니다.{" "}
-                    <code>@akanjs/devkit/akanConfig</code>의 <code>dockerfileLayoutOf</code>가 이 표식을 읽고, 같은 곳의{" "}
-                    <code>dockerfileOf</code>가 생성기입니다. 문자열로 쓴 Dockerfile에는 표식이 없습니다.
+                    <strong>도구는 표식으로 생성된 Dockerfile을 고칩니다.</strong> 파일은{" "}
+                    <code># akan:dockerfile 1</code>로, 각 구간은 <code># akan:&lt;section&gt;</code> 주석으로 시작하며,
+                    구간 구성이 바뀌면 번호가 올라갑니다. <code>@akanjs/devkit/akanConfig</code>의{" "}
+                    <code>dockerfileLayoutOf</code>가 이 표식을 읽고, 같은 곳의 <code>dockerfileOf</code>가
+                    생성기입니다.
                   </span>
                 ),
               })}
@@ -1847,21 +1828,17 @@ const config: AppConfig = {
               {l.trans({
                 en: (
                   <span>
-                    <strong>A desktop app carries its own executables.</strong> It gets none of the image's{" "}
-                    <code>docker</code> steps, so <code>bin</code> puts ffmpeg, or anything else its server or a native
-                    plugin spawns, into every desktop build for the computer it is built on, first on the app's PATH and
-                    in a plugin's <code>ctx.binDir</code>. The image carries the <code>linux-x64</code> and{" "}
-                    <code>linux-arm64</code> entries the same way, first on its PATH. Carry a static LGPL build: a{" "}
-                    <code>--enable-nonfree</code> build may not be redistributed.
+                    <strong>A desktop app carries its own executables.</strong> No <code>docker</code> step reaches it,
+                    so <code>bin</code> puts ffmpeg, or anything its server or native plugins spawn, in{" "}
+                    <code>ctx.binDir</code> and first on PATH. Ship a static LGPL build: <code>--enable-nonfree</code>{" "}
+                    builds are not redistributable.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>데스크톱 앱은 실행 파일을 직접 싣고 갑니다.</strong> 데스크톱 앱에는 이미지의{" "}
-                    <code>docker</code> 단계가 하나도 들어가지 않습니다. 그래서 <code>bin</code>이 ffmpeg처럼 서버나
-                    네이티브 플러그인이 실행하는 파일을 빌드하는 컴퓨터용으로 모든 데스크톱 빌드에 넣고, 앱의 PATH 맨
-                    앞과 플러그인의 <code>ctx.binDir</code>에 둡니다. 이미지도 <code>linux-x64</code>와{" "}
-                    <code>linux-arm64</code> 항목을 같은 방식으로 싣고 PATH 맨 앞에 둡니다. 정적 LGPL 빌드를 넣으세요.{" "}
+                    <strong>데스크톱 앱은 실행 파일을 직접 싣고 갑니다.</strong> 데스크톱 앱에는 <code>docker</code>{" "}
+                    단계가 하나도 들어가지 않으므로, <code>bin</code>이 ffmpeg처럼 서버나 네이티브 플러그인이 실행하는
+                    파일을 <code>ctx.binDir</code>와 PATH 맨 앞에 둡니다. 정적 LGPL 빌드를 넣으세요.{" "}
                     <code>--enable-nonfree</code>로 빌드한 것은 재배포할 수 없습니다.
                   </span>
                 ),

@@ -139,7 +139,7 @@ Off
 
 **`web` asks before `write` and `edit` only.** `bash` never waits for approval there. `local` is the reverse: it asks before `bash` and never before a file write.
 
-**`a` stops asking about one command for the session.** It remembers the program, and the sub-command for tools like `git` and `bun`, so allowing `git status` leaves `git diff` asked about; a line of several commands runs unasked only once each is allowed. `/allowed` lists them and `/allowed clear` forgets them, and nothing is kept after the session. A networking command, a command that sends something out (`git push`, `npm publish`, `docker push`, `gh api`), `rm`, a command that runs another (`sudo`, `xargs`, `sh`, `source`), a variable set in front of a command other than a few like `CI=1` and a line that writes a file with `>` are asked about every time.
+**`a` stops asking about one command for the session.** It remembers the program, and the sub-command for tools like `git` and `bun`. `/allowed` lists them and `/allowed clear` forgets them. A networking command, one that sends something out (`git push`) or runs another (`sudo`), `rm` and writing a file with `>` are asked about every time.
 
 **MCP servers come from two files.** `~/.akan/code/mcp.json` is yours and `.akan/code/mcp.json` is the checkout's; on a shared name the workspace entry wins.
 

@@ -1406,7 +1406,7 @@ Export
 
 - resolveServerUrl: Puts a stored `/api/…` URL on the server's origin when a CSR page is served elsewhere, such as in a desktop app.
 
-- usePendingNavigation, PendingLocation: The `{ href, pathname, path, searchParams }` a navigation is loading, from the press until its page is drawn or shows its `.loading()`, and `null` otherwise. A page the browser already holds is never reported: under SSR one drawn before or a prefetch that has arrived, on a CSR stack one the stack keeps or one with no async layer or guard. A redirect moves it to where it leads. For a skeleton or a dimmed pane shown before the page.
+- usePendingNavigation, PendingLocation: The `{ href, pathname, path, searchParams }` a navigation is loading, from the press until its page or `.loading()` shows, for a skeleton or dimmed pane. `null` otherwise, and for a page the browser already holds.
 
 - Device: Platform, safe area, keyboard, haptics and scroll of the device.
 
@@ -1440,7 +1440,7 @@ Method
 
 - backOrFallback(href?): Goes back, or replaces with `href` when there is no history. Defaults to the index path. A browser tab this app opened, with nothing to go back to, is closed instead.
 
-- backOrReplace(href): Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.
+- backOrReplace(href): Leaves a page state a `push` opened in the query (a record in `?id=`): goes back when the entry under this one is `href`, else replaces this entry with `href`, keeping the scroll. Browser only.
 
 ## akanjs/common
 
@@ -1881,7 +1881,7 @@ Other Exports
 
 - useBodyScrollLock(active): Locks `document.body` scrolling while `active`. Overlays share one count.
 
-- useEscapeKey(active, onEscape, options?): Calls `onEscape` on Escape, or on an Android app's back button, while `active`. Only the topmost open surface gets it, and back leaves the page only once none is open. `{ back: false }` keeps the back button for the page: for a hint that shows by itself, such as a tooltip.
+- useEscapeKey(active, onEscape, options?): Calls `onEscape` on Escape or an Android app's back button while `active` and the topmost open surface. `{ back: false }` leaves back to the page: for a hint that shows by itself, like a tooltip.
 
 - usePageFocusEffect(effect, deps): Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.
 
@@ -2855,7 +2855,7 @@ Term
 
 `akan quality [action] [--format <text|json>]`
 
-Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.`runtime` counts, per app and library, the client files that read `st`, `fetch` or `sig` only by names a module answers, notes each file that ties itself to its scope's whole client runtime, and prints what the last `akan build` of each app decided: the routes loading per module, and for every other the file, line and rule that keeps it whole.
+Scan every app and library for code quality warnings, or measure the server/client render balance.`scan` (default) prints every warning, then the SSR balance and the suggested rules.`ssr` prints the SSR balance first, then only the warnings whose scope is `ssr`.`runtime` notes each client file that ties itself to its scope's whole client runtime, and prints what each app's last `akan build` decided for each route.
 
 - action (String, default scan, scan | ssr | runtime | baseline): `scan` reports everything, `ssr` the render balance alone, `runtime` how client files read the client runtime; `baseline` writes `akan.baseline.json`.
 
@@ -2986,7 +2986,7 @@ Term
 
 - TTL: How long a share lives before it expires on its own.
 
-**Anyone with the URL reaches your whole dev server.** That is every route under `page/`, the API prefix, the websocket, and `/mcp` if the app mounts it, with nothing in front. Give it a `--ttl`, stop it when the call ends, and never share a session signed in to production data. The share leaves out the dev routes the app registers (devtools, Studio, `/_akan/hmr`, `/__rsc/manifest`), source maps and the operator routes; it serves the ssr-dev and csr-dev module registries, which a dev page loads its code from.
+**Anyone with the URL reaches your whole dev server.** That is every route under `page/`, the API prefix, the websocket, and `/mcp` if the app mounts it, with nothing in front. Give it a `--ttl`, stop it when the call ends, and never share a session signed in to production data. The share leaves out devtools, Studio, source maps and the operator routes.
 
 `akan tunnel [app] [--list <boolean>] [--stop <code>] [--host <url>] [--port <number>] [--ttl <min>]`
 

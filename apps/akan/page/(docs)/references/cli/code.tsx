@@ -400,14 +400,10 @@ akan code --rpc true`,
             <strong>
               <code>a</code> stops asking about one command for the session.
             </strong>{" "}
-            It remembers the program, and the sub-command for tools like <code>git</code> and <code>bun</code>, so
-            allowing <code>git status</code> leaves <code>git diff</code> asked about; a line of several commands runs
-            unasked only once each is allowed. <code>/allowed</code> lists them and <code>/allowed clear</code> forgets
-            them, and nothing is kept after the session. A networking command, a command that sends something out (
-            <code>git push</code>, <code>npm publish</code>, <code>docker push</code>, <code>gh api</code>),{" "}
-            <code>rm</code>, a command that runs another (<code>sudo</code>, <code>xargs</code>, <code>sh</code>,{" "}
-            <code>source</code>), a variable set in front of a command other than a few like <code>CI=1</code> and a
-            line that writes a file with <code>&gt;</code> are asked about every time.
+            It remembers the program, and the sub-command for tools like <code>git</code> and <code>bun</code>.{" "}
+            <code>/allowed</code> lists them and <code>/allowed clear</code> forgets them. A networking command, one
+            that sends something out (<code>git push</code>) or runs another (<code>sudo</code>), <code>rm</code> and
+            writing a file with <code>&gt;</code> are asked about every time.
           </>
         ),
         ko: (
@@ -415,13 +411,10 @@ akan code --rpc true`,
             <strong>
               <code>a</code>는 한 명령을 세션이 끝날 때까지 묻지 않게 합니다.
             </strong>{" "}
-            프로그램 이름을 기억하고, <code>git</code>이나 <code>bun</code> 같은 도구는 하위 명령까지 기억하므로{" "}
-            <code>git status</code>를 허용해도 <code>git diff</code>는 계속 묻습니다. 명령이 여러 개인 줄은 모두 허용된
-            뒤에만 묻지 않고 실행합니다. <code>/allowed</code>로 목록을 보고 <code>/allowed clear</code>로 지우며,
-            세션이 끝나면 남지 않습니다. 네트워크 명령, 밖으로 내보내는 명령(<code>git push</code>,{" "}
-            <code>npm publish</code>, <code>docker push</code>, <code>gh api</code>), <code>rm</code>, 다른 명령을
-            실행하는 명령(<code>sudo</code>, <code>xargs</code>, <code>sh</code>, <code>source</code>),{" "}
-            <code>CI=1</code> 같은 몇 가지를 뺀 명령 앞의 변수 지정, <code>&gt;</code>로 파일을 쓰는 줄은 매번 묻습니다.
+            프로그램 이름을 기억하고, <code>git</code>이나 <code>bun</code> 같은 도구는 하위 명령까지 기억합니다.{" "}
+            <code>/allowed</code>로 목록을 보고 <code>/allowed clear</code>로 지웁니다. 네트워크 명령, 밖으로
+            내보내거나(<code>git push</code>) 다른 명령을 실행하는 명령(<code>sudo</code>), <code>rm</code>,{" "}
+            <code>&gt;</code>로 파일을 쓰는 줄은 매번 묻습니다.
           </>
         ),
       }),

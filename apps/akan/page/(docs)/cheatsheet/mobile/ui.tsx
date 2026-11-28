@@ -898,18 +898,17 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    Tailwind reads them directly: <code>h-(--akan-bottom-inset)</code> sizes a bar to exactly the space
-                    the page reserved. Under <code>overlay</code>, a scroller written{" "}
-                    <code>pb-(--akan-overlay-bottom)</code> lets its last row scroll clear of the bar it passes under,
-                    and the overlaid side's safe area is transparent unless the page colors it.
+                    Tailwind reads them directly: <code>h-(--akan-bottom-inset)</code> sizes a bar to the space the page
+                    reserved, and under <code>overlay</code> a scroller with <code>pb-(--akan-overlay-bottom)</code>{" "}
+                    scrolls its last row clear of the bar. The overlaid side's safe area is transparent unless the page
+                    colors it.
                   </span>
                 ),
                 ko: (
                   <span>
                     Tailwind에서 바로 읽을 수 있습니다. <code>h-(--akan-bottom-inset)</code>은 바의 높이를 페이지가 비워
-                    둔 공간과 정확히 맞춥니다. <code>overlay</code>에서는 스크롤 영역에{" "}
-                    <code>pb-(--akan-overlay-bottom)</code>을 주면 마지막 줄이 그 밑을 지나는 바 위까지 올라오고, 색을
-                    정하지 않은 쪽 safe area는 투명해집니다.
+                    둔 공간에 맞추고, <code>overlay</code>에서는 스크롤 영역에 <code>pb-(--akan-overlay-bottom)</code>을
+                    주면 마지막 줄이 바 위까지 올라옵니다. 깔리는 쪽 safe area는 페이지가 색을 정하지 않으면 투명합니다.
                   </span>
                 ),
               })}

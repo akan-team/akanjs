@@ -300,7 +300,7 @@ The component that draws a field already holds its value. It is also the only th
 
 In the composer
 
-**A mention counts as a page read.** The record a pointer names reaches the model as page content, since its title and value are whatever its author wrote. So the first change after a message with a mention shows the approval card, as after `readScreen`.
+**A mention counts as a page read.** The record a pointer names holds its author's words and reaches the model as page content, so the first change after a mention shows the approval card, as after `readScreen`.
 
 **Pointers read as names.** Where sources are declared, a Lexical editor loaded as its own chunk shows each pointer as the name it points at, not as the raw `@[label](mention:…)` token.
 

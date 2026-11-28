@@ -436,19 +436,16 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>Read an endpoint's description on the server.</strong> The <code>.desc</code> and <code>.arg</code>{" "}
-            texts of a signal stay out of the dictionary file every page loads and come only to a page that shows the
-            API explorer or whose client components write such a key, so a client component reading one by a key built
-            from data gets the text on the server and the key in the browser, which React reports as a hydration
-            mismatch. Read them in a server component and pass the text down.
+            <strong>Read an endpoint's description on the server.</strong> A signal's <code>.desc</code> and{" "}
+            <code>.arg</code> texts are not sent to every page, so a client component reading one by a key built from
+            data gets a hydration mismatch. Pass the text down.
           </>
         ),
         ko: (
           <>
             <strong>endpoint 설명은 서버에서 읽습니다.</strong> signal의 <code>.desc</code>와 <code>.arg</code> 문구는
-            모든 페이지가 불러오는 사전 파일에서 빠지고, API 탐색기를 보여 주거나 client component가 그런 key를 직접
-            적은 페이지에만 따로 옵니다. 그래서 client component가 데이터로 만든 key로 읽으면 서버에서는 문구가,
-            브라우저에서는 key가 나와 React가 hydration 불일치를 알립니다. server component에서 읽어 문구를 넘깁니다.
+            모든 페이지에 오지 않으므로, client component가 데이터로 만든 key로 읽으면 hydration 불일치가 납니다.
+            서버에서 읽은 문구를 넘깁니다.
           </>
         ),
       }),

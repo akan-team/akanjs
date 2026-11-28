@@ -161,8 +161,8 @@ export default page()
         type: "object",
         default: "uid 1000, fsGroup 1000",
         desc: l.trans({
-          en: "The pod's `securityContext`: it runs as uid and gid 1000 (`runAsNonRoot`), its volumes are handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp is `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it; the block left out or `null` keeps these defaults. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }` with `securityContext: { capabilities: null }` and `volumePermissions: { enabled: false }` runs it as root.",
-          ko: "pod의 `securityContext`입니다. uid와 gid 1000으로 실행하고(`runAsNonRoot`), 볼륨을 그룹 1000에 넘기며(`fsGroup`, `OnRootMismatch`), seccomp는 `RuntimeDefault`입니다. values 파일은 키 단위로 바꾸고, 키에 `null`을 적으면 그 키가 빠집니다. 블록을 빼거나 `null`로 두면 이 기본값을 씁니다. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }`, `securityContext: { capabilities: null }`, `volumePermissions: { enabled: false }`를 함께 적으면 root로 실행합니다.",
+          en: "The pod's `securityContext`: uid and gid 1000 (`runAsNonRoot`), volumes handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it.",
+          ko: "pod의 `securityContext`입니다. uid와 gid 1000으로 실행하고(`runAsNonRoot`), 볼륨을 그룹 1000에 넘기며(`fsGroup`, `OnRootMismatch`), seccomp는 `RuntimeDefault`입니다. values 파일은 키 단위로 바꾸고, 키에 `null`을 적으면 그 키가 빠집니다.",
         }),
       },
       {
@@ -179,8 +179,8 @@ export default page()
         type: "boolean",
         default: "true",
         desc: l.trans({
-          en: "Single mode: before the app starts, an init container from the app's image runs as root with only `CHOWN`, `FOWNER` and `DAC_READ_SEARCH` and hands every file on the `sqlite-data` claim to `podSecurityContext`'s `runAsUser:runAsGroup`, so a claim a root image wrote stays writable where `fsGroup` does not reach (hostPath, NFS, some CSI drivers). Once ownership is right it changes nothing. A cluster's `sharedClaim` is never touched. An image without `sh` and `find` needs `false`.",
-          ko: "single 모드에서 앱이 뜨기 전에, 앱 이미지로 만든 init container가 `CHOWN`, `FOWNER`, `DAC_READ_SEARCH`만 가진 root로 실행돼 `sqlite-data` claim의 모든 파일을 `podSecurityContext`의 `runAsUser:runAsGroup`에게 넘깁니다. 그래서 root 이미지가 쓴 claim도 `fsGroup`이 닿지 않는 곳(hostPath, NFS, 일부 CSI 드라이버)에서 계속 쓸 수 있습니다. 소유자가 이미 맞으면 아무것도 바꾸지 않습니다. cluster의 `sharedClaim`은 건드리지 않습니다. `sh`와 `find`가 없는 이미지는 `false`로 둡니다.",
+          en: "Single mode: a root init container hands the `sqlite-data` claim's files to `podSecurityContext`'s `runAsUser:runAsGroup` before the app starts, since `fsGroup` misses hostPath, NFS and some CSI drivers. An image without `sh` and `find` needs `false`.",
+          ko: "single 모드에서 앱이 뜨기 전에 root init container가 `sqlite-data` claim의 파일을 `podSecurityContext`의 `runAsUser:runAsGroup`에게 넘깁니다. `fsGroup`이 hostPath, NFS, 일부 CSI 드라이버에는 닿지 않기 때문입니다. `sh`와 `find`가 없는 이미지는 `false`로 둡니다.",
         }),
       },
       {
@@ -197,8 +197,8 @@ export default page()
         type: "boolean",
         default: "false",
         desc: l.trans({
-          en: "Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`. Only fonts carry `Access-Control-Allow-Origin: *`, so a page elsewhere cannot `fetch` a public file or draw an `/_akan/image` on a canvas. `true` has ingress-nginx answer every preflight and add `Access-Control-Allow-Origin: *` to every response instead.",
-          ko: "끄면 앱이 직접 CORS에 답합니다. 네이티브 셸과 `option.setCrossSite({ allowedOrigins })`에 적은 origin이 대상입니다. `Access-Control-Allow-Origin: *`는 폰트에만 붙으므로, 다른 origin의 페이지는 공개 파일을 `fetch`하거나 `/_akan/image`를 canvas에 그릴 수 없습니다. `true`면 ingress-nginx가 모든 preflight에 대신 답하고 모든 응답에 `Access-Control-Allow-Origin: *`를 붙입니다.",
+          en: "Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`, and `Access-Control-Allow-Origin: *` on fonts only. `true` has ingress-nginx answer every preflight and add that header to every response.",
+          ko: "끄면 앱이 직접 CORS에 답합니다. 네이티브 셸과 `option.setCrossSite({ allowedOrigins })`에 적은 origin이 대상이고, `Access-Control-Allow-Origin: *`는 폰트에만 붙습니다. `true`면 ingress-nginx가 모든 preflight에 답하고 모든 응답에 그 헤더를 붙입니다.",
         }),
       },
     ];
@@ -640,17 +640,16 @@ export default page()
               {l.trans({
                 en: (
                   <span>
-                    The image holds the names of the server env's secrets, not their values. Before each release the
-                    Jenkins deploy stage writes them from the branch's env file as a Secret, applies it, and deletes the
-                    file; the chart reads the Secret a branch names in <code>app.secretName</code> through{" "}
-                    <code>envFrom</code>.
+                    The image holds the names of the server env's secrets, not their values. Name a Secret in the
+                    branch's <code>app.secretName</code> and the chart reads it through <code>envFrom</code>; the
+                    Jenkins deploy stage writes and applies it from the branch's env file before each release.
                   </span>
                 ),
                 ko: (
                   <span>
-                    이미지에는 서버 env의 비밀 값이 아니라 그 이름만 들어 있습니다. Jenkins 배포 단계는 릴리스마다
-                    branch의 env 파일에서 그 값을 Secret으로 써서 apply한 뒤 파일을 지우고, 차트는 branch의{" "}
-                    <code>app.secretName</code>에 적힌 Secret을 <code>envFrom</code>으로 읽습니다.
+                    이미지에는 서버 env의 비밀 값이 아니라 그 이름만 들어 있습니다. branch의 <code>app.secretName</code>
+                    에 Secret 이름을 적으면 차트가 <code>envFrom</code>으로 읽고, Jenkins 배포 단계가 릴리스마다
+                    branch의 env 파일에서 그 Secret을 써서 apply합니다.
                   </span>
                 ),
               })}
@@ -852,19 +851,17 @@ main:
               {l.trans({
                 en: (
                   <span>
-                    <strong>Some images still need root.</strong> The pod runs as uid 1000. An image built with akanjs
-                    3.2 or earlier, a rollback to one through <code>image.tag</code> included, a declared{" "}
-                    <code>docker</code> Dockerfile string that runs the server as root, or a custom{" "}
-                    <code>docker.image</code> whose files uid 1000 cannot read, needs these lines in the app's values
-                    file.
+                    <strong>Some images still need root.</strong> The pod runs as uid 1000. Add the lines below to the
+                    app's values file for an image built with akanjs 3.2 or earlier, a <code>docker</code> Dockerfile
+                    string that runs the server as root, or a <code>docker.image</code> whose files uid 1000 cannot
+                    read.
                   </span>
                 ),
                 ko: (
                   <span>
                     <strong>root가 필요한 이미지도 있습니다.</strong> pod는 uid 1000으로 실행됩니다. akanjs 3.2 이하로
-                    빌드한 이미지(<code>image.tag</code>로 그 이미지로 되돌리는 경우 포함), 서버를 root로 실행하는{" "}
-                    <code>docker</code> Dockerfile 문자열, uid 1000이 파일을 읽을 수 없는 <code>docker.image</code>는
-                    앱의 values 파일에 아래 줄이 필요합니다.
+                    빌드한 이미지, 서버를 root로 실행하는 <code>docker</code> Dockerfile 문자열, uid 1000이 파일을 읽을
+                    수 없는 <code>docker.image</code>는 앱의 values 파일에 아래 줄을 추가합니다.
                   </span>
                 ),
               })}
