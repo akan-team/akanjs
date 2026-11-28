@@ -2,7 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { desktopEntry, desktopExec, linkArguments, registerDeepLinks, withDefaults } from "../src/deeplinks.ts";
+import {
+  desktopEntry,
+  desktopExec,
+  INSTALLED_MARKER,
+  linkArguments,
+  registerDeepLinks,
+  withDefaults,
+} from "../src/deeplinks.ts";
 
 const app = { id: "com.akanjs.sample", name: "Akan Native Sample" };
 
@@ -107,6 +114,88 @@ describe("deep links on Windows and Linux (D6)", () => {
     const entry = readFileSync(join(env.XDG_DATA_HOME, "applications", "com.akanjs.sample.desktop"), "utf8");
     expect(entry).not.toContain("Editor.AppImage");
     expect(entry).toContain(process.execPath);
+  });
+
+  test("Linux: the launcher entry install.sh made stays visible, with its marker and its category", async () => {
+    const home = mkdtempSync(join(tmpdir(), "akan-native-links-"));
+    const runs: string[][] = [];
+    const run = async (argv: string[]) => {
+      runs.push(argv);
+      return { code: 0, stdout: "" };
+    };
+    const env = { XDG_DATA_HOME: join(home, "data"), XDG_CONFIG_HOME: join(home, "config") };
+    const file = join(env.XDG_DATA_HOME, "applications", "com.akanjs.sample.desktop");
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(
+      file,
+      [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=Akan Native Sample",
+        'Exec="/home/u/.local/opt/com.akanjs.sample/sample/sample" %u',
+        "Icon=com.akanjs.sample",
+        "StartupWMClass=com.akanjs.sample",
+        "Terminal=false",
+        "Categories=Network;Chat;",
+        INSTALLED_MARKER,
+        "",
+      ].join("\n"),
+    );
+    const icon = join(home, "icon.png");
+    writeFileSync(icon, "png");
+    const options = { platform: "linux" as const, exe: "/home/u/Sample.AppImage", env, home, run, icon };
+    await registerDeepLinks(app, ["akansample"], options);
+    expect(readFileSync(file, "utf8")).toBe(
+      [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=Akan Native Sample",
+        'Exec="/home/u/Sample.AppImage" %u',
+        "Icon=com.akanjs.sample",
+        "StartupWMClass=com.akanjs.sample",
+        "Terminal=false",
+        "Categories=Network;Chat;",
+        "MimeType=x-scheme-handler/akansample;",
+        "X-AkanNative-Installed=true",
+        "",
+      ].join("\n"),
+    );
+    expect(readFileSync(join(env.XDG_CONFIG_HOME, "mimeapps.list"), "utf8")).toContain(
+      "x-scheme-handler/akansample=com.akanjs.sample.desktop;",
+    );
+    await registerDeepLinks(app, ["akansample"], options);
+    expect(runs).toHaveLength(1);
+
+    writeFileSync(file, `[Desktop Entry]\n${INSTALLED_MARKER}\n`);
+    await registerDeepLinks(app, ["akansample"], options);
+    expect(readFileSync(file, "utf8")).toContain("Terminal=false\nCategories=Utility;\nMimeType=");
+  });
+
+  test("Linux: an entry without install.sh's marker is written hidden, as one that was not there", async () => {
+    const home = mkdtempSync(join(tmpdir(), "akan-native-links-"));
+    const run = async () => ({ code: 0, stdout: "" });
+    const env = { XDG_DATA_HOME: join(home, "data"), XDG_CONFIG_HOME: join(home, "config") };
+    const file = join(env.XDG_DATA_HOME, "applications", "com.akanjs.sample.desktop");
+    mkdirSync(dirname(file), { recursive: true });
+    writeFileSync(
+      file,
+      '[Desktop Entry]\nType=Application\nName=Sample\nExec="/opt/s" %u\nCategories=Network;\nX-AkanNative-Installed=false\n',
+    );
+    await registerDeepLinks(app, ["akansample"], { platform: "linux", exe: "/opt/s", env, home, run });
+    expect(readFileSync(file, "utf8")).toBe(desktopEntry(app.name, "/opt/s", ["akansample"], { id: app.id }));
+    expect(readFileSync(file, "utf8")).toBe(
+      [
+        "[Desktop Entry]",
+        "Type=Application",
+        "Name=Akan Native Sample",
+        'Exec="/opt/s" %u',
+        "StartupWMClass=com.akanjs.sample",
+        "Terminal=false",
+        "NoDisplay=true",
+        "MimeType=x-scheme-handler/akansample;",
+        "",
+      ].join("\n"),
+    );
   });
 
   test("Windows: HKCU\\Software\\Classes keys, skipped when the command is already ours", async () => {

@@ -44,7 +44,7 @@ export interface NativeBuildOptions {
   profile?: "debug" | "release";
   /** The server a desktop app carries (the target's `desktop.server`), staged by DesktopServerStage. */
   server?: DesktopServerBundle;
-  /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg, a Linux AppImage. */
+  /** What a person downloads beside the app: a Windows NSIS setup program, a macOS dmg, a Linux AppImage and tar.gz. */
   installer?: boolean;
   /** The CPU the desktop app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
   arch?: DesktopArch;
@@ -582,7 +582,8 @@ export class NativeApp {
     return `/${home.join("/")}?${params}${hash ? `#${hash}` : ""}`;
   }
 
-  //* `installer` is the file a person downloads: a setup program on Windows, a disk image on macOS, an AppImage on Linux.
+  //* `installer` is what a person downloads: a setup program on Windows, a disk image on macOS, and on Linux an
+  //* AppImage and a tar.gz whose install.sh installs the folder that updates itself.
   static assertInstaller(platform: NativePlatform, installer: boolean) {
     if (installer && (platform === "ios" || platform === "android"))
       throw new Error(`An installer is built for a desktop app (Windows, macOS, Linux), not for ${platform}.`);

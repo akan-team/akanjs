@@ -99,7 +99,7 @@ interface IosSigningResult {
 }
 
 interface Artifact {
-  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer), macOS dmg(macos.dmg), Linux AppImage(linux.appImage) */
+  /** app: macOS·iOS 번들, folder: Windows·Linux 앱 폴더, installer: Windows NSIS 설치 프로그램(windows.installer), macOS dmg(macos.dmg), Linux AppImage와 설치용 tar.gz(linux.appImage) */
   kind: "app" | "apk" | "aab" | "ipa" | "folder" | "web" | "installer";
   path: string;
   /** 누가 서명했는지: 서명하지 않음, adhoc(macOS dev), debug 키(Android), 개발(iOS 실기기, macOS Apple Development), 배포(macOS Developer ID) */
@@ -140,15 +140,17 @@ interface MacosBuild {
 - `arch`(CLI `--arch`, `"arm64"` 또는 `"x64"`)는 데스크톱 앱이 도는 CPU다. 기본은 이 컴퓨터의 것이다. 같은 OS의 다른 CPU용으로 만들 수 있다(Windows·Linux의 arm64와 x64). OS 교차 빌드는 없다: WRY가 WebView2·webkit2gtk에 묶여 있다. macOS 앱은 Apple silicon(arm64)만 내므로 macOS에 `x64`를 주면 거부하고(Intel Mac은 지원하지 않는다), 폰 빌드에 주어도 거부한다.
 - Rust 라이브러리는 그 CPU의 타깃으로 빌드한다(`rustup target add <triple>`이 필요할 수 있다). 실행 파일은 `bun build --compile --target=bun-<os>-<arch>`로 만든다(Bun이 그 런타임을 한 번 내려받는다).
 - 서버의 네이티브 애드온 검사(위 표)는 그 CPU를 본다. akanjs는 서버 패키지를 `bun install --cpu=<arch>`로 설치해 그 CPU의 prebuild를 받고, `bin`은 그 CPU의 항목을 받는다.
-- 산출물 이름의 CPU도 따른다: `<fileName>-<version>-<arch>.dmg`, `…-<arch>-setup.exe`, `…-<arch>.AppImage`. updates 플러그인은 실행 중인 CPU의 릴리스를 읽으므로 그대로 쓰지만, `publishUpdate`는 아직 이 컴퓨터의 CPU용 릴리스만 낸다.
+- 산출물 이름의 CPU도 따른다: `<fileName>-<version>-<arch>.dmg`, `…-<arch>-setup.exe`, `…-<arch>.AppImage`, `…-<arch>.tar.gz`. updates 플러그인은 실행 중인 CPU의 릴리스를 읽으므로 그대로 쓰지만, `publishUpdate`는 아직 이 컴퓨터의 CPU용 릴리스만 낸다.
 
 #### Linux AppImage (CLI-9)
 
 - `linux: { appImage: true }`(CLI `--installer`)면 앱 폴더 옆에 `<fileName>-<version>-<arch>.AppImage`를 만든다(`platforms/linux-appimage.ts`). 앱 폴더에 `AppRun`(옆의 실행 파일을 인자 그대로 실행), `<app id>.desktop`(이름, 아이콘, `StartupWMClass=<app id>`, `deepLinks.schemes`의 `x-scheme-handler/<scheme>`), 256px 아이콘 `<app id>.png`와 `.DirIcon`을 더해 `mksquashfs -comp zstd -root-owned`로 묶고, 고정한 AppImage type 2 runtime(`lib/toolchains.ts`의 `appimageRuntime`, 날짜 릴리스와 SHA-256, `~/.akan/native/toolchains`에 받는다) 뒤에 붙인다. appimagetool은 쓰지 않는다. 그 자체가 FUSE가 필요한 AppImage이고 고정하지 않은 runtime을 내려받기 때문이다.
 - `mksquashfs`가 필요하다(`apt install squashfs-tools`). 사용자 쪽은 폴더와 같이 시스템의 WebKitGTK 4.1·GTK 3을 쓰고, FUSE가 없으면 `--appimage-extract-and-run`으로 돈다.
 - 셸은 Linux에서 창의 프로그램 이름(X11 WM_CLASS, Wayland app_id)을 앱 id로 정한다. 독과 작업 표시줄은 이 이름으로 `<app id>.desktop`이나 `StartupWMClass`가 같은 항목을 찾아 그 이름과 아이콘을 창에 붙인다. AppImageLauncher·appimaged는 설치하는 파일 이름을 바꾸므로 `StartupWMClass`로 이어진다. tao의 `with_app_id`는 쓰지 않는다. 두 번째 실행이 D-Bus로 첫 번째를 깨우고 single-instance보다 먼저 끝나기 때문이다.
-- 딥 링크 항목(`$XDG_DATA_HOME/applications/<app id>.desktop`, 숨김)은 AppImage에서 `$APPIMAGE`를 실행한다(마운트 지점은 실행마다 바뀌고 끝나면 사라진다). 빌드가 쓰는 `resources/icon.png`가 있으면 `$XDG_DATA_HOME/icons/hicolor/256x256/apps/<app id>.png`로 복사하고 `Icon=<app id>`를 단다.
-- AppImage는 읽기 전용 이미지에서 돌므로 updates 플러그인이 자신을 바꿀 수 없다. `updates`가 있는 앱이면 경고한다. 릴리스마다 새 AppImage를 낸다.
+- 딥 링크 항목(`$XDG_DATA_HOME/applications/<app id>.desktop`, 숨김. `install.sh`가 만든 항목(`X-AkanNative-Installed=true`)이면 보이는 채로 다시 쓴다)은 AppImage에서 `$APPIMAGE`를 실행한다(마운트 지점은 실행마다 바뀌고 끝나면 사라진다). 빌드가 쓰는 `resources/icon.png`가 있으면 `$XDG_DATA_HOME/icons/hicolor/256x256/apps/<app id>.png`로 복사하고 `Icon=<app id>`를 단다.
+- AppImage는 읽기 전용 이미지에서 돌므로 updates 플러그인이 자신을 바꿀 수 없다. `updates`가 있는 앱이면 경고한다. 릴리스마다 새 AppImage를 낸다. 스스로 업데이트하는 설치는 옆의 tar.gz다.
+- `linux: { appImage: true }`는 `<fileName>-<version>-<arch>.tar.gz`도 만든다(`platforms/linux-install.ts`). 풀면 `install.sh`, `uninstall.sh`, 앱 폴더가 나온다. `install.sh`는 root 없이 `$HOME/.local/opt/<app id>/<fileName>`에 설치하고(`--dir <부모>`, root는 `--allow-root`) 런처 항목·아이콘·`$HOME/.local/bin/<fileName>` 링크를 만든다. 설치된 곳에서 다시 실행하면 제자리에서 올리고, 실행 중인 앱은 다시 시작해야 새 버전이 된다. updates 플러그인이 바꿀 수 있는 것은 이 폴더 설치다.
+- `uninstall.sh`는 설치 부모 폴더에도 복사된다. 앱 폴더와 업데이터가 옆에 둔 폴더, 런처 항목, 아이콘, 링크, 업데이터의 상태(`akan-native-updates`)를 지우고, 앱 데이터(`$XDG_DATA_HOME/<app id>`, `$XDG_CACHE_HOME/<app id>`)는 `--purge`일 때만 지운다.
 
 #### Windows 배포 서명 (CLI-9)
 

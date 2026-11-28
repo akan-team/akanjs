@@ -79,7 +79,7 @@ export interface MobilePublishOptions extends MobileTargetOptions, MobileSignOpt
 }
 export interface MobileBuildOptions extends MobileTargetOptions, MobileSignOptions {
   profile?: "debug" | "release";
-  /** What a person downloads too: a Windows setup program, a macOS dmg, a Linux AppImage. */
+  /** What a person downloads too: a Windows setup program, a macOS dmg, a Linux AppImage and an installing tar.gz. */
   installer?: boolean;
   /** Desktop: the CPU the app runs on, of the same OS; a macOS app is arm64 only. */
   arch?: "arm64" | "x64";

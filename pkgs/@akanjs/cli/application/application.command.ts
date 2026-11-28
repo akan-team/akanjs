@@ -400,7 +400,7 @@ const nativeBuildTargets = ({ public: target }: ApplicationBuilderContext) => ({
     .option("env", String, buildEnvOption)
     .option("debug", Boolean, { desc: "debug build instead of release", default: false })
     .option("installer", Boolean, {
-      desc: "also what a person downloads: a Windows setup program (NSIS, /S for silent), a macOS dmg, a Linux AppImage",
+      desc: "also what a person downloads: a Windows setup program (NSIS, /S for silent), a macOS dmg, a Linux AppImage and a tar.gz whose install.sh installs for the user",
       default: false,
     })
     .option("arch", String, {

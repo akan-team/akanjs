@@ -64,7 +64,7 @@ export async function buildAppImage(ctx: BuildContext, folder: string): Promise<
   );
   if (config.updates)
     log.warn(
-      "an AppImage runs from a read-only image, so the updates plugin cannot replace it: publish a new AppImage for each release",
+      `an AppImage runs from a read-only image, so the updates plugin cannot replace it: publish a new AppImage for each release. ${config.app.fileName}-${config.app.version}-${arch}.tar.gz beside it installs the app folder, which does update itself.`,
     );
 
   const appDir = join(ctx.outDir, "gen", "AppDir");

@@ -70,7 +70,7 @@ export interface BuildOptions {
   windows?: WindowsBuild;
   /** macOS: Developer ID signing, notarization and a dmg (lib/macossigning.ts). */
   macos?: MacosBuild;
-  /** Linux: an AppImage beside the app folder (platforms/linux-appimage.ts). */
+  /** Linux: an AppImage (platforms/linux-appimage.ts) and a per-user installer (platforms/linux-install.ts). */
   linux?: LinuxBuild;
   /** Desktop builds: the CPU the app runs on, of the same OS; a macOS app is arm64 only. Default this computer's. */
   arch?: DesktopArch;

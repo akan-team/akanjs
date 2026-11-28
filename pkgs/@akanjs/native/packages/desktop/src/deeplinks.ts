@@ -8,6 +8,8 @@
 //   types, made the default in $XDG_CONFIG_HOME/mimeapps.list. As tauri-plugins-workspace
 //   deep-link's register() does (plugins/deep-link/src/lib.rs), without xdg-mime. The shell names
 //   its window after the app id (lib.rs), so a dock takes this entry's name and icon for it.
+//   That file is also where install.sh puts the app's launcher entry (CLI-9, linux-install.ts): one
+//   with INSTALLED_MARKER is written back visible, or starting the app would take it off the menu.
 // - A cold start's link is in process.argv; a link while the app runs starts a second process,
 //   which single-instance hands over (DesktopContext.openUrls). Only a single argument that is a
 //   URL of one of the app's schemes counts as a link (the same rule as deep-link's
@@ -39,11 +41,15 @@ export function desktopExec(exe: string): string {
   return `"${exe.replace(/[\\"`$]/g, (c) => `\\${c}`)}" %u`;
 }
 
+/** What marks the launcher entry install.sh wrote (packages/cli/src/platforms/linux-install.ts). */
+export const INSTALLED_MARKER = "X-AkanNative-Installed=true";
+
+/** `categories`: the entry is install.sh's launcher entry, and stays one with these Categories. */
 export function desktopEntry(
   name: string,
   exe: string,
   schemes: readonly string[],
-  { id, icon = false }: { id?: string; icon?: boolean } = {},
+  { id, icon = false, categories }: { id?: string; icon?: boolean; categories?: string } = {},
 ): string {
   return [
     "[Desktop Entry]",
@@ -54,10 +60,19 @@ export function desktopEntry(
     ...(id ? [`StartupWMClass=${id}`] : []),
     "Terminal=false",
     // A link handler, not a launcher entry: the app's package (CLI-9) brings the visible one.
-    "NoDisplay=true",
+    ...(categories === undefined ? ["NoDisplay=true"] : [`Categories=${categories}`]),
     `MimeType=${schemes.map((s) => `x-scheme-handler/${s};`).join("")}`,
+    ...(categories === undefined ? [] : [INSTALLED_MARKER]),
     "",
   ].join("\n");
+}
+
+/** The Categories of the entry at `path` when install.sh made it; undefined for any other entry, or none. */
+function launcherCategories(path: string): string | undefined {
+  if (!existsSync(path)) return undefined;
+  const lines = readFileSync(path, "utf8").split(/\r?\n/);
+  if (!lines.includes(INSTALLED_MARKER)) return undefined;
+  return lines.find((line) => line.startsWith("Categories="))?.slice("Categories=".length) ?? "Utility;";
 }
 
 /** mimeapps.list with `x-scheme-handler/<scheme>=<desktop file>` set in [Default Applications]. */
@@ -110,7 +125,11 @@ async function registerLinux(
   const file = `${app.id}.desktop`;
   const dataHome = xdg(env.XDG_DATA_HOME, join(home, ".local", "share"));
   const applications = join(dataHome, "applications");
-  const entry = desktopEntry(app.name, exe, schemes, { id: app.id, icon: installIcon(dataHome, app.id, icon) });
+  const entry = desktopEntry(app.name, exe, schemes, {
+    id: app.id,
+    icon: installIcon(dataHome, app.id, icon),
+    categories: launcherCategories(join(applications, file)),
+  });
   const entryChanged = writeIfChanged(join(applications, file), entry);
   const listPath = join(xdg(env.XDG_CONFIG_HOME, join(home, ".config")), "mimeapps.list");
   const list = existsSync(listPath) ? readFileSync(listPath, "utf8") : "";
