@@ -1,7 +1,16 @@
 // ctx.userPath, resolveCommand and spawn (commands.ts) against scripted shells and programs in a temporary folder.
 // The children are real processes: what must end is checked by its PID.
 import { afterEach, describe, expect, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { isAkanNativeError } from "../../core/src/index.ts";
@@ -81,13 +90,16 @@ describe("findCommand", () => {
 
   test("Windows tries each PATHEXT ending in order, and says which hit only cmd.exe runs", () => {
     const dir = folder();
-    for (const file of ["claude.cmd", "claude.ps1", "node.exe", "node.cmd", "legacy.BAT", "notes.txt"])
+    //? Endings are tried in lower case, which Windows's own filesystem matches whatever the file's case: on CI's
+    //? Linux only a file named in lower case is found by a bare name.
+    for (const file of ["claude.cmd", "claude.ps1", "node.exe", "node.cmd", "legacy.bat", "OLD.BAT", "notes.txt"])
       writeFileSync(join(dir, file), "");
     const windows = { platform: "win32" as const, pathExt: ".COM;.EXE;.BAT;.CMD" };
     expect(findCommand("claude", [dir], windows)).toEqual({ path: join(dir, "claude.cmd"), shell: true });
     expect(findCommand("node", [dir], windows)).toEqual({ path: join(dir, "node.exe"), shell: false });
     expect(findCommand("node.cmd", [dir], windows)).toEqual({ path: join(dir, "node.cmd"), shell: true });
-    expect(findCommand("legacy", [dir], { platform: "win32" })?.shell).toBe(true);
+    expect(findCommand("legacy", [dir], { platform: "win32" })).toEqual({ path: join(dir, "legacy.bat"), shell: true });
+    expect(findCommand("OLD.BAT", [dir], windows)).toEqual({ path: join(dir, "OLD.BAT"), shell: true });
     expect(findCommand("notes", [dir], windows)).toBeNull();
     expect(findCommand("notes.txt", [dir], windows)).toBeNull();
     expect(findCommand("claude", [dir], { platform: "win32", pathExt: ".EXE" })).toBeNull();
@@ -189,7 +201,8 @@ describe.if(posix)("resolveCommand and spawn", () => {
     expect(await commands.resolveCommand("claude")).toEqual({ path: join(tools, "claude"), shell: false });
     script(join(binDir, "claude"), "exit 0");
     expect(await commands.resolveCommand("claude")).toEqual({ path: join(binDir, "claude"), shell: false });
-    expect(await commands.resolveCommand("sh")).toEqual({ path: "/bin/sh", shell: false });
+    const sh = existsSync("/usr/bin/sh") ? "/usr/bin/sh" : "/bin/sh";
+    expect(await commands.resolveCommand("sh")).toEqual({ path: sh, shell: false });
     expect(await commands.resolveCommand("no-such-tool")).toBeNull();
   });
 
