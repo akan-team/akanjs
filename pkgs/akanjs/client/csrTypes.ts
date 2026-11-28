@@ -71,6 +71,13 @@ export interface PageConfig {
    * page under it), for a page whose output follows parameter order or a tracking parameter it reads without declaring
    * it with `.search()`. By default the key sorts the query and leaves out `AKAN_ROUTE_CACHE_TRACKING_PARAMS`. */
   canonicalQuery?: boolean;
+  /**
+   * The screen a native app's deep link lays under the page when it opens the app on it with nothing behind, so Back
+   * and the edge swipe go where a person who walked there would: a route pattern whose params come from the link
+   * (`"/org/:orgId"`), and its own `stackOn` chains on. On a layout it holds for every page below it, the route it
+   * names included, where it ends the chain. Left out, the link's leading segments that are routes stack under it.
+   */
+  stackOn?: string;
   topSafeAreaColor?: string;
   bottomSafeAreaColor?: string;
   /** Keeps the route (on a `_layout`, its whole directory) out of `akan build` while `akan start` serves it. Write a

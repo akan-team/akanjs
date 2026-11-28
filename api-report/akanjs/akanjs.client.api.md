@@ -533,6 +533,7 @@ export interface PageConfig {
     rscPatchHeadSafe?: boolean;
     prefetch?: boolean;
     canonicalQuery?: boolean;
+    stackOn?: string;
     topSafeAreaColor?: string;
     bottomSafeAreaColor?: string;
     devOnly?: boolean;
@@ -929,6 +930,9 @@ export interface RouteLoadingOption {
 
 export interface RouteManifest {
     routes: string[];
+    stackOn?: {
+        [route: string]: string;
+    };
 }
 
 export type RouteModule = LayoutModule | PageModule;

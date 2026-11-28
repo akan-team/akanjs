@@ -208,6 +208,18 @@ describe("frameConfig", () => {
     );
     expect(mergePageConfigs([{ canonicalQuery: false }, { cache: true }]).canonicalQuery).toBe(false);
   });
+
+  test("takes pageConfig.stackOn as a route path that a layout hands down and its page may override", () => {
+    expect(() => validatePageConfig("bad.tsx", { stackOn: "org/:orgId" })).toThrow(
+      'pageConfig.stackOn in bad.tsx must be a route path starting with "/".',
+    );
+    expect(() => validatePageConfig("bad.tsx", { stackOn: true as never })).toThrow("pageConfig.stackOn");
+    expect(() => validatePageConfig("ok.tsx", { stackOn: "/org/:orgId" })).not.toThrow();
+    expect(mergePageConfigs([{ stackOn: "/org/:orgId" }, { cache: true }]).stackOn).toBe("/org/:orgId");
+    expect(mergePageConfigs([{ stackOn: "/org/:orgId" }, { stackOn: "/org/:orgId/chat/:channelId" }]).stackOn).toBe(
+      "/org/:orgId/chat/:channelId",
+    );
+  });
 });
 
 describe("overlay", () => {

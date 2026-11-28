@@ -30,18 +30,18 @@ export class WellKnownRoutes {
     { cacheControl }: { cacheControl: string },
   ) {
     const associations = artifact.deepLinkAssociations ?? [];
+    //? A debug build installs under its app id + ".debug" on both platforms; only a non-main server vouches for it.
+    const idSuffixes = process.env.AKAN_PUBLIC_ENV === "main" ? [""] : ["", ".debug"];
     if (pathname === APPLE_APP_SITE_ASSOCIATION_PATH) {
       const details = associations
         .filter((association) => association.domains.length > 0 && association.iosTeamId && association.iosAppId)
         .map((association) => ({
-          appIDs: [`${association.iosTeamId}.${association.iosAppId}`],
+          appIDs: idSuffixes.map((suffix) => `${association.iosTeamId}.${association.iosAppId}${suffix}`),
           components: [{ "/": "/*" }],
         }));
       if (details.length === 0) return null;
       return WellKnownRoutes.#jsonResponse({ applinks: { apps: [], details } }, cacheControl);
     }
-    //? The Android debug buildType appends applicationIdSuffix ".debug"; only a non-main server vouches for it.
-    const packageSuffixes = process.env.AKAN_PUBLIC_ENV === "main" ? [""] : ["", ".debug"];
     const assetLinks = associations
       .filter(
         (association) =>
@@ -50,7 +50,7 @@ export class WellKnownRoutes {
           (association.androidSha256CertFingerprints?.length ?? 0) > 0,
       )
       .flatMap((association) =>
-        packageSuffixes.map((suffix) => ({
+        idSuffixes.map((suffix) => ({
           relation: ["delegate_permission/common.handle_all_urls"],
           target: {
             namespace: "android_app",
