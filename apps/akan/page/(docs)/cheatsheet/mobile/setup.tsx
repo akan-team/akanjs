@@ -1981,23 +1981,17 @@ await NativeSecret.remove("llm.apiKey");`}
                 en: (
                   <span>
                     A third-party page on such a screen, a scoreboard or a menu board, is an <code>external-view</code>.
-                    It opens only the origins <code>desktop.externalView.allowOrigins</code> lists, and none without it;
-                    a view's own <code>allowOrigins</code> narrow within them. Running script in it (
-                    <code>evaluate</code>, <code>initScript</code>) and typing into it (<code>sendKey</code>) are off
-                    until <code>evaluate</code> and <code>sendKey</code> turn them on. While a view is open, opening its
-                    id again never adds an origin; once closed, the id opens again for any origins the config lists,
-                    with the same browser profile, which belongs to the id.
+                    It opens only the origins <code>desktop.externalView.allowOrigins</code> lists, and none without it.
+                    Running script in it and typing into it are off until <code>evaluate</code> and <code>sendKey</code>{" "}
+                    turn them on. An id opened again after closing keeps its browser profile.
                   </span>
                 ),
                 ko: (
                   <span>
                     전광판에 띄우는 외부 페이지(점수판, 메뉴판)는 <code>external-view</code>입니다.{" "}
-                    <code>desktop.externalView.allowOrigins</code>에 적은 오리진만 열고, 없으면 아무것도 열지 않으며,
-                    뷰의 <code>allowOrigins</code>는 그 안에서만 좁힐 수 있습니다. 뷰 안에서 스크립트를 실행하는 것(
-                    <code>evaluate</code>, <code>initScript</code>)과 키를 입력하는 것(<code>sendKey</code>)은{" "}
-                    <code>evaluate</code>와 <code>sendKey</code>로 켜기 전까지 꺼져 있습니다. 열려 있는 뷰의 id를 다시
-                    열어도 오리진은 늘어나지 않고, 닫은 뒤에는 그 id를 설정에 적은 어떤 오리진으로든 다시 열 수 있으며
-                    브라우저 프로필은 id에 속하므로 그대로 이어집니다.
+                    <code>desktop.externalView.allowOrigins</code>에 적은 오리진만 열고, 없으면 아무것도 열지 않습니다.
+                    뷰 안에서 스크립트를 실행하는 것과 키를 입력하는 것은 <code>evaluate</code>와 <code>sendKey</code>로
+                    켜기 전까지 꺼져 있습니다. 닫은 뒤 같은 id로 다시 열면 브라우저 프로필이 그대로 이어집니다.
                   </span>
                 ),
               })}

@@ -431,8 +431,8 @@ export default page()
           "akan_rsc_render_refusals_total",
         ],
         desc: l.trans({
-          en: "Renders the worker is running, a replayed stored page not among them, and renders waiting for a slot. With `AKAN_RSC_WORKER_MAX_CONCURRENCY` set, also the renders still running after their slot came back (their client left, or they held it too long), how long each render waited, and by `reason` the renders answered 503 (`queue-full`, `wait-timeout`) and the slots taken back (`hold-timeout`).",
-          ko: "worker가 실행 중인 렌더 수(저장된 페이지 재생은 빼고)와 slot을 기다리는 렌더 수입니다. `AKAN_RSC_WORKER_MAX_CONCURRENCY`를 설정하면 slot을 돌려준 뒤에도 실행 중인 렌더 수(클라이언트가 떠났거나 slot을 너무 오래 쥔 경우), 렌더가 기다린 시간, 그리고 `reason`별로 503으로 답한 렌더 수(`queue-full`, `wait-timeout`)와 회수한 slot 수(`hold-timeout`)를 함께 셉니다.",
+          en: "Renders running and renders waiting for a slot. With `AKAN_RSC_WORKER_MAX_CONCURRENCY` set, also renders still running after their slot came back, each render's wait, and by `reason` the 503s (`queue-full`, `wait-timeout`) and slots taken back (`hold-timeout`).",
+          ko: "실행 중인 렌더 수와 slot을 기다리는 렌더 수입니다. `AKAN_RSC_WORKER_MAX_CONCURRENCY`를 설정하면 slot을 돌려준 뒤에도 실행 중인 렌더 수, 렌더가 기다린 시간, 그리고 `reason`별로 503 응답 수(`queue-full`, `wait-timeout`)와 회수한 slot 수(`hold-timeout`)를 함께 셉니다.",
         }),
       },
       {
@@ -451,15 +451,15 @@ export default page()
           "akan_db_statement_duration_seconds",
         ],
         desc: l.trans({
-          en: "Each SQL statement's runs, run time, wait for the write turn or a pool connection, rows returned or changed, and latency (16 buckets, 0.1 ms to 10 s), labelled `model` and `op` only, so the series count follows the app's models, not its statements; the per-statement detail is in Find Slow Statements below.",
-          ko: "SQL 문마다 실행 수, 실행 시간, write 차례나 pool 연결을 기다린 시간, 돌려주거나 바꾼 행 수, 지연 시간(bucket 16개, 0.1ms~10s)입니다. `model`, `op` label만 붙으므로 series 수는 문 수가 아니라 앱의 model 수를 따르고, 문마다의 자세한 내용은 아래 느린 SQL 문 찾기에 있습니다.",
+          en: "SQL statements' runs, run time, wait, rows and latency (16 buckets, 0.1 ms to 10 s), labelled `model` and `op` only; the per-statement detail is in Find Slow Statements below.",
+          ko: "SQL 문의 실행 수, 실행 시간, 기다린 시간, 행 수, 지연 시간(bucket 16개, 0.1ms~10s)입니다. `model`, `op` label만 붙고, 문마다의 자세한 내용은 아래 느린 SQL 문 찾기에 있습니다.",
         }),
       },
       {
         name: "akan_live_rooms",
         desc: l.trans({
-          en: "Live-query rooms a process holds, one per room id however many sockets share it. A room sockets on two replicas share counts once on each, so behind a gateway the sum is rooms held per process, not distinct rooms; the gateway's `rooms` counts distinct pubsub rooms.",
-          ko: "프로세스가 들고 있는 live 쿼리 room 수이며, 소켓이 몇 개든 room id 하나에 하나입니다. 같은 room을 두 replica의 소켓이 구독하면 각각 한 번씩 세므로 gateway 뒤의 합계는 고유 room 수가 아니라 프로세스별 보유 room의 합이고, 고유한 pubsub room 수는 gateway의 `rooms`입니다.",
+          en: "Live-query rooms a process holds, one per room id. Behind a gateway the sum counts a room once per replica holding it, not distinct rooms; the gateway's `rooms` counts distinct pubsub rooms.",
+          ko: "프로세스가 들고 있는 live 쿼리 room 수이며, room id 하나에 하나입니다. gateway 뒤의 합계는 room을 들고 있는 replica마다 한 번씩 세므로 고유 room 수가 아니고, 고유한 pubsub room 수는 gateway의 `rooms`입니다.",
         }),
       },
       {
@@ -937,12 +937,11 @@ curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/m
               {l.trans({
                 en: (
                   <span>
-                    The same route answers a Prometheus scrape, behind the same token. Every endpoint and page call is
-                    counted and timed with tracing off, so request rate, error rate and latency per endpoint need no
-                    setup. <code>Accept: application/openmetrics-text</code>, which Prometheus sends, gets OpenMetrics
-                    1.0; <code>text/plain</code> alone gets the 0.0.4 text. <code>*/*</code>,{" "}
-                    <code>application/json</code> or no Accept keeps the JSON above, whose <code>metricFamilies</code>{" "}
-                    carries the same series.
+                    The same route and token answer a Prometheus scrape. Every endpoint and page call is counted and
+                    timed with tracing off, so per-endpoint rate, errors and latency need no setup.{" "}
+                    <code>Accept: application/openmetrics-text</code>, which Prometheus sends, gets OpenMetrics 1.0 and{" "}
+                    <code>text/plain</code> alone the 0.0.4 text. <code>*/*</code>, <code>application/json</code> or no
+                    Accept keeps the JSON, whose <code>metricFamilies</code> carries the same series.
                   </span>
                 ),
                 ko: (
@@ -951,7 +950,7 @@ curl -s -H "Authorization: Bearer $AKAN_STATUS_TOKEN" localhost:8282/_akan/app/m
                     호출을 모두 세고 시간을 재므로, endpoint별 요청률, 에러율, 지연 시간에 따로 설정할 것이 없습니다.
                     Prometheus가 보내는 <code>Accept: application/openmetrics-text</code>에는 OpenMetrics 1.0으로,{" "}
                     <code>text/plain</code>만 보내면 0.0.4 텍스트로 답합니다. <code>*/*</code>,{" "}
-                    <code>application/json</code>, 또는 Accept가 없으면 위의 JSON을 그대로 받고, 그 안의{" "}
+                    <code>application/json</code>, 또는 Accept가 없으면 JSON을 그대로 받고, 그 안의{" "}
                     <code>metricFamilies</code>에 같은 series가 담깁니다.
                   </span>
                 ),
@@ -982,18 +981,16 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Labels stay bounded.</strong> A series is labelled only by endpoint, route id, status
-                      class, a statement's model and op, and the process <code>role</code>, never a URL, user, account,
-                      query or value. A label takes at most 2,000 values and counts the rest as <code>other</code>.
-                      Request latency has 12 buckets from 1 ms to 10 s.
+                      <strong>Labels stay bounded.</strong> No label carries a URL, user, account, query or value; each
+                      takes at most 2,000 values and counts the rest as <code>other</code>. Request latency has 12
+                      buckets from 1 ms to 10 s.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>label 수는 묶여 있습니다.</strong> label은 endpoint, route id, status class, SQL 문의
-                      model, op, 프로세스 <code>role</code>뿐이고 URL, 사용자, 계정, 쿼리, 값은 들어가지 않습니다. label
-                      하나는 값을 2,000개까지 받고 나머지는 <code>other</code>로 셉니다. 요청 지연 시간 bucket은 1ms부터
-                      10s까지 12개입니다.
+                      <strong>label 수는 묶여 있습니다.</strong> label에 URL, 사용자, 계정, 쿼리, 값은 들어가지 않고,
+                      label 하나는 값을 2,000개까지 받고 나머지는 <code>other</code>로 셉니다. 요청 지연 시간 bucket은
+                      1ms부터 10s까지 12개입니다.
                     </span>
                   ),
                 })}
@@ -1002,18 +999,16 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Behind a gateway, one scrape covers every replica.</strong> Each replica reports its own
-                      counts and the gateway adds counters and buckets; it never averages a percentile, so take one with{" "}
-                      <code>histogram_quantile</code> over the sum. The sum is as fresh as each replica's last report,
-                      every <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>; set it to your scrape interval.
+                      <strong>Behind a gateway, one scrape covers every replica.</strong> The gateway adds the replicas'
+                      counters and buckets, so take a percentile with <code>histogram_quantile</code> over the sum.
+                      Replicas report every <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>; set it to your scrape interval.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>gateway가 있으면 scrape 한 번으로 모든 replica를 봅니다.</strong> replica마다 자기 수치를
-                      보고하고 gateway가 카운터와 bucket을 더합니다. percentile은 평균 내지 않으니{" "}
-                      <code>histogram_quantile</code>로 합계에서 구하세요. 합계는 replica의 마지막 보고만큼 최신이고,
-                      보고는 <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>마다 옵니다. scrape 주기에 맞춰 두세요.
+                      <strong>gateway가 있으면 scrape 한 번으로 모든 replica를 봅니다.</strong> gateway가 replica들의
+                      카운터와 bucket을 더하므로 percentile은 <code>histogram_quantile</code>로 합계에서 구하세요.
+                      replica는 <code>AKAN_MEMORY_LOG_INTERVAL_MS</code>마다 보고하니 scrape 주기에 맞춰 두세요.
                     </span>
                   ),
                 })}
@@ -1048,25 +1043,18 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
               {l.trans({
                 en: (
                   <span>
-                    Every SQL statement the SQLite or Postgres driver sends is timed where it is sent, the one place the{" "}
-                    <code>db:</code> spans, these counts and the slow-statement log all read. Each is known by its{" "}
-                    <strong>fingerprint</strong>, 12 hex characters hashed from its normalized text: every literal is{" "}
-                    <code>?</code>, and a placeholder list, an <code>IN (…)</code> list or repeated <code>VALUES</code>{" "}
-                    rows collapse to one, so <code>LIMIT 10</code> and <code>LIMIT 20</code>, or three ids and thirty,
-                    are one statement. Strings of every form, numbers, comments and JSON field paths are replaced too,
-                    so two filters that differ only by field share one entry. Only the name is normalized; the text sent
-                    is unchanged.
+                    Each SQL statement the SQLite or Postgres driver sends is known by its <strong>fingerprint</strong>,
+                    12 hex characters hashed from its normalized text: every literal becomes <code>?</code> and an{" "}
+                    <code>IN (…)</code> list collapses to one, so <code>LIMIT 10</code> and <code>LIMIT 20</code>, or
+                    three ids and thirty, are one statement. Filters that differ only by JSON field share one entry.
                   </span>
                 ),
                 ko: (
                   <span>
-                    SQLite나 Postgres 드라이버가 보내는 SQL 문은 모두 보내는 자리에서 시간을 잽니다. <code>db:</code>{" "}
-                    span, 이 수치, 느린 문 로그가 모두 이 한 곳을 읽습니다. 문마다 정규화한 텍스트를 해시한 16진수
-                    12자리 <strong>fingerprint</strong>가 붙습니다. 리터럴은 모두 <code>?</code>가 되고, placeholder
-                    목록, <code>IN (…)</code> 목록, 반복되는 <code>VALUES</code> 행은 하나로 접히므로{" "}
-                    <code>LIMIT 10</code>과 <code>LIMIT 20</code>, id 3개와 30개는 같은 문입니다. 모든 형태의 문자열,
-                    숫자, 주석, JSON field 경로도 바뀌므로 field만 다른 두 필터는 한 항목을 씁니다. 정규화는 이름에만
-                    쓰이고, 실제로 보내는 텍스트는 바뀌지 않습니다.
+                    SQLite나 Postgres 드라이버가 보내는 SQL 문은 정규화한 텍스트를 해시한 16진수 12자리{" "}
+                    <strong>fingerprint</strong>로 불립니다. 리터럴은 모두 <code>?</code>가 되고 <code>IN (…)</code>{" "}
+                    목록은 하나로 접히므로 <code>LIMIT 10</code>과 <code>LIMIT 20</code>, id 3개와 30개는 같은 문입니다.
+                    JSON field만 다른 필터도 한 항목을 씁니다.
                   </span>
                 ),
               })}
@@ -1121,20 +1109,17 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Model and op name the call.</strong> A statement a model call sends is named after it (
-                      <code>memo.count</code>, <code>memo.updateMany</code>); one sent elsewhere, such as a{" "}
-                      <code>find</code> chain or a raw query, by its table and verb (<code>memo.select</code>).{" "}
-                      <code>sentBy</code> lists up to 3 endpoints, slices or jobs by time, and <code>none</code> outside
-                      a request.
+                      <strong>Model and op name the call.</strong> A model call's statement takes its name (
+                      <code>memo.count</code>); others, like a <code>find</code> chain or raw query, their table and
+                      verb (<code>memo.select</code>). <code>sentBy</code> lists up to 3 endpoints, slices or jobs.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>model과 op가 호출을 가리킵니다.</strong> model 호출이 보낸 문은 그 호출 이름(
-                      <code>memo.count</code>, <code>memo.updateMany</code>)을 받고, <code>find</code> 체인이나 raw
-                      쿼리처럼 다른 곳에서 보낸 문은 테이블과 동사(<code>memo.select</code>)로 불립니다.{" "}
-                      <code>sentBy</code>는 시간을 많이 쓴 endpoint, slice, job을 3개까지 보여 주고, 요청 밖에서 보낸
-                      문은 <code>none</code>입니다.
+                      <code>memo.count</code>)을 받고, <code>find</code> 체인이나 raw 쿼리 같은 나머지는 테이블과 동사(
+                      <code>memo.select</code>)로 불립니다. <code>sentBy</code>는 endpoint, slice, job을 3개까지 보여
+                      줍니다.
                     </span>
                   ),
                 })}
@@ -1143,18 +1128,16 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Wait is counted apart from run time.</strong> <code>waitMs</code> is the time spent
-                      waiting for the SQLite write turn or a Postgres pool connection; a transaction's wait shows on its{" "}
-                      <code>BEGIN</code>. A high wait with a short run means writes queue behind each other, not a slow
-                      query. SQLite's own busy wait inside one statement counts as run time.
+                      <strong>Wait is counted apart from run time.</strong> <code>waitMs</code> is the wait for SQLite's
+                      write turn or a Postgres pool connection, shown on <code>BEGIN</code> for a transaction. A long
+                      wait with a short run means queued writes, not a slow query.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>기다린 시간은 실행 시간과 따로 셉니다.</strong> <code>waitMs</code>는 SQLite의 write
-                      차례나 Postgres pool 연결을 기다린 시간이고, 트랜잭션이 기다린 시간은 그 <code>BEGIN</code>에
-                      잡힙니다. 기다림은 길고 실행은 짧다면 쿼리가 느린 것이 아니라 쓰기가 서로 줄을 서고 있는 것입니다.
-                      문 하나 안에서 SQLite가 스스로 기다린 busy 시간은 실행 시간에 들어갑니다.
+                      차례나 Postgres pool 연결을 기다린 시간이고, 트랜잭션에서는 그 <code>BEGIN</code>에 잡힙니다.
+                      기다림은 길고 실행은 짧다면 쿼리가 느린 것이 아니라 쓰기가 줄을 서고 있는 것입니다.
                     </span>
                   ),
                 })}
@@ -1183,22 +1166,16 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 {l.trans({
                   en: (
                     <span>
-                      <strong>The report is not a counter.</strong> <code>count</code>, <code>totalMs</code> and the
-                      other sums cover the statements each process lists now, since that process started or since it
-                      last admitted the statement again after dropping it; <code>sinceMs</code> is that span, and behind
-                      a gateway the oldest replica's. A statement dropped from the table or from a replica's top 50
-                      takes its counts with it, so a sum can fall, and a restarted replica starts over. Use the{" "}
+                      <strong>The report is not a counter.</strong> Its sums cover the statements listed now over{" "}
+                      <code>sinceMs</code> and fall when a statement is dropped or a replica restarts. Use the{" "}
                       <code>akan_db_statement*</code> series, which only grow, for rates and trends.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>보고서는 counter가 아닙니다.</strong> <code>count</code>, <code>totalMs</code> 등의 합은
-                      각 프로세스가 지금 목록에 올린 문을, 그 프로세스가 시작한 뒤부터, 또는 문을 버렸다가 다시 올린
-                      뒤부터 더한 값이고, <code>sinceMs</code>가 그 기간입니다. gateway가 있으면 가장 오래된 replica의
-                      값입니다. 표나 replica의 상위 50개에서 빠진 문은 그 값도 함께 사라지므로 합이 줄 수 있고, 재시작한
-                      replica는 처음부터 다시 셉니다. 비율이나 추이는 늘기만 하는 <code>akan_db_statement*</code>{" "}
-                      series로 보세요.
+                      <strong>보고서는 counter가 아닙니다.</strong> 합은 지금 목록에 있는 문을 <code>sinceMs</code> 동안
+                      더한 값이며, 문이 목록에서 빠지거나 replica가 재시작하면 줄어듭니다. 비율이나 추이는 늘기만 하는{" "}
+                      <code>akan_db_statement*</code> series로 보세요.
                     </span>
                   ),
                 })}
@@ -1226,19 +1203,19 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
                 en: (
                   <span>
                     A statement whose wait and run reach <code>AKAN_LOG_SLOW_STATEMENT_MS</code> writes one{" "}
-                    <code>SlowStatement</code> warning, at most once a minute per fingerprint; the next one carries{" "}
-                    <code>suppressed</code>, the lines held back meanwhile. Its attrs are <code>fingerprint</code>,{" "}
-                    <code>model</code>, <code>op</code>, <code>ms</code>, <code>waitMs</code>, <code>rows</code>,{" "}
-                    <code>sentBy</code> and the request's <code>traceId</code>:
+                    <code>SlowStatement</code> warning, at most once a minute per fingerprint; the next carries the
+                    skipped count as <code>suppressed</code>. Its attrs are <code>fingerprint</code>, <code>model</code>
+                    , <code>op</code>, <code>ms</code>, <code>waitMs</code>, <code>rows</code>, <code>sentBy</code> and
+                    the request's <code>traceId</code>:
                   </span>
                 ),
                 ko: (
                   <span>
                     기다린 시간과 실행 시간을 더해 <code>AKAN_LOG_SLOW_STATEMENT_MS</code>에 닿은 문은{" "}
                     <code>SlowStatement</code> 경고 한 줄을 씁니다. fingerprint마다 1분에 한 번까지만 쓰고, 그다음 줄의{" "}
-                    <code>suppressed</code>가 그사이 건너뛴 줄 수입니다. attrs는 <code>fingerprint</code>,{" "}
-                    <code>model</code>, <code>op</code>, <code>ms</code>, <code>waitMs</code>, <code>rows</code>,{" "}
-                    <code>sentBy</code>, 요청의 <code>traceId</code>입니다:
+                    <code>suppressed</code>가 건너뛴 줄 수입니다. attrs는 <code>fingerprint</code>, <code>model</code>,{" "}
+                    <code>op</code>, <code>ms</code>, <code>waitMs</code>, <code>rows</code>, <code>sentBy</code>,
+                    요청의 <code>traceId</code>입니다:
                   </span>
                 ),
               })}
@@ -1259,18 +1236,16 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
               {l.trans({
                 en: (
                   <span>
-                    In the local dev runtime only, the first time a fingerprint runs and again after an index or table
-                    changes, the server asks the database how it ran the statement (<code>EXPLAIN QUERY PLAN</code> on
-                    SQLite, <code>EXPLAIN</code> on Postgres) once it has answered, and warns once as{" "}
+                    In the local dev runtime only, the server asks the database how it ran each new statement (
+                    <code>EXPLAIN QUERY PLAN</code> on SQLite, <code>EXPLAIN</code> on Postgres) and warns once as{" "}
                     <code>QueryPlan</code> when it reads every row of the table or sorts in a temporary table:
                   </span>
                 ),
                 ko: (
                   <span>
-                    local 개발 런타임에서만, fingerprint가 처음 실행될 때와 index나 테이블이 바뀐 뒤에 서버가 문이
-                    응답한 다음 데이터베이스에 실행 계획을 묻고(SQLite는 <code>EXPLAIN QUERY PLAN</code>, Postgres는{" "}
-                    <code>EXPLAIN</code>), 테이블의 모든 행을 읽거나 임시 테이블에서 정렬하면 <code>QueryPlan</code>{" "}
-                    경고를 한 번 씁니다:
+                    local 개발 런타임에서만, 서버가 새 문마다 데이터베이스에 실행 계획을 묻고(SQLite는{" "}
+                    <code>EXPLAIN QUERY PLAN</code>, Postgres는 <code>EXPLAIN</code>), 테이블의 모든 행을 읽거나 임시
+                    테이블에서 정렬하면 <code>QueryPlan</code> 경고를 한 번 씁니다:
                   </span>
                 ),
               })}
@@ -1288,18 +1263,16 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
               {l.trans({
                 en: (
                   <span>
-                    It leaves alone a table under 1,000 rows (asked again as the statement keeps running), an insert, a{" "}
-                    <code>count</code> with no filter, a migration, a table no model owns, the full-text search tables
-                    and an in-memory SQLite database. To accept a deliberate scan, list its fingerprint in{" "}
-                    <code>AKAN_QUERY_PLAN_IGNORE</code>; <code>all</code> turns the check off.
+                    It leaves alone a table under 1,000 rows, an insert, a <code>count</code> with no filter and a
+                    migration. To accept a deliberate scan, list its fingerprint in <code>AKAN_QUERY_PLAN_IGNORE</code>;{" "}
+                    <code>all</code> turns the check off.
                   </span>
                 ),
                 ko: (
                   <span>
-                    1,000행보다 작은 테이블(문이 계속 실행되면 다시 묻습니다), insert, 필터 없는 <code>count</code>,
-                    migration, model이 아닌 테이블, 전문 검색 테이블, 메모리 SQLite 데이터베이스는 건너뜁니다. 의도한
-                    스캔은 fingerprint를 <code>AKAN_QUERY_PLAN_IGNORE</code>에 적어 받아들이고, <code>all</code>이면
-                    검사를 끕니다.
+                    1,000행보다 작은 테이블, insert, 필터 없는 <code>count</code>, migration은 건너뜁니다. 의도한 스캔은
+                    fingerprint를 <code>AKAN_QUERY_PLAN_IGNORE</code>에 적어 받아들이고, <code>all</code>이면 검사를
+                    끕니다.
                   </span>
                 ),
               })}
@@ -1315,18 +1288,18 @@ akan_build_info{akanjs_version="3.3.0",app="minimal"} 1
               {l.trans({
                 en: (
                   <span>
-                    The chart in <code>infra/app</code> marks the pod for scraping once a branch asks for it. It is off
-                    by default, because a built server answers the route 401 until the scraper holds the token. Keep the
-                    token in a Secret under the key <code>AKAN_STATUS_TOKEN</code>, and name only the Secret in the
-                    values file; the chart refuses to render <code>scrape</code> without <code>tokenSecret</code>:
+                    The chart in <code>infra/app</code> marks the pod for scraping once a branch asks for it; it is off
+                    by default, since the route answers 401 without the token. Keep the token in a Secret under the key{" "}
+                    <code>AKAN_STATUS_TOKEN</code> and name only the Secret in the values file; <code>scrape</code>{" "}
+                    requires <code>tokenSecret</code>:
                   </span>
                 ),
                 ko: (
                   <span>
-                    <code>infra/app</code> chart는 branch가 원할 때 pod에 scrape 표시를 붙입니다. 빌드된 서버는
-                    scraper가 토큰을 갖기 전까지 이 경로에 401로 답하므로 기본값은 꺼짐입니다. 토큰은 Secret의{" "}
-                    <code>AKAN_STATUS_TOKEN</code> 키에 두고, values 파일에는 Secret 이름만 적습니다.{" "}
-                    <code>tokenSecret</code> 없이 <code>scrape</code>만 켜면 chart가 렌더링을 거부합니다:
+                    <code>infra/app</code> chart는 branch가 원할 때 pod에 scrape 표시를 붙입니다. 토큰이 없으면 이
+                    경로가 401로 답하므로 기본값은 꺼짐입니다. 토큰은 Secret의 <code>AKAN_STATUS_TOKEN</code> 키에 두고,
+                    values 파일에는 Secret 이름만 적습니다. <code>scrape</code>에는 <code>tokenSecret</code>이
+                    필요합니다:
                   </span>
                 ),
               })}
@@ -1348,22 +1321,20 @@ main:
               {l.trans({
                 en: (
                   <span>
-                    The pod then carries <code>prometheus.io/scrape</code>, <code>/path</code> and <code>/port</code>,
-                    and reads <code>AKAN_STATUS_TOKEN</code> from that Secret. The annotations do nothing on their own:
-                    a Prometheus pod job keeps annotated pods and sends the same token as a bearer from a file, here a
-                    copy of the Secret mounted into Prometheus's own namespace. With the Prometheus Operator, a{" "}
-                    <code>PodMonitor</code> in the app's namespace names the Secret in{" "}
-                    <code>authorization.credentials</code> instead.
+                    The pod then carries the <code>prometheus.io/scrape</code>, <code>/path</code> and{" "}
+                    <code>/port</code> annotations, which do nothing on their own: a Prometheus pod job keeps annotated
+                    pods and sends the token as a bearer from a file, here a copy of the Secret mounted into
+                    Prometheus's namespace. With the Prometheus Operator, a <code>PodMonitor</code> in the app's
+                    namespace names the Secret in <code>authorization.credentials</code> instead.
                   </span>
                 ),
                 ko: (
                   <span>
-                    그러면 pod에 <code>prometheus.io/scrape</code>, <code>/path</code>, <code>/port</code>가 붙고, 앱은
-                    그 Secret에서 <code>AKAN_STATUS_TOKEN</code>을 읽습니다. annotation만으로는 아무 일도 일어나지
-                    않습니다. Prometheus의 pod job이 annotation이 붙은 pod만 남기고, 같은 토큰을 파일에서 읽어 bearer로
-                    보내야 합니다. 이 파일은 Prometheus namespace에 복사해 mount한 Secret입니다. Prometheus Operator를
-                    쓴다면 앱 namespace의 <code>PodMonitor</code>가 <code>authorization.credentials</code>에 그 Secret을
-                    가리킵니다.
+                    그러면 pod에 <code>prometheus.io/scrape</code>, <code>/path</code>, <code>/port</code> annotation이
+                    붙지만, 이것만으로는 아무 일도 일어나지 않습니다. Prometheus의 pod job이 annotation이 붙은 pod만
+                    남기고, 토큰을 파일에서 읽어 bearer로 보내야 합니다. 이 파일은 Prometheus namespace에 복사해 mount한
+                    Secret입니다. Prometheus Operator를 쓴다면 앱 namespace의 <code>PodMonitor</code>가{" "}
+                    <code>authorization.credentials</code>에 그 Secret을 가리킵니다.
                   </span>
                 ),
               })}
@@ -1408,18 +1379,16 @@ rule_files:
                   <span>
                     Import <code>infra/monitoring/akan-dashboard.json</code> into Grafana and pick a Prometheus data
                     source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, the route
-                    caches' hit ratio and bypasses, p50/p95/p99 over every endpoint, the RSC workers running and ready,
-                    their queue, memory, restarts and recycles, and the build each process runs. The job, endpoint and
-                    route pickers narrow every panel.
+                    caches' hit ratio, the RSC workers running and ready, their queue, memory and restarts, and the
+                    build each process runs. The job, endpoint and route pickers narrow every panel.
                   </span>
                 ),
                 ko: (
                   <span>
                     Grafana에 <code>infra/monitoring/akan-dashboard.json</code>을 import하고 Prometheus data source를
-                    고르세요. endpoint와 route별 요청률, 5xx 비율, p95 지연 시간, route cache의 hit 비율과 bypass, 전체
-                    endpoint의 p50/p95/p99, 실행 중이고 준비된 RSC worker 수와 대기열, 메모리, 재시작과 교체 횟수,
-                    프로세스마다 돌고 있는 빌드를 보여 줍니다. job, endpoint, route 선택으로 모든 패널을 좁힐 수
-                    있습니다.
+                    고르세요. endpoint와 route별 요청률, 5xx 비율, p95 지연 시간, route cache의 hit 비율, 실행 중이고
+                    준비된 RSC worker 수와 대기열, 메모리, 재시작 횟수, 프로세스마다 돌고 있는 빌드를 보여 줍니다. job,
+                    endpoint, route 선택으로 모든 패널을 좁힐 수 있습니다.
                   </span>
                 ),
               })}
@@ -1595,11 +1564,8 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
                       <strong>
                         <code>rscFirstRenderMemory</code> names the routes that grew the RSC worker most.
                       </strong>{" "}
-                      In <code>/_akan/app/metrics</code>, next to the last render&apos;s fields, it lists per route what
-                      its first render added to <code>rss</code>, <code>heapUsed</code>, <code>external</code> and{" "}
-                      <code>arrayBuffers</code>, and the modules it loaded: largest first, at most 20 routes. Renders
-                      running at the same time share one delta, so read it on a quiet replica. It costs two memory reads
-                      per route&apos;s first render, and one check per render while <code>AKAN_MEMORY_LOG</code> is off.
+                      <code>/_akan/app/metrics</code> lists, for at most 20 routes, what the first render added to
+                      memory and the modules it loaded. Concurrent renders share one delta, so read a quiet replica.
                     </span>
                   ),
                   ko: (
@@ -1607,11 +1573,9 @@ AKAN_MEMORY_GC_ON_REPORT=1`}
                       <strong>
                         <code>rscFirstRenderMemory</code>는 RSC worker를 가장 많이 키운 라우트를 알려 줍니다.
                       </strong>{" "}
-                      <code>/_akan/app/metrics</code>의 마지막 렌더 필드 옆에, 라우트마다 첫 렌더가 <code>rss</code>,{" "}
-                      <code>heapUsed</code>, <code>external</code>, <code>arrayBuffers</code>를 얼마나 늘렸는지와 그
-                      렌더가 불러온 모듈을 큰 순서로 20개 라우트까지 보여 줍니다. 동시에 돈 렌더는 같은 증가분에
-                      섞이므로 조용한 replica에서 읽으세요. 라우트마다 첫 렌더에 메모리를 두 번 읽는 비용이 들고,{" "}
-                      <code>AKAN_MEMORY_LOG</code>가 꺼져 있으면 렌더마다 검사 하나만 거칩니다.
+                      <code>/_akan/app/metrics</code>에서 라우트 20개까지, 첫 렌더가 메모리를 얼마나 늘렸는지와 그
+                      렌더가 불러온 모듈을 보여 줍니다. 동시에 돈 렌더는 같은 증가분에 섞이므로 조용한 replica에서
+                      읽으세요.
                     </span>
                   ),
                 })}

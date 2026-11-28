@@ -45,7 +45,7 @@ It follows `frame-ancestors 'self'; base-uri 'self'` in the same header, and end
 
 A page replayed from the HTML cache has no nonce: it lists the hash of every script its first render ran under one, which is one per boundary that streamed in.
 
-A response names at most 32 hashes, which keeps the header under 2 KB: a proxy in front reads a response's headers into one buffer (4 KB in nginx unless configured) and answers 502 past it. A page whose replay would need more is rendered for each request and says so: `X-Akan-Cache: BYPASS` with `X-Akan-Cache-Reason: script-hashes`, counted under that reason in `akan_route_cache_lookups_total`, and one warning in the log per route. Hashes a `.head()` declares past the 32 are left out, with one warning per route.
+A response names at most 32 hashes, which keeps the header under 2 KB. A page whose replay needs more is rendered per request and says so with `X-Akan-Cache-Reason: script-hashes`. Hashes a `.head()` declares past 32 are left out.
 
 Your Own Inline Scripts
 
@@ -55,7 +55,7 @@ For text that differs per request, or a `<script src>` written in JSX, pass the 
 
 Call both from `.head()`: the header leaves with the first byte, so a hash a component declares while it renders is too late. Both do nothing in the browser.
 
-A third-party script loaded from another origin needs the nonce on its tag, or a script that already runs must add it (a tag manager's own loader does). Listing its host in the policy does nothing under 'strict-dynamic'. Whatever a trusted script then adds needs no entry.
+A third-party script from another origin needs the nonce on its tag, unless a script that already runs adds it, as a tag manager's loader does. Listing its host in the policy does nothing under 'strict-dynamic'.
 
 An inline event handler attribute (`onclick="…"`) and a `javascript:` URL have no hash or nonce form: move them into a component's handler.
 
@@ -63,7 +63,7 @@ A script React inserts on a soft navigation is added by a script that already ru
 
 Reports And Settings
 
-A refused script shows in the browser console as an error naming the directive and, for an inline script, the hash that would allow it. The browser also posts a report to /_akan/csp-report, which logs one [ScriptPolicy] warning per route, directive and blocked source, up to 512 kinds a process, keeping no query string. Every post gets the same empty answer.
+The browser console shows a refused script as an error naming the directive and, for an inline script, the hash that would allow it. The browser also posts a report to /_akan/csp-report, which logs one [ScriptPolicy] warning per route, directive and blocked source.
 
 - AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY (string, default off): `on` sends the script policy as `Content-Security-Policy-Report-Only` instead, so the browser reports what it would refuse and runs it. Any other value is sent as a report-only header of its own, as written. — Example: `AKAN_CONTENT_SECURITY_POLICY_REPORT_ONLY=on`
 
@@ -103,11 +103,11 @@ What Changes In A Page
 
 In the page source, the route state, the dictionary URL and each Flight chunk are `<script type="application/json">` blocks where there was script text, and the markup has no `<script type="module">` tag for the client entry: the bootstrap script adds it once the document has arrived.
 
-A module a script adds does not hold the document's events back, so `DOMContentLoaded` and `load` can fire before the client entry runs (on a cached docs page, `load` at 31 ms and the entry at 63 ms). A listener for either that client code adds afterwards is never called: check `document.readyState` first.
+`DOMContentLoaded` and `load` can fire before the client entry runs, since a module a script adds does not hold them back. A listener client code adds after that is never called: check `document.readyState` first.
 
 For `DOMContentLoaded` the test is `document.readyState !== "loading"`.
 
-A browser test that clicks or types as soon as navigation reports `load` can meet a page that has not hydrated, and the event is lost. Wait for something only the hydrated page does: assert the result of the action and let the runner retry it, or wait for a marker a client component sets in an effect, such as `document.documentElement.dataset.hydrated`.
+A browser test that clicks or types at `load` can meet an unhydrated page and lose the event. Assert the action's result and let the runner retry, or wait for a marker a client effect sets, such as `document.documentElement.dataset.hydrated`.
 
 Upgrading
 

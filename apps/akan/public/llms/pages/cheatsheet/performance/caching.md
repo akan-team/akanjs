@@ -141,7 +141,7 @@ Rules
 
 Page Cache
 
-In production the server keeps a rendered page for a few seconds and answers the next anonymous request for it from memory: the render worker keeps its RSC payload, the web server its HTML. A response says which in `X-Akan-Cache` (HIT, MISS or BYPASS, with `X-Akan-Cache-Reason`).
+In production the server keeps a rendered page for a few seconds, as RSC payload and as HTML, and answers the next anonymous request for it from memory. `X-Akan-Cache` on the response says HIT, MISS or BYPASS, with `X-Akan-Cache-Reason`.
 
 Variable
 
@@ -157,7 +157,7 @@ Effect
 
 What the key holds
 
-The origin, the base path, the locale the URL resolved to, the path, the query and the theme cookie, plus a crawler flag for HTML. The browser's `Accept-Language` is not in it: visitors asking for one locale's page share its entry. A page that reads a request header or cookie with `headers()` or `cookies()` is rendered for each request and never stored. So is a page whose render calls `fetch.*`, because the call carries the visitor's session and address to the endpoint: pass `{ forwardVisitor: false }` to a call whose endpoint answers every caller alike and the page is stored. Either page answers `MISS` once and then `BYPASS` with `X-Akan-Cache-Reason: dynamic-request-api`, until the route's cache time passes or the cache is invalidated.
+The origin, base path, the URL's locale, path, query and theme cookie, plus a crawler flag for HTML, not `Accept-Language`. A page whose render calls `headers()`, `cookies()` or `fetch.*` is never stored and, after one `MISS`, answers `BYPASS` with `X-Akan-Cache-Reason: dynamic-request-api`. Pass `{ forwardVisitor: false }` to a call whose endpoint answers every caller alike and the page is stored.
 
 The query in the key
 
@@ -179,9 +179,9 @@ Shares an entry with
 
 - ?a=1&&b=2& — ?a=1&b=2
 
-**The page still reads the full query.** Its `.search()` values come from the URL as requested, and `window.location` keeps every parameter. Only the URL the server renders the page with is the sorted one, so a server render never sees a tracking parameter it did not declare. A guard's `request.path`, `usePathCtx().location` and `usePageLocation()` carry that URL too, the hooks until the first navigation, so the browser hydrates what the server rendered.
+**The page still reads the full query.** `.search()` reads the URL as requested and `window.location` keeps every parameter. A guard's `request.path`, `usePathCtx().location` and `usePageLocation()` carry the sorted URL the server renders with, the hooks until the first navigation.
 
-**Some pages keep the query as requested.** A page or layout with `.config({ canonicalQuery: false })`, one that declares a tracking parameter with `.search("utm_source", String)`, and a legacy default-function page, which receives every value, each keep one entry per query exactly as it was asked.
+**Some pages keep the query as requested.** A page or layout with `.config({ canonicalQuery: false })`, one that declares a tracking parameter with `.search("utm_source", String)`, and a legacy default-function page keep one entry per query as asked.
 
 When a page has to render
 
@@ -191,13 +191,13 @@ A stored page is replayed at once. Every other page is rendered, and by default 
 
 - AKAN_RSC_WORKER_MAX_QUEUE: Renders that may wait. One more is answered `503` with `Retry-After: 1` before it renders. The default is the cap times the idle timeout's seconds (120, so 960 for a cap of 8); `0` or `off` lets the queue grow.
 
-**A page that awaits data holds its slot while it waits.** Measured on this site's production build with 32 requests at once, pages that wait 20–200 ms on data served 151 requests a second with no cap, 95 with a cap of 16 and 32 with a cap of 4, while pages that only use the CPU served about 105 at every cap. Set the cap to the number of requests one replica is sized to hold at once, so it only bounds a burst past that, and go lower only for pages that render without waiting on data.
+**A page that awaits data holds its slot while it waits.** Set the cap to the requests one replica is sized to hold at once, and go lower only for pages that render without waiting on data.
 
-**A full queue answers 503, and so does a long wait.** A render past `AKAN_RSC_WORKER_MAX_QUEUE`, or one that has waited as long as `AKAN_IDLE_TIMEOUT` (120 s), gets `503` with `Retry-After: 1` and `Cache-Control: no-store` before any of it renders: for a browser a page that reloads itself once, waiting longer after each refusal in a row; `base.error.serverUnavailable` JSON for a JSON caller.
+**A full queue answers 503, and so does a long wait.** A render past `AKAN_RSC_WORKER_MAX_QUEUE` or one that waited `AKAN_IDLE_TIMEOUT` (120 s) gets `503`: a page that reloads itself for a browser, `base.error.serverUnavailable` JSON for a JSON caller.
 
 **The queue is in the metrics.** `akan_rsc_renders_in_flight`, `akan_rsc_render_queue_depth`, `akan_rsc_render_queue_wait_seconds` and `akan_rsc_render_refusals_total` report it per process, and a page that waited carries `queueMs` on its request line. The cap counts per render worker, so per replica.
 
-**The cap bounds the renders admitted, not the ones abandoned.** A slot comes back when its client leaves, and after the page has held it as long as `AKAN_IDLE_TIMEOUT` (120 s), so a page stuck on its data cannot keep every other page out. The page itself runs on until its own `await` settles; `akan_rsc_renders_abandoned` counts those, so give a page's data calls their own timeout.
+**The cap bounds the renders admitted, not the ones abandoned.** A slot comes back when its client leaves or `AKAN_IDLE_TIMEOUT` passes, but the page runs on until its `await` settles. `akan_rsc_renders_abandoned` counts those, so give data calls their own timeout.
 
 Which One?
 

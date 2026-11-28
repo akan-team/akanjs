@@ -35,7 +35,7 @@ Term
 
 - TTL: How long a share lives before it expires on its own.
 
-**Anyone with the URL reaches your whole dev server.** That is every route under `page/`, the API prefix, the websocket, and `/mcp` if the app mounts it, with nothing in front. Give it a `--ttl`, stop it when the call ends, and never share a session signed in to production data. The share leaves out the dev routes the app registers (devtools, Studio, `/_akan/hmr`, `/__rsc/manifest`), source maps and the operator routes; it serves the ssr-dev and csr-dev module registries, which a dev page loads its code from.
+**Anyone with the URL reaches your whole dev server.** That is every route under `page/`, the API prefix, the websocket, and `/mcp` if the app mounts it, with nothing in front. Give it a `--ttl`, stop it when the call ends, and never share a session signed in to production data. The share leaves out devtools, Studio, source maps and the operator routes.
 
 `akan tunnel [app] [--list <boolean>] [--stop <code>] [--host <url>] [--port <number>] [--ttl <min>]`
 

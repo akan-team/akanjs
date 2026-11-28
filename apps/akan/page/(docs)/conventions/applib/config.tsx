@@ -2079,22 +2079,20 @@ export default config;`}
               {l.trans({
                 en: (
                   <span>
-                    No field sets what the browser code of a server-rendered page loads: every app loads per route. A
-                    page loads the page runtime (<code>usePage</code>, <code>msg</code>, <code>Err</code>) and then the
-                    stores, endpoint descriptors, constants and dictionary texts of the modules its client code names or
-                    the server hands it. A file that picks a name at run time loads every module's, and{" "}
-                    <code>akan quality runtime</code> names each such file, its line and the routes it holds; its
-                    reference page shows the one file that keeps a page, or every page, on the whole runtime on purpose.
+                    A server-rendered page's browser code loads per route, with no field to set: the page runtime (
+                    <code>usePage</code>, <code>msg</code>, <code>Err</code>), then the stores, endpoint descriptors,
+                    constants and dictionary texts of the modules its client code names or the server hands it.{" "}
+                    <code>akan quality runtime</code> names each file that loads every module's; its reference page
+                    shows how to do that on purpose.
                   </span>
                 ),
                 ko: (
                   <span>
-                    서버 렌더링 페이지의 브라우저 코드가 무엇을 불러올지 정하는 필드는 없습니다. 모든 앱이 라우트별로
-                    불러옵니다. 페이지는 페이지 런타임(<code>usePage</code>, <code>msg</code>, <code>Err</code>)을
-                    불러온 뒤, 클라이언트 코드가 이름을 적었거나 서버가 넘겨준 모듈의 스토어, 엔드포인트 정의, 상수,
-                    사전 문구만 불러옵니다. 이름을 실행 중에 고르는 파일은 모든 모듈의 것을 불러오며,{" "}
-                    <code>akan quality runtime</code>이 그런 파일과 줄 번호, 그 파일에 묶인 라우트를 알려 줍니다. 한
-                    페이지나 모든 페이지를 일부러 전체 런타임에 두는 파일 하나는 그 명령의 레퍼런스 페이지에 있습니다.
+                    서버 렌더링 페이지의 브라우저 코드는 라우트별로 불러오며, 이를 정하는 필드는 없습니다. 페이지는
+                    페이지 런타임(<code>usePage</code>, <code>msg</code>, <code>Err</code>)을 불러온 뒤, 클라이언트
+                    코드가 이름을 적었거나 서버가 넘겨준 모듈의 스토어, 엔드포인트 정의, 상수, 사전 문구만 불러옵니다.
+                    모든 모듈의 것을 불러오는 파일은 <code>akan quality runtime</code>이 알려 주며, 일부러 그렇게 하는
+                    방법은 그 명령의 레퍼런스 페이지에 있습니다.
                   </span>
                 ),
               })}
@@ -2104,20 +2102,18 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>What a client module brings.</strong> A client module that imports <code>fetch</code> or{" "}
-                      <code>st</code> from the app's or a lib's <code>client</code> barrel brings the descriptors and
-                      stores of only the modules it names (<code>st.use.memoList()</code>, <code>fetch.memo(id)</code>).
-                      A module that picks a name at run time (<code>st.do[name]</code>), or a <code>Load</code>,{" "}
-                      <code>Model</code> or <code>Data</code> component on the page, brings the app's whole runtime.
+                      <strong>What a client module brings.</strong> The descriptors and stores of only the modules it
+                      names (<code>st.use.memoList()</code>, <code>fetch.memo(id)</code>). One that picks a name at run
+                      time (<code>st.do[name]</code>), or a <code>Load</code>, <code>Model</code> or <code>Data</code>{" "}
+                      component on the page, brings the app's whole runtime.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>클라이언트 모듈이 불러오는 것.</strong> 앱이나 라이브러리의 <code>client</code> barrel에서{" "}
-                      <code>fetch</code>나 <code>st</code>를 import하는 클라이언트 모듈은 이름을 적은 모듈(
-                      <code>st.use.memoList()</code>, <code>fetch.memo(id)</code>)의 엔드포인트 정의와 스토어만
-                      불러옵니다. 이름을 실행 중에 고르는 모듈(<code>st.do[name]</code>)이나 페이지의 <code>Load</code>·
-                      <code>Model</code>·<code>Data</code> 컴포넌트는 앱의 전체 런타임을 불러옵니다.
+                      <strong>클라이언트 모듈이 불러오는 것.</strong> 이름을 적은 모듈(<code>st.use.memoList()</code>,{" "}
+                      <code>fetch.memo(id)</code>)의 엔드포인트 정의와 스토어만 불러옵니다. 이름을 실행 중에 고르는
+                      모듈(<code>st.do[name]</code>)이나 페이지의 <code>Load</code>·<code>Model</code>·<code>Data</code>{" "}
+                      컴포넌트는 앱의 전체 런타임을 불러옵니다.
                     </span>
                   ),
                 })}
@@ -2126,49 +2122,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A name counts as written in these indirect forms too.</strong> A cast hides nothing:{" "}
-                      <code>(st.use as Loose).memoList()</code>, <code>st.get() as Wide</code>, <code>!</code> and{" "}
-                      <code>satisfies</code> are read as the name after them, and so is <code>const get = st.get</code>{" "}
-                      called later. A computed key asserted as a name is read as that name, directly (
-                      <code>st.slice[sliceName as "memo"]</code>) or through a <code>const</code> (
-                      <code>const key = name as "memoList"</code>, then{" "}
-                      <code>const {"{ [key]: list }"} = this.get()</code>
-                      ): asserting a key as a name tells the build the value is that name or one owned by the same
-                      module, and a union of names counts as each of them. A name built from a slice the function is
-                      handed, such as <code>{`st.use[\`queryArgsOf\${capitalize(slice.sliceName)}\`]`}</code>, loads
-                      nothing of its own when <code>slice</code> is a parameter or prop typed <code>SliceMeta</code> and
-                      the name is put together with <code>capitalize</code> of <code>akanjs/common</code>, a template or{" "}
-                      <code>+</code>: the slice arrived with its model, from <code>fetch</code> or <code>st.slice</code>{" "}
-                      in a client file or from the server. A slice a server component writes by hand, or a deep copy of
-                      one, brings no model; in a client file, write its names out (
-                      <code>{'{ refName: "memo", sliceName: "memoInBoard" }'}</code>) and the file loads that model.
-                      State handed to a function of the same file (<code>MemoStore.announce(this.get())</code>) is read
-                      where that function reads it. A key nothing asserts and a runtime object handed to another file
-                      still keep the whole runtime, and the note of <code>akan quality runtime</code> says what to write
-                      instead.
+                      <strong>Assert a computed key as a name.</strong> <code>st.slice[sliceName as "memo"]</code> is
+                      read as that name. A key nothing asserts and a runtime object handed to another file keep the
+                      whole runtime; <code>akan quality runtime</code> says what to write instead.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>이름은 다음과 같은 간접적인 형태로 적어도 적은 것으로 봅니다.</strong> 타입 단언은
-                      아무것도 가리지 않습니다. <code>(st.use as Loose).memoList()</code>, <code>st.get() as Wide</code>
-                      , <code>!</code>, <code>satisfies</code>는 그 뒤의 이름으로 읽고, <code>const get = st.get</code>
-                      을 나중에 호출해도 같습니다. 이름으로 단언한 계산된 키는 그 이름으로 읽습니다. 직접 적어도 되고(
-                      <code>st.slice[sliceName as "memo"]</code>) <code>const</code>를 거쳐도 됩니다(
-                      <code>const key = name as "memoList"</code> 다음에{" "}
-                      <code>const {"{ [key]: list }"} = this.get()</code>). 키를 이름으로 단언하면, 그 값이 그
-                      이름이거나 같은 모듈이 가진 이름이라고 빌드에 알려 주는 것이며, 이름의 유니언은 각각의 이름으로
-                      셉니다. 함수가 넘겨받은 슬라이스로 만든 이름(
-                      <code>{`st.use[\`queryArgsOf\${capitalize(slice.sliceName)}\`]`}</code>)은 <code>slice</code>가{" "}
-                      <code>SliceMeta</code> 타입의 매개변수나 prop이고 이름을 <code>akanjs/common</code>의{" "}
-                      <code>capitalize</code>, 템플릿, <code>+</code>로 조립했다면 따로 아무것도 불러오지 않습니다.
-                      슬라이스는 클라이언트 파일의 <code>fetch</code>나 <code>st.slice</code>에서, 또는 서버에서 자기
-                      모델과 함께 도착하기 때문입니다. 서버 컴포넌트가 손으로 쓴 슬라이스와 깊은 복사본은 모델을
-                      가져오지 않습니다. 클라이언트 파일에서는 이름을 그대로 적으면(
-                      <code>{'{ refName: "memo", sliceName: "memoInBoard" }'}</code>) 그 파일이 해당 모델을 불러옵니다.
-                      같은 파일의 함수에 넘긴 상태(<code>MemoStore.announce(this.get())</code>)는 그 함수가 읽는
-                      이름으로 읽습니다. 아무도 단언하지 않은 키와 다른 파일로 넘긴 런타임 객체는 여전히 전체 런타임을
-                      불러오며, <code>akan quality runtime</code>의 노트가 대신 무엇을 적으면 되는지 알려 줍니다.
+                      <strong>계산된 키는 이름으로 단언합니다.</strong> <code>st.slice[sliceName as "memo"]</code>는 그
+                      이름으로 읽습니다. 아무도 단언하지 않은 키와 다른 파일로 넘긴 런타임 객체는 전체 런타임을
+                      불러오며, 대신 무엇을 적으면 되는지는 <code>akan quality runtime</code>이 알려 줍니다.
                     </span>
                   ),
                 })}
@@ -2194,15 +2157,15 @@ export default config;`}
                   en: (
                     <span>
                       <strong>A route behaves the same in development.</strong> The development server loads what a
-                      production page loads, so a name a route misses shows while you work: reading a store key the page
-                      has not loaded fails with the name of the module whose store declares it.
+                      production page loads, so reading a store key the page has not loaded fails while you work, with
+                      the name of the module whose store declares it.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>라우트는 개발 중에도 똑같이 동작합니다.</strong> 개발 서버는 프로덕션 페이지가 불러오는
-                      것만 불러오므로, 라우트에 빠진 이름은 작업하는 동안 드러납니다. 페이지가 불러오지 않은 스토어 키를
-                      읽으면 그 키를 선언한 스토어의 모듈 이름과 함께 실패합니다.
+                      것만 불러오므로, 페이지가 불러오지 않은 스토어 키를 읽으면 작업하는 동안 그 키를 선언한 스토어의
+                      모듈 이름과 함께 실패합니다.
                     </span>
                   ),
                 })}
@@ -2245,19 +2208,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Endpoint descriptions load where a page shows them.</strong> Each language's dictionary
-                      file, which every page loads, leaves out the <code>.desc</code> and <code>.arg</code> texts of
-                      signals; a second file brings them to a page that shows the API explorer or whose client
-                      components name such a key. The server, MCP and a CSR build keep the whole dictionary, and the
-                      build prints both sizes per language.
+                      <strong>Endpoint descriptions load where a page shows them.</strong> The <code>.desc</code> and{" "}
+                      <code>.arg</code> texts of signals reach only a page that shows the API explorer or whose client
+                      components name such a key. The server and MCP keep the whole dictionary.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>엔드포인트 설명은 그것을 보여 주는 페이지에서만 불러옵니다.</strong> 모든 페이지가
-                      불러오는 언어별 사전 파일에서 signal의 <code>.desc</code>와 <code>.arg</code> 문구가 빠지고, API
-                      탐색기를 보여 주거나 클라이언트 컴포넌트가 그런 key를 적은 페이지에만 두 번째 파일로 옵니다. 서버,
-                      MCP, CSR 빌드는 사전 전체를 그대로 쓰며, 빌드는 언어마다 두 크기를 출력합니다.
+                      <strong>엔드포인트 설명은 그것을 보여 주는 페이지에서만 불러옵니다.</strong> signal의{" "}
+                      <code>.desc</code>와 <code>.arg</code> 문구는 API 탐색기를 보여 주거나 클라이언트 컴포넌트가 그런
+                      key를 적은 페이지에만 옵니다. 서버와 MCP는 사전 전체를 그대로 씁니다.
                     </span>
                   ),
                 })}
@@ -2266,30 +2226,17 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A page loads the dictionary texts it can show.</strong> The build reads the keys each
-                      route's client modules name (a written key, a template with a written module name, a key picked
-                      from a table or a typed union the file holds, or from an <code>as const</code> table of written
-                      keys a constant class holds as a <code>static</code>) and the models, enums and scalars their
-                      lists, views and forms label, then packs each language's dictionary into files so that a route
-                      loads at most four of them, besides the API description file. A route holding a key the build
-                      cannot follow, such as one read from data, or showing a <code>Signal</code> or{" "}
-                      <code>Constant</code> component, loads the whole dictionary; for a key, <code>akan build</code>{" "}
-                      warns with its file, line and reason. A key of a module the route left out still shows: its file
-                      loads and the page renders again, and development reports it once per module. A CSR build keeps
-                      the whole dictionary inline.
+                      <strong>A page loads the dictionary texts it can show.</strong> Write each key out, or pick it
+                      from a table or a typed union the file holds. A key the build cannot follow gets an{" "}
+                      <code>akan build</code> warning and loads the whole dictionary, as a <code>Signal</code> or{" "}
+                      <code>Constant</code> component does.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>페이지는 보여 줄 수 있는 사전 문구만 불러옵니다.</strong> 빌드는 라우트의 클라이언트
-                      모듈이 적은 key(직접 쓴 key, 모듈 이름을 직접 쓴 템플릿, 파일이 가진 표나 타입 union에서 고른 key,
-                      constant 클래스가 <code>static</code>으로 가진 <code>as const</code> key 표에서 고른 key)와 그
-                      목록·뷰·폼이 라벨을 붙이는 모델·enum·scalar를 읽고, 언어별 사전을 라우트마다 API 설명 파일 말고는
-                      파일을 많아야 네 개 불러오도록 나눕니다. 데이터에서 읽은 key처럼 빌드가 따라갈 수 없는 key를
-                      가지거나 <code>Signal</code>·<code>Constant</code> 컴포넌트를 보여 주는 라우트는 사전 전체를
-                      불러오며, key의 경우 <code>akan build</code>가 파일, 줄 번호, 이유를 경고로 알려 줍니다. 라우트가
-                      빠뜨린 모듈의 key도 보입니다. 그 파일을 불러온 뒤 페이지를 다시 그리고, 개발 중에는 모듈마다 한 번
-                      알립니다. CSR 빌드는 사전 전체를 번들에 그대로 담습니다.
+                      <strong>페이지는 보여 줄 수 있는 사전 문구만 불러옵니다.</strong> key는 직접 적거나, 파일이 가진
+                      표나 타입 union에서 고릅니다. 빌드가 따라갈 수 없는 key는 <code>akan build</code>가 경고하고 사전
+                      전체를 불러오게 하며, <code>Signal</code>·<code>Constant</code> 컴포넌트도 사전 전체를 불러옵니다.
                     </span>
                   ),
                 })}
@@ -2298,34 +2245,18 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A page loads only the parts of an object it names.</strong> <code>Memo.Zone.View</code>,{" "}
-                      <code>&lt;Field.Text /&gt;</code> or <code>const {"{ Util }"} = Memo</code> loads that part's file
-                      and not the object's other parts, when the object's file only gathers imports, as a model's
-                      generated <code>index.ts</code> does. An object that copies another in (
-                      <code>Object.assign(Section, Field, {"{ Rich }"})</code>) loads the copied object's parts the same
-                      way, each from its own file. A file that calls a function other than React's <code>memo</code>,{" "}
-                      <code>forwardRef</code>, <code>lazy</code> or <code>createContext</code>, runs a statement,
-                      re-exports or changes an import while it loads keeps the whole object, as does a part declared in
-                      the object's own file, an object passed on, spread, written to or rendered itself, and a member
-                      called through it (<code>Obj.run()</code>) that may read <code>this</code>.{" "}
-                      <code>akan quality runtime</code> counts what stays whole by reason, and{" "}
-                      <code>--format json</code> lists each import with its file, line and reason.
+                      <strong>A page loads only the parts of an object it names.</strong> <code>Memo.Zone.View</code>{" "}
+                      loads that part's file when the object's file only gathers imports, as a model's generated{" "}
+                      <code>index.ts</code> does. An object passed on or spread stays whole;{" "}
+                      <code>akan quality runtime</code> counts those by reason.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>페이지는 객체에서 이름을 적은 부분만 불러옵니다.</strong> <code>Memo.Zone.View</code>,{" "}
-                      <code>&lt;Field.Text /&gt;</code>, <code>const {"{ Util }"} = Memo</code>는 객체 파일이 모델의
-                      생성된 <code>index.ts</code>처럼 import를 모으기만 할 때, 그 부분의 파일만 불러오고 객체의 다른
-                      부분은 불러오지 않습니다. 다른 객체를 복사해 넣은 객체(
-                      <code>Object.assign(Section, Field, {"{ Rich }"})</code>)도 복사한 객체의 부분을 같은 방식으로 각
-                      부분의 파일에서 불러옵니다. 로드되면서 React의 <code>memo</code>, <code>forwardRef</code>,{" "}
-                      <code>lazy</code>, <code>createContext</code>가 아닌 함수를 호출하거나 문장을 실행하거나 다른
-                      모듈을 다시 내보내거나 import를 바꾸는 파일은 객체 전체를 불러오며, 객체 파일 안에서 선언한 부분,
-                      다른 곳에 넘기거나 펼치거나 값을 쓰거나 그 자체를 렌더링한 객체, 객체를 통해 호출하는 멤버가{" "}
-                      <code>this</code>를 읽을 수 있을 때(
-                      <code>Obj.run()</code>)도 마찬가지입니다. <code>akan quality runtime</code>은 전체로 남은 import를
-                      이유별로 세고, <code>--format json</code>은 각 import를 파일, 줄 번호, 이유와 함께 보여 줍니다.
+                      <strong>페이지는 객체에서 이름을 적은 부분만 불러옵니다.</strong> <code>Memo.Zone.View</code>는
+                      객체 파일이 모델의 생성된 <code>index.ts</code>처럼 import를 모으기만 할 때 그 부분의 파일만
+                      불러옵니다. 다른 곳에 넘기거나 펼친 객체는 전체를 불러오며, <code>akan quality runtime</code>이
+                      이를 이유별로 셉니다.
                     </span>
                   ),
                 })}
@@ -2334,16 +2265,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A part a page does not name does not run there.</strong> Its file's top-level code no
-                      longer runs on that page, so a part file that registers something when it loads must be named by
-                      the page that needs it, or the registration moved to where it is used.
+                      <strong>A part a page does not name does not run there.</strong> A part file that registers
+                      something when it loads must be named by the page that needs it, or the registration moved to
+                      where it is used.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>페이지가 이름을 적지 않은 부분은 그 페이지에서 실행되지 않습니다.</strong> 그 파일의
-                      최상위 코드가 그 페이지에서 더는 실행되지 않으므로, 로드될 때 무언가를 등록하는 부분 파일은 그것이
-                      필요한 페이지에서 이름을 적거나, 등록을 쓰는 곳으로 옮겨야 합니다.
+                      <strong>페이지가 이름을 적지 않은 부분은 그 페이지에서 실행되지 않습니다.</strong> 로드될 때
+                      무언가를 등록하는 부분 파일은 그것이 필요한 페이지에서 이름을 적거나, 등록을 쓰는 곳으로 옮겨야
+                      합니다.
                     </span>
                   ),
                 })}
@@ -2352,25 +2283,16 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>The production build checks its own loading order.</strong> When a chunk would run before
-                      the chunk of a module piece it needs, or a store file would be defined through a piece that
-                      imports it back, <code>akan build</code> warns once, naming the two source files, builds every
-                      page on the whole runtime instead and succeeds; the warning is a bug in akan to report. The
-                      development server serves each module on its own and checks nothing, so the production build is
-                      the guard: build before you ship a change to which module a client file names. A page that needs
-                      every module keeps the whole runtime, and <code>akan quality runtime</code> lists which component
-                      brings it there.
+                      <strong>The production build checks its own loading order.</strong> The development server checks
+                      nothing, so build before you ship a change to which module a client file names. A loading-order
+                      warning from <code>akan build</code> is a bug in akan to report.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>프로덕션 빌드는 스스로 로드 순서를 검사합니다.</strong> 어떤 청크가 자신이 필요한 모듈
-                      조각의 청크보다 먼저 실행되거나, 스토어 파일이 자신을 다시 import하는 조각을 거쳐 정의되면{" "}
-                      <code>akan build</code>는 두 소스 파일의 이름을 한 번 경고하고, 모든 페이지를 전체 런타임으로
-                      빌드한 뒤 성공합니다. 이 경고는 신고할 akan의 버그입니다. 개발 서버는 모듈을 하나씩 내려주고
-                      아무것도 검사하지 않으므로 프로덕션 빌드가 안전장치입니다. 클라이언트 파일이 이름을 적는 모듈을
-                      바꿨다면 배포 전에 빌드하세요. 모든 모듈이 필요한 페이지는 전체 런타임을 그대로 쓰며, 어떤
-                      컴포넌트 때문인지는 <code>akan quality runtime</code>이 알려 줍니다.
+                      <strong>프로덕션 빌드는 스스로 로드 순서를 검사합니다.</strong> 개발 서버는 아무것도 검사하지
+                      않으므로, 클라이언트 파일이 이름을 적는 모듈을 바꿨다면 배포 전에 빌드하세요.{" "}
+                      <code>akan build</code>의 로드 순서 경고는 신고할 akan의 버그입니다.
                     </span>
                   ),
                 })}
@@ -2379,28 +2301,18 @@ export default config;`}
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A page registers the constants of the models it names.</strong> <code>cnst.Memo</code>,{" "}
-                      <code>cnst.MemoStatus</code>, a lib's <code>cnst.util.File</code> or{" "}
-                      <code>const {"{ MemoStatus }"} = cnst</code> loads that model's registration piece,{" "}
-                      <code>lib/__client/memo.cnst.ts</code>, and the pieces of the models its constant file names, so a
-                      page reading one enum no longer loads every model. A file that passes <code>cnst</code> on,
-                      spreads it, calls <code>Object.keys(cnst)</code>, picks a member with a computed key or names
-                      something <code>cnst</code> does not hand out keeps every constant, and so does a framework
-                      component that walks every model, such as the API explorer. <code>akan quality runtime</code>{" "}
-                      names each file that keeps every constant, with its reason.
+                      <strong>A page registers the constants of the models it names.</strong> <code>cnst.Memo</code> or
+                      a lib's <code>cnst.util.File</code> names one. A file that passes <code>cnst</code> on, spreads it
+                      or picks a member with a computed key keeps every constant; <code>akan quality runtime</code>{" "}
+                      names it.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>페이지는 이름을 적은 모델의 상수만 등록합니다.</strong> <code>cnst.Memo</code>,{" "}
-                      <code>cnst.MemoStatus</code>, 라이브러리의 <code>cnst.util.File</code>,{" "}
-                      <code>const {"{ MemoStatus }"} = cnst</code>는 그 모델의 등록 조각인{" "}
-                      <code>lib/__client/memo.cnst.ts</code>와 그 상수 파일이 이름을 적은 모델의 조각만 불러오므로, enum
-                      하나를 읽는 페이지가 더는 모든 모델을 불러오지 않습니다. <code>cnst</code>를 다른 곳에 넘기거나
-                      펼치거나 <code>Object.keys(cnst)</code>를 부르거나, 계산된 키로 멤버를 고르거나 <code>cnst</code>
-                      에 없는 이름을 적는 파일은 모든 상수를 불러오며, API 탐색기처럼 모든 모델을 훑는 프레임워크
-                      컴포넌트도 마찬가지입니다. 모든 상수를 불러오는 파일은 <code>akan quality runtime</code>이 이유와
-                      함께 알려 줍니다.
+                      <strong>페이지는 이름을 적은 모델의 상수만 등록합니다.</strong> <code>cnst.Memo</code>나
+                      라이브러리의 <code>cnst.util.File</code>이 그렇게 적은 이름입니다. <code>cnst</code>를 다른 곳에
+                      넘기거나 펼치거나 계산된 키로 멤버를 고르는 파일은 모든 상수를 불러오며, 그런 파일은{" "}
+                      <code>akan quality runtime</code>이 알려 줍니다.
                     </span>
                   ),
                 })}

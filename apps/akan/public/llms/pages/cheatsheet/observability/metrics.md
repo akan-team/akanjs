@@ -158,7 +158,7 @@ null, 0 or absent
 
 Scrape With Prometheus
 
-The same route answers a Prometheus scrape, behind the same token. Every endpoint and page call is counted and timed with tracing off, so request rate, error rate and latency per endpoint need no setup. `Accept: application/openmetrics-text`, which Prometheus sends, gets OpenMetrics 1.0; `text/plain` alone gets the 0.0.4 text. `*/*`, `application/json` or no Accept keeps the JSON above, whose `metricFamilies` carries the same series.
+The same route and token answer a Prometheus scrape. Every endpoint and page call is counted and timed with tracing off, so per-endpoint rate, errors and latency need no setup. `Accept: application/openmetrics-text`, which Prometheus sends, gets OpenMetrics 1.0 and `text/plain` alone the 0.0.4 text. `*/*`, `application/json` or no Accept keeps the JSON, whose `metricFamilies` carries the same series.
 
 Series
 
@@ -172,43 +172,43 @@ Series
 
 - akan_rsc_renders_pending, akan_rsc_sends_queued, akan_rsc_worker_resident_memory_bytes: The worker's render queue, its unsent messages and its memory, sampled like the JSON fields.
 
-- akan_rsc_renders_in_flight, akan_rsc_render_queue_depth, akan_rsc_renders_abandoned, akan_rsc_render_queue_wait_seconds, akan_rsc_render_refusals_total: Renders the worker is running, a replayed stored page not among them, and renders waiting for a slot. With `AKAN_RSC_WORKER_MAX_CONCURRENCY` set, also the renders still running after their slot came back (their client left, or they held it too long), how long each render waited, and by `reason` the renders answered 503 (`queue-full`, `wait-timeout`) and the slots taken back (`hold-timeout`).
+- akan_rsc_renders_in_flight, akan_rsc_render_queue_depth, akan_rsc_renders_abandoned, akan_rsc_render_queue_wait_seconds, akan_rsc_render_refusals_total: Renders running and renders waiting for a slot. With `AKAN_RSC_WORKER_MAX_CONCURRENCY` set, also renders still running after their slot came back, each render's wait, and by `reason` the 503s (`queue-full`, `wait-timeout`) and slots taken back (`hold-timeout`).
 
 - akan_rsc_worker_restarts_total, akan_rsc_worker_recycles_total: Worker restarts after it exited or hung, and planned swaps at a memory limit.
 
-- akan_db_statements_total, akan_db_statement_seconds_total, akan_db_statement_wait_seconds_total, akan_db_statement_rows_total, akan_db_statement_duration_seconds: Each SQL statement's runs, run time, wait for the write turn or a pool connection, rows returned or changed, and latency (16 buckets, 0.1 ms to 10 s), labelled `model` and `op` only, so the series count follows the app's models, not its statements; the per-statement detail is in Find Slow Statements below.
+- akan_db_statements_total, akan_db_statement_seconds_total, akan_db_statement_wait_seconds_total, akan_db_statement_rows_total, akan_db_statement_duration_seconds: SQL statements' runs, run time, wait, rows and latency (16 buckets, 0.1 ms to 10 s), labelled `model` and `op` only; the per-statement detail is in Find Slow Statements below.
 
-- akan_live_rooms: Live-query rooms a process holds, one per room id however many sockets share it. A room sockets on two replicas share counts once on each, so behind a gateway the sum is rooms held per process, not distinct rooms; the gateway's `rooms` counts distinct pubsub rooms.
+- akan_live_rooms: Live-query rooms a process holds, one per room id. Behind a gateway the sum counts a room once per replica holding it, not distinct rooms; the gateway's `rooms` counts distinct pubsub rooms.
 
 - akan_room_replay_bytes, akan_pubsub_buffered_messages: Frame bytes kept to send a reconnecting socket what it missed (at most 64 MiB a process), and publishes waiting for the Redis link (at most 10,000); one total each, next to `rooms`.
 
 - akan_build_info, process_start_time_seconds: The akanjs release and app name as labels, and when the answering process started; a new start time means its counters began again.
 
-**Labels stay bounded.** A series is labelled only by endpoint, route id, status class, a statement's model and op, and the process `role`, never a URL, user, account, query or value. A label takes at most 2,000 values and counts the rest as `other`. Request latency has 12 buckets from 1 ms to 10 s.
+**Labels stay bounded.** No label carries a URL, user, account, query or value; each takes at most 2,000 values and counts the rest as `other`. Request latency has 12 buckets from 1 ms to 10 s.
 
-**Behind a gateway, one scrape covers every replica.** Each replica reports its own counts and the gateway adds counters and buckets; it never averages a percentile, so take one with `histogram_quantile` over the sum. The sum is as fresh as each replica's last report, every `AKAN_MEMORY_LOG_INTERVAL_MS`; set it to your scrape interval.
+**Behind a gateway, one scrape covers every replica.** The gateway adds the replicas' counters and buckets, so take a percentile with `histogram_quantile` over the sum. Replicas report every `AKAN_MEMORY_LOG_INTERVAL_MS`; set it to your scrape interval.
 
 **A restart starts a replica's counters from zero.** The gateway keeps the counts it had, so its sum never drops; a solo process restarts with the pod, which `process_start_time_seconds` shows and `rate()` already handles.
 
 Find Slow Statements
 
-Every SQL statement the SQLite or Postgres driver sends is timed where it is sent, the one place the `db:` spans, these counts and the slow-statement log all read. Each is known by its **fingerprint**, 12 hex characters hashed from its normalized text: every literal is `?`, and a placeholder list, an `IN (…)` list or repeated `VALUES` rows collapse to one, so `LIMIT 10` and `LIMIT 20`, or three ids and thirty, are one statement. Strings of every form, numbers, comments and JSON field paths are replaced too, so two filters that differ only by field share one entry. Only the name is normalized; the text sent is unchanged.
+Each SQL statement the SQLite or Postgres driver sends is known by its **fingerprint**, 12 hex characters hashed from its normalized text: every literal becomes `?` and an `IN (…)` list collapses to one, so `LIMIT 10` and `LIMIT 20`, or three ids and thirty, are one statement. Filters that differ only by JSON field share one entry.
 
 `/_akan/app/statements` answers behind the metrics token with the 20 statements that took the most time in all and the 20 slowest at p95, each with its text, the model call that sent it, its wait and rows, and the endpoints that sent it most:
 
-**Model and op name the call.** A statement a model call sends is named after it (`memo.count`, `memo.updateMany`); one sent elsewhere, such as a `find` chain or a raw query, by its table and verb (`memo.select`). `sentBy` lists up to 3 endpoints, slices or jobs by time, and `none` outside a request.
+**Model and op name the call.** A model call's statement takes its name (`memo.count`); others, like a `find` chain or raw query, their table and verb (`memo.select`). `sentBy` lists up to 3 endpoints, slices or jobs.
 
-**Wait is counted apart from run time.** `waitMs` is the time spent waiting for the SQLite write turn or a Postgres pool connection; a transaction's wait shows on its `BEGIN`. A high wait with a short run means writes queue behind each other, not a slow query. SQLite's own busy wait inside one statement counts as run time.
+**Wait is counted apart from run time.** `waitMs` is the wait for SQLite's write turn or a Postgres pool connection, shown on `BEGIN` for a transaction. A long wait with a short run means queued writes, not a slow query.
 
 **The table stays bounded.** A process keeps 500 statements, letting the cheapest go first, and 16 senders each. Behind a gateway each replica sends its costliest 50 with every report, every `AKAN_MEMORY_LOG_INTERVAL_MS`, and the gateway adds them up by fingerprint.
 
-**The report is not a counter.** `count`, `totalMs` and the other sums cover the statements each process lists now, since that process started or since it last admitted the statement again after dropping it; `sinceMs` is that span, and behind a gateway the oldest replica's. A statement dropped from the table or from a replica's top 50 takes its counts with it, so a sum can fall, and a restarted replica starts over. Use the `akan_db_statement*` series, which only grow, for rates and trends.
+**The report is not a counter.** Its sums cover the statements listed now over `sinceMs` and fall when a statement is dropped or a replica restarts. Use the `akan_db_statement*` series, which only grow, for rates and trends.
 
 **No value leaves the driver.** The series carry only model and op; the report and both logs add the normalized text and the fingerprint, never a bound value, id or user data.
 
 Slow-statement log
 
-A statement whose wait and run reach `AKAN_LOG_SLOW_STATEMENT_MS` writes one `SlowStatement` warning, at most once a minute per fingerprint; the next one carries `suppressed`, the lines held back meanwhile. Its attrs are `fingerprint`, `model`, `op`, `ms`, `waitMs`, `rows`, `sentBy` and the request's `traceId`:
+A statement whose wait and run reach `AKAN_LOG_SLOW_STATEMENT_MS` writes one `SlowStatement` warning, at most once a minute per fingerprint; the next carries the skipped count as `suppressed`. Its attrs are `fingerprint`, `model`, `op`, `ms`, `waitMs`, `rows`, `sentBy` and the request's `traceId`:
 
 - AKAN_LOG_SLOW_STATEMENT_MS (number (ms) | off, default 200): A statement whose wait and run add up to this writes one `SlowStatement` warning; `off` or `0` turns the log off.
 
@@ -216,19 +216,19 @@ A statement whose wait and run reach `AKAN_LOG_SLOW_STATEMENT_MS` writes one `Sl
 
 Query-plan check
 
-In the local dev runtime only, the first time a fingerprint runs and again after an index or table changes, the server asks the database how it ran the statement (`EXPLAIN QUERY PLAN` on SQLite, `EXPLAIN` on Postgres) once it has answered, and warns once as `QueryPlan` when it reads every row of the table or sorts in a temporary table:
+In the local dev runtime only, the server asks the database how it ran each new statement (`EXPLAIN QUERY PLAN` on SQLite, `EXPLAIN` on Postgres) and warns once as `QueryPlan` when it reads every row of the table or sorts in a temporary table:
 
-It leaves alone a table under 1,000 rows (asked again as the statement keeps running), an insert, a `count` with no filter, a migration, a table no model owns, the full-text search tables and an in-memory SQLite database. To accept a deliberate scan, list its fingerprint in `AKAN_QUERY_PLAN_IGNORE`; `all` turns the check off.
+It leaves alone a table under 1,000 rows, an insert, a `count` with no filter and a migration. To accept a deliberate scan, list its fingerprint in `AKAN_QUERY_PLAN_IGNORE`; `all` turns the check off.
 
 Dashboard And Alerts
 
-The chart in `infra/app` marks the pod for scraping once a branch asks for it. It is off by default, because a built server answers the route 401 until the scraper holds the token. Keep the token in a Secret under the key `AKAN_STATUS_TOKEN`, and name only the Secret in the values file; the chart refuses to render `scrape` without `tokenSecret`:
+The chart in `infra/app` marks the pod for scraping once a branch asks for it; it is off by default, since the route answers 401 without the token. Keep the token in a Secret under the key `AKAN_STATUS_TOKEN` and name only the Secret in the values file; `scrape` requires `tokenSecret`:
 
-The pod then carries `prometheus.io/scrape`, `/path` and `/port`, and reads `AKAN_STATUS_TOKEN` from that Secret. The annotations do nothing on their own: a Prometheus pod job keeps annotated pods and sends the same token as a bearer from a file, here a copy of the Secret mounted into Prometheus's own namespace. With the Prometheus Operator, a `PodMonitor` in the app's namespace names the Secret in `authorization.credentials` instead.
+The pod then carries the `prometheus.io/scrape`, `/path` and `/port` annotations, which do nothing on their own: a Prometheus pod job keeps annotated pods and sends the token as a bearer from a file, here a copy of the Secret mounted into Prometheus's namespace. With the Prometheus Operator, a `PodMonitor` in the app's namespace names the Secret in `authorization.credentials` instead.
 
 Dashboard
 
-Import `infra/monitoring/akan-dashboard.json` into Grafana and pick a Prometheus data source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, the route caches' hit ratio and bypasses, p50/p95/p99 over every endpoint, the RSC workers running and ready, their queue, memory, restarts and recycles, and the build each process runs. The job, endpoint and route pickers narrow every panel.
+Import `infra/monitoring/akan-dashboard.json` into Grafana and pick a Prometheus data source. It shows request rate, 5xx ratio and p95 latency per endpoint and per route, the route caches' hit ratio, the RSC workers running and ready, their queue, memory and restarts, and the build each process runs. The job, endpoint and route pickers narrow every panel.
 
 Alerts
 
@@ -292,7 +292,7 @@ Each sample then prints one line per process. Pick those lines out of the runnin
 
 **`elLag` is mean/p99/max.** It is event-loop lag in milliseconds since the previous sample.
 
-**`rscFirstRenderMemory` names the routes that grew the RSC worker most.** In `/_akan/app/metrics`, next to the last render's fields, it lists per route what its first render added to `rss`, `heapUsed`, `external` and `arrayBuffers`, and the modules it loaded: largest first, at most 20 routes. Renders running at the same time share one delta, so read it on a quiet replica. It costs two memory reads per route's first render, and one check per render while `AKAN_MEMORY_LOG` is off.
+**`rscFirstRenderMemory` names the routes that grew the RSC worker most.** `/_akan/app/metrics` lists, for at most 20 routes, what the first render added to memory and the modules it loaded. Concurrent renders share one delta, so read a quiet replica.
 
 **The gateway's own line is at verbose.** That is below the default `info`, so set `AKAN_PUBLIC_LOG_LEVEL=verbose` to see it in the console.
 

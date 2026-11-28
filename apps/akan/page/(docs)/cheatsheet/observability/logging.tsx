@@ -427,41 +427,34 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>The id on a response is the server's own.</strong> A request that arrives with a W3C{" "}
-            <code>traceparent</code>, or else an <code>x-request-id</code> that is a UUID or 32 hex digits, gets a fresh
-            id and keeps the caller's as <code>link</code>, on every record it writes. <code>akan logs --trace</code>{" "}
-            matches <code>link</code> too and takes the id as the caller sent it, so a caller's own id still finds its
-            request. Only the gateway's hop to its replica carries an id over.{" "}
-            <code>AKAN_TRACE_ADOPT=trusted-proxies</code> lets a proxy that <code>AKAN_TRUSTED_PROXIES</code> lists by
-            address choose the id; turn it on only when that proxy overwrites or strips both headers.
+            <strong>The id on a response is the server's own.</strong> A caller's <code>traceparent</code> or{" "}
+            <code>x-request-id</code> becomes <code>link</code>, which <code>akan logs --trace</code> matches. Set{" "}
+            <code>AKAN_TRACE_ADOPT=trusted-proxies</code> only when a proxy in <code>AKAN_TRUSTED_PROXIES</code>{" "}
+            overwrites or strips both headers: it chooses the id.
           </>
         ),
         ko: (
           <>
-            <strong>응답의 id는 서버가 만든 것입니다.</strong> W3C <code>traceparent</code>나, UUID 또는 16진수 32자리인{" "}
-            <code>x-request-id</code>를 달고 온 요청은 새 id를 받고, 호출자의 id는 그 요청이 쓰는 모든 레코드에{" "}
-            <code>link</code>로 남습니다. <code>akan logs --trace</code>는 <code>link</code>도 함께 찾고 호출자가 보낸
-            모양 그대로 받으므로, 호출자의 id로도 요청을 찾을 수 있습니다. id를 그대로 이어받는 것은 gateway가 replica로
-            넘기는 hop뿐입니다. <code>AKAN_TRACE_ADOPT=trusted-proxies</code>를 켜면 <code>AKAN_TRUSTED_PROXIES</code>에
-            주소로 적은 프록시가 id를 정할 수 있습니다. 그 프록시가 두 헤더를 덮어쓰거나 지울 때만 켜세요.
+            <strong>응답의 id는 서버가 만든 것입니다.</strong> 호출자가 보낸 <code>traceparent</code>나{" "}
+            <code>x-request-id</code>는 <code>link</code>로 남고, <code>akan logs --trace</code>는 <code>link</code>도
+            함께 찾습니다. <code>AKAN_TRACE_ADOPT=trusted-proxies</code>는 <code>AKAN_TRUSTED_PROXIES</code>에 적은
+            프록시가 두 헤더를 덮어쓰거나 지울 때만 켜세요. 그러면 그 프록시가 id를 정합니다.
           </>
         ),
       }),
       l.trans({
         en: (
           <>
-            <strong>The id follows what the request starts.</strong> A page's render in the RSC worker, the{" "}
-            <code>fetch</code> calls a server makes to this app or to a <code>clone({"{ origin }"})</code>, and every
-            frame of a websocket (under its handshake's id) write the same <code>traceId</code>. A queued job gets an id
-            of its own and names the enqueuing one as <code>link</code>.
+            <strong>The id follows what the request starts.</strong> A page's render, server <code>fetch</code> calls to
+            this app or a <code>clone({"{ origin }"})</code>, and every websocket frame write the same{" "}
+            <code>traceId</code>; a queued job gets its own.
           </>
         ),
         ko: (
           <>
-            <strong>id는 요청이 시작한 일을 따라갑니다.</strong> RSC worker의 페이지 렌더, 서버가 이 앱이나{" "}
-            <code>clone({"{ origin }"})</code> 대상에 보내는 <code>fetch</code> 호출, websocket의 모든 frame(handshake의
-            id 아래)이 같은 <code>traceId</code>를 씁니다. 큐 작업은 자기 id를 받고, 작업을 넣은 쪽의 id를{" "}
-            <code>link</code>로 남깁니다.
+            <strong>id는 요청이 시작한 일을 따라갑니다.</strong> 페이지 렌더, 서버가 이 앱이나{" "}
+            <code>clone({"{ origin }"})</code> 대상에 보내는 <code>fetch</code> 호출, websocket의 모든 frame이 같은{" "}
+            <code>traceId</code>를 쓰고, 큐 작업은 자기 id를 받습니다.
           </>
         ),
       }),
@@ -643,8 +636,8 @@ export default page()
       {
         name: ["all", "federation", "batch"],
         desc: l.trans({
-          en: "A server span named after the route pattern it matched, a span per endpoint call such as `query:getUser`, a client span per database call, and its log lines. Each stage of a call (guards, handler, serialize) is a span of its own only under `AKAN_TRACE=1` or a passed `x-akan-debug`. A job is a trace of its own, linked to the one that enqueued it.",
-          ko: "매칭한 라우트 패턴으로 이름 붙인 server span, `query:getUser` 같은 endpoint 호출마다 span, 데이터베이스 호출마다 client span, 그리고 자기 로그 줄을 보냅니다. 호출의 단계(guards, handler, serialize)별 span은 `AKAN_TRACE=1`이거나 `x-akan-debug`가 통과했을 때만 남깁니다. 큐 작업은 자기 trace를 가지며, 작업을 넣은 trace를 link로 가리킵니다.",
+          en: "A server span named after the matched route pattern, a span per endpoint call (`query:getUser`), a client span per database call, and its log lines. Per-stage spans only under `AKAN_TRACE=1` or a passed `x-akan-debug`.",
+          ko: "매칭한 라우트 패턴으로 이름 붙인 server span, endpoint 호출(`query:getUser`)마다 span, 데이터베이스 호출마다 client span, 그리고 자기 로그 줄을 보냅니다. 단계별 span은 `AKAN_TRACE=1`이거나 `x-akan-debug`가 통과했을 때만 남깁니다.",
         }),
       },
       {
@@ -660,23 +653,16 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>Sampling is decided once, at the first hop.</strong> The process a request reaches first over TCP —
-            the gateway, or a replica running without one — decides, and the sampled flag of <code>traceparent</code>{" "}
-            carries the decision to the replica and on to the RSC worker. A caller&apos;s <code>traceparent</code>{" "}
-            counts only when <code>AKAN_TRACE_ADOPT</code> trusts the sender; a <code>parentbased_</code> sampler then
-            follows its flag. An untrusted caller&apos;s trace is linked from the first span, with its span id when a{" "}
-            <code>traceparent</code> named one; an <code>x-request-id</code> names none, so it goes as the{" "}
-            <code>akan.trace.link</code> attribute.
+            <strong>Sampling is decided once, at the first hop.</strong> The gateway, or a replica running without one,
+            decides; the rest follow. A caller&apos;s <code>traceparent</code> counts only when{" "}
+            <code>AKAN_TRACE_ADOPT</code> trusts the sender; otherwise its trace is linked from the first span.
           </>
         ),
         ko: (
           <>
-            <strong>샘플링은 첫 홉에서 한 번 정합니다.</strong> 요청이 TCP로 처음 닿는 프로세스(gateway, gateway가
-            없으면 replica)가 정하고, 그 결정은 <code>traceparent</code>의 sampled 플래그에 실려 replica와 RSC worker로
-            이어집니다. 호출자가 보낸 <code>traceparent</code>는 <code>AKAN_TRACE_ADOPT</code>가 그 송신자를 믿을 때만
-            쓰이고, 그때 <code>parentbased_</code> 샘플러는 그 플래그를 따릅니다. 믿지 않는 호출자의 trace는 첫 span에서
-            link로 가리키고, <code>traceparent</code>가 span id를 알려 줬으면 그것도 함께 담습니다.{" "}
-            <code>x-request-id</code>에는 span id가 없으므로 <code>akan.trace.link</code> 속성으로 보냅니다.
+            <strong>샘플링은 첫 홉에서 한 번 정합니다.</strong> gateway(gateway가 없으면 replica)가 정하고 나머지는 그
+            결정을 따릅니다. 호출자가 보낸 <code>traceparent</code>는 <code>AKAN_TRACE_ADOPT</code>가 그 송신자를 믿을
+            때만 쓰이고, 아니면 그 trace는 첫 span에서 link로 가리킵니다.
           </>
         ),
       }),
@@ -686,11 +672,9 @@ export default page()
             <strong>
               <code>AKAN_TRACE</code> and <code>x-akan-debug</code> are separate switches.
             </strong>{" "}
-            <code>AKAN_TRACE=1</code> records spans for every call into this app&apos;s own metrics and request line.
-            The exporter records a sampled call&apos;s own span and its database spans and sends them out, without
-            joining that aggregate; the per-stage spans come only with <code>AKAN_TRACE=1</code>.{" "}
-            <code>x-akan-debug</code> lowers one request to trace and answers with <code>Server-Timing</code>; it does
-            not change the sampling decision. Any of the three works without the others.
+            The exporter sends a sampled call&apos;s own span and its database spans; per-stage spans come only with{" "}
+            <code>AKAN_TRACE=1</code>. <code>x-akan-debug</code> does not change the sampling decision. Each of the
+            three works alone.
           </>
         ),
         ko: (
@@ -698,68 +682,55 @@ export default page()
             <strong>
               <code>AKAN_TRACE</code>와 <code>x-akan-debug</code>는 별개의 스위치입니다.
             </strong>{" "}
-            <code>AKAN_TRACE=1</code>은 모든 호출의 span을 이 앱의 메트릭과 요약 줄에 기록합니다. exporter는 샘플된 호출
-            자신의 span과 데이터베이스 span을 기록해 밖으로 보내고, 그 집계에는 섞지 않습니다. 단계별 span은{" "}
-            <code>AKAN_TRACE=1</code>일 때만 붙습니다. <code>x-akan-debug</code>는 요청 하나를 trace로 낮추고{" "}
-            <code>Server-Timing</code>으로 답할 뿐, 샘플링 결정은 바꾸지 않습니다. 셋은 서로 없이도 동작합니다.
+            exporter는 샘플된 호출 자신의 span과 데이터베이스 span을 보내고, 단계별 span은 <code>AKAN_TRACE=1</code>일
+            때만 붙습니다. <code>x-akan-debug</code>는 샘플링 결정을 바꾸지 않습니다. 셋은 서로 없이도 동작합니다.
           </>
         ),
       }),
       l.trans({
         en: (
           <>
-            <strong>What stays out.</strong> Span attributes carry the method, the route pattern, the status and the
-            error type: never a URL with its query, a header value, SQL text or the caller&apos;s user id. A
-            failure&apos;s exception event carries its error code, not its message, which may quote user input.
+            <strong>What stays out.</strong> Span attributes carry the method, route pattern, status and error type:
+            never a URL with its query, a header value, SQL text or a user id. An exception event carries the error
+            code, not the message.
           </>
         ),
         ko: (
           <>
             <strong>보내지 않는 것.</strong> span 속성은 메서드, 라우트 패턴, 상태 코드, 에러 종류만 담습니다. 쿼리가
-            붙은 URL, 헤더 값, SQL 문, 호출자의 user id는 담지 않습니다. 실패의 exception 이벤트도 사용자 입력이 섞일 수
-            있는 메시지 대신 에러 코드를 담습니다.
+            붙은 URL, 헤더 값, SQL 문, user id는 담지 않습니다. exception 이벤트도 메시지 대신 에러 코드를 담습니다.
           </>
         ),
       }),
       l.trans({
         en: (
           <>
-            <strong>Log records are opt-in.</strong> A record carries the line&apos;s message as its body, its severity,
-            its attrs, the logger&apos;s name and context, the endpoint and origin, a link it was handed, and its trace
-            and span id when written inside a request. Attrs naming a secret are <code>[redacted]</code> when the record
-            is made, before any sink sees them; nothing else is. The message text, and an error&apos;s message and stack
-            where the line carries them, go as written, on this sink as on every other. The floor is the console level
-            the process booted with.
+            <strong>Log records are opt-in.</strong> Each carries its request&apos;s trace and span id. Only attrs
+            naming a secret are <code>[redacted]</code>; the message, and an error&apos;s message and stack, go as
+            written. The floor is the console level at boot.
           </>
         ),
         ko: (
           <>
-            <strong>로그 레코드는 요청할 때만 보냅니다.</strong> 레코드는 로그 줄의 메시지를 본문으로, 그리고 severity,
-            attrs, logger 이름과 context, endpoint와 origin, 넘겨받은 link, 요청 안에서 쓴 줄이면 trace id와 span id를
-            담습니다. 비밀값을 뜻하는 attrs 키는 레코드가 만들어질 때, 어느 sink보다 먼저 <code>[redacted]</code>로
-            바뀌고, 그 밖에는 가리지 않습니다. 메시지 문자열과, 줄에 담긴 에러의 메시지와 stack은 다른 sink와 마찬가지로
-            쓴 그대로 나갑니다. floor는 프로세스가 부팅할 때의 콘솔 레벨입니다.
+            <strong>로그 레코드는 요청할 때만 보냅니다.</strong> 요청 안에서 쓴 줄이면 trace id와 span id를 담습니다.
+            비밀값을 뜻하는 attrs 키만 <code>[redacted]</code>로 바뀌고, 메시지와 에러의 메시지·stack은 쓴 그대로
+            나갑니다. floor는 프로세스가 부팅할 때의 콘솔 레벨입니다.
           </>
         ),
       }),
       l.trans({
         en: (
           <>
-            <strong>Never in a request&apos;s way.</strong> Spans and records go into a bounded queue that sends a batch
-            when it holds 512, once the call that filled it has returned, or on a timer, with at most two requests in
-            flight. A full queue drops its oldest item and counts it. 429, 502, 503, 504 and an unreachable collector
-            are retried with backoff until the timeout; any other status drops the batch. A failing collector is
-            reported at most once a minute, by host only. The exporter&apos;s own requests are not traced, and its own
-            warnings are not exported.
+            <strong>Never in a request&apos;s way.</strong> Spans and records wait in a bounded queue that drops its
+            oldest when full. 429, 502, 503, 504 and an unreachable collector are retried with backoff until the
+            timeout; other statuses drop the batch.
           </>
         ),
         ko: (
           <>
-            <strong>요청을 막지 않습니다.</strong> span과 레코드는 크기가 정해진 큐에 들어가고, 512개가 차면 그 큐를
-            채운 호출이 끝난 뒤에, 또는 타이머가 돌 때 배치로 나가며, 동시에 나가는 요청은 둘까지입니다. 큐가 차면 가장
-            오래된 것을 버리고 그 수를 셉니다. 429, 502, 503, 504와 수집기에 닿지 못한 경우만 timeout까지 backoff로
-            재시도하고, 다른 상태는 그 배치를 버립니다. 실패 중인 수집기는 1분에 한 번까지, host만 밝혀 알립니다.
-            exporter 자신의 요청은 trace하지 않고, 자기 경고도 내보내지 않습니다.
+            <strong>요청을 막지 않습니다.</strong> span과 레코드는 크기가 정해진 큐에서 기다리고, 큐가 차면 가장 오래된
+            것부터 버립니다. 429, 502, 503, 504와 수집기에 닿지 못한 경우는 timeout까지 backoff로 재시도하고, 다른
+            상태는 그 배치를 버립니다.
           </>
         ),
       }),
@@ -767,42 +738,28 @@ export default page()
         en: (
           <>
             <strong>On the way out,</strong> each process sends what is queued once, without retries, for at most 1.5 s,
-            and a replica under the gateway takes less once its shutdown has used up the gateway&apos;s wait. Whatever
-            is unsent by then is dropped and counted in a last warning. An RSC worker still running 3 s after it was
-            stopped, as one stuck in a render, is killed.
+            and drops the rest. An RSC worker still running 3 s after it was stopped is killed.
           </>
         ),
         ko: (
           <>
-            <strong>종료할 때</strong> 프로세스마다 큐에 남은 것을 재시도 없이 한 번, 최대 1.5초 동안 보냅니다. gateway
-            아래의 replica는 종료가 gateway의 대기 시간을 써 버렸으면 그보다 짧게 씁니다. 그때까지 못 보낸 것은 버리고
-            마지막 경고에 그 수를 남깁니다. 멈추라고 한 지 3초가 지나도 살아 있는 RSC worker(렌더에 묶인 경우 등)는
-            강제로 끝냅니다.
+            <strong>종료할 때</strong> 프로세스마다 큐에 남은 것을 재시도 없이 한 번, 최대 1.5초 동안 보내고 나머지는
+            버립니다. 멈추라고 한 지 3초가 지나도 살아 있는 RSC worker는 강제로 끝냅니다.
           </>
         ),
       }),
       l.trans({
         en: (
           <>
-            <strong>What it costs</strong> is the sampled share. On <code>apps/minimal</code> behind a gateway with one
-            replica, at 16 concurrent clients on a laptop, three 8 s runs each, an endpoint that only returns a constant
-            served a median 38.3k requests a second with export off (36.6k to 38.5k over six runs), 38.1k at a ratio of
-            0.01 (37.8k to 38.4k) and 28.9k at 1.0 (28.7k to 29.4k), with p50 going from 0.40 to 0.40 to 0.47 ms. A page
-            replayed from the render cache went from 14.4k a second (14.2k to 14.6k) to 14.6k at 0.01 and 13.1k at 1.0
-            (13.0k to 13.3k), p50 1.02 to 1.01 to 1.12 ms. A ratio of 0.01 is therefore within noise, and 1.0 costs
-            about a quarter of this endpoint&apos;s throughput and under a tenth of a cached page&apos;s; a page that
-            renders spends far more per request than the export does.
+            <strong>What it costs</strong> is the sampled share. In a laptop benchmark a ratio of 0.01 was within noise,
+            and 1.0 cost about a quarter of a constant-returning endpoint&apos;s throughput and under a tenth of a
+            cached page&apos;s.
           </>
         ),
         ko: (
           <>
-            <strong>비용은 샘플되는 비율만큼 듭니다.</strong> replica 하나인 gateway 뒤의 <code>apps/minimal</code>에
-            노트북에서 동시 클라이언트 16개로 8초씩 세 번 재면, 상수만 돌려주는 엔드포인트가 내보내기를 끄면 초당 중앙값
-            3.83만 요청(여섯 번 3.66만~3.85만), 비율 0.01에서 3.81만(3.78만~3.84만), 1.0에서 2.89만(2.87만~2.94만)이었고
-            p50은 0.40ms, 0.40ms, 0.47ms였습니다. 렌더 캐시에서 다시 내보낸 페이지는 초당 1.44만(1.42만~1.46만)에서
-            0.01에서 1.46만, 1.0에서 1.31만(1.30만~1.33만)이 되었고 p50은 1.02, 1.01, 1.12ms였습니다. 따라서 0.01은 오차
-            안이고, 1.0은 이 엔드포인트의 처리량을 4분의 1쯤, 캐시된 페이지는 10분의 1 아래로 줄입니다. 실제로 렌더하는
-            페이지는 요청마다 내보내기보다 훨씬 많은 시간을 씁니다.
+            <strong>비용은 샘플되는 비율만큼 듭니다.</strong> 노트북에서 잰 벤치마크에서 비율 0.01은 오차 안이었고,
+            1.0은 상수만 돌려주는 엔드포인트의 처리량을 4분의 1쯤, 캐시된 페이지는 10분의 1 아래로 줄였습니다.
           </>
         ),
       }),
@@ -1900,8 +1857,8 @@ akan:myapp> .tail off`}
                   type: "1",
                   default: off,
                   desc: l.trans({
-                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per SQL statement sent among them (the first 32 of a request; `db` and `dbMs` count them all, `BEGIN` and `COMMIT` included, without a span), or per model call for a store that sends none through the SQLite or Postgres driver.",
-                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다. 보낸 SQL 문마다 `db:<model>.<op>` span이 하나씩(요청당 처음 32개까지, `db`와 `dbMs`는 `BEGIN`·`COMMIT`을 포함해 전부 세고 둘에는 span이 없습니다) 들어가고, SQLite나 Postgres 드라이버로 문을 보내지 않는 store는 model 호출마다 하나씩 들어갑니다.",
+                    en: "Adds db and cache figures to the request line, and per-stage spans to metrics, with one `db:<model>.<op>` span per SQL statement for a request's first 32; `db` and `dbMs` count them all.",
+                    ko: "요약 줄에 db·cache 수치를, 메트릭에 단계별 span을 더합니다. 보낸 SQL 문마다 `db:<model>.<op>` span이 요청당 처음 32개까지 하나씩 들어가고, `db`와 `dbMs`는 전부 셉니다.",
                   }),
                 },
               ]}

@@ -761,16 +761,16 @@ export default page()
       l.trans({
         en: (
           <>
-            <strong>A mention counts as a page read.</strong> The record a pointer names reaches the model as page
-            content, since its title and value are whatever its author wrote. So the first change after a message with a
-            mention shows the approval card, as after <code>readScreen</code>.
+            <strong>A mention counts as a page read.</strong> The record a pointer names holds its author's words and
+            reaches the model as page content, so the first change after a mention shows the approval card, as after{" "}
+            <code>readScreen</code>.
           </>
         ),
         ko: (
           <>
-            <strong>멘션은 화면을 읽은 것으로 칩니다.</strong> 포인터가 가리키는 레코드의 제목과 값은 그 레코드를 쓴
-            사람의 글이므로, 모델에는 페이지 콘텐츠로 전달됩니다. 그래서 멘션이 든 메시지 뒤의 첫 변경은{" "}
-            <code>readScreen</code> 뒤와 같이 승인 카드를 띄웁니다.
+            <strong>멘션은 화면을 읽은 것으로 칩니다.</strong> 포인터가 가리키는 레코드는 그 레코드를 쓴 사람의 글이라
+            모델에는 페이지 콘텐츠로 전달되므로, 멘션 뒤의 첫 변경은 <code>readScreen</code> 뒤와 같이 승인 카드를
+            띄웁니다.
           </>
         ),
       }),

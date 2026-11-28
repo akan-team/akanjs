@@ -1,8 +1,9 @@
 import { usePage } from "@apps/akan/client";
-import { Code, DocsToc, JellyKicker, panelRecipe } from "@apps/akan/ui";
+import { Code, Docs, DocsToc, JellyKicker, panelRecipe } from "@apps/akan/ui";
 import { Scroll } from "@libs/util/ui";
 import { page } from "akanjs/client";
 import { badgeRecipe, Link } from "akanjs/ui";
+import type { ReactNode } from "react";
 import { BsArrowRight } from "react-icons/bs";
 
 type Phrase = Record<"en" | "ko", string>;
@@ -479,6 +480,77 @@ export default page()
   })
   .render(() => {
     const { l } = usePage();
+    const figures: Record<string, ReactNode> = {
+      light: (
+        <Docs.Figure
+          title={l.trans({ en: "A page takes only its own modules", ko: "페이지는 자기 모듈만 가져갑니다" })}
+          image="v33-page-modules"
+          prompt={`
+          On the left, one large browser labelled "Page". On the right, five small plain squares stacked
+          vertically in one column, with a thin bracket along their right side labelled "App modules". The top
+          two squares are drawn with solid outlines, and from each of them one long arrow runs to the left and
+          ends at the browser; these two arrows are the red accent. The lower three squares are drawn with
+          dashed outlines and have no arrows.
+        `}
+          alt={l.trans({
+            en: "Of the app's five modules, only the two the page names are sent to the browser; the other three stay behind.",
+            ko: "앱의 모듈 다섯 개 중 페이지가 이름을 적은 두 개만 브라우저로 가고, 나머지 셋은 남습니다.",
+          })}
+        />
+      ),
+      secrets: (
+        <Docs.Figure
+          title={l.trans({ en: "Secrets arrive when the server starts", ko: "시크릿은 서버가 시작할 때 들어옵니다" })}
+          image="v33-secrets-outside"
+          prompt={`
+          On the left, two shapes stacked one above the other: the upper one is a container labelled "Image",
+          drawn empty inside; the lower one is one large door key labelled "Secrets". On the right, one server
+          labelled "Server". One long arrow runs from the container to the server, and a second long arrow runs
+          from the key to the server, so the two arrows arrive at the server separately. The key is the red
+          accent.
+        `}
+          alt={l.trans({
+            en: "The image and the secrets reach the server by separate paths: the image holds no secret, and the key is handed over at start.",
+            ko: "이미지와 시크릿은 서로 다른 길로 서버에 닿습니다. 이미지에는 시크릿이 없고, 열쇠는 시작할 때 건네집니다.",
+          })}
+        />
+      ),
+      script: (
+        <Docs.Figure
+          title={l.trans({ en: "The browser checks every script", ko: "브라우저가 스크립트를 하나씩 확인합니다" })}
+          image="v33-script-policy"
+          prompt={`
+          On the left, two application source pages stacked one above the other: the upper one labelled "Your
+          script", the lower one labelled "Injected script". In the middle, one tall thick vertical wall that
+          runs the full height of both pages, labelled "Policy" under it; the wall has one doorway gap, level
+          with the upper page only. On the right, one large browser labelled "Page". One long arrow runs from the
+          upper page straight through the doorway gap and ends at the browser. One short arrow runs from the
+          lower page, stops at the solid part of the wall and ends in one large cross mark; the cross mark is the
+          red accent.
+        `}
+          alt={l.trans({
+            en: "The page's own script passes the policy and runs in the browser, while an injected script is stopped at the gate.",
+            ko: "페이지 자신의 스크립트는 정책을 통과해 브라우저에서 실행되고, 주입된 스크립트는 문 앞에서 막힙니다.",
+          })}
+        />
+      ),
+      observe: (
+        <Docs.Figure
+          title={l.trans({ en: "One id follows the request", ko: "id 하나가 요청을 따라갑니다" })}
+          image="v33-request-id"
+          prompt={`
+          On the far left, one person. To the right of the person, three processes in one row from left to right,
+          labelled "Gateway", "Server" and "Job". One long unbroken line starts at the person and threads
+          straight through all three processes, ending in an arrowhead after the last one; this long line is the
+          red accent. Hanging from the line just after the person, one small luggage tag labelled "Request id".
+        `}
+          alt={l.trans({
+            en: "One request id travels with a request from the gateway through the server to a background job.",
+            ko: "요청 id 하나가 게이트웨이에서 서버를 거쳐 백그라운드 job까지 요청과 함께 이동합니다.",
+          })}
+        />
+      ),
+    };
 
     return (
       <main className="min-h-screen text-foreground">
@@ -566,6 +638,7 @@ export default page()
                     {l.trans(paragraph)}
                   </p>
                 ))}
+                {figures[feature.id] ?? null}
                 {feature.snippet ? (
                   <Code.Snippet
                     className="mt-5 w-full"

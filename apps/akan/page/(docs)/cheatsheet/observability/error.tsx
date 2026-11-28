@@ -1138,19 +1138,16 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>A bounded number a minute.</strong> One server process hands the reporter at most 600
-                      errors a minute, at most 10 of them uncaught exceptions and unhandled rejections, and at most 3
-                      render errors of one request. It logs one line when it starts skipping and drops the rest. Await
-                      what the reporter sends: a send it does not await, failing, comes back as an unhandled rejection
-                      of the process and counts toward those 10.
+                      <strong>A bounded number a minute.</strong> At most 600 errors per server process, 10 of them
+                      uncaught exceptions or unhandled rejections, and 3 render errors per request. Await what the
+                      reporter sends: a failed unawaited send counts toward those 10.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>1분에 정해진 수까지.</strong> 서버 프로세스 하나는 reporter에 1분에 에러를 600개까지, 그중
-                      잡히지 않은 예외와 처리되지 않은 rejection은 10개까지, 한 요청의 렌더 에러는 3개까지 넘깁니다.
-                      건너뛰기 시작할 때 로그를 한 줄 남기고 나머지는 버립니다. reporter가 보내는 것은 await 하세요.
-                      await하지 않은 전송이 실패하면 프로세스의 처리되지 않은 rejection으로 돌아와 그 10개에 들어갑니다.
+                      <strong>1분에 정해진 수까지.</strong> 서버 프로세스 하나가 넘기는 에러는 600개까지, 그중 잡히지
+                      않은 예외와 처리되지 않은 rejection은 10개까지, 한 요청의 렌더 에러는 3개까지입니다. reporter가
+                      보내는 것은 await 하세요. await하지 않은 전송이 실패하면 그 10개에 들어갑니다.
                     </span>
                   ),
                 })}
@@ -1159,22 +1156,18 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>One fault can arrive more than once.</strong> Reports of one request share its{" "}
-                      <code>traceId</code>, so group by it. An endpoint that answers 5xx while a page renders arrives as{" "}
-                      <code>server</code>, with its <code>endpoint</code>, and as <code>render</code>, with the page's{" "}
-                      <code>routeId</code> and <code>digest</code>. A server error streamed into a page arrives as{" "}
-                      <code>render</code>, and when the browser re-renders that part of the page, also as a{" "}
-                      <code>client</code> report of kind <code>recoverable</code> with the same <code>traceId</code>.
+                      <strong>One fault can arrive more than once.</strong> Group by <code>traceId</code>: an endpoint
+                      answering 5xx during a page render arrives as <code>server</code> and <code>render</code>, and a
+                      streamed server error the browser re-renders as <code>render</code> and a <code>recoverable</code>{" "}
+                      <code>client</code> report.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>장애 하나가 여러 번 올 수 있습니다.</strong> 한 요청의 보고는 <code>traceId</code>가
-                      같으므로 그것으로 묶으세요. 페이지를 렌더하는 중에 5xx로 응답한 endpoint는 <code>endpoint</code>를
-                      가진 <code>server</code>로도, 페이지의 <code>routeId</code>와 <code>digest</code>를 가진{" "}
-                      <code>render</code>로도 옵니다. 페이지로 스트리밍된 서버 에러는 <code>render</code>로 오고,
-                      브라우저가 그 부분을 다시 렌더하면 같은 <code>traceId</code>를 가진 <code>recoverable</code>{" "}
-                      종류의 <code>client</code> 보고로도 옵니다.
+                      <strong>장애 하나가 여러 번 올 수 있습니다.</strong> 보고는 <code>traceId</code>로 묶으세요.
+                      페이지 렌더 중에 5xx로 응답한 endpoint는 <code>server</code>와 <code>render</code>로 오고,
+                      페이지로 스트리밍된 서버 에러를 브라우저가 다시 렌더하면 <code>render</code>와{" "}
+                      <code>recoverable</code> 종류의 <code>client</code> 보고로 옵니다.
                     </span>
                   ),
                 })}
@@ -1204,23 +1197,19 @@ export const option = new AkanOption<ModulesOptions>()
               {l.trans({
                 en: (
                   <span>
-                    With <code>setClientReport</code>, each page view the sample draws sends its React root's uncaught,
-                    caught and recoverable errors, <code>window.onerror</code> and unhandled rejections to{" "}
-                    <code>/_akan/client-report</code>, at most five a page view. A page loads the sending code only on
-                    its first error. Without the option the route does not exist and pages send nothing. The server
-                    gives each such page view an id in the page's <code>Server-Timing</code> header, the request id with
-                    a signature, and takes a report only with that id: for 30 to 60 minutes after the page was served,
-                    and five times.
+                    With <code>setClientReport</code>, each sampled page view sends its React root's uncaught, caught
+                    and recoverable errors, <code>window.onerror</code> and unhandled rejections to{" "}
+                    <code>/_akan/client-report</code>, at most five each. Without the option the route does not exist.
+                    The server takes a report only with the signed id it gave that page view, for 30 to 60 minutes after
+                    serving the page.
                   </span>
                 ),
                 ko: (
                   <span>
                     <code>setClientReport</code>를 켜면, 표본으로 뽑힌 페이지 뷰가 React root의 uncaught·caught·
                     recoverable 에러와 <code>window.onerror</code>, 처리되지 않은 rejection을 페이지 뷰마다 다섯 개까지{" "}
-                    <code>/_akan/client-report</code>로 보냅니다. 보내는 코드는 첫 에러가 났을 때에만 불러옵니다. 옵션이
-                    없으면 그 route가 없고 페이지도 아무것도 보내지 않습니다. 서버는 그런 페이지 뷰마다 페이지의{" "}
-                    <code>Server-Timing</code> 헤더에 id(요청 id와 서명)를 실어 주고, 그 id가 있는 보고만 받습니다.
-                    페이지를 내보낸 뒤 30~60분 동안, 다섯 번까지입니다.
+                    <code>/_akan/client-report</code>로 보냅니다. 옵션이 없으면 그 route가 없습니다. 서버는 그 페이지
+                    뷰에 준 서명된 id가 있는 보고만, 페이지를 내보낸 뒤 30~60분 동안 받습니다.
                   </span>
                 ),
               })}
@@ -1229,27 +1218,20 @@ export const option = new AkanOption<ModulesOptions>()
               {l.trans({
                 en: (
                   <span>
-                    A native app's page is bundled into the app and loaded from <code>app://localhost</code> (iOS,
-                    macOS, Linux) or <code>https://app.localhost</code> (Android, Windows), so no page view gave it an
-                    id. At its first <code>window.onerror</code> or unhandled rejection, which covers React's uncaught
-                    and recoverable errors and a failed native plugin call, it asks{" "}
-                    <code>GET /_akan/client-report</code> on the app's server. The server answers only a shell origin,
-                    counts the ask against <code>perAddress</code>, draws it against <code>sampleRate</code> by the
-                    ask's own request id, and returns a signed id that the page uses as a page view's, asking again
-                    after 30 minutes, or after a minute when the ask did not reach the server. A page with no id sends
-                    nothing.
+                    A native app's page loads from <code>app://localhost</code> (iOS, macOS, Linux) or{" "}
+                    <code>https://app.localhost</code> (Android, Windows), so it starts without an id. At its first{" "}
+                    <code>window.onerror</code> or unhandled rejection, which covers React's uncaught and recoverable
+                    errors and a failed native plugin call, it asks <code>GET /_akan/client-report</code> for one. The
+                    ask counts against <code>perAddress</code> and is drawn against <code>sampleRate</code>.
                   </span>
                 ),
                 ko: (
                   <span>
-                    네이티브 앱의 페이지는 앱에 묶여 <code>app://localhost</code>(iOS, macOS, Linux)나{" "}
-                    <code>https://app.localhost</code>(Android, Windows)에서 열리므로, id를 준 페이지 뷰가 없습니다.
-                    React의 uncaught·recoverable 에러와 실패한 네이티브 plugin 호출을 포함해 첫{" "}
-                    <code>window.onerror</code>나 처리되지 않은 rejection이 나면, 앱 서버의{" "}
-                    <code>GET /_akan/client-report</code>에 id를 요청합니다. 서버는 shell origin에만 답하고, 이 요청을{" "}
-                    <code>perAddress</code>에 세며, 요청 자신의 요청 id로 <code>sampleRate</code> 표본을 뽑아 서명된
-                    id를 돌려줍니다. 페이지는 이를 페이지 뷰의 id처럼 쓰고 30분이 지나면, 요청이 서버에 닿지 못했다면
-                    1분이 지나면 다시 요청합니다. id가 없는 페이지는 아무것도 보내지 않습니다.
+                    네이티브 앱의 페이지는 <code>app://localhost</code>(iOS, macOS, Linux)나{" "}
+                    <code>https://app.localhost</code>(Android, Windows)에서 열리므로 처음에는 id가 없습니다. React의
+                    uncaught·recoverable 에러와 실패한 네이티브 plugin 호출을 포함해 첫 <code>window.onerror</code>나
+                    처리되지 않은 rejection이 나면 <code>GET /_akan/client-report</code>로 id를 요청합니다. 이 요청은{" "}
+                    <code>perAddress</code>에 세고 <code>sampleRate</code>로 표본을 뽑습니다.
                   </span>
                 ),
               })}
@@ -1278,18 +1260,16 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Reports it did not ask for.</strong> It keeps only a <code>text/plain</code> POST from the
-                      app's own origin or a native app's shell origin, of 8 KB or less, carrying the id the server gave
-                      that page view, within the limits above. It checks in that order, and only a report with such an
-                      id counts toward <code>perServer</code>. Every request, kept or not, gets the same empty 204.
+                      <strong>Reports it did not ask for.</strong> It keeps only a <code>text/plain</code> POST of 8 KB
+                      or less, from the app's own origin or a native app's shell origin, carrying that page view's id.
+                      Every request gets the same empty 204.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>요청하지 않은 보고.</strong> 앱 자신의 origin이나 네이티브 앱의 shell origin에서 온 8 KB
-                      이하의 <code>text/plain</code> POST로, 서버가 그 페이지 뷰에 준 id를 싣고 위 한도 안에 있는 것만
-                      받습니다. 이 순서로 확인하며, 그런 id를 가진 보고만 <code>perServer</code>에 셉니다. 받든 버리든
-                      모든 요청에 같은 빈 204로 답합니다.
+                      이하의 <code>text/plain</code> POST로, 그 페이지 뷰의 id를 실은 것만 받습니다. 모든 요청에 같은 빈
+                      204로 답합니다.
                     </span>
                   ),
                 })}
@@ -1314,20 +1294,16 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>Query strings, addresses and credentials.</strong> In the name, message and stack, a URL
-                      or a path loses its query string and fragment and keeps its line and column, an email address
-                      becomes <code>[email]</code>, a <code>Bearer …</code> value and a JWT become{" "}
-                      <code>[redacted]</code>, and the characters that reorder how a line displays are removed. The page
-                      does this before it sends, and the server again before the reporter or the log sees the text.
+                      <strong>Query strings, addresses and credentials.</strong> A URL or path loses its query string
+                      and fragment, an email address becomes <code>[email]</code>, and a <code>Bearer …</code> value or
+                      JWT becomes <code>[redacted]</code>: once in the page, again on the server.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>query string, 주소, 인증 값.</strong> name·message·stack에서 URL이나 경로의 query string과
-                      fragment를 지우고 줄과 열 번호는 남기며, 이메일 주소는 <code>[email]</code>로,{" "}
-                      <code>Bearer …</code> 값과 JWT는 <code>[redacted]</code>로 바꾸고, 줄이 표시되는 순서를 바꾸는
-                      문자는 지웁니다. 페이지가 보내기 전에 한 번, 서버가 reporter와 로그에 넘기기 전에 다시 한 번
-                      합니다.
+                      <strong>query string, 주소, 인증 값.</strong> URL이나 경로의 query string과 fragment는 지우고,
+                      이메일 주소는 <code>[email]</code>로, <code>Bearer …</code> 값과 JWT는 <code>[redacted]</code>로
+                      바꿉니다. 페이지에서 한 번, 서버에서 다시 한 번 합니다.
                     </span>
                   ),
                 })}
@@ -1336,25 +1312,16 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>An id another deployment signed.</strong> An operator may set the secret{" "}
-                      <code>AKAN_CLIENT_REPORT_KEY</code> to 32 characters or more, and every server that holds it takes
-                      an id any of them gave; a gateway passes it to its replicas unchanged, and a shorter value is
-                      ignored with one warning. Without it, the replicas behind one gateway share a key the gateway
-                      makes at start, so a report is taken by any of them and by no other gateway's; a server run alone
-                      uses its own key, so only the process that served the page takes its reports, and none after a
-                      restart. The app name and the environment are signed in either way. Set the key, the same on each,
-                      when more than one gateway or pod answers for the app.
+                      <strong>An id another deployment signed.</strong> By default an id is good only within one
+                      gateway's replicas, or one solo process until restart. With several gateways or pods, set the
+                      secret <code>AKAN_CLIENT_REPORT_KEY</code>, 32 characters or more, the same on each.
                     </span>
                   ),
                   ko: (
                     <span>
-                      <strong>다른 배포가 서명한 id.</strong> 운영자는 비밀값 <code>AKAN_CLIENT_REPORT_KEY</code>를 32자
-                      이상으로 설정할 수 있으며, 이 값을 가진 서버는 그중 누가 준 id든 받습니다. gateway는 이 값을
-                      replica에 그대로 넘기고, 더 짧은 값은 경고 한 줄과 함께 무시됩니다. 설정하지 않으면 한 gateway
-                      뒤의 replica들은 gateway가 시작할 때 만든 키를 함께 쓰므로 그 replica 중 누구든 보고를 받지만 다른
-                      gateway의 것은 받지 않습니다. 혼자 도는 서버는 자기 키를 쓰므로 페이지를 내보낸 프로세스만 그
-                      보고를 받고, 재시작한 뒤에는 받지 않습니다. 앱 이름과 환경은 어느 쪽이든 서명에 들어갑니다.
-                      gateway나 pod가 둘 이상이면 모두에 같은 키를 설정하세요.
+                      <strong>다른 배포가 서명한 id.</strong> 기본으로 id는 한 gateway의 replica들 안에서만, 혼자 도는
+                      서버라면 재시작 전까지 그 프로세스에서만 통합니다. gateway나 pod가 둘 이상이면 비밀값{" "}
+                      <code>AKAN_CLIENT_REPORT_KEY</code>를 32자 이상으로, 모두에 같은 값으로 설정하세요.
                     </span>
                   ),
                 })}
@@ -1363,19 +1330,17 @@ export const option = new AkanOption<ModulesOptions>()
                 {l.trans({
                   en: (
                     <span>
-                      <strong>What the limits leave.</strong> Each server process counts on its own, so N replicas take
-                      up to N times <code>perServer</code> and five reports per id each. Visitors behind one address
-                      share its <code>perAddress</code>. <code>perServer</code> is one budget for everyone who loaded a
-                      page: once a minute's worth is taken, later reports that minute are dropped, never queued.
+                      <strong>What the limits leave.</strong> Each server process counts alone, so N replicas take up to
+                      N times <code>perServer</code>. Visitors behind one address share its <code>perAddress</code>, and
+                      all visitors one <code>perServer</code>: past it, that minute's reports are dropped.
                     </span>
                   ),
                   ko: (
                     <span>
                       <strong>한도가 남기는 것.</strong> 서버 프로세스마다 따로 세므로 replica가 N개면{" "}
-                      <code>perServer</code>의 N배까지, id 하나당 프로세스마다 다섯 개까지 받습니다. 한 주소 뒤의
-                      방문자들은 그 주소의 <code>perAddress</code>를 나눠 씁니다. <code>perServer</code>는 페이지를
-                      불러온 모두가 함께 쓰는 한도입니다. 1분 치를 다 쓰면 그 분의 나머지 보고는 버리며 쌓아 두지
-                      않습니다.
+                      <code>perServer</code>의 N배까지 받습니다. 한 주소 뒤의 방문자들은 그 주소의{" "}
+                      <code>perAddress</code>를, 모든 방문자는 <code>perServer</code> 하나를 나눠 씁니다. 한도를 넘으면
+                      그 분의 나머지 보고는 버립니다.
                     </span>
                   ),
                 })}
@@ -1385,20 +1350,18 @@ export const option = new AkanOption<ModulesOptions>()
               {l.trans({
                 en: (
                   <span>
-                    <strong>What leaves the browser.</strong> The id the server gave the page view, the route pattern,
-                    and the error's name, message, stack and digest, cleaned as above. No cookies, no referrer and no
-                    account. The cleaning knows a few shapes, not meanings: a message still holds whatever else the code
-                    put into it, such as a value a user typed, so keep personal data out of error messages, and name the
+                    <strong>What leaves the browser.</strong> The page view's id, the route pattern, and the error's
+                    name, message, stack and digest, cleaned as above. No cookies, no referrer and no account. The
+                    cleaning knows shapes, not meanings, so keep personal data out of error messages, and name the
                     service in your privacy notice when your reporter forwards to one.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>브라우저를 떠나는 것.</strong> 서버가 페이지 뷰에 준 id, route 패턴, 위처럼 정리한 에러의
-                    name·message·stack·digest입니다. 쿠키, referrer, 계정은 보내지 않습니다. 정리는 몇 가지 모양만 알 뿐
-                    뜻은 모릅니다. message에는 코드가 넣은 다른 것(사용자가 입력한 값 등)이 그대로 남으므로 에러
-                    메시지에 개인정보를 넣지 말고, reporter가 외부 서비스로 보낸다면 개인정보 처리방침에 그 서비스를
-                    적으세요.
+                    <strong>브라우저를 떠나는 것.</strong> 페이지 뷰의 id, route 패턴, 위처럼 정리한 에러의
+                    name·message·stack·digest입니다. 쿠키, referrer, 계정은 보내지 않습니다. 정리는 모양만 알 뿐 뜻은
+                    모르므로 에러 메시지에 개인정보를 넣지 말고, reporter가 외부 서비스로 보낸다면 개인정보 처리방침에
+                    그 서비스를 적으세요.
                   </span>
                 ),
               })}
@@ -1407,29 +1370,20 @@ export const option = new AkanOption<ModulesOptions>()
               {l.trans({
                 en: (
                   <span>
-                    <strong>Pages that send nothing.</strong> The browser reads the request id from the page's{" "}
-                    <code>Server-Timing</code> header, which it shows a script only over HTTPS and on{" "}
-                    <code>localhost</code>. A page served with a <code>Cache-Control</code> that lets a shared cache
-                    reuse it (<code>AKAN_HTML_CACHE_CONTROL</code> set to <code>public, max-age=…</code> or{" "}
-                    <code>off</code>) carries no id, since a stored copy would give one page view's id to the next
-                    visitor; the default <code>no-cache</code> and a signed-in page's <code>private, no-cache</code> do
-                    carry it. The CSR bundle a native app loads sends none. A tab open for longer than the 30 to 60
-                    minutes its id is taken for sends reports the server drops, until it loads a document again. The
-                    page reads its id once, when the document loads: after an in-app navigation a report still carries
-                    that first id, with the route pattern of the page the user is on.
+                    <strong>Pages that send nothing.</strong> The id comes in the page's <code>Server-Timing</code>{" "}
+                    header, which a script sees only on <code>localhost</code> and over HTTPS. A page a shared cache may
+                    reuse (<code>AKAN_HTML_CACHE_CONTROL</code> set to <code>public, max-age=…</code> or{" "}
+                    <code>off</code>) carries no id. A tab open past those 30 to 60 minutes has its reports dropped
+                    until the next document load.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>아무것도 보내지 않는 페이지.</strong> 브라우저는 페이지의 <code>Server-Timing</code>{" "}
-                    헤더에서 요청 id를 읽는데, 이 헤더는 HTTPS와 <code>localhost</code>에서만 script에 보입니다. 공유
-                    캐시가 다시 쓸 수 있는 <code>Cache-Control</code>(<code>AKAN_HTML_CACHE_CONTROL</code>을{" "}
-                    <code>public, max-age=…</code>나 <code>off</code>로 둔 경우)로 나간 페이지는 저장된 사본이 다음
-                    방문자에게 같은 id를 줄 수 있으므로 id를 싣지 않습니다. 기본값 <code>no-cache</code>와 로그인한
-                    페이지의 <code>private, no-cache</code>는 id를 싣습니다. 네이티브 앱이 불러오는 CSR 번들은 보내지
-                    않습니다. id를 받아 주는 30~60분보다 오래 열어 둔 탭의 보고는 문서를 다시 불러올 때까지 서버가
-                    버립니다. 페이지는 문서를 불러올 때 id를 한 번만 읽습니다. 앱 안에서 이동한 뒤의 보고에도 그 첫 id가
-                    실리고, route 패턴은 사용자가 보고 있는 페이지의 것입니다.
+                    <strong>아무것도 보내지 않는 페이지.</strong> id는 페이지의 <code>Server-Timing</code> 헤더에 실려
+                    오는데, 이 헤더는 <code>localhost</code>와 HTTPS에서만 script에 보입니다. 공유 캐시가 다시 쓸 수
+                    있는 페이지(<code>AKAN_HTML_CACHE_CONTROL</code>을 <code>public, max-age=…</code>나 <code>off</code>
+                    로 둔 경우)는 id를 싣지 않습니다. 그 30~60분보다 오래 열어 둔 탭의 보고는 문서를 다시 불러올 때까지
+                    버려집니다.
                   </span>
                 ),
               })}

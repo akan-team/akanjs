@@ -274,7 +274,7 @@ Follow a running app's logs through its `akan-control.sock`. Every record carrie
 
 Open pages of the app's dev server in a headless browser and print one verdict line per page: status, title, uncaught errors, the server errors logged while it loaded, console errors and layout smells. It reuses a running `akan start`, or starts one and stops it afterwards. It exits 1 when a page failed.
 
-- paths (String): Page paths, space- or comma-separated. A missing locale gets the default one; without paths it opens `/`. What the server answers outside a locale opens as written, without one: a `/_akan` route such as Studio (`/_akan/studio?view=runtime`), a route under the API prefix, `/__csr`, `/__rsc`, `/.well-known`, `/openapi.json`, `/mcp`, the server's own files (`/favicon.ico`, `/robots.txt`, `/sitemap.xml`, `manifest.webmanifest`) and a file in `public/`; `--csr` prints a note naming them. `/mcp` answers only `POST`, so preview cannot check it (it fails with 405). A full URL (`http://localhost:<port>/oauth/token`) opens its path and query the same way, always on the app's dev server, with a note when it names another server, for an endpoint mounted outside the API prefix. A page `--changed` finds opens as a page even at a server route's path, under the same locale rule, and `/en` and `/en/` open once.
+- paths (String): Page paths, space- or comma-separated; without paths it opens `/`. A missing locale gets the default one, but what the server answers outside a locale opens as written: `/_akan/studio?view=runtime`, a route under the API prefix, a file in `public/`. A full URL (`http://localhost:<port>/oauth/token`) opens its path and query on the app's dev server.
 
 - --changed (Boolean, default false, -C): Also open the pages that uncommitted page and layout changes reach, `/` when no route changed. A route with a `[param]` opens at the first path in `preview.examples` of `akan.config.ts` that fits it, and is listed as not opened without one.
 
@@ -362,7 +362,7 @@ Build the app for production into `dist/apps/<app>`. It typechecks, then compile
 
 - alias: `akan b` runs this command.
 
-- server env secrets: The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the server starts, from a variable named after its key path: `security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`, `security.jwtSecret` from `JWT_SECRET`, an array holding a secret from one JSON variable. `akan.env.json` and the Dockerfile list the names in `AKAN_ENV_NAMES`, the build prints them, and a server started without one exits before it listens, naming each. A secret the env file computes or imports stops the build before it writes anything, whatever its length: write the string at the key, or `process.env.<NAME>` there, which the build leaves as that read and never moves. A secret string that another key of the env or the app's code holds as well stops the build when it is long and mixed, and is a warning when it is short or plain. The build loads the env file to list the secrets, with the shell's variables only when the file cannot load without them; a file that throws as it loads stops the build with the error's class and line. No message prints a value. A `--profile` build and a desktop or mobile build bundle their env files as written. See `secret-env`.
+- server env secrets: The build puts no secret value of `env/env.server.<env>.ts` into `dist/apps/<app>`: a string under a secret-named key (password, secret, token, apiKey, privateKey, …) or a URL carrying a password. The server reads each at start from a variable named after its key path (`security.sso.google.clientSecret` from `SECURITY__SSO__GOOGLE__CLIENT_SECRET`); `secret-env` lists them. Write a secret as a string at its key, or `process.env.<NAME>` there, never computed or imported. A `--profile`, desktop or mobile build bundles its env files as written.
 
 - lib defaults: With `--profile`, a lib that has no profile file of its own ships its defaults with every secret-named value left out, and the build names what it left out.
 
@@ -384,9 +384,9 @@ List the environment variables a build of the app reads its server env secrets f
 
 - --force (Boolean, default false): Replace the `--out` file when it exists.
 
-- listing: One row per variable: its name, its kind (`string`, `json` for an array, `multiline` for a value with line breaks), whether the shell sets it, and its key in the env file. It never prints a value. A secret the env file computes or imports is named below the table as one `akan build` stops at. A key the env file reads from `process.env` itself is not listed: it is the developer's own variable.
+- listing: One row per variable: its name, its kind (`string`, `json` for an array, `multiline`), whether the shell sets it, and its key in the env file; never a value. A key the env file reads from `process.env` itself is not listed.
 
-- deploying: Kubernetes: apply the file in the app's namespace and name the Secret in the container's `envFrom`. Docker: pass each variable with `-e`; `docker run --env-file` reads each line as written, so it carries no quoted or multi-line value. A host: `bun --env-file=<file> main.js`. The file holds the secrets, so delete it once it is applied.
+- deploying: Kubernetes: apply the file in the app's namespace and name the Secret in the container's `envFrom`. Docker: pass each variable with `-e`; `docker run --env-file` carries no quoted or multi-line value. A host: `bun --env-file=<file> main.js`. Delete the file once it is applied.
 
 `akan start-ios <app> [--target <target>] [--env <env>] [--release <boolean>] [--device <device>] [--team <team>] [--write <boolean>]`
 
