@@ -365,6 +365,9 @@ export default page()
             <Link href="/blog/v3-1release" className="font-bold text-primary hover:underline">
               {l.trans({ en: "Read what changed in 3.1", ko: "3.1에서 바뀐 것 읽기" })}
             </Link>
+            <Link href="/blog/v3-2release" className="font-bold text-primary hover:underline">
+              {l.trans({ en: "Read what changed in 3.2", ko: "3.2에서 바뀐 것 읽기" })}
+            </Link>
             <Link href="/blog/v3-3release" className="font-bold text-primary hover:underline">
               {l.trans({ en: "Read what changed in 3.3", ko: "3.3에서 바뀐 것 읽기" })}
             </Link>

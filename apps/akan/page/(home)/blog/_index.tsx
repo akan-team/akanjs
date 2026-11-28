@@ -28,7 +28,23 @@ const posts: BlogPost[] = [
     },
     meta: { en: "Product", ko: "제품" },
     date: { en: "Nov 28, 2026", ko: "2026년 11월 28일" },
-    image: "/akanjsImage/diagrams/client-leaf.png",
+    image: "/akanjsImage/diagrams/blog-v3-3release.png",
+    imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
+  },
+  {
+    href: "/blog/v3-2release",
+    eyebrow: { en: "Release Note", ko: "Release Note" },
+    title: {
+      en: "Akan.js 3.2: agents on the server, closed by default",
+      ko: "Akan.js 3.2: 서버로 간 에이전트, 기본은 닫힘",
+    },
+    desc: {
+      en: "The agent runs inside the server, an endpoint with no guard is closed, the whole app is drawn as a map, and the editor understands Akan's names. Plus what to check when you upgrade from 3.1.",
+      ko: "에이전트가 서버 안에서 돌고, 가드 없는 엔드포인트는 닫히며, 앱 전체가 지도로 그려지고, 에디터가 Akan의 이름을 이해합니다. 3.1에서 올릴 때 확인할 것도 함께 정리했습니다.",
+    },
+    meta: { en: "Product", ko: "제품" },
+    date: { en: "Nov 15, 2026", ko: "2026년 11월 15일" },
+    image: "/akanjsImage/diagrams/blog-v3-2release.png",
     imageClassName: "object-cover mix-blend-multiply dark:mix-blend-screen dark:hue-rotate-180 dark:invert",
   },
   {
