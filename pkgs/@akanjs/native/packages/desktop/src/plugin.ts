@@ -3,8 +3,10 @@
 
 import { EXTERNAL_OPENS_PER_SECOND } from "../../core/src/contract.ts";
 import type { AppInfo, CallScope, FileRef } from "../../core/src/index.ts";
+import type { DesktopProcess, DesktopSpawnOptions, ResolvedCommand } from "./commands.ts";
 import type { QuitReason, Veto } from "./lifecycle.ts";
 
+export type { DesktopProcess, DesktopProcessInput, DesktopSpawnOptions, ResolvedCommand } from "./commands.ts";
 export type { QuitReason, Veto } from "./lifecycle.ts";
 export { createPageVeto, type PageVeto } from "./page-veto.ts";
 
@@ -57,6 +59,24 @@ export interface DesktopContext {
    * Bun.which without `env` reads the environment the app started with, so name a file here or pass the env.
    */
   readonly binDir: string | null;
+  /**
+   * The PATH of the user's own shell, without the app's bin folder: an app started from the Finder or a launcher has
+   * only the session's. Read from the user's login shell at the first call and kept; that call takes as long as the
+   * shell's profile does (seconds, 10 at most), so a plugin that will need it asks in its setup without waiting.
+   * Windows: the PATH the app started with.
+   */
+  userPath(): Promise<string>;
+  /**
+   * The file `name` runs: in the app's bin folder first, then on the user's PATH; null when it is in neither. Windows
+   * follows PATHEXT, and `shell` says the file is a `.cmd` or `.bat`.
+   */
+  resolveCommand(name: string): Promise<ResolvedCommand | null>;
+  /**
+   * Starts a program the user installed (or one in binDir) as a child that ends with the app however the app ends, a
+   * crash or a kill included; with `document: ctx.document`, also when the calling page does. A bare name is looked up
+   * as resolveCommand does, on the PATH the child gets. Rejects NOT_FOUND when there is no such program.
+   */
+  spawn(cmd: string[], options?: DesktopSpawnOptions): Promise<DesktopProcess>;
   /**
    * The server the app carries (desktop.server), or null. `ready` settles once per session: true when the server
    * first answered ready, false when it could not start or gave up before that; `state` and `onState` follow it after.

@@ -15,6 +15,7 @@ import { ID_FILE_REF } from "../../core/src/contract.ts";
 import type { AppInfo, ErrorCode } from "../../core/src/index.ts";
 import { AkanNativeError, aclCheck, loadAcl } from "../../core/src/index.ts";
 import { CONSOLE_PLUGIN, ERROR_CODES, errorResponse, HOST_PLUGIN } from "../../core/src/protocol.ts";
+import { appBinFirst, createCommands } from "./commands.ts";
 import { linkArguments, registerDeepLinks } from "./deeplinks.ts";
 import { createDispatcher } from "./dispatcher.ts";
 import { cstr, FRAME_EVENT, FRAME_HEADER, FRAME_IPC, openNative, resolvePaths } from "./ffi.ts";
@@ -23,14 +24,7 @@ import { appDataDir, appLocalDataDir, reservedDirs, serverDataDir } from "./path
 import { type DesktopPlugin, useShellOpenLimit } from "./plugin.ts";
 import { appLauncher, nextRelaunchDelay, relaunchAfterExit } from "./relaunch.ts";
 import { createSecretStore } from "./secretStore.ts";
-import {
-  createDesktopServer,
-  createServerStatus,
-  envValue,
-  pathWithFirst,
-  readServerManifest,
-  type ServerManifest,
-} from "./server.ts";
+import { createDesktopServer, createServerStatus, readServerManifest, type ServerManifest } from "./server.ts";
 
 declare const self: Worker;
 
@@ -117,15 +111,7 @@ export function createShellCalls(send: (id: number, json: string) => void, deadl
 
 export function startHost(plugins: DesktopPlugin[]): void {
   const paths = resolvePaths();
-  //? A Worker keeps its own copy of process.env, and Bun.spawn without `env` ignores it anyway: the server launcher
-  //? and plugins that pass process.env get the app's executables first.
-  const binDir = existsSync(join(paths.resources, "bin")) ? join(paths.resources, "bin") : null;
-  if (binDir) {
-    //? One name for it from here on: a second PATH beside Windows' `Path` would hide the system's from a child.
-    const path = envValue(process.env, "PATH");
-    for (const name of Object.keys(process.env)) if (name.toUpperCase() === "PATH") delete process.env[name];
-    process.env.PATH = pathWithFirst(binDir, path);
-  }
+  const binDir = appBinFirst(paths.resources);
   const lib = openNative(paths.lib);
   const native = lib.symbols;
   // One limit for every external open (L0): the page's links (shell) and the plugins' (here).
@@ -214,6 +200,7 @@ export function startHost(plugins: DesktopPlugin[]): void {
       appDataDir: appDataDir(boot.app.id),
       appLocalDataDir: appLocalDataDir(boot.app.id),
       binDir,
+      commands: createCommands({ binDir }),
       server: serverStatus?.status ?? null,
       emit(window, message) {
         emitJs(window, `window.__AKAN_NATIVE__&&window.__AKAN_NATIVE__.receive(${JSON.stringify(message)})`);
