@@ -62,7 +62,7 @@ import {
   writePluginBindings,
 } from "../lib/native-plugins.ts";
 import { androidFeaturesFor, androidPermissionsFor } from "../lib/permissions.ts";
-import { type AndroidSigning, type BuildContext, SigningError } from "../lib/prepare.ts";
+import { type AndroidSigning, type BuildContext, nativeAppName, SigningError } from "../lib/prepare.ts";
 import type { AndroidManifest, ResolvedConfig } from "../lib/project.ts";
 import { PACKAGE_ROOT } from "../lib/root.ts";
 import { writePhoneUpdates } from "../lib/updates.ts";
@@ -183,7 +183,7 @@ ${manifestXml.map((x) => `    ${x.replaceAll(`\${applicationId}`, appId)}`).join
 
     <application
         android:name="com.akanjs.runtime.AkanNativeApplication"
-        android:label="${xml(app.name)}"
+        android:label="${xml(nativeAppName(ctx, "android"))}"
 ${icon ? `        android:icon="@mipmap/ic_launcher"\n` : ""}${ctx.dev ? `        android:networkSecurityConfig="@xml/akan_native_network_security"\n` : ""}        android:theme="@style/AkanNativeTheme"
         android:allowBackup="false"
         android:supportsRtl="true"

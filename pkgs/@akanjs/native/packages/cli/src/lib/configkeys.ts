@@ -44,7 +44,13 @@ const KNOWN: Shape = {
     resources: { "[]": { from: true, to: true } },
   },
   security: { csp: true, shell: { externalSchemes: true } },
-  android: { minWebViewVersion: true, debugAppIdSuffix: true, googleServices: true, autoplay: true },
+  android: {
+    minWebViewVersion: true,
+    debugAppIdSuffix: true,
+    debugAppNameSuffix: true,
+    googleServices: true,
+    autoplay: true,
+  },
   desktop: {
     quitOnLastWindowClosed: true,
     recovery: true,
@@ -68,7 +74,7 @@ const KNOWN: Shape = {
   push: {
     android: { channel: { id: true, name: true, importance: true, description: true }, smallIcon: true, color: true },
   },
-  ios: { hideFormAccessoryBar: true },
+  ios: { hideFormAccessoryBar: true, debugAppIdSuffix: true, debugAppNameSuffix: true },
   icon: { image: true, backgroundColor: true },
   splash: { backgroundColor: { light: true, dark: true }, image: true, autoHide: true, timeout: true },
 };

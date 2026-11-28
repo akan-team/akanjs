@@ -896,25 +896,40 @@ describe("WebRouter deep link associations", () => {
     ],
   });
 
-  test("serves apple app site association from deep link metadata, each target under its iOS id", async () => {
-    await withFullSsrCacheHarness(
-      async ({ renderEnvRoutes }) => {
-        const response = await renderEnvRoutes["/.well-known/apple-app-site-association"](
-          new Request("https://minimal.app/.well-known/apple-app-site-association"),
-        );
-        expect(response.headers.get("Content-Type")).toContain("application/json");
-        await expect(response.json()).resolves.toEqual({
-          applinks: {
-            apps: [],
-            details: [
-              { appIDs: ["TEAMID.com.minimal.app"], components: [{ "/": "/*" }] },
-              { appIDs: ["ADMINTEAM.com.puffinplanet.admin"], components: [{ "/": "/*" }] },
-            ],
-          },
-        });
-      },
-      { artifact: artifactWithDeepLinks() },
+  const requestAppSiteAssociation = async (env: string) =>
+    await withEnv("AKAN_PUBLIC_ENV", env, () =>
+      withFullSsrCacheHarness(
+        async ({ renderEnvRoutes }) => {
+          const response = await renderEnvRoutes["/.well-known/apple-app-site-association"](
+            new Request("https://minimal.app/.well-known/apple-app-site-association"),
+          );
+          expect(response.headers.get("Content-Type")).toContain("application/json");
+          return (await response.json()) as {
+            applinks: { apps: string[]; details: { appIDs: string[]; components: unknown[] }[] };
+          };
+        },
+        { artifact: artifactWithDeepLinks() },
+      ),
     );
+
+  test("serves apple app site association from deep link metadata, each target under its iOS id", async () => {
+    expect(await requestAppSiteAssociation("main")).toEqual({
+      applinks: {
+        apps: [],
+        details: [
+          { appIDs: ["TEAMID.com.minimal.app"], components: [{ "/": "/*" }] },
+          { appIDs: ["ADMINTEAM.com.puffinplanet.admin"], components: [{ "/": "/*" }] },
+        ],
+      },
+    });
+  });
+
+  test("vouches for the .debug bundle id of a dev build only outside main", async () => {
+    const association = await requestAppSiteAssociation("debug");
+    expect(association.applinks.details.map((detail) => detail.appIDs)).toEqual([
+      ["TEAMID.com.minimal.app", "TEAMID.com.minimal.app.debug"],
+      ["ADMINTEAM.com.puffinplanet.admin", "ADMINTEAM.com.puffinplanet.admin.debug"],
+    ]);
   });
 
   interface AssetLink {

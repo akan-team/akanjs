@@ -12,6 +12,7 @@ import {
 import { closeAppOpenedTab } from "./appOpenedTab";
 import { CsrLocation, csrLocation } from "./csrLocation";
 import { CsrRuntimeParams } from "./csrRuntimeParams";
+import { DeepLinkStack } from "./deepLinkStack";
 import { Href } from "./href";
 import { isMcpView } from "./mcpView";
 import { type NavigationAttempt, type NavigationGuard, NavigationGuards, NavigationRefused } from "./navigationGuards";
@@ -32,6 +33,8 @@ export interface RouteOptions {
 }
 export interface RouteManifest {
   routes: string[];
+  /** Per route, the route a deep link lays under it when the app opens on it with nothing behind (`PageConfig.stackOn`). */
+  stackOn?: { [route: string]: string };
 }
 export interface DeepLinkOptions extends RouteOptions {
   resetStack?: boolean;
@@ -224,7 +227,7 @@ class Router {
   #isCsr: boolean = false;
   #prefix = "";
   #lang = parseAkanI18nEnv().defaultLocale;
-  #routePaths = new Set<string>();
+  #deepLinks = new DeepLinkStack([]);
   #indexPath = "/";
   #navigation: Promise<void> = Promise.resolve();
   #historyIdx = 0;
@@ -260,13 +263,14 @@ class Router {
     this.#isCsr = options.type === "csr";
     this.#prefix = options.prefix ?? "";
     this.#lang = options.lang ?? parseAkanI18nEnv().defaultLocale;
-    this.#routePaths = new Set(
-      (Array.isArray(options.routeManifest) ? options.routeManifest : (options.routeManifest?.routes ?? []))
-        .map((path) => normalizeRouteManifestPath(path, this.#prefix))
-        .filter(Boolean),
+    const manifest = Array.isArray(options.routeManifest) ? { routes: options.routeManifest } : options.routeManifest;
+    const routePathOf = (path: string) => normalizeRouteManifestPath(path, this.#prefix);
+    this.#deepLinks = new DeepLinkStack(
+      (manifest?.routes ?? []).map(routePathOf),
+      Object.entries(manifest?.stackOn ?? {}).map(([route, under]) => [routePathOf(route), routePathOf(under)]),
     );
     this.#indexPath = splitHref(options.indexPath ?? "/").path;
-    if (this.#routePaths.size > 0 && !this.#routePaths.has(this.#indexPath)) {
+    if (this.#deepLinks.size > 0 && !this.#deepLinks.has(this.#indexPath)) {
       Logger.info(`[router] indexPath '${this.#indexPath}' was not found in route manifest. Falling back to '/'.`);
       this.#indexPath = "/";
     }
@@ -485,13 +489,6 @@ class Router {
     const { path, search, hash } = this.#getPathInfo(href);
     globalThis.__AKAN_DEV_SYNC_NAVIGATION__?.(`${path}${search ? `?${search}` : ""}${hash ? `#${hash}` : ""}`, kind);
   }
-  #getExistingSegmentStack(path: string) {
-    const segments = path.split("/").filter(Boolean);
-    if (segments.length === 0) return this.#routePaths.has("/") ? ["/"] : [];
-    return segments
-      .map((_, index) => `/${segments.slice(0, index + 1).join("/")}`)
-      .filter((candidate) => this.#routePaths.has(candidate));
-  }
   //? A universal link carries the page's own path, locale and basePath included; the manifest keeps neither.
   #routePathOfLink(path: string) {
     const segments = path.split("/").filter(Boolean);
@@ -504,13 +501,14 @@ class Router {
     const normalizedHref = normalizeDeepLinkHref(href);
     const { path: linkPath, search, hash } = splitHref(normalizedHref);
     const path = this.#routePathOfLink(linkPath);
-    if (this.#routePaths.size > 0 && !this.#routePaths.has(path)) {
+    if (this.#deepLinks.size > 0 && !this.#deepLinks.has(path)) {
       Logger.info(`[router] deep link target '${path}' was not found in route manifest.`);
       return [];
     }
-    const stack = this.#routePaths.size > 0 ? this.#getExistingSegmentStack(path) : [path];
+    const under = this.#deepLinks.underOf(path);
+    const stack = under.length ? [...under, path] : this.#deepLinks.prefixesOf(path);
     const baseStack =
-      stack.length > 1 || this.#indexPath === path || stack.includes(this.#indexPath)
+      under.length || stack.length > 1 || this.#indexPath === path || stack.includes(this.#indexPath)
         ? stack
         : [this.#indexPath, ...stack];
     const dedupedStack = baseStack.filter((candidate, index) => baseStack.indexOf(candidate) === index);
@@ -521,16 +519,20 @@ class Router {
   enterDeepLink(href: string, options: DeepLinkOptions = {}) {
     if (this.#deferredUntilInit(() => this.enterDeepLink(href, options))) return true;
     this.#checkInitialized();
-    if (!options.resetStack) {
-      this.push(normalizeDeepLinkHref(href), options);
-      return true;
-    }
-    const stack = this.resolveDeepLinkStack(href);
+    const { resetStack, ...routeOptions } = options;
+    const linkHref = normalizeDeepLinkHref(href);
+    const [linkPath, currentPath] = [splitHref(linkHref).path, csrLocation.pathname].map((path) =>
+      this.#routePathOfLink(path),
+    );
+    //? A running app keeps the screen on view under the link and lays above it only the `stackOn` screens it lacks.
+    const stack = resetStack
+      ? this.resolveDeepLinkStack(href)
+      : [...this.#deepLinks.missingUnder(linkPath, currentPath), linkHref];
     if (stack.length === 0) return false;
-    const { resetStack: _resetStack, ...routeOptions } = options;
+    const kind = resetStack ? "replace" : "push";
     //? Asked once: the steps under the page are one move.
-    this.#guarded("replace", normalizeDeepLinkHref(href), () => {
-      const moved = this.#move("replace", stack[0], routeOptions);
+    this.#guarded(kind, linkHref, () => {
+      const moved = this.#move(kind, stack[0], routeOptions);
       stack.slice(1).forEach((target, index) => {
         setTimeout(
           () => this.#track(this.#move("push", target, routeOptions)),
