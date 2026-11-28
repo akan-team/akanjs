@@ -11,7 +11,7 @@
 
 | 항목 | 상태 |
 |---|---|
-| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.13.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`, `windows.installer`; 0.6.0: `desktop.bin`, `desktop.server.bin` 없앰; 0.7.0: `desktop.screenCapture`; 0.8.0: `packUpdate`, `compareBundles`; 0.9.0: `checkPublishUpdate`; 0.11.0: 폰 업데이트 프로토콜 v2 — `updates.publicKeys`, `<channel>/<nativeApi>.json` 봉투, `openEnvelope`·`keyIdOf`·`updateDecision`; 0.12.0: `publishUpdate`·`checkPublishUpdate`의 `revoke`·`resetSequence`, `updates.revokedKeys`, `updateKeygen`의 `keyId`, 보고 계약 `UpdateReportBody`·`UPDATE_REPORT_EVENTS`·`UPDATE_REPORT_REASONS`·`updateReportOutcome` 등, `MAX_REVOKE_KEYS`·`MAX_UPDATE_MANIFEST`, 타입 `BundleInfo`·`UpdateManifest`·`UpdateEnvelope`; 0.13.0: 데스크톱 업데이트 프로토콜 v2 — `<os>-<arch>/<channel>/app.json` 봉투, `updates.target`, `verifyManifest`, 데스크톱의 `revoke`·`resetSequence`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
+| `build`, `run`, `validateConfig`, `AkanNativeError`, `API_VERSION` 0.14.0 (0.2.0: `desktop.server`; 0.3.0: `desktop.server.bin`; 0.4.0: `desktop.recovery`, `desktop.window`, `android.autoplay`; 0.5.0: `publishUpdate`, `updateKeygen`, `windows.installer`; 0.6.0: `desktop.bin`, `desktop.server.bin` 없앰; 0.7.0: `desktop.screenCapture`; 0.8.0: `packUpdate`, `compareBundles`; 0.9.0: `checkPublishUpdate`; 0.11.0: 폰 업데이트 프로토콜 v2 — `updates.publicKeys`, `<channel>/<nativeApi>.json` 봉투, `openEnvelope`·`keyIdOf`·`updateDecision`; 0.12.0: `publishUpdate`·`checkPublishUpdate`의 `revoke`·`resetSequence`, `updates.revokedKeys`, `updateKeygen`의 `keyId`, 보고 계약 `UpdateReportBody`·`UPDATE_REPORT_EVENTS`·`UPDATE_REPORT_REASONS`·`updateReportOutcome` 등, `MAX_REVOKE_KEYS`·`MAX_UPDATE_MANIFEST`, 타입 `BundleInfo`·`UpdateManifest`·`UpdateEnvelope`; 0.13.0: 데스크톱 업데이트 프로토콜 v2 — `<os>-<arch>/<channel>/app.json` 봉투, `updates.target`, `verifyManifest`, 데스크톱의 `revoke`·`resetSequence`; 0.14.0: 데스크톱 서명 분리 — `packAppUpdate`, `republishUpdate`, 서명하는 쪽의 `fillManifest`·`manifestBytes`·`updateEnvelope`·`sealManifest`, `<channel>/releases/<bundle>.json`, 데스크톱 보고의 `UPDATE_REPORT_DESKTOP_REASONS`) | 구현(`packages/cli/src/api.ts`, `@akanjs/native/api`). 테스트 `packages/cli/test/api.test.ts` |
 | 로그 싱크 | 구현. 호출마다 AsyncLocalStorage로 분리한다. 동시 호출의 로그가 섞이지 않고, 이벤트에는 터미널 색이 없다. 자식 프로세스 출력(웹 빌드 등)은 `tool` 줄이다 |
 | `signal` | 구현. 실행 중인 도구를 죽이고 `CANCELLED`로 거절한다 |
 | `outDir`, `env`, `envFiles`, `resolveFrom`, `skipWebBuild` | 구현. 같은 `outDir`의 두 작업은 차례로 돈다(프로세스 안 잠금) |
@@ -26,7 +26,7 @@
 ## 1. 모양
 
 ```ts
-import { build, run, dev, release, publishUpdate, updateKeygen, packUpdate, compareBundles, doctor, devices, validateConfig, AkanNativeError, API_VERSION } from "@akanjs/native/api";
+import { build, run, dev, release, publishUpdate, republishUpdate, updateKeygen, packUpdate, packAppUpdate, compareBundles, doctor, devices, validateConfig, AkanNativeError, API_VERSION } from "@akanjs/native/api";
 ```
 
 - 함수마다 옵션 객체 하나를 받고 Promise를 돌려준다.
@@ -296,7 +296,7 @@ const { publicKey, keyId, keyPath, created } = updateKeygen({ config });
 const { dir, bundle, channel, files, size, build } = await publishUpdate({ appDir, config, platform: "windows", channel: "pilot", out });
 ```
 - `updateKeygen`: 앱 id의 Ed25519 키를 한 번 만들고 그 뒤로는 읽는다(`AKAN_NATIVE_UPDATE_KEY`, 없으면 `~/.akan/native/keys/<app id>.update.key`). `publicKey`는 설정의 `updates.publicKeys`로 간다. `keyId`는 폐기(`revoke`, `updates.revokedKeys`)가 그 키를 부르는 이름이다.
-- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`에 `<channel>.json`, `.sig`, 파일을, 폰은 `<platform>/`에 봉투 `<channel>/<nativeApi>.json`과 파일을 쓴다(`architecture.md` "프로토콜 v2"). `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없거나, `channel`이 설정 `updates.channel`의 규칙(소문자·숫자·`.`·`_`·`-`, `packUpdate`의 파일·폴더와 겹치는 `bundle`·`manifest.template`·`compat`·`pack`·`files`·`app`은 안 됨)을 어기거나, 이 PC에 서명 키가 없거나 `updates.publicKeys`의 키가 아니면(데스크톱은 첫 키가 아니면) 빌드 전에 `CONFIG_INVALID`. 폰은 봉투를 한 번의 rename으로, 데스크톱은 매니페스트를 `.sig`와 함께 쓴다. `sequence`는 `max(그 채널에 이미 있는 매니페스트 + 1, 지금)`이다(시계가 늦으면 경고). 데스크톱 매니페스트는 앱이 서버를 싣는지(`server`)를 적는다. 설정 `desktop.server`가 그 채널의 직전 릴리스와 다르면 빌드 전에 `CONFIG_INVALID`로 거부하고, 빌드된 앱으로 한 번 더 확인한다. 출력 폴더에는 올릴 파일만 남는다. 폰 릴리스는 `revoke`(이번에 새로 폐기하는 keyId 목록)와 `resetSequence`를 받고, `updates.revokedKeys`와 그 채널 봉투의 폐기를 합쳐 싣는다. 규칙과 거부는 `architecture.md` "폐기".
+- `publishUpdate`: release 빌드 뒤 `akan-native update publish`와 같은 일을 한다(`lib/publish.ts`). `out`(기본 `<appDir>/.akan/native/updates`) 아래 데스크톱은 `<os>-<arch>/`에 봉투 `<channel>/app.json`과 그 사본 `<channel>/releases/<bundle>.json`, v1 쌍 `<channel>.json`·`.sig`, 파일을, 폰은 `<platform>/`에 봉투 `<channel>/<nativeApi>.json`과 파일을 쓴다(`architecture.md` "프로토콜 v2"). `channel` 기본은 설정의 `updates.channel`. 설정에 `updates`가 없거나, `channel`이 설정 `updates.channel`의 규칙(소문자·숫자·`.`·`_`·`-`, `packUpdate`의 파일·폴더와 겹치는 `bundle`·`manifest.template`·`compat`·`pack`·`files`·`app`은 안 됨)을 어기거나, 이 PC에 서명 키가 없거나 `updates.publicKeys`의 키가 아니면(데스크톱은 첫 키가 아니면) 빌드 전에 `CONFIG_INVALID`. 폰은 봉투를 한 번의 rename으로, 데스크톱은 매니페스트를 `.sig`와 함께 쓴다. `sequence`는 `max(그 채널에 이미 있는 매니페스트 + 1, 지금)`이다(시계가 늦으면 경고). 데스크톱 매니페스트는 앱이 서버를 싣는지(`server`)를 적는다. 설정 `desktop.server`가 그 채널의 직전 릴리스와 다르면 빌드 전에 `CONFIG_INVALID`로 거부하고, 빌드된 앱으로 한 번 더 확인한다. 출력 폴더에는 올릴 파일만 남는다. 폰 릴리스는 `revoke`(이번에 새로 폐기하는 keyId 목록)와 `resetSequence`를 받고, `updates.revokedKeys`와 그 채널 봉투의 폐기를 합쳐 싣는다. 규칙과 거부는 `architecture.md` "폐기".
 - `checkPublishUpdate`: `publishUpdate`가 빌드 전에 거부하는 것(`updates` 없음, 규칙에 맞지 않는 `channel`, 없거나 다른 서명 키, 그 채널의 직전 릴리스와 다른 서버 유무, 맞지 않는 `updates` 설정, 폰이 받지 않을 폐기 — `revoke`·`resetSequence`를 같이 넘긴다)을 빌드 없이 확인한다. `server`를 주지 않으면 설정의 `desktop.server`로 판단한다. akan처럼 `publishUpdate` 전에 자기 빌드가 긴 쪽이 모든 타깃에 먼저 부른다.
 - akanjs: `akan update-keygen`, `akan publish-update`(devkit `NativeApp.updateKeygen`·`assertPublishable`·`publishUpdate`).
 
@@ -309,6 +309,18 @@ const { compatible, problems } = compareBundles("<스토어 빌드의 bundle.jso
 - `packUpdate`: 키 없이 폰 웹 번들을 release처럼 준비해 `out` 아래 `files/<sha256>`, `bundle.json`, `manifest.template.json`을 쓴다. 템플릿은 `channel`(`""`), `sequence`(`0`), `bundle`(`""`)만 비운 v2 매니페스트(`schema: 2`)다. 네이티브 앱은 빌드하지 않는다. 서명하는 쪽의 계약은 `architecture.md`의 "서명 분리"에 있다.
 - `compareBundles`: 스토어 빌드의 `bundle.json`과 pack의 `bundle.json`을 비교해, 그 번들이 스토어 바이너리에서 돌 수 없으면 `problems`를 준다(새 바이너리가 필요하다).
 - akanjs: `akan pack-update [--against]`(devkit `NativeApp.packUpdate`·`NativeApp.compareBundles`). 결과는 `<out>/pack.json`에 남고, `--against`가 새 스토어 빌드가 필요하다고 하면 종료 코드 2다.
+
+### packAppUpdate와 republishUpdate — 서명하지 않은 데스크톱 앱 업데이트, 다시 서명
+
+```ts
+const { out, manifest, signer, build } = await packAppUpdate({ appDir, config, platform: "macos", out, previous: "<직전 릴리스의 app/<tar sha256>.tar.gz, 경로나 URL>" });
+const envelope = updateEnvelope(bytes, publicKey, signature); // bytes = manifestBytes(fillManifest(manifest, { channel, sequence }))
+const { dir, bundle, channel, from } = await republishUpdate({ appDir, config, platform: "macos", bundle: "1.4.0-1795000000", out });
+```
+- `packAppUpdate`: 키 없이 `publishUpdate`와 같은 release 빌드를 하고 `out` 아래 `app/<tar sha256>.tar.gz`와 `manifest.template.json`을 쓴다. `previous`를 주면 그 아카이브로부터의 `app/<from>-<to>.delta.gz`도 쓰고 템플릿 `patches`에 적는다(이름이 `<tar sha256>.tar.gz`가 아니거나 풀었을 때 그 해시가 아니면 빌드 전에 `CONFIG_INVALID`). `signer`는 앱 파일을 서명한 쪽이다(macOS `teamId`, Windows `thumbprint`·`subject`, 없으면 null). `updates`가 없으면 빌드 전에 `CONFIG_INVALID`.
+- 서명하는 쪽: `fillManifest(template, { channel, sequence, bundle?, patches?, revokeKeys?, resetSequence?, expiresAt? })`가 템플릿을 채우고(데스크톱 `bundle` 기본은 `<version>-<sequence>`), `manifestBytes`가 서명할 바이트를, `updateEnvelope(bytes, publicKey, signature)`가 서명을 검증한 뒤 봉투를 만든다. 키 파일이 있는 쪽은 `sealManifest(bytes, keyPath, publicKeys)` 하나로 끝난다. 계약은 `architecture.md` "서명 분리(데스크톱 앱)".
+- `republishUpdate`: 빌드 없이, 이미 게시한 릴리스 `bundle`을 그 채널의 최신으로 다시 서명한다(롤백, 다른 채널로 승격). 봉투는 `out`의 `<os>-<arch>/<channel>/releases/<bundle>.json`에서, 없으면 피드의 같은 경로에서 읽어 키링으로 검증한다. 아카이브도 없으면 피드에서 받아 `gzSha256`을 확인한다. 새 릴리스는 같은 아카이브에 새 `sequence`·`bundle`, 빈 `patches`, 지금 설정의 `target`·만료를 싣고, `revoke`·`resetSequence`는 `publishUpdate`와 같다.
+- akanjs: `akan pack-update <app> --platform desktop [--arch] [--sign] [--notarize] [--previous]`(devkit `NativeApp.packAppUpdate`, 결과 기록 `pack.json`은 `schema: 2`·`kind: "app"`), `akan publish-update <app> --republish <bundle>`(`NativeApp.republishUpdate`).
 
 ### doctor와 devices
 

@@ -206,7 +206,7 @@ targets builds several native apps from one Akan app, such as a store app and an
 
 - updates.readyTimeout (number, default 10000): How long, in ms, a release on trial has to mount its first page before it is rolled back.
 
-- updates.report ({ url: string }): Where a phone posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.
+- updates.report ({ url: string }): Where an app, phone or desktop, posts what became of each release, such as a rollback, so rollback rates are visible. Unset sends nothing.
 
 - updates.automatic (boolean, default true): A desktop app checks in the background and installs a release as it quits. false leaves both to its updates calls.
 
@@ -368,11 +368,11 @@ Stage Keys
 
 A stage is a built-in action (`use`) or a shell stage (`name` with `sh` or `steps`). The tags say which kind takes each key.
 
-- use ("build" | "docker" | "deploy" | "ota", use): A built-in action. Each appears at most once per app, in this order; `ota` runs only when listed.
+- use ("build" | "docker" | "deploy" | "ota" | "desktop-ota", use): A built-in action. Each appears at most once per app, in this order; `ota` and `desktop-ota` run only when listed.
 
-- targets (string[], use): `ota` only: native targets to pack. Default: every target with `native.updates`.
+- targets (string[], use): `ota` and `desktop-ota`: native targets to pack. Default: every target with `native.updates`.
 
-- platforms (("ios" | "android")[], use): `ota` only: phones to pack for. Default: both.
+- platforms (("ios" | "android")[] | { os, arch }[], use): `ota`: phones to pack for, both by default. `desktop-ota`: required `{ os, arch }` entries, each packed on a host of that OS.
 
 - name (string, shell, use): The name shown for the stage; a shell stage needs one.
 
@@ -511,6 +511,10 @@ Phases run one after another, and each waits until every stage of the one before
 - ota — Over-the-air packs of apps that list `ota`.
 
 - after-ota — App stages written after `ota`.
+
+- desktop-ota — Desktop app packs of apps that list `desktop-ota`.
+
+- after-desktop-ota — App stages written after `desktop-ota`.
 
 - after — Each root `after` stage.
 

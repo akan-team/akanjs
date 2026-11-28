@@ -506,7 +506,7 @@ Build the desktop app on this computer's OS: a `.app` on macOS and an app folder
 
 - --debug (Boolean, default false): Make a debug build instead of a release one.
 
-- --installer (Boolean, default false): Also what a person downloads: on Windows `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`), on macOS a `.dmg`, on Linux an `.AppImage` (needs `mksquashfs`).
+- --installer (Boolean, default false): Also what a person downloads: on Windows `<file>-<version>-<arch>-setup.exe` with NSIS (`winget install NSIS.NSIS`), on macOS a `.dmg`, on Linux an `.AppImage` (needs `mksquashfs`) and a `.tar.gz` whose `install.sh` installs the folder that updates itself.
 
 - --arch (String, default this computer's): The CPU a Windows or Linux app runs on: `arm64` or `x64`. The server's addons and `bin` follow it. A macOS app is Apple silicon (arm64) only.
 
@@ -580,7 +580,7 @@ Make, once per app id, the Ed25519 key update releases are signed with, and prin
 
 - --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
-`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>]`
+`akan publish-update <app> [--platform <platform>] [--target <target>] [--env <env>] [--channel <channel>] [--upload <s3://bucket/prefix>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--revoke <keyId,...>] [--reset-sequence <boolean>] [--write <boolean>] [--allow-local-release <boolean>] [--republish <bundle>]`
 
 Build a release and sign it for installed apps: the whole app for a desktop (this computer's OS and CPU, delta from the release before), the web bundle for Android and iOS. It writes the signed manifest and its files under `dist/native/<app>/<target>/updates`. Upload this release's files to `native.updates.url` and its manifest last, or let `--upload` do it; do not upload the folder whole, since a phone's folder is also where `pack-update` writes by default. A phone's manifest is one envelope per binary generation, `<platform>/<channel>/<nativeApi>.json`; a desktop's is `<os>-<arch>/<channel>/app.json`, plus `<channel>.json` and its `.sig` for apps built before it when the first key signs, which a CDN must not cache apart. A desktop release of a target that carries its server carries it too.
 
@@ -608,6 +608,8 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 
 - --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
 
+- --republish (String, -b): Desktop only: the bundle id of a release this target published, signed again as the channel's newest — a rollback, with no build. Apps on a later build take its archive whole. The release is read from the updates folder, else from `updates.url`.
+
 - desktop.server: With `native: { desktop: { server: true } }` in `akan.config.ts`, or `desktop.server` in one target, the desktop app carries the app's server: it starts beside the window on a loopback port and the pages call nothing else. `build-desktop`, `start-desktop --release` and `publish-update` all read it. An installed app refuses an update that adds or drops the server, so turning it on or off for an app already out there takes a reinstall.
 
 - --env: An app takes releases on `updates.channel`, else on the `--env` it was built with: publish with that `--env`.
@@ -626,25 +628,33 @@ Build a release and sign it for installed apps: the whole app for a desktop (thi
 
 - native API: The CLI needs the native build API 0.13.0 or later in the app's akanjs: install matching versions of akanjs and @akanjs/cli.
 
-`akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>] [--public-env <file>]`
+`akan pack-update <app> --platform <platform> [--target <target>] [--env <env>] [--out <dir>] [--against <bundle.json>] [--write <boolean>] [--allow-local-release <boolean>] [--public-env <file>] [--arch <arm64|x64>] [--sign <boolean>] [--notarize <boolean>] [--previous <archive>]`
 
-Pack an Android or iOS web bundle update unsigned, for a signer that keeps the key off this machine: `files/<sha256>`, `bundle.json`, `manifest.template.json` with `channel`, `sequence` and `bundle` left for the signer, and `pack.json`, the record a pipeline reads. The signer uploads `files/` first, then the signed envelope at `<platform>/<channel>/<nativeApi>.json`. Exits 2 when `--against` says the bundle needs a new store build; any other failure, its web build included, exits 1 and leaves no `pack.json` behind. `publish-update` does the same with a key on this machine.
+Pack an update unsigned, for a signer that keeps the key off this machine. Android and iOS pack the web bundle: `files/<sha256>`, `bundle.json` and `manifest.template.json`, whose signed envelope goes to `<platform>/<channel>/<nativeApi>.json`. `--platform desktop` packs this computer's app: `app/<tar sha256>.tar.gz` and its template, whose envelope goes to `<os>-<arch>/<channel>/app.json`. The signer fills `channel`, `sequence` and `bundle` — `fillManifest`, `manifestBytes` and `updateEnvelope` of `akanjs/native/api` do it — and uploads the files before the envelope. `pack.json` is the record a pipeline reads. Exits 2 when `--against` says the bundle needs a new store build; any other failure, its build included, exits 1 and leaves no `pack.json` behind. `publish-update` does the same with a key on this machine.
 
-- --platform (String, ios | android): The app it updates.
+- --platform (String, ios | android | desktop): The app it updates; `desktop` is this computer's OS.
 
 - --target (String): A key of `native.targets` in `akan.config.ts`, or `all`. Asked for when there are several.
 
 - --env (String, default main, debug | develop | main | local): Backend environment the app connects to.
 
-- --out (String): Default `dist/native/<app>/<target>/updates/<platform>`.
+- --out (String): Default `dist/native/<app>/<target>/updates/<platform>`; a desktop's is `<os>-<arch>`.
 
-- --against (String): The `bundle.json` of the store build it must run in: writes `compat.json`, and fails when the bundle needs a new binary.
+- --against (String): Phones: the `bundle.json` of the store build it must run in: writes `compat.json`, and fails when the bundle needs a new binary.
 
 - --write (Boolean, default true): Run `akan sync` first so generated files are current.
 
 - --allow-local-release (Boolean, default false, -l): Allow a release built with `--env local`.
 
 - --public-env (String, default --against, -u): Inline exactly these `AKAN_PUBLIC_*` values: a JSON map or a `bundle.json`. Left out, the `--against` build's.
+
+- --arch (String, default this computer's, arm64 | x64): Desktop only: the CPU of the apps it updates. A macOS app is arm64 only.
+
+- --sign (Boolean, default false): Desktop only: sign the packed app as `publish-update --sign` does. `pack.json` records who signed it.
+
+- --notarize (Boolean, default false): macOS: upload the signed app to Apple's notary service and staple the ticket. It takes `--sign` and the notary credentials (`AKAN_NATIVE_MACOS_NOTARY_*`).
+
+- --previous (String, -f): Desktop only: the archive of the release the channel has now, a path or a URL of `<tar sha256>.tar.gz`. The pack then carries the delta from it.
 
 `akan push-update <app> [--platform <platform>] [--arch <arch>] [--target <target>] [--env <env>] [--channel <channel>] [--notes <text>] [--subspace <name>] [--host <url>] [--write <boolean>] [--allow-local-release <boolean>] [--pack <dir>] [--public-env <file>]`
 
@@ -980,6 +990,7 @@ akan publish-update myapp --env main
 akan publish-update myapp --target pilot --env main
 akan publish-update myapp --env main --sign true --notarize true --upload s3://releases/myapp
 akan publish-update myapp --platform android --env main
+akan publish-update myapp --env main --republish 1.4.0-1795000000 --upload s3://releases/myapp
 AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform ios --env main --revoke 0123456789abcdef
 ```
 
@@ -988,6 +999,7 @@ AKAN_NATIVE_UPDATE_KEY=./spare.update.key akan publish-update myapp --platform i
 ```bash
 akan pack-update myapp --platform android --env main
 akan pack-update myapp --platform ios --env main --against store/bundle.json
+akan pack-update myapp --platform desktop --env main --sign true
 ```
 
 ### push-update

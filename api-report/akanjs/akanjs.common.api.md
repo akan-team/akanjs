@@ -1019,6 +1019,15 @@ export interface ParsedRouteModuleKey {
 
 export type PipelineActionName = keyof typeof pipelineActions;
 
+export type PipelineDesktopOtaArch = (typeof pipelineDesktopOtaArchs)[number];
+
+export interface PipelineDesktopOtaPlatform {
+    os: PipelineDesktopOtaSystem;
+    arch: PipelineDesktopOtaArch;
+}
+
+export type PipelineDesktopOtaSystem = (typeof pipelineDesktopOtaSystems)[number];
+
 export interface PipelineDiagnostic {
     severity: "error" | "warning";
     code: string;
@@ -1061,10 +1070,10 @@ export interface PipelinePlan {
     post: PipelinePlanPost;
 }
 
-export type PipelinePlanActionStep = PipelinePlanAppActionStep | PipelinePlanOtaStep;
+export type PipelinePlanActionStep = PipelinePlanAppActionStep | PipelinePlanDesktopOtaStep | PipelinePlanOtaStep;
 
 export interface PipelinePlanAppActionStep extends PipelinePlanActionStepBase {
-    action: Exclude<PipelineActionName, "ota">;
+    action: Exclude<PipelineActionName, "desktop-ota" | "ota">;
     with: {
         app: string;
     };
@@ -1077,6 +1086,15 @@ export interface PipelinePlanContext {
     trigger: PipelineTrigger;
     buildNum: number;
     commit: null | string;
+}
+
+export interface PipelinePlanDesktopOtaStep extends PipelinePlanActionStepBase {
+    action: "desktop-ota";
+    with: {
+        app: string;
+        targets: string[];
+        platforms: PipelineDesktopOtaPlatform[];
+    };
 }
 
 export interface PipelinePlanOtaStep extends PipelinePlanActionStepBase {
@@ -1848,7 +1866,23 @@ export declare const pipelineActions: {
         readonly milestone: "deploy";
         readonly name: "OTA";
     };
+    readonly "desktop-ota": {
+        readonly version: 1;
+        readonly milestone: "deploy";
+        readonly name: "Desktop OTA";
+    };
 };
+
+export declare const pipelineDesktopOtaArchs: readonly [
+    "arm64",
+    "x64"
+];
+
+export declare const pipelineDesktopOtaSystems: readonly [
+    "macos",
+    "windows",
+    "linux"
+];
 
 export declare const pipelineMilestones: readonly [
     "prepare",
@@ -1888,6 +1922,8 @@ export declare const pipelinePlanSlots: readonly [
     "after-deploy",
     "ota",
     "after-ota",
+    "desktop-ota",
+    "after-desktop-ota",
     "after"
 ];
 

@@ -360,7 +360,7 @@ export interface AppPipelineInput {
     after?: readonly string[];
 }
 
-export type AppPipelineStageInput = PipelineActionStageInput | PipelineOtaStageInput | PipelineShellStageInput;
+export type AppPipelineStageInput = PipelineActionStageInput | PipelineDesktopOtaStageInput | PipelineOtaStageInput | PipelineShellStageInput;
 
 export interface AppScanResult extends ScanResult {
     akanConfig: AppConfigResult;
@@ -521,7 +521,7 @@ export type NativeEnv = "debug" | "develop" | "local" | "main";
 export type NativePermission = "camera" | "contacts" | "location" | "push" | "speech";
 
 export interface PipelineActionStageInput extends PipelineStageBase {
-    use: Exclude<PipelineActionName, "ota">;
+    use: Exclude<PipelineActionName, "desktop-ota" | "ota">;
     name?: string;
     retry?: number;
     targets?: never;
@@ -535,6 +535,18 @@ export interface PipelineActionStageInput extends PipelineStageBase {
 export interface PipelineContext extends Readonly<Omit<PipelinePlanContext, "apps">> {
     readonly apps: readonly string[];
     readonly workspaceApps: readonly string[];
+}
+
+export interface PipelineDesktopOtaStageInput extends PipelineStageBase {
+    use: "desktop-ota";
+    name?: string;
+    retry?: number;
+    targets?: readonly string[];
+    platforms: readonly PipelineDesktopOtaPlatform[];
+    sh?: never;
+    steps?: never;
+    parallel?: never;
+    matrix?: never;
 }
 
 export type PipelineDuration = `${number}h` | `${number}m` | `${number}s` | number;

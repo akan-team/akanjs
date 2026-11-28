@@ -58,7 +58,7 @@ A `start-*` command loads its pages from a running `akan start`; a desktop app c
 akan start-desktop <app>                   # Run the desktop app on this computer
 akan start-ios <app>                       # Run it in a simulator or on an iPhone (start-android alike)
 akan build-desktop <app>                   # Build it for this computer into dist/native/<app>/<target>/build
-akan build-desktop <app> --installer true  # Windows: add a per-user setup program
+akan build-desktop <app> --installer true  # Add its installer: a setup program, a dmg, an AppImage and tar.gz
 akan update-keygen <app>                   # Make the update signing key once; print its public key
 akan publish-update <app>                  # Build a key-signed release for updates.url; --sign true also code-signs it
 ```

@@ -2,7 +2,7 @@
 
 ## The Build Pipeline — `pipeline` In `akan.config.ts`
 
-Akan Cloud builds and deploys each app as `build` → `docker` → `deploy`, and `ota` after them when asked. **An app's own stages go in
+Akan Cloud builds and deploys each app as `build` → `docker` → `deploy`, and `ota` and `desktop-ota` after them when asked. **An app's own stages go in
 `apps/<app>/akan.config.ts` under `pipeline`; stages around every app go in the workspace root's
 `akan.config.ts`**, typed `WorkspaceConfig`, under its own `pipeline` (`before`, `after`, `post`, `env`, `timeout`). Both are `import type`
 objects (or `(ctx) => …`), and `akan pipeline dry-run | validate | plan` turns them into the plan Akan Cloud runs —
@@ -24,6 +24,9 @@ const config: WorkspaceConfig = {
   It is opt-in, makes its own CSR build, and packs every native target that declares `native.updates` for iOS
   and Android — `targets` and `platforms` narrow it, and a target without `updates` is a plan error. Akan Cloud
   signs and publishes the packs; the plan never holds a key.
+- **`{ use: "desktop-ota", platforms: [{ os: "macos", arch: "arm64" }] }` packs a desktop app's update** after `ota`:
+  one `akan pack-update --platform desktop` per target and entry, each on a build host of that OS. `platforms` has no
+  default, and the executor signs and publishes as for `ota`.
 - **A stage runs after the action before it.** Stages between two actions share a phase across apps, and a phase
   waits for every stage of the one before; `deploy` runs the apps one at a time in `after` order.
 - **App stages stand on their own.** Never rely on what a root `before` stage left on disk: the root config never

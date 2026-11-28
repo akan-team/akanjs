@@ -70,7 +70,9 @@ const config: AppConfig = {
   with the app on macOS, and put that folder first on the app's PATH. The server's `spawn("ffmpeg")` needs no change
   and finds the carried file even in an app launched from the Finder, whose PATH is only
   `/usr/bin:/bin:/usr/sbin:/sbin`. A native plugin finds the folder in `ctx.binDir`: Bun's own `spawn` and `which`
-  without `env` read the environment the app started with, so a plugin passes `env: process.env` to run one by name.
+  without `env` read the environment the app started with, so a plugin passes `env: process.env` to run one by name,
+  or calls `ctx.spawn([name, …])`, which also finds a tool the user installed (on the login shell's PATH,
+  `ctx.userPath()`) and ends the child with the app, a crash included.
   The server passes it too when it spawns a carried `bun build --compile` executable: the shell starts the server as
   Bun with `BUN_BE_BUN=1`, which akanjs takes out of `process.env` at boot, and a child spawned without `env` still
   inherits it and runs as Bun's own CLI instead of the tool.

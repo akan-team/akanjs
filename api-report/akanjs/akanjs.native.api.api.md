@@ -3,7 +3,7 @@
 Generated from the declaration emit by `bun run api:report`. Do not edit it by hand.
 
 ```ts
-export declare const API_VERSION = "0.13.0";
+export declare const API_VERSION = "0.14.0";
 
 export interface AkanNativeConfig {
     app: {
@@ -179,6 +179,19 @@ export interface AndroidSigning {
     keyPassword?: string;
 }
 
+export interface AppSigner {
+    teamId?: string;
+    thumbprint?: string;
+    subject?: string;
+}
+
+export interface AppUpdatePack {
+    build: BuildResult;
+    out: string;
+    manifest: UpdateManifest;
+    signer: AppSigner | null;
+}
+
 export interface Artifact {
     kind: "aab" | "apk" | "app" | "folder" | "installer" | "ipa" | "web";
     path: string;
@@ -332,6 +345,16 @@ export interface MacosSigning {
     };
 }
 
+export interface ManifestRelease {
+    channel: string;
+    sequence: number;
+    bundle?: string;
+    patches?: NonNullable<UpdateManifest["patches"]>;
+    revokeKeys?: readonly string[];
+    resetSequence?: boolean;
+    expiresAt?: number;
+}
+
 export interface NativeApi {
     protocol: 1;
     features: string[];
@@ -365,6 +388,10 @@ export interface PublishResult {
     size: number;
 }
 
+export type RepublishResult = Omit<PublishResult, "build"> & {
+    from: string;
+};
+
 export interface RunningApp {
     build: BuildResult;
     device?: Device;
@@ -397,6 +424,11 @@ export interface TaskOptions {
 }
 
 export declare const UPDATE_REPORT_BATCH = 20;
+
+export declare const UPDATE_REPORT_DESKTOP_REASONS: readonly [
+    "signer",
+    "server"
+];
 
 export declare const UPDATE_REPORT_EVENTS: readonly [
     "downloaded",
@@ -494,16 +526,20 @@ export interface UpdateReportBody {
     nativeApi: string;
     appVersion: string;
     os: string;
+    arch?: string;
     events: UpdateReportEntry[];
 }
+
+export type UpdateReportDesktopReason = (typeof UPDATE_REPORT_DESKTOP_REASONS)[number];
 
 export interface UpdateReportEntry {
     id: number;
     event: UpdateReportEvent;
     bundle: string;
     sequence: null | number;
-    reason: UpdateReportReason | null;
+    reason: UpdateReportDesktopReason | UpdateReportReason | null;
     at: string;
+    keyId?: string;
 }
 
 export type UpdateReportEvent = (typeof UPDATE_REPORT_EVENTS)[number];
@@ -575,14 +611,27 @@ export declare function doctor(options?: {
     signal?: AbortSignal;
 }): Promise<DoctorReport>;
 
+export declare function fillManifest(template: UpdateManifest, release: ManifestRelease): UpdateManifest;
+
 export declare const keyIdOf: (publicKey: string) => string;
 
 export declare function macosDistributionFromEnv(env?: Record<string, string | undefined>): Pick<MacosBuild, "notarize" | "signing">;
+
+export declare function manifestBytes(manifest: UpdateManifest): Uint8Array;
 
 export declare function openEnvelope(text: string, publicKeys: readonly string[], revoked?: readonly string[]): {
     manifest: Uint8Array;
     keyId: string;
 };
+
+export declare function packAppUpdate(options: TaskOptions & {
+    platform: DesktopOs;
+    out: string;
+    macos?: Pick<MacosBuild, "notarize" | "signing">;
+    windows?: Pick<WindowsBuild, "signing">;
+    arch?: DesktopArch;
+    previous?: string;
+}): Promise<AppUpdatePack>;
 
 export declare function packUpdate(options: TaskOptions & {
     platform: "android" | "ios";
@@ -612,6 +661,16 @@ export declare function release(options: TaskOptions & ({
     signing?: IosSigning;
 })): Promise<BuildResult>;
 
+export declare function republishUpdate(options: Pick<TaskOptions, "appDir" | "config" | "log" | "resolveFrom" | "signal"> & {
+    platform: DesktopOs;
+    bundle: string;
+    channel?: string;
+    out?: string;
+    arch?: DesktopArch;
+    revoke?: string[];
+    resetSequence?: boolean;
+}): Promise<RepublishResult>;
+
 export declare function requestedDistribution(platform: string, profile: "debug" | "release", { sign, notarize }: DistributionRequest, env?: Record<string, string | undefined>): Distribution;
 
 export declare function run(options: TaskOptions & {
@@ -625,7 +684,11 @@ export declare function run(options: TaskOptions & {
     };
 }): Promise<RunningApp>;
 
+export declare function sealManifest(bytes: Uint8Array, keyPath: string, publicKeys: readonly string[]): UpdateEnvelope;
+
 export declare function updateDecision(input: UpdateDecisionInput): UpdateDecision;
+
+export declare function updateEnvelope(bytes: Uint8Array, publicKey: string, signature: Uint8Array | string): UpdateEnvelope;
 
 export declare function updateKeygen(options: {
     config: AkanNativeConfig;
@@ -662,6 +725,8 @@ interface AclGrant {
 }
 
 type BuildProfile = "debug" | "release";
+
+type DesktopOs = "linux" | "macos" | "windows";
 
 interface Distribution {
     macos?: {

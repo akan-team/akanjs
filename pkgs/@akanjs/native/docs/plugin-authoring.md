@@ -103,7 +103,8 @@ export const clipboard = definePlugin<ClipboardApi>("clipboard", { methods: ["wr
 import { defineDesktopPlugin } from "@akanjs/native/desktop";
 export default defineDesktopPlugin<ClipboardApi>({ id: "clipboard", methods: { async readText(_args, ctx) { ... } } });
 ```
-- Bun API와 macOS 명령(`Bun.spawn(["open", url])` 등)을 쓸 수 있다. Finder에서 띄운 앱은 PATH와 LANG이 최소라서 명령은 절대 경로로 부르고 로캘을 지정한다(clipboard, device 참고).
+- Bun API와 macOS 명령(`Bun.spawn(["open", url])` 등)을 쓸 수 있다. Finder에서 띄운 앱은 PATH와 LANG이 최소라서 OS의 명령은 절대 경로로 부르고 로캘을 지정한다(clipboard, device 참고).
+- 사용자가 설치한 도구(`git`, `node`, CLI)는 `ctx.spawn([name, …], { cwd?, env?, stdin?, onLine?, document? })`로 띄운다. 이름은 앱의 bin 폴더, 그다음 사용자의 로그인 셸 PATH(`ctx.userPath()`, 첫 호출은 셸 프로파일만큼 걸리고 10초까지, 답이 없으면 앱의 PATH와 흔한 도구 폴더)에서 찾고(`ctx.resolveCommand(name)`, 없으면 null · `spawn`은 `NOT_FOUND`), 자식은 앱이 어떻게 끝나든(크래시·kill 포함) 같이 끝난다. `document: ctx.document`를 주면 부른 페이지가 닫힐 때도 끝난다. Windows는 PATHEXT를 따르고 `.cmd`·`.bat`는 `cmd.exe`로 돌린다.
 - `ctx.appDataDir`, `ctx.emit(event, data)`, `ctx.registerFile(path, mime)`(MIME은 `@akanjs/native/core`의 `mimeFor(name)`), `ctx.quit(code)`.
 - `ctx.binDir`: 앱이 싣는 실행 파일 폴더(설정 `desktop.bin`, akanjs `bin`), 없으면 null. 호스트가 이 폴더를 `process.env.PATH` 맨 앞에 붙이지만, Bun의 `spawn`·`which`는 `env` 없이 부르면 앱이 시작할 때의 환경을 읽는다(Bun 1.4.2). 이름으로 실행하려면 `Bun.spawn(["svcl", …], { env: process.env })`처럼 환경을 넘기거나 `join(ctx.binDir, "svcl.exe")`로 부른다. `node:child_process`는 바뀐 `process.env`를 쓴다.
 - `ctx.server`: 앱이 싣는 서버(`desktop.server`), 없으면 null. `ready`는 세션에 한 번 정해진다. 서버가 처음 ready를 보내면 true, 띄우지 못했거나 그 전에 포기했으면 false다. 그 뒤의 일은 `state`와 `onState(listener)`로 안다.
