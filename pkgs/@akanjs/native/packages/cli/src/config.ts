@@ -117,8 +117,9 @@ export interface AkanNativeConfig {
    * @akanjs/native/plugins/updates. `akan-native update keygen` makes the signing key and prints its public key;
    * `akan-native update publish <platform>` writes signed releases for `url`. `publicKeys` lists the keys an app
    * trusts, the online signing key first and offline spares after (a key revokes only keys before it); `publicKey` is
-   * the one-key form, and a desktop app built before protocol v2 trusts the first. `report.url` is where a phone posts
-   * what became of each release, at its next launch or return to the foreground.
+   * the one-key form, and a desktop app built before protocol v2 trusts the first. `report.url` is where an app posts
+   * what became of each release: a phone at its next launch or return to the foreground, a desktop app at launch and
+   * with each check.
    */
   updates?: {
     url: string;

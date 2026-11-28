@@ -58,7 +58,7 @@ export interface UpdatesConfig {
   channel: string;
   /** How long a newly applied bundle has to call notifyReady() before it is rolled back, ms. Default 10000. */
   readyTimeout: number;
-  /** Where a phone posts what became of each release (downloaded, applied, confirmed, rolled back, failed); null: no reports. */
+  /** Where an app posts what became of each release (downloaded, applied, confirmed, rolled back, failed); null: no reports. */
   reportUrl: string | null;
   /** Desktop: false leaves checking, downloading and applying to the app; a phone always takes a web bundle itself. */
   automatic: boolean;
@@ -488,7 +488,7 @@ export function updatesResource(
     ...(updates.target && platform !== "ios" && platform !== "android" ? { target: updates.target } : {}),
     ...(updates.automatic === false && platform !== "ios" && platform !== "android" ? { automatic: false } : {}),
     ...(updates.windowsSigners?.length && platform === "windows" ? { windowsSigners: updates.windowsSigners } : {}),
-    ...(updates.reportUrl && (platform === "ios" || platform === "android") ? { reportUrl: updates.reportUrl } : {}),
+    ...(updates.reportUrl && platform !== "web" ? { reportUrl: updates.reportUrl } : {}),
   });
 }
 

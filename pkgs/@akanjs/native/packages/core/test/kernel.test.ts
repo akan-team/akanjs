@@ -26,6 +26,7 @@ import {
   RetainedEvents,
   route,
   UPDATE_REPORT_BATCH,
+  UPDATE_REPORT_DESKTOP_REASONS,
   UPDATE_REPORT_EVENTS,
   UPDATE_REPORT_LIMIT,
   UPDATE_REPORT_REASONS,
@@ -197,6 +198,7 @@ const updates = (await load("updates")) as {
   reports: {
     events: string[];
     reasons: string[];
+    desktopReasons: string[];
     outcomes: [number, string][];
     retryAfter: [string | null, number, number | null, string][];
     waits: [number | null, number, boolean][];
@@ -268,6 +270,8 @@ describe("updates vectors", () => {
   test("report vocabulary", () => {
     expect(reports.events).toEqual([...UPDATE_REPORT_EVENTS]);
     expect(reports.reasons).toEqual([...UPDATE_REPORT_REASONS]);
+    expect(reports.desktopReasons).toEqual([...UPDATE_REPORT_DESKTOP_REASONS]);
+    expect(reports.desktopReasons.filter((reason) => reports.reasons.includes(reason))).toEqual([]);
   });
   test.each(reports.outcomes)("an answer of %d → %s", (status, expected) => {
     expect(updateReportOutcome(status)).toBe(expected as ReturnType<typeof updateReportOutcome>);

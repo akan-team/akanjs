@@ -483,7 +483,7 @@ export const isChannelName = (s: string) => /^[a-z0-9][a-z0-9._-]{0,40}$/.test(s
 
 // ------------------------------------------------------------------ update reports
 
-/** What became of a release on a phone, posted to updates.report.url (vectors/updates.json `reports`). */
+/** What became of a release on a phone or a desktop app, posted to updates.report.url (vectors/updates.json `reports`). */
 export const UPDATE_REPORT_EVENTS = ["downloaded", "applied", "confirmed", "rolledBack", "failed"] as const;
 export type UpdateReportEvent = (typeof UPDATE_REPORT_EVENTS)[number];
 
@@ -500,15 +500,25 @@ export const UPDATE_REPORT_REASONS = [
 ] as const;
 export type UpdateReportReason = (typeof UPDATE_REPORT_REASONS)[number];
 
+/**
+ * The reasons only a desktop app gives, beside the phones': `signer` fails a release the installed app's team or
+ * Authenticode signer did not sign; `server` fails one that adds or drops the carried server, and rolls back one whose
+ * server did not come up.
+ */
+export const UPDATE_REPORT_DESKTOP_REASONS = ["signer", "server"] as const;
+export type UpdateReportDesktopReason = (typeof UPDATE_REPORT_DESKTOP_REASONS)[number];
+
 export interface UpdateReportEntry {
   /** Counts up for as long as the install lasts, so a receiver can drop a batch it already took. */
   id: number;
   event: UpdateReportEvent;
   bundle: string;
   sequence: number | null;
-  reason: UpdateReportReason | null;
+  reason: UpdateReportReason | UpdateReportDesktopReason | null;
   /** updateReportTime: UTC, always three fraction digits. */
   at: string;
+  /** A desktop app: the key that signed the release, or that a refused envelope names; left out when it knows none. */
+  keyId?: string;
 }
 
 /** One request to updates.report.url, with no credentials. */
@@ -520,20 +530,25 @@ export interface UpdateReportBody {
   installId: string;
   nativeApi: string;
   appVersion: string;
-  /** "iOS 18.1", "Android 15". */
+  /** "iOS 18.1", "Android 15", "macOS 15.5", "Windows 10.0.26200", "Linux Ubuntu 24.04.1 LTS". */
   os: string;
+  /** A desktop app's CPU, "arm64" or "x64": its releases are per OS and CPU. A phone sends none. */
+  arch?: string;
   events: UpdateReportEntry[];
 }
 
-/** The events a phone keeps waiting, the oldest dropped first. */
+/** The events an app keeps waiting, the oldest dropped first. */
 export const UPDATE_REPORT_LIMIT = 100;
 
 /** The events one request carries. */
 export const UPDATE_REPORT_BATCH = 20;
 
 /** An event is kept once per release and reason: a check that fails at every launch is one failure. */
-export const updateReportKey = (event: UpdateReportEvent, bundle: string, reason: UpdateReportReason | null) =>
-  `${event}|${bundle}|${reason ?? ""}`;
+export const updateReportKey = (
+  event: UpdateReportEvent,
+  bundle: string,
+  reason: UpdateReportReason | UpdateReportDesktopReason | null,
+) => `${event}|${bundle}|${reason ?? ""}`;
 
 export type UpdateReportOutcome = "sent" | "dropped" | "kept";
 

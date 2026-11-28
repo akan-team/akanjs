@@ -15,6 +15,7 @@ import {
 } from "node:fs";
 import { tmpdir, uptime } from "node:os";
 import { dirname, join } from "node:path";
+import type { UpdateReportBody } from "../../../packages/core/src/kernel.ts";
 import { createDispatcher } from "../../../packages/desktop/src/dispatcher.ts";
 import { createLifecycle } from "../../../packages/desktop/src/lifecycle.ts";
 import type { DesktopServerStatus, NativeEvent } from "../../../packages/desktop/src/plugin.ts";
@@ -60,6 +61,8 @@ interface HarnessOptions {
   root?: string;
   signatureTool?: DesktopUpdatesOptions["signatureTool"];
   windowsSigners?: string[];
+  /** updates.report.url. */
+  reportUrl?: string;
   /** The native shell's ops (ctx.shell); none by default, so every op is UNSUPPORTED. */
   shell?: (op: string, args?: Record<string, unknown>) => Promise<unknown>;
   /** updates.automatic, off by default here; named, `quit()` runs the app's quit hooks. */
@@ -91,6 +94,7 @@ async function harness(options: HarnessOptions = {}) {
     ...(options.publicKeys ? { protocol: 2, publicKeys: options.publicKeys } : {}),
     ...(options.target ? { target: options.target } : {}),
     ...(options.windowsSigners ? { windowsSigners: options.windowsSigners } : {}),
+    ...(options.reportUrl ? { reportUrl: options.reportUrl } : {}),
     channel: "main",
     readyTimeout: options.readyTimeout ?? 50,
     ...(options.automatic ? {} : { automatic: false }),
@@ -1592,5 +1596,186 @@ describe("desktop updates: protocol v2", () => {
     } finally {
       release.stop();
     }
+  });
+});
+
+describe("desktop updates: what became of a release is reported (updates.report.url)", () => {
+  const stops: (() => void)[] = [];
+  afterEach(() => {
+    for (const stop of stops.splice(0)) stop();
+  });
+  const receiver = () => {
+    const bodies: UpdateReportBody[] = [];
+    const host = Bun.serve({
+      port: 0,
+      hostname: "127.0.0.1",
+      fetch: async (request) => {
+        bodies.push((await request.json()) as UpdateReportBody);
+        return new Response(null, { status: 204 });
+      },
+    });
+    stops.push(() => host.stop(true));
+    const events = () => bodies.flatMap((body) => body.events.map((e) => [e.event, e.bundle, e.reason]));
+    return {
+      url: `http://127.0.0.1:${host.port}/r/`,
+      bodies,
+      events,
+      reported: (n: number) => until(() => events().length >= n),
+    };
+  };
+  const feed = (options: ReleaseOptions = {}) => {
+    const root = mkdtempSync(join(tmpdir(), "akan-native-updates-reported-"));
+    roots.push(root);
+    const release = serveRelease(root, options);
+    stops.push(release.stop);
+    return release;
+  };
+
+  test("downloaded, then applied at the trial's first launch, then confirmed, each once and by one install", async () => {
+    const key = newKey();
+    const release = feed({ signer: key });
+    const reports = receiver();
+    const options = { url: release.url, publicKeys: [rawKey(key)], reportUrl: reports.url };
+    const first = await harness(options);
+    expect(await first.call("download")).toMatchObject({ ok: true });
+    expect(await first.call("download")).toMatchObject({ ok: true });
+    expect(await first.call("apply")).toMatchObject({ ok: true });
+    await until(() => first.quits.length > 0);
+    await reports.reported(1);
+    expect(reports.events()).toEqual([["downloaded", "2000-abcdef12", null]]);
+
+    const trial = await harness({ ...options, root: first.root, embeddedSequence: 1999, readyTimeout: 5000 });
+    await reports.reported(2);
+    trial.fire("pageLoad", { event: "finished" });
+    expect(await trial.call("notifyReady")).toMatchObject({ ok: true });
+    await reports.reported(3);
+    expect(reports.events()).toEqual([
+      ["downloaded", "2000-abcdef12", null],
+      ["applied", "2000-abcdef12", null],
+      ["confirmed", "2000-abcdef12", null],
+    ]);
+    const [body] = reports.bodies as [UpdateReportBody];
+    expect(body).toMatchObject({
+      app: APP_ID,
+      platform: "linux",
+      channel: "main",
+      appVersion: "1.0.0",
+      arch: process.arch,
+      events: [{ id: 0, sequence: 2000, keyId: keyIdOf(rawKey(key)) }],
+    });
+    expect(body.installId).toMatch(/^[0-9a-f]{32}$/);
+    expect(new Set(reports.bodies.map((b) => b.installId)).size).toBe(1);
+    expect(reports.bodies.flatMap((b) => b.events.map((e) => e.id))).toEqual([0, 1, 2]);
+  });
+
+  test("a trial put back says why: no notifyReady() in time, started again, or its server not up", async () => {
+    const timeout = receiver();
+    const late = await harness({ state: onTrial, readyTimeout: 20, reportUrl: timeout.url });
+    late.fire("pageLoad", { event: "finished" });
+    await until(() => late.quits.length > 0);
+    await timeout.reported(2);
+    expect(timeout.events()).toEqual([
+      ["applied", "2000-aaaaaaaa", null],
+      ["rolledBack", "2000-aaaaaaaa", "timeout"],
+    ]);
+
+    const relaunch = receiver();
+    const again = await harness({
+      state: (app) => ({ ...onTrial(app), trial: { ...onTrial(app).trial, attempts: 1 } }),
+      reportUrl: relaunch.url,
+    });
+    await until(() => again.quits.length > 0);
+    await relaunch.reported(1);
+    expect(relaunch.events()).toEqual([["rolledBack", "2000-aaaaaaaa", "relaunch"]]);
+
+    const down = receiver();
+    const server = fakeServer();
+    const carried = await harness({ server: server.status, state: onTrial, readyTimeout: 5000, reportUrl: down.url });
+    server.setState("gaveUp");
+    await until(() => carried.quits.length > 0);
+    await down.reported(2);
+    expect(down.events()).toEqual([
+      ["applied", "2000-aaaaaaaa", null],
+      ["rolledBack", "2000-aaaaaaaa", "server"],
+    ]);
+  });
+
+  test("a release refused before its download is a failure under signature, manifest or server, told once", async () => {
+    const [key, stranger] = [newKey(), newKey()];
+    const reports = receiver();
+    const release = feed({ signer: stranger });
+    const { call } = await harness({ url: release.url, publicKeys: [rawKey(key)], reportUrl: reports.url });
+    expect(await call("check")).toMatchObject({ ok: false, error: { code: "INTERNAL" } });
+    expect(await call("check")).toMatchObject({ ok: false, error: { code: "INTERNAL" } });
+    release.publish({ signer: key, target: "pilot", bundle: "2001-abcdef12", sequence: 2001 });
+    expect(await call("download")).toMatchObject({ ok: false, error: { code: "INTERNAL" } });
+    release.publish({ signer: key, server: true, bundle: "2002-abcdef12", sequence: 2002 });
+    expect(await call("check")).toMatchObject({ ok: true, result: { available: false } });
+    expect(await call("download")).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+    await reports.reported(3);
+    expect(reports.events()).toEqual([
+      ["failed", "2000-abcdef12", "signature"],
+      ["failed", "2001-abcdef12", "manifest"],
+      ["failed", "2002-abcdef12", "server"],
+    ]);
+    expect(reports.bodies[0]?.events[0]).toMatchObject({ sequence: 2000, keyId: keyIdOf(rawKey(stranger)) });
+  });
+
+  test("a download that fails says where: the archive missing, its bytes changed, or another signer's app", async () => {
+    const nothing = receiver();
+    const empty = feed();
+    const unpublished = await harness({
+      url: `${empty.url}/moved`,
+      publicKey: empty.publicKey,
+      reportUrl: nothing.url,
+    });
+    expect(await unpublished.call("download")).toMatchObject({ ok: false, error: { code: "NOT_FOUND" } });
+
+    const key = newKey();
+    const release = feed({ signer: key });
+    /** The release's feed with another answer for its archive. */
+    const withArchive = (archive: () => Response) => {
+      const host = Bun.serve({
+        port: 0,
+        hostname: "127.0.0.1",
+        fetch: (request) => {
+          const path = new URL(request.url).pathname;
+          return path.endsWith(".tar.gz") ? archive() : fetch(`${release.url}${path}`);
+        },
+      });
+      stops.push(() => host.stop(true));
+      return `http://127.0.0.1:${host.port}`;
+    };
+    for (const [archive, code, reason] of [
+      [() => new Response("", { status: 404 }), "NOT_FOUND", "download"],
+      [() => new Response(Bun.gzipSync(Buffer.from("not the app"))), "INTERNAL", "verify"],
+    ] as const) {
+      const reports = receiver();
+      const { call } = await harness({ url: withArchive(archive), publicKeys: [rawKey(key)], reportUrl: reports.url });
+      expect(await call("download")).toMatchObject({ ok: false, error: { code } });
+      await reports.reported(1);
+      expect(reports.events()).toEqual([["failed", "2000-abcdef12", reason]]);
+    }
+    expect(nothing.events()).toEqual([]);
+
+    const other = receiver();
+    const signed = feed();
+    const third = await harness({
+      url: signed.url,
+      publicKey: signed.publicKey,
+      platform: "win32",
+      signatureTool: async () => ({ code: 0, output: "akan-signer: other\r\n" }),
+      reportUrl: other.url,
+    });
+    expect(await third.call("download")).toMatchObject({ ok: false, error: { code: "NOT_ALLOWED" } });
+    await other.reported(1);
+    expect(other.events()).toEqual([["failed", "2000-abcdef12", "signer"]]);
+  });
+
+  test("an app built without updates.report.url keeps and posts nothing", async () => {
+    const release = feed();
+    const { call, stateDir } = await harness({ url: release.url, publicKey: release.publicKey });
+    expect(await call("download")).toMatchObject({ ok: true });
+    expect(existsSync(join(stateDir, "report.json"))).toBe(false);
   });
 });
