@@ -59,7 +59,7 @@ Other Exports
 
 - useBodyScrollLock(active): Locks `document.body` scrolling while `active`. Overlays share one count.
 
-- useEscapeKey(active, onEscape, options?): Calls `onEscape` on Escape, or on an Android app's back button, while `active`. Only the topmost open surface gets it, and back leaves the page only once none is open. `{ back: false }` keeps the back button for the page: for a hint that shows by itself, such as a tooltip.
+- useEscapeKey(active, onEscape, options?): Calls `onEscape` on Escape or an Android app's back button while `active` and the topmost open surface. `{ back: false }` leaves back to the page: for a hint that shows by itself, like a tooltip.
 
 - usePageFocusEffect(effect, deps): Runs `effect` while the user is on this page and cleans it up when they leave. A page kept under the current one for a swipe back stays mounted, so a plain effect there keeps running.
 

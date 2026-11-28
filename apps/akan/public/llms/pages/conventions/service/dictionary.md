@@ -148,7 +148,7 @@ The OAuth consent page reads its phrases this way, on the server. Markup is trim
 
 **A thrown error needs no reading code.** When a store action fails with an `Err`, the store toasts its text in the reader's language. For a client-side check, call `msg.error("oauth.error.notSignedIn")` and return.
 
-**Read an endpoint's description on the server.** The `.desc` and `.arg` texts of a signal stay out of the dictionary file every page loads and come only to a page that shows the API explorer or whose client components write such a key, so a client component reading one by a key built from data gets the text on the server and the key in the browser, which React reports as a hydration mismatch. Read them in a server component and pass the text down.
+**Read an endpoint's description on the server.** A signal's `.desc` and `.arg` texts are not sent to every page, so a client component reading one by a key built from data gets a hydration mismatch. Pass the text down.
 
 **One-off text belongs to the screen.** A phrase used once, on one screen, is `l.trans({ en, ko })` in that component. A key only one component reads is a key somebody keeps in sync for nothing.
 

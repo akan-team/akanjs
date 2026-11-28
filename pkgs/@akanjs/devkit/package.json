@@ -1,6 +1,6 @@
 {
   "name": "@akanjs/devkit",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -52,10 +52,10 @@
     "./workspace/getRelatedCnsts": "./workspace/getRelatedCnsts.ts"
   },
   "dependencies": {
-    "@akanjs/language": "3.2.0",
+    "@akanjs/language": "3.3.0",
     "@inquirer/prompts": "^8.7.3",
     "@tailwindcss/node": "^4.3.3",
-    "akanjs": "3.2.0",
+    "akanjs": "3.3.0",
     "chalk": "^6.0.1",
     "commander": "^15.0.0",
     "dayjs": "^1.11.23",

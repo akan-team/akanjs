@@ -329,9 +329,8 @@ akan tunnel --stop abc123`,
                   <strong>Anyone with the URL reaches your whole dev server.</strong> That is every route under{" "}
                   <code>page/</code>, the API prefix, the websocket, and <code>/mcp</code> if the app mounts it, with
                   nothing in front. Give it a <code>--ttl</code>, stop it when the call ends, and never share a session
-                  signed in to production data. The share leaves out the dev routes the app registers (devtools, Studio,{" "}
-                  <code>/_akan/hmr</code>, <code>/__rsc/manifest</code>), source maps and the operator routes; it serves
-                  the ssr-dev and csr-dev module registries, which a dev page loads its code from.
+                  signed in to production data. The share leaves out devtools, Studio, source maps and the operator
+                  routes.
                 </span>
               ),
               ko: (
@@ -339,9 +338,7 @@ akan tunnel --stop abc123`,
                   <strong>URL을 아는 사람은 누구나 개발 서버 전체에 접근할 수 있습니다.</strong> <code>page/</code> 아래
                   모든 라우트, API 경로, 웹소켓, 앱이 마운트했다면 <code>/mcp</code>까지 아무 보호 없이 열립니다.{" "}
                   <code>--ttl</code>을 주고, 통화가 끝나면 바로 멈추고, 운영 데이터에 로그인된 세션은 절대 공유하지
-                  마세요. 공유는 앱이 등록한 개발 라우트(devtools, Studio, <code>/_akan/hmr</code>,{" "}
-                  <code>/__rsc/manifest</code>), 소스 맵, 운영자 라우트를 빼고, 개발 페이지가 코드를 받아 가는 ssr-dev와
-                  csr-dev 모듈 레지스트리는 내보냅니다.
+                  마세요. 공유는 devtools, Studio, 소스 맵, 운영자 라우트를 내보내지 않습니다.
                 </span>
               ),
             })}

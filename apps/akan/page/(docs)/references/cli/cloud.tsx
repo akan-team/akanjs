@@ -407,8 +407,8 @@ akan logout --host https://cloud.example.com`,
           {
             name: l.trans({ en: "release not served yet", ko: "아직 받아지지 않는 릴리스" }),
             desc: l.trans({
-              en: "Before it changes anything, it checks that the registry serves that version of `akanjs`, `@akanjs/devkit`, `@akanjs/cli` and `@akanjs/language`, tarball included. The registry can show the packages of one release up to an hour apart; until the last one is there it stops, naming the missing ones, and leaves `package.json` alone.",
-              ko: "무엇이든 바꾸기 전에 레지스트리가 그 버전의 `akanjs`, `@akanjs/devkit`, `@akanjs/cli`, `@akanjs/language`를 tarball까지 내주는지 확인합니다. 레지스트리는 한 릴리스의 패키지를 최대 한 시간까지 따로따로 내보일 수 있습니다. 마지막 패키지가 올라올 때까지는 빠진 패키지 이름을 알리며 멈추고 `package.json`을 건드리지 않습니다.",
+              en: "The registry can show one release's packages (`akanjs`, `@akanjs/devkit`, `@akanjs/cli`, `@akanjs/language`) up to an hour apart. Until it serves all four, `akan update` stops and leaves `package.json` alone.",
+              ko: "레지스트리는 한 릴리스의 패키지(`akanjs`, `@akanjs/devkit`, `@akanjs/cli`, `@akanjs/language`)를 최대 한 시간까지 따로따로 내보일 수 있습니다. 네 패키지를 모두 내줄 때까지 `akan update`는 `package.json`을 건드리지 않고 멈춥니다.",
             }),
           },
           {

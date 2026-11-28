@@ -7,6 +7,7 @@ import {
   Device,
   debugFrame,
   getPathInfo,
+  mergePageConfigs,
   type PageActivity,
   type PageState,
   type ReactFont,
@@ -173,7 +174,15 @@ const CSRWrapper = ({
       lang,
       prefix,
       router: { ...reactRouter, canGoBack: () => history.current.idx > 0 },
-      routeManifest: pathRoutes.map((pathRoute) => pathRoute.path),
+      routeManifest: {
+        routes: pathRoutes.map((pathRoute) => pathRoute.path),
+        stackOn: Object.fromEntries(
+          pathRoutes.flatMap(({ path, pageConfigChain }) => {
+            const { stackOn } = mergePageConfigs(pageConfigChain);
+            return stackOn ? [[path, stackOn]] : [];
+          }),
+        ),
+      },
       indexPath: window.__AKAN_MOBILE_TARGET__?.indexPath,
     });
     globalThis.__AKAN_NOT_FOUND_VIEW__ = () => !!history.current.locations[history.current.idx]?.pathRoute.notFound;

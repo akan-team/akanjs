@@ -92,6 +92,7 @@ export interface AkanNativeConfig {
         minWebViewVersion?: number;
         autoplay?: boolean;
         debugAppIdSuffix?: string;
+        debugAppNameSuffix?: string;
         googleServices?: string;
     };
     push?: {
@@ -111,6 +112,8 @@ export interface AkanNativeConfig {
     };
     ios?: {
         hideFormAccessoryBar?: boolean;
+        debugAppIdSuffix?: string;
+        debugAppNameSuffix?: string;
     };
     desktop?: {
         quitOnLastWindowClosed?: boolean;

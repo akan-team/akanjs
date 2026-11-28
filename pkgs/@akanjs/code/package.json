@@ -1,6 +1,6 @@
 {
   "name": "@akanjs/code",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "sourceType": "module",
   "type": "module",
   "publishConfig": {
@@ -31,14 +31,14 @@
     "./package.json": "./package.json"
   },
   "dependencies": {
-    "@akanjs/devkit": "3.2.0",
+    "@akanjs/devkit": "3.3.0",
     "@earendil-works/pi-agent-core": "1.5.2",
     "@earendil-works/pi-ai": "1.5.2",
     "@earendil-works/pi-codemode": "1.5.2",
     "@earendil-works/pi-coding-agent": "1.5.2",
     "@earendil-works/pi-mcp": "1.5.2",
     "@earendil-works/pi-tui": "1.5.2",
-    "akanjs": "3.2.0",
+    "akanjs": "3.3.0",
     "chalk": "^6.0.1",
     "ink": "^6.8.0",
     "react": "19.3.1",

@@ -123,11 +123,8 @@ export default page()
                   <code>ssr</code> prints the SSR balance first, then only the warnings whose scope is <code>ssr</code>.
                 </li>
                 <li>
-                  <code>runtime</code> counts, per app and library, the client files that read <code>st</code>,{" "}
-                  <code>fetch</code> or <code>sig</code> only by names a module answers, notes each file that ties
-                  itself to its scope&apos;s whole client runtime, and prints what the last <code>akan build</code> of
-                  each app decided: the routes loading per module, and for every other the file, line and rule that
-                  keeps it whole.
+                  <code>runtime</code> notes each client file that ties itself to its scope&apos;s whole client runtime,
+                  and prints what each app&apos;s last <code>akan build</code> decided for each route.
                 </li>
               </ul>
             </>
@@ -143,10 +140,8 @@ export default page()
                   <code>ssr</code>은 SSR 비율을 먼저 출력하고, 경고는 scope가 <code>ssr</code>인 것만 남깁니다.
                 </li>
                 <li>
-                  <code>runtime</code>은 앱과 라이브러리마다 <code>st</code>, <code>fetch</code>, <code>sig</code>를
-                  모듈이 답하는 이름으로만 읽는 클라이언트 파일 수를 세고, 스코프의 클라이언트 런타임 전체에 묶이는
-                  파일마다 노트를 남기며, 앱마다 마지막 <code>akan build</code>가 결정한 내용을 출력합니다. 모듈별로
-                  불러오는 라우트와, 나머지 라우트를 전체로 묶어 두는 파일, 줄 번호, 규칙입니다.
+                  <code>runtime</code>은 스코프의 클라이언트 런타임 전체에 묶이는 클라이언트 파일마다 노트를 남기고,
+                  앱마다 마지막 <code>akan build</code>가 라우트별로 결정한 내용을 출력합니다.
                 </li>
               </ul>
             </>
@@ -441,22 +436,22 @@ akan quality baseline`,
       {
         name: "akan.runtime.whole-scope",
         desc: l.trans({
-          en: "`akan quality runtime` only, as a note: a client file reads `st`, `fetch` or `sig` by a computed key nothing asserts as a name, or hands it on or re-exports it, so a page that loads the file loads its scope's whole client runtime. The file works as it is, and the note says what would make the read visible where there is a usual answer: assert the key as a name, name the endpoint, read the names where the object is.",
-          ko: "`akan quality runtime`에서만 노트로 뜹니다. 클라이언트 파일이 `st`, `fetch`, `sig`를 아무도 이름으로 단언하지 않은 계산된 키로 읽거나, 다른 곳에 넘기거나 다시 export해서, 그 파일을 불러오는 페이지가 스코프의 클라이언트 런타임 전체를 불러옵니다. 파일은 그대로 동작하며, 흔한 해법이 있으면 노트가 읽기를 드러내는 방법을 알려 줍니다. 키를 이름으로 단언하거나, 엔드포인트 이름을 적거나, 객체가 있는 곳에서 이름을 읽으면 됩니다.",
+          en: "`akan quality runtime` only, as a note: a client file reads `st`, `fetch` or `sig` by a computed key nothing asserts as a name, hands it on or re-exports it, so its pages load the scope's whole client runtime. Assert the key as a name, name the endpoint, or read the names where the object is.",
+          ko: "`akan quality runtime`에서만 노트로 뜹니다. 클라이언트 파일이 `st`, `fetch`, `sig`를 아무도 이름으로 단언하지 않은 계산된 키로 읽거나, 다른 곳에 넘기거나 다시 export해서, 그 파일을 불러오는 페이지가 스코프의 클라이언트 런타임 전체를 불러옵니다. 키를 이름으로 단언하거나, 엔드포인트 이름을 적거나, 객체가 있는 곳에서 이름을 읽습니다.",
         }),
       },
       {
         name: "akan.runtime.whole-constants",
         desc: l.trans({
-          en: "`akan quality runtime` only, as a note: a client file passes `cnst` on, spreads it, walks its keys or picks a member by a computed key, so a page that loads the file registers the constants of every model its scope reaches. Name the member (`cnst.Memo`) or destructure it (`const { MemoStatus } = cnst`).",
-          ko: "`akan quality runtime`에서만 노트로 뜹니다. 클라이언트 파일이 `cnst`를 다른 곳에 넘기거나 펼치거나 키를 훑거나 계산된 키로 멤버를 골라서, 그 파일을 불러오는 페이지가 스코프가 닿는 모든 모델의 상수를 등록합니다. 멤버 이름을 적거나(`cnst.Memo`) 구조 분해로 꺼냅니다(`const { MemoStatus } = cnst`).",
+          en: "`akan quality runtime` only, as a note: a client file passes `cnst` on, spreads it, walks its keys or picks a member by a computed key, so a page loading it registers the constants of every model its scope reaches. Name the member (`cnst.Memo`) or destructure it.",
+          ko: "`akan quality runtime`에서만 노트로 뜹니다. 클라이언트 파일이 `cnst`를 다른 곳에 넘기거나 펼치거나 키를 훑거나 계산된 키로 멤버를 골라서, 그 파일을 불러오는 페이지가 스코프가 닿는 모든 모델의 상수를 등록합니다. 멤버 이름을 적거나(`cnst.Memo`) 구조 분해로 꺼냅니다.",
         }),
       },
       {
         name: "akan.runtime.framework-marker",
         desc: l.trans({
-          en: "`akan quality runtime` only, as a note: a file imports a framework component that reads models by name (a relation `Field`, `Load`, `Model`, `Data`, `Signal`, `Constant.Doc`), so each page listed loads the whole client runtime. The note shows the imports from that file to the component.",
-          ko: "`akan quality runtime`에서만 노트로 뜹니다. 파일이 모델을 이름으로 읽는 프레임워크 컴포넌트(관계 `Field`, `Load`, `Model`, `Data`, `Signal`, `Constant.Doc`)를 import해서, 나열된 페이지가 클라이언트 런타임 전체를 불러옵니다. 노트는 그 파일에서 컴포넌트까지의 import 경로를 보여 줍니다.",
+          en: "`akan quality runtime` only, as a note: a file imports a framework component that reads models by name (a relation `Field`, `Load`, `Model`, `Data`, `Signal`, `Constant.Doc`), so each page listed loads the whole client runtime.",
+          ko: "`akan quality runtime`에서만 노트로 뜹니다. 파일이 모델을 이름으로 읽는 프레임워크 컴포넌트(관계 `Field`, `Load`, `Model`, `Data`, `Signal`, `Constant.Doc`)를 import해서, 나열된 페이지가 클라이언트 런타임 전체를 불러옵니다.",
         }),
       },
       {
@@ -488,8 +483,8 @@ akan quality baseline`,
       {
         name: "[reader]",
         desc: l.trans({
-          en: 'A file the entry imports reads `st`, `fetch`, `sig` or `cnst` by a name picked at run time, hands the object on or re-exports it; the line names the file, the line and the read. Write the name out, assert the key as a name (`name as "memoList"`), or read the names in the file that holds the object. A `Load`, `Model`, `Data`, `Signal` or `Constant.Doc` component needs every module by design, so its pages stay whole.',
-          ko: '엔트리가 import하는 파일이 `st`, `fetch`, `sig`, `cnst`를 실행 중에 고른 이름으로 읽거나, 객체를 다른 곳에 넘기거나 다시 export합니다. 출력 줄이 파일, 줄 번호, 읽은 표현을 알려 줍니다. 이름을 직접 적거나, 키를 이름으로 단언하거나(`name as "memoList"`), 객체가 있는 파일에서 이름을 읽습니다. `Load`, `Model`, `Data`, `Signal`, `Constant.Doc` 컴포넌트는 원래 모든 모듈이 필요하므로 그 페이지는 전체 런타임을 유지합니다.',
+          en: 'A file the entry imports reads `st`, `fetch`, `sig` or `cnst` by a name picked at run time, hands it on or re-exports it. Write the name out, assert the key as a name (`name as "memoList"`), or read the names where the object is. Pages with a `Load`, `Model`, `Data`, `Signal` or `Constant.Doc` component stay whole by design.',
+          ko: '엔트리가 import하는 파일이 `st`, `fetch`, `sig`, `cnst`를 실행 중에 고른 이름으로 읽거나, 다른 곳에 넘기거나 다시 export합니다. 이름을 직접 적거나, 키를 이름으로 단언하거나(`name as "memoList"`), 객체가 있는 곳에서 이름을 읽습니다. `Load`, `Model`, `Data`, `Signal`, `Constant.Doc` 컴포넌트가 있는 페이지는 원래 전체 런타임을 유지합니다.',
         }),
       },
       {
@@ -516,8 +511,8 @@ akan quality baseline`,
       {
         name: "[majority]",
         desc: l.trans({
-          en: "More pages that keep the whole runtime hold the entry than pages loading per module, which would carry its pieces on top of the whole runtime. It is usually a shared layout part: clear the reasons of the pages that hold it and the entry follows.",
-          ko: "이 엔트리를 가진 페이지 가운데 전체 런타임을 유지하는 쪽이 모듈별로 불러오는 쪽보다 많아서, 조각으로 나누면 그 페이지들이 전체 런타임 위에 조각까지 싣게 됩니다. 보통 공용 레이아웃 부품입니다. 이 엔트리를 가진 페이지들의 이유를 없애면 함께 바뀝니다.",
+          en: "More pages that keep the whole runtime hold the entry than pages loading per module. It is usually a shared layout part: clear the reasons of the pages that hold it and the entry follows.",
+          ko: "이 엔트리를 가진 페이지 가운데 전체 런타임을 유지하는 쪽이 모듈별로 불러오는 쪽보다 많습니다. 보통 공용 레이아웃 부품입니다. 이 엔트리를 가진 페이지들의 이유를 없애면 함께 바뀝니다.",
         }),
       },
       {
@@ -544,23 +539,23 @@ akan quality baseline`,
       {
         name: "[dictionary]",
         desc: l.trans({
-          en: "The routes listed load every text of the page dictionary. With a line number, a client file reads a key the build cannot follow: write the key out, or pick it from an object or a typed union in the same file, or from an `as const` `static` table of a constant class. Without one, the file keeps the whole runtime or shows a `Signal` or `Constant` component; clear that file's `[reader]` reason first.",
-          ko: "나열된 라우트가 페이지 사전의 모든 문구를 불러옵니다. 줄 번호가 있으면 클라이언트 파일이 빌드가 따라갈 수 없는 key를 읽는 것입니다. key를 직접 적거나, 같은 파일의 객체나 타입 union, 또는 constant 클래스의 `as const` `static` 표에서 고릅니다. 줄 번호가 없으면 그 파일이 전체 런타임을 유지하거나 `Signal`·`Constant` 컴포넌트를 보여 주는 것이니, 그 파일의 `[reader]` 이유부터 없앱니다.",
+          en: "The routes listed load every text of the page dictionary. With a line number, a client file reads a key the build cannot follow: write it out, or pick it from an object or a typed union in the same file. Without one, clear that file's `[reader]` reason first.",
+          ko: "나열된 라우트가 페이지 사전의 모든 문구를 불러옵니다. 줄 번호가 있으면 클라이언트 파일이 빌드가 따라갈 수 없는 key를 읽는 것입니다. key를 직접 적거나 같은 파일의 객체나 타입 union에서 고릅니다. 줄 번호가 없으면 그 파일의 `[reader]` 이유부터 없앱니다.",
         }),
       },
       {
         name: ["akan.runtime.whole-scope", "akan.runtime.whole-constants", "akan.runtime.framework-marker"],
         href: "#scan-rules",
         desc: l.trans({
-          en: "Notes read from source, without a build: a file that would keep its scope's whole runtime, a file that keeps every constant (name `cnst.<Name>` or destructure `const { … } = cnst`), and, for an app no build has reported on, the pages that import a framework component reading models by name. The build's lines above say what the last build did; where the two differ, the build is right.",
-          ko: "빌드 없이 소스에서 읽은 노트입니다. 스코프의 전체 런타임을 유지하게 될 파일, 모든 상수를 불러오는 파일(`cnst.<Name>`으로 적거나 `const { … } = cnst`로 꺼냅니다), 그리고 빌드 리포트가 없는 앱에 한해 모델을 이름으로 읽는 프레임워크 컴포넌트를 import하는 페이지를 알려 줍니다. 위의 빌드 줄은 마지막 빌드가 실제로 한 일이며, 둘이 다르면 빌드가 맞습니다.",
+          en: "Notes read from source, without a build; `akan.runtime.framework-marker` shows only for an app no build has reported on. Where a note and the build's lines differ, the build is right.",
+          ko: "빌드 없이 소스에서 읽은 노트이며, `akan.runtime.framework-marker`는 빌드 리포트가 없는 앱에만 나옵니다. 노트와 빌드 줄이 다르면 빌드가 맞습니다.",
         }),
       },
       {
         name: ["call", "effect-statement", "effect-value", "bare-import", "reexport", "mutated-import"],
         desc: l.trans({
-          en: "Counted per app and library as object imports that load the whole object: the object's own file, or the file of an object it copies in with `Object.assign`, does more than gather its parts (it calls a function other than React's `memo`, `forwardRef`, `lazy` or `createContext`, runs a statement, imports for effect, re-exports or changes an import). Move that code into the part's file, so the object file only gathers imports.",
-          ko: "앱과 라이브러리마다 객체 전체를 불러오는 import로 셉니다. 객체 파일이나, 그 객체가 `Object.assign`으로 복사해 넣은 객체의 파일이 부분을 모으는 것 말고 다른 일(React의 `memo`, `forwardRef`, `lazy`, `createContext`가 아닌 함수 호출, 문장 실행, 효과를 위한 import, 다시 export, import 변경)을 합니다. 그 코드를 부분 파일로 옮겨 객체 파일이 import만 모으게 합니다.",
+          en: "Counted per app and library as whole-object imports: the object's file, or that of an object it copies in with `Object.assign`, does more than gather its parts (a call to React's `memo`, `forwardRef`, `lazy` or `createContext` aside). Move that code into the part's file.",
+          ko: "앱과 라이브러리마다 객체 전체를 불러오는 import로 셉니다. 객체 파일이나, 그 객체가 `Object.assign`으로 복사해 넣은 객체의 파일이 부분을 모으는 것 말고 다른 일을 합니다(React의 `memo`, `forwardRef`, `lazy`, `createContext` 호출은 제외). 그 코드를 부분 파일로 옮깁니다.",
         }),
       },
       {
@@ -576,8 +571,8 @@ akan quality baseline`,
           "server-boundary",
         ],
         desc: l.trans({
-          en: "Also counted as whole-object imports: the importing file uses the object as a value (passes it on, spreads it, picks a member by a computed key, renders or calls it, calls a member that may read `this`, writes to it), hides its name, names a member the build cannot point at a file (one the object does not hold, one declared in the object's own file, or one an object copied in after it may replace), or hands it from a server file to a client one. Name the part where it is used (`Memo.Zone.View`). `--format json` lists each import with its file, line, object and reason.",
-          ko: "역시 객체 전체를 불러오는 import로 셉니다. import하는 파일이 객체를 값으로 쓰거나(다른 곳에 넘김, 펼침, 계산된 키로 멤버 선택, 객체 자체를 렌더링하거나 호출, `this`를 읽을 수 있는 멤버 호출, 값 쓰기), 이름을 가리거나, 빌드가 파일을 짚을 수 없는 멤버(객체에 없는 멤버, 객체 파일 안에서 선언한 멤버, 뒤에 복사해 넣은 객체가 바꿀 수 있는 멤버)를 적거나, 서버 파일에서 클라이언트 파일로 넘깁니다. 쓰는 곳에서 부분의 이름을 적습니다(`Memo.Zone.View`). `--format json`은 각 import를 파일, 줄 번호, 객체, 이유와 함께 보여 줍니다.",
+          en: "Also counted as whole-object imports: the importing file uses the object as a value, hides its name, names a member the build cannot point at a file, or hands it from a server file to a client one. Name the part where it is used (`Memo.Zone.View`); `--format json` lists each import.",
+          ko: "역시 객체 전체를 불러오는 import로 셉니다. import하는 파일이 객체를 값으로 쓰거나, 이름을 가리거나, 빌드가 파일을 짚을 수 없는 멤버를 적거나, 서버 파일에서 클라이언트 파일로 넘깁니다. 쓰는 곳에서 부분의 이름을 적습니다(`Memo.Zone.View`). `--format json`은 각 import를 보여 줍니다.",
         }),
       },
     ];
@@ -929,21 +924,18 @@ Suggested quality rules:
                 en: (
                   <span>
                     <code>akan quality runtime</code> answers which client files make a page load every module's
-                    runtime, why, and which routes that holds. Run it after <code>akan build &lt;app&gt;</code>: the
-                    build keeps what it decided per app, and the report prints it as one line per reason,{" "}
-                    <code>[rule] file:line message</code>, then the entries and routes it holds and how the file is
-                    reached. <code>--format json</code> carries every entry and route. Each rule it can print, and what
-                    to change in app code:
+                    runtime, why, and which routes that holds. Run it after <code>akan build &lt;app&gt;</code>: it
+                    prints one line per reason, <code>[rule] file:line message</code>, and <code>--format json</code>{" "}
+                    carries every entry and route. Each rule it can print, and what to change in app code:
                   </span>
                 ),
                 ko: (
                   <span>
                     <code>akan quality runtime</code>은 어떤 클라이언트 파일 때문에 페이지가 모든 모듈의 런타임을
                     불러오는지, 그 이유와 거기에 묶인 라우트를 알려 줍니다. <code>akan build &lt;app&gt;</code> 뒤에
-                    실행합니다. 빌드가 앱마다 결정한 내용을 남기고, 리포트는 이유마다{" "}
-                    <code>[rule] file:line message</code> 한 줄과 거기에 묶인 엔트리, 라우트, 그 파일에 이르는 import
-                    경로를 출력합니다. <code>--format json</code>에는 모든 엔트리와 라우트가 들어 있습니다. 출력될 수
-                    있는 규칙과 앱 코드에서 바꿀 것은 다음과 같습니다:
+                    실행합니다. 이유마다 <code>[rule] file:line message</code> 한 줄을 출력하고,{" "}
+                    <code>--format json</code>에는 모든 엔트리와 라우트가 들어 있습니다. 출력될 수 있는 규칙과 앱
+                    코드에서 바꿀 것은 다음과 같습니다:
                   </span>
                 ),
               })}
@@ -959,10 +951,8 @@ Suggested quality rules:
                   <span>
                     <strong>Keeping a page whole on purpose.</strong> No setting does it; one client file that exports
                     the store does. A page that renders <code>&lt;WholeRuntime /&gt;</code> keeps the whole runtime, and
-                    rendered in the root layout, <code>page/_layout.tsx</code>, it keeps every page whole. The report
-                    then names the file under <code>[reader]</code> with the routes it holds, so the choice stays
-                    visible. A page kept whole loads more, so a route past its budget needs{" "}
-                    <code>akan build &lt;app&gt; --raise-budget</code>.
+                    rendered in the root layout, <code>page/_layout.tsx</code>, it keeps every page whole. A route this
+                    takes past its budget needs <code>akan build &lt;app&gt; --raise-budget</code>.
                   </span>
                 ),
                 ko: (
@@ -970,9 +960,8 @@ Suggested quality rules:
                     <strong>페이지를 일부러 전체 런타임에 두기.</strong> 이를 위한 설정은 없고, 스토어를 export하는
                     클라이언트 파일 하나로 합니다. <code>&lt;WholeRuntime /&gt;</code>을 렌더링한 페이지는 전체 런타임을
                     유지하고, 루트 레이아웃 <code>page/_layout.tsx</code>에서 렌더링하면 모든 페이지가 전체 런타임을
-                    유지합니다. 리포트는 그 파일을 <code>[reader]</code> 아래에 묶인 라우트와 함께 보여 주므로 선택이
-                    계속 드러납니다. 전체 런타임을 유지하는 페이지는 더 많이 불러오므로, 예산을 넘은 라우트는{" "}
-                    <code>akan build &lt;app&gt; --raise-budget</code>으로 올립니다.
+                    유지합니다. 이 때문에 예산을 넘은 라우트는 <code>akan build &lt;app&gt; --raise-budget</code>으로
+                    올립니다.
                   </span>
                 ),
               })}

@@ -317,8 +317,8 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                   type: "true | false",
                   default: l.trans({ en: "local dev runtime only", ko: "로컬 개발 런타임에서만" }),
                   desc: l.trans({
-                    en: "false closes devtools and Studio everywhere. true opens them outside a local runtime only with AKAN_LOG_DEBUG_HEADER set to at least 32 characters, to a caller that sends it as x-akan-debug or posts it to the form a browser is shown, which unlocks that browser for 15 minutes over HTTPS or localhost. Without a secret that long they stay closed and the server log says why.",
-                    ko: "false는 어디서든 devtools와 Studio를 닫습니다. true는 로컬 런타임 밖에서 AKAN_LOG_DEBUG_HEADER가 32자 이상으로 설정된 경우에만, 그 값을 x-akan-debug로 보내거나 브라우저에 보이는 폼으로 제출한 호출자에게 엽니다. 폼은 HTTPS나 localhost에서 그 브라우저를 15분 동안 열어 둡니다. 그만큼 긴 비밀값이 없으면 닫힌 채로 두고 서버 로그가 그 이유를 알려 줍니다.",
+                    en: "false closes devtools and Studio everywhere. true opens them outside a local runtime to a caller that sends AKAN_LOG_DEBUG_HEADER, set to at least 32 characters, as x-akan-debug or in the form a browser is shown.",
+                    ko: "false는 어디서든 devtools와 Studio를 닫습니다. true는 로컬 런타임 밖에서, 32자 이상으로 설정한 AKAN_LOG_DEBUG_HEADER 값을 x-akan-debug로 보내거나 브라우저에 보이는 폼으로 제출한 호출자에게 엽니다.",
                   }),
                 },
               ]}
@@ -345,8 +345,8 @@ AKAN_PUBLIC_LOG_LEVEL=info`}
                   type: "trusted-proxies",
                   default: l.trans({ en: "unset", ko: "없음" }),
                   desc: l.trans({
-                    en: "Unset, every request gets an id the server mints, and a traceparent or x-request-id it arrived with is kept as its link. trusted-proxies takes that id as the request's own from a peer AKAN_TRUSTED_PROXIES names by address, by CIDR or with private; loopback and the private ranges count only when the list spells them, and * does not. Before turning it on, make that proxy overwrite or strip both headers on every request: one that passes them through lets any caller choose the id its response and its logs carry.",
-                    ko: "설정하지 않으면 모든 요청이 서버가 만든 id를 받고, 요청에 실려 온 traceparent나 x-request-id는 link로 남습니다. trusted-proxies로 두면 AKAN_TRUSTED_PROXIES에 주소, CIDR 또는 private으로 적은 peer가 보낸 id를 요청의 id로 씁니다. loopback과 사설 대역은 목록에 직접 적었을 때만 해당하고, *는 해당하지 않습니다. 켜기 전에 그 프록시가 모든 요청에서 두 헤더를 덮어쓰거나 지우게 하세요. 그대로 통과시키는 프록시라면 아무 호출자나 응답과 로그에 실릴 id를 정할 수 있습니다.",
+                    en: "trusted-proxies takes an incoming traceparent or x-request-id as the request's id, from a peer AKAN_TRUSTED_PROXIES names by address, CIDR or private; unset, it is only a link. That proxy must overwrite or strip both headers.",
+                    ko: "trusted-proxies로 두면 AKAN_TRUSTED_PROXIES에 주소, CIDR 또는 private으로 적은 peer가 보낸 traceparent나 x-request-id를 요청의 id로 씁니다. 설정하지 않으면 link로만 남습니다. 그 프록시는 두 헤더를 덮어쓰거나 지워야 합니다.",
                   }),
                 },
               ]}
@@ -557,19 +557,19 @@ REDIS_URI=redis://redis.internal:6379`}
                 en: (
                   <span>
                     <code>akan build</code> puts no secret value of <code>env/env.server.&lt;env&gt;.ts</code> into the
-                    server it builds. You keep writing the env file as before; a string under a secret-named key
-                    (password, secret, token, apiKey, privateKey, …) or a URL carrying a password is read when the
-                    server starts, from a variable named after its key path. <code>akan secret-env &lt;app&gt;</code>{" "}
-                    lists the variables of an environment and writes them as a Kubernetes Secret or a dotenv file.
+                    built server. A string under a secret-named key (password, secret, token, apiKey, privateKey, …) or
+                    a URL carrying a password is read at start from a variable named after its key path.{" "}
+                    <code>akan secret-env &lt;app&gt;</code> lists an environment's variables and writes them as a
+                    Kubernetes Secret or a dotenv file.
                   </span>
                 ),
                 ko: (
                   <span>
                     <code>akan build</code>는 <code>env/env.server.&lt;env&gt;.ts</code>의 비밀 값을 빌드한 서버에 넣지
-                    않습니다. env 파일은 지금까지처럼 쓰면 되고, 비밀 이름의 키(password, secret, token, apiKey,
-                    privateKey 등) 아래의 문자열과 비밀번호가 든 URL은 서버가 시작할 때 키 경로에서 이름을 딴
-                    환경변수에서 읽습니다. <code>akan secret-env &lt;app&gt;</code>은 한 환경의 변수를 나열하고,
-                    Kubernetes Secret이나 dotenv 파일로 써 줍니다.
+                    않습니다. 비밀 이름의 키(password, secret, token, apiKey, privateKey 등) 아래의 문자열과 비밀번호가
+                    든 URL은 서버가 시작할 때 키 경로에서 이름을 딴 환경변수에서 읽습니다.{" "}
+                    <code>akan secret-env &lt;app&gt;</code>은 한 환경의 변수를 나열하고, Kubernetes Secret이나 dotenv
+                    파일로 써 줍니다.
                   </span>
                 ),
               })}
@@ -607,20 +607,20 @@ REDIS_URI=redis://redis.internal:6379`}
               {l.trans({
                 en: (
                   <span>
-                    <strong>A deployment must set these before it runs an image built with 3.3.0.</strong> On
-                    Kubernetes, apply the Secret <code>akan secret-env --out</code> writes and name it in the
-                    container's <code>envFrom</code>. Images built before 3.3.0 still hold the values: rotate them once
-                    the new images are live. <code>akan start</code>, <code>akan test</code>, <code>--profile</code>{" "}
-                    builds and desktop and mobile builds read the env file as written.
+                    <strong>Set these before running an image built with 3.3.0.</strong> On Kubernetes, apply the Secret{" "}
+                    <code>akan secret-env --out</code> writes and name it in the container's <code>envFrom</code>.
+                    Earlier images still hold the values, so rotate them once the new ones are live.{" "}
+                    <code>akan start</code>, <code>akan test</code>, <code>--profile</code> builds and desktop and
+                    mobile builds read the env file as written.
                   </span>
                 ),
                 ko: (
                   <span>
-                    <strong>3.3.0으로 빌드한 이미지를 돌리기 전에 배포가 이 변수들을 설정해야 합니다.</strong>{" "}
-                    Kubernetes에서는 <code>akan secret-env --out</code>이 쓴 Secret을 apply하고 컨테이너의{" "}
-                    <code>envFrom</code>에 적습니다. 3.3.0 이전에 빌드한 이미지에는 값이 그대로 남아 있으니, 새 이미지가
-                    배포되면 그 비밀 값을 교체하세요. <code>akan start</code>, <code>akan test</code>,{" "}
-                    <code>--profile</code> 빌드, 데스크톱·모바일 빌드는 env 파일을 적힌 그대로 읽습니다.
+                    <strong>3.3.0으로 빌드한 이미지를 돌리기 전에 이 변수들을 설정해야 합니다.</strong> Kubernetes에서는{" "}
+                    <code>akan secret-env --out</code>이 쓴 Secret을 apply하고 컨테이너의 <code>envFrom</code>에
+                    적습니다. 이전 이미지에는 값이 그대로 남아 있으니, 새 이미지가 배포되면 그 비밀 값을 교체하세요.{" "}
+                    <code>akan start</code>, <code>akan test</code>, <code>--profile</code> 빌드, 데스크톱·모바일 빌드는
+                    env 파일을 적힌 그대로 읽습니다.
                   </span>
                 ),
               })}
@@ -873,8 +873,8 @@ REDIS_URI=redis://redis.internal:6379`}
                   type: "string",
                   default: l.trans({ en: "unset — made at start", ko: "미설정 — 시작할 때 생성" }),
                   desc: l.trans({
-                    en: "A secret of at least 32 characters that signs the id a page view carries for option.setClientReport. Set the same value on every gateway or pod so each takes the others' ids; a gateway passes it to its replicas unchanged. A shorter value is ignored with a warning.",
-                    ko: "option.setClientReport에서 페이지 뷰가 가지는 id를 서명하는 32자 이상의 비밀값입니다. 모든 gateway나 pod에 같은 값을 두면 서로의 id를 받고, gateway는 이 값을 replica에 그대로 넘깁니다. 더 짧은 값은 경고와 함께 무시됩니다.",
+                    en: "A secret of at least 32 characters that signs the id a page view carries for option.setClientReport. Set the same value on every gateway or pod so each takes the others' ids.",
+                    ko: "option.setClientReport에서 페이지 뷰가 가지는 id를 서명하는 32자 이상의 비밀값입니다. 모든 gateway나 pod에 같은 값을 두어야 서로의 id를 받습니다.",
                   }),
                 },
               ]}

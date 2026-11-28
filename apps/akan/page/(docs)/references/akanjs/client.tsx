@@ -93,8 +93,8 @@ export default page()
       {
         name: ["usePendingNavigation", "PendingLocation"],
         desc: l.trans({
-          en: "The `{ href, pathname, path, searchParams }` a navigation is loading, from the press until its page is drawn or shows its `.loading()`, and `null` otherwise. A page the browser already holds is never reported: under SSR one drawn before or a prefetch that has arrived, on a CSR stack one the stack keeps or one with no async layer or guard. A redirect moves it to where it leads. For a skeleton or a dimmed pane shown before the page.",
-          ko: "내비게이션이 불러오는 중인 위치 `{ href, pathname, path, searchParams }`입니다. 누른 순간부터 새 페이지가 그려지거나 `.loading()`이 보일 때까지 값이 있고, 그 밖에는 `null`입니다. 브라우저가 이미 가진 페이지는 알리지 않습니다. SSR에서는 전에 그린 페이지와 도착한 prefetch, CSR 스택에서는 스택이 가진 페이지와 async 레이어나 guard가 없는 페이지입니다. redirect되면 도착지로 바뀝니다. 페이지가 뜨기 전에 스켈레톤을 띄우거나 영역을 흐리게 할 때 씁니다.",
+          en: "The `{ href, pathname, path, searchParams }` a navigation is loading, from the press until its page or `.loading()` shows, for a skeleton or dimmed pane. `null` otherwise, and for a page the browser already holds.",
+          ko: "내비게이션이 불러오는 중인 위치 `{ href, pathname, path, searchParams }`입니다. 누른 순간부터 새 페이지나 `.loading()`이 보일 때까지 값이 있어, 스켈레톤을 띄우거나 영역을 흐리게 할 때 씁니다. 그 밖에는, 그리고 브라우저가 이미 가진 페이지로 갈 때는 `null`입니다.",
         }),
       },
       {
@@ -177,8 +177,8 @@ export default page()
       {
         name: "backOrReplace(href)",
         desc: l.trans({
-          en: "Leaves a state of the page a `push` opened in the query, such as a record in `?id=`. Goes back when the entry under this one is `href`, and replaces this entry with `href` otherwise: a CSR or native stack does not stack a push that keeps the pathname, and a visitor may have opened the address directly. The replace keeps the scroll position. Browser only.",
-          ko: "`push`로 쿼리에 연 페이지 상태(예: `?id=`의 레코드)를 닫습니다. 바로 아래 기록이 `href`이면 뒤로 가고, 아니면 현재 기록을 `href`로 교체합니다. CSR이나 네이티브 스택은 pathname이 같은 push를 쌓지 않고, 방문자가 그 주소로 바로 들어왔을 수도 있기 때문입니다. 교체할 때 스크롤 위치는 그대로 둡니다. 브라우저에서만 됩니다.",
+          en: "Leaves a page state a `push` opened in the query (a record in `?id=`): goes back when the entry under this one is `href`, else replaces this entry with `href`, keeping the scroll. Browser only.",
+          ko: "`push`로 쿼리에 연 페이지 상태(예: `?id=`의 레코드)를 닫습니다. 바로 아래 기록이 `href`이면 뒤로 가고, 아니면 스크롤 위치를 둔 채 현재 기록을 `href`로 교체합니다. 브라우저에서만 됩니다.",
         }),
       },
       {
@@ -385,8 +385,8 @@ export default page()
           {
             name: ".loading(fn, option?)",
             desc: l.trans({
-              en: "Shown while render awaits. It gets path values but no search values. On a page(), { atPress: true } shows it once a press to another path of the same page (/chat/a to /chat/b) has waited 150 ms on the server, where the page being left would stay until the answer; { atPress: { delayMs } } sets the wait. Back, Forward and a page the browser already holds keep the page. The fallback shown is the one drawn for the path being left, so it should not draw from its arguments.",
-              ko: "render가 기다리는 동안 보여 줍니다. path 값은 받지만 search 값은 받지 않습니다. page()에서 { atPress: true }를 주면, 같은 페이지의 다른 경로로 이동할 때(/chat/a에서 /chat/b) 서버 응답을 150ms 기다린 시점부터 이 화면을 보여 줍니다. 주지 않으면 응답이 올 때까지 떠나는 페이지가 그대로 남습니다. { atPress: { delayMs } }로 기다리는 시간을 정합니다. 뒤로·앞으로 가기와 브라우저가 이미 가진 페이지로의 이동은 페이지를 그대로 둡니다. 보이는 화면은 떠나는 경로에서 그려 둔 것이므로 인자에 따라 달라지지 않게 그려야 합니다.",
+              en: "Shown while render awaits, with path values but no search values. On a page(), { atPress: true } also shows it once a press to another path of the same page (/chat/a to /chat/b) has waited 150 ms; { atPress: { delayMs } } sets the wait. It is the fallback drawn for the path being left, so draw nothing from its arguments.",
+              ko: "render가 기다리는 동안 보여 주며, path 값은 받지만 search 값은 받지 않습니다. page()에서 { atPress: true }를 주면, 같은 페이지의 다른 경로로 이동할 때(/chat/a에서 /chat/b)도 150ms를 기다린 시점부터 보여 주고, { atPress: { delayMs } }로 그 시간을 정합니다. 이때 보이는 화면은 떠나는 경로에서 그려 둔 것이므로 인자에 따라 달라지지 않게 그립니다.",
             }),
             marks: onEvery,
           },
@@ -713,6 +713,15 @@ export default page()
         desc: l.trans({
           en: "`false` keys the page in the RSC and HTML result caches on its query exactly as requested, instead of sorted and without the `AKAN_ROUTE_CACHE_TRACKING_PARAMS`. On a layout, it covers every page below.",
           ko: "`false`면 RSC·HTML 결과 캐시가 페이지를 정렬하고 `AKAN_ROUTE_CACHE_TRACKING_PARAMS`를 뺀 쿼리 대신 요청 그대로의 쿼리로 저장합니다. layout에 두면 그 아래 모든 페이지에 적용됩니다.",
+        }),
+      },
+      {
+        key: "stackOn",
+        type: "string",
+        default: l.trans({ en: "the link's leading routes", ko: "링크 앞쪽 경로의 route" }),
+        desc: l.trans({
+          en: "The screen a native app's deep link lays under the page with nothing behind it: a route pattern taking the link's params (`/org/:orgId`), whose `stackOn` chains on. On a layout, it covers every page below.",
+          ko: "딥링크가 뒤에 아무것도 없이 네이티브 앱을 이 페이지로 열 때 그 밑에 깔 화면입니다. 링크의 param으로 채우는 route 패턴(`/org/:orgId`)이며, 그 화면의 `stackOn`이 이어집니다. layout에 두면 그 아래 모든 페이지에 적용됩니다.",
         }),
       },
       {

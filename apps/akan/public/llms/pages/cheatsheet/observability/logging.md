@@ -290,7 +290,7 @@ Settings
 
 - AKAN_LOG_DEBUG_HEADER (string, default unset): Secret for `x-akan-debug`, which lowers one request to trace, records its spans and answers with `Server-Timing`. Unset, it works only in local. With `AKAN_DEVTOOLS=true` it also opens devtools and Studio outside local.
 
-- AKAN_TRACE (1, default off): Adds db and cache figures to the request line, and per-stage spans to metrics, one `db:<model>.<op>` span per SQL statement sent among them (the first 32 of a request; `db` and `dbMs` count them all, `BEGIN` and `COMMIT` included, without a span), or per model call for a store that sends none through the SQLite or Postgres driver.
+- AKAN_TRACE (1, default off): Adds db and cache figures to the request line, and per-stage spans to metrics, with one `db:<model>.<op>` span per SQL statement for a request's first 32; `db` and `dbMs` count them all.
 
 One request at trace in production
 
@@ -298,9 +298,9 @@ Send the secret in `x-akan-debug`, and that request alone is logged at trace:
 
 that request alone is logged at trace, its lines marked debug=true
 
-**The id on a response is the server's own.** A request that arrives with a W3C `traceparent`, or else an `x-request-id` that is a UUID or 32 hex digits, gets a fresh id and keeps the caller's as `link`, on every record it writes. `akan logs --trace` matches `link` too and takes the id as the caller sent it, so a caller's own id still finds its request. Only the gateway's hop to its replica carries an id over. `AKAN_TRACE_ADOPT=trusted-proxies` lets a proxy that `AKAN_TRUSTED_PROXIES` lists by address choose the id; turn it on only when that proxy overwrites or strips both headers.
+**The id on a response is the server's own.** A caller's `traceparent` or `x-request-id` becomes `link`, which `akan logs --trace` matches. Set `AKAN_TRACE_ADOPT=trusted-proxies` only when a proxy in `AKAN_TRUSTED_PROXIES` overwrites or strips both headers: it chooses the id.
 
-**The id follows what the request starts.** A page's render in the RSC worker, the `fetch` calls a server makes to this app or to a `clone({ origin })`, and every frame of a websocket (under its handshake's id) write the same `traceId`. A queued job gets an id of its own and names the enqueuing one as `link`.
+**The id follows what the request starts.** A page's render, server `fetch` calls to this app or a `clone({ origin })`, and every websocket frame write the same `traceId`; a queued job gets its own.
 
 **Promoted lines pass every floor.** A `flight=true` or `debug=true` record was asked for below the level, so a forwarder's floor, the stdout level and `--level` let it through.
 
@@ -378,23 +378,23 @@ Role
 
 - gateway: One server span per proxied request, named by its method (`GET`) because the gateway does not match routes, and its own log lines.
 
-- all, federation, batch: A server span named after the route pattern it matched, a span per endpoint call such as `query:getUser`, a client span per database call, and its log lines. Each stage of a call (guards, handler, serialize) is a span of its own only under `AKAN_TRACE=1` or a passed `x-akan-debug`. A job is a trace of its own, linked to the one that enqueued it.
+- all, federation, batch: A server span named after the matched route pattern, a span per endpoint call (`query:getUser`), a client span per database call, and its log lines. Per-stage spans only under `AKAN_TRACE=1` or a passed `x-akan-debug`.
 
 - rsc-worker: The page render span, a child of its replica's server span, and its own log lines. It flushes on SIGTERM and when its replica goes away.
 
-**Sampling is decided once, at the first hop.** The process a request reaches first over TCP — the gateway, or a replica running without one — decides, and the sampled flag of `traceparent` carries the decision to the replica and on to the RSC worker. A caller's `traceparent` counts only when `AKAN_TRACE_ADOPT` trusts the sender; a `parentbased_` sampler then follows its flag. An untrusted caller's trace is linked from the first span, with its span id when a `traceparent` named one; an `x-request-id` names none, so it goes as the `akan.trace.link` attribute.
+**Sampling is decided once, at the first hop.** The gateway, or a replica running without one, decides; the rest follow. A caller's `traceparent` counts only when `AKAN_TRACE_ADOPT` trusts the sender; otherwise its trace is linked from the first span.
 
-**`AKAN_TRACE` and `x-akan-debug` are separate switches.** `AKAN_TRACE=1` records spans for every call into this app's own metrics and request line. The exporter records a sampled call's own span and its database spans and sends them out, without joining that aggregate; the per-stage spans come only with `AKAN_TRACE=1`. `x-akan-debug` lowers one request to trace and answers with `Server-Timing`; it does not change the sampling decision. Any of the three works without the others.
+**`AKAN_TRACE` and `x-akan-debug` are separate switches.** The exporter sends a sampled call's own span and its database spans; per-stage spans come only with `AKAN_TRACE=1`. `x-akan-debug` does not change the sampling decision. Each of the three works alone.
 
-**What stays out.** Span attributes carry the method, the route pattern, the status and the error type: never a URL with its query, a header value, SQL text or the caller's user id. A failure's exception event carries its error code, not its message, which may quote user input.
+**What stays out.** Span attributes carry the method, route pattern, status and error type: never a URL with its query, a header value, SQL text or a user id. An exception event carries the error code, not the message.
 
-**Log records are opt-in.** A record carries the line's message as its body, its severity, its attrs, the logger's name and context, the endpoint and origin, a link it was handed, and its trace and span id when written inside a request. Attrs naming a secret are `[redacted]` when the record is made, before any sink sees them; nothing else is. The message text, and an error's message and stack where the line carries them, go as written, on this sink as on every other. The floor is the console level the process booted with.
+**Log records are opt-in.** Each carries its request's trace and span id. Only attrs naming a secret are `[redacted]`; the message, and an error's message and stack, go as written. The floor is the console level at boot.
 
-**Never in a request's way.** Spans and records go into a bounded queue that sends a batch when it holds 512, once the call that filled it has returned, or on a timer, with at most two requests in flight. A full queue drops its oldest item and counts it. 429, 502, 503, 504 and an unreachable collector are retried with backoff until the timeout; any other status drops the batch. A failing collector is reported at most once a minute, by host only. The exporter's own requests are not traced, and its own warnings are not exported.
+**Never in a request's way.** Spans and records wait in a bounded queue that drops its oldest when full. 429, 502, 503, 504 and an unreachable collector are retried with backoff until the timeout; other statuses drop the batch.
 
-**On the way out,** each process sends what is queued once, without retries, for at most 1.5 s, and a replica under the gateway takes less once its shutdown has used up the gateway's wait. Whatever is unsent by then is dropped and counted in a last warning. An RSC worker still running 3 s after it was stopped, as one stuck in a render, is killed.
+**On the way out,** each process sends what is queued once, without retries, for at most 1.5 s, and drops the rest. An RSC worker still running 3 s after it was stopped is killed.
 
-**What it costs** is the sampled share. On `apps/minimal` behind a gateway with one replica, at 16 concurrent clients on a laptop, three 8 s runs each, an endpoint that only returns a constant served a median 38.3k requests a second with export off (36.6k to 38.5k over six runs), 38.1k at a ratio of 0.01 (37.8k to 38.4k) and 28.9k at 1.0 (28.7k to 29.4k), with p50 going from 0.40 to 0.40 to 0.47 ms. A page replayed from the render cache went from 14.4k a second (14.2k to 14.6k) to 14.6k at 0.01 and 13.1k at 1.0 (13.0k to 13.3k), p50 1.02 to 1.01 to 1.12 ms. A ratio of 0.01 is therefore within noise, and 1.0 costs about a quarter of this endpoint's throughput and under a tenth of a cached page's; a page that renders spends far more per request than the export does.
+**What it costs** is the sampled share. In a laptop benchmark a ratio of 0.01 was within noise, and 1.0 cost about a quarter of a constant-returning endpoint's throughput and under a tenth of a cached page's.
 
 **JSON bodies only.** A collector that accepts only protobuf will not work; the OpenTelemetry Collector's `otlp` receiver accepts both. Bodies are not compressed.
 

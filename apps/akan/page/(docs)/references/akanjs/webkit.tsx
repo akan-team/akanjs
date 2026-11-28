@@ -123,8 +123,8 @@ export default page()
       {
         name: "useEscapeKey(active, onEscape, options?)",
         desc: l.trans({
-          en: "Calls `onEscape` on Escape, or on an Android app's back button, while `active`. Only the topmost open surface gets it, and back leaves the page only once none is open. `{ back: false }` keeps the back button for the page: for a hint that shows by itself, such as a tooltip.",
-          ko: "`active`인 동안 Escape를 누르거나 Android 앱의 뒤로가기를 누르면 `onEscape`를 부릅니다. 겹쳐 열린 것 중 맨 위 하나만 받고, 열린 것이 없을 때에야 뒤로가기가 페이지를 떠납니다. `{ back: false }`를 주면 뒤로가기는 페이지가 받습니다. 툴팁처럼 저절로 뜨는 안내에 씁니다.",
+          en: "Calls `onEscape` on Escape or an Android app's back button while `active` and the topmost open surface. `{ back: false }` leaves back to the page: for a hint that shows by itself, like a tooltip.",
+          ko: "`active`인 동안 Escape를 누르거나 Android 앱의 뒤로가기를 누르면 `onEscape`를 부르며, 겹쳐 열린 것 중 맨 위 하나만 받습니다. `{ back: false }`를 주면 뒤로가기는 페이지가 받습니다. 툴팁처럼 저절로 뜨는 안내에 씁니다.",
         }),
       },
       {

@@ -188,7 +188,7 @@ Variable
 
 - --akan-keyboard-inset: Web only: the on-screen keyboard's height over the page bottom, in px.
 
-Tailwind reads them directly: `h-(--akan-bottom-inset)` sizes a bar to exactly the space the page reserved. Under `overlay`, a scroller written `pb-(--akan-overlay-bottom)` lets its last row scroll clear of the bar it passes under, and the overlaid side's safe area is transparent unless the page colors it.
+Tailwind reads them directly: `h-(--akan-bottom-inset)` sizes a bar to the space the page reserved, and under `overlay` a scroller with `pb-(--akan-overlay-bottom)` scrolls its last row clear of the bar. The overlaid side's safe area is transparent unless the page colors it.
 
 The Keyboard Inset
 

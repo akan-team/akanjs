@@ -253,23 +253,16 @@ export default page()
                 {l.trans({
                   en: (
                     <span>
-                      A response names at most 32 hashes, which keeps the header under 2 KB: a proxy in front reads a
-                      response's headers into one buffer (4 KB in nginx unless configured) and answers 502 past it. A
-                      page whose replay would need more is rendered for each request and says so:{" "}
-                      <code>X-Akan-Cache: BYPASS</code> with <code>X-Akan-Cache-Reason: script-hashes</code>, counted
-                      under that reason in <code>akan_route_cache_lookups_total</code>, and one warning in the log per
-                      route. Hashes a <code>.head()</code> declares past the 32 are left out, with one warning per
-                      route.
+                      A response names at most 32 hashes, which keeps the header under 2 KB. A page whose replay needs
+                      more is rendered per request and says so with <code>X-Akan-Cache-Reason: script-hashes</code>.
+                      Hashes a <code>.head()</code> declares past 32 are left out.
                     </span>
                   ),
                   ko: (
                     <span>
-                      한 응답은 해시를 최대 32개까지 적고, 그러면 헤더가 2 KB를 넘지 않습니다: 앞단의 프록시는 응답
-                      헤더를 버퍼 하나에 읽고 (nginx는 설정하지 않으면 4 KB) 넘치면 502로 답합니다. 다시 보낼 때 그보다
-                      많이 필요한 페이지는 요청마다 렌더링하고 그 사실을 알립니다: <code>X-Akan-Cache: BYPASS</code>와{" "}
-                      <code>X-Akan-Cache-Reason: script-hashes</code>, <code>akan_route_cache_lookups_total</code>의
-                      같은 reason, 그리고 route마다 한 번의 경고 로그입니다. <code>.head()</code>가 선언한 해시 중
-                      32개를 넘는 것은 빠지고, route마다 한 번 경고합니다.
+                      한 응답은 해시를 최대 32개까지 적고, 그러면 헤더가 2 KB를 넘지 않습니다. 다시 보낼 때 그보다 많이
+                      필요한 페이지는 요청마다 렌더링하고 <code>X-Akan-Cache-Reason: script-hashes</code>로 그 사실을
+                      알립니다. <code>.head()</code>가 선언한 해시 중 32개를 넘는 것은 빠집니다.
                     </span>
                   ),
                 })}
@@ -365,8 +358,8 @@ export default layout()
               </li>
               <li>
                 {l.trans({
-                  en: "A third-party script loaded from another origin needs the nonce on its tag, or a script that already runs must add it (a tag manager's own loader does). Listing its host in the policy does nothing under 'strict-dynamic'. Whatever a trusted script then adds needs no entry.",
-                  ko: "다른 origin에서 불러오는 서드파티 스크립트는 태그에 nonce가 있거나, 이미 실행 중인 스크립트가 추가해야 합니다 (태그 매니저의 로더가 그렇게 합니다). 'strict-dynamic'에서는 정책에 host를 적어도 효과가 없습니다. 신뢰된 스크립트가 그 뒤에 추가하는 것은 따로 적을 필요가 없습니다.",
+                  en: "A third-party script from another origin needs the nonce on its tag, unless a script that already runs adds it, as a tag manager's loader does. Listing its host in the policy does nothing under 'strict-dynamic'.",
+                  ko: "다른 origin에서 불러오는 서드파티 스크립트는 태그에 nonce가 있어야 합니다. 태그 매니저의 로더처럼 이미 실행 중인 스크립트가 추가하는 경우만 예외입니다. 'strict-dynamic'에서는 정책에 host를 적어도 효과가 없습니다.",
                 })}
               </li>
               <li>
@@ -401,8 +394,8 @@ export default layout()
           <Docs.Description>
             <div>
               {l.trans({
-                en: "A refused script shows in the browser console as an error naming the directive and, for an inline script, the hash that would allow it. The browser also posts a report to /_akan/csp-report, which logs one [ScriptPolicy] warning per route, directive and blocked source, up to 512 kinds a process, keeping no query string. Every post gets the same empty answer.",
-                ko: "막힌 스크립트는 브라우저 콘솔에 지시어와, 인라인 스크립트라면 그것을 허용할 해시를 알려 주는 오류로 나타납니다. 브라우저는 /_akan/csp-report에도 보고를 보내고, 서버는 route, 지시어, 막힌 출처마다 [ScriptPolicy] 경고를 한 번 로그에 남깁니다 (프로세스마다 최대 512종류, 쿼리 문자열은 남기지 않음). 모든 요청에 같은 빈 응답을 돌려줍니다.",
+                en: "The browser console shows a refused script as an error naming the directive and, for an inline script, the hash that would allow it. The browser also posts a report to /_akan/csp-report, which logs one [ScriptPolicy] warning per route, directive and blocked source.",
+                ko: "막힌 스크립트는 브라우저 콘솔에 지시어와, 인라인 스크립트라면 그것을 허용할 해시를 알려 주는 오류로 나타납니다. 브라우저는 /_akan/csp-report에도 보고를 보내고, 서버는 route, 지시어, 막힌 출처마다 [ScriptPolicy] 경고를 한 번 로그에 남깁니다.",
               })}
             </div>
             <Docs.OptionTable items={settingRows} />
@@ -455,18 +448,16 @@ export default layout()
                 {l.trans({
                   en: (
                     <span>
-                      A module a script adds does not hold the document's events back, so <code>DOMContentLoaded</code>{" "}
-                      and <code>load</code> can fire before the client entry runs (on a cached docs page,{" "}
-                      <code>load</code> at 31 ms and the entry at 63 ms). A listener for either that client code adds
-                      afterwards is never called: check <code>document.readyState</code> first.
+                      <code>DOMContentLoaded</code> and <code>load</code> can fire before the client entry runs, since a
+                      module a script adds does not hold them back. A listener client code adds after that is never
+                      called: check <code>document.readyState</code> first.
                     </span>
                   ),
                   ko: (
                     <span>
                       스크립트가 추가한 module은 문서의 이벤트를 붙잡지 않으므로, <code>DOMContentLoaded</code>와{" "}
-                      <code>load</code>가 클라이언트 entry보다 먼저 발생할 수 있습니다 (캐시된 문서 페이지에서{" "}
-                      <code>load</code> 31 ms, entry 63 ms). 클라이언트 코드가 그 뒤에 추가한 listener는 호출되지
-                      않습니다: 먼저 <code>document.readyState</code>를 확인하세요.
+                      <code>load</code>가 클라이언트 entry보다 먼저 발생할 수 있습니다. 클라이언트 코드가 그 뒤에 추가한
+                      listener는 호출되지 않습니다: 먼저 <code>document.readyState</code>를 확인하세요.
                     </span>
                   ),
                 })}
@@ -499,18 +490,16 @@ else window.addEventListener("load", onLoad, { once: true });`}
                 {l.trans({
                   en: (
                     <span>
-                      A browser test that clicks or types as soon as navigation reports <code>load</code> can meet a
-                      page that has not hydrated, and the event is lost. Wait for something only the hydrated page does:
-                      assert the result of the action and let the runner retry it, or wait for a marker a client
-                      component sets in an effect, such as <code>document.documentElement.dataset.hydrated</code>.
+                      A browser test that clicks or types at <code>load</code> can meet an unhydrated page and lose the
+                      event. Assert the action's result and let the runner retry, or wait for a marker a client effect
+                      sets, such as <code>document.documentElement.dataset.hydrated</code>.
                     </span>
                   ),
                   ko: (
                     <span>
-                      내비게이션이 <code>load</code>를 알리자마자 클릭하거나 입력하는 브라우저 테스트는 아직 hydrate되지
-                      않은 페이지를 만나 이벤트를 잃을 수 있습니다. hydrate된 페이지만 하는 일을 기다리세요: 동작의
-                      결과를 단언하고 러너가 재시도하게 하거나, 클라이언트 컴포넌트가 effect에서 남기는 표시 (예:{" "}
-                      <code>document.documentElement.dataset.hydrated</code>)를 기다립니다.
+                      <code>load</code> 시점에 클릭하거나 입력하는 브라우저 테스트는 아직 hydrate되지 않은 페이지를 만나
+                      이벤트를 잃을 수 있습니다. 동작의 결과를 단언하고 러너가 재시도하게 하거나, 클라이언트 effect가
+                      남기는 표시 (예: <code>document.documentElement.dataset.hydrated</code>)를 기다리세요.
                     </span>
                   ),
                 })}

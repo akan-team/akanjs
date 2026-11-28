@@ -96,6 +96,25 @@ export const thumbnailPrompts: Record<string, DiagramPrompt> = {
       "of the sea runs behind them, and a half sun sits on the horizon to the right with a few short rays. The " +
       "sun is the red accent. No labels, no words.",
   },
+  "blog-v3-2release": {
+    where: "script/diagramPrompts.ts — thumbnail for /blog/v3-2release",
+    size: "1536x1024",
+    subject:
+      "A blog thumbnail, so draw only a few large shapes with thick bold lines, filling the middle of the frame. " +
+      "On the left, one big server drawn as a tall rounded rectangle with two short horizontal slots near its top; " +
+      "on the front of the server, a simple friendly robot face made of two round eyes and a short straight mouth, " +
+      "with one short antenna rising from the top of the server. On the right, one big door standing shut, with a " +
+      "large padlock hanging on it. The padlock is the red accent. No labels, no words, no numbers.",
+  },
+  "blog-v3-3release": {
+    where: "script/diagramPrompts.ts — thumbnail for /blog/v3-3release",
+    size: "1536x1024",
+    subject:
+      "A blog thumbnail, so draw only a few large shapes with thick bold lines, filling the middle of the frame. " +
+      "On the left, one big bird feather floating at a slight tilt, with two short curved motion lines under it. " +
+      "On the right, one big shield outline with a large check mark inside it. The check mark is the red accent. " +
+      "No labels, no words, no numbers.",
+  },
 };
 
 const figureTag = "Docs.Figure";

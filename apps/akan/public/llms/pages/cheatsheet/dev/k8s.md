@@ -83,7 +83,7 @@ Both `*-secret.yaml` files stay out of git. `bun run downloadSecret` fetches eve
 
 Server env secrets
 
-The image holds the names of the server env's secrets, not their values. Before each release the Jenkins deploy stage writes them from the branch's env file as a Secret, applies it, and deletes the file; the chart reads the Secret a branch names in `app.secretName` through `envFrom`.
+The image holds the names of the server env's secrets, not their values. Name a Secret in the branch's `app.secretName` and the chart reads it through `envFrom`; the Jenkins deploy stage writes and applies it from the branch's env file before each release.
 
 Deploy command
 
@@ -121,17 +121,17 @@ A key tagged `_common-secret.yaml` is set there once for every app.
 
 - readinessPath (string, default /_akan/app/health): The readiness probe's path. Set `/_akan/app/ready` once the image's akanjs serves it; an older image answers it 404.
 
-- podSecurityContext (object, default uid 1000, fsGroup 1000): The pod's `securityContext`: it runs as uid and gid 1000 (`runAsNonRoot`), its volumes are handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp is `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it; the block left out or `null` keeps these defaults. `{ runAsUser: 0, runAsGroup: 0, runAsNonRoot: false }` with `securityContext: { capabilities: null }` and `volumePermissions: { enabled: false }` runs it as root.
+- podSecurityContext (object, default uid 1000, fsGroup 1000): The pod's `securityContext`: uid and gid 1000 (`runAsNonRoot`), volumes handed to group 1000 (`fsGroup`, `OnRootMismatch`) and seccomp `RuntimeDefault`. A values file replaces single keys, and `null` on a key drops it.
 
 - securityContext (object, default no escalation, no capabilities): The container's `securityContext`: `allowPrivilegeEscalation: false` and every capability dropped. The root filesystem stays writable, because the server writes `/workspace/runtime`, `/workspace/.akan` and `/tmp` inside the image. `capabilities: null` gives the container the runtime's default capabilities; the block left out or `null` keeps these defaults.
 
-- volumePermissions.enabled (boolean, default true): Single mode: before the app starts, an init container from the app's image runs as root with only `CHOWN`, `FOWNER` and `DAC_READ_SEARCH` and hands every file on the `sqlite-data` claim to `podSecurityContext`'s `runAsUser:runAsGroup`, so a claim a root image wrote stays writable where `fsGroup` does not reach (hostPath, NFS, some CSI drivers). Once ownership is right it changes nothing. A cluster's `sharedClaim` is never touched. An image without `sh` and `find` needs `false`.
+- volumePermissions.enabled (boolean, default true): Single mode: a root init container hands the `sqlite-data` claim's files to `podSecurityContext`'s `runAsUser:runAsGroup` before the app starts, since `fsGroup` misses hostPath, NFS and some CSI drivers. An image without `sh` and `find` needs `false`.
 
 - ingress.proxyBodySize (string, default 128m): The largest request body the Ingress passes on, the server's own upload limit. Raise it together with `AKAN_MAX_UPLOAD_BODY`; `"0"` passes any size.
 
-- ingress.cors.enabled (boolean, default false): Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`. Only fonts carry `Access-Control-Allow-Origin: *`, so a page elsewhere cannot `fetch` a public file or draw an `/_akan/image` on a canvas. `true` has ingress-nginx answer every preflight and add `Access-Control-Allow-Origin: *` to every response instead.
+- ingress.cors.enabled (boolean, default false): Off, the app answers CORS itself: its native shells and the origins in `option.setCrossSite({ allowedOrigins })`, and `Access-Control-Allow-Origin: *` on fonts only. `true` has ingress-nginx answer every preflight and add that header to every response.
 
-**Some images still need root.** The pod runs as uid 1000. An image built with akanjs 3.2 or earlier, a rollback to one through `image.tag` included, a declared `docker` Dockerfile string that runs the server as root, or a custom `docker.image` whose files uid 1000 cannot read, needs these lines in the app's values file.
+**Some images still need root.** The pod runs as uid 1000. Add the lines below to the app's values file for an image built with akanjs 3.2 or earlier, a `docker` Dockerfile string that runs the server as root, or a `docker.image` whose files uid 1000 cannot read.
 
 Per-branch keys
 

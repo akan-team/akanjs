@@ -332,7 +332,7 @@ An app nobody attends
 
 A kiosk or a signage screen has nobody to click Reload. `desktop.recovery: "reload"` reloads a crashed page and relaunches the app, and `desktop.window` opens it fullscreen without a taskbar button. `desktop.screenCapture: "auto"` shares the screen on Windows without the picker, for every media request, so leave it off in an app that uses a camera or a microphone. With `"reload"` its pages also open nothing outside the window: no print or file dialog, no share sheet, no download on Windows, no link handed to the OS, and on macOS no text service such as Search With Google in the right-click menu. The app's own `opener` and `file-picker` plugin calls still work, so open what it needs through them.
 
-A third-party page on such a screen, a scoreboard or a menu board, is an `external-view`. It opens only the origins `desktop.externalView.allowOrigins` lists, and none without it; a view's own `allowOrigins` narrow within them. Running script in it (`evaluate`, `initScript`) and typing into it (`sendKey`) are off until `evaluate` and `sendKey` turn them on. While a view is open, opening its id again never adds an origin; once closed, the id opens again for any origins the config lists, with the same browser profile, which belongs to the id.
+A third-party page on such a screen, a scoreboard or a menu board, is an `external-view`. It opens only the origins `desktop.externalView.allowOrigins` lists, and none without it. Running script in it and typing into it are off until `evaluate` and `sendKey` turn them on. An id opened again after closing keeps its browser profile.
 
 Updates
 

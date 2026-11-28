@@ -1,6 +1,6 @@
 {
   "name": "@akanjs/native",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "The native runtime of akanjs: iOS, Android and desktop shells, the bridge, plugins and the build tools that turn a CSR bundle into apps.",
   "private": true,
   "license": "MIT",
